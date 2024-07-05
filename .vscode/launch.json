@@ -17,7 +17,7 @@
                 }
             ],
             "preLaunchTask": "C/C++: make build active file",
-            "miDebuggerPath": "/home/bitteal/gdb-13.1/gdb/gdb"
+            "miDebuggerPath": "/usr/bin/gdb"
         },
         {
             "name": "C/C++: make and debug active file single process",
@@ -37,7 +37,7 @@
             ],
             "externalConsole": false,
             "MIMode": "gdb",
-            "miDebuggerPath": "/home/bitteal/gdb-13.1/gdb/gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
             "preLaunchTask": "Build plasma_arc",
             "setupCommands": [
                 {

@@ -1,8 +1,8 @@
 # Compiler settings - change this to your MPI C++ compiler
-CXX=/home/bitteal/petsc/arch-linux-c-debug/bin/mpicxx
+CXX=mpicxx
 
 # Include path for libMesh
-INCLUDES=-I/home/bitteal/libmesh_inst/include -I/home/bitteal/petsc/include
+INCLUDES=-I/home/bitteal/libmesh_inst/include -I/usr/include/petsc
 
 # Compiler flags
 CXXFLAGS=-std=c++17 -Wall -O2 $(INCLUDES) -pthread
