@@ -51,4 +51,8 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-.vscode/*
+# Visual Studio Code workspace settings
+.vscode/
+
+# Compiled binaries
+bin/
