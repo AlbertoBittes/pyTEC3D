@@ -4,7 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/include",
-                "/usr/include/petsc",
+                "/home/bitteal/petsc/lib",
+                "/home/bitteal/petsc/arch-linux-c-debug/include",
                 "/usr/include",
                 "/home/bitteal/libmesh_inst/include"
             ],

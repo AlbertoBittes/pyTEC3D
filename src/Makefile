@@ -2,13 +2,13 @@
 CXX=mpicxx
 
 # Include path for libMesh
-INCLUDES=-I/home/bitteal/libmesh_inst/include -I/usr/include/petsc
+INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include
 
 # Compiler flags
 CXXFLAGS=-std=c++17 -Wall -O2 $(INCLUDES) -pthread
 
 # Linker flags, add your project-specific libraries not related to MPI
-LDFLAGS=-L/home/bitteal/libmesh_inst/lib -lmesh_dbg -ltimpi_dbg -pthread
+LDFLAGS=-L/$(LIBMESH_DIR)/lib -lmesh_dbg -ltimpi_dbg -pthread
 
 # The target executable name
 BIN_DIR=../bin
