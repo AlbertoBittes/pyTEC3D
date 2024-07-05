@@ -52,7 +52,8 @@ Mkfile.old
 dkms.conf
 
 # Visual Studio Code workspace settings
-.vscode/
+.vscode
 
 # Compiled binaries
-bin/
+bin
+.vscode
