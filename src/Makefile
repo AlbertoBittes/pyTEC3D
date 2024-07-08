@@ -5,7 +5,7 @@ CXX=mpicxx
 INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include
 
 # Compiler flags
-CXXFLAGS=-std=c++17 -Wall -O2 $(INCLUDES) -pthread
+CXXFLAGS=-std=c++17 -Wall -O1 $(INCLUDES) -pthread -g
 
 # Linker flags, add your project-specific libraries not related to MPI
 LDFLAGS=-L/$(LIBMESH_DIR)/lib -lmesh_dbg -ltimpi_dbg -pthread

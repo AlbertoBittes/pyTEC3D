@@ -81,7 +81,7 @@
 #include "libmesh/getpot.h"
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/zero_function.h"
-
+#include "../include/assemble_matrix.h"
 using namespace libMesh;
 
 // Function prototype.  This is the function that will assemble
@@ -93,7 +93,7 @@ using namespace libMesh;
 
 void assemble_poisson(EquationSystems &es,
                       const std::string &system_name);
-
+void assign_boundary_conditions(Mesh *mesh);
 // Exact solution function prototype.
 // Real exact_solution(const Real x,
 //                     const Real y,
@@ -112,6 +112,8 @@ void assemble_poisson(EquationSystems &es,
 // Begin the main program.
 int main(int argc, char **argv)
 {
+  int b;
+  std::cin >> b;
   // Initialize libMesh and any dependent libraries, like in example 2.
   LibMeshInit init(argc, argv);
 
@@ -148,11 +150,6 @@ int main(int argc, char **argv)
   order = libMesh::command_line_next("-o", order);
   order = libMesh::command_line_next("-Order", order);
 
-  // Read FE Family from command line
-  std::string family = "LAGRANGE";
-  family = libMesh::command_line_next("-f", family);
-  family = libMesh::command_line_next("-FEFamily", family);
-
   // Create a mesh, with dimension to be overridden later, distributed
   // across the default MPI communicator.
   Mesh mesh(init.comm());
@@ -168,34 +165,38 @@ int main(int argc, char **argv)
 
   // Declare the system and its variables.
   // Create a system named "Poisson"
-  LinearImplicitSystem &system =
-      equation_systems.add_system<LinearImplicitSystem>("Poisson");
-
-  // Add the variable "u" to "Poisson".  "u"
-  // will be approximated using second-order approximation by default
-  unsigned int az_var = system.add_variable("Az",
-                                            Utility::string_to_enum<Order>(order),
-                                            Utility::string_to_enum<FEFamily>(family));
-  BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
-  boundaryInfo.print_info();
-  boundaryInfo.print_summary();
-  boundaryInfo.sync(bond_mesh);
-  bond_mesh.print_info();
-  for (const auto &node : mesh.local_node_ptr_range())
+  if (dim == 2)
   {
-    // Put the variable pointed by node into a variable
-
-    dof_id_type node_id = node->id();
-    boundary_id_type bound_id = 0;
-    Node nod = *node;
-
-    if (std::abs(nod(0)) == 1 || std::abs(nod(1)) == 1)
-    {
-      boundaryInfo.add_node(node_id, bound_id);
-    }
+    LinearImplicitSystem &system =
+        equation_systems.add_system<LinearImplicitSystem>("Poisson");
+    // Add the variable "u" to "Poisson".  "u"
+    // will be approximated using second-order approximation by default
+    // Read FE Family from command line
+    std::string family = "LAGRANGE";
+    family = libMesh::command_line_next("-f", family);
+    family = libMesh::command_line_next("-FEFamily", family);
+    unsigned int a_var = system.add_variable("Az",
+                                             Utility::string_to_enum<Order>(order),
+                                             Utility::string_to_enum<FEFamily>(family));
   }
-  boundaryInfo.print_info();
-  boundaryInfo.print_summary();
+  else if (dim == 3)
+  {
+    LinearImplicitSystem &system =
+        equation_systems.add_system<LinearImplicitSystem>("Poisson");
+    // Add the variable "u" to "Poisson".  "u"
+    // will be approximated using second-order approximation by default
+    std::string family = "LAGRANGE_VEC";
+    family = libMesh::command_line_next("-f", family);
+    family = libMesh::command_line_next("-FEFamily", family);
+    unsigned int a_var = system.add_variable("A",
+                                             Utility::string_to_enum<Order>(order),
+                                             Utility::string_to_enum<FEFamily>(family)); /* code */
+  }
+
+  mesh.get_boundary_info().print_info();
+  mesh.get_boundary_info().print_summary();
+  mesh.get_boundary_info().sync(bond_mesh);
+  bond_mesh.print_info();
   ZeroFunction<Number> zero;
 
   // boundaryInfo.get
@@ -203,7 +204,7 @@ int main(int argc, char **argv)
   std::set<boundary_id_type> boundary_ids;
   boundary_ids.insert(0);
 
-  DirichletBoundary dirichlet_bc(boundary_ids, {az_var}, zero);
+  DirichletBoundary dirichlet_bc(boundary_ids, {a_var}, zero);
 
   // In general, when reusing a system-indexed exact solution, we want
   // to use the default system-ordering constructor for
@@ -225,7 +226,7 @@ int main(int argc, char **argv)
   // Solve the system "Poisson", just like example 2.
   system.solve();
 
-  GmshIO(mesh).write_equation_systems("/home/bitteal/PlasmaArc_simulations/out_2.e", equation_systems);
+  GmshIO(mesh).write_equation_systems("/home/bitteal/PlasmaArc/simulations/out_2.e", equation_systems);
 
   // All done.
   return 0;
@@ -290,213 +291,7 @@ int main(int argc, char **argv)
 //   return 0;
 // }
 
-// // We now define the matrix assembly function for the
-// // Poisson system.  We need to first compute element
-// // matrices and right-hand sides, and then take into
-// // account the boundary conditions.
-void assemble_poisson(EquationSystems &es,
-                      const std::string &libmesh_dbg_var(system_name))
+// Define a new function that receives as input a pointer to mesh object and returns void
+void assign_boundary_conditions(Mesh *mesh)
 {
-  // It is a good idea to make sure we are assembling
-  // the proper system.
-  libmesh_assert_equal_to(system_name, "Poisson");
-
-  // Declare a performance log.  Give it a descriptive
-  // string to identify what part of the code we are
-  // logging, since there may be many PerfLogs in an
-  // application.
-  PerfLog perf_log("Matrix Assembly");
-
-  // Get a constant reference to the mesh object.
-  const MeshBase &mesh = es.get_mesh();
-
-  // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
-
-  // Get a reference to the LinearImplicitSystem we are solving
-  LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>("Poisson");
-
-  // A reference to the DofMap object for this system.  The DofMap
-  // object handles the index translation from node and element numbers
-  // to degree of freedom numbers.  We will talk more about the DofMap
-  // in future examples.
-  const DofMap &dof_map = system.get_dof_map();
-
-  // Get a constant reference to the Finite Element type
-  // for the first (and only) variable in the system.
-  FEType fe_type = dof_map.variable_type(0);
-
-  // Build a Finite Element object of the specified type.  Since the
-  // FEBase::build() member dynamically creates memory we will
-  // store the object as a std::unique_ptr<FEBase>.  This can be thought
-  // of as a pointer that will clean up after itself.
-  std::unique_ptr<FEBase> fe(FEBase::build(dim, fe_type));
-
-  // A 5th order Gauss quadrature rule for numerical integration.
-  QGauss qrule(dim, SECOND);
-
-  // Tell the finite element object to use our quadrature rule.
-  fe->attach_quadrature_rule(&qrule);
-
-  // Declare a special finite element object for
-  // boundary integration.
-  std::unique_ptr<FEBase> fe_face(FEBase::build(dim, fe_type));
-
-  // Boundary integration requires one quadrature rule,
-  // with dimensionality one less than the dimensionality
-  // of the element.
-  QGauss qface(dim - 1, SECOND);
-
-  // Tell the finite element object to use our
-  // quadrature rule.
-  fe_face->attach_quadrature_rule(&qface);
-
-  // Here we define some references to cell-specific data that
-  // will be used to assemble the linear system.
-  // We begin with the element Jacobian * quadrature weight at each
-  // integration point.
-  const std::vector<Real> &JxW = fe->get_JxW();
-
-  // The physical XY locations of the quadrature points on the element.
-  // These might be useful for evaluating spatially varying material
-  // properties at the quadrature points.
-  const std::vector<Point> &q_point = fe->get_xyz();
-
-  // The element shape functions evaluated at the quadrature points.
-  const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-  // The element shape function gradients evaluated at the quadrature
-  // points.
-  const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-  // Define data structures to contain the element matrix
-  // and right-hand-side vector contribution.  Following
-  // basic finite element terminology we will denote these
-  // "Ke" and "Fe". More detail is in example 3.
-  DenseMatrix<Number> Ke;
-  DenseVector<Number> Fe;
-
-  // This vector will hold the degree of freedom indices for
-  // the element.  These define where in the global system
-  // the element degrees of freedom get mapped.
-  std::vector<dof_id_type> dof_indices;
-
-  // The global system matrix
-  SparseMatrix<Number> &matrix = system.get_system_matrix();
-
-  // Now we will loop over all the elements in the mesh.
-  // We will compute the element matrix and right-hand-side
-  // contribution.  See example 3 for a discussion of the
-  // element iterators.
-  for (const auto &elem : mesh.active_local_element_ptr_range())
-  {
-    // Start logging the shape function initialization.
-    // This is done through a simple function call with
-    // the name of the event to log.
-    perf_log.push("elem init");
-
-    // Get the degree of freedom indices for the
-    // current element.  These define where in the global
-    // matrix and right-hand-side this element will
-    // contribute to.
-    dof_map.dof_indices(elem, dof_indices);
-
-    // Cache the number of degrees of freedom on this element, for
-    // use as a loop bound later.  We use cast_int to explicitly
-    // convert from size() (which may be 64-bit) to unsigned int
-    // (which may be 32-bit but which is definitely enough to count
-    // *local* degrees of freedom.
-    const unsigned int n_dofs =
-        cast_int<unsigned int>(dof_indices.size());
-
-    // Compute the element-specific data for the current
-    // element.  This involves computing the location of the
-    // quadrature points (q_point) and the shape functions
-    // (phi, dphi) for the current element.
-    fe->reinit(elem);
-
-    // With one variable, we should have the same number of degrees
-    // of freedom as shape functions.
-    libmesh_assert_equal_to(n_dofs, phi.size());
-
-    // Zero the element matrix and right-hand side before
-    // summing them.  We use the resize member here because
-    // the number of degrees of freedom might have changed from
-    // the last element.  Note that this will be the case if the
-    // element type is different (i.e. the last element was a
-    // triangle, now we are on a quadrilateral).
-    Ke.resize(n_dofs, n_dofs);
-
-    Fe.resize(n_dofs);
-
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    perf_log.pop("elem init");
-
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    perf_log.push("Ke");
-
-    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
-      for (unsigned int i = 0; i != n_dofs; i++)
-        for (unsigned int j = 0; j != n_dofs; j++)
-          Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]);
-
-    // Stop logging the matrix computation
-    perf_log.pop("Ke");
-
-    // Now we build the element right-hand-side contribution.
-    // This involves a single loop in which we integrate the
-    // "forcing function" in the PDE against the test functions.
-    //
-    // Start logging the right-hand-side computation
-    perf_log.push("Fe");
-
-    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
-    {
-      Real fxy;
-      Point centroid;
-      centroid = elem->vertex_average();
-
-      if (centroid(0) <= 0.1 && centroid(1) <= 0.1 && centroid(2) <= 0.1 && centroid(0) >= -0.1 && centroid(1) >= -0.1 && centroid(2) >= -0.1)
-        fxy = 4 * libMesh::pi * 1e-7;
-      else
-        fxy = 0.0;
-      // Add the RHS contribution
-      for (unsigned int i = 0; i != n_dofs; i++)
-        Fe(i) += JxW[qp] * fxy * phi[i][qp];
-    }
-
-    // Stop logging the right-hand-side computation
-    perf_log.pop("Fe");
-
-    // If this assembly program were to be used on an adaptive mesh,
-    // we would have to apply any hanging node constraint equations
-    // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
-    // to impose a inhomogeneous Dirichlet boundary conditions.
-    dof_map.heterogenously_constrain_element_matrix_and_vector(Ke, Fe, dof_indices);
-
-    // The element matrix and right-hand-side are now built
-    // for this element.  Add them to the global matrix and
-    // right-hand-side vector.  The SparseMatrix::add_matrix()
-    // and NumericVector::add_vector() members do this for us.
-    // Start logging the insertion of the local (element)
-    // matrix and vector into the global matrix and vector
-    LOG_SCOPE_WITH("matrix insertion", "", perf_log);
-
-    matrix.add_matrix(Ke, dof_indices);
-    system.rhs->add_vector(Fe, dof_indices);
-  }
-
-  // That's it.  We don't need to do anything else to the
-  // PerfLog.  When it goes out of scope (at this function return)
-  // it will print its log to the screen. Pretty easy, huh?
 }
