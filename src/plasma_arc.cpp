@@ -128,10 +128,13 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     mesh.read(input_filename);
 
+    std::string family_type = family;
+
     unsigned int dim = mesh.mesh_dimension();
+
     if (dim == 3 && family == "LAGRANGE")
     {
-        family = "LAGRANGE_VEC";
+        family_type = "LAGRANGE_VEC";
     }
     // Print information about the mesh to the screen.
     mesh.print_info();
@@ -146,8 +149,8 @@ int main(int argc, char **argv)
 
     EquationSystems equation_systems(mesh);
 
-    LinearImplicitSystem &system =
-        equation_systems.add_system<LinearImplicitSystem>("Poisson");
+    System *system = nullptr;
+    int formulation = 1;
     unsigned int a_var;
     // Declare the system and its variables.
     // Create a system named "Poisson"
@@ -157,7 +160,9 @@ int main(int argc, char **argv)
         // Add the variable "u" to "Poisson".  "u"
         // will be approximated using second-order approximation by default
         // Read FE Family from command line
-        a_var = system.add_variable("Az", Utility::string_to_enum<Order>(order),
+        LinearImplicitSystem &system =
+            equation_systems.add_system<LinearImplicitSystem>("Poisson");
+        a_var = system.add_variable("AZ", Utility::string_to_enum<Order>(order),
                                     Utility::string_to_enum<FEFamily>(family));
         system.attach_assemble_function(assemble_poisson);
     }

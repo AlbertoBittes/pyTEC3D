@@ -13,7 +13,8 @@
 
 using namespace libMesh;
 
-CurrentLoadsMap buildCurrentLoadsMap(const std::string &filename)
+template <typename Sys>
+CurrentLoadsMap LoadsBCObject<Sys>::buildCurrentLoadsMapBFElist(const std::string &filename)
 {
     std::ifstream file(filename);
     CurrentLoadsMap map;
@@ -58,7 +59,8 @@ CurrentLoadsMap buildCurrentLoadsMap(const std::string &filename)
     return map;
 }
 
-NodeDataMatrix readInput(const std::string &filename)
+template <typename Sys>
+NodeDataMatrix LoadsBCObject<Sys>::readInputDlist(const std::string &filename)
 {
     std::ifstream file(filename);
     NodeDataMatrix matrix;
@@ -91,11 +93,12 @@ NodeDataMatrix readInput(const std::string &filename)
 }
 
 // Function to process the vector of tuples and build the table
-NodeBCMap buildTable(const NodeDataMatrix &matrix)
+template <typename Sys>
+NodeBCMap LoadsBCObject<Sys>::buildNodeBCMapDlist(const std::string &dlist_filepath)
 {
     NodeBCMap table;
-
-    for (const auto &entry : matrix)
+    NodeDataMatrix bc_matrix = this->readInputDlist(dlist_filepath);
+    for (const auto &entry : bc_matrix)
     {
         dof_id_type node = std::get<0>(entry);
         std::string label = std::get<1>(entry);
@@ -131,32 +134,27 @@ NodeBCMap buildTable(const NodeDataMatrix &matrix)
 
 void processInput(LinearImplicitSystem &system, std::string bc_filename, std::string loads_filename)
 {
-    auto loads_map = buildCurrentLoadsMap(loads_filename);
 
     // Print the matrix for verification
-    for (const auto &pair : loads_map)
-    {
-        std::cout << pair.first << ": ";    // Print the key
-        for (const auto &val : pair.second) // Iterate over the vector (or container) of values
-        {
-            std::cout << val << " ";
-        }
-        std::cout << std::endl;
-    }
+    // for (const auto &pair : loads_map)
+    // {
+    //     std::cout << pair.first << ": ";    // Print the key
+    //     for (const auto &val : pair.second) // Iterate over the vector (or container) of values
+    //     {
+    //         std::cout << val << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
 
     // Assuming readInput is defined and reads data into a NodeDataMatrix
-    NodeDataMatrix bc_matrix = readInput(bc_filename);
-
-    // Build the table from the matrix
-    auto bc_map = buildTable(bc_matrix);
 
     // Example: Print the table
-    for (const auto &entry : bc_map)
-    {
-        std::cout << "Node " << entry.first << ": "
-                  << "AX=" << entry.second.AX << ", "
-                  << "AY=" << entry.second.AY << ", "
-                  << "AZ=" << entry.second.AZ << ", "
-                  << "VOLT=" << entry.second.VOLT << std::endl;
-    }
+    // for (const auto &entry : bc_map)
+    // {
+    //     std::cout << "Node " << entry.first << ": "
+    //               << "AX=" << entry.second.AX << ", "
+    //               << "AY=" << entry.second.AY << ", "
+    //               << "AZ=" << entry.second.AZ << ", "
+    //               << "VOLT=" << entry.second.VOLT << std::endl;
+    // }
 }
