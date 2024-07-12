@@ -170,6 +170,8 @@ int main(int argc, char **argv)
     {
         // Add the variable "u" to "Poisson".  "u"
         // will be approximated using second-order approximation by default
+        LinearImplicitSystem &system =
+            equation_systems.add_system<LinearImplicitSystem>("Poisson");
         a_var = system.add_variable(
             "A", Utility::string_to_enum<Order>(order),
             Utility::string_to_enum<FEFamily>(family)); /* code */
@@ -177,7 +179,7 @@ int main(int argc, char **argv)
     }
 
     // Assign boundary conditions
-    assign_boundary_conditions(system, a_var);
+    // assign_boundary_conditions(*system, a_var);
 
     // In general, when reusing a system-indexed exact solution, we want
     // to use the default system-ordering constructor for
@@ -195,7 +197,7 @@ int main(int argc, char **argv)
     equation_systems.print_info();
 
     // Solve the system "Poisson", just like example 2.
-    system.solve();
+    system->solve();
 
     GmshIO(mesh).write_equation_systems(
         session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);
