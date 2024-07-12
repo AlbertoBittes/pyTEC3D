@@ -1,13 +1,13 @@
-#ifndef POISSON_H
-#define POISSON_H
+#ifndef ASSIGN_BC_H
+#define ASSIGN_BC_H
 
-#include "libmesh/equation_systems.h"
+#include "libmesh/mesh.h"
+#include "libmesh/linear_implicit_system.h"
 
 using namespace libMesh;
-// Remove the incomplete type 'void'
-void assemble_poisson(libMesh::EquationSystems &es, const std::string &system_name);
 
-void assemble_poisson_3d(libMesh::EquationSystems &es,
-                         const std::string &libmesh_dbg_var(system_name))
+void assign_boundary_conditions(LinearImplicitSystem &system, unsigned int a_var);
 
-#endif // POISSON_H
+void assign_boundary_ids(Mesh &mesh);
+
+#endif // ASSIGN_BC_H

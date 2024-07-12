@@ -73,7 +73,9 @@
 #include "libmesh/getpot.h"
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/zero_function.h"
+
 using namespace libMesh;
+
 // // We now define the matrix assembly function for the
 // // Poisson system.  We need to first compute element
 // // matrices and right-hand sides, and then take into
@@ -433,9 +435,37 @@ void assemble_poisson_3d(EquationSystems &es,
       // This involves a single loop in which we integrate the
       // "forcing function" in the PDE against the test functions.
       // Add the RHS contribution later once I have a solid way of doing it
-      libMesh::Real f = 1;
-      for (std::size_t i = 0; i < phi.size(); i++)
-        Fe(i) += JxW[qp] * f * phi[i][qp];
+      Real size = 0.25;
+      Real th = 0.01;
+      Real L = 0.05;
+      Real jx = 0.0;
+      Real jy = 0.0;
+      Real jz = 0.0;
+      Point centroid;
+      centroid = elem->vertex_average();
+      if (centroid(0) <= L && centroid(1) <= L - th && centroid(2) <= th / 2 && centroid(0) >= L - th && centroid(1) >= 0 && centroid(2) >= -th / 2)
+      {
+        jx = 4 * libMesh::pi * 1e-7;
+        jy = 0.0;
+        jz = 0.0;
+      }
+      else if (centroid(0) <= L - th && centroid(1) <= L && centroid(2) <= th / 2 && centroid(0) >= 0 && centroid(1) >= L - th && centroid(2) >= -th / 2)
+      {
+        jx = 0.0;
+        jy = -4 * libMesh::pi * 1e-7;
+        jz = 0.0;
+      }
+      else if (centroid(0) <= L && centroid(1) <= L && centroid(2) <= th / 2 && centroid(0) >= L - th && centroid(1) >= L - th && centroid(2) >= -th / 2)
+      {
+        jx = 4 * libMesh::pi * 1e-7 * sqrt(2) / 2;
+        jy = -4 * libMesh::pi * 1e-7 * sqrt(2) / 2;
+        jz = 0.0;
+      }
+      RealGradient j(jx, jy, jz);
+
+      if (elem)
+        for (std::size_t i = 0; i < phi.size(); i++)
+          Fe(i) += JxW[qp] * j * phi[i][qp];
     }
 
     // We have now finished the quadrature point loop,

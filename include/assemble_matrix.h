@@ -3,9 +3,11 @@
 
 #include "libmesh/equation_systems.h"
 
-void assemble_poisson(libmesh::EquationSystems &es, const std::string &system_name);
+using namespace libMesh;
 
-void assemble_poisson_3d(libmesh::EquationSystems &es,
+void assemble_poisson(EquationSystems &es, const std::string &system_name);
+
+void assemble_poisson_3d(EquationSystems &es,
                          const std::string &system_name);
 
 #endif // ASSEMBLE_MATRIX_H

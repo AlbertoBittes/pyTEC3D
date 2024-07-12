@@ -1,0 +1,40 @@
+{
+    "Mesh Input Section": {
+      "mesh_filepath": null,
+      "input_type": "USER"
+    },
+    "APDL Input Files Section": {
+      "symmetry_filepath": null,
+      "APDL_loads_folderpath": null,
+      "APDL_bc_folderpath": null
+    },
+    "Loads and BC Files Section": {
+      "loads_folderpath": null,
+      "bc_folderpath": null
+    },
+    "Finite Elements Settings": {
+      "APEC_algorithm": false,
+      "approx_order": "FIRST",
+      "fe_family": "LAGRANGE",
+      "quadrature_order": 2,
+      "nonlinear_analysis_ferrom": false
+    },
+    "Transient Analysis Settings": {
+      "transient_analysis": false,
+      "analysis time": null,
+      "time_step_size": null,
+      "number_time_steps": null,
+      "number_substeps": null,
+      "kbc": "step"
+    },
+    "APEC Settings": {
+      "APEC_iterations": 50
+    },    
+    "Solver Settings": {
+      "solver": null,
+      "preconditioner": null
+    },
+    "Output": {
+      "output_filepath": null
+    }
+}

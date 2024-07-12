@@ -34,20 +34,20 @@
 // parallel.  Notice how little has changed!
 
 // C++ include files that we need
-#include <iostream>
 #include <algorithm>
+#include <iostream>
 #include <math.h>
 #include <set>
 
 // Basic include file needed for the mesh functionality.
+#include "libmesh/equation_systems.h"
+#include "libmesh/exodusII_io.h"
+#include "libmesh/gmsh_io.h"
+#include "libmesh/gnuplot_io.h"
 #include "libmesh/libmesh.h"
+#include "libmesh/linear_implicit_system.h"
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
-#include "libmesh/exodusII_io.h"
-#include "libmesh/gnuplot_io.h"
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/equation_systems.h"
-#include "libmesh/gmsh_io.h"
 // Define the Finite Element object.
 #include "libmesh/fe.h"
 
@@ -60,10 +60,10 @@
 
 // Define useful datatypes for finite element
 // matrix and vector components.
-#include "libmesh/sparse_matrix.h"
-#include "libmesh/numeric_vector.h"
 #include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
+#include "libmesh/numeric_vector.h"
+#include "libmesh/sparse_matrix.h"
 
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
@@ -74,224 +74,127 @@
 #include "libmesh/elem.h"
 
 // To impose Dirichlet boundary conditions
-#include "libmesh/dirichlet_boundaries.h"
 #include "libmesh/analytic_function.h"
+#include "libmesh/dirichlet_boundaries.h"
 
-#include "libmesh/string_to_enum.h"
-#include "libmesh/getpot.h"
-#include "libmesh/enum_solver_package.h"
-#include "libmesh/zero_function.h"
 #include "../include/assemble_matrix.h"
+#include "../include/assign_boundary_conditions.h"
+#include "../include/loads_bc_object.h"
+#include "../include/session.h"
+#include "libmesh/enum_solver_package.h"
+#include "libmesh/getpot.h"
+#include "libmesh/string_to_enum.h"
+#include "libmesh/zero_function.h"
+
 using namespace libMesh;
-
-// Function prototype.  This is the function that will assemble
-// the linear system for our Poisson problem.  Note that the
-// function will take the EquationSystems object and the
-// name of the system we are assembling as input.  From the
-// EquationSystems object we have access to the Mesh and
-// other objects we might need.
-
-void assemble_poisson(EquationSystems &es,
-                      const std::string &system_name);
-void assign_boundary_conditions(Mesh *mesh);
-// Exact solution function prototype.
-// Real exact_solution(const Real x,
-//                     const Real y,
-//                     const Real z = 0.);
-
-// // Define a wrapper for exact_solution that will be needed below
-// void exact_solution_wrapper(DenseVector<Number> &output,
-//                             const Point &p,
-//                             const Real)
-// {
-//   output(0) = exact_solution(p(0),
-//                              (LIBMESH_DIM > 1) ? p(1) : 0,
-//                              (LIBMESH_DIM > 2) ? p(2) : 0);
-// }
 
 // Begin the main program.
 int main(int argc, char **argv)
 {
-  int b;
-  std::cin >> b;
-  // Initialize libMesh and any dependent libraries, like in example 2.
-  LibMeshInit init(argc, argv);
+    // Initialize libMesh and any dependent libraries, like in example 2.
+    LibMeshInit init(argc, argv);
 
-  // Declare a performance log for the main program
-  // PerfLog perf_main("Main Program");
+    Session session(argv[1]);
 
-  // Check for proper calling arguments.
-  libmesh_error_msg_if(argc < 4, "Usage:\n"
-                                     << "\t " << argv[0] << " -d 2(3) in.mesh");
+    // Declare a performance log for the main program
+    // PerfLog perf_main("Main Program");
 
-  // Brief message to the user regarding the program name
-  // and command line arguments.
-  libMesh::out << "Running " << argv[0];
+    // Check for proper calling arguments.
+    libmesh_error_msg_if(argc < 2, "Usage:\n"
+                                       << "\t " << argv[0] << " config.json");
 
-  for (int i = 1; i < argc; i++)
-    libMesh::out << " " << argv[i];
+    // Brief message to the user regarding the program name
+    // and command line arguments.
+    libMesh::out << "Running " << argv[0];
 
-  libMesh::out << std::endl
-               << std::endl;
+    for (int i = 1; i < argc; i++)
+        libMesh::out << " " << argv[i];
 
-  const std::string input_filename = argv[3];
-  // Read problem dimension from command line.  Use int
-  // instead of unsigned since the GetPot overload is ambiguous
-  // otherwise.
-  const int dim = libMesh::command_line_next("-d", 2);
+    libMesh::out << std::endl
+                 << std::endl;
 
-  // We use Dirichlet boundary conditions here
+    const std::string input_filename = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+
+// We use Dirichlet boundary conditions here
 #ifndef LIBMESH_ENABLE_DIRICHLET
-  libmesh_example_requires(false, "--enable-dirichlet");
+    libmesh_example_requires(false, "--enable-dirichlet");
 #endif
 
-  // Read FE order from command line. For now 1st order fixed
-  std::string order = "FIRST";
-  order = libMesh::command_line_next("-o", order);
-  order = libMesh::command_line_next("-Order", order);
+    // Read FE order from config file
+    std::string order = session.config["Finite Elements Settings"]["approx_order"].get<std::string>();
+    std::string family = session.config["Finite Elements Settings"]["fe_family"].get<std::string>();
+    // Create a mesh, with dimension to be overridden later, distributed
+    // across the default MPI communicator.
+    Mesh mesh(init.comm());
+    mesh.read(input_filename);
 
-  // Create a mesh, with dimension to be overridden later, distributed
-  // across the default MPI communicator.
-  Mesh mesh(init.comm());
-  // GmshIO mesh_io(mesh);
-  mesh.read(input_filename);
+    unsigned int dim = mesh.mesh_dimension();
+    if (dim == 3 && family == "LAGRANGE")
+    {
+        family = "LAGRANGE_VEC";
+    }
+    // Print information about the mesh to the screen.
+    mesh.print_info();
+    Mesh bond_mesh(init.comm());
 
-  // Print information about the mesh to the screen.
-  mesh.print_info();
-  Mesh bond_mesh(init.comm());
+    // Create an equation systems object.
 
-  // Create an equation systems object.
-  EquationSystems equation_systems(mesh);
+    mesh.get_boundary_info().print_info();
+    mesh.get_boundary_info().print_summary();
+    mesh.get_boundary_info().sync(bond_mesh);
+    bond_mesh.print_info();
 
-  // Declare the system and its variables.
-  // Create a system named "Poisson"
-  if (dim == 2)
-  {
+    EquationSystems equation_systems(mesh);
+
     LinearImplicitSystem &system =
         equation_systems.add_system<LinearImplicitSystem>("Poisson");
-    // Add the variable "u" to "Poisson".  "u"
-    // will be approximated using second-order approximation by default
-    // Read FE Family from command line
-    std::string family = "LAGRANGE";
-    family = libMesh::command_line_next("-f", family);
-    family = libMesh::command_line_next("-FEFamily", family);
-    unsigned int a_var = system.add_variable("Az",
-                                             Utility::string_to_enum<Order>(order),
-                                             Utility::string_to_enum<FEFamily>(family));
-  }
-  else if (dim == 3)
-  {
-    LinearImplicitSystem &system =
-        equation_systems.add_system<LinearImplicitSystem>("Poisson");
-    // Add the variable "u" to "Poisson".  "u"
-    // will be approximated using second-order approximation by default
-    std::string family = "LAGRANGE_VEC";
-    family = libMesh::command_line_next("-f", family);
-    family = libMesh::command_line_next("-FEFamily", family);
-    unsigned int a_var = system.add_variable("A",
-                                             Utility::string_to_enum<Order>(order),
-                                             Utility::string_to_enum<FEFamily>(family)); /* code */
-  }
+    unsigned int a_var;
+    // Declare the system and its variables.
+    // Create a system named "Poisson"
+    if (dim == 2)
+    {
 
-  mesh.get_boundary_info().print_info();
-  mesh.get_boundary_info().print_summary();
-  mesh.get_boundary_info().sync(bond_mesh);
-  bond_mesh.print_info();
-  ZeroFunction<Number> zero;
+        // Add the variable "u" to "Poisson".  "u"
+        // will be approximated using second-order approximation by default
+        // Read FE Family from command line
+        a_var = system.add_variable("Az", Utility::string_to_enum<Order>(order),
+                                    Utility::string_to_enum<FEFamily>(family));
+        system.attach_assemble_function(assemble_poisson);
+    }
+    else if (dim == 3)
+    {
+        // Add the variable "u" to "Poisson".  "u"
+        // will be approximated using second-order approximation by default
+        a_var = system.add_variable(
+            "A", Utility::string_to_enum<Order>(order),
+            Utility::string_to_enum<FEFamily>(family)); /* code */
+        system.attach_assemble_function(assemble_poisson_3d);
+    }
 
-  // boundaryInfo.get
-  system.attach_assemble_function(assemble_poisson);
-  std::set<boundary_id_type> boundary_ids;
-  boundary_ids.insert(0);
+    // Assign boundary conditions
+    assign_boundary_conditions(system, a_var);
 
-  DirichletBoundary dirichlet_bc(boundary_ids, {a_var}, zero);
+    // In general, when reusing a system-indexed exact solution, we want
+    // to use the default system-ordering constructor for
+    // DirichletBoundary, so we demonstrate that here.  In this case,
+    // though, we have only one variable, so system- and local-
+    // orderings are the same.
 
-  // In general, when reusing a system-indexed exact solution, we want
-  // to use the default system-ordering constructor for
-  // DirichletBoundary, so we demonstrate that here.  In this case,
-  // though, we have only one variable, so system- and local-
-  // orderings are the same.
+    // We must add the Dirichlet boundary condition _before_
+    // we call equation_systems.init()
 
-  // We must add the Dirichlet boundary condition _before_
-  // we call equation_systems.init()
-  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
+    // Initialize the data structures for the equation system.
+    equation_systems.init();
 
-  // Initialize the data structures for the equation system.
-  equation_systems.init();
+    // Print information about the system to the screen.
+    equation_systems.print_info();
 
-  // Print information about the system to the screen.
-  equation_systems.print_info();
-  mesh.print_info();
+    // Solve the system "Poisson", just like example 2.
+    system.solve();
 
-  // Solve the system "Poisson", just like example 2.
-  system.solve();
+    GmshIO(mesh).write_equation_systems(
+        session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);
 
-  GmshIO(mesh).write_equation_systems("/home/bitteal/PlasmaArc/simulations/out_2.e", equation_systems);
-
-  // All done.
-  return 0;
-}
-
-// Give the system a pointer to the matrix assembly
-// function.
-// system.attach_assemble_function(assemble_poisson);
-
-// Construct a Dirichlet boundary condition object
-
-//   // Indicate which boundary IDs we impose the BC on
-//   // We either build a line, a square or a cube, and
-//   // here we indicate the boundaries IDs in each case
-//   std::set<boundary_id_type> boundary_ids;
-//   // the dim==1 mesh has two boundaries with IDs 0 and 1
-//   boundary_ids.insert(0);
-//   boundary_ids.insert(1);
-//   // the dim==2 mesh has four boundaries with IDs 0, 1, 2 and 3
-//   if (dim >= 2)
-//   {
-//     boundary_ids.insert(2);
-//     boundary_ids.insert(3);
-//   }
-//   // the dim==3 mesh has four boundaries with IDs 0, 1, 2, 3, 4 and 5
-//   if (dim == 3)
-//   {
-//     boundary_ids.insert(4);
-//     boundary_ids.insert(5);
-//   }
-
-// #ifdef LIBMESH_ENABLE_DIRICHLET
-//   // In general, when reusing a system-indexed exact solution, we want
-//   // to use the default system-ordering constructor for
-//   // DirichletBoundary, so we demonstrate that here.  In this case,
-//   // though, we have only one variable, so system- and local-
-//   // orderings are the same.
-//   // DirichletBoundary dirichlet_bc(boundary_ids, {u_var}, exact_solution_object);
-
-//   // We must add the Dirichlet boundary condition _before_
-//   // we call equation_systems.init()
-//   // system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
-// #endif
-
-//   // Initialize the data structures for the equation system.
-//   equation_systems.init();
-
-//   // Print information about the system to the screen.
-//   equation_systems.print_info();
-//   mesh.print_info();
-
-//   // Solve the system "Poisson", just like example 2.
-//   system.solve();
-
-// #ifdef LIBMESH_HAVE_EXODUS_API
-
-//   ExodusII_IO(mesh).write_equation_systems((dim == 3) ? "out_3.e" : "out_2.e", equation_systems);
-
-// #endif // #ifdef LIBMESH_HAVE_EXODUS_API
-
-//   // All done.
-//   return 0;
-// }
-
-// Define a new function that receives as input a pointer to mesh object and returns void
-void assign_boundary_conditions(Mesh *mesh)
-{
+    // All done.
+    return 0;
 }
