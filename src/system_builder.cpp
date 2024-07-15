@@ -290,7 +290,7 @@ void assemble_poisson_3d(EquationSystems &es,
     const unsigned int dim = mesh.mesh_dimension();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>("Poisson");
+    LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>("Linear");
 
     // A reference to the  DofMap object for this system.  The  DofMap
     // object handles the index translation from node and element numbers
@@ -429,8 +429,6 @@ void assemble_poisson_3d(EquationSystems &es,
             // Now we build the element right-hand-side contribution.
             // This involves a single loop in which we integrate the
             // "forcing function" in the PDE against the test functions.
-            // Add the RHS contribution later once I have a solid way of doing it
-
             if (elem)
                 for (std::size_t i = 0; i < phi.size(); i++)
                     Fe(i) += JxW[qp] * j * phi[i][qp];
@@ -450,8 +448,6 @@ void assemble_poisson_3d(EquationSystems &es,
         matrix.add_matrix(Ke, dof_indices);
         system.rhs->add_vector(Fe, dof_indices);
     }
-
-    // All done!
 }
 
 void SystemBuilder::createSystem()
