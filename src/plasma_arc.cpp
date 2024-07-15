@@ -43,8 +43,8 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/exodusII_io.h"
 #include "libmesh/gmsh_io.h"
-#include "libmesh/gnuplot_io.h"
 #include "libmesh/libmesh.h"
+#include "libmesh/node.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
@@ -57,7 +57,7 @@
 // To impose Dirichlet boundary conditions
 #include "libmesh/analytic_function.h"
 #include "libmesh/dirichlet_boundaries.h"
-
+#include "libmesh/dof_map.h"
 #include "../include/loads_bc_object.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
@@ -180,6 +180,7 @@ int main(int argc, char **argv)
 
     LoadsBCObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
     GlobalResources::setLoadsBCObject(loads_bc_object);
+
     // In general, when reusing a system-indexed exact solution, we want
     // to use the default system-ordering constructor for
     // DirichletBoundary, so we demonstrate that here.  In this case,
@@ -192,6 +193,37 @@ int main(int argc, char **argv)
     // Initialize the data structures for the equation system.
     equation_systems.init();
 
+    for (const auto &node : mesh.local_node_ptr_range())
+    {
+        // dof_id_type dof_loop = node->dof_number(const unsigned int s,
+        //                                         const unsigned int var,
+        //                                         const unsigned int comp) const
+
+        Real ax_bc = loads_bc_object.getNodeBCMap(1).find(node->id() + 1)->second.AX;
+        if (!std::isnan(ax_bc))
+        {
+            dof_id_type dof_id_ax = node->dof_number(0, 0, 0);
+            DofConstraintRow constraint_row;
+            constraint_row[dof_id_ax] = 1.0;
+            equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc);
+        }
+        Real ay_bc = loads_bc_object.getNodeBCMap(1).find(node->id() + 1)->second.AY;
+        if (!std::isnan(ay_bc))
+        {
+            dof_id_type dof_id_ay = node->dof_number(0, 0, 1);
+            DofConstraintRow constraint_row;
+            constraint_row[dof_id_ay] = 1.0;
+            equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc);
+        }
+        Real az_bc = loads_bc_object.getNodeBCMap(1).find(node->id() + 1)->second.AZ;
+        if (!std::isnan(az_bc))
+        {
+            dof_id_type dof_id_az = node->dof_number(0, 0, 2);
+            DofConstraintRow constraint_row;
+            constraint_row[dof_id_az] = 1.0;
+            equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc);
+        }
+    }
     // Print information about the system to the screen.
     equation_systems.print_info();
 

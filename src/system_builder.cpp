@@ -512,17 +512,17 @@ void SystemBuilder::setVariables()
     }
     else if (fe_family == "LAGRANGE" && dim == 3 && formulation == "AV")
     {
-        system.add_variable("AX", Utility::string_to_enum<Order>(order),
-                            Utility::string_to_enum<FEFamily>(fe_family));
-        system.add_variable("AY", Utility::string_to_enum<Order>(order),
-                            Utility::string_to_enum<FEFamily>(fe_family));
-        system.add_variable("AZ", Utility::string_to_enum<Order>(order),
-                            Utility::string_to_enum<FEFamily>(fe_family));
+        system.add_variable("A", Utility::string_to_enum<Order>(order),
+                            Utility::string_to_enum<FEFamily>(fe_fam));
+        // system.add_variable("AY", Utility::string_to_enum<Order>(order),
+        //                     Utility::string_to_enum<FEFamily>(fe_family));
+        // system.add_variable("AZ", Utility::string_to_enum<Order>(order),
+        //                     Utility::string_to_enum<FEFamily>(fe_family));
         system.attach_assemble_function(assemble_poisson_3d);
         if (system_name == "NonlinearTransient" || system_name == "LinearTransient")
         {
             system.add_variable("V", Utility::string_to_enum<Order>(order),
-                                Utility::string_to_enum<FEFamily>(fe_family));
+                                Utility::string_to_enum<FEFamily>(fe_fam));
         }
     }
     // else if (fe_family == "family1" && dim == 3 && formulation == "form1")
