@@ -12,27 +12,36 @@ using namespace libMesh;
 // Define CurrentLoadsMatrix type
 typedef struct NodeData
 {
-    double AX = std::nan("");
-    double AY = std::nan("");
-    double AZ = std::nan("");
-    double VOLT = std::nan("");
+    Real AX = std::nan("");
+    Real AY = std::nan("");
+    Real AZ = std::nan("");
+    Real VOLT = std::nan("");
 } NodeData;
 
-typedef std::map<dof_id_type, std::vector<double>> CurrentLoadsMap;
-typedef std::vector<std::tuple<dof_id_type, std::string, double>> NodeDataMatrix;
+typedef std::map<dof_id_type, std::vector<Real>> CurrentLoadsMap;
+typedef std::vector<std::tuple<dof_id_type, std::string, Real>> NodeDataMatrix;
 typedef std::map<dof_id_type, NodeData> NodeBCMap;
 
-template <typename Sys>
 class LoadsBCObject
 {
 private:
-    Sys system;
     std::map<int, CurrentLoadsMap> timeStepCurrentLoadsMap;
     std::map<int, NodeBCMap> timeStepNodeBCMap;
+    std::string loads_folderpath;
+    std::string bc_folderpath;
+    std::string inp_name;
 
 public:
+    LoadsBCObject();
     // Constructor
-    LoadsBCObject(const Sys &system) : system(system) {}
+    LoadsBCObject(std::string loads_folderpath, std::string bc_folderpath, std::string inp_name)
+        : loads_folderpath(loads_folderpath),
+          bc_folderpath(bc_folderpath),
+          inp_name(inp_name)
+    {
+        setCurrentLoadsMap(1, buildCurrentLoadsMapBFElist(loads_folderpath + "/" + inp_name + "_loads_" + std::to_string(1) + ".txt"));
+        setNodeBCMap(1, buildNodeBCMapDlist(bc_folderpath + "/" + inp_name + "_bcs_" + std::to_string(1) + ".txt"));
+    }
 
     // Method to set CurrentLoadsMap for a specific time step
     void setCurrentLoadsMap(int timeStep, const CurrentLoadsMap &currentLoadsMap)
@@ -41,14 +50,16 @@ public:
     }
 
     // Method to get CurrentLoadsMap for a specific time step
-    CurrentLoadsMap getCurrentLoadsMap(int timeStep) const
+    // Method to get CurrentLoadsMap for a specific time step
+    const CurrentLoadsMap &getCurrentLoadsMap(int timeStep) const
     {
+        static const CurrentLoadsMap emptyMap; // Static empty map to return by reference if not found
         auto it = timeStepCurrentLoadsMap.find(timeStep);
         if (it != timeStepCurrentLoadsMap.end())
         {
             return it->second;
         }
-        return CurrentLoadsMap(); // Return empty map if not found
+        return emptyMap; // Return reference to the static empty map if not found
     }
 
     // Method to set NodeBCMap for a specific time step
@@ -57,15 +68,15 @@ public:
         timeStepNodeBCMap[timeStep] = nodeBCMap;
     }
 
-    // Method to get NodeBCMap for a specific time step
-    NodeBCMap getNodeBCMap(int timeStep) const
+    const NodeBCMap &getNodeBCMap(int timeStep) const
     {
+        static const NodeBCMap emptyMap; // Static empty map to return by reference if not found
         auto it = timeStepNodeBCMap.find(timeStep);
         if (it != timeStepNodeBCMap.end())
         {
             return it->second;
         }
-        return NodeBCMap(); // Return empty map if not found
+        return emptyMap; // Return reference to the static empty map if not found
     }
 
     NodeDataMatrix readInputDlist(const std::string &filename);

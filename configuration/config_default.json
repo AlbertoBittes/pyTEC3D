@@ -14,6 +14,7 @@
     },
     "Finite Elements Settings": {
       "APEC_algorithm": false,
+      "formulation": "AV",
       "approx_order": "FIRST",
       "fe_family": "LAGRANGE",
       "quadrature_order": 2,

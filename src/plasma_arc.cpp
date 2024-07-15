@@ -38,7 +38,7 @@
 #include <iostream>
 #include <math.h>
 #include <set>
-
+#include <filesystem>
 // Basic include file needed for the mesh functionality.
 #include "libmesh/equation_systems.h"
 #include "libmesh/exodusII_io.h"
@@ -48,43 +48,23 @@
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
-// Define the Finite Element object.
-#include "libmesh/fe.h"
-
-// Define Gauss quadrature rules.
-#include "libmesh/quadrature_gauss.h"
-
-// Define the DofMap, which handles degree of freedom
-// indexing.
-#include "libmesh/dof_map.h"
-
-// Define useful datatypes for finite element
-// matrix and vector components.
-#include "libmesh/dense_matrix.h"
-#include "libmesh/dense_vector.h"
-#include "libmesh/numeric_vector.h"
-#include "libmesh/sparse_matrix.h"
 
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
 #include "libmesh/perf_log.h"
 
-// The definition of a geometric element
-#include "libmesh/elem.h"
-
 // To impose Dirichlet boundary conditions
 #include "libmesh/analytic_function.h"
 #include "libmesh/dirichlet_boundaries.h"
 
-#include "../include/assemble_matrix.h"
-#include "../include/assign_boundary_conditions.h"
 #include "../include/loads_bc_object.h"
 #include "../include/session.h"
+#include "../include/system_builder.h"
+#include "../include/global_resources.h"
 #include "libmesh/enum_solver_package.h"
-#include "libmesh/getpot.h"
 #include "libmesh/string_to_enum.h"
-#include "libmesh/zero_function.h"
+#include "libmesh/transient_system.h"
 
 using namespace libMesh;
 
@@ -93,11 +73,6 @@ int main(int argc, char **argv)
 {
     // Initialize libMesh and any dependent libraries, like in example 2.
     LibMeshInit init(argc, argv);
-
-    Session session(argv[1]);
-
-    // Declare a performance log for the main program
-    // PerfLog perf_main("Main Program");
 
     // Check for proper calling arguments.
     libmesh_error_msg_if(argc < 2, "Usage:\n"
@@ -112,75 +87,99 @@ int main(int argc, char **argv)
 
     libMesh::out << std::endl
                  << std::endl;
+    libMesh::out << "Reading PlasmaArc configurations..." << std::endl;
 
-    const std::string input_filename = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+    Session session(argv[1]);
+
+    bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    bool ferromagnetic = session.config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
+    std::string fe_family = session.config["Finite Elements Settings"]["fe_family"].get<std::string>();
+    std::string formulation = session.config["Finite Elements Settings"]["formulation"].get<std::string>();
+    std::string order = session.config["Finite Elements Settings"]["approx_order"].get<std::string>();
+    std::string inp_name = session.config["Mesh Input Section"]["input_name"].get<std::string>();
+    std::string loads_folderpath = session.config["Loads and BC Files Section"]["loads_folderpath"].get<std::string>();
+    std::string bc_folderpath = session.config["Loads and BC Files Section"]["bc_folderpath"].get<std::string>();
+    // Declare a performance log for the main program
+    // PerfLog perf_main("Main Program");
+    std::cout << "Reading mesh..." << std::endl;
 
 // We use Dirichlet boundary conditions here
 #ifndef LIBMESH_ENABLE_DIRICHLET
     libmesh_example_requires(false, "--enable-dirichlet");
 #endif
 
-    // Read FE order from config file
-    std::string order = session.config["Finite Elements Settings"]["approx_order"].get<std::string>();
-    std::string family = session.config["Finite Elements Settings"]["fe_family"].get<std::string>();
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
     Mesh mesh(init.comm());
-    mesh.read(input_filename);
-
-    std::string family_type = family;
+    mesh.read(session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>());
 
     unsigned int dim = mesh.mesh_dimension();
 
-    if (dim == 3 && family == "LAGRANGE")
-    {
-        family_type = "LAGRANGE_VEC";
-    }
     // Print information about the mesh to the screen.
     mesh.print_info();
     Mesh bond_mesh(init.comm());
 
     // Create an equation systems object.
+    libMesh::out << "Boundary Information:" << std::endl;
 
     mesh.get_boundary_info().print_info();
+
     mesh.get_boundary_info().print_summary();
+
     mesh.get_boundary_info().sync(bond_mesh);
+
     bond_mesh.print_info();
 
     EquationSystems equation_systems(mesh);
 
     System *system = nullptr;
-    int formulation = 1;
     unsigned int a_var;
     // Declare the system and its variables.
     // Create a system named "Poisson"
-    if (dim == 2)
-    {
 
-        // Add the variable "u" to "Poisson".  "u"
-        // will be approximated using second-order approximation by default
-        // Read FE Family from command line
-        LinearImplicitSystem &system =
-            equation_systems.add_system<LinearImplicitSystem>("Poisson");
-        a_var = system.add_variable("AZ", Utility::string_to_enum<Order>(order),
-                                    Utility::string_to_enum<FEFamily>(family));
-        system.attach_assemble_function(assemble_poisson);
-    }
-    else if (dim == 3)
-    {
-        // Add the variable "u" to "Poisson".  "u"
-        // will be approximated using second-order approximation by default
-        LinearImplicitSystem &system =
-            equation_systems.add_system<LinearImplicitSystem>("Poisson");
-        a_var = system.add_variable(
-            "A", Utility::string_to_enum<Order>(order),
-            Utility::string_to_enum<FEFamily>(family)); /* code */
-        system.attach_assemble_function(assemble_poisson_3d);
-    }
+    SystemBuilder system_builder(equation_systems, transient, ferromagnetic,
+                                 fe_family, dim, formulation, order);
 
+    std::string system_name;
     // Assign boundary conditions
-    // assign_boundary_conditions(*system, a_var);
+    if (transient)
+    {
+        if (ferromagnetic)
+        {
+            system_name = "NonlinearTransient";
+            // Add TransientSystem<NonlinearImplicitSystem> as System and return its pointer
+            TransientSystem<NonlinearImplicitSystem> *system = nullptr;
+            system = &equation_systems.get_system<TransientSystem<NonlinearImplicitSystem>>(system_name);
+        }
+        else
+        {
+            system_name = "LinearTransient";
+            // Add TransientSystem<LinearImplicitSystem> as System and return its pointer
+            TransientSystem<LinearImplicitSystem> *system = nullptr;
+            system = &equation_systems.get_system<TransientSystem<LinearImplicitSystem>>(system_name);
+        }
+    }
+    else
+    {
+        if (ferromagnetic)
+        {
+            system_name = "Nonlinear";
+            // Add NonlinearImplicitSystem as System and return its pointer
+            NonlinearImplicitSystem *system = nullptr;
+            system = &equation_systems.get_system<NonlinearImplicitSystem>(system_name);
+        }
+        else
+        {
+            system_name = "Linear";
+            // Add LinearImplicitSystem as System and return its pointer
+            LinearImplicitSystem *system = nullptr;
+            system = &equation_systems.get_system<LinearImplicitSystem>(system_name);
+        }
+        // Assume the rest of the method continues to handle other cases based on the attributes
+    }
 
+    LoadsBCObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
+    GlobalResources::setLoadsBCObject(loads_bc_object);
     // In general, when reusing a system-indexed exact solution, we want
     // to use the default system-ordering constructor for
     // DirichletBoundary, so we demonstrate that here.  In this case,

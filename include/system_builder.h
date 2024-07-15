@@ -18,17 +18,18 @@ public:
     std::string formulation;
     int type_num;
     std::string system_name;
+    std::string order;
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, bool transient, bool ferromagnetic, std::string fe_family, int dim, std::string formulation)
-        : equation_systems(eq_systems), transient(transient), ferromagnetic(ferromagnetic), fe_family(fe_family), dim(dim), formulation(formulation)
+    SystemBuilder(EquationSystems &eq_systems, bool transient, bool ferromagnetic, std::string fe_family, int dim, std::string formulation, std::string order)
+        : equation_systems(eq_systems), transient(transient), ferromagnetic(ferromagnetic), fe_family(fe_family), dim(dim), formulation(formulation), order(order)
     {
         createSystem(); // Call createSystem at the end of the constructor
+        setVariables(); // Call setVariables at the end of the constructor
     }
 
     void createSystem();
 
     void setVariables();
 
-    template <typename SystemType>
-    SystemType &getSystemByType();
+    // System &getSystemByType();
 };

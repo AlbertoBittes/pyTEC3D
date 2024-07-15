@@ -13,8 +13,7 @@
 
 using namespace libMesh;
 
-template <typename Sys>
-CurrentLoadsMap LoadsBCObject<Sys>::buildCurrentLoadsMapBFElist(const std::string &filename)
+CurrentLoadsMap LoadsBCObject::buildCurrentLoadsMapBFElist(const std::string &filename)
 {
     std::ifstream file(filename);
     CurrentLoadsMap map;
@@ -40,9 +39,9 @@ CurrentLoadsMap LoadsBCObject<Sys>::buildCurrentLoadsMapBFElist(const std::strin
             // Assuming the next line contains the data
             if (getline(file, line))
             {
-                std::vector<double> values;
+                std::vector<Real> values;
                 std::istringstream dataStream(line);
-                double jsX, jsY, jsZ;
+                Real jsX, jsY, jsZ;
 
                 // Extract the first three values
                 dataStream >> jsX >> jsY >> jsZ;
@@ -59,8 +58,7 @@ CurrentLoadsMap LoadsBCObject<Sys>::buildCurrentLoadsMapBFElist(const std::strin
     return map;
 }
 
-template <typename Sys>
-NodeDataMatrix LoadsBCObject<Sys>::readInputDlist(const std::string &filename)
+NodeDataMatrix LoadsBCObject::readInputDlist(const std::string &filename)
 {
     std::ifstream file(filename);
     NodeDataMatrix matrix;
@@ -78,7 +76,7 @@ NodeDataMatrix LoadsBCObject<Sys>::readInputDlist(const std::string &filename)
         if (std::regex_search(line, linePattern))
         {
             std::istringstream iss(line);
-            double node, real;
+            Real node, real;
             std::string label;
 
             if (iss >> node >> label >> real)
@@ -93,8 +91,7 @@ NodeDataMatrix LoadsBCObject<Sys>::readInputDlist(const std::string &filename)
 }
 
 // Function to process the vector of tuples and build the table
-template <typename Sys>
-NodeBCMap LoadsBCObject<Sys>::buildNodeBCMapDlist(const std::string &dlist_filepath)
+NodeBCMap LoadsBCObject::buildNodeBCMapDlist(const std::string &dlist_filepath)
 {
     NodeBCMap table;
     NodeDataMatrix bc_matrix = this->readInputDlist(dlist_filepath);
@@ -102,7 +99,7 @@ NodeBCMap LoadsBCObject<Sys>::buildNodeBCMapDlist(const std::string &dlist_filep
     {
         dof_id_type node = std::get<0>(entry);
         std::string label = std::get<1>(entry);
-        double value = std::get<2>(entry);
+        Real value = std::get<2>(entry);
 
         // Initialize the node in the map if it doesn't exist
         if (table.find(node) == table.end())
@@ -132,29 +129,7 @@ NodeBCMap LoadsBCObject<Sys>::buildNodeBCMapDlist(const std::string &dlist_filep
     return table;
 }
 
-void processInput(LinearImplicitSystem &system, std::string bc_filename, std::string loads_filename)
+LoadsBCObject::LoadsBCObject()
 {
-
-    // Print the matrix for verification
-    // for (const auto &pair : loads_map)
-    // {
-    //     std::cout << pair.first << ": ";    // Print the key
-    //     for (const auto &val : pair.second) // Iterate over the vector (or container) of values
-    //     {
-    //         std::cout << val << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-
-    // Assuming readInput is defined and reads data into a NodeDataMatrix
-
-    // Example: Print the table
-    // for (const auto &entry : bc_map)
-    // {
-    //     std::cout << "Node " << entry.first << ": "
-    //               << "AX=" << entry.second.AX << ", "
-    //               << "AY=" << entry.second.AY << ", "
-    //               << "AZ=" << entry.second.AZ << ", "
-    //               << "VOLT=" << entry.second.VOLT << std::endl;
-    // }
+    // Constructor implementation
 }
