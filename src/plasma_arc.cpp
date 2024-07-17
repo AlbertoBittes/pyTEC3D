@@ -62,6 +62,7 @@
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/global_resources.h"
+#include "../include/node_dof_constraints.h"
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/transient_system.h"
@@ -132,7 +133,6 @@ int main(int argc, char **argv)
 
     EquationSystems equation_systems(mesh);
 
-    System *system = nullptr;
     unsigned int a_var;
     // Declare the system and its variables.
     // Create a system named "Poisson"
@@ -140,8 +140,10 @@ int main(int argc, char **argv)
     SystemBuilder system_builder(equation_systems, transient, ferromagnetic,
                                  fe_family, dim, formulation, order);
 
-    std::string system_name;
-    // Assign boundary conditions
+    std::string system_name = "Linear";
+    // Assign boundary  conditions
+    LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
+
     if (transient)
     {
         if (ferromagnetic)
@@ -172,8 +174,8 @@ int main(int argc, char **argv)
         {
             system_name = "Linear";
             // Add LinearImplicitSystem as System and return its pointer
-            LinearImplicitSystem *system = nullptr;
-            system = &equation_systems.get_system<LinearImplicitSystem>(system_name);
+            // LinearImplicitSystem *system = nullptr;
+            // system = &equation_systems.get_system<LinearImplicitSystem>(system_name);
         }
         // Assume the rest of the method continues to handle other cases based on the attributes
     }
@@ -189,49 +191,18 @@ int main(int argc, char **argv)
 
     // We must add the Dirichlet boundary condition _before_
     // we call equation_systems.init()
-
+    equation_systems.get_system<LinearImplicitSystem>("Linear").attach_constraint_function(node_dof_constraints);
     // Initialize the data structures for the equation system.
     equation_systems.init();
-    const NodeBCMap &node_bc_map = loads_bc_object.getNodeBCMap(1);
-    for (const auto &node : mesh.node_ptr_range())
-    {
-        // dof_id_type dof_loop = node->dof_number(const unsigned int s,
-        //                                         const unsigned int var,
-        //                                         const unsigned int comp) const
+    // Redo this with Dirichlet boundaries
 
-        auto row_bc = loads_bc_object.getNodeBCMap(1).find(node->id() + 1);
-        if (row_bc != node_bc_map.end())
-        { // Check if the element exists
-            const NodeData &values = row_bc->second;
-            Real ax_bc = values.AX;
-            if (!std::isnan(ax_bc))
-            {
-                dof_id_type dof_id_ax = node->dof_number(0, 0, 0);
-                DofConstraintRow constraint_row;
-                equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc);
-                constraint_row.clear();
-            }
-            Real ay_bc = values.AY;
-            if (!std::isnan(ay_bc))
-            {
-                dof_id_type dof_id_ay = node->dof_number(0, 0, 1);
-                DofConstraintRow constraint_row;
-                equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc);
-            }
-            Real az_bc = values.AZ;
-            if (!std::isnan(az_bc))
-            {
-                dof_id_type dof_id_az = node->dof_number(0, 0, 2);
-                DofConstraintRow constraint_row;
-                equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc);
-            }
-        }
-    }
+    // equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().process_constraints(equation_systems.get_system<LinearImplicitSystem>("Linear").get_mesh());
+    // equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().prepare_send_list();
     // Print information about the system to the screen.
     equation_systems.print_info();
 
     // Solve the system "Poisson", just like example 2.
-    system->solve();
+    system.solve();
 
     GmshIO(mesh).write_equation_systems(
         session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);

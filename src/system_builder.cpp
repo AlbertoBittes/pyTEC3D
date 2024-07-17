@@ -281,7 +281,7 @@ void assemble_poisson_3d(EquationSystems &es,
 
     // It is a good idea to make sure we are assembling
     // the proper system.
-    libmesh_assert_equal_to(system_name, "Poisson");
+    libmesh_assert_equal_to(system_name, "Linear");
     LoadsBCObject &loads_bc = GlobalResources::getLoadsBCObject();
     // Get a constant reference to the mesh object.
     const MeshBase &mesh = es.get_mesh();
@@ -379,21 +379,27 @@ void assemble_poisson_3d(EquationSystems &es,
         dof_id_type elem_id = elem->id();
         const CurrentLoadsMap &current_loads_map = loads_bc.getCurrentLoadsMap(1);
         auto it = current_loads_map.find(elem_id + 1);
-        RealGradient j;
+        Real jx = 0;
+        Real jy = 0;
+        Real jz = 0;
         if (it != current_loads_map.end())
         {                                                   // Check if the element exists
             const std::vector<double> &values = it->second; // Step 2: Access the vector of doubles
             if (!values.empty())
             {
-                RealGradient j(values[0], values[1], values[2]);
+                jx = 4 * libMesh::pi * 1e-7 * values[0];
+                jy = 4 * libMesh::pi * 1e-7 * values[1];
+                jz = 4 * libMesh::pi * 1e-7 * values[2];
             }
         }
+        RealGradient j(jx, jy, jz);
+
         // Get the degree of freedom indices for the
         // current element.  These define where in the global
         // matrix and right-hand-side this element will
         // contribute to.
         dof_map.dof_indices(elem, dof_indices);
-
+        const unsigned int n_dofs = cast_int<unsigned int>(dof_indices.size());
         // Compute the element-specific data for the current
         // element.  This involves computing the location of the
         // quadrature points (q_point) and the shape functions
@@ -409,10 +415,9 @@ void assemble_poisson_3d(EquationSystems &es,
 
         // The  DenseMatrix::resize() and the  DenseVector::resize()
         // members will automatically zero out the matrix  and vector.
-        Ke.resize(dof_indices.size(),
-                  dof_indices.size());
+        Ke.resize(n_dofs, n_dofs);
 
-        Fe.resize(dof_indices.size());
+        Fe.resize(n_dofs);
 
         // Now loop over the quadrature points.  This handles
         // the numeric integration.
@@ -429,9 +434,9 @@ void assemble_poisson_3d(EquationSystems &es,
             // Now we build the element right-hand-side contribution.
             // This involves a single loop in which we integrate the
             // "forcing function" in the PDE against the test functions.
-            if (elem)
-                for (std::size_t i = 0; i < phi.size(); i++)
-                    Fe(i) += JxW[qp] * j * phi[i][qp];
+
+            for (std::size_t i = 0; i < phi.size(); i++)
+                Fe(i) += JxW[qp] * j * phi[i][qp];
         }
 
         // We have now finished the quadrature point loop,
@@ -439,8 +444,7 @@ void assemble_poisson_3d(EquationSystems &es,
 
         // If this assembly program were to be used on an adaptive mesh,
         // we would have to apply any hanging node constraint equations
-        // dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices);
-
+        dof_map.heterogenously_constrain_element_matrix_and_vector(Ke, Fe, dof_indices);
         // The element matrix and right-hand-side are now built
         // for this element.  Add them to the global matrix and
         // right-hand-side vector.  The  SparseMatrix::add_matrix()
