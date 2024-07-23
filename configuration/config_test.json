@@ -1,7 +1,7 @@
 {
     "Mesh Input Section": {
       "input_name": "3D_loop",
-      "mesh_filepath": "../simulations/3D_loop/3D_loop.inp",
+      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/3D_loop.inp",
       "input_type": "USER"
     },
     "APDL Input Files Section": {
@@ -10,8 +10,8 @@
       "APDL_bc_folderpath": "not used"
     },
     "Loads and BC Files Section": {
-      "loads_folderpath": "../simulations/3D_loop/Loads",
-      "bc_folderpath": "../simulations/3D_loop/BCs"
+      "loads_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/Loads",
+      "bc_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/BCs"
     },
     "Finite Elements Settings": {
       "APEC_algorithm": false,
@@ -37,6 +37,6 @@
       "preconditioner": "default"
     },
     "Output": {
-      "output_filepath": "../simulations/3D_loop/output.e"
+      "output_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/output.e"
     }
 }

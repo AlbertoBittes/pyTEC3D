@@ -72,6 +72,8 @@ using namespace libMesh;
 // Begin the main program.
 int main(int argc, char **argv)
 {
+    // int a;
+    // std::cin >> a;
     // Initialize libMesh and any dependent libraries, like in example 2.
     LibMeshInit init(argc, argv);
 
@@ -112,13 +114,13 @@ int main(int argc, char **argv)
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
     Mesh mesh(init.comm());
+    mesh.allow_renumbering(false);
     mesh.read(session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>());
 
     unsigned int dim = mesh.mesh_dimension();
 
     // Print information about the mesh to the screen.
     mesh.print_info();
-    Mesh bond_mesh(init.comm());
 
     // Create an equation systems object.
     libMesh::out << "Boundary Information:" << std::endl;
@@ -126,10 +128,6 @@ int main(int argc, char **argv)
     mesh.get_boundary_info().print_info();
 
     mesh.get_boundary_info().print_summary();
-
-    mesh.get_boundary_info().sync(bond_mesh);
-
-    bond_mesh.print_info();
 
     EquationSystems equation_systems(mesh);
 
