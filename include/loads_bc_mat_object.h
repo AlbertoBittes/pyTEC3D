@@ -1,6 +1,6 @@
 // MatrixTypes.h
-#ifndef LOADS_BC_OBJECT_H
-#define LOADS_BC_OBJECT_H
+#ifndef LOADS_BC_MAT_OBJECT_H
+#define LOADS_BC_MAT_OBJECT_H
 
 #include <vector>
 #include <string>
@@ -21,20 +21,22 @@ typedef struct NodeData
 typedef std::map<dof_id_type, std::vector<Real>> CurrentLoadsMap;
 typedef std::vector<std::tuple<dof_id_type, std::string, Real>> NodeDataMatrix;
 typedef std::map<dof_id_type, NodeData> NodeBCMap;
+typedef std::map<unsigned short int, std::pair<Real, Real>> MaterialsMap;
 
-class LoadsBCObject
+class LoadsBCMatObject
 {
 private:
     std::map<int, CurrentLoadsMap> timeStepCurrentLoadsMap;
     std::map<int, NodeBCMap> timeStepNodeBCMap;
+    MaterialsMap materialsMap;
     std::string loads_folderpath;
     std::string bc_folderpath;
     std::string inp_name;
 
 public:
-    LoadsBCObject();
+    LoadsBCMatObject();
     // Constructor
-    LoadsBCObject(std::string loads_folderpath, std::string bc_folderpath, std::string inp_name)
+    LoadsBCMatObject(std::string loads_folderpath, std::string bc_folderpath, std::string inp_name)
         : loads_folderpath(loads_folderpath),
           bc_folderpath(bc_folderpath),
           inp_name(inp_name)
@@ -79,6 +81,20 @@ public:
         return emptyMap; // Return reference to the static empty map if not found
     }
 
+    void setMaterialProperty(unsigned short int materialNumber, Real RSVX, Real MURX)
+    {
+        materialsMap[materialNumber] = std::make_pair(RSVX, MURX);
+    }
+
+    const std::map<unsigned short int, std::pair<Real, Real>> &getMaterialsMap() const
+    {
+        return materialsMap;
+    }
+
+    void loadMPLIST(const std::string &filePath);
+
+    void loadMaterialsFromCSV(const std::string &filePath);
+
     NodeDataMatrix readInputDlist(const std::string &filename);
 
     CurrentLoadsMap buildCurrentLoadsMapBFElist(const std::string &filename);
@@ -86,4 +102,4 @@ public:
     NodeBCMap buildNodeBCMapDlist(const std::string &dlist_filepath);
 };
 
-#endif // LOADS_BC_OBJECT_H
+#endif // LOADS_BC_MAT_OBJECT_H

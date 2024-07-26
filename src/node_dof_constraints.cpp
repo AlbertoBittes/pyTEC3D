@@ -5,7 +5,7 @@
 #include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
 #include "../include/node_dof_constraints.h"
 #include "../include/global_resources.h"
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 
 using namespace libMesh;
 
@@ -18,7 +18,7 @@ void node_dof_constraints(libMesh::EquationSystems &equation_systems, const std:
 
     // Retrieve the system by name
     LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
-    LoadsBCObject loads_bc_object = GlobalResources::getLoadsBCObject();
+    LoadsBCMatObject loads_bc_object = GlobalResources::getLoadsBCObject();
     const NodeBCMap &node_bc_map = loads_bc_object.getNodeBCMap(1);
     const MeshBase &mesh = equation_systems.get_mesh();
     for (const auto &node : mesh.local_node_ptr_range())

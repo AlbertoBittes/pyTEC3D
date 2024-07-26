@@ -1,7 +1,7 @@
 {
     "Mesh Input Section": {
       "input_name": "3D_loop",
-      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/3D_loop.inp",
+      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/2D_ITER_noPlasma/2D_ITER_noPlasma.pvtu",
       "input_type": "USER"
     },
     "APDL Input Files Section": {
@@ -37,6 +37,6 @@
       "preconditioner": "default"
     },
     "Output": {
-      "output_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/output.e"
+      "output_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/3D_loop_output.vtu"
     }
 }

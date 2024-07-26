@@ -8,12 +8,12 @@
 #include <unordered_map>
 #include <tuple>
 #include "libmesh/libmesh.h"
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 #include "libmesh/linear_implicit_system.h"
 
 using namespace libMesh;
 
-CurrentLoadsMap LoadsBCObject::buildCurrentLoadsMapBFElist(const std::string &filename)
+CurrentLoadsMap LoadsBCMatObject::buildCurrentLoadsMapBFElist(const std::string &filename)
 {
     std::ifstream file(filename);
     CurrentLoadsMap map;
@@ -58,7 +58,7 @@ CurrentLoadsMap LoadsBCObject::buildCurrentLoadsMapBFElist(const std::string &fi
     return map;
 }
 
-NodeDataMatrix LoadsBCObject::readInputDlist(const std::string &filename)
+NodeDataMatrix LoadsBCMatObject::readInputDlist(const std::string &filename)
 {
     std::ifstream file(filename);
     NodeDataMatrix matrix;
@@ -91,7 +91,7 @@ NodeDataMatrix LoadsBCObject::readInputDlist(const std::string &filename)
 }
 
 // Function to process the vector of tuples and build the table
-NodeBCMap LoadsBCObject::buildNodeBCMapDlist(const std::string &dlist_filepath)
+NodeBCMap LoadsBCMatObject::buildNodeBCMapDlist(const std::string &dlist_filepath)
 {
     NodeBCMap table;
     NodeDataMatrix bc_matrix = this->readInputDlist(dlist_filepath);
@@ -129,7 +129,83 @@ NodeBCMap LoadsBCObject::buildNodeBCMapDlist(const std::string &dlist_filepath)
     return table;
 }
 
-LoadsBCObject::LoadsBCObject()
+LoadsBCMatObject::LoadsBCMatObject()
 {
     // Constructor implementation
+}
+
+void LoadsBCMatObject::loadMPLIST(const std::string &filePath)
+{
+    std::ifstream file(filePath);
+    std::string line;
+    unsigned short int materialNumber = 0;
+    Real RSVX = 0.0, MURX = 0.0;
+
+    if (file.is_open())
+    {
+        while (getline(file, line))
+        {
+            std::istringstream iss(line);
+            std::string key;
+            iss >> key;
+
+            if (key == "MATERIAL")
+            {
+                iss >> key; // Skip "NUMBER"
+                iss >> materialNumber;
+            }
+            else if (key == "TEMP")
+            {
+                iss >> key; // Read the next key to determine if it's RSVX or MURX
+                if (key == "RSVX")
+                {
+                    iss >> RSVX;
+                }
+                else if (key == "MURX")
+                {
+                    iss >> MURX;
+                    // Use the setter to add the material properties to the map
+                    setMaterialProperty(materialNumber, RSVX, MURX);
+                }
+            }
+        }
+        file.close();
+    }
+    else
+    {
+        std::cerr << "Unable to open file: " << filePath << std::endl;
+    }
+}
+
+void LoadsBCMatObject::loadMaterialsFromCSV(const std::string &filePath)
+{
+    std::ifstream file(filePath);
+    std::string line;
+    // Skip the header line if present
+    std::getline(file, line);
+
+    while (std::getline(file, line))
+    {
+        std::istringstream iss(line);
+        std::string token;
+        unsigned short int material_id;
+        Real rsvx, murx;
+
+        // Read material_id
+        std::getline(iss, token, ',');
+        material_id = static_cast<unsigned short int>(std::stoi(token));
+
+        // Read rsvx
+        std::getline(iss, token, ',');
+        rsvx = static_cast<Real>(std::stod(token));
+
+        // Read murx
+        std::getline(iss, token, ',');
+        murx = static_cast<Real>(std::stod(token));
+
+        // Use the existing method to set the material property
+        setMaterialProperty(material_id, rsvx, murx);
+    }
+
+    file.close();
 }

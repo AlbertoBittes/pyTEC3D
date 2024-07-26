@@ -2,13 +2,15 @@
 CXX=mpicxx
 
 # Include path for libMesh
-INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include
+INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.1
 
 # Compiler flags
 CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp
 
 # Linker flags, add your project-specific libraries not related to MPI
-LDFLAGS=-L/$(LIBMESH_DIR)/lib -lmesh_dbg -ltimpi_dbg -pthread -fopenmp
+LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -pthread -fopenmp \
+-lvtkCommonCore-9.1 -lvtkCommonDataModel-9.1 \
+-lvtkFiltersCore-9.1 -lvtkIOXML-9.1 -lvtkCommonExecutionModel-9.1
 
 # The target executable name
 BIN_DIR=../bin

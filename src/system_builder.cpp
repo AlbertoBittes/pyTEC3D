@@ -4,7 +4,7 @@
 #include "libmesh/transient_system.h"
 #include "../include/system_builder.h"
 #include "libmesh/string_to_enum.h"
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 // C++ include files that we need
 #include <iostream>
 #include <algorithm>
@@ -75,7 +75,7 @@ void assemble_poisson(EquationSystems &es,
     // logging, since there may be many PerfLogs in an
     // application.
     PerfLog perf_log("Matrix Assembly");
-    LoadsBCObject &loads_bc = GlobalResources::getLoadsBCObject();
+    LoadsBCMatObject &loads_bc = GlobalResources::getLoadsBCObject();
     // Get a constant reference to the mesh object.
     const MeshBase &mesh = es.get_mesh();
 
@@ -282,7 +282,7 @@ void assemble_poisson_3d(EquationSystems &es,
     // It is a good idea to make sure we are assembling
     // the proper system.
     libmesh_assert_equal_to(system_name, "Linear");
-    LoadsBCObject &loads_bc = GlobalResources::getLoadsBCObject();
+    LoadsBCMatObject &loads_bc = GlobalResources::getLoadsBCObject();
     // Get a constant reference to the mesh object.
     const MeshBase &mesh = es.get_mesh();
 

@@ -1,15 +1,15 @@
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 #include "../include/global_resources.h" // Include the full definition of LoadsBCObject
 
 // Definition of static member
-LoadsBCObject GlobalResources::loadsBCObject;
+LoadsBCMatObject GlobalResources::loadsBCObject;
 
-void GlobalResources::setLoadsBCObject(const LoadsBCObject &obj)
+void GlobalResources::setLoadsBCObject(const LoadsBCMatObject &obj)
 {
     loadsBCObject = obj;
 }
 
-LoadsBCObject &GlobalResources::getLoadsBCObject()
+LoadsBCMatObject &GlobalResources::getLoadsBCObject()
 {
     return loadsBCObject;
 }

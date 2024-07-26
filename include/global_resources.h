@@ -3,15 +3,15 @@
 
 #include <string>
 // Forward declaration of LoadsBCObject if its full definition is not needed here
-class LoadsBCObject;
+class LoadsBCMatObject;
 
 class GlobalResources
 {
 public:
-    static LoadsBCObject loadsBCObject;
+    static LoadsBCMatObject loadsBCObject;
 
-    static void setLoadsBCObject(const LoadsBCObject &obj);
-    static LoadsBCObject &getLoadsBCObject();
+    static void setLoadsBCObject(const LoadsBCMatObject &obj);
+    static LoadsBCMatObject &getLoadsBCObject();
 };
 
 #endif // GLOBAL_RESOURCES_H

@@ -58,7 +58,7 @@
 #include "libmesh/analytic_function.h"
 #include "libmesh/dirichlet_boundaries.h"
 #include "libmesh/dof_map.h"
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/global_resources.h"
@@ -66,6 +66,12 @@
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/transient_system.h"
+#include "libmesh/vtk_io.h"
+
+// Include the necessary header files for vtkDataArray and vtkPointData
+#include <vtkUnstructuredGrid.h>
+#include "vtkDataArray.h"
+#include "vtkPointData.h"
 
 using namespace libMesh;
 
@@ -114,9 +120,26 @@ int main(int argc, char **argv)
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
     Mesh mesh(init.comm());
-    mesh.allow_renumbering(false);
-    mesh.read(session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>());
+    VTKIO vtkio(mesh);
+    // mesh.allow_renumbering(false);
+    std::string filname = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+    vtkio.read(filname);
+    vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
+    vtkPointData *pointData = vtkGrid->GetPointData();
 
+    // Step 4: Retrieve the Array
+    vtkDataArray *ansysNodeNumArray = pointData->GetArray("ansys_node_num");
+
+    if (ansysNodeNumArray)
+    {
+        // Process the array as needed
+        std::cout << "Found array 'ansys_node_num' with "
+                  << ansysNodeNumArray->GetNumberOfTuples() << " tuples." << std::endl;
+    }
+    else
+    {
+        std::cerr << "Array 'ansys_node_num' not found." << std::endl;
+    }
     unsigned int dim = mesh.mesh_dimension();
 
     // Print information about the mesh to the screen.
@@ -140,8 +163,7 @@ int main(int argc, char **argv)
 
     std::string system_name = "Linear";
     // Assign boundary  conditions
-    LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
-
+    System &system = equation_systems.get_system(system_name);
     if (transient)
     {
         if (ferromagnetic)
@@ -178,7 +200,7 @@ int main(int argc, char **argv)
         // Assume the rest of the method continues to handle other cases based on the attributes
     }
 
-    LoadsBCObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
+    LoadsBCMatObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
     GlobalResources::setLoadsBCObject(loads_bc_object);
 
     // In general, when reusing a system-indexed exact solution, we want
@@ -189,7 +211,7 @@ int main(int argc, char **argv)
 
     // We must add the Dirichlet boundary condition _before_
     // we call equation_systems.init()
-    equation_systems.get_system<LinearImplicitSystem>("Linear").attach_constraint_function(node_dof_constraints);
+    system.attach_constraint_function(node_dof_constraints);
     // Initialize the data structures for the equation system.
     equation_systems.init();
     // Redo this with Dirichlet boundaries
@@ -202,8 +224,8 @@ int main(int argc, char **argv)
     // Solve the system "Poisson", just like example 2.
     system.solve();
 
-    GmshIO(mesh).write_equation_systems(
-        session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);
+    // Write the results
+    vtkio.write_equation_systems(session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);
 
     // All done.
     return 0;
