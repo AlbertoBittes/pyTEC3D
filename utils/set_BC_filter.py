@@ -5,8 +5,8 @@ value = 1.0  # Replace with actual value
 import vtk
 import numpy as np
 # Example usage
-input0 = input[0]  # Replace with actual input0
-input1 = input[1]  # Replace with actual input1
+input0 = inputs[0]  # Replace with actual input0
+input1 = inputs[1]  # Replace with actual input1
 
 # Get the input data objects
 if input0 is None or input1 is None:
@@ -21,15 +21,14 @@ array_one = point_data0.GetArray(dof)
 if array_one is None:
     raise ValueError("The first input VTK object does not have a " + dof + " array.")
 
-
-# Get the vtkOriginalIds array from the second input
-original_ids = point_data1.GetArray('vtkOriginalIds').astype(int)
+# Get the vtkOriginalPointIds array from the second input
+original_ids = point_data1.GetArray("vtkOriginalPointIds")
 if original_ids is None:
-    raise ValueError("The second input VTK object does not have a 'vtkOriginalIds' array.")
+    raise ValueError(
+        "The second input VTK object does not have a 'vtkOriginalPointIds' array."
+    )
 
 # Convert VTK arrays to NumPy arrays
-
-# Ensure original_ids_np values are within bounds
 if np.any((original_ids < 0) | (original_ids >= input0.GetNumberOfPoints())):
     raise IndexError("One or more original IDs are out of bounds for the first input VTK object.")
 
@@ -38,7 +37,3 @@ array_one[original_ids] = value
 
 point_data0.append(array_one, dof)
 point_data0.Modified()
-
-# Set the modified input0 as the output
-output.PointData.append(array_one, dof)
-
