@@ -23,11 +23,11 @@ def add_time_dependent_vector_point_data(vtu_file, output_file, time_steps):
 
         # Initialize vector data to zero for each point
         zero_vector = [0.0, 0.0, 0.0]
-        for i in range(grid.GetNumberOfPoints()):
+        for i in range(grid.GetNumberOfCells()):
             vector_data.InsertNextTuple(zero_vector)
 
         # Add the vector point data array to the grid
-        grid.GetPointData().AddArray(vector_data)
+        grid.GetCellData().AddArray(vector_data)
 
         # Mark the grid as modified
         grid.Modified()

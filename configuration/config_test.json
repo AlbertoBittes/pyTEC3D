@@ -1,18 +1,18 @@
 {
     "Mesh Input Section": {
       "input_name": "3D_loop",
-      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/2D_ITER_noPlasma/2D_ITER_noPlasma.pvtu",
+      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/3D_loop.pvtu",
       "input_type": "USER"
     },
-    "APDL Input Files Section": {
-      "symmetry_filepath": "not used",
-      "APDL_loads_folderpath": "not used",
-      "APDL_bc_folderpath": "not used"
-    },
-    "Loads and BC Files Section": {
-      "loads_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/Loads",
-      "bc_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/BCs"
-    },
+    // "APDL Input Files Section": {
+    //   "symmetry_filepath": "not used",
+    //   "APDL_loads_folderpath": "not used",
+    //   "APDL_bc_folderpath": "not used"
+    // },
+    // "Loads and BC Files Section": {
+    //   "loads_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/Loads",
+    //   "bc_folderpath": "/home/bitteal/PlasmaArc/simulations/3D_loop/BCs"
+    // },
     "Finite Elements Settings": {
       "APEC_algorithm": false,
       "formulation": "AV",

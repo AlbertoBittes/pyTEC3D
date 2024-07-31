@@ -36,7 +36,7 @@
 #include "libmesh/tensor_value.h"
 #include "libmesh/vector_value.h"
 #include "libmesh/utility.h"
-#include "../include/loads_bc_object.h"
+#include "../include/loads_bc_mat_object.h"
 #include "../include/global_resources.h"
 
 using namespace libMesh;
