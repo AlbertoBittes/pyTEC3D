@@ -1,9 +1,10 @@
-
-dof = "ax_bc"  # Replace with actual dof name
-value = 1.0  # Replace with actual value
+dof = "A"  # Replace with actual dof name
+component = "x"  # Replace with ('x', 'y', or 'z')
+value = 1.0  # Replace with chosen dof value
 
 import vtk
 import numpy as np
+
 # Example usage
 input0 = inputs[0]  # Replace with actual input0
 input1 = inputs[1]  # Replace with actual input1
@@ -21,6 +22,18 @@ array_one = point_data0.GetArray(dof)
 if array_one is None:
     raise ValueError("The first input VTK object does not have a " + dof + " array.")
 
+component_index = 0
+# Check if the array is a 3D vector
+num_components = array_one.GetNumberOfComponents()
+if num_components == 1:
+    component_index = 0
+else:
+    # Map the component selector to the corresponding index
+    component_map = {"x": 0, "y": 1, "z": 2}
+    component_index = component_map.get(component)
+    if component_index is None:
+        raise ValueError("Invalid component specified.")
+
 # Get the vtkOriginalPointIds array from the second input
 original_ids = point_data1.GetArray("vtkOriginalPointIds")
 if original_ids is None:
@@ -29,11 +42,26 @@ if original_ids is None:
     )
 
 # Convert VTK arrays to NumPy arrays
-if np.any((original_ids < 0) | (original_ids >= input0.GetNumberOfPoints())):
-    raise IndexError("One or more original IDs are out of bounds for the first input VTK object.")
+original_ids_np = np.array(original_ids)
+if np.any((original_ids_np < 0) | (original_ids_np >= input0.GetNumberOfPoints())):
+    raise IndexError(
+        "One or more original IDs are out of bounds for the first input VTK object."
+    )
 
 # Assign values to the dofs based on the original ids
-array_one[original_ids] = value
+array_one_np = np.array(
+    [
+        array_one.GetComponent(i, component_index)
+        for i in range(array_one.GetNumberOfTuples())
+    ]
+)
 
-point_data0.append(array_one, dof)
+# Update the values at the specified original IDs
+array_one_np[original_ids_np] = value
+
+# Convert the NumPy array back to a VTK array
+for i, idx in enumerate(original_ids_np):
+    array_one.SetComponent(idx, component_index, array_one_np[idx])
+
+# Update the point data
 point_data0.Modified()
