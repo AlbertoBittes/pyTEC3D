@@ -126,22 +126,24 @@ int main(int argc, char **argv)
     vtkio.read(filname);
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
     vtkPointData *pointData = vtkGrid->GetPointData();
-
+    mesh.set_spatial_dimension(3);
+    mesh.prepare_for_use();
     // Step 4: Retrieve the Array
-    vtkDataArray *ansysNodeNumArray = pointData->GetArray("ansys_node_num");
+    // vtkDataArray *ansysNodeNumArray = pointData->GetArray("ansys_node_num");
 
-    if (ansysNodeNumArray)
-    {
-        // Process the array as needed
-        std::cout << "Found array 'ansys_node_num' with "
-                  << ansysNodeNumArray->GetNumberOfTuples() << " tuples." << std::endl;
-    }
-    else
-    {
-        std::cerr << "Array 'ansys_node_num' not found." << std::endl;
-    }
-    unsigned int dim = mesh.mesh_dimension();
-
+    // if (ansysNodeNumArray)
+    // {
+    //     // Process the array as needed
+    //     std::cout << "Found array 'ansys_node_num' with "
+    //               << ansysNodeNumArray->GetNumberOfTuples() << " tuples." << std::endl;
+    // }
+    // else
+    // {
+    //     std::cerr << "Array 'ansys_node_num' not found." << std::endl;
+    // }
+    // You will have to fix this
+    // unsigned int dim = mesh.mesh_dimension();
+    unsigned int dim = 3;
     // Print information about the mesh to the screen.
     mesh.print_info();
 
@@ -163,7 +165,7 @@ int main(int argc, char **argv)
 
     std::string system_name = "Linear";
     // Assign boundary  conditions
-    System &system = equation_systems.get_system(system_name);
+    LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
     if (transient)
     {
         if (ferromagnetic)
