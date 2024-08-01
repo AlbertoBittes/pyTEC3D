@@ -1,0 +1,61 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="filters">
+    <SourceProxy name="SetValuePlugin" class="vtkSetValuePlugin" label="Set Value Plugin">
+      <Documentation>
+        This filter sets values in a specified array.
+      </Documentation>
+
+      <StringVectorProperty
+        name="DataType"
+        command="SetDataType"
+        number_of_elements="1"
+        default_values="Point Data">
+        <EnumerationDomain name="enum">
+          <Entry value="Point Data" text="Point Data"/>
+          <Entry value="Cell Data" text="Cell Data"/>
+        </EnumerationDomain>
+        <Documentation>
+          Select the type of data to modify: 'Point Data' or 'Cell Data'.
+        </Documentation>
+      </StringVectorProperty>
+
+      <IntVectorProperty
+        name="IsVector"
+        command="SetIsVector"
+        number_of_elements="1"
+        default_values="0">
+        <BooleanDomain name="bool"/>
+        <Documentation>
+          Specify if the quantity is a vector (True) or a scalar (False).
+        </Documentation>
+      </IntVectorProperty>
+
+      <StringVectorProperty
+        name="ArrayName"
+        command="SetArrayName"
+        number_of_elements="1"
+        default_values="">
+        <ArrayListDomain attribute_type="ScalarsAndVectors">
+          <RequiredProperties>
+            <Property name="Input" function="Input"/>
+            <Property name="DataType" function="FieldData"/>
+          </RequiredProperties>
+        </ArrayListDomain>
+        <Documentation>
+          Specify the name of the array to modify.
+        </Documentation>
+      </StringVectorProperty>
+
+      <IntVectorProperty
+        name="Component"
+        command="SetComponent"
+        number_of_elements="1"
+        default_values="0">
+        <RangeDomain min="0" max="2"/>
+        <Documentation>
+          Specify the component index of the array to modify. Only applicable if the quantity is a vector.
+        </Documentation>
+      </IntVectorProperty>
+    </SourceProxy>
+  </ProxyGroup>
+</ServerManagerConfiguration>

@@ -14,17 +14,17 @@ if input0 is None or input1 is None:
     raise ValueError("One or both input VTK objects are missing.")
 
 # Get the cell data arrays
-cell_data0 = input0.GetCellData()
-cell_data1 = input1.GetCellData()
+cell_data0 = input0.CellData
+cell_data1 = input1.CellData
 
 # Get the "array one" cell data array in the first input
-array_one = cell_data0.GetArray(load)
+array_one = cell_data0[load]
 if array_one is None:
     raise ValueError("The first input VTK object does not have a " + load + " array.")
 
 component_index = 0
 # Check if the array is a 3D vector
-num_components = array_one.GetNumberOfComponents()
+num_components = array_one.shape[1] if array_one.ndim > 1 else 1
 if num_components == 1:
     component_index = 0
 else:
@@ -35,33 +35,20 @@ else:
         raise ValueError("Invalid component specified.")
 
 # Get the vtkOriginalCellIds array from the second input
-original_ids = cell_data1.GetArray("vtkOriginalCellIds")
+original_ids = cell_data1["vtkOriginalCellIds"]
 if original_ids is None:
     raise ValueError(
         "The second input VTK object does not have a 'vtkOriginalCellIds' array."
     )
 
-# Convert VTK arrays to NumPy arrays
-original_ids_np = np.array(original_ids)
-if np.any((original_ids_np < 0) | (original_ids_np >= input0.GetNumberOfCells())):
+# Ensure original_ids are within bounds
+if np.any((original_ids < 0) | (original_ids >= input0.GetNumberOfCells())):
     raise IndexError(
         "One or more original IDs are out of bounds for the first input VTK object."
     )
 
-# Assign values to the loads based on the original ids
-array_one_np = np.array(
-    [
-        array_one.GetComponent(i, component_index)
-        for i in range(array_one.GetNumberOfTuples())
-    ]
-)
-
 # Update the values at the specified original IDs
-array_one_np[original_ids_np] = value
-
-# Convert the NumPy array back to a VTK array
-for i, idx in enumerate(original_ids_np):
-    array_one.SetComponent(idx, component_index, array_one_np[idx])
+array_one[original_ids, component_index] = value
 
 # Update the cell data
 cell_data0.Modified()
