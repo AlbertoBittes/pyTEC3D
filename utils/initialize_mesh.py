@@ -81,7 +81,9 @@ if archive is None:
 if transient_analysis:
     num_points = archive.grid.n_points
     num_cells = archive.grid.n_cells
-
+    # PVTU format doesn't support time varying data, only implemented for VTKHDF5
+    # This is a workaround to store time varying data in a single VTK file
+    # One day I will try to fix it, but I will need to rewrite also the libmesh code
     for i in range(1, number_substeps + 1):
         A_i = np.full((num_points, 3), np.nan)
         V_i = np.full(num_points, np.nan)
