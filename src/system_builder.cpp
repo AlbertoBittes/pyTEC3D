@@ -53,37 +53,29 @@
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/zero_function.h"
 #include "../include/global_resources.h"
+#include "vtkDataArray.h"
 
 using namespace libMesh;
-
-void assemble_poisson(libMesh::EquationSystems &eq_sys, const std::string &system_name);
-void assemble_poisson_3d(libMesh::EquationSystems &eq_sys, const std::string &system_name);
 
 // // We now define the matrix assembly function for the
 // // Poisson system.  We need to first compute element
 // // matrices and right-hand sides, and then take into
 // // account the boundary conditions.
-void assemble_poisson(EquationSystems &es,
-                      const std::string &libmesh_dbg_var(system_name))
+void AssemblerStatic2D::assemble()
 {
-    // It is a good idea to make sure we are assembling
-    // the proper system.
-    libmesh_assert_equal_to(system_name, "Poisson");
-
     // Declare a performance log.  Give it a descriptive
     // string to identify what part of the code we are
     // logging, since there may be many PerfLogs in an
     // application.
     PerfLog perf_log("Matrix Assembly");
-    LoadsBCMatObject &loads_bc = GlobalResources::getLoadsBCObject();
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = es.get_mesh();
+    const MeshBase &mesh = eq_sys.get_mesh();
 
     // The dimension that we are running
     const unsigned int dim = mesh.mesh_dimension();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>("Poisson");
+    LinearImplicitSystem &system = eq_sys.get_system<LinearImplicitSystem>("Linear");
 
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
@@ -101,7 +93,7 @@ void assemble_poisson(EquationSystems &es,
     // of as a pointer that will clean up after itself.
     std::unique_ptr<FEBase> fe(FEBase::build(dim, fe_type));
 
-    // A 5th order Gauss quadrature rule for numerical integration.
+    // A 2nd order Gauss quadrature rule for numerical integration.
     QGauss qrule(dim, SECOND);
 
     // Tell the finite element object to use our quadrature rule.
@@ -126,11 +118,6 @@ void assemble_poisson(EquationSystems &es,
     // integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
 
-    // The physical XY locations of the quadrature points on the element.
-    // These might be useful for evaluating spatially varying material
-    // properties at the quadrature points.
-    const std::vector<Point> &q_point = fe->get_xyz();
-
     // The element shape functions evaluated at the quadrature points.
     const std::vector<std::vector<Real>> &phi = fe->get_phi();
 
@@ -152,7 +139,12 @@ void assemble_poisson(EquationSystems &es,
 
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
-
+    vtkDataArray *jsArray = cell_data->GetArray("Js");
+    if (!jsArray)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: 'Js' array not found in vtkCellData.");
+    }
     // Now we will loop over all the elements in the mesh.
     // We will compute the element matrix and right-hand-side
     // contribution.  See example 3 for a discussion of the
@@ -228,17 +220,14 @@ void assemble_poisson(EquationSystems &es,
         //
         // Start logging the right-hand-side computation
         perf_log.push("Fe");
-
+        dof_id_type el_id = elem->id();
         for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
         {
             Real fxy;
             Point centroid;
             centroid = elem->vertex_average();
 
-            if (centroid(0) <= 0.1 && centroid(1) <= 0.1 && centroid(2) <= 0.1 && centroid(0) >= -0.1 && centroid(1) >= -0.1 && centroid(2) >= -0.1)
-                fxy = 4 * libMesh::pi * 1e-7;
-            else
-                fxy = 0.0;
+            fxy = 4 * libMesh::pi * 1e-7 * jsArray->GetTuple1(el_id);
             // Add the RHS contribution
             for (unsigned int i = 0; i != n_dofs; i++)
                 Fe(i) += JxW[qp] * fxy * phi[i][qp];
@@ -275,22 +264,16 @@ void assemble_poisson(EquationSystems &es,
 // matrices and right-hand sides, and then take into
 // account the boundary conditions, which will be handled
 // via a penalty method.
-void assemble_poisson_3d(EquationSystems &es,
-                         const std::string &system_name)
+void AssemblerStatic3D::assemble()
 {
-
-    // It is a good idea to make sure we are assembling
-    // the proper system.
-    libmesh_assert_equal_to(system_name, "Linear");
-    LoadsBCMatObject &loads_bc = GlobalResources::getLoadsBCObject();
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = es.get_mesh();
+    const MeshBase &mesh = eq_sys.get_mesh();
 
     // The dimension that we are running
     const unsigned int dim = mesh.mesh_dimension();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>("Linear");
+    LinearImplicitSystem &system = eq_sys.get_system<LinearImplicitSystem>("Linear");
 
     // A reference to the  DofMap object for this system.  The  DofMap
     // object handles the index translation from node and element numbers
@@ -332,11 +315,6 @@ void assemble_poisson_3d(EquationSystems &es,
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
 
-    // The physical XY locations of the quadrature points on the element.
-    // These might be useful for evaluating spatially varying material
-    // properties at the quadrature points.
-    const std::vector<Point> &q_point = fe->get_xyz();
-
     // The element shape functions evaluated at the quadrature points.
     // Notice the shape functions are a vector rather than a scalar.
     const std::vector<std::vector<RealGradient>> &phi = fe->get_phi();
@@ -362,6 +340,12 @@ void assemble_poisson_3d(EquationSystems &es,
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
 
+    vtkDataArray *jsArray = cell_data->GetArray("Js");
+    if (!jsArray)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: 'Js' array not found in vtkCellData.");
+    }
     // Now we will loop over all the elements in the mesh.
     // We will compute the element matrix and right-hand-side
     // contribution.
@@ -377,22 +361,12 @@ void assemble_poisson_3d(EquationSystems &es,
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         dof_id_type elem_id = elem->id();
-        const CurrentLoadsMap &current_loads_map = loads_bc.getCurrentLoadsMap(1);
-        auto it = current_loads_map.find(elem_id + 1);
-        Real jx = 0;
-        Real jy = 0;
-        Real jz = 0;
-        if (it != current_loads_map.end())
-        {                                                   // Check if the element exists
-            const std::vector<double> &values = it->second; // Step 2: Access the vector of doubles
-            if (!values.empty())
-            {
-                jx = 4 * libMesh::pi * 1e-7 * values[0];
-                jy = 4 * libMesh::pi * 1e-7 * values[1];
-                jz = 4 * libMesh::pi * 1e-7 * values[2];
-            }
-        }
-        RealGradient j(jx, jy, jz);
+
+        Real tuple[3];
+        jsArray->GetTuple(elem_id, tuple);
+        RealGradient js(4 * libMesh::pi * 1e-7 * tuple[0],
+                        4 * libMesh::pi * 1e-7 * tuple[1],
+                        4 * libMesh::pi * 1e-7 * tuple[2]);
 
         // Get the degree of freedom indices for the
         // current element.  These define where in the global
@@ -436,7 +410,7 @@ void assemble_poisson_3d(EquationSystems &es,
             // "forcing function" in the PDE against the test functions.
 
             for (std::size_t i = 0; i < phi.size(); i++)
-                Fe(i) += JxW[qp] * j * phi[i][qp];
+                Fe(i) += JxW[qp] * js * phi[i][qp];
         }
 
         // We have now finished the quadrature point loop,
@@ -456,6 +430,13 @@ void assemble_poisson_3d(EquationSystems &es,
 
 void SystemBuilder::createSystem()
 {
+    transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
+    fe_family = config["Finite Elements Settings"]["fe_family"].get<std::string>();
+    formulation = config["Finite Elements Settings"]["formulation"].get<std::string>();
+    order = config["Finite Elements Settings"]["approx_order"].get<std::string>();
+    dim = equation_systems.get_mesh().mesh_dimension();
+
     if (transient)
     {
         if (ferromagnetic)
@@ -503,12 +484,13 @@ void SystemBuilder::setVariables()
     {
         system.add_variable("AZ", Utility::string_to_enum<Order>(order),
                             Utility::string_to_enum<FEFamily>(fe_family));
-        system.attach_assemble_function(assemble_poisson);
         if (system_name == "NonlinearTransient" || system_name == "LinearTransient")
         {
             system.add_variable("V", Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_family));
         }
+        AssemblerStatic2D *assembler = new AssemblerStatic2D(equation_systems, cell_data);
+        system.attach_assemble_object(*assembler);
     }
     else if (fe_family == "LAGRANGE" && dim == 3 && formulation == "AV")
     {
@@ -518,12 +500,13 @@ void SystemBuilder::setVariables()
         //                     Utility::string_to_enum<FEFamily>(fe_family));
         // system.add_variable("AZ", Utility::string_to_enum<Order>(order),
         //                     Utility::string_to_enum<FEFamily>(fe_family));
-        system.attach_assemble_function(assemble_poisson_3d);
         if (system_name == "NonlinearTransient" || system_name == "LinearTransient")
         {
             system.add_variable("V", Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_fam));
         }
+        AssemblerStatic3D *assembler = new AssemblerStatic3D(equation_systems, cell_data);
+        system.attach_assemble_object(*assembler);
     }
     // else if (fe_family == "family1" && dim == 3 && formulation == "form1")
     // {

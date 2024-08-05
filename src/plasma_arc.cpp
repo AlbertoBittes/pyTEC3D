@@ -46,6 +46,7 @@
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
+#include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
 
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
@@ -69,7 +70,7 @@
 #include <vtkUnstructuredGrid.h>
 #include "vtkDataArray.h"
 #include "vtkPointData.h"
-#include <filesystem> // Include the filesystem header
+#include <vtkSmartPointer.h>
 
 using namespace libMesh;
 
@@ -98,23 +99,11 @@ int main(int argc, char **argv)
 
     Session session(argv[1]);
 
-    bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
-    bool ferromagnetic = session.config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
-    std::string fe_family = session.config["Finite Elements Settings"]["fe_family"].get<std::string>();
-    std::string formulation = session.config["Finite Elements Settings"]["formulation"].get<std::string>();
-    std::string order = session.config["Finite Elements Settings"]["approx_order"].get<std::string>();
     std::string mesh_filepath = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
     std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
-    std::string loads_folderpath = session.config["Loads and BC Files Section"]["loads_folderpath"].get<std::string>();
-    std::string bc_folderpath = session.config["Loads and BC Files Section"]["bc_folderpath"].get<std::string>();
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
     std::cout << "Reading mesh..." << std::endl;
-
-// We use Dirichlet boundary conditions here
-#ifndef LIBMESH_ENABLE_DIRICHLET
-    libmesh_example_requires(false, "--enable-dirichlet");
-#endif
 
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
@@ -122,26 +111,35 @@ int main(int argc, char **argv)
     VTKIO vtkio(mesh);
     // mesh.allow_renumbering(false);
     vtkio.read(mesh_filepath);
-    vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
-    vtkPointData *pointData = vtkGrid->GetPointData();
-    mesh.set_spatial_dimension(3);
-    mesh.prepare_for_use();
-    // Step 4: Retrieve the Array
-    // vtkDataArray *ansysNodeNumArray = pointData->GetArray("ansys_node_num");
 
-    // if (ansysNodeNumArray)
-    // {
-    //     // Process the array as needed
-    //     std::cout << "Found array 'ansys_node_num' with "
-    //               << ansysNodeNumArray->GetNumberOfTuples() << " tuples." << std::endl;
-    // }
-    // else
-    // {
-    //     std::cerr << "Array 'ansys_node_num' not found." << std::endl;
-    // }
-    // You will have to fix this
-    // unsigned int dim = mesh.mesh_dimension();
-    unsigned int dim = 3;
+    vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
+
+    unsigned char dim = 0;
+
+    double bounds[6];
+    vtkGrid->GetBounds(bounds);
+
+    // Check x-dimension
+    if (bounds[1] - bounds[0] > 0)
+    {
+        dim++;
+    }
+
+    // Check y-dimension
+    if (bounds[3] - bounds[2] > 0)
+    {
+        dim++;
+    }
+
+    // Check z-dimension
+    if (bounds[5] - bounds[4] > 0)
+    {
+        dim++;
+    }
+
+    mesh.set_spatial_dimension(dim);
+    mesh.prepare_for_use();
+
     // Print information about the mesh to the screen.
     mesh.print_info();
 
@@ -154,74 +152,32 @@ int main(int argc, char **argv)
 
     EquationSystems equation_systems(mesh);
 
-    unsigned int a_var;
     // Declare the system and its variables.
     // Create a system named "Poisson"
 
-    SystemBuilder system_builder(equation_systems, transient, ferromagnetic,
-                                 fe_family, dim, formulation, order);
+    vtkCellData *cellData = vtkGrid->GetCellData();
+
+    SystemBuilder system_builder(equation_systems, session.config, cellData);
 
     std::string system_name = "Linear";
     // Assign boundary  conditions
     LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
-    if (transient)
-    {
-        if (ferromagnetic)
-        {
-            system_name = "NonlinearTransient";
-            // Add TransientSystem<NonlinearImplicitSystem> as System and return its pointer
-            TransientSystem<NonlinearImplicitSystem> *system = nullptr;
-            system = &equation_systems.get_system<TransientSystem<NonlinearImplicitSystem>>(system_name);
-        }
-        else
-        {
-            system_name = "LinearTransient";
-            // Add TransientSystem<LinearImplicitSystem> as System and return its pointer
-            TransientSystem<LinearImplicitSystem> *system = nullptr;
-            system = &equation_systems.get_system<TransientSystem<LinearImplicitSystem>>(system_name);
-        }
-    }
-    else
-    {
-        if (ferromagnetic)
-        {
-            system_name = "Nonlinear";
-            // Add NonlinearImplicitSystem as System and return its pointer
-            NonlinearImplicitSystem *system = nullptr;
-            system = &equation_systems.get_system<NonlinearImplicitSystem>(system_name);
-        }
-        else
-        {
-            system_name = "Linear";
-            // Add LinearImplicitSystem as System and return its pointer
-            // LinearImplicitSystem *system = nullptr;
-            // system = &equation_systems.get_system<LinearImplicitSystem>(system_name);
-        }
-        // Assume the rest of the method continues to handle other cases based on the attributes
-    }
 
-    LoadsBCMatObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
-    GlobalResources::setLoadsBCObject(loads_bc_object);
+    // LoadsBCMatObject loads_bc_object(loads_folderpath, bc_folderpath, inp_name);
+    // GlobalResources::setLoadsBCObject(loads_bc_object);
 
-    // In general, when reusing a system-indexed exact solution, we want
-    // to use the default system-ordering constructor for
-    // DirichletBoundary, so we demonstrate that here.  In this case,
-    // though, we have only one variable, so system- and local-
-    // orderings are the same.
+    // Assign boundary conditions
+    vtkPointData *pointData = vtkGrid->GetPointData();
+    NodalBCConstraint node_dof_constraints(system, pointData);
+    system.attach_constraint_object(node_dof_constraints);
 
-    // We must add the Dirichlet boundary condition _before_
-    // we call equation_systems.init()
-    system.attach_constraint_function(node_dof_constraints);
     // Initialize the data structures for the equation system.
     equation_systems.init();
-    // Redo this with Dirichlet boundaries
 
-    // equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().process_constraints(equation_systems.get_system<LinearImplicitSystem>("Linear").get_mesh());
-    // equation_systems.get_system<LinearImplicitSystem>("Linear").get_dof_map().prepare_send_list();
     // Print information about the system to the screen.
     equation_systems.print_info();
 
-    // Solve the system "Poisson", just like example 2.
+    // Build the K matrix, the RHS F and Solve the system Kx=F
     system.solve();
 
     // Write the results

@@ -6,10 +6,12 @@
 #include "../include/node_dof_constraints.h"
 #include "../include/global_resources.h"
 #include "../include/loads_bc_mat_object.h"
+#include "vtkPointData.h"
+#include "vtkDataArray.h"
 
 using namespace libMesh;
 
-void node_dof_constraints(libMesh::EquationSystems &equation_systems, const std::string &system_name)
+void NodalBCConstraint::constrain()
 {
     // Example implementation
     // This function should implement the logic to apply constraints to the nodes of the system
@@ -17,62 +19,64 @@ void node_dof_constraints(libMesh::EquationSystems &equation_systems, const std:
     // The actual implementation would depend on the specific constraints to be applied.
 
     // Retrieve the system by name
-    LinearImplicitSystem &system = equation_systems.get_system<LinearImplicitSystem>(system_name);
-    LoadsBCMatObject loads_bc_object = GlobalResources::getLoadsBCObject();
-    const NodeBCMap &node_bc_map = loads_bc_object.getNodeBCMap(1);
-    const MeshBase &mesh = equation_systems.get_mesh();
+    // LoadsBCMatObject loads_bc_object = GlobalResources::getLoadsBCObject();
+    // const NodeBCMap &node_bc_map = loads_bc_object.getNodeBCMap(1);
+    const MeshBase &mesh = _sys.get_mesh();
+    vtkDataArray *A_Array = _pointData->GetArray("A");
+    if (!A_Array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: 'A' array not found in vtkPointData.");
+    }
     for (const auto &node : mesh.local_node_ptr_range())
     {
         // dof_id_type dof_loop = node->dof_number(const unsigned int s,
         //                                         const unsigned int var,
         //                                         const unsigned int comp) const
 
-        auto row_bc = node_bc_map.find(node->id() + 1);
-        if (row_bc != node_bc_map.end())
-        { // Check if the element exists
-            const NodeData &values = row_bc->second;
-            Real ax_bc = values.AX;
-            if (!std::isnan(ax_bc))
-            {
-                dof_id_type dof_id_ax = node->dof_number(0, 0, 0);
-                DofConstraintRow constraint_row;
-                if (ax_bc == 0.0)
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_ax, constraint_row, false);
-                }
-                else
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
-                }
-                // sffdh
-            }
-            Real ay_bc = values.AY;
-            if (!std::isnan(ay_bc))
-            {
-                dof_id_type dof_id_ay = node->dof_number(0, 0, 1);
-                DofConstraintRow constraint_row;
-                if (ay_bc == 0.0)
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_ay, constraint_row, false);
-                }
-                else
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
-                }
-            }
-            Real az_bc = values.AZ;
+        // auto row_bc = node_bc_map.find(node->id() + 1);
+        // Access the "Az" array in the vtkPointData object
+
+        if (_dim == 2)
+        {
+            // Get the scalar value corresponding to node->id()
+            double az_bc = A_Array->GetComponent(node->id(), 0);
+            // Now you can use the variable val as needed
+            // Check if val is NaN
             if (!std::isnan(az_bc))
             {
-                dof_id_type dof_id_az = node->dof_number(0, 0, 2);
+                // Apply the row constraint
+                dof_id_type dof_id = node->dof_number(_sys.number(), 0, 0);
                 DofConstraintRow constraint_row;
-                if (az_bc == 0.0)
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_az, constraint_row, false);
-                }
-                else
-                {
-                    system.get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc, false);
-                }
+                _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, az_bc, false);
+            }
+        }
+        else if (_dim == 3)
+        {
+            // Get the 3-component values corresponding to node->id()
+            double ax_bc = A_Array->GetComponent(node->id(), 0);
+            double ay_bc = A_Array->GetComponent(node->id(), 1);
+            double az_bc = A_Array->GetComponent(node->id(), 2);
+            // Now you can use the variables val0, val1, and val2 as needed
+            // Apply the row constraint for each component
+
+            if (!std::isnan(ax_bc))
+            {
+                DofConstraintRow constraint_row;
+                dof_id_type dof_id_ax = node->dof_number(_sys.number(), 0, 0);
+                _sys.get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
+            }
+            if (!std::isnan(ay_bc))
+            {
+                DofConstraintRow constraint_row;
+                dof_id_type dof_id_ay = node->dof_number(_sys.number(), 0, 1);
+                _sys.get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
+            }
+            if (!std::isnan(az_bc))
+            {
+                DofConstraintRow constraint_row;
+                dof_id_type dof_id_az = node->dof_number(_sys.number(), 0, 2);
+                _sys.get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc, false);
             }
         }
     }
