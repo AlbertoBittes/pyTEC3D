@@ -1,12 +1,13 @@
 import os
 import numpy as np
+import pyvista as pv
 import json
 from ansys.mapdl import reader as pymapdl_reader
 import vtk
 
 # Get the mesh file path from the configuration
-fileName = r"E:\Archive\PlasmaArc_Meshes\3D_ITER_noPlasma\3D_ITER_noPlasma.cdb"
-config_file = "E:\\Archive\\PlasmaArc_Meshes\\3D_ITER_noPlasma\\conf.json"
+fileName = r"D:\PlasmaArc\simulations\2D_wire\2D_wire.cdb"
+config_file = r"D:\PlasmaArc\simulations\2D_wire\config_2D_wire.json"
 
 # Check if the configuration file exists
 if not os.path.exists(config_file):
@@ -43,9 +44,10 @@ transient_analysis = config.get("Transient Analysis Settings", {}).get(
 time_steps = config.get("Transient Analysis Settings", {}).get("time_steps", [])
 
 # Get the number of substeps
-number_substeps = len(
-    config.get("Transient Analysis Settings", {}).get("time_steps", 0)
-)
+if transient_analysis:
+    number_substeps = len(
+        config.get("Transient Analysis Settings", {}).get("time_steps", 0)
+    )
 
 # Check if the mesh file path is provided
 if not fileName:
@@ -78,6 +80,28 @@ else:
 if archive is None:
     raise ValueError("Failed to read the mesh file.")
 
+
+def get_spatial_dimension(unstructured_grid):
+    if isinstance(unstructured_grid._grid, pv.UnstructuredGrid):
+        bounds = unstructured_grid._grid.bounds
+        if bounds[4] == bounds[5]:  # Check if Z bounds are the same
+            return 2
+        else:
+            return 3
+    elif isinstance(unstructured_grid, vtk.vtkUnstructuredGrid):
+        unstructured_grid.GetBounds()
+        if bounds[4] == bounds[5]:  # Check if Z bounds are the same
+            return "2D"
+        else:
+            return "3D"
+    else:
+        raise TypeError("The provided object is not a pyvista.UnstructuredGrid.")
+
+
+# Example usage:
+# Assuming `unstructured_grid` is your vtkUnstructuredGrid object
+dimension = get_spatial_dimension(archive)
+
 if transient_analysis:
     num_points = archive.grid.n_points
     num_cells = archive.grid.n_cells
@@ -85,26 +109,37 @@ if transient_analysis:
     # This is a workaround to store time varying data in a single VTK file
     # One day I will try to fix it, but I will need to rewrite also the libmesh code
     for i in range(1, number_substeps + 1):
-        A_i = np.full((num_points, 3), np.nan)
-        V_i = np.full(num_points, np.nan)
+        if dimension == 3:
+            A_i = np.full((num_points, 3), np.nan)
+            V_i = np.full(num_points, np.nan)
+        elif dimension == 2:
+            A_i = np.full((num_points, 1), np.nan)
+            V_i = np.full(num_points, np.nan)
         archive.grid.point_data[f"A_{i}"] = A_i
         archive.grid.point_data[f"V_{i}"] = V_i
 
     for i in range(1, number_substeps + 1):
-        Js_i = np.zeros((num_cells, 3))
+        if dimension == 3:
+            Js_i = np.zeros((num_cells, 3))
+        elif dimension == 2:
+            Js_i = np.zeros((num_cells, 1))
         archive.grid.cell_data[f"Js_{i}"] = Js_i
 else:
     # Initialize and add point datasets
     num_points = archive.grid.n_points
-    A = np.full((num_points, 3), np.nan)  # Create a 2D array for the vector data
+    if dimension == 3:
+        A = np.full((num_points, 3), np.nan)
+    elif dimension == 2:
+        A = np.full((num_points, 1), np.nan)
     archive.grid.point_data["A"] = A
     # Initialize and add cell datasets
     num_cells = archive.grid.n_cells
-    Js = np.zeros((num_cells, 3))  # Create a 2D array for the vector data
+    if dimension == 3:
+        Js = np.zeros((num_cells, 3))
+    elif dimension == 2:
+        Js = np.zeros((num_cells, 1))
     archive.grid.cell_data["Js"] = Js
 
 # Print overview of data read from cdb
 print(archive)
-archive.grid.save(
-    "E:\\Archive\\PlasmaArc_Meshes\\3D_ITER_noPlasma\\3D_ITER_noPlasma.vtu", binary=True
-)
+archive.grid.save("D:\\PlasmaArc\\simulations\\2D_wire\\2D_wire.vtu", binary=True)

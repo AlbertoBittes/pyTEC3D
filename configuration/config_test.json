@@ -1,7 +1,6 @@
 {
     "Mesh Input Section": {
-      "input_name": "3D_loop",
-      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/3D_loop/3D_loop.pvtu",
+      "mesh_filepath": "/home/bitteal/PlasmaArc/simulations/2D_wire/2D_wire.pvtu",
       "input_type": "USER"
     },
     // "APDL Input Files Section": {

@@ -55,7 +55,6 @@
 #include "libmesh/perf_log.h"
 
 // To impose Dirichlet boundary conditions
-#include "libmesh/analytic_function.h"
 #include "libmesh/dirichlet_boundaries.h"
 #include "libmesh/dof_map.h"
 #include "../include/loads_bc_mat_object.h"
@@ -72,6 +71,7 @@
 #include <vtkUnstructuredGrid.h>
 #include "vtkDataArray.h"
 #include "vtkPointData.h"
+#include <filesystem> // Include the filesystem header
 
 using namespace libMesh;
 
@@ -105,7 +105,8 @@ int main(int argc, char **argv)
     std::string fe_family = session.config["Finite Elements Settings"]["fe_family"].get<std::string>();
     std::string formulation = session.config["Finite Elements Settings"]["formulation"].get<std::string>();
     std::string order = session.config["Finite Elements Settings"]["approx_order"].get<std::string>();
-    std::string inp_name = session.config["Mesh Input Section"]["input_name"].get<std::string>();
+    std::string mesh_filepath = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+    std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
     std::string loads_folderpath = session.config["Loads and BC Files Section"]["loads_folderpath"].get<std::string>();
     std::string bc_folderpath = session.config["Loads and BC Files Section"]["bc_folderpath"].get<std::string>();
     // Declare a performance log for the main program
@@ -122,8 +123,7 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     VTKIO vtkio(mesh);
     // mesh.allow_renumbering(false);
-    std::string filname = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
-    vtkio.read(filname);
+    vtkio.read(mesh_filepath);
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
     vtkPointData *pointData = vtkGrid->GetPointData();
     mesh.set_spatial_dimension(3);
