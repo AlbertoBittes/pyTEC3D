@@ -94,23 +94,10 @@ void AssemblerStatic2D::assemble()
     std::unique_ptr<FEBase> fe(FEBase::build(dim, fe_type));
 
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dim, SECOND);
+    QGauss qrule(dim, fe_type.default_quadrature_order());
 
     // Tell the finite element object to use our quadrature rule.
     fe->attach_quadrature_rule(&qrule);
-
-    // Declare a special finite element object for
-    // boundary integration.
-    std::unique_ptr<FEBase> fe_face(FEBase::build(dim, fe_type));
-
-    // Boundary integration requires one quadrature rule,
-    // with dimensionality one less than the dimensionality
-    // of the element.
-    QGauss qface(dim - 1, SECOND);
-
-    // Tell the finite element object to use our
-    // quadrature rule.
-    fe_face->attach_quadrature_rule(&qface);
 
     // Here we define some references to cell-specific data that
     // will be used to assemble the linear system.

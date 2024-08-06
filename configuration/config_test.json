@@ -23,8 +23,5 @@
     "Solver Settings": {
       "solver": "default",
       "preconditioner": "default"
-    },
-    "Output": {
-      "output_filepath": "/home/bitteal/PlasmaArc/simulations/2D_wire/2D_wire_output.vtu"
     }
 }

@@ -61,6 +61,7 @@
 #include "../include/system_builder.h"
 #include "../include/global_resources.h"
 #include "../include/node_dof_constraints.h"
+#include "../include/compute_magnetic_field.h"
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/transient_system.h"
@@ -103,7 +104,7 @@ int main(int argc, char **argv)
     std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-    std::cout << "Reading mesh..." << std::endl;
+    libMesh::out << "Reading mesh..." << std::endl;
 
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
@@ -113,6 +114,8 @@ int main(int argc, char **argv)
     vtkio.read(mesh_filepath);
 
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
+
+    libMesh::out << "Preparing Mesh..." << std::endl;
 
     unsigned char dim = 0;
 
@@ -143,12 +146,7 @@ int main(int argc, char **argv)
     // Print information about the mesh to the screen.
     mesh.print_info();
 
-    // Create an equation systems object.
-    libMesh::out << "Boundary Information:" << std::endl;
-
-    mesh.get_boundary_info().print_info();
-
-    mesh.get_boundary_info().print_summary();
+    libMesh::out << "Building equations systems..." << std::endl;
 
     EquationSystems equation_systems(mesh);
 
@@ -156,7 +154,10 @@ int main(int argc, char **argv)
     // Create a system named "Poisson"
 
     vtkCellData *cellData = vtkGrid->GetCellData();
-
+    if (cellData == nullptr)
+    {
+        libmesh_error_msg("Error: vtkGrid does not contain Cell Data.");
+    }
     SystemBuilder system_builder(equation_systems, session.config, cellData);
 
     std::string system_name = "Linear";
@@ -167,7 +168,12 @@ int main(int argc, char **argv)
     // GlobalResources::setLoadsBCObject(loads_bc_object);
 
     // Assign boundary conditions
+    libMesh::out << "Setting boundary conditions..." << std::endl;
     vtkPointData *pointData = vtkGrid->GetPointData();
+    if (pointData == nullptr)
+    {
+        libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
+    }
     NodalBCConstraint node_dof_constraints(system, pointData);
     system.attach_constraint_object(node_dof_constraints);
 
@@ -180,8 +186,12 @@ int main(int argc, char **argv)
     // Build the K matrix, the RHS F and Solve the system Kx=F
     system.solve();
 
+    compute_magnetic_field_static_2D(equation_systems);
+    // Use filesystem to modify the basename
+    std::filesystem::path output_path(mesh_filepath);
+    output_path.replace_filename(output_path.stem().string() + "_out" + output_path.extension().string());
     // Write the results
-    vtkio.write_equation_systems(session.config["Output"]["output_filepath"].get<std::string>(), equation_systems);
+    vtkio.write_equation_systems(output_path, equation_systems);
 
     // All done.
     return 0;
