@@ -97,8 +97,10 @@ void compute_magnetic_field_static_2D(EquationSystems &es)
     std::vector<dof_id_type> A_indices_var;
     DenseMatrix<Number> Kxe;
     DenseVector<Number> Ae;
-    DenseVector<Number> Bxe;
+    DenseVector<Number> Bxe_q;
     DenseMatrix<Number> Kye;
+    DenseVector<Number> Bye_q;
+    DenseVector<Number> Bxe;
     DenseVector<Number> Bye;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -111,8 +113,10 @@ void compute_magnetic_field_static_2D(EquationSystems &es)
 
         Kxe.resize(n_dofs, n_dofs);
         Ae.resize(n_dofs);
-        Bxe.resize(n_dofs);
+        Bxe_q.resize(n_dofs);
         Kye.resize(n_dofs, n_dofs);
+        Bye_q.resize(n_dofs);
+        Bxe.resize(n_dofs);
         Bye.resize(n_dofs);
         for (std::size_t j = 0; j < n_dofs; j++)
             Ae(j) = system.current_solution(A_indices_var[j]);
@@ -127,20 +131,40 @@ void compute_magnetic_field_static_2D(EquationSystems &es)
                 for (std::size_t j = 0; j < n_dofs; j++)
                     for (std::size_t l = 0; l < dim; l++)
                     {
-                        Kxe(i, j) += phi[i][qp] * (jacob_derivatives_bx[l][qp] * phi_derivatives[l][j][qp]);
-                        Kye(i, j) -= phi[i][qp] * (jacob_derivatives_by[l][qp] * phi_derivatives[l][j][qp]);
+                        Kxe(i, j) += JxW[qp] * phi[i][qp] * (jacob_derivatives_bx[l][qp] * phi_derivatives[l][j][qp]);
+                        Kye(i, j) -= JxW[qp] * phi[i][qp] * (jacob_derivatives_by[l][qp] * phi_derivatives[l][j][qp]);
                     }
         }
 
-        Kxe.vector_mult(Bxe, Ae);
-        Kye.vector_mult(Bye, Ae);
+        Kxe.vector_mult(Bxe_q, Ae);
+        Kye.vector_mult(Bye_q, Ae);
         B_dof_map.dof_indices(elem, Bx_indices_var, bx_n_var);
         B_dof_map.dof_indices(elem, By_indices_var, by_n_var);
+
+        // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
+        // Note that this gives a discontinuous stress plot on element boundaries, which is
+        // appropriate. We then also get the von Mises stress from the projected stress tensor.
+        DenseMatrix<Real> Me_bx(n_dofs, n_dofs);
+        DenseMatrix<Real> Me_by(n_dofs, n_dofs);
+        for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+        {
+            for (unsigned int i = 0; i < n_dofs; i++)
+                for (unsigned int j = 0; j < n_dofs; j++)
+                {
+                    Me_bx(i, j) += JxW[qp] * (phi[i][qp] * phi[j][qp]);
+                    Me_by(i, j) += JxW[qp] * (phi[i][qp] * phi[j][qp]);
+                }
+        }
+
+        Me_bx.cholesky_solve(Bxe_q, Bxe);
+        Me_by.cholesky_solve(Bye_q, Bye);
+
         dof_id_type dof_index;
         // Loop over B_indices_var_values
         for (unsigned int i = 0; i < n_dofs; i++)
         {
             dof_index = Bx_indices_var[i];
+            Real val;
             if ((magnetic_field_system.solution->first_local_index() <= dof_index) &&
                 (dof_index < magnetic_field_system.solution->last_local_index()))
                 magnetic_field_system.solution->set(dof_index, Bxe(i));
