@@ -117,8 +117,8 @@ input_grid.SetPoints(points)
 input_grid.SetCells(cell.GetCellType(), cellArray)
 
 # Create instances of the custom algorithms
-timeStepGenerator = vtk.vtkSmartPointer(TimeStepGenerator(time_steps, input_grid))
-timeStepModifier = vtk.vtkSmartPointer(TimeStepModifier())
+timeStepGenerator = TimeStepGenerator(time_steps, input_grid)
+timeStepModifier = TimeStepModifier()
 
 # Set up the pipeline
 timeStepModifier.SetInputConnection(timeStepGenerator.GetOutputPort())
@@ -126,7 +126,7 @@ timeStepModifier.SetInputConnection(timeStepGenerator.GetOutputPort())
 # Loop over all time steps and execute the pipeline
 for time_step in time_steps:
     executive = vtk.vtkStreamingDemandDrivenPipeline.SafeDownCast(timeStepModifier.GetExecutive())
-    executive.SetUpdateTimeStep(0, time_step)
+    executive.UpdateTimeStep(time_step)
     timeStepModifier.Update()
     
     # Get the output
