@@ -186,7 +186,11 @@ int main(int argc, char **argv)
     // Build the K matrix, the RHS F and Solve the system Kx=F
     system.solve();
 
-    compute_magnetic_field_static_2D(equation_systems);
+    if (dim == 2)
+        compute_magnetic_field_static_2D(equation_systems);
+    else
+        compute_magnetic_field_static_3D(equation_systems);
+
     // Use filesystem to modify the basename
     std::filesystem::path output_path(mesh_filepath);
     output_path.replace_filename(output_path.stem().string() + "_out" + output_path.extension().string());

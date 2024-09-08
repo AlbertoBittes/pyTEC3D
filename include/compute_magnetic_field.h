@@ -3,7 +3,7 @@
 
 #include "libmesh/equation_systems.h"
 
-void compute_magnetic_field_static(libMesh::EquationSystems &es);
+void compute_magnetic_field_static_3D(libMesh::EquationSystems &es);
 
 void compute_magnetic_field_static_2D(libMesh::EquationSystems &es);
 

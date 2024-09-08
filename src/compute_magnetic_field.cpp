@@ -180,7 +180,7 @@ void compute_magnetic_field_static_2D(EquationSystems &es)
 }
 
 // Post-process the solution to compute stresses
-void compute_magnetic_field_static(EquationSystems &es)
+void compute_magnetic_field_static_3D(EquationSystems &es)
 {
     const MeshBase &mesh = es.get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
@@ -205,6 +205,8 @@ void compute_magnetic_field_static(EquationSystems &es)
 
     // Also, get a reference to the ExplicitSystem
     magnetic_field_system.add_variable("B", FIRST, L2_LAGRANGE_VEC);
+    magnetic_field_system.init();
+    unsigned int b_n_var = magnetic_field_system.variable_number("B");
     const DofMap &B_dof_map = magnetic_field_system.get_dof_map();
 
     // Storage for the stress dof indices on each element
@@ -213,6 +215,7 @@ void compute_magnetic_field_static(EquationSystems &es)
     DenseMatrix<Number> Ke;
     DenseVector<Number> Ae;
     DenseVector<Number> Be;
+    DenseVector<Number> Be_q;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         dof_map.dof_indices(elem, A_indices_var);
@@ -223,9 +226,11 @@ void compute_magnetic_field_static(EquationSystems &es)
         fe->reinit(elem);
 
         Ke.resize(n_dofs, n_dofs);
-
         Ae.resize(n_dofs);
-        Be.resize(n_dofs);
+        Be_q.resize(n_dofs);
+
+        for (std::size_t j = 0; j < n_dofs; j++)
+            Ae(j) = system.current_solution(A_indices_var[j]);
 
         for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
         {
@@ -235,9 +240,25 @@ void compute_magnetic_field_static(EquationSystems &es)
                     Ke(i, j) += JxW[qp] * (phi[i][qp] * curl_phi[j][qp]);
         }
 
-        Ke.vector_mult(Be, Ae);
+        Ke.vector_mult(Be_q, Ae);
         B_dof_map.dof_indices(elem, B_indices_var);
-        dof_id_type dof_index = B_indices_var[0];
+
+        // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
+        // Note that this gives a discontinuous stress plot on element boundaries, which is
+        // appropriate. We then also get the von Mises stress from the projected stress tensor.
+        DenseMatrix<Real> Me(n_dofs, n_dofs);
+        for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+        {
+            for (unsigned int i = 0; i < n_dofs; i++)
+                for (unsigned int j = 0; j < n_dofs; j++)
+                {
+                    Me(i, j) += JxW[qp] * (phi[i][qp] * phi[j][qp]);
+                }
+        }
+
+        Me.cholesky_solve(Be_q, Be);
+
+        dof_id_type dof_index;
         // Loop over B_indices_var_values
         for (unsigned int i = 0; i < n_dofs; i++)
         {
