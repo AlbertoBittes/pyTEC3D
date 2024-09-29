@@ -6,8 +6,8 @@ from ansys.mapdl import reader as pymapdl_reader
 import vtk
 
 # Get the mesh file path from the configuration
-fileName = r"D:\PlasmaArc\simulations\2D_wire\2D_wire.cdb"
-config_file = r"D:\PlasmaArc\simulations\2D_wire\config_2D_wire.json"
+fileName = r"D:\PlasmaArc\simulations\3D_loop\3D_loop.cdb"
+config_file = r"D:\PlasmaArc\simulations\3D_loop\config_3D_loop.json"
 
 # Check if the configuration file exists
 if not os.path.exists(config_file):
@@ -142,4 +142,4 @@ else:
 
 # Print overview of data read from cdb
 print(archive)
-archive.grid.save("D:\\PlasmaArc\\simulations\\2D_wire\\2D_wire.vtu", binary=True)
+archive.grid.save("D:\\PlasmaArc\\simulations\\3D_loop\\3D_loop.vtu", binary=True)
