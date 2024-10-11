@@ -21,11 +21,9 @@
       "nonlinear_analysis_ferrom": false
     },
     "Transient Analysis Settings": {
-      "transient_analysis": false,
-      "analysis time": null,
-      "time_step_size": null,
-      "number_time_steps": null,
-      "number_substeps": null,
+      "transient_analysis": true,
+      "time_steps": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+      "number_substeps": 0,
       "kbc": "step"
     },
     "APEC Settings": {

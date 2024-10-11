@@ -8,30 +8,31 @@
 
 using namespace libMesh;
 
-class AssemblerStatic2D : public System::Assembly
+class AssemblerLinear : public System::Assembly
 {
 public:
-    AssemblerStatic2D(EquationSystems &eq_sys, vtkCellData *cellData)
-        : eq_sys(eq_sys), cell_data(cellData) {}
+    AssemblerLinear(EquationSystems &eq_sys, vtkCellData *cellData, bool transient, nlohmann.json config)
+        : eq_sys(eq_sys), cell_data(cellData), config(config)
+    {
+        transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+        ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
+        fe_family = config["Finite Elements Settings"]["fe_family"].get<std::string>();
+        formulation = config["Finite Elements Settings"]["formulation"].get<std::string>();
+        order = config["Finite Elements Settings"]["approx_order"].get<std::string>();
+        dim = equation_systems.get_mesh().mesh_dimension();
+    }
 
     void assemble() override;
 
 private:
     EquationSystems &eq_sys;
     vtkCellData *cell_data;
-};
-
-class AssemblerStatic3D : public System::Assembly
-{
-public:
-    AssemblerStatic3D(EquationSystems &eq_sys, vtkCellData *cellData)
-        : eq_sys(eq_sys), cell_data(cellData) {}
-
-    void assemble() override;
-
-private:
-    EquationSystems &eq_sys;
-    vtkCellData *cell_data;
+    bool transient;
+    bool ferromagnetic;
+    std::string fe_family;
+    std::string formulation;
+    std::string order;
+    int dim;
 };
 
 class SystemBuilder
