@@ -56,10 +56,8 @@
 // To impose Dirichlet boundary conditions
 #include "libmesh/dirichlet_boundaries.h"
 #include "libmesh/dof_map.h"
-#include "../include/loads_bc_mat_object.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
-#include "../include/global_resources.h"
 #include "../include/node_dof_constraints.h"
 #include "../include/compute_magnetic_field.h"
 #include "libmesh/enum_solver_package.h"
@@ -69,8 +67,8 @@
 
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
-#include "vtkDataArray.h"
-#include "vtkPointData.h"
+#include <vtkDataArray.h>
+#include <vtkPointData.h>
 #include <vtkSmartPointer.h>
 #include "materials_properties.h"
 #include <iostream>
@@ -113,14 +111,21 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     VTKIO vtkio(mesh);
     // mesh.allow_renumbering(false);
-    vtkio.read(mesh_filepath);
-
+    if (comm().rank() == 0)
+        vtkio.read(mesh_filepath);
+    MeshCommunication().broadcast(mesh);
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
 
     libMesh::out << "Preparing Mesh..." << std::endl;
 
     unsigned char dim = 0;
 
+    // This is needed because of wron libMesh function when reading dimensions
+    // Ask if they plan to fix it
+    // Plus, check because this is not working with MPI,
+    //     Hmm... I think if you do it this way, the file is opened and read from simultaneously on all N cores, which is probably not great for the filesystem. Can you try wrapping the mesh.read() line in if (comm().rank() == 0), and then, on all processors call
+
+    // MeshCommunication().broadcast(mesh);
     double bounds[6];
     vtkGrid->GetBounds(bounds);
     // Check x-dimension
@@ -141,17 +146,24 @@ int main(int argc, char **argv)
         dim++;
     }
 
-    vtkCellData *cellData = vtkGrid->GetCellData();
-    if (cellData == nullptr)
-    {
-        libmesh_error_msg("Error: vtkGrid does not contain Cell Data.");
-    }
     mesh.set_spatial_dimension(dim);
     mesh.prepare_for_use();
 
+    vtkCellData *cellData = vtkGrid->GetCellData();
+    if (cellData == nullptr)
+    {
+        libmesh_error_msg("Error: vtkGrid does not contain any Cell Data.");
+    }
+
+    // Here I read material properties and assign conductive and non-conductive subdomains
     vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
+    if (matArray == nullptr)
+    {
+        libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
+    }
     unsigned int matNum;
-    std::unordered_map<int, MaterialsProperties> materials = readMaterialsProperties("material_properties.csv");
+    MaterialsMap materials = readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
+
     libMesh::out << "Identifying conductive domain..." << std::endl;
     for (auto &elem : mesh.active_element_ptr_range())
     {
@@ -177,14 +189,11 @@ int main(int argc, char **argv)
 
     EquationSystems equation_systems(mesh);
 
-    // Declare the system and its variables.
-    // Create a system named "Poisson"
-
+    // Declare the system and its variables
     SystemBuilder system_builder(equation_systems, session.config, cellData);
 
-    std::string system_name = "Linear";
-    // Assign boundary  conditions
-    LinearImplicitSystem &system = equation_systems.get_system<TransientSystem<LinearImplicitSystem>>(system_name);
+    // Get a reference to the system we want to solve
+    LinearImplicitSystem &system = equation_systems.get_system<TransientSystem<LinearImplicitSystem>>("LinearTransient");
 
     // Initialize the data structures for the equation system.
     equation_systems.init();
@@ -192,12 +201,15 @@ int main(int argc, char **argv)
     // Print information about the system to the screen.
     equation_systems.print_info();
 
+    // setup transient options
     std::vector<Real> time_steps;
     const Real dt;
     bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    bool compute_equilibrium_first_step = false;
     // Extract the time_steps array
     if (transient)
     {
+        compute_equilibrium_first_step = session.config["Transient Analysis Settings"]["equilibrium_step"].get<bool>();
         if (config.contains("Transient Analysis Settings") && config["Transient Analysis Settings"].contains("time_steps"))
         {
             time_steps = config["Transient Analysis Settings"]["time_steps"].get<std::vector<Real>>();
@@ -206,35 +218,53 @@ int main(int argc, char **argv)
         {
             libmesh_error_msg("time_steps not found in config file");
         }
-        system.time = time_steps[0];
-        dt = time_steps[1] - time_steps[0];
-    }
-    else
-    {
-        system.time = 0.;
-        dt = 1;
-        time_steps.push_back(1.0);
+        // Validate that all time steps are positive and increasing
+        for (size_t i = 0; i < time_steps.size(); ++i)
+        {
+            if (time_steps[i] <= 0)
+            {
+                libmesh_error_msg("Error: Time step " + std::to_string(i) + " is not positive.");
+            }
+            if (i > 0 && time_steps[i] <= time_steps[i - 1])
+            {
+                libmesh_error_msg("Error: Time step " + std::to_string(i) + " is not greater than the previous time step.");
+            }
+        }
+        // The list of time steps doesn't include the initial time, t=0 always is assumed
+        // A static initial step may be required by the user however
+        system.time = 0;
+        dt = time_steps[0];
     }
 
-    bool compute_equilibrium_first_step = true;
     vtkPointData *pointData = vtkGrid->GetPointData();
+    if (pointData == nullptr)
+    {
+        libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
+    }
+    // Use filesystem to modify the basename
+    std::filesystem::path output_path(mesh_filepath);
 
     if (!transient || compute_equilibrium_first_step)
     {
         // Assign boundary conditions
         libMesh::out << "Setting boundary conditions..." << std::endl;
-        if (pointData == nullptr)
-        {
-            libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
-        }
-        NodalBCConstraint node_dof_constraints(system, pointData);
+        NodalBCConstraint node_dof_constraints(system, pointData, 0);
         system.attach_constraint_object(node_dof_constraints);
         system.reinit_constraints();
         // Build the K matrix, the RHS F and Solve the system Kx=F
         system.solve();
+
+        if (dim == 2)
+            compute_magnetic_field_static_2D(equation_systems);
+        else
+            compute_magnetic_field_static_3D(equation_systems);
+
+        output_path.replace_filename(output_path.stem().string() + "_out_0" + output_path.extension().string());
+        // Write the results
+        vtkio.write_equation_systems(output_path, equation_systems);
     }
 
-    for (unsigned int time_idx = 0; time_idx < time_steps.size() - 1; ++time_idx)
+    for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
     {
         // Increment the time counter, set the time and the
         // time step size as parameters in the EquationSystem.
@@ -249,7 +279,7 @@ int main(int argc, char **argv)
         {
             libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
         }
-        NodalBCConstraint node_dof_constraints(system, pointData);
+        NodalBCConstraint node_dof_constraints(system, pointData, time_idx + 1);
         system.attach_constraint_object(node_dof_constraints);
         system.reinit_constraints();
         // A pretty update message
@@ -277,28 +307,25 @@ int main(int argc, char **argv)
         // At this point we need to update the old
         // solution vector.  The old solution vector
         // will be the current solution vector from the
-        // previous time step.  We will do this by extracting the
+        // previous time step. We will do this by extracting the
         // system from the EquationSystems object and using
-        // vector assignment.  Since only TransientSystems
+        // vector assignment. Since only TransientSystems
         // (and systems derived from them) contain old solutions
         // we need to specify the system type when we ask for it.
         *system.old_local_solution = *system.current_local_solution;
 
         // Assemble & solve the linear system
         system.solve();
+
+        if (dim == 2)
+            compute_magnetic_field_static_2D(equation_systems);
+        else
+            compute_magnetic_field_static_3D(equation_systems);
+
+        output_path.replace_filename(output_path.stem().string() + "_out_" + std::to_string(time_idx + 1) s + output_path.extension().string());
+        // Write the results
+        vtkio.write_equation_systems(output_path, equation_systems);
     }
-
-    if (dim == 2)
-        compute_magnetic_field_static_2D(equation_systems);
-    else
-        compute_magnetic_field_static_3D(equation_systems);
-
-    // Use filesystem to modify the basename
-    std::filesystem::path output_path(mesh_filepath);
-    output_path.replace_filename(output_path.stem().string() + "_out" + output_path.extension().string());
-    // Write the results
-    vtkio.write_equation_systems(output_path, equation_systems);
-
     // All done.
     return 0;
 }

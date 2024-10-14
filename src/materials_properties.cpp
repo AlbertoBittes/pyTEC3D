@@ -6,7 +6,9 @@
 #include <limits> // for std::numeric_limits
 #include "materials_properties.h"
 
-std::unordered_map<int, MaterialsProperties> readMaterialsProperties(const std::string &filename)
+typedef std::unordered_map<int, MaterialsProperties> MaterialsMap;
+
+MaterialsMap readMaterialsProperties(const std::string &filename)
 {
     std::unordered_map<int, MaterialsProperties> materials;
     std::ifstream file(filename);
@@ -72,5 +74,22 @@ std::unordered_map<int, MaterialsProperties> readMaterialsProperties(const std::
     }
 
     file.close();
+
+    // Validate that murx, mury, and murz are defined for all materials
+    for (const auto &[material_number, material] : materials)
+    {
+        if (std::isnan(material.murx) || std::isnan(material.mury) || std::isnan(material.murz))
+        {
+            libmesh_error_msg("Magnetics material properties (murx, mury, murz) not defined for material " << material_number);
+        }
+        // Validate that all properties are positive and greater than 0
+        if (material.murx <= 0 || material.mury <= 0 || material.murz <= 0 ||
+            material.rsvx <= 0 || material.rsvy <= 0 || material.rsvz <= 0 ||
+            material.perx <= 0 || material.pery <= 0 || material.perz <= 0)
+        {
+            libmesh_error_msg("Material properties must be positive and greater than 0 for material " << material_number);
+        }
+    }
+
     return materials;
 }

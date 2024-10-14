@@ -1,16 +1,7 @@
 {
     "Mesh Input Section": {
       "mesh_filepath": null,
-      "input_type": "USER"
-    },
-    "APDL Input Files Section": {
-      "symmetry_filepath": null,
-      "APDL_loads_folderpath": null,
-      "APDL_bc_folderpath": null
-    },
-    "Loads and BC Files Section": {
-      "loads_folderpath": null,
-      "bc_folderpath": null
+      "materials_filepath": null,
     },
     "Finite Elements Settings": {
       "APEC_algorithm": false,
@@ -23,7 +14,7 @@
     "Transient Analysis Settings": {
       "transient_analysis": true,
       "time_steps": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
-      "number_substeps": 0,
+      "equilibrium_step": true,
       "kbc": "step"
     },
     "APEC Settings": {

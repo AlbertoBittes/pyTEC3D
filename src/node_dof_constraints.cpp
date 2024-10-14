@@ -4,10 +4,8 @@
 #include "libmesh/mesh.h"
 #include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
 #include "../include/node_dof_constraints.h"
-#include "../include/global_resources.h"
-#include "../include/loads_bc_mat_object.h"
-#include "vtkPointData.h"
-#include "vtkDataArray.h"
+#include <vtkPointData.h>
+#include <vtkDataArray.h>
 
 using namespace libMesh;
 
@@ -19,10 +17,8 @@ void NodalBCConstraint::constrain()
     // The actual implementation would depend on the specific constraints to be applied.
 
     // Retrieve the system by name
-    // LoadsBCMatObject loads_bc_object = GlobalResources::getLoadsBCObject();
-    // const NodeBCMap &node_bc_map = loads_bc_object.getNodeBCMap(1);
     const MeshBase &mesh = _sys.get_mesh();
-    vtkDataArray *A_Array = _pointData->GetArray("A");
+    vtkDataArray *A_Array = _pointData->GetArray("A_" + std::to_string(_time_step));
     if (!A_Array)
     {
         // Handle the case where the "Az" array does not exist
