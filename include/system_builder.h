@@ -1,39 +1,13 @@
+#ifndef SYSTEM_BUILDER_H
+#define SYSTEM_BUILDER_H
+
 #include "libmesh/equation_systems.h"
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/nonlinear_implicit_system.h"
-#include "libmesh/transient_system.h"
+#include "../include/materials_properties.h"
 #include "../include/json.hpp"
 #include <map> // Include for std::map
 #include <vtkCellData.h>
 
 using namespace libMesh;
-
-class AssemblerLinear : public System::Assembly
-{
-public:
-    AssemblerLinear(EquationSystems &eq_sys, vtkCellData *cellData, bool transient, nlohmann.json config)
-        : eq_sys(eq_sys), cell_data(cellData), config(config)
-    {
-        transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
-        ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
-        fe_family = config["Finite Elements Settings"]["fe_family"].get<std::string>();
-        formulation = config["Finite Elements Settings"]["formulation"].get<std::string>();
-        order = config["Finite Elements Settings"]["approx_order"].get<std::string>();
-        dim = equation_systems.get_mesh().mesh_dimension();
-    }
-
-    void assemble() override;
-
-private:
-    EquationSystems &eq_sys;
-    vtkCellData *cell_data;
-    bool transient;
-    bool ferromagnetic;
-    std::string fe_family;
-    std::string formulation;
-    std::string order;
-    int dim;
-};
 
 class SystemBuilder
 {
@@ -51,10 +25,11 @@ public:
     const nlohmann::json &config;
     vtkCellData *cell_data;
     std::shared_ptr<System::Assembly> assembler; // Add AssemblerBase attribute
+    MaterialsMap materials;
 
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config, vtkCellData *cellData)
-        : equation_systems(eq_systems), config(config), cell_data(cellData)
+    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config, vtkCellData *cellData, MaterialsMap &materials)
+        : equation_systems(eq_systems), config(config), cell_data(cellData), materials(materials)
     {
         createSystem(); // Call createSystem at the end of the constructor
         setVariables(); // Call setVariables at the end of the constructor
@@ -63,6 +38,6 @@ public:
     void createSystem();
 
     void setVariables();
-
-    // System &getSystemByType();
 };
+
+#endif // SYSTEM_BUILDER_H

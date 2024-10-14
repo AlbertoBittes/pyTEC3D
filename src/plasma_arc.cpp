@@ -42,7 +42,6 @@
 // Basic include file needed for the mesh functionality.
 #include "libmesh/equation_systems.h"
 #include "libmesh/libmesh.h"
-#include "libmesh/node.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
@@ -53,24 +52,20 @@
 // you an idea where bottlenecks lie.
 #include "libmesh/perf_log.h"
 
-// To impose Dirichlet boundary conditions
-#include "libmesh/dirichlet_boundaries.h"
-#include "libmesh/dof_map.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
 #include "../include/compute_magnetic_field.h"
-#include "libmesh/enum_solver_package.h"
-#include "libmesh/string_to_enum.h"
 #include "libmesh/transient_system.h"
 #include "libmesh/vtk_io.h"
+#include "libmesh/mesh_communication.h"
 
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
 #include <vtkSmartPointer.h>
-#include "materials_properties.h"
+#include "../include/materials_properties.h"
 #include <iostream>
 
 using namespace libMesh;
@@ -110,9 +105,10 @@ int main(int argc, char **argv)
     // across the default MPI communicator.
     Mesh mesh(init.comm());
     VTKIO vtkio(mesh);
-    // mesh.allow_renumbering(false);
-    if (comm().rank() == 0)
+    mesh.allow_renumbering(false);
+    if (init.comm().rank() == 0)
         vtkio.read(mesh_filepath);
+
     MeshCommunication().broadcast(mesh);
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
 
@@ -156,7 +152,7 @@ int main(int argc, char **argv)
     }
 
     // Here I read material properties and assign conductive and non-conductive subdomains
-    vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
+    vtkDataArray *matArray = cellData->GetArray("ansys_material_type");
     if (matArray == nullptr)
     {
         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
@@ -190,10 +186,12 @@ int main(int argc, char **argv)
     EquationSystems equation_systems(mesh);
 
     // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems, session.config, cellData);
+    SystemBuilder system_builder(equation_systems, session.config, cellData, materials);
+
+    libMesh::out << "Distributing degrees of freedom..." << std::endl;
 
     // Get a reference to the system we want to solve
-    LinearImplicitSystem &system = equation_systems.get_system<TransientSystem<LinearImplicitSystem>>("LinearTransient");
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("LinearTransient");
 
     // Initialize the data structures for the equation system.
     equation_systems.init();
@@ -202,17 +200,18 @@ int main(int argc, char **argv)
     equation_systems.print_info();
 
     // setup transient options
+    libMesh::out << "Setting up transient options..." << std::endl;
     std::vector<Real> time_steps;
-    const Real dt;
+    Real dt;
     bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
     bool compute_equilibrium_first_step = false;
     // Extract the time_steps array
     if (transient)
     {
         compute_equilibrium_first_step = session.config["Transient Analysis Settings"]["equilibrium_step"].get<bool>();
-        if (config.contains("Transient Analysis Settings") && config["Transient Analysis Settings"].contains("time_steps"))
+        if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("time_steps"))
         {
-            time_steps = config["Transient Analysis Settings"]["time_steps"].get<std::vector<Real>>();
+            time_steps = session.config["Transient Analysis Settings"]["time_steps"].get<std::vector<Real>>();
         }
         else
         {
@@ -235,6 +234,10 @@ int main(int argc, char **argv)
         system.time = 0;
         dt = time_steps[0];
     }
+    else
+    {
+        system.time = 0;
+    }
 
     vtkPointData *pointData = vtkGrid->GetPointData();
     if (pointData == nullptr)
@@ -246,11 +249,15 @@ int main(int argc, char **argv)
 
     if (!transient || compute_equilibrium_first_step)
     {
+        equation_systems.parameters.set<Real>("time_factor") = 0;
+        equation_systems.parameters.set<Real>("time_step") = 0;
+
         // Assign boundary conditions
         libMesh::out << "Setting boundary conditions..." << std::endl;
         NodalBCConstraint node_dof_constraints(system, pointData, 0);
         system.attach_constraint_object(node_dof_constraints);
         system.reinit_constraints();
+
         // Build the K matrix, the RHS F and Solve the system Kx=F
         system.solve();
 
@@ -273,17 +280,19 @@ int main(int argc, char **argv)
 
         equation_systems.parameters.set<Real>("time") = system.time;
         equation_systems.parameters.set<Real>("dt") = dt;
+        equation_systems.parameters.set<Real>("time_factor") = 1;
+        equation_systems.parameters.set<Real>("time_step") = time_idx + 1;
 
         libMesh::out << "Setting boundary conditions..." << std::endl;
         if (pointData == nullptr)
         {
             libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
         }
-        NodalBCConstraint node_dof_constraints(system, pointData, time_idx + 1);
+        NodalBCConstraint node_dof_constraints(system, pointData, equation_systems.parameters.get<Real>("time_step"));
         system.attach_constraint_object(node_dof_constraints);
         system.reinit_constraints();
         // A pretty update message
-        libMesh::out << " Solving time step ";
+        libMesh::out << "Solving time step ";
 
         // Do fancy zero-padded formatting of the current time.
         {
@@ -291,7 +300,7 @@ int main(int argc, char **argv)
 
             out << std::setw(2)
                 << std::right
-                << t_step
+                << time_idx + 1
                 << ", time="
                 << std::fixed
                 << std::setw(6)
@@ -322,7 +331,7 @@ int main(int argc, char **argv)
         else
             compute_magnetic_field_static_3D(equation_systems);
 
-        output_path.replace_filename(output_path.stem().string() + "_out_" + std::to_string(time_idx + 1) s + output_path.extension().string());
+        output_path.replace_filename(output_path.stem().string() + "_out_" + std::to_string(time_idx + 1) + output_path.extension().string());
         // Write the results
         vtkio.write_equation_systems(output_path, equation_systems);
     }

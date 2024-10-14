@@ -18,11 +18,12 @@ void NodalBCConstraint::constrain()
 
     // Retrieve the system by name
     const MeshBase &mesh = _sys.get_mesh();
-    vtkDataArray *A_Array = _pointData->GetArray("A_" + std::to_string(_time_step));
+    std::string array_name = "A_" + std::to_string(_time_step);
+    vtkDataArray *A_Array = _pointData->GetArray(array_name.c_str());
     if (!A_Array)
     {
         // Handle the case where the "Az" array does not exist
-        libmesh_error_msg("Error: 'A' array not found in vtkPointData.");
+        libmesh_error_msg("Error: Boundary Conditions array not found in vtkPointData.");
     }
     for (const auto &node : mesh.local_node_ptr_range())
     {

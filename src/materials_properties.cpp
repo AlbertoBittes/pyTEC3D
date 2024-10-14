@@ -6,8 +6,6 @@
 #include <limits> // for std::numeric_limits
 #include "materials_properties.h"
 
-typedef std::unordered_map<int, MaterialsProperties> MaterialsMap;
-
 MaterialsMap readMaterialsProperties(const std::string &filename)
 {
     std::unordered_map<int, MaterialsProperties> materials;

@@ -15,7 +15,9 @@ struct MaterialsProperties
     Real perx, pery, perz;
 };
 
+typedef std::unordered_map<int, MaterialsProperties> MaterialsMap;
+
 // Function to read material properties from a CSV file
-std::unordered_map<int, MaterialsProperties> readMaterialsProperties(const std::string &filename);
+MaterialsMap readMaterialsProperties(const std::string &filename);
 
 #endif // MATERIAL_PROPERTIES_H
