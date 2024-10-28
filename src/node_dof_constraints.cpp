@@ -23,7 +23,14 @@ void NodalBCConstraint::constrain()
     if (!A_Array)
     {
         // Handle the case where the "Az" array does not exist
-        libmesh_error_msg("Error: Boundary Conditions array not found in vtkPointData.");
+        libmesh_error_msg("Error: A Boundary Conditions array not found in vtkPointData.");
+    }
+    array_name = "V_" + std::to_string(_time_step);
+    vtkDataArray *V_Array = _pointData->GetArray(array_name.c_str());
+    if (!V_Array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: V Boundary Conditions array not found in vtkPointData.");
     }
     for (const auto &node : mesh.local_node_ptr_range())
     {
@@ -38,14 +45,22 @@ void NodalBCConstraint::constrain()
         {
             // Get the scalar value corresponding to node->id()
             double az_bc = A_Array->GetComponent(node->id(), 0);
+            double v_bc = V_Array->GetComponent(node->id(), 0);
             // Now you can use the variable val as needed
             // Check if val is NaN
             if (!std::isnan(az_bc))
             {
                 // Apply the row constraint
-                dof_id_type dof_id = node->dof_number(_sys.number(), 0, 0);
+                dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
                 DofConstraintRow constraint_row;
                 _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, az_bc, false);
+            }
+            if (!std::isnan(v_bc))
+            {
+                // Apply the row constraint
+                dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("V"), 0);
+                DofConstraintRow constraint_row;
+                _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, v_bc, false);
             }
         }
         else if (_dim == 3)
@@ -54,26 +69,34 @@ void NodalBCConstraint::constrain()
             double ax_bc = A_Array->GetComponent(node->id(), 0);
             double ay_bc = A_Array->GetComponent(node->id(), 1);
             double az_bc = A_Array->GetComponent(node->id(), 2);
+            double v_bc = V_Array->GetComponent(node->id(), 0);
             // Now you can use the variables val0, val1, and val2 as needed
             // Apply the row constraint for each component
 
             if (!std::isnan(ax_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ax = node->dof_number(_sys.number(), 0, 0);
+                dof_id_type dof_id_ax = node->dof_number(_sys.number(), _sys.variable_number("AX"), 0);
                 _sys.get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
             }
             if (!std::isnan(ay_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ay = node->dof_number(_sys.number(), 0, 1);
+                dof_id_type dof_id_ay = node->dof_number(_sys.number(), _sys.variable_number("AY"), 0);
                 _sys.get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
             }
             if (!std::isnan(az_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_az = node->dof_number(_sys.number(), 0, 2);
+                dof_id_type dof_id_az = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
                 _sys.get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc, false);
+            }
+            if (!std::isnan(v_bc))
+            {
+                // Apply the row constraint
+                dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("V"), 0);
+                DofConstraintRow constraint_row;
+                _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, v_bc, false);
             }
         }
     }

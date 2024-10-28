@@ -122,12 +122,11 @@ void AssemblerLinear::assemble()
     // References to velocity-pressure coupling blocks
     DenseSubMatrix<Number> B[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
     DenseSubMatrix<Number> BT[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
-
+    DenseSubMatrix<Number> X(Ke);
     // This vector will hold the degree of freedom indices for
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
     std::vector<dof_id_type> dof_indices;
-    std::vector<std::vector<dof_id_type>> dof_indices_var(4);
 
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
@@ -342,8 +341,120 @@ void AssemblerLinear::assemble()
 }
 
 // Temporary placeholder for build_solid97_cond
-void AssemblerLinear::build_solid97_cond()
+void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
+                                         DenseSubMatrix<Number> **K_cond, DenseSubVector<Number> *F_cond,
+                                         DenseSubMatrix<Number> *B, DenseSubMatrix<Number> *BT,
+                                         DenseSubMatrix<Number> X, std::vector<std::vector<double>> &sigma_matrix,
+                                         const Elem *elem, const std::vector<dof_id_type> &dof_indices,
+                                         const DofMap &dof_map, dof_id_type el_id, TransientLinearImplicitSystem &system,
+                                         QGauss &qrule, const std::vector<std::vector<Real>> &phi,
+                                         const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
+                                         PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
+                                         unsigned int n_dofs, Real dt)
 {
+    // Numeric ids corresponding to each variable in the system
+    // const unsigned int ax_var = system.variable_number("AX");
+    // const unsigned int ay_var = system.variable_number("AY");
+    // const unsigned int az_var = system.variable_number("AZ");
+    const unsigned int num_vars = 4;
+    std::vector<std::vector<dof_id_type>> dof_indices_var(num_vars);
+    // std::vector<dof_id_type> dof_indices_ax;
+    // std::vector<dof_id_type> dof_indices_ay;
+    // std::vector<dof_id_type> dof_indices_az;
+    // dof_map.dof_indices(elem, dof_indices_ax, ax_var);
+    // dof_map.dof_indices(elem, dof_indices_ay, ay_var);
+    // dof_map.dof_indices(elem, dof_indices_az, az_var);
+    // const unsigned int n_ax_dofs = dof_indices_ax.size();
+    // const unsigned int n_ay_dofs = dof_indices_ay.size();
+    // const unsigned int n_az_dofs = dof_indices_az.size();
+
+    for (unsigned int var = 0; var < num_vars; var++)
+        dof_map.dof_indices(elem, dof_indices_var[var], var);
+
+    const unsigned int n_var_dofs = dof_indices_var[0].size();
+
+    for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
+        for (unsigned int var_j = 0; var_j < num_vars - 1; var_j++)
+            K_cond[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+
+    for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
+    {
+        B[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+        BT[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+    }
+    for (unsigned int var = 0; var < num_vars; var++)
+        F_cond[var].reposition(var * n_var_dofs, n_var_dofs);
+
+    X.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    perf_log.push("Ke");
+    Real CAv;
+    Real Cvv;
+    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+    {
+        NumberVectorValue U_old;
+        for (unsigned int k = 0; k < num_vars; k++)
+            for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+            {
+                U_old(k) += phi[dof_i][qp] * system.old_solution(dof_indices_var[k][dof_i]);
+            }
+        Real js[3];
+        jsArray->GetTuple(el_id, js);
+        // Here check that js is 0
+
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
+                for (unsigned int k = 0; k < 3; k++)
+                {
+                    CAv = JxW[qp] / dt * sigma_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k); // Not sure
+                    B[k](dof_i, dof_j) += CAv;
+                    BT[k](dof_j, dof_i) += CAv;
+                    Cvv = JxW[qp] * dphi[dof_i][qp](k) * sigma_matrix[k][k] * dphi[dof_j][qp](k);
+                    X(dof_i, dof_j) += Cvv;
+                    for (unsigned int l = 0; l < 3; l++)
+                        K_cond[k][l](dof_i, dof_j) += JxW[qp] *
+                                                      (1 / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
+                                                           ((dphi[dof_i][qp] * dphi[dof_j][qp])) +
+                                                       1 / dt * sigma_matrix[k][k] *
+                                                           (phi[dof_i][qp] * phi[dof_j][qp]));
+                }
+
+        // Now we will build the element matrix.  This involves
+        // a double loop to integrate the test functions (i) against
+        // the trial functions (j).
+        //
+        // We have split the numeric integration into two loops
+        // so that we can log the matrix and right-hand-side
+        // computation separately.
+        //
+
+        // Stop logging the matrix computation
+        perf_log.pop("Ke");
+
+        // Now we build the element right-hand-side contribution.
+        // This involves a single loop in which we integrate the
+        // "forcing function" in the PDE against the test functions.
+        //
+        // Start logging the right-hand-side computation
+        perf_log.push("Fe");
+        // Retrieve the tuple values
+        for (unsigned int k = 0; k < num_vars; k++)
+            for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+            {
+                F_cond[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
+            }
+
+        // Stop logging the right-hand-side computation
+        perf_log.pop("Fe");
+    }
     libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
@@ -355,32 +466,36 @@ void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number>
                                     QGauss &qrule, const std::vector<std::vector<Real>> &phi,
                                     const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
                                     PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                                    unsigned int n_dofs, std::vector<std::vector<dof_id_type>> &dof_indices_var)
+                                    unsigned int n_dofs)
 {
     // Numeric ids corresponding to each variable in the system
-    const unsigned int ax_var = system.variable_number("AX");
-    const unsigned int ay_var = system.variable_number("AY");
-    const unsigned int az_var = system.variable_number("AZ");
+    // const unsigned int ax_var = system.variable_number("AX");
+    // const unsigned int ay_var = system.variable_number("AY");
+    // const unsigned int az_var = system.variable_number("AZ");
+    const unsigned int num_vars = 3;
+    std::vector<std::vector<dof_id_type>> dof_indices_var(num_vars);
+    // std::vector<dof_id_type> dof_indices_ax;
+    // std::vector<dof_id_type> dof_indices_ay;
+    // std::vector<dof_id_type> dof_indices_az;
+    // dof_map.dof_indices(elem, dof_indices_ax, ax_var);
+    // dof_map.dof_indices(elem, dof_indices_ay, ay_var);
+    // dof_map.dof_indices(elem, dof_indices_az, az_var);
+    // const unsigned int n_ax_dofs = dof_indices_ax.size();
+    // const unsigned int n_ay_dofs = dof_indices_ay.size();
+    // const unsigned int n_az_dofs = dof_indices_az.size();
+
+    for (unsigned int var = 0; var < num_vars; var++)
+        dof_map.dof_indices(elem, dof_indices_var[var], var);
 
     const unsigned int n_var_dofs = dof_indices_var[0].size();
 
-    for (unsigned int var = 0; var < 3; var++)
-        dof_map.dof_indices(elem, dof_indices_var[var], var);
-
-    Ke.resize(n_dofs, n_dofs);
-    for (unsigned int var_i = 0; var_i < 3; var_i++)
-        for (unsigned int var_j = 0; var_j < 3; var_j++)
+    for (unsigned int var_i = 0; var_i < num_vars; var_i++)
+        for (unsigned int var_j = 0; var_j < num_vars; var_j++)
             K_no_cond[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
 
-    Fe.resize(n_dofs);
-    for (unsigned int var = 0; var < 3; var++)
+    for (unsigned int var = 0; var < num_vars; var++)
         F_no_cond[var].reposition(var * n_var_dofs, n_var_dofs);
 
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    perf_log.pop("elem init");
-
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -389,52 +504,48 @@ void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number>
     // so that we can log the matrix and right-hand-side
     // computation separately.
     //
-    // Now start logging the element matrix computation
-    perf_log.push("Ke");
-
-    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
-        for (unsigned int i = 0; i != n_dofs; i++)
-            for (unsigned int j = 0; j != n_dofs; j++)
-                Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]);
-
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    perf_log.push("Ke");
-
-    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
-        for (unsigned int i = 0; i != n_dofs; i++)
-            for (unsigned int j = 0; j != n_dofs; j++)
-                Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]);
-
-    // Stop logging the matrix computation
-    perf_log.pop("Ke");
-
-    // Now we build the element right-hand-side contribution.
-    // This involves a single loop in which we integrate the
-    // "forcing function" in the PDE against the test functions.
-    //
-    // Start logging the right-hand-side computation
-    perf_log.push("Fe");
-
-    Real js = jsArray->GetTuple1(el_id);
 
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
+        // Now start logging the element matrix computation
+        perf_log.push("Ke");
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
+                for (unsigned int k = 0; k < num_vars; k++)
+                    for (unsigned int l = 0; l < num_vars; l++)
+                        K_no_cond[k][l](dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / (4 * libMesh::pi * 1e-7 * mu_matrix[i][i]);
+
+        // Now we will build the element matrix.  This involves
+        // a double loop to integrate the test functions (i) against
+        // the trial functions (j).
+        //
+        // We have split the numeric integration into two loops
+        // so that we can log the matrix and right-hand-side
+        // computation separately.
+        //
+
+        // Stop logging the matrix computation
+        perf_log.pop("Ke");
+
+        // Now we build the element right-hand-side contribution.
+        // This involves a single loop in which we integrate the
+        // "forcing function" in the PDE against the test functions.
+        //
+        // Start logging the right-hand-side computation
+        perf_log.push("Fe");
+        // Retrieve the tuple values
+        Real js[3];
+        jsArray->GetTuple(el_id, js);
+
         // Add the RHS contribution
         // Check this, mu_matrix should be put in the Ke, and requires some attention, this is temporary
-        for (unsigned int i = 0; i != n_dofs; i++)
-            Fe(i) += JxW[qp] * js * phi[i][qp] * 4 * libMesh::pi * 1e-7 * mu_matrix[i][i];
-    }
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            for (unsigned int i = 0; i != num_vars; i++)
+                F_no_cond[i](dof_i) += JxW[qp] * js[i] * phi[i][qp];
 
-    // Stop logging the right-hand-side computation
-    perf_log.pop("Fe");
+        // Stop logging the right-hand-side computation
+        perf_log.pop("Fe");
+    }
 }
 
 // Temporary placeholder for build_solid236
