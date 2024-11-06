@@ -26,6 +26,11 @@ public:
 
     virtual ~NodalBCConstraint() {}
 
+    void setTimeStep(unsigned int timeStep)
+    {
+        _time_step = timeStep;
+    }
+
     void constrain();
 };
 

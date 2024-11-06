@@ -1,7 +1,7 @@
 {
     "Mesh Input Section": {
       "mesh_filepath": null,
-      "materials_filepath": null,
+      "materials_filepath": null
     },
     "Finite Elements Settings": {
       "APEC_algorithm": false,
@@ -15,7 +15,8 @@
       "transient_analysis": true,
       "time_steps": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
       "equilibrium_step": true,
-      "kbc": "step"
+      "kbc": "step",
+      "time_dependent_bc": false
     },
     "APEC Settings": {
       "APEC_iterations": 50
@@ -25,6 +26,6 @@
       "preconditioner": null
     },
     "Output": {
-      "output_filepath": null
+      "output_folderpath": null
     }
 }

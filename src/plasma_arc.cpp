@@ -96,6 +96,17 @@ int main(int argc, char **argv)
     Session session(argv[1]);
 
     std::string mesh_filepath = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+
+    std::string output_folderpath;
+    if (session.config["Output Section"]["output_filepath"].is_null())
+    {
+        output_folderpath = std::filesystem::path(mesh_filepath).parent_path().string();
+    }
+    else
+    {
+        output_folderpath = session.config["Output Section"]["output_filepath"].get<std::string>();
+    }
+
     std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
@@ -110,11 +121,8 @@ int main(int argc, char **argv)
         vtkio.read(mesh_filepath);
 
     MeshCommunication().broadcast(mesh);
+
     vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
-
-    libMesh::out << "Preparing Mesh..." << std::endl;
-
-    unsigned char dim = 0;
 
     // This is needed because of wron libMesh function when reading dimensions
     // Ask if they plan to fix it
@@ -122,6 +130,8 @@ int main(int argc, char **argv)
     //     Hmm... I think if you do it this way, the file is opened and read from simultaneously on all N cores, which is probably not great for the filesystem. Can you try wrapping the mesh.read() line in if (comm().rank() == 0), and then, on all processors call
 
     // MeshCommunication().broadcast(mesh);
+    libMesh::out << "Checking mesh dimensions..." << std::endl;
+    unsigned char dim = 0;
     double bounds[6];
     vtkGrid->GetBounds(bounds);
     // Check x-dimension
@@ -143,8 +153,11 @@ int main(int argc, char **argv)
     }
 
     mesh.set_spatial_dimension(dim);
+
+    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
 
+    libMesh::out << "Reading loads data..." << std::endl;
     vtkCellData *cellData = vtkGrid->GetCellData();
     if (cellData == nullptr)
     {
@@ -152,6 +165,7 @@ int main(int argc, char **argv)
     }
 
     // Here I read material properties and assign conductive and non-conductive subdomains
+    libMesh::out << "Reading materials properties..." << std::endl;
     vtkDataArray *matArray = cellData->GetArray("ansys_material_type");
     if (matArray == nullptr)
     {
@@ -199,16 +213,20 @@ int main(int argc, char **argv)
     // Print information about the system to the screen.
     equation_systems.print_info();
 
-    // setup transient options
-    libMesh::out << "Setting up transient options..." << std::endl;
+    // Setup transient options
+    libMesh::out << "Setting up transient analysis options..." << std::endl;
+    // Initializing variables for transient analysis options
     std::vector<Real> time_steps;
     Real dt;
-    bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
     bool compute_equilibrium_first_step = false;
+    bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    bool time_dependent_bc = session.config["Transient Analysis Settings"]["time_dependent_bc"].get<bool>();
     // Extract the time_steps array
     if (transient)
     {
+        // Check if the user wants to compute the equilibrium first step
         compute_equilibrium_first_step = session.config["Transient Analysis Settings"]["equilibrium_step"].get<bool>();
+        // Extract the time_steps array
         if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("time_steps"))
         {
             time_steps = session.config["Transient Analysis Settings"]["time_steps"].get<std::vector<Real>>();
@@ -230,45 +248,73 @@ int main(int argc, char **argv)
             }
         }
         // The list of time steps doesn't include the initial time, t=0 always is assumed
-        // A static initial step may be required by the user however
+        // A static initial step may be required by the user however to get equilibrium
         system.time = 0;
         dt = time_steps[0];
     }
     else
     {
+        // For static analysis, we set the time to 0
         system.time = 0;
     }
 
+    // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
+    libMesh::out << "Reading boundary conditions data..." << std::endl;
     vtkPointData *pointData = vtkGrid->GetPointData();
     if (pointData == nullptr)
     {
         libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
     }
-    // Use filesystem to modify the basename
-    std::filesystem::path output_path(mesh_filepath);
 
+    libMesh::out << "Setting output path..." << std::endl;
+    // Use filesystem to modify the basename
+    std::filesystem::path output_path(output_folderpath);
+    std::filesystem::path mesh_path(mesh_filepath);
+    std::filesystem::path final_output_path;
+    std::string mesh_filename_without_extension = mesh_path.stem().string();
+    std::string output_filename;
+
+    // Assign boundary conditions
+    libMesh::out << "Setting boundary conditions object..." << std::endl;
+    NodalBCConstraint node_dof_constraints(system, pointData, 0);
+    system.attach_constraint_object(node_dof_constraints);
+
+    libMesh::out << "Check for equilibrium first steo..." << std::endl;
+    // Compute first step for equilibrium or static analysis
     if (!transient || compute_equilibrium_first_step)
     {
+        if (compute_equilibrium_first_step)
+        {
+            libMesh::out << "Computing equilibrium first step..." << std::endl;
+        }
+        else
+        {
+            libMesh::out << "Computing static analysis..." << std::endl;
+        }
         equation_systems.parameters.set<Real>("time_factor") = 0;
         equation_systems.parameters.set<Real>("time_step") = 0;
 
-        // Assign boundary conditions
-        libMesh::out << "Setting boundary conditions..." << std::endl;
-        NodalBCConstraint node_dof_constraints(system, pointData, 0);
-        system.attach_constraint_object(node_dof_constraints);
+        libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
+        // This will reinitialize the constraints for the system
         system.reinit_constraints();
 
         // Build the K matrix, the RHS F and Solve the system Kx=F
+        libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();
 
+        libMesh::out << "Computing derived quantities..." << std::endl;
+        // Call the function to compute the magnetic field
         if (dim == 2)
             compute_magnetic_field_static_2D(equation_systems);
         else
             compute_magnetic_field_static_3D(equation_systems);
 
-        output_path.replace_filename(output_path.stem().string() + "_out_0" + output_path.extension().string());
+        libMesh::out << "Writing results..." << std::endl;
+        // Construct the output file path
+        output_filename = mesh_filename_without_extension + "_out_0";
+        final_output_path = output_path / output_filename;
         // Write the results
-        vtkio.write_equation_systems(output_path, equation_systems);
+        vtkio.write_equation_systems(final_output_path, equation_systems);
     }
 
     for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
@@ -277,20 +323,10 @@ int main(int argc, char **argv)
         // time step size as parameters in the EquationSystem.
         dt = time_steps[time_idx] - system.time;
         system.time = time_steps[time_idx];
-
         equation_systems.parameters.set<Real>("time") = system.time;
         equation_systems.parameters.set<Real>("dt") = dt;
         equation_systems.parameters.set<Real>("time_factor") = 1;
         equation_systems.parameters.set<Real>("time_step") = time_idx + 1;
-
-        libMesh::out << "Setting boundary conditions..." << std::endl;
-        if (pointData == nullptr)
-        {
-            libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
-        }
-        NodalBCConstraint node_dof_constraints(system, pointData, equation_systems.parameters.get<Real>("time_step"));
-        system.attach_constraint_object(node_dof_constraints);
-        system.reinit_constraints();
         // A pretty update message
         libMesh::out << "Solving time step ";
 
@@ -311,7 +347,12 @@ int main(int argc, char **argv)
                 << "...";
 
             libMesh::out << out.str() << std::endl;
+            libMesh::out << "Time increment: " << dt << std::endl;
         }
+
+        libMesh::out << "Setting boundary conditions..." << std::endl;
+        node_dof_constraints.setTimeStep(time_idx);
+        system.reinit_constraints();
 
         // At this point we need to update the old
         // solution vector.  The old solution vector
@@ -321,19 +362,24 @@ int main(int argc, char **argv)
         // vector assignment. Since only TransientSystems
         // (and systems derived from them) contain old solutions
         // we need to specify the system type when we ask for it.
+        libMesh::out << "Updating old solution..." << std::endl;
         *system.old_local_solution = *system.current_local_solution;
 
         // Assemble & solve the linear system
+        libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();
 
+        libMesh::out << "Computing derived quantities..." << std::endl;
         if (dim == 2)
             compute_magnetic_field_static_2D(equation_systems);
         else
             compute_magnetic_field_static_3D(equation_systems);
 
-        output_path.replace_filename(output_path.stem().string() + "_out_" + std::to_string(time_idx + 1) + output_path.extension().string());
+        libMesh::out << "Writing results..." << std::endl;
+        output_filename = mesh_filename_without_extension + "_out_" + std::to_string(time_idx + 1);
+        final_output_path = output_path / output_filename;
         // Write the results
-        vtkio.write_equation_systems(output_path, equation_systems);
+        vtkio.write_equation_systems(final_output_path, equation_systems);
     }
     // All done.
     return 0;

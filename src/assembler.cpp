@@ -107,6 +107,7 @@ void AssemblerLinear::assemble()
     // basic finite element terminology we will denote these
     // "Ke" and "Fe". More detail is in example 3.
     DenseMatrix<Number> Ke;
+    DenseMatrix<Number> Ce;
     DenseVector<Number> Fe;
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
@@ -115,14 +116,24 @@ void AssemblerLinear::assemble()
     DenseSubVector<Number> F[4] = {DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe)};
 
     // References to velocity-velocity coupling blocks
-    DenseSubMatrix<Number> K[3][3] = {{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-                                      {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-                                      {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)}};
+    DenseSubMatrix<Number> KAA[3][3] = {{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
+                                        {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
+                                        {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)}};
 
     // References to velocity-pressure coupling blocks
-    DenseSubMatrix<Number> B[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
-    DenseSubMatrix<Number> BT[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
-    DenseSubMatrix<Number> X(Ke);
+    DenseSubMatrix<Number> KAV[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
+    DenseSubMatrix<Number> KVA[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
+    DenseSubMatrix<Number> KVV(Ke);
+
+    // References to velocity-velocity coupling blocks
+    DenseSubMatrix<Number> CAA[3][3] = {{DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
+                                        {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
+                                        {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)}};
+
+    // References to velocity-pressure coupling blocks
+    DenseSubMatrix<Number> CAV[3] = {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)};
+    DenseSubMatrix<Number> CVA[3] = {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)};
+    DenseSubMatrix<Number> CVV(Ce);
     // This vector will hold the degree of freedom indices for
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
@@ -193,6 +204,8 @@ void AssemblerLinear::assemble()
         libmesh_assert_equal_to(n_dofs, phi.size());
 
         Ke.resize(n_dofs, n_dofs);
+
+        Ce.resize(n_dofs, n_dofs);
 
         Fe.resize(n_dofs);
 
@@ -342,15 +355,18 @@ void AssemblerLinear::assemble()
 
 // Temporary placeholder for build_solid97_cond
 void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
-                                         DenseSubMatrix<Number> **K_cond, DenseSubVector<Number> *F_cond,
-                                         DenseSubMatrix<Number> *B, DenseSubMatrix<Number> *BT,
-                                         DenseSubMatrix<Number> X, std::vector<std::vector<double>> &sigma_matrix,
+                                         DenseMatrix<Number> &Ce,
+                                         DenseSubMatrix<Number> **KAA, DenseSubVector<Number> *F,
+                                         DenseSubMatrix<Number> *KAV, DenseSubMatrix<Number> *KVA,
+                                         DenseSubMatrix<Number> KVV, DenseSubMatrix<Number> **CAA,
+                                         DenseSubMatrix<Number> *CAV, DenseSubMatrix<Number> *CVA,
+                                         DenseSubMatrix<Number> CVV, std::vector<std::vector<double>> &sigma_matrix,
                                          const Elem *elem, const std::vector<dof_id_type> &dof_indices,
                                          const DofMap &dof_map, dof_id_type el_id, TransientLinearImplicitSystem &system,
                                          QGauss &qrule, const std::vector<std::vector<Real>> &phi,
                                          const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
                                          PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                                         unsigned int n_dofs, Real dt)
+                                         unsigned int n_dofs, Real dt, bool time_factor)
 {
     // Numeric ids corresponding to each variable in the system
     // const unsigned int ax_var = system.variable_number("AX");
@@ -375,17 +391,23 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
 
     for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
         for (unsigned int var_j = 0; var_j < num_vars - 1; var_j++)
-            K_cond[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+        {
+            KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+            CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+        }
 
     for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
     {
-        B[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
-        BT[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+        KAV[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+        KVA[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+        CAV[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+        CVA[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
     }
     for (unsigned int var = 0; var < num_vars; var++)
-        F_cond[var].reposition(var * n_var_dofs, n_var_dofs);
+        F[var].reposition(var * n_var_dofs, n_var_dofs);
 
-    X.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+    KVV.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
+    CVV.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -396,37 +418,40 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
     //
     // Now start logging the element matrix computation
     perf_log.push("Ke");
-    Real CAv;
-    Real Cvv;
+    Real CAV_value;
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
-        NumberVectorValue U_old;
-        for (unsigned int k = 0; k < num_vars; k++)
-            for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
-            {
-                U_old(k) += phi[dof_i][qp] * system.old_solution(dof_indices_var[k][dof_i]);
-            }
-        Real js[3];
-        jsArray->GetTuple(el_id, js);
-        // Here check that js is 0
+        // Real js[3];
+        // jsArray->GetTuple(el_id, js);
+        // // Here check that js is 0
 
         for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
                 for (unsigned int k = 0; k < 3; k++)
                 {
-                    CAv = JxW[qp] / dt * sigma_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k); // Not sure
-                    B[k](dof_i, dof_j) += CAv;
-                    BT[k](dof_j, dof_i) += CAv;
-                    Cvv = JxW[qp] * dphi[dof_i][qp](k) * sigma_matrix[k][k] * dphi[dof_j][qp](k);
-                    X(dof_i, dof_j) += Cvv;
+                    // Here you will put the time factor as well
+                    CAV_value = JxW[qp] * sigma_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k); // Not sure
+                    CAV[k](dof_i, dof_j) += CAV_value;
+                    CVA[k](dof_j, dof_i) += CAV_value;
+                    CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) * sigma_matrix[k][k] * dphi[dof_j][qp](k);
                     for (unsigned int l = 0; l < 3; l++)
-                        K_cond[k][l](dof_i, dof_j) += JxW[qp] *
-                                                      (1 / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
-                                                           ((dphi[dof_i][qp] * dphi[dof_j][qp])) +
-                                                       1 / dt * sigma_matrix[k][k] *
-                                                           (phi[dof_i][qp] * phi[dof_j][qp]));
+                    {
+                        KAA[k][l](dof_i, dof_j) += JxW[qp] / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
+                                                   (dphi[dof_i][qp] * dphi[dof_j][qp]);
+                        CAA[k][l](dof_i, dof_j) += JxW[qp] * sigma_matrix[k][k] *
+                                                   (phi[dof_i][qp] * phi[dof_j][qp]);
+                    }
                 }
-
+        // Ce.scale(1 / dt);
+        // Ke += Ce;
+        // NumberVectorValue U_old;
+        // for (unsigned int k = 0; k < num_vars; k++)
+        // {
+        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+        //     {
+        //         U_old(k) += phi[dof_i][qp] * system.old_solution(dof_indices_var[k][dof_i]);
+        //     }
+        // }
         // Now we will build the element matrix.  This involves
         // a double loop to integrate the test functions (i) against
         // the trial functions (j).
@@ -444,16 +469,16 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
         // "forcing function" in the PDE against the test functions.
         //
         // Start logging the right-hand-side computation
-        perf_log.push("Fe");
-        // Retrieve the tuple values
-        for (unsigned int k = 0; k < num_vars; k++)
-            for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
-            {
-                F_cond[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
-            }
+        // perf_log.push("Fe");
+        // // Retrieve the tuple values
+        // for (unsigned int k = 0; k < num_vars; k++)
+        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+        //     {
+        //         F[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
+        //     }
 
-        // Stop logging the right-hand-side computation
-        perf_log.pop("Fe");
+        // // Stop logging the right-hand-side computation
+        // perf_log.pop("Fe");
     }
     libmesh_error_msg("build_solid97 is not implemented yet.");
 }
