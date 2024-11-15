@@ -20,6 +20,7 @@ using namespace libMesh;
 
 void SystemBuilder::createSystem()
 {
+    libMesh::out << "Checking system options..." << std::endl;
     transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
     ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
     fe_family = config["Finite Elements Settings"]["fe_family"].get<std::string>();
@@ -52,6 +53,8 @@ void SystemBuilder::createSystem()
     {
         libmesh_error_msg("Error: formulation must be 'AV' or 'Hphi'.");
     }
+
+    libMesh::out << "Creating system..." << std::endl;
     if (ferromagnetic)
     {
         system_name = "NonlinearTransient";
@@ -60,7 +63,7 @@ void SystemBuilder::createSystem()
     }
     else
     {
-        system_name = "LinearTransient";
+        system_name = "PlasmaArcLinearSystem";
         // Add TransientLinearImplicitSystem as System and return its pointer
         equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
     }

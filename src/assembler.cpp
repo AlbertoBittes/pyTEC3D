@@ -62,7 +62,7 @@ void AssemblerLinear::assemble()
     const MeshBase &mesh = eq_sys.get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("LinearTransient");
+    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers

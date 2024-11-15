@@ -18,20 +18,6 @@
 // <h1>Introduction Example 1 - Creation of a Mesh Object</h1>
 // \author Benjamin S. Kirk
 // \date 2003
-//
-// This is the fourth example program.  It builds on
-// the third example program by showing how to formulate
-// the code in a dimension-independent way.  Very minor
-// changes to the example will allow the problem to be
-// solved in one, two or three dimensions.
-//
-// This example will also introduce the PerfLog class
-// as a way to monitor your code's performance.  We will
-// use it to instrument the matrix assembly code and look
-// for bottlenecks where we should focus optimization efforts.
-//
-// This example also shows how to extend example 3 to run in
-// parallel.  Notice how little has changed!
 
 // C++ include files that we need
 #include <algorithm>
@@ -56,6 +42,7 @@
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
 #include "../include/compute_magnetic_field.h"
+#include "../include/materials_properties.h"
 #include "libmesh/transient_system.h"
 #include "libmesh/vtk_io.h"
 #include "libmesh/mesh_communication.h"
@@ -65,7 +52,6 @@
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
 #include <vtkSmartPointer.h>
-#include "../include/materials_properties.h"
 #include <iostream>
 
 using namespace libMesh;
@@ -205,7 +191,7 @@ int main(int argc, char **argv)
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
 
     // Get a reference to the system we want to solve
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("LinearTransient");
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
     // Initialize the data structures for the equation system.
     equation_systems.init();
@@ -351,8 +337,11 @@ int main(int argc, char **argv)
         }
 
         libMesh::out << "Setting boundary conditions..." << std::endl;
-        node_dof_constraints.setTimeStep(time_idx);
-        system.reinit_constraints();
+        if (time_dependent_bc)
+        {
+            node_dof_constraints.setTimeStep(time_idx);
+            system.reinit_constraints();
+        }
 
         // At this point we need to update the old
         // solution vector.  The old solution vector
