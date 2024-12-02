@@ -142,6 +142,7 @@ void AssemblerLinear::assemble()
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
 
+    std::vector<Real> old_solution_values;
     // You will have to fix this for transient problems
     std::string array_name = "Js_" + std::to_string(time_step);
     vtkDataArray *jsArray = cell_data->GetArray(array_name.c_str());
@@ -366,7 +367,7 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
                                          QGauss &qrule, const std::vector<std::vector<Real>> &phi,
                                          const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
                                          PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                                         unsigned int n_dofs, Real dt, bool time_factor)
+                                         unsigned int n_dofs, Real dt, bool time_factor, std::vector<Real> old_solution_values)
 {
     // Numeric ids corresponding to each variable in the system
     // const unsigned int ax_var = system.variable_number("AX");
@@ -374,6 +375,14 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
     // const unsigned int az_var = system.variable_number("AZ");
     const unsigned int num_vars = 4;
     std::vector<std::vector<dof_id_type>> dof_indices_var(num_vars);
+    // Create a single concatenated vector
+    std::vector<numeric_index_type> indexes_old_solution;
+
+    // Iterate through each inner vector and append its elements to the concatenated vector
+    for (const auto &inner_vector : dof_indices_var)
+    {
+        indexes_old_solution.insert(indexes_old_solution.end(), inner_vector.begin(), inner_vector.end());
+    }
     // std::vector<dof_id_type> dof_indices_ax;
     // std::vector<dof_id_type> dof_indices_ay;
     // std::vector<dof_id_type> dof_indices_az;
@@ -442,8 +451,10 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
                                                    (phi[dof_i][qp] * phi[dof_j][qp]);
                     }
                 }
-        // Ce.scale(1 / dt);
-        // Ke += Ce;
+        system.old_local_solution.get(dof_indices, old_solution_values);
+
+        Ce.scale(1 / dt);
+        Ke += Ce;
         // NumberVectorValue U_old;
         // for (unsigned int k = 0; k < num_vars; k++)
         // {
