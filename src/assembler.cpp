@@ -210,6 +210,8 @@ void AssemblerLinear::assemble()
 
         Fe.resize(n_dofs);
 
+        old_solution_values.resize(n_dofs);
+
         perf_log.pop("elem init");
         // Zero the element matrix and right-hand side before
         // summing them.  We use the resize member here because
@@ -355,19 +357,34 @@ void AssemblerLinear::assemble()
 }
 
 // Temporary placeholder for build_solid97_cond
-void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
+void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke,
+                                         DenseVector<Number> &Fe,
                                          DenseMatrix<Number> &Ce,
-                                         DenseSubMatrix<Number> **KAA, DenseSubVector<Number> *F,
-                                         DenseSubMatrix<Number> *KAV, DenseSubMatrix<Number> *KVA,
-                                         DenseSubMatrix<Number> KVV, DenseSubMatrix<Number> **CAA,
-                                         DenseSubMatrix<Number> *CAV, DenseSubMatrix<Number> *CVA,
-                                         DenseSubMatrix<Number> CVV, std::vector<std::vector<double>> &sigma_matrix,
-                                         const Elem *elem, const std::vector<dof_id_type> &dof_indices,
-                                         const DofMap &dof_map, dof_id_type el_id, TransientLinearImplicitSystem &system,
-                                         QGauss &qrule, const std::vector<std::vector<Real>> &phi,
-                                         const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
-                                         PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                                         unsigned int n_dofs, Real dt, bool time_factor, std::vector<Real> old_solution_values)
+                                         DenseSubMatrix<Number> **KAA,
+                                         DenseSubMatrix<Number> *KAV,
+                                         DenseSubMatrix<Number> *KVA,
+                                         DenseSubMatrix<Number> KVV,
+                                         DenseSubMatrix<Number> **CAA,
+                                         DenseSubMatrix<Number> *CAV,
+                                         DenseSubMatrix<Number> *CVA,
+                                         DenseSubMatrix<Number> CVV,
+                                         DenseSubVector<Number> *F,
+                                         const Elem *elem,
+                                         const std::vector<dof_id_type> &dof_indices,
+                                         const DofMap &dof_map,
+                                         dof_id_type el_id,
+                                         unsigned int n_dofs,
+                                         Real dt,
+                                         bool time_factor,
+                                         TransientLinearImplicitSystem &system,
+                                         QGauss &qrule,
+                                         const std::vector<std::vector<Real>> &phi,
+                                         const std::vector<std::vector<RealGradient>> &dphi,
+                                         const std::vector<Real> &JxW,
+                                         PerfLog &perf_log,
+                                         std::vector<std::vector<double>> &sigma_matrix,
+                                         std::vector<std::vector<double>> &mu_matrix,
+                                         std::vector<Real> old_solution_values)
 {
     // Numeric ids corresponding to each variable in the system
     // const unsigned int ax_var = system.variable_number("AX");
@@ -443,15 +460,11 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
                     CAV[k](dof_i, dof_j) += CAV_value;
                     CVA[k](dof_j, dof_i) += CAV_value;
                     CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) * sigma_matrix[k][k] * dphi[dof_j][qp](k);
-                    for (unsigned int l = 0; l < 3; l++)
-                    {
-                        KAA[k][l](dof_i, dof_j) += JxW[qp] / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
-                                                   (dphi[dof_i][qp] * dphi[dof_j][qp]);
-                        CAA[k][l](dof_i, dof_j) += JxW[qp] * sigma_matrix[k][k] *
-                                                   (phi[dof_i][qp] * phi[dof_j][qp]);
-                    }
+                    KAA[k][k](dof_i, dof_j) += JxW[qp] / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
+                                               (dphi[dof_i][qp] * dphi[dof_j][qp]);
+                    CAA[k][k](dof_i, dof_j) += JxW[qp] * sigma_matrix[k][k] *
+                                               (phi[dof_i][qp] * phi[dof_j][qp]);
                 }
-        system.old_local_solution.get(dof_indices, old_solution_values);
 
         Ce.scale(1 / dt);
         Ke += Ce;
@@ -480,29 +493,46 @@ void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke, DenseVector<Nu
         // "forcing function" in the PDE against the test functions.
         //
         // Start logging the right-hand-side computation
-        // perf_log.push("Fe");
+        perf_log.push("Fe");
         // // Retrieve the tuple values
         // for (unsigned int k = 0; k < num_vars; k++)
         //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
         //     {
         //         F[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
         //     }
+        system.old_local_solution->get(dof_indices, old_solution_values);
+
+        Ce.vector_mult(Fe, old_solution_values);
 
         // // Stop logging the right-hand-side computation
-        // perf_log.pop("Fe");
+        perf_log.pop("Fe");
     }
-    libmesh_error_msg("build_solid97 is not implemented yet.");
+    // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
 // Temporary placeholder for build_solid97
-void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
-                                    DenseSubMatrix<Number> **K_no_cond, DenseSubVector<Number> *F_no_cond,
-                                    const Elem *elem, const std::vector<dof_id_type> &dof_indices,
-                                    const DofMap &dof_map, dof_id_type el_id, System &system,
-                                    QGauss &qrule, const std::vector<std::vector<Real>> &phi,
-                                    const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
-                                    PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                                    unsigned int n_dofs)
+void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke,
+                                    DenseVector<Number> &Fe,
+                                    DenseMatrix<Number> &Ce,
+                                    DenseSubMatrix<Number> **KAA,
+                                    DenseSubVector<Number> *F,
+                                    const Elem *elem,
+                                    const std::vector<dof_id_type> &dof_indices,
+                                    const DofMap &dof_map,
+                                    dof_id_type el_id,
+                                    unsigned int n_dofs,
+                                    Real dt,
+                                    bool time_factor,
+                                    TransientLinearImplicitSystem &system,
+                                    QGauss &qrule,
+                                    const std::vector<std::vector<Real>> &phi,
+                                    const std::vector<std::vector<RealGradient>> &dphi,
+                                    const std::vector<Real> &JxW,
+                                    PerfLog &perf_log,
+                                    std::vector<std::vector<double>> &sigma_matrix,
+                                    std::vector<std::vector<double>> &mu_matrix,
+                                    vtkDataArray *jsArray,
+                                    std::vector<Real> old_solution_values)
 {
     // Numeric ids corresponding to each variable in the system
     // const unsigned int ax_var = system.variable_number("AX");
@@ -525,12 +555,14 @@ void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number>
 
     const unsigned int n_var_dofs = dof_indices_var[0].size();
 
-    for (unsigned int var_i = 0; var_i < num_vars; var_i++)
-        for (unsigned int var_j = 0; var_j < num_vars; var_j++)
-            K_no_cond[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+    for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
+        for (unsigned int var_j = 0; var_j < num_vars - 1; var_j++)
+        {
+            KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+        }
 
     for (unsigned int var = 0; var < num_vars; var++)
-        F_no_cond[var].reposition(var * n_var_dofs, n_var_dofs);
+        F[var].reposition(var * n_var_dofs, n_var_dofs);
 
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -540,17 +572,31 @@ void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number>
     // so that we can log the matrix and right-hand-side
     // computation separately.
     //
-
+    // Now start logging the element matrix computation
+    perf_log.push("Ke");
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
-        // Now start logging the element matrix computation
-        perf_log.push("Ke");
+        Real js[3];
+        jsArray->GetTuple(el_id, js);
+        // // Here check that js is 0
+
         for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
-                for (unsigned int k = 0; k < num_vars; k++)
-                    for (unsigned int l = 0; l < num_vars; l++)
-                        K_no_cond[k][l](dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / (4 * libMesh::pi * 1e-7 * mu_matrix[i][i]);
+                for (unsigned int k = 0; k < 3; k++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        KAA[k][l](dof_i, dof_j) += JxW[qp] / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
+                                                   (dphi[dof_i][qp] * dphi[dof_j][qp]);
 
+        Ce.scale(1 / dt);
+        Ke += Ce;
+        // NumberVectorValue U_old;
+        // for (unsigned int k = 0; k < num_vars; k++)
+        // {
+        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+        //     {
+        //         U_old(k) += phi[dof_i][qp] * system.old_solution(dof_indices_var[k][dof_i]);
+        //     }
+        // }
         // Now we will build the element matrix.  This involves
         // a double loop to integrate the test functions (i) against
         // the trial functions (j).
@@ -569,19 +615,20 @@ void AssemblerLinear::build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number>
         //
         // Start logging the right-hand-side computation
         perf_log.push("Fe");
-        // Retrieve the tuple values
-        Real js[3];
-        jsArray->GetTuple(el_id, js);
+        // // Retrieve the tuple values
+        // for (unsigned int k = 0; k < num_vars; k++)
+        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
+        //     {
+        //         F[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
+        //     }
+        system.old_local_solution->get(dof_indices, old_solution_values);
 
-        // Add the RHS contribution
-        // Check this, mu_matrix should be put in the Ke, and requires some attention, this is temporary
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
-            for (unsigned int i = 0; i != num_vars; i++)
-                F_no_cond[i](dof_i) += JxW[qp] * js[i] * phi[i][qp];
+        Ce.vector_mult(Fe, old_solution_values);
 
-        // Stop logging the right-hand-side computation
+        // // Stop logging the right-hand-side computation
         perf_log.pop("Fe");
     }
+    // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
 // Temporary placeholder for build_solid236
