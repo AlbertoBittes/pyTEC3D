@@ -56,7 +56,7 @@ private:
                                         const DofMap &dof_map, dof_id_type el_id,
                                         QGauss &qrule, const std::vector<std::vector<Real>> &phi,
                                         const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
-                                        PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix, unsigned int n_dofs);
+                                        PerfLog &perf_log, vtkDataArray *jsArray, Real mu, unsigned int n_dofs);
 
     void build_plane13_cond();
 };
