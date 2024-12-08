@@ -102,5 +102,6 @@ void SystemBuilder::setVariables()
     {
         libmesh_error_msg("not implemented");
     }
+    system.add_vector("bfe_loads_vector");
     // Add more conditions as needed for other combinations
 }

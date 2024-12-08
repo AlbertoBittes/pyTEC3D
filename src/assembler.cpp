@@ -143,9 +143,11 @@ void AssemblerLinear::assemble()
     SparseMatrix<Number> &matrix = system.get_system_matrix();
 
     std::vector<Real> old_solution_values;
+
     // You will have to fix this for transient problems
     std::string array_name = "Js_" + std::to_string(time_step);
     vtkDataArray *jsArray = cell_data->GetArray(array_name.c_str());
+
     array_name = "ansys_material_type";
     vtkDataArray *matArray = cell_data->GetArray(array_name.c_str());
     if (!jsArray)

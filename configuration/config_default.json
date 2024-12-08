@@ -8,15 +8,17 @@
       "formulation": "AV",
       "approx_order": "FIRST",
       "fe_family": "LAGRANGE",
-      "quadrature_order": 2,
+      "quadrature_order": null,
       "nonlinear_analysis_ferrom": false
     },
     "Transient Analysis Settings": {
+      "equilibrium_step": true,
       "transient_analysis": true,
       "time_steps": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
-      "equilibrium_step": true,
-      "kbc": "step",
-      "time_dependent_bc": false
+      "write_substeps_results": [false, false, false, false, false, false],
+      "number_of_substeps": [1, 1, 1, 1, 1, 1],
+      "transient_effects": [true, true, true, true, true, true],
+      "ramped_load": [true, true, true, true, true, true]
     },
     "APEC Settings": {
       "APEC_iterations": 50
