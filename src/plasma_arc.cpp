@@ -200,6 +200,8 @@ int main(int argc, char **argv)
     // Print information about the system to the screen.
     equation_systems.print_info();
 
+    equation_systems.parameters.set<MaterialsMap>("materials_properties") = materials;
+
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
@@ -208,7 +210,6 @@ int main(int argc, char **argv)
     std::vector<unsigned int> n_substeps;
     Real dt;
     Real dt_substep;
-    unsigned int n_substeps;
     unsigned int cumulative_n_substeps = 0;
     bool compute_equilibrium_first_step = false;
     bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
@@ -241,7 +242,7 @@ int main(int argc, char **argv)
         // Read the number of substeps from the config
         if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("number_of_substeps"))
         {
-            n_substeps = session.config["Transient Analysis Settings"]["number_of_substeps"].get<unsigned int>();
+            n_substeps = session.config["Transient Analysis Settings"]["number_of_substeps"].get<std::vector<unsigned int>>();
         }
         else
         {
@@ -277,7 +278,6 @@ int main(int argc, char **argv)
         // The list of time steps doesn't include the initial time, t=0 always is assumed
         // A static initial step may be required by the user however to get equilibrium
         system.time = 0;
-        n_substeps = session.config["Transient Analysis Settings"]["number_of_substeps"].get<int>();
     }
     else
     {
@@ -358,7 +358,6 @@ int main(int argc, char **argv)
     }
 
     equation_systems.parameters.set<Real>("time_factor") = 1;
-    equation_systems.parameters.set<Real>("n_substeps") = n_substeps;
 
     for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
     {
