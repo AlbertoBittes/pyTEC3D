@@ -35,30 +35,11 @@ private:
     int dim;
     nlohmann::json config;
     MaterialsMap &materials;
+    TimeStep &ts;
 
-    void build_solid97(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
-                       DenseSubMatrix<Number> &K_no_cond, DenseSubVector<Number> &F_no_cond,
-                       const Elem *elem, const std::vector<dof_id_type> &dof_indices,
-                       const DofMap &dof_map, dof_id_type el_id, System &system,
-                       QGauss &qrule, const std::vector<std::vector<Real>> &phi,
-                       const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
-                       PerfLog &perf_log, vtkDataArray *jsArray, std::vector<std::vector<double>> &mu_matrix,
-                       unsigned int n_dofs, std::vector<std::vector<dof_id_type>> &dof_indices_var);
+    void set_time_step(TimeStep &ts) { this->ts = ts; };
 
-    void build_solid97_cond();
-
-    void build_solid236();
-
-    void build_solid236_cond();
-
-    void AssemblerLinear::build_plane13(DenseMatrix<Number> &Ke, DenseVector<Number> &Fe,
-                                        const Elem *elem, const std::vector<dof_id_type> &dof_indices,
-                                        const DofMap &dof_map, dof_id_type el_id,
-                                        QGauss &qrule, const std::vector<std::vector<Real>> &phi,
-                                        const std::vector<std::vector<RealGradient>> &dphi, const std::vector<Real> &JxW,
-                                        PerfLog &perf_log, vtkDataArray *jsArray, Real mu, unsigned int n_dofs);
-
-    void build_plane13_cond();
+    TimeStep &get_time_step() { return ts; };
 };
 
 #endif // ASSEMBLER_H

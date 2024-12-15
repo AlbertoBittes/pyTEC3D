@@ -42,7 +42,8 @@
 #include "vtkDataArray.h"
 #include "../include/json.hpp"
 #include "../include/assembler.h"
-#include <map> // Include for std::map
+#include "../include/element_builder.h" // Include the header file for ElementBuilder
+#include <map>                          // Include for std::map
 #include <vtkCellData.h>
 
 using namespace libMesh;
@@ -71,7 +72,7 @@ void AssemblerLinear::assemble()
     const DofMap &dof_map = system.get_dof_map();
 
     // Get a constant reference to the Finite Element type
-    // for the first (and only) variable in the system.
+    // for the first variable in the system.
     FEType fe_type = dof_map.variable_type(0);
 
     // Build a Finite Element object of the specified type.  Since the
@@ -90,17 +91,17 @@ void AssemblerLinear::assemble()
     // will be used to assemble the linear system.
     // We begin with the element Jacobian * quadrature weight at each
     // integration point.
-    const std::vector<Real> &JxW = fe->get_JxW();
+    // const std::vector<Real> &JxW = fe->get_JxW();
 
-    // The element shape functions evaluated at the quadrature points.
-    const std::vector<std::vector<Real>> &phi = fe->get_phi();
+    // // The element shape functions evaluated at the quadrature points.
+    // const std::vector<std::vector<Real>> &phi = fe->get_phi();
 
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
-    const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
+    // // The element shape function gradients for the velocity
+    // // variables evaluated at the quadrature points.
+    // const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
 
-    const Real time_factor = eq_sys.parameters.get<Real>("time_factor");
-    const unsigned int time_step = eq_sys.parameters.get<unsigned int>("time_step");
+    // const Real time_factor = eq_sys.parameters.get<Real>("time_factor");
+    // const unsigned int time_step = eq_sys.parameters.get<unsigned int>("time_step");
 
     // Define data structures to contain the element matrix
     // and right-hand-side vector contribution.  Following
@@ -110,30 +111,12 @@ void AssemblerLinear::assemble()
     DenseMatrix<Number> Ce;
     DenseVector<Number> Fe;
 
+    ElementBuilder elem_builder(Ke, Ce, Fe, materials, fe, cell_data, ts, dof_map, qrule);
+
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
-    DenseSubVector<Number> F[4] = {DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe)};
 
-    // References to velocity-velocity coupling blocks
-    DenseSubMatrix<Number> KAA[3][3] = {{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-                                        {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-                                        {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)}};
-
-    // References to velocity-pressure coupling blocks
-    DenseSubMatrix<Number> KAV[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
-    DenseSubMatrix<Number> KVA[3] = {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)};
-    DenseSubMatrix<Number> KVV(Ke);
-
-    // References to velocity-velocity coupling blocks
-    DenseSubMatrix<Number> CAA[3][3] = {{DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
-                                        {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
-                                        {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)}};
-
-    // References to velocity-pressure coupling blocks
-    DenseSubMatrix<Number> CAV[3] = {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)};
-    DenseSubMatrix<Number> CVA[3] = {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)};
-    DenseSubMatrix<Number> CVV(Ce);
     // This vector will hold the degree of freedom indices for
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
@@ -142,18 +125,16 @@ void AssemblerLinear::assemble()
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
 
-    std::vector<Real> old_solution_values;
-
     // You will have to fix this for transient problems
-    std::string array_name = "Js_" + std::to_string(time_step);
-    vtkDataArray *jsArray = cell_data->GetArray(array_name.c_str());
-    array_name = "ansys_material_type";
-    vtkDataArray *matArray = cell_data->GetArray(array_name.c_str());
-    if (!jsArray)
-    {
-        // Get the value from the "Js" array using the element ID
-        libmesh_error_msg("Error: Js_" + std::to_string(time_step) + " array not found in vtkCellData.");
-    }
+    // std::string array_name = "Js_" + std::to_string(time_step);
+    // vtkDataArray *jsArray = cell_data->GetArray(array_name.c_str());
+    // array_name = "ansys_material_type";
+    // vtkDataArray *matArray = cell_data->GetArray(array_name.c_str());
+    // if (!jsArray)
+    // {
+    //     // Get the value from the "Js" array using the element ID
+    //     libmesh_error_msg("Error: Js_" + std::to_string(time_step) + " array not found in vtkCellData.");
+    // }
     // Now we will loop over all the elements in the mesh.
     // We will compute the element matrix and right-hand-side
     // contribution.  See example 3 for a discussion of the
@@ -187,20 +168,20 @@ void AssemblerLinear::assemble()
 
         const unsigned int subdomain_id = elem->subdomain_id();
 
-        dof_id_type el_id = elem->id();
+        dof_id_type elem_id = elem->id();
 
         // Retrieve the material number for the current element
-        const unsigned int material_number = static_cast<unsigned int>(matArray->GetTuple1(el_id)); // Retrieve the material number using GetTuple1
+        //    const unsigned int material_number = static_cast<unsigned int>(matArray->GetTuple1(el_id)); // Retrieve the material number using GetTuple1
 
         // Access the corresponding material properties from materials
-        const MaterialsProperties &mat_properties = materials.at(material_number);
+        // const MaterialsProperties &mat_properties = materials.at(material_number);
 
         // Create a diagonal matrix with murx, mury, and murz as the diagonal terms
-        std::vector<std::vector<double>> mu_matrix(3, std::vector<double>(3, 0.0));
-        mu_matrix[0][0] = mat_properties.murx;
-        mu_matrix[1][1] = mat_properties.mury;
-        mu_matrix[2][2] = mat_properties.murz;
-
+        // std::vector<std::vector<double>> mu_matrix(3, std::vector<double>(3, 0.0));
+        // mu_matrix[0][0] = mat_properties.murx;
+        // mu_matrix[1][1] = mat_properties.mury;
+        // mu_matrix[2][2] = mat_properties.murz;
+        elem_builder.compute_material_properties(elem_id, subdomain_id);
         // With one variable, we should have the same number of degrees
         // of freedom as shape functions.
         libmesh_assert_equal_to(n_dofs, phi.size());
@@ -211,7 +192,9 @@ void AssemblerLinear::assemble()
 
         Fe.resize(n_dofs);
 
-        old_solution_values.resize(n_dofs);
+        elem_builder.old_solution_values.resize(n_dofs);
+
+        system.old_local_solution->get(dof_indices, elem_builder.old_solution_values);
 
         perf_log.pop("elem init");
         // Zero the element matrix and right-hand side before
@@ -223,10 +206,10 @@ void AssemblerLinear::assemble()
         if (subdomain_id == 1 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
         {
             // Create a diagonal matrix with rsvx, rsvy, and rsvz as the diagonal terms
-            std::vector<std::vector<double>> rs_matrix(3, std::vector<double>(3, 0.0));
-            rs_matrix[0][0] = mat_properties.rsvx;
-            rs_matrix[1][1] = mat_properties.rsvy;
-            rs_matrix[2][2] = mat_properties.rsvz;
+            // std::vector<std::vector<double>> rs_matrix(3, std::vector<double>(3, 0.0));
+            // rs_matrix[0][0] = mat_properties.rsvx;
+            // rs_matrix[1][1] = mat_properties.rsvy;
+            // rs_matrix[2][2] = mat_properties.rsvz;
 
             libmesh_error_msg("Error: Conducting elements with 3D nodal elements are not implemented.");
             build_solid97_cond();
@@ -309,11 +292,6 @@ void AssemblerLinear::assemble()
         }
         if (subdomain_id == 1 && formulation == "AV" && fe_family == "NEDELEC_ONE")
         {
-            // Create a diagonal matrix with rsvx, rsvy, and rsvz as the diagonal terms
-            std::vector<std::vector<double>> rs_matrix(3, std::vector<double>(3, 0.0));
-            rs_matrix[0][0] = mat_properties.rsvx;
-            rs_matrix[1][1] = mat_properties.rsvy;
-            rs_matrix[2][2] = mat_properties.rsvz;
             build_solid236_cond();
         }
         if (subdomain_id == 0 && formulation == "AV" && fe_family == "NEDELEC_ONE")
@@ -322,11 +300,7 @@ void AssemblerLinear::assemble()
         }
         if (subdomain_id == 1 && formulation == "AV" && dim == 2)
         {
-            // Create a diagonal matrix with rsvx, rsvy, and rsvz as the diagonal terms
-            std::vector<std::vector<double>> rs_matrix(3, std::vector<double>(3, 0.0));
-            rs_matrix[0][0] = mat_properties.rsvx;
-            rs_matrix[1][1] = mat_properties.rsvy;
-            rs_matrix[2][2] = mat_properties.rsvz;
+
             build_plane13_cond();
         }
         if (subdomain_id == 0 && formulation == "AV" && dim == 2)
@@ -356,153 +330,6 @@ void AssemblerLinear::assemble()
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)
     // it will print its log to the screen. Pretty easy, huh?
-}
-
-// Temporary placeholder for build_solid97_cond
-void AssemblerLinear::build_solid97_cond(DenseMatrix<Number> &Ke,
-                                         DenseVector<Number> &Fe,
-                                         DenseMatrix<Number> &Ce,
-                                         DenseSubMatrix<Number> **KAA,
-                                         DenseSubMatrix<Number> *KAV,
-                                         DenseSubMatrix<Number> *KVA,
-                                         DenseSubMatrix<Number> KVV,
-                                         DenseSubMatrix<Number> **CAA,
-                                         DenseSubMatrix<Number> *CAV,
-                                         DenseSubMatrix<Number> *CVA,
-                                         DenseSubMatrix<Number> CVV,
-                                         DenseSubVector<Number> *F,
-                                         const Elem *elem,
-                                         const std::vector<dof_id_type> &dof_indices,
-                                         const DofMap &dof_map,
-                                         dof_id_type el_id,
-                                         unsigned int n_dofs,
-                                         Real dt,
-                                         bool time_factor,
-                                         TransientLinearImplicitSystem &system,
-                                         QGauss &qrule,
-                                         const std::vector<std::vector<Real>> &phi,
-                                         const std::vector<std::vector<RealGradient>> &dphi,
-                                         const std::vector<Real> &JxW,
-                                         PerfLog &perf_log,
-                                         std::vector<std::vector<double>> &sigma_matrix,
-                                         std::vector<std::vector<double>> &mu_matrix,
-                                         std::vector<Real> old_solution_values)
-{
-    // Numeric ids corresponding to each variable in the system
-    // const unsigned int ax_var = system.variable_number("AX");
-    // const unsigned int ay_var = system.variable_number("AY");
-    // const unsigned int az_var = system.variable_number("AZ");
-    const unsigned int num_vars = 4;
-    std::vector<std::vector<dof_id_type>> dof_indices_var(num_vars);
-
-    // std::vector<dof_id_type> dof_indices_ax;
-    // std::vector<dof_id_type> dof_indices_ay;
-    // std::vector<dof_id_type> dof_indices_az;
-    // dof_map.dof_indices(elem, dof_indices_ax, ax_var);
-    // dof_map.dof_indices(elem, dof_indices_ay, ay_var);
-    // dof_map.dof_indices(elem, dof_indices_az, az_var);
-    // const unsigned int n_ax_dofs = dof_indices_ax.size();
-    // const unsigned int n_ay_dofs = dof_indices_ay.size();
-    // const unsigned int n_az_dofs = dof_indices_az.size();
-
-    for (unsigned int var = 0; var < num_vars; var++)
-        dof_map.dof_indices(elem, dof_indices_var[var], var);
-
-    const unsigned int n_var_dofs = dof_indices_var[0].size();
-
-    for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
-        for (unsigned int var_j = 0; var_j < num_vars - 1; var_j++)
-        {
-            KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-            CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-        }
-
-    for (unsigned int var_i = 0; var_i < num_vars - 1; var_i++)
-    {
-        KAV[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
-        KVA[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-        CAV[var_i].reposition(var_i * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
-        CVA[var_i].reposition((num_vars - 1) * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-    }
-    for (unsigned int var = 0; var < num_vars; var++)
-        F[var].reposition(var * n_var_dofs, n_var_dofs);
-
-    KVV.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
-    CVV.reposition((num_vars - 1) * n_var_dofs, (num_vars - 1) * n_var_dofs, n_var_dofs, n_var_dofs);
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    perf_log.push("Ke");
-    Real CAV_value;
-    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
-    {
-        // Real js[3];
-        // jsArray->GetTuple(el_id, js);
-        // // Here check that js is 0
-
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
-                for (unsigned int k = 0; k < 3; k++)
-                {
-                    // Here you will put the time factor as well
-                    CAV_value = JxW[qp] * sigma_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k); // Not sure
-                    CAV[k](dof_i, dof_j) += CAV_value;
-                    CVA[k](dof_j, dof_i) += CAV_value;
-                    CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) * sigma_matrix[k][k] * dphi[dof_j][qp](k);
-                    KAA[k][k](dof_i, dof_j) += JxW[qp] / (4 * libMesh::pi * 1e-7 * mu_matrix[k][k]) *
-                                               (dphi[dof_i][qp] * dphi[dof_j][qp]);
-                    CAA[k][k](dof_i, dof_j) += JxW[qp] * sigma_matrix[k][k] *
-                                               (phi[dof_i][qp] * phi[dof_j][qp]);
-                }
-
-        Ce.scale(1 / dt);
-        Ke += Ce;
-        // NumberVectorValue U_old;
-        // for (unsigned int k = 0; k < num_vars; k++)
-        // {
-        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
-        //     {
-        //         U_old(k) += phi[dof_i][qp] * system.old_solution(dof_indices_var[k][dof_i]);
-        //     }
-        // }
-        // Now we will build the element matrix.  This involves
-        // a double loop to integrate the test functions (i) against
-        // the trial functions (j).
-        //
-        // We have split the numeric integration into two loops
-        // so that we can log the matrix and right-hand-side
-        // computation separately.
-        //
-
-        // Stop logging the matrix computation
-        perf_log.pop("Ke");
-
-        // Now we build the element right-hand-side contribution.
-        // This involves a single loop in which we integrate the
-        // "forcing function" in the PDE against the test functions.
-        //
-        // Start logging the right-hand-side computation
-        perf_log.push("Fe");
-        // // Retrieve the tuple values
-        // for (unsigned int k = 0; k < num_vars; k++)
-        //     for (unsigned int dof_i = 0; dof_i < n_var_dofs; k++)
-        //     {
-        //         F[k](dof_i) += JxW[qp] * (js[k] * +U_old(k) * * / dt);
-        //     }
-        system.old_local_solution->get(dof_indices, old_solution_values);
-
-        Ce.vector_mult(Fe, old_solution_values);
-
-        // // Stop logging the right-hand-side computation
-        perf_log.pop("Fe");
-    }
-    // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
 // Temporary placeholder for build_solid97
