@@ -44,11 +44,11 @@ time_steps = config.get("Transient Analysis Settings", {}).get("time_steps", [])
 
 # Get the number of substeps
 if transient_analysis:
-    number_substeps = len(
+    number_time_steps = len(
         config.get("Transient Analysis Settings", {}).get("time_steps", 0)
     )
 else:
-    number_substeps = 0
+    number_time_steps = 0
 
 # Check if the mesh file path is provided
 if not fileName:
@@ -108,7 +108,7 @@ num_cells = archive.grid.n_cells
 # PVTU format doesn't support time varying data, only implemented for VTKHDF5
 # This is a workaround to store time varying data in a single VTK file
 # One day I will try to fix it, but I will need to rewrite also the libmesh code
-for i in range(0, number_substeps + 1):
+for i in range(0, number_time_steps + 1):
     if dimension == 3:
         A_i = np.full((num_points, 3), np.nan)
         V_i = np.full(num_points, np.nan)
@@ -118,7 +118,7 @@ for i in range(0, number_substeps + 1):
     archive.grid.point_data[f"A_{i}"] = A_i
     archive.grid.point_data[f"V_{i}"] = V_i
 
-for i in range(0, number_substeps + 1):
+for i in range(0, number_time_steps + 1):
     if dimension == 3:
         Js_i = np.zeros((num_cells, 3))
     elif dimension == 2:

@@ -4,7 +4,8 @@
 #include "libmesh/equation_systems.h"
 #include "../include/materials_properties.h"
 #include "../include/json.hpp"
-#include <map> // Include for std::map
+#include <map>                       // Include for std::map
+#include "../include/time_stepper.h" // Include for TimeStepper
 #include <vtkCellData.h>
 
 using namespace libMesh;
@@ -26,10 +27,11 @@ public:
     vtkCellData *cell_data;
     std::shared_ptr<System::Assembly> assembler; // Add AssemblerBase attribute
     MaterialsMap materials;
+    TimeStepper &time_stepper;
 
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config, vtkCellData *cellData, MaterialsMap &materials)
-        : equation_systems(eq_systems), config(config), cell_data(cellData), materials(materials)
+    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config, vtkCellData *cellData, MaterialsMap &materials, TimeStepper &time_stepper)
+        : equation_systems(eq_systems), config(config), cell_data(cellData), materials(materials), time_stepper(time_stepper)
     {
         createSystem(); // Call createSystem at the end of the constructor
         setVariables(); // Call setVariables at the end of the constructor

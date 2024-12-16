@@ -90,12 +90,13 @@ void SystemBuilder::setVariables()
 
             conductive_subdomain.clear();
             conductive_subdomain.insert(1);
-            system.add_variable("V",
-                                Utility::string_to_enum<Order>(order),
-                                Utility::string_to_enum<FEFamily>(fe_family),
-                                &conductive_subdomain);
+            if (dim == 3)
+                system.add_variable("V",
+                                    Utility::string_to_enum<Order>(order),
+                                    Utility::string_to_enum<FEFamily>(fe_family),
+                                    &conductive_subdomain);
         }
-        AssemblerLinear *assembler = new AssemblerLinear(equation_systems, cell_data, config, materials);
+        AssemblerLinear *assembler = new AssemblerLinear(equation_systems, cell_data, config, materials, time_stepper);
         system.attach_assemble_object(*assembler);
     }
     else

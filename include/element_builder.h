@@ -24,11 +24,16 @@ class ElementBuilder
 {
 public:
     // Constructor
-    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, TimeStep &ts, const DofMap &dof_map, QGauss &qrule);
+    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, const TimeStep &ts, const DofMap &dof_map, QGauss &qrule);
 
+    void build_element_matrix(const Elem *elem, DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     // Method
     void build_solid97_cond(const Elem *elem, DofMap &dof_map);
     void build_solid97(const Elem *elem, DofMap &dof_map);
+    void build_solid236(const Elem *elem, DofMap &dof_map);
+    void build_solid236_cond(const Elem *elem, DofMap &dof_map);
+    void build_plane13(const Elem *elem, DofMap &dof_map);
+    void build_plane13_cond(const Elem *elem, DofMap &dof_map);
     // Methods to fill matrices
     void fill_mu_matrix(dof_id_type elem_id);
     void fill_rs_matrix(dof_id_type elem_id);
@@ -80,7 +85,7 @@ public:
     const std::vector<std::vector<RealGradient>> &dphi;
 
     // Attributes for time step, time substep, and cell data
-    TimeStep &ts;
+    const TimeStep &ts;
     vtkDataArray *js_array;
     vtkDataArray *mat_array;
     std::vector<Real> old_solution_values;

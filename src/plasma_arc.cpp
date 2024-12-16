@@ -43,6 +43,7 @@
 #include "../include/node_dof_constraints.h"
 #include "../include/compute_magnetic_field.h"
 #include "../include/materials_properties.h"
+#include "../include/time_stepper.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/vtk_io.h"
 #include "libmesh/mesh_communication.h"
@@ -145,15 +146,15 @@ int main(int argc, char **argv)
     mesh.prepare_for_use();
 
     libMesh::out << "Reading loads data..." << std::endl;
-    vtkCellData *cellData = vtkGrid->GetCellData();
-    if (cellData == nullptr)
+    vtkCellData *cell_data = vtkGrid->GetCellData();
+    if (cell_data == nullptr)
     {
         libmesh_error_msg("Error: vtkGrid does not contain any Cell Data.");
     }
 
     // Here I read material properties and assign conductive and non-conductive subdomains
     libMesh::out << "Reading materials properties..." << std::endl;
-    vtkDataArray *matArray = cellData->GetArray("ansys_material_type");
+    vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
     if (matArray == nullptr)
     {
         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
@@ -187,7 +188,7 @@ int main(int argc, char **argv)
     EquationSystems equation_systems(mesh);
 
     // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems, session.config, cellData, materials);
+    SystemBuilder system_builder(equation_systems, session.config, cell_data, materials);
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
 
@@ -205,76 +206,18 @@ int main(int argc, char **argv)
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    std::vector<Real> time_steps;
-    std::vector<bool> write_substeps_results;
-    std::vector<unsigned int> n_substeps;
-    Real dt;
-    Real dt_substep;
-    unsigned int cumulative_n_substeps = 0;
     bool compute_equilibrium_first_step = false;
     bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    TimeStepper timeStepper(session.config, system);
+    equation_systems.parameters.set<TimeStepper>("time_stepper") = timeStepper;
+    // Iterate through the time steps
+
     // Extract the time_steps array
     if (transient)
     {
         // Check if the user wants to compute the equilibrium first step
         compute_equilibrium_first_step = session.config["Transient Analysis Settings"]["equilibrium_step"].get<bool>();
         // Extract the time_steps array
-        if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("time_steps"))
-        {
-            time_steps = session.config["Transient Analysis Settings"]["time_steps"].get<std::vector<Real>>();
-        }
-        else
-        {
-            libmesh_error_msg("time_steps not found in config file");
-        }
-        // Validate that all time steps are positive and increasing
-        for (size_t i = 0; i < time_steps.size(); ++i)
-        {
-            if (time_steps[i] <= 0)
-            {
-                libmesh_error_msg("Error: Time step " + std::to_string(i) + " is not positive.");
-            }
-            if (i > 0 && time_steps[i] <= time_steps[i - 1])
-            {
-                libmesh_error_msg("Error: Time step " + std::to_string(i) + " is not greater than the previous time step.");
-            }
-        }
-        // Read the number of substeps from the config
-        if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("number_of_substeps"))
-        {
-            n_substeps = session.config["Transient Analysis Settings"]["number_of_substeps"].get<std::vector<unsigned int>>();
-        }
-        else
-        {
-            libmesh_error_msg("number_of_substeps not found in config file");
-        }
-        // Validate that the number of substeps is positive
-        for (size_t i = 0; i < n_substeps.size(); ++i)
-        {
-            if (n_substeps[i] <= 0)
-            {
-                libmesh_error_msg("Error: Number of substeps " + std::to_string(i) + " is not positive.");
-            }
-        }
-        // validate that the length of the vector of time steps and the vector of substeps is the same
-        if (time_steps.size() != n_substeps.size())
-        {
-            libmesh_error_msg("Error: Number of substeps not assigned correctly.");
-        }
-        // read the write_substeps_results array
-        if (session.config.contains("Transient Analysis Settings") && session.config["Transient Analysis Settings"].contains("write_substeps_results"))
-        {
-            write_substeps_results = session.config["Transient Analysis Settings"]["write_substeps_results"].get<std::vector<bool>>();
-        }
-        else
-        {
-            libmesh_error_msg("write_substeps_results not found in config file");
-        }
-        // Validate that the length of the vector of time steps and the vector of write_substeps_results is the same
-        if (time_steps.size() != write_substeps_results.size())
-        {
-            libmesh_error_msg("Error: Number of write_substeps_results not assigned correctly.");
-        }
         // The list of time steps doesn't include the initial time, t=0 always is assumed
         // A static initial step may be required by the user however to get equilibrium
         system.time = 0;
@@ -331,8 +274,6 @@ int main(int argc, char **argv)
         {
             libMesh::out << "Computing static analysis..." << std::endl;
         }
-        equation_systems.parameters.set<Real>("time_factor") = 0;
-        equation_systems.parameters.set<Real>("time_step") = 0;
 
         libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
         // This will reinitialize the constraints for the system
@@ -357,15 +298,37 @@ int main(int argc, char **argv)
         vtkio.write_equation_systems(final_output_path, equation_systems);
     }
 
-    equation_systems.parameters.set<Real>("time_factor") = 1;
+    for (auto &step : timeStepper)
+    {
+        libMesh::out << "Solving time step " << step.get_step() << std::endl;
 
+        libMesh::out << "Time increment at the end of time step: " << step.get_delta_t() << std::endl;
+
+        libMesh::out << "Number of time substeps: " << step.get_n_substeps() << std::endl;
+
+        libMesh::out << "Setting boundary conditions..." << std::endl;
+
+        node_dof_constraints.setTimeStep(step.get_step() + 1);
+        system.reinit_constraints();
+        // Iterate through the substeps of the current time step
+        for (auto &substep : step)
+        {
+            libMesh::out << "  Substep: " << substep.get_index() << ", Time: " << substep.get_time()
+                         << ", dt: " << substep.get_dt()
+                         << ", Write Results: " << substep.get_write_results()
+                         << ", Transient Effect: " << substep.get_transient_effect()
+                         << ", Ramped Load: " << substep.get_ramped_load() << std::endl;
+            // Assemble & solve the linear system
+            libMesh::out << "Building matrix and solving system..." << std::endl;
+            system.solve();
+        }
+    }
     for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
     {
         // Increment the time counter, set the time and the
         // time step size as parameters in the EquationSystem.
         dt = time_steps[time_idx] - system.time;
         dt_substep = dt / n_substeps[time_idx];
-        equation_systems.parameters.set<Real>("time_step") = time_idx + 1;
 
         libMesh::out << "Solving time step " << time_idx + 1 << " of " << time_steps.size() << std::endl;
 
@@ -374,8 +337,7 @@ int main(int argc, char **argv)
         libMesh::out << "Number of time substeps: " << n_substeps[time_idx] << std::endl;
 
         libMesh::out << "Setting boundary conditions..." << std::endl;
-        node_dof_constraints.setTimeStep(time_idx + 1);
-        system.reinit_constraints();
+
         for (unsigned int substep = 0; substep < n_substeps[time_idx]; ++substep)
         {
             equation_systems.parameters.set<Real>("dt") = dt_substep;
@@ -394,10 +356,6 @@ int main(int argc, char **argv)
             // we need to specify the system type when we ask for it.
             libMesh::out << "Updating old solution..." << std::endl;
             *system.old_local_solution = *system.current_local_solution;
-
-            // Assemble & solve the linear system
-            libMesh::out << "Building matrix and solving system..." << std::endl;
-            system.solve();
 
             // Here do 2 things: ramp the load and assemble the matrix only if first substep
 

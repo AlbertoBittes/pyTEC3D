@@ -1,7 +1,7 @@
 #include "../include/element_builder.h"
 
 // Constructor
-ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, TimeStep &ts, const DofMap &dof_map, QGauss &qrule)
+ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, const TimeStep &ts, const DofMap &dof_map, QGauss &qrule)
     : Ke(Ke), Ce(Ce), Fe(Fe), materials(materials),
       F{DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe)},
       KAA{{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
@@ -22,7 +22,6 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       phi(fe->get_phi()),
       dphi(fe->get_dphi()),
       ts(ts),
-      dof_map(dof_map),
       qrule(qrule)
 {
     std::string array_name = "Js_" + std::to_string(ts.get_step());
@@ -49,6 +48,7 @@ void ElementBuilder::initialize(const Elem *elem, DofMap &dof_map, unsigned int 
         for (unsigned int var_j = 0; var_j < num_vars - 1; var_j++)
         {
             KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+            // eHere add a check if CAA is needed
             CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
         }
 
@@ -114,7 +114,7 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, DofMap &dof_map)
 void ElementBuilder::build_solid97(const Elem *elem, DofMap &dof_map)
 {
     const unsigned int num_vars = 3;
-    this->initialize(elem, dof_map, num_vars, true);
+    this->initialize(elem, dof_map, num_vars, false);
 
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -142,6 +142,115 @@ void ElementBuilder::build_solid97(const Elem *elem, DofMap &dof_map)
                 }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
+}
+
+// Temporary placeholder for build_solid236
+void ElementBuilder::build_solid236(const Elem *elem, DofMap &dof_map)
+{
+    libmesh_error_msg("build_solid236 is not implemented yet.");
+}
+
+// Temporary placeholder for build_solid236_cond
+void ElementBuilder::build_solid236_cond(const Elem *elem, DofMap &dof_map)
+{
+    libmesh_error_msg("build_solid236_cond is not implemented yet.");
+}
+
+// Temporary placeholder for build_plane13
+void ElementBuilder::build_plane13(const Elem *elem, DofMap &dof_map)
+{
+    // Stop logging the shape function initialization.
+    // If you forget to stop logging an event the PerfLog
+    // object will probably catch the error and abort.
+    const unsigned int num_vars = 1;
+    this->initialize(elem, dof_map, num_vars, false);
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    Real js = js_array->GetTuple1(elem->id());
+
+    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+    {
+        for (unsigned int i = 0; i != n_var_dofs; i++)
+        {
+            Fe(i) += JxW[qp] * js * phi[i][qp];
+            for (unsigned int j = 0; j != n_var_dofs; j++)
+                Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]) / (4 * libMesh::pi * 1e-7 * mu_matrix[0][0]);
+        }
+    }
+}
+
+// Temporary placeholder for build_plane13_cond
+void ElementBuilder::build_plane13_cond(const Elem *elem, DofMap &dof_map)
+{
+    // Numeric ids corresponding to each variable in the system
+    const unsigned int num_vars = 1;
+    this->initialize(elem, dof_map, num_vars, false);
+
+    Real CAV_value;
+    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+    {
+        // Real js[3];
+        // jsArray->GetTuple(el_id, js);
+        // // Here check that js is 0
+
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
+            {
+                // Here you will put the time factor as well
+                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / (4 * libMesh::pi * 1e-7 * mu_matrix[0][0]);
+                Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+            }
+
+        Ce.scale(1 / ts.get_substeps()[0].get_dt());
+        Ke += Ce;
+        // Now we will build the element matrix.  This involves
+        // a double loop to integrate the test functions (i) against
+        // the trial functions (j).
+        //
+        // We have split the numeric integration into two loops
+        // so that we can log the matrix and right-hand-side
+        // computation separately.
+        //
+
+        // Stop logging the matrix computatio
+        Ce.vector_mult(Fe, old_solution_values);
+    }
+    // libmesh_error_msg("build_solid97 is not implemented yet.");
+}
+
+void ElementBuilder::build_element_matrix(const Elem *elem, DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+{
+    if (subdomain_id == 1 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    {
+        this->build_solid97_cond(elem, dof_map);
+    }
+    if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    {
+        this->build_solid97(elem, dof_map);
+    }
+    if (subdomain_id == 1 && formulation == "AV" && fe_family == "NEDELEC_ONE")
+    {
+        this->build_solid236_cond(elem, dof_map);
+    }
+    if (subdomain_id == 0 && formulation == "AV" && fe_family == "NEDELEC_ONE")
+    {
+        this->build_solid236(elem, dof_map);
+    }
+    if (subdomain_id == 1 && formulation == "AV" && dim == 2)
+    {
+        this->build_plane13_cond(elem, dof_map);
+    }
+    if (subdomain_id == 0 && formulation == "AV" && dim == 2)
+    {
+        this->build_plane13(elem, dof_map);
+    }
 }
 // Method to fill mu_matrix
 void ElementBuilder::fill_mu_matrix(dof_id_type elem_id)

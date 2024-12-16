@@ -1,11 +1,10 @@
 #include "time_stepper.h"
 
 // Constructor
-TimeStepper::TimeStepper(const nlohmann::json &config, System &system)
+TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSystem &system)
     : current_time_step(0), current_substep(0), current_time(0.0), system(system)
 {
     read_config(config);
-    validate_config();
 }
 
 // Setters and getters
@@ -69,22 +68,22 @@ void TimeStepper::update_old_solution()
 // Iteration methods
 TimeStepper::Iterator TimeStepper::begin()
 {
-    return Iterator(*this, 0);
+    return TimeStepper::Iterator(*this, 0);
 }
 
 TimeStepper::Iterator TimeStepper::end()
 {
-    return Iterator(*this, time_steps.size());
+    return TimeStepper::Iterator(*this, time_steps.size());
 }
 
-TimeStepper::SubstepIterator TimeStepper::substep_begin(unsigned int step_index)
+TimeStep::Iterator TimeStep::begin()
 {
-    return SubstepIterator(*this, step_index, 0);
+    return TimeStep::Iterator(*this, 0);
 }
 
-TimeStepper::SubstepIterator TimeStepper::substep_end(unsigned int step_index)
+TimeStep::Iterator TimeStep::end()
 {
-    return SubstepIterator(*this, step_index, time_steps[step_index].get_substeps().size());
+    return TimeStep::Iterator(*this, n_substeps);
 }
 
 // Helper methods
@@ -100,7 +99,15 @@ void TimeStepper::read_config(const nlohmann::json &config)
             Real previous_time = 0.0;
             for (size_t i = 0; i < time_steps_json.size(); ++i)
             {
+                if (time_steps_json[i] <= 0)
+                {
+                    libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not positive.");
+                }
                 Real delta_t = time_steps_json[i] - previous_time;
+                if (delta_t < 0)
+                {
+                    libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not greater than the previous time step.");
+                }
                 time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, false, false, false);
                 previous_time = time_steps_json[i];
             }
@@ -115,11 +122,15 @@ void TimeStepper::read_config(const nlohmann::json &config)
             auto substeps_json = settings["number_of_substeps"].get<std::vector<unsigned int>>();
             for (size_t i = 0; i < substeps_json.size(); ++i)
             {
+                if (substeps_json[i] <= 0)
+                {
+                    libmesh_error_msg("Error: Number of substeps " + std::to_string(i) + " is not positive.");
+                }
                 time_steps[i].set_n_substeps(substeps_json[i]);
                 Real dt = time_steps[i].get_delta_t() / substeps_json[i];
                 for (unsigned int j = 0; j < substeps_json[i]; ++j)
                 {
-                    time_steps[i].add_substep(Substep(j, time_steps[i].get_time() + j * dt, dt, &time_steps[i]));
+                    time_steps[i].add_substep(Substep(j, time_steps[i].get_time() + j * dt, dt, &time_steps[i], *this));
                 }
             }
         }
@@ -170,27 +181,5 @@ void TimeStepper::read_config(const nlohmann::json &config)
     else
     {
         libmesh_error_msg("Transient Analysis Settings not found in config file");
-    }
-}
-
-void TimeStepper::validate_config()
-{
-    for (const auto &step : time_steps)
-    {
-        if (step.get_time() <= 0)
-        {
-            libmesh_error_msg("Error: Time step " + std::to_string(step.get_step()) + " is not positive.");
-        }
-        if (step.get_step() > 0 && step.get_time() <= time_steps[step.get_step() - 1].get_time())
-        {
-            libmesh_error_msg("Error: Time step " + std::to_string(step.get_step()) + " is not greater than the previous time step.");
-        }
-        for (const auto &substep : step.get_substeps())
-        {
-            if (substep.get_time() <= 0)
-            {
-                libmesh_error_msg("Error: Substep " + std::to_string(substep.get_index()) + " in time step " + std::to_string(step.get_step()) + " is not positive.");
-            }
-        }
     }
 }
