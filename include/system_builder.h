@@ -24,14 +24,11 @@ public:
     std::string system_name;
     std::string order;
     const nlohmann::json &config;
-    vtkCellData *cell_data;
     std::shared_ptr<System::Assembly> assembler; // Add AssemblerBase attribute
-    MaterialsMap materials;
-    TimeStepper &time_stepper;
 
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config, vtkCellData *cellData, MaterialsMap &materials, TimeStepper &time_stepper)
-        : equation_systems(eq_systems), config(config), cell_data(cellData), materials(materials), time_stepper(time_stepper)
+    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config)
+        : equation_systems(eq_systems), config(config)
     {
         createSystem(); // Call createSystem at the end of the constructor
         setVariables(); // Call setVariables at the end of the constructor

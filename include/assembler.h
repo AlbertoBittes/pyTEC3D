@@ -11,8 +11,8 @@ using namespace libMesh;
 class AssemblerLinear : public System::Assembly
 {
 public:
-    AssemblerLinear(EquationSystems &eq_sys, vtkCellData *cellData, nlohmann::json config, MaterialsMap &materials, TimeStepper &time_stepper)
-        : eq_sys(eq_sys), cell_data(cellData), config(config), materials(materials), time_stepper(time_stepper)
+    AssemblerLinear(EquationSystems &eq_sys, nlohmann::json config)
+        : eq_sys(eq_sys), config(config)
     {
         transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
         ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
@@ -23,13 +23,9 @@ public:
     }
 
     void assemble() override;
-    void set_time_step(TimeStep &ts) { this->ts = ts; };
-
-    TimeStep &get_time_step() { return ts; };
 
 private:
     EquationSystems &eq_sys;
-    vtkCellData *cell_data;
     bool transient;
     bool ferromagnetic;
     std::string fe_family;
@@ -37,8 +33,6 @@ private:
     std::string order;
     int dim;
     nlohmann::json config;
-    MaterialsMap &materials;
-    TimeStepper &time_stepper;
 };
 
 #endif // ASSEMBLER_H

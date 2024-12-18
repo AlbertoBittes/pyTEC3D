@@ -111,9 +111,11 @@ void AssemblerLinear::assemble()
     DenseMatrix<Number> Ce;
     DenseVector<Number> Fe;
 
-    const TimeStep &ts = time_stepper.get_time_steps()[0];
-
-    ElementBuilder elem_builder(Ke, Ce, Fe, materials, fe, cell_data, ts, dof_map, qrule);
+    auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
+    vtkCellData *cell_data = eq_sys.parameters.get<vtkCellData *>("cell_data");
+    MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properites");
+    const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
+    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, dof_map, qrule);
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge

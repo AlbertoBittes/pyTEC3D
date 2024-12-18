@@ -98,6 +98,9 @@ public:
     void set_current_substep(unsigned int substep);
     unsigned int get_current_substep() const;
 
+    void set_cumulative_substep(unsigned int cum_substep);
+    unsigned int get_cumulative_substep() const;
+
     void set_current_time(Real time);
     Real get_current_time() const;
 
@@ -120,6 +123,7 @@ public:
 private:
     unsigned int current_time_step;
     unsigned int current_substep;
+    unsigned int cumulative_substep;
     Real current_time;
     Real time_step_dt;
     Real time_substep_dt;
@@ -174,7 +178,8 @@ public:
             time_stepper.update_old_solution();
             time_stepper.set_current_time(time_stepper.get_current_time() + ts.get_substeps()[substep_index].get_dt());
             time_stepper.get_system().time = time_stepper.get_current_time();
-            time_stepper.set_current_substep(time_stepper.get_current_substep() + 1);
+            time_stepper.set_current_substep(substep_index);
+            time_stepper.set_cumulative_substep(time_stepper.get_cumulative_substep() + 1);
             first = false;
         }
         return ts.get_substeps()[substep_index];

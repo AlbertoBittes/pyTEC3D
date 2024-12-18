@@ -160,14 +160,14 @@ int main(int argc, char **argv)
         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
     }
     unsigned int matNum;
-    MaterialsMap materials = readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
+    MaterialsMap *materials = &readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
 
     libMesh::out << "Identifying conductive domain..." << std::endl;
     for (auto &elem : mesh.active_element_ptr_range())
     {
         matNum = matArray->GetTuple1(elem->id());
-        auto it = materials.find(matNum);
-        if (it == materials.end())
+        auto it = materials->find(matNum);
+        if (it == materials->end())
         {
             libmesh_error_msg("Error: Material number " + std::to_string(matNum) + " not found in material properties.");
         }
@@ -188,7 +188,7 @@ int main(int argc, char **argv)
     EquationSystems equation_systems(mesh);
 
     // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems, session.config, cell_data, materials);
+    SystemBuilder system_builder(equation_systems, session.config);
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
 
@@ -201,32 +201,25 @@ int main(int argc, char **argv)
     // Print information about the system to the screen.
     equation_systems.print_info();
 
-    equation_systems.parameters.set<MaterialsMap>("materials_properties") = materials;
+    equation_systems.parameters.set<MaterialsMap *>("materials_properties") = materials;
 
+    equation_systems.parameters.set<vtkCellData *>("cell_data") = cell_data;
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    bool compute_equilibrium_first_step = false;
     bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
-    TimeStepper timeStepper(session.config, system);
-    equation_systems.parameters.set<TimeStepper>("time_stepper") = timeStepper;
+    auto timeStepper = std::make_shared<TimeStepper>(session.config, system);
+    equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
     // Iterate through the time steps
 
     // Extract the time_steps array
-    if (transient)
-    {
-        // Check if the user wants to compute the equilibrium first step
-        compute_equilibrium_first_step = session.config["Transient Analysis Settings"]["equilibrium_step"].get<bool>();
-        // Extract the time_steps array
-        // The list of time steps doesn't include the initial time, t=0 always is assumed
-        // A static initial step may be required by the user however to get equilibrium
-        system.time = 0;
-    }
-    else
-    {
-        // For static analysis, we set the time to 0
-        system.time = 0;
-    }
+    // Check if the user wants to compute the equilibrium first step
+    // Extract the time_steps array
+    // The list of time steps doesn't include the initial time, t=0 always is assumed
+    // A static initial step may be required by the user however to get equilibrium
+
+    // For static analysis, we set the time to 0
+    system.time = 0;
 
     // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
     libMesh::out << "Reading boundary conditions data..." << std::endl;
@@ -262,45 +255,23 @@ int main(int argc, char **argv)
     NodalBCConstraint node_dof_constraints(system, pointData, 0);
     system.attach_constraint_object(node_dof_constraints);
 
-    libMesh::out << "Check for equilibrium first step..." << std::endl;
     // Compute first step for equilibrium or static analysis
-    if (!transient || compute_equilibrium_first_step)
+    // if (compute_equilibrium_first_step)
+    // {
+    //     libMesh::out << "Computing equilibrium first step..." << std::endl;
+    // }
+    // else
+    // {
+    //     libMesh::out << "Computing static analysis..." << std::endl;
+    // }
+
+    // Build the K matrix, the RHS F and Solve the system Kx=F
+    // libMesh::out << "Building matrix and solving system..." << std::endl;
+    // system.solve(););
+
+    for (auto &step : *timeStepper)
     {
-        if (compute_equilibrium_first_step)
-        {
-            libMesh::out << "Computing equilibrium first step..." << std::endl;
-        }
-        else
-        {
-            libMesh::out << "Computing static analysis..." << std::endl;
-        }
-
-        libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
-        // This will reinitialize the constraints for the system
-        system.reinit_constraints();
-
-        // Build the K matrix, the RHS F and Solve the system Kx=F
-        libMesh::out << "Building matrix and solving system..." << std::endl;
-        system.solve();
-
-        libMesh::out << "Computing derived quantities..." << std::endl;
-        // Call the function to compute the magnetic field
-        if (dim == 2)
-            compute_magnetic_field_static_2D(equation_systems);
-        else
-            compute_magnetic_field_static_3D(equation_systems);
-
-        libMesh::out << "Writing results..." << std::endl;
-        // Construct the output file path
-        output_filename = mesh_filename_without_extension + "_out_0";
-        final_output_path = output_path / output_filename;
-        // Write the results
-        vtkio.write_equation_systems(final_output_path, equation_systems);
-    }
-
-    for (auto &step : timeStepper)
-    {
-        libMesh::out << "Solving time step " << step.get_step() << std::endl;
+        libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
 
         libMesh::out << "Time increment at the end of time step: " << step.get_delta_t() << std::endl;
 
@@ -308,12 +279,15 @@ int main(int argc, char **argv)
 
         libMesh::out << "Setting boundary conditions..." << std::endl;
 
+        libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
+        // This will reinitialize the constraints for the system
         node_dof_constraints.setTimeStep(step.get_step() + 1);
         system.reinit_constraints();
+
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
         {
-            libMesh::out << "  Substep: " << substep.get_index() << ", Time: " << substep.get_time()
+            libMesh::out << "  Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
                          << ", dt: " << substep.get_dt()
                          << ", Write Results: " << substep.get_write_results()
                          << ", Transient Effect: " << substep.get_transient_effect()
@@ -321,68 +295,84 @@ int main(int argc, char **argv)
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
-        }
-    }
-    for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
-    {
-        // Increment the time counter, set the time and the
-        // time step size as parameters in the EquationSystem.
-        dt = time_steps[time_idx] - system.time;
-        dt_substep = dt / n_substeps[time_idx];
-
-        libMesh::out << "Solving time step " << time_idx + 1 << " of " << time_steps.size() << std::endl;
-
-        libMesh::out << "Time increment at the end of time step: " << dt << std::endl;
-
-        libMesh::out << "Number of time substeps: " << n_substeps[time_idx] << std::endl;
-
-        libMesh::out << "Setting boundary conditions..." << std::endl;
-
-        for (unsigned int substep = 0; substep < n_substeps[time_idx]; ++substep)
-        {
-            equation_systems.parameters.set<Real>("dt") = dt_substep;
-            system.time += dt_substep;
-            // A pretty update message
-            libMesh::out << "Solving time substep " << substep + 1 << " of " << n_substeps[time_idx] << std::endl;
-            libMesh::out << "Time increment: " << dt_substep << std::endl;
-            libMesh::out << "Time: " << system.time << std::endl;
-            // At this point we need to update the old
-            // solution vector.  The old solution vector
-            // will be the current solution vector from the
-            // previous time step. We will do this by extracting the
-            // system from the EquationSystems object and using
-            // vector assignment. Since only TransientSystems
-            // (and systems derived from them) contain old solutions
-            // we need to specify the system type when we ask for it.
-            libMesh::out << "Updating old solution..." << std::endl;
-            *system.old_local_solution = *system.current_local_solution;
-
-            // Here do 2 things: ramp the load and assemble the matrix only if first substep
-
-            if (write_substeps_results[time_idx] || substep == n_substeps[time_idx] - 1)
+            if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
-                if (dim == 2)
-                    compute_magnetic_field_static_2D(equation_systems);
-                else
-                    compute_magnetic_field_static_3D(equation_systems);
-                libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
+                // if (dim == 2)
+                //     compute_magnetic_field_static_2D(equation_systems);
+                // else
+                //     compute_magnetic_field_static_3D(equation_systems);
                 libMesh::out << "Writing time substep results..." << std::endl;
-                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(cumulative_n_substeps + 1);
+                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep() + 1);
                 final_output_path = output_path / output_filename;
                 // Write the results
                 vtkio.write_equation_systems(final_output_path, equation_systems);
             }
-            else
-            {
-                libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
-            }
-            cumulative_n_substeps += 1;
-        }
 
-        libMesh::out << "Time step " << time_idx + 1 << " of " << time_steps.size() << " completed." << std::endl;
+            libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;
+        }
     }
+    // for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
+    // {
+    //     // Increment the time counter, set the time and the
+    //     // time step size as parameters in the EquationSystem.
+    //     dt = time_steps[time_idx] - system.time;
+    //     dt_substep = dt / n_substeps[time_idx];
+
+    //     libMesh::out << "Solving time step " << time_idx + 1 << " of " << time_steps.size() << std::endl;
+
+    //     libMesh::out << "Time increment at the end of time step: " << dt << std::endl;
+
+    //     libMesh::out << "Number of time substeps: " << n_substeps[time_idx] << std::endl;
+
+    //     libMesh::out << "Setting boundary conditions..." << std::endl;
+
+    //     for (unsigned int substep = 0; substep < n_substeps[time_idx]; ++substep)
+    //     {
+    //         equation_systems.parameters.set<Real>("dt") = dt_substep;
+    //         system.time += dt_substep;
+    //         // A pretty update message
+    //         libMesh::out << "Solving time substep " << substep + 1 << " of " << n_substeps[time_idx] << std::endl;
+    //         libMesh::out << "Time increment: " << dt_substep << std::endl;
+    //         libMesh::out << "Time: " << system.time << std::endl;
+    //         // At this point we need to update the old
+    //         // solution vector.  The old solution vector
+    //         // will be the current solution vector from the
+    //         // previous time step. We will do this by extracting the
+    //         // system from the EquationSystems object and using
+    //         // vector assignment. Since only TransientSystems
+    //         // (and systems derived from them) contain old solutions
+    //         // we need to specify the system type when we ask for it.
+    //         libMesh::out << "Updating old solution..." << std::endl;
+    //         *system.old_local_solution = *system.current_local_solution;
+
+    //         // Here do 2 things: ramp the load and assemble the matrix only if first substep
+
+    //         if (write_substeps_results[time_idx] || substep == n_substeps[time_idx] - 1)
+    //         {
+    //             libMesh::out << "Computing derived quantities..." << std::endl;
+    //             // Call the function to compute the magnetic field
+    //             if (dim == 2)
+    //                 compute_magnetic_field_static_2D(equation_systems);
+    //             else
+    //                 compute_magnetic_field_static_3D(equation_systems);
+    //             libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
+    //             libMesh::out << "Writing time substep results..." << std::endl;
+    //             output_filename = mesh_filename_without_extension + "_out_" + std::to_string(cumulative_n_substeps + 1);
+    //             final_output_path = output_path / output_filename;
+    //             // Write the results
+    //             vtkio.write_equation_systems(final_output_path, equation_systems);
+    //         }
+    //         else
+    //         {
+    //             libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
+    //         }
+    //         cumulative_n_substeps += 1;
+    //     }
+
+    //     libMesh::out << "Time step " << time_idx + 1 << " of " << time_steps.size() << " completed." << std::endl;
+    // }
     // All done.
     return 0;
 }

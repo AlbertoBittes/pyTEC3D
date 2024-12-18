@@ -28,6 +28,16 @@ unsigned int TimeStepper::get_current_substep() const
     return current_substep;
 }
 
+void TimeStepper::set_cumulative_substep(unsigned int cum_substep)
+{
+    cumulative_substep = cumulative_substep;
+}
+
+unsigned int TimeStepper::get_cumulative_substep() const
+{
+    return cumulative_substep;
+}
+
 void TimeStepper::set_current_time(Real time)
 {
     current_time = time;

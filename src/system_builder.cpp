@@ -96,15 +96,12 @@ void SystemBuilder::setVariables()
                                     Utility::string_to_enum<FEFamily>(fe_family),
                                     &conductive_subdomain);
         }
-        AssemblerLinear *assembler = new AssemblerLinear(equation_systems, cell_data, config, materials, time_stepper);
+        AssemblerLinear *assembler = new AssemblerLinear(equation_systems, config);
         system.attach_assemble_object(*assembler);
     }
     else
     {
         libmesh_error_msg("not implemented");
     }
-    system.add_vector("bfe_loads_vector_x");
-    system.add_vector("bfe_loads_vector_y");
-    system.add_vector("bfe_loads_vector_z");
     // Add more conditions as needed for other combinations
 }

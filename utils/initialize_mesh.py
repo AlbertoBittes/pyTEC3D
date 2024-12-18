@@ -6,8 +6,8 @@ from ansys.mapdl import reader as pymapdl_reader
 import vtk
 
 # Get the mesh file path from the configuration
-fileName = r"D:\PlasmaArc\simulations\3D_loop\3D_loop.cdb"
-config_file = r"D:\PlasmaArc\simulations\3D_loop\config_3D_loop.json"
+fileName = "3D_loop_cond.cdb"
+config_file = "config_3D_loop.json"
 
 # Check if the configuration file exists
 if not os.path.exists(config_file):
@@ -83,8 +83,8 @@ if archive is None:
 
 
 def get_spatial_dimension(unstructured_grid):
-    if isinstance(unstructured_grid._grid, pv.UnstructuredGrid):
-        bounds = unstructured_grid._grid.bounds
+    if isinstance(unstructured_grid.grid, pv.UnstructuredGrid):
+        bounds = unstructured_grid.grid.bounds
         if bounds[4] == bounds[5]:  # Check if Z bounds are the same
             return 2
         else:
@@ -108,7 +108,7 @@ num_cells = archive.grid.n_cells
 # PVTU format doesn't support time varying data, only implemented for VTKHDF5
 # This is a workaround to store time varying data in a single VTK file
 # One day I will try to fix it, but I will need to rewrite also the libmesh code
-for i in range(0, number_time_steps + 1):
+for i in range(1, number_time_steps + 1):
     if dimension == 3:
         A_i = np.full((num_points, 3), np.nan)
         V_i = np.full(num_points, np.nan)
@@ -118,7 +118,7 @@ for i in range(0, number_time_steps + 1):
     archive.grid.point_data[f"A_{i}"] = A_i
     archive.grid.point_data[f"V_{i}"] = V_i
 
-for i in range(0, number_time_steps + 1):
+for i in range(1, number_time_steps + 1):
     if dimension == 3:
         Js_i = np.zeros((num_cells, 3))
     elif dimension == 2:
@@ -142,4 +142,4 @@ for i in range(0, number_time_steps + 1):
 
 # Print overview of data read from cdb
 print(archive)
-archive.grid.save("D:\\PlasmaArc\\simulations\\3D_loop\\3D_loop.vtu", binary=True)
+archive.grid.save("3D_loop_cond.vtu", binary=False)
