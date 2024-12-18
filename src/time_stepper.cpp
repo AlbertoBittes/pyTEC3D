@@ -1,5 +1,19 @@
-#include "time_stepper.h"
+#include "../include/time_stepper.h"
 
+bool Substep::get_write_results() const
+{
+    return parent->get_write_results();
+}
+
+bool Substep::get_transient_effect() const
+{
+    return parent->get_transient_effect();
+}
+
+bool Substep::get_ramped_load() const
+{
+    return parent->get_ramped_load();
+}
 // Constructor
 TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSystem &system)
     : current_time_step(0), current_substep(0), current_time(0.0), system(system)
@@ -107,7 +121,7 @@ void TimeStepper::read_config(const nlohmann::json &config)
         {
             auto time_steps_json = settings["time_steps"].get<std::vector<Real>>();
             Real previous_time = 0.0;
-            for (size_t i = 0; i < time_steps_json.size(); ++i)
+            for (unsigned int i = 0; i < time_steps_json.size(); ++i)
             {
                 if (time_steps_json[i] <= 0)
                 {
@@ -118,7 +132,7 @@ void TimeStepper::read_config(const nlohmann::json &config)
                 {
                     libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not greater than the previous time step.");
                 }
-                time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, false, false, false);
+                time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, false, false, false, *this);
                 previous_time = time_steps_json[i];
             }
         }

@@ -193,7 +193,6 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, DofMap &dof_map)
     const unsigned int num_vars = 1;
     this->initialize(elem, dof_map, num_vars, false);
 
-    Real CAV_value;
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
         // Real js[3];

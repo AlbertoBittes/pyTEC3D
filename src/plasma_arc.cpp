@@ -53,6 +53,7 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
+#include <vtkCellData.h>
 #include <vtkSmartPointer.h>
 #include <iostream>
 
@@ -160,14 +161,17 @@ int main(int argc, char **argv)
         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
     }
     unsigned int matNum;
-    MaterialsMap *materials = &readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
 
+    MaterialsMap materials = readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
+
+    // Use a pointer to the local variable
+    MaterialsMap *materials_ptr = &materials;
     libMesh::out << "Identifying conductive domain..." << std::endl;
     for (auto &elem : mesh.active_element_ptr_range())
     {
         matNum = matArray->GetTuple1(elem->id());
-        auto it = materials->find(matNum);
-        if (it == materials->end())
+        auto it = materials_ptr->find(matNum);
+        if (it == materials_ptr->end())
         {
             libmesh_error_msg("Error: Material number " + std::to_string(matNum) + " not found in material properties.");
         }
@@ -201,7 +205,7 @@ int main(int argc, char **argv)
     // Print information about the system to the screen.
     equation_systems.print_info();
 
-    equation_systems.parameters.set<MaterialsMap *>("materials_properties") = materials;
+    equation_systems.parameters.set<MaterialsMap *>("materials_properties") = materials_ptr;
 
     equation_systems.parameters.set<vtkCellData *>("cell_data") = cell_data;
     // Setup transient options

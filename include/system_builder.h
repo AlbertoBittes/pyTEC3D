@@ -2,11 +2,7 @@
 #define SYSTEM_BUILDER_H
 
 #include "libmesh/equation_systems.h"
-#include "../include/materials_properties.h"
 #include "../include/json.hpp"
-#include <map>                       // Include for std::map
-#include "../include/time_stepper.h" // Include for TimeStepper
-#include <vtkCellData.h>
 
 using namespace libMesh;
 

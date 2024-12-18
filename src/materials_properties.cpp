@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <string>
 #include <limits> // for std::numeric_limits
-#include "materials_properties.h"
+#include "../include/materials_properties.h"
 
 MaterialsMap readMaterialsProperties(const std::string &filename)
 {

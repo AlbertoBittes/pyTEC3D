@@ -16,6 +16,7 @@
 using namespace libMesh;
 
 class TimeStep;
+class TimeStepper;
 
 class Substep
 {
@@ -26,9 +27,9 @@ public:
     unsigned int get_index() const { return index; }
     Real get_time() const { return time; }
     Real get_dt() const { return dt; }
-    bool get_write_results() const { return parent->get_write_results(); }
-    bool get_transient_effect() const { return parent->get_transient_effect(); }
-    bool get_ramped_load() const { return parent->get_ramped_load(); }
+    bool get_write_results() const;
+    bool get_transient_effect() const;
+    bool get_ramped_load() const;
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }
