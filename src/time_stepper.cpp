@@ -16,7 +16,7 @@ bool Substep::get_ramped_load() const
 }
 // Constructor
 TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSystem &system)
-    : current_time_step(0), current_substep(0), current_time(0.0), system(system)
+    : current_time_step(0), current_substep(0), current_time(0.0), cumulative_substep(0), system(system)
 {
     read_config(config);
 }
@@ -44,7 +44,7 @@ unsigned int TimeStepper::get_current_substep() const
 
 void TimeStepper::set_cumulative_substep(unsigned int cum_substep)
 {
-    cumulative_substep = cumulative_substep;
+    cumulative_substep = cum_substep;
 }
 
 unsigned int TimeStepper::get_cumulative_substep() const
@@ -120,6 +120,10 @@ void TimeStepper::read_config(const nlohmann::json &config)
         if (settings.contains("time_steps"))
         {
             auto time_steps_json = settings["time_steps"].get<std::vector<Real>>();
+            auto write_results_json = settings["write_substeps_results"].get<std::vector<bool>>();
+            auto transient_effects_json = settings["transient_effects"].get<std::vector<bool>>();
+            auto ramped_load_json = settings["ramped_load"].get<std::vector<bool>>();
+
             Real previous_time = 0.0;
             for (unsigned int i = 0; i < time_steps_json.size(); ++i)
             {
@@ -132,7 +136,7 @@ void TimeStepper::read_config(const nlohmann::json &config)
                 {
                     libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not greater than the previous time step.");
                 }
-                time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, false, false, false, *this);
+                time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
                 previous_time = time_steps_json[i];
             }
         }

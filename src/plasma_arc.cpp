@@ -32,7 +32,7 @@
 #include "libmesh/mesh.h"
 #include "libmesh/mesh_generation.h"
 #include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
-
+#include <libmesh/exodusII_io.h>
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
@@ -285,7 +285,9 @@ int main(int argc, char **argv)
 
         libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
         // This will reinitialize the constraints for the system
+        // NodalBCConstraint node_dof_constraints(system, pointData, step.get_step() + 1);
         node_dof_constraints.setTimeStep(step.get_step() + 1);
+        // system.attach_constraint_object(node_dof_constraints);
         system.reinit_constraints();
 
         // Iterate through the substeps of the current time step
@@ -299,6 +301,10 @@ int main(int argc, char **argv)
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
+            // for (int j = 0; j < system.n_dofs(); j++)
+            // {
+            //     libMesh::out << "DOF " << j << ": " << system.current_local_solution->el(j) << std::endl;
+            // }
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;
@@ -308,10 +314,17 @@ int main(int argc, char **argv)
                 // else
                 //     compute_magnetic_field_static_3D(equation_systems);
                 libMesh::out << "Writing time substep results..." << std::endl;
-                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep() + 1);
+                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".pvtu";
                 final_output_path = output_path / output_filename;
                 // Write the results
-                vtkio.write_equation_systems(final_output_path, equation_systems);
+                VTKIO vtk_output(mesh);
+                vtk_output.write_equation_systems(final_output_path, equation_systems);
+                // libMesh::out << "Writing time substep results..." << std::endl;
+                // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".exo";
+                // final_output_path = output_path / output_filename;
+                // // Write the results
+                // ExodusII_IO vtk_output(mesh);
+                // vtk_output.write_equation_systems(final_output_path, equation_systems);
             }
 
             libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;

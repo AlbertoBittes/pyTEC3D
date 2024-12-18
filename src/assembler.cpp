@@ -113,9 +113,9 @@ void AssemblerLinear::assemble()
 
     auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     vtkCellData *cell_data = eq_sys.parameters.get<vtkCellData *>("cell_data");
-    MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properites");
+    MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
-    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, dof_map, qrule);
+    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, qrule);
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
@@ -199,6 +199,7 @@ void AssemblerLinear::assemble()
 
         system.old_local_solution->get(dof_indices, elem_builder.old_solution_values);
 
+        elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
         // Zero the element matrix and right-hand side before
         // summing them.  We use the resize member here because
         // the number of degrees of freedom might have changed from

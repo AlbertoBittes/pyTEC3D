@@ -23,7 +23,7 @@ void NodalBCConstraint::constrain()
     if (!A_Array)
     {
         // Handle the case where the "Az" array does not exist
-        libmesh_error_msg("Error: A Boundary Conditions array not found in vtkPointData.");
+        libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
     }
     array_name = "V_" + std::to_string(_time_step);
     vtkDataArray *V_Array = _pointData->GetArray(array_name.c_str());
