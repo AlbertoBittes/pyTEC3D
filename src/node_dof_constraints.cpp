@@ -100,4 +100,12 @@ void NodalBCConstraint::constrain()
             }
         }
     }
+    std::vector<dof_id_type> dof_indices;
+    _sys.get_dof_map().local_variable_indices(dof_indices, _sys.get_mesh(), 3);
+    for (const auto &dof : dof_indices)
+    {
+        // Apply the constraint
+        DofConstraintRow constraint_row;
+        _sys.get_dof_map().add_constraint_row(dof, constraint_row, 0.0, false);
+    }
 }
