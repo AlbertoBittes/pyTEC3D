@@ -114,9 +114,10 @@ for i in range(1, number_time_steps + 1):
         V_i = np.full(num_points, np.nan)
     elif dimension == 2:
         A_i = np.full((num_points, 1), np.nan)
-        V_i = np.full(num_points, np.nan)
+        # V_i = np.full(num_points, np.nan)
     archive.grid.point_data[f"A_{i}"] = A_i
-    archive.grid.point_data[f"V_{i}"] = V_i
+    if dimension == 3:
+        archive.grid.point_data[f"V_{i}"] = V_i
 
 for i in range(1, number_time_steps + 1):
     if dimension == 3:
