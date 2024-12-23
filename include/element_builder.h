@@ -74,6 +74,8 @@ private:
     vtkDataArray *js_array;
     vtkDataArray *mat_array;
     unsigned int n_var_dofs;
+    unsigned int n_var_dofs_old;
+    std::vector<std::vector<dof_id_type>> dof_indices_var;
 };
 
 #endif // ELEMENT_BUILDER_H
