@@ -27,14 +27,12 @@ public:
     ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
 
     void build_element_matrix(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
-    // Method
     void build_solid97_cond(const Elem *elem, const DofMap &dof_map);
     void build_solid97(const Elem *elem, const DofMap &dof_map);
     void build_solid236(const Elem *elem, const DofMap &dof_map);
     void build_solid236_cond(const Elem *elem, const DofMap &dof_map);
     void build_plane13(const Elem *elem, const DofMap &dof_map);
     void build_plane13_cond(const Elem *elem, const DofMap &dof_map);
-    // Methods to fill matrices
     void fill_mu_matrix(dof_id_type elem_id);
     void fill_rs_matrix(dof_id_type elem_id);
     void compute_material_properties(dof_id_type elem_id, const unsigned int subdomain_id);
@@ -50,49 +48,31 @@ public:
     vtkDataArray *get_js_array() const { return js_array; }
     vtkDataArray *get_mat_array() const { return mat_array; }
 
+    std::vector<Real> *get_old_solution_values() { return &old_solution_values; }
+
+private:
     DenseMatrix<Number> &Ke;
     DenseMatrix<Number> &Ce;
     DenseVector<Number> &Fe;
-
-    // Allocate memory for 3D nodal elements matrices with transient effects
-    // I can have up to 4 variables per node/edge
-    // References to momentum equation right hand sides
+    MaterialsMap &materials;
     DenseSubVector<Number> F[4];
-
-    // References to velocity-velocity coupling blocks
     DenseSubMatrix<Number> KAA[3][3];
-
-    // References to velocity-pressure coupling blocks
     DenseSubMatrix<Number> KAV[3];
     DenseSubMatrix<Number> KVA[3];
-    DenseSubMatrix<Number> KVV;
-
-    // References to velocity-velocity coupling blocks
     DenseSubMatrix<Number> CAA[3][3];
-
-    // References to velocity-pressure coupling blocks
     DenseSubMatrix<Number> CAV[3];
     DenseSubMatrix<Number> CVA[3];
     DenseSubMatrix<Number> CVV;
-
-    MaterialsMap &materials;
     std::vector<std::vector<double>> mu_matrix;
     std::vector<std::vector<double>> rs_matrix;
-
-    // Attributes for JxW, phi, and dphi
     const std::vector<Real> &JxW;
     const std::vector<std::vector<Real>> &phi;
     const std::vector<std::vector<RealGradient>> &dphi;
-
-    // Attributes for time step, time substep, and cell data
     const TimeStep &ts;
+    QGauss &qrule;
+    std::vector<Real> old_solution_values;
     vtkDataArray *js_array;
     vtkDataArray *mat_array;
-    std::vector<Real> old_solution_values;
-
-    // Attributes for dof map and quadrature rule
-    QGauss &qrule;
-    unsigned int num_vars;
     unsigned int n_var_dofs;
 };
 

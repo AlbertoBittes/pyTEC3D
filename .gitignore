@@ -60,3 +60,4 @@ bin
 .vscode/c_cpp_properties.json
 simulations
 utils/__pycache__
+debug
