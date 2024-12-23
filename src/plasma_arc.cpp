@@ -67,14 +67,14 @@ int main(int argc, char **argv)
     // std::cin >> a;
     // Initialize libMesh and any dependent libraries, like in example 2.
     LibMeshInit init(argc, argv);
-    {
-        if (init.comm().rank() != 0)
-        {
-            int i = 0;
-            while (0 == i)
-                sleep(1);
-        }
-    }
+    // {
+    //     if (init.comm().rank() != 0)
+    //     {
+    //         int i = 0;
+    //         while (0 == i)
+    //             sleep(1);
+    //     }
+    // }
     // Check for proper calling arguments.
     libmesh_error_msg_if(argc < 2, "Usage:\n"
                                        << "\t " << argv[0] << " config.json");
