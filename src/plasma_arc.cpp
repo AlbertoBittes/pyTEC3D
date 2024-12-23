@@ -55,6 +55,7 @@
 #include <vtkPointData.h>
 #include <vtkCellData.h>
 #include <vtkSmartPointer.h>
+#include <vtkXMLPUnstructuredGridReader.h>
 #include <iostream>
 
 using namespace libMesh;
@@ -66,7 +67,14 @@ int main(int argc, char **argv)
     // std::cin >> a;
     // Initialize libMesh and any dependent libraries, like in example 2.
     LibMeshInit init(argc, argv);
-
+    {
+        if (init.comm().rank() != 0)
+        {
+            int i = 0;
+            while (0 == i)
+                sleep(1);
+        }
+    }
     // Check for proper calling arguments.
     libmesh_error_msg_if(argc < 2, "Usage:\n"
                                        << "\t " << argv[0] << " config.json");
@@ -106,12 +114,31 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     VTKIO vtkio(mesh);
     mesh.allow_renumbering(false);
-    if (init.comm().rank() == 0)
-        vtkio.read(mesh_filepath);
 
+    vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    if (init.comm().rank() == 0)
+    {
+        vtkio.read(mesh_filepath);
+        vtkGrid = vtkio.get_vtk_grid();
+    }
+    else
+    {
+        // Use a typedef, because these names are just crazy
+        typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
+        MyReader reader = MyReader::New();
+
+        // Pass the filename along to the reader
+        reader->SetFileName(mesh_filepath.c_str());
+
+        // Force reading
+        reader->Update();
+
+        // read in the grid
+        vtkGrid = reader->GetOutput();
+    }
     MeshCommunication().broadcast(mesh);
 
-    vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
+    // vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
 
     // This is needed because of wron libMesh function when reading dimensions
     // Ask if they plan to fix it

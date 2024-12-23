@@ -105,9 +105,9 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
                     // Here you will put the time factor as well
                     if (ts.get_transient_effect())
                     {
-                        // CAV_value =  // Not sure
-                        CAV[k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k);
-                        CVA[k](dof_j, dof_i) += JxW[qp] / rs_matrix[k][k] * phi[dof_j][qp] * dphi[dof_i][qp](k);
+                        CAV_value = JxW[qp] / rs_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k);
+                        CAV[k](dof_i, dof_j) += CAV_value;
+                        CVA[k](dof_j, dof_i) += CAV_value;
                         CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) / rs_matrix[k][k] * dphi[dof_j][qp](k);
                         CAA[k][k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] *
                                                    (phi[dof_i][qp] * phi[dof_j][qp]);

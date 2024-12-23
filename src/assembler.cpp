@@ -224,10 +224,6 @@ void AssemblerLinear::assemble()
         matrix.add_matrix(Ke, dof_indices);
         system.rhs->add_vector(Fe, dof_indices);
     }
-    matrix.close();
-    matrix.print_matlab("../debug/matrix_" + std::to_string(eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper")->get_current_time_step()) + ".m");
-    system.rhs->close();
-    system.rhs->print_matlab("../debug/rhs_" + std::to_string(eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper")->get_current_time_step()) + ".m");
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)
     // it will print its log to the screen. Pretty easy, huh?
