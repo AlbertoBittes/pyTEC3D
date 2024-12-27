@@ -200,6 +200,10 @@ void AssemblerLinear::assemble()
         system.old_local_solution->get(dof_indices, *(elem_builder.get_old_solution_values()));
 
         elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
+
+        this->insert_ke_matrix(elem_id, Ke);
+        this->insert_ce_matrix(elem_id, Ce);
+        this->insert_rhs_vector(elem_id, Fe);
         // Zero the element matrix and right-hand side before
         // summing them.  We use the resize member here because
         // the number of degrees of freedom might have changed from

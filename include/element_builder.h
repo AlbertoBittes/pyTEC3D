@@ -49,6 +49,11 @@ public:
     vtkDataArray *get_mat_array() const { return mat_array; }
 
     std::vector<Real> *get_old_solution_values() { return &old_solution_values; }
+    // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
+    // unsigned int get_n_var_dofs() const { return n_var_dofs; }
+    // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }
+    // void set_n_var_dofs_old(unsigned int n) { n_var_dofs_old = n; }
+    // void set_n_var_dofs(unsigned int n) { n_var_dofs = n; }
 
 private:
     DenseMatrix<Number> &Ke;
@@ -71,11 +76,11 @@ private:
     const TimeStep &ts;
     QGauss &qrule;
     std::vector<Real> old_solution_values;
-    vtkDataArray *js_array;
-    vtkDataArray *mat_array;
+    vtkSmartPointer<vtkDataArray> js_array;
+    vtkSmartPointer<vtkDataArray> mat_array;
     unsigned int n_var_dofs;
     unsigned int n_var_dofs_old;
-    std::vector<std::vector<dof_id_type>> dof_indices_var;
+    // std::vector<std::vector<dof_id_type>> dof_indices_var;
 };
 
 #endif // ELEMENT_BUILDER_H

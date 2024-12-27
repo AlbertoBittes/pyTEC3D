@@ -24,6 +24,21 @@ public:
 
     void assemble() override;
 
+    void update_rhs();
+
+    // Methods to insert and get values from the maps
+    void insert_ke_matrix(int key, const DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> get_ke_matrix(int key) const;
+
+    void insert_ce_matrix(int key, const DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> get_ce_matrix(int key) const;
+
+    void insert_rhs_vector(int key, const DenseVector<Number> &vector);
+    DenseVector<Number> get_rhs_vector(int key) const;
+
+    void insert_old_rhs_vector(int key, const std::vector<Real> &vector);
+    std::vector<Real> get_old_rhs_vector(int key) const;
+
 private:
     EquationSystems &eq_sys;
     bool transient;
@@ -33,6 +48,10 @@ private:
     std::string order;
     int dim;
     nlohmann::json config;
+    std::map<int, DenseMatrix<Number>> ke_matrix_map;
+    std::map<int, DenseMatrix<Number>> ce_matrix_map;
+    std::map<int, DenseVector<Number>> rhs_map;
+    std::map<int, std::vector<Real>> old_rhs_map;
 };
 
 #endif // ASSEMBLER_H

@@ -67,14 +67,14 @@ int main(int argc, char **argv)
     // std::cin >> a;
     // Initialize libMesh and any dependent libraries, like in example 2.
     LibMeshInit init(argc, argv);
-    {
-        if (init.comm().rank() != 0)
-        {
-            int i = 0;
-            while (0 == i)
-                sleep(1);
-        }
-    }
+    // {
+    //     if (init.comm().rank() != 0)
+    //     {
+    //         int i = 0;
+    //         while (0 == i)
+    //             sleep(1);
+    //     }
+    // }
     // Check for proper calling arguments.
     libmesh_error_msg_if(argc < 2, "Usage:\n"
                                        << "\t " << argv[0] << " config.json");
@@ -334,7 +334,7 @@ int main(int argc, char **argv)
             // {
             //     libMesh::out << "DOF " << j << ": " << system.current_local_solution->el(j) << std::endl;
             // }
-            SparseMatrix<Number> &matrix = system.get_system_matrix();
+            // SparseMatrix<Number> &matrix = system.get_system_matrix();
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;

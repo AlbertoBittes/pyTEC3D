@@ -29,9 +29,9 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       n_var_dofs_old(0)
 {
     std::string array_name = "Js_" + std::to_string(ts.get_step() + 1);
-    js_array = cell_data->GetArray(array_name.c_str());
+    js_array = vtkSmartPointer<vtkDataArray>::Take(cell_data->GetArray(array_name.c_str()));
     array_name = "ansys_material_type";
-    mat_array = cell_data->GetArray(array_name.c_str());
+    mat_array = vtkSmartPointer<vtkDataArray>::Take(cell_data->GetArray(array_name.c_str()));
     if (!js_array)
     {
         // Get the value from the "Js" array using the element ID
@@ -41,48 +41,49 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
 
 void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigned int num_vars, bool volt)
 {
-    dof_indices_var.resize(num_vars);
+    // this->get_dof_indices_var()->resize(num_vars);
 
-    for (unsigned int var = 0; var < num_vars; var++)
-        dof_map.dof_indices(elem, dof_indices_var[var], var);
+    // for (unsigned int var = 0; var < num_vars; var++)
+    //     dof_map.dof_indices(elem, this->get_dof_indices_var()[var], var);
+    // This will have to be fixed once you introduce non-nodal elements!
+    //
+    this->n_var_dofs = elem->n_nodes();
 
-    n_var_dofs = dof_indices_var[0].size();
-
-    if (n_var_dofs == n_var_dofs_old)
-    {
-        return;
-    }
-    else
-    {
-        for (unsigned int var_i = 0; var_i < num_vars; var_i++)
-            for (unsigned int var_j = 0; var_j < num_vars; var_j++)
-            {
-                KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-                // eHere add a check if CAA is needed
-                if (ts.get_transient_effect())
-                    CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-            }
-        for (unsigned int var = 0; var < num_vars; var++)
-            F[var].reposition(var * n_var_dofs, n_var_dofs);
-        if (volt)
+    // if (this->n_var_dofs == this->n_var_dofs_old)
+    // {
+    //     return;
+    // }
+    // else
+    // {
+    for (unsigned int var_i = 0; var_i < num_vars; var_i++)
+        for (unsigned int var_j = 0; var_j < num_vars; var_j++)
         {
+            KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+            // eHere add a check if CAA is needed
             if (ts.get_transient_effect())
-            {
-                for (unsigned int var_i = 0; var_i < num_vars; var_i++)
-                {
-                    // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-                    // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-
-                    CAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-                    CVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-                }
-                CVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-            }
+                CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
         }
-        // // KVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-        // if (ts.get_transient_effect())
-        n_var_dofs_old = n_var_dofs;
+    for (unsigned int var = 0; var < num_vars; var++)
+        F[var].reposition(var * n_var_dofs, n_var_dofs);
+    if (volt)
+    {
+        if (ts.get_transient_effect())
+        {
+            for (unsigned int var_i = 0; var_i < num_vars; var_i++)
+            {
+                // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+                // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+
+                CAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+                CVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+            }
+            CVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+        }
     }
+    // // KVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+    // if (ts.get_transient_effect())
+    // this->n_var_dofs_old = this->n_var_dofs;
+    // }
 }
 // Method
 void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
