@@ -29,7 +29,6 @@ public:
     Real get_dt() const { return dt; }
     bool get_write_results() const;
     bool get_transient_effect() const;
-    bool get_ramped_load() const;
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }
@@ -46,8 +45,8 @@ private:
 class TimeStep
 {
 public:
-    TimeStep(unsigned int step, Real time, Real delta_t, unsigned int n_substeps, bool write_results, bool transient_effect, bool ramped_load, TimeStepper &time_stepper)
-        : step(step), time(time), delta_t(delta_t), n_substeps(n_substeps), write_results(write_results), transient_effect(transient_effect), ramped_load(ramped_load), time_stepper(time_stepper) {}
+    TimeStep(unsigned int step, Real time, Real delta_t, unsigned int n_substeps, bool write_results, bool transient_effect, TimeStepper &time_stepper)
+        : step(step), time(time), delta_t(delta_t), n_substeps(n_substeps), write_results(write_results), transient_effect(transient_effect), time_stepper(time_stepper) {}
 
     unsigned int get_step() const { return step; }
     Real get_time() const { return time; }
@@ -55,7 +54,6 @@ public:
     unsigned int get_n_substeps() const { return n_substeps; }
     bool get_write_results() const { return write_results; }
     bool get_transient_effect() const { return transient_effect; }
-    bool get_ramped_load() const { return ramped_load; }
     const std::vector<Substep> &get_substeps() const { return substeps; }
     TimeStepper &get_time_stepper() { return time_stepper; }
 
@@ -65,7 +63,6 @@ public:
     void set_n_substeps(unsigned int n) { n_substeps = n; }
     void set_write_results(bool w) { write_results = w; }
     void set_transient_effect(bool t) { transient_effect = t; }
-    void set_ramped_load(bool r) { ramped_load = r; }
     void add_substep(const Substep &substep) { substeps.push_back(substep); }
 
     // Custom substep iterator for TimeStep
@@ -81,7 +78,6 @@ private:
     unsigned int n_substeps;
     bool write_results;
     bool transient_effect;
-    bool ramped_load;
     std::vector<Substep> substeps;
     TimeStepper &time_stepper;
 };
@@ -111,6 +107,9 @@ public:
     void set_time_substep_dt(Real dt);
     Real get_time_substep_dt() const;
 
+    void set_prev_time_substep_dt(Real dt);
+    Real get_prev_time_substep_dt() const;
+
     const std::vector<TimeStep> &get_time_steps() const { return time_steps; }
     TransientLinearImplicitSystem &get_system() { return system; }
     // Method to update the old solution
@@ -128,6 +127,7 @@ private:
     Real current_time;
     Real time_step_dt;
     Real time_substep_dt;
+    Real prev_time_substep_dt;
     std::vector<TimeStep> time_steps;
     TransientLinearImplicitSystem &system;
 
@@ -189,6 +189,7 @@ public:
     {
         first = true;
         substep_index++;
+        time_stepper.set_prev_time_substep_dt(ts.get_substeps()[substep_index].get_dt());
         return *this;
     }
 

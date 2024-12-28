@@ -107,9 +107,16 @@ void AssemblerLinear::assemble()
     // and right-hand-side vector contribution.  Following
     // basic finite element terminology we will denote these
     // "Ke" and "Fe". More detail is in example 3.
+    DenseMatrix<Number> KKe;
     DenseMatrix<Number> Ke;
     DenseMatrix<Number> Ce;
+    DenseMatrix<Number> Ke_aux;
+    DenseMatrix<Number> Ce_aux;
+
+    DenseVector<Number> FFe;
     DenseVector<Number> Fe;
+    std::vector<Real> old_solution_values;
+    DenseSubVector<Number> F(Fe);
 
     auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     vtkCellData *cell_data = eq_sys.parameters.get<vtkCellData *>("cell_data");
@@ -129,81 +136,79 @@ void AssemblerLinear::assemble()
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
 
-    // You will have to fix this for transient problems
-    // std::string array_name = "Js_" + std::to_string(time_step);
-    // vtkDataArray *jsArray = cell_data->GetArray(array_name.c_str());
-    // array_name = "ansys_material_type";
-    // vtkDataArray *matArray = cell_data->GetArray(array_name.c_str());
-    // if (!jsArray)
-    // {
-    //     // Get the value from the "Js" array using the element ID
-    //     libmesh_error_msg("Error: Js_" + std::to_string(time_step) + " array not found in vtkCellData.");
-    // }
-    // Now we will loop over all the elements in the mesh.
-    // We will compute the element matrix and right-hand-side
-    // contribution.  See example 3 for a discussion of the
-    // element iterators.
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
+        const unsigned int subdomain_id = elem->subdomain_id();
+        dof_id_type elem_id = elem->id();
 
         // Get the degree of freedom indices for the
         // current element.  These define where in the global
         // matrix and right-hand-side this element will
         // contribute to.
-        dof_map.dof_indices(elem, dof_indices);
+        if (ts->get_cumulative_substep() == 0) // Here add the check for nonlinear elements
+        {
+            dof_map.dof_indices(elem, dof_indices);
+            this->insert_dof_indices(elem_id, dof_indices);
+            // Cache the number of degrees of freedom on this element, for
+            // use as a loop bound later.  We use cast_int to explicitly
+            // convert from size() (which may be 64-bit) to unsigned int
+            // (which may be 32-bit but which is definitely enough to count
+            // *local* degrees of freedom.
+            const unsigned int n_dofs =
+                cast_int<unsigned int>(dof_indices.size());
 
-        // Cache the number of degrees of freedom on this element, for
-        // use as a loop bound later.  We use cast_int to explicitly
-        // convert from size() (which may be 64-bit) to unsigned int
-        // (which may be 32-bit but which is definitely enough to count
-        // *local* degrees of freedom.
-        const unsigned int n_dofs =
-            cast_int<unsigned int>(dof_indices.size());
+            // Compute the element-specific data for the current
+            // element.  This involves computing the location of the
+            // quadrature points (q_point) and the shape functions
+            // (phi, dphi) for the current element.
+            fe->reinit(elem);
 
-        // Compute the element-specific data for the current
-        // element.  This involves computing the location of the
-        // quadrature points (q_point) and the shape functions
-        // (phi, dphi) for the current element.
-        fe->reinit(elem);
+            elem_builder.compute_material_properties(elem_id, subdomain_id);
+            // With one variable, we should have the same number of degrees
+            // of freedom as shape functions.
+            // libmesh_assert_equal_to(n_dofs, phi.size());
 
-        const unsigned int subdomain_id = elem->subdomain_id();
+            Ke.resize(n_dofs, n_dofs);
+            if (elem->subdomain_id() == 1)
+                Ce.resize(n_dofs, n_dofs);
 
-        dof_id_type elem_id = elem->id();
+            elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
 
-        // Retrieve the material number for the current element
-        //    const unsigned int material_number = static_cast<unsigned int>(matArray->GetTuple1(el_id)); // Retrieve the material number using GetTuple1
-
-        // Access the corresponding material properties from materials
-        // const MaterialsProperties &mat_properties = materials.at(material_number);
-
-        // Create a diagonal matrix with murx, mury, and murz as the diagonal terms
-        // std::vector<std::vector<double>> mu_matrix(3, std::vector<double>(3, 0.0));
-        // mu_matrix[0][0] = mat_properties.murx;
-        // mu_matrix[1][1] = mat_properties.mury;
-        // mu_matrix[2][2] = mat_properties.murz;
-        elem_builder.compute_material_properties(elem_id, subdomain_id);
-        // With one variable, we should have the same number of degrees
-        // of freedom as shape functions.
-        // libmesh_assert_equal_to(n_dofs, phi.size());
-
-        Ke.resize(n_dofs, n_dofs);
-
-        Ce.resize(n_dofs, n_dofs);
-
-        Fe.resize(n_dofs);
-
-        elem_builder.get_old_solution_values()->resize(n_dofs);
-
-        system.old_local_solution->get(dof_indices, *(elem_builder.get_old_solution_values()));
-
-        elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
-
-        this->insert_ke_matrix(elem_id, Ke);
-        this->insert_ce_matrix(elem_id, Ce);
-        this->insert_rhs_vector(elem_id, Fe);
+            this->insert_ke_matrix(elem_id, Ke);
+            KKe.resize(n_dofs, n_dofs);
+            KKe += Ke;
+            if (subdomain_id == 1)
+            {
+                Ce.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                this->insert_ce_matrix(elem_id, Ce);
+                if (time_step.get_transient_effect())
+                    KKe += Ce;
+            }
+            Fe.resize(n_dofs);
+            elem_builder.build_element_rhs(elem, dof_map, subdomain_id, formulation, dim, fe_family);
+            this->insert_rhs_vector(elem_id, Fe);
+            system.old_local_solution->get(dof_indices, old_solution_values);
+        }
+        // Matrix changes when we have nonlinearities or different dt
+        else if (ts->get_cumulative_substep() != 0 && ts->get_prev_time_substep_dt() != ts->get_time_step_dt())
+        {
+            if (subdomain_id == 1)
+            {
+                dof_indices = this->get_dof_indices(elem_id);
+                const unsigned int n_dofs = dof_indices.size();
+                KKe.resize(n_dofs, n_dofs);
+                KKe += this->get_ke_matrix(elem_id);
+                Ce_aux = this->get_ce_matrix(elem_id);
+                Ce_aux.scale(ts->get_prev_time_substep_dt() / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                if (time_step.get_transient_effect())
+                    KKe += Ce_aux;
+                this->insert_ce_matrix(elem_id, Ce_aux);
+                // this->insert_rhs_vector(elem_id, Fe);
+            }
+        }
         // Zero the element matrix and right-hand side before
         // summing them.  We use the resize member here because
         // the number of degrees of freedom might have changed from
@@ -231,4 +236,94 @@ void AssemblerLinear::assemble()
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)
     // it will print its log to the screen. Pretty easy, huh?
+}
+
+void AssemblerLinear::insert_ke_matrix(int key, const DenseMatrix<Number> &matrix)
+{
+    ke_matrix_map[key] = DenseMatrix<Number>(matrix); // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_ke_matrix(int key)
+{
+    auto it = ke_matrix_map.find(key);
+    if (it != ke_matrix_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in ke_matrix_map");
+    }
+}
+
+void AssemblerLinear::insert_ce_matrix(int key, const DenseMatrix<Number> &matrix)
+{
+    ce_matrix_map[key] = DenseMatrix<Number>(matrix); // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_ce_matrix(int key)
+{
+    auto it = ce_matrix_map.find(key);
+    if (it != ce_matrix_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in ce_matrix_map");
+    }
+}
+
+void AssemblerLinear::insert_rhs_vector(int key, const DenseVector<Number> &vector)
+{
+    rhs_map[key] = DenseVector<Number>(vector); // Insert a copy of the vector
+}
+
+DenseVector<Number> &AssemblerLinear::get_rhs_vector(int key)
+{
+    auto it = rhs_map.find(key);
+    if (it != rhs_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in rhs_map");
+    }
+}
+
+void AssemblerLinear::insert_old_rhs_vector(int key, const std::vector<Real> &vector)
+{
+    old_rhs_map[key] = std::vector<Real>(vector); // Insert a copy of the vector
+}
+
+std::vector<Real> &AssemblerLinear::get_old_rhs_vector(int key)
+{
+    auto it = old_rhs_map.find(key);
+    if (it != old_rhs_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in old_rhs_map");
+    }
+}
+
+void AssemblerLinear::insert_dof_indices(int key, const std::vector<dof_id_type> &dof_indices_param)
+{
+    dof_indices[key] = std::vector<dof_id_type>(dof_indices_param); // Insert a copy of the vector
+}
+
+std::vector<dof_id_type> &AssemblerLinear::get_dof_indices(int key)
+{
+    auto it = dof_indices.find(key);
+    if (it != dof_indices.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in dof_indices");
+    }
 }

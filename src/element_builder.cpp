@@ -22,7 +22,6 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       dphi(fe->get_dphi()),
       ts(ts),
       qrule(qrule),
-      old_solution_values(200), // Initialize the vector with a size of 200
       js_array(nullptr),
       mat_array(nullptr),
       n_var_dofs(0),
@@ -46,7 +45,6 @@ void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigne
     // for (unsigned int var = 0; var < num_vars; var++)
     //     dof_map.dof_indices(elem, this->get_dof_indices_var()[var], var);
     // This will have to be fixed once you introduce non-nodal elements!
-    //
     this->n_var_dofs = elem->n_nodes();
 
     // if (this->n_var_dofs == this->n_var_dofs_old)
@@ -63,27 +61,35 @@ void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigne
             if (ts.get_transient_effect())
                 CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
         }
-    for (unsigned int var = 0; var < num_vars; var++)
-        F[var].reposition(var * n_var_dofs, n_var_dofs);
     if (volt)
     {
-        if (ts.get_transient_effect())
+        for (unsigned int var_i = 0; var_i < num_vars; var_i++)
         {
-            for (unsigned int var_i = 0; var_i < num_vars; var_i++)
-            {
-                // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-                // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
+            // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+            // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
 
-                CAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-                CVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-            }
-            CVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+            CAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
+            CVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
         }
+        CVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
     }
     // // KVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
     // if (ts.get_transient_effect())
     // this->n_var_dofs_old = this->n_var_dofs;
     // }
+}
+
+void ElementBuilder::initialize_rhs(const Elem *elem, const DofMap &dof_map, unsigned int num_vars)
+{
+    // this->get_dof_indices_var()->resize(num_vars);
+
+    // for (unsigned int var = 0; var < num_vars; var++)
+    //     dof_map.dof_indices(elem, this->get_dof_indices_var()[var], var);
+    // This will have to be fixed once you introduce non-nodal elements!
+
+    this->n_var_dofs = elem->n_nodes();
+    for (unsigned int var = 0; var < num_vars; var++)
+        F[var].reposition(var * n_var_dofs, n_var_dofs);
 }
 // Method
 void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
@@ -111,25 +117,16 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
                 for (unsigned int k = 0; k < 3; k++)
                 {
-                    // Here you will put the time factor as well
-                    if (ts.get_transient_effect())
-                    {
-                        CAV_value = JxW[qp] / rs_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k);
-                        CAV[k](dof_i, dof_j) += CAV_value;
-                        CVA[k](dof_j, dof_i) += CAV_value;
-                        CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) / rs_matrix[k][k] * dphi[dof_j][qp](k);
-                        CAA[k][k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] *
-                                                   (phi[dof_i][qp] * phi[dof_j][qp]);
-                    }
+                    CAV_value = JxW[qp] / rs_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k);
+                    CAV[k](dof_i, dof_j) += CAV_value;
+                    CVA[k](dof_j, dof_i) += CAV_value;
+                    CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) / rs_matrix[k][k] * dphi[dof_j][qp](k);
+                    CAA[k][k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] *
+                                               (phi[dof_i][qp] * phi[dof_j][qp]);
+
                     KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
                                                (dphi[dof_i][qp] * dphi[dof_j][qp]);
                 }
-    }
-    if (ts.get_transient_effect())
-    {
-        Ce.scale(1 / ts.get_substeps()[0].get_dt());
-        Ke += Ce;
-        Ce.vector_mult(Fe, old_solution_values);
     }
 }
 
@@ -155,7 +152,6 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
         {
             for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
             {
-                F[k](dof_i) += JxW[qp] * js[k] * phi[dof_i][qp];
                 for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
                 {
                     KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
@@ -166,7 +162,23 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
+void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
+{
+    const unsigned int num_vars = 3;
+    this->initialize(elem, dof_map, num_vars, false);
 
+    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+    {
+        for (unsigned int k = 0; k < 3; k++)
+        {
+            for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            {
+                F[k](dof_i) += JxW[qp] * phi[dof_i][qp];
+            }
+        }
+    }
+    // libmesh_error_msg("build_solid97 is not implemented yet.");
+}
 // Temporary placeholder for build_solid236
 void ElementBuilder::build_solid236(const Elem *elem, const DofMap &dof_map)
 {
@@ -202,13 +214,38 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
     {
         for (unsigned int i = 0; i != n_var_dofs; i++)
         {
-            Fe(i) += JxW[qp] * js * phi[i][qp];
             for (unsigned int j = 0; j != n_var_dofs; j++)
                 Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]) / mu_matrix[0][0];
         }
     }
 }
+// Temporary placeholder for build_plane13
+void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
+{
+    // Stop logging the shape function initialization.
+    // If you forget to stop logging an event the PerfLog
+    // object will probably catch the error and abort.
+    const unsigned int num_vars = 1;
+    this->initialize(elem, dof_map, num_vars, false);
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    Real js = js_array->GetTuple1(elem->id());
 
+    for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+    {
+        for (unsigned int i = 0; i != n_var_dofs; i++)
+        {
+            Fe(i) += JxW[qp] * phi[i][qp];
+        }
+    }
+}
 // Temporary placeholder for build_plane13_cond
 void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
 {
@@ -227,27 +264,9 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
             {
                 // Here you will put the time factor as well
                 Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0][0];
-                if (ts.get_transient_effect())
-                {
-                    Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                }
-            }
-        if (ts.get_transient_effect())
-        {
-            Ce.scale(1 / ts.get_substeps()[0].get_dt());
-            Ke += Ce;
-            Ce.vector_mult(Fe, old_solution_values);
-        }
-        // Now we will build the element matrix.  This involves
-        // a double loop to integrate the test functions (i) against
-        // the trial functions (j).
-        //
-        // We have split the numeric integration into two loops
-        // so that we can log the matrix and right-hand-side
-        // computation separately.
-        //
 
-        // Stop logging the matrix computatio
+                Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+            }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
@@ -277,6 +296,17 @@ void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_ma
     if (subdomain_id == 0 && formulation == "AV" && dim == 2)
     {
         this->build_plane13(elem, dof_map);
+    }
+}
+void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+{
+    if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    {
+        this->build_solid97_rhs(elem, dof_map);
+    }
+    if (subdomain_id == 0 && formulation == "AV" && dim == 2)
+    {
+        this->build_plane13_rhs(elem, dof_map);
     }
 }
 // Method to fill mu_matrix
