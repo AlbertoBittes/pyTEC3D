@@ -49,7 +49,6 @@ public:
     const std::vector<std::vector<double>> &get_mu_matrix() const { return mu_matrix; }
     const std::vector<std::vector<double>> &get_rs_matrix() const { return rs_matrix; }
 
-    vtkDataArray *get_js_array() const { return js_array; }
     vtkDataArray *get_mat_array() const { return mat_array; }
 
     // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
@@ -78,8 +77,7 @@ private:
     const std::vector<std::vector<RealGradient>> &dphi;
     const TimeStep &ts;
     QGauss &qrule;
-    vtkSmartPointer<vtkDataArray> js_array;
-    vtkSmartPointer<vtkDataArray> mat_array;
+    vtkDataArray *mat_array;
     unsigned int n_var_dofs;
     unsigned int n_var_dofs_old;
     // std::vector<std::vector<dof_id_type>> dof_indices_var;

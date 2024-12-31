@@ -22,19 +22,15 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       dphi(fe->get_dphi()),
       ts(ts),
       qrule(qrule),
-      js_array(nullptr),
       mat_array(nullptr),
       n_var_dofs(0),
       n_var_dofs_old(0)
 {
-    std::string array_name = "Js_" + std::to_string(ts.get_step() + 1);
-    js_array = vtkSmartPointer<vtkDataArray>::Take(cell_data->GetArray(array_name.c_str()));
-    array_name = "ansys_material_type";
-    mat_array = vtkSmartPointer<vtkDataArray>::Take(cell_data->GetArray(array_name.c_str()));
-    if (!js_array)
+    std::string array_name = "ansys_material_type";
+    mat_array = cell_data->GetArray(array_name.c_str());
+    if (mat_array == nullptr)
     {
-        // Get the value from the "Js" array using the element ID
-        libmesh_error_msg("Error: Js_" + std::to_string(ts.get_step() + 1) + " array not found in vtkCellData.");
+        libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
     }
 }
 
@@ -55,16 +51,15 @@ void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigne
     // {
     for (unsigned int var_i = 0; var_i < num_vars; var_i++)
         for (unsigned int var_j = 0; var_j < num_vars; var_j++)
-        {
             KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-            // eHere add a check if CAA is needed
-            if (ts.get_transient_effect())
-                CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
-        }
+
     if (volt)
     {
         for (unsigned int var_i = 0; var_i < num_vars; var_i++)
         {
+            for (unsigned int var_j = 0; var_j < num_vars; var_j++)
+                CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+
             // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
             // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
 
@@ -144,8 +139,6 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
     // computation separately.
     //
     // Now start logging the element matrix computation
-    Real js[3];
-    js_array->GetTuple(elem->id(), js);
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
         for (unsigned int k = 0; k < 3; k++)
@@ -165,7 +158,7 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
 void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
 {
     const unsigned int num_vars = 3;
-    this->initialize(elem, dof_map, num_vars, false);
+    this->initialize_rhs(elem, dof_map, num_vars);
 
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
@@ -208,8 +201,6 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
     // computation separately.
     //
     // Now start logging the element matrix computation
-    Real js = js_array->GetTuple1(elem->id());
-
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
         for (unsigned int i = 0; i != n_var_dofs; i++)
@@ -226,7 +217,7 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
     // If you forget to stop logging an event the PerfLog
     // object will probably catch the error and abort.
     const unsigned int num_vars = 1;
-    this->initialize(elem, dof_map, num_vars, false);
+    this->initialize_rhs(elem, dof_map, num_vars);
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -236,7 +227,6 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
     // computation separately.
     //
     // Now start logging the element matrix computation
-    Real js = js_array->GetTuple1(elem->id());
 
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
@@ -298,7 +288,7 @@ void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_ma
         this->build_plane13(elem, dof_map);
     }
 }
-void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {

@@ -108,22 +108,37 @@ void AssemblerLinear::assemble()
     // basic finite element terminology we will denote these
     // "Ke" and "Fe". More detail is in example 3.
     DenseMatrix<Number> KKe;
+    DenseMatrix<Number> CCe;
     DenseMatrix<Number> Ke;
     DenseMatrix<Number> Ce;
-    DenseMatrix<Number> Ke_aux;
-    DenseMatrix<Number> Ce_aux;
 
     DenseVector<Number> FFe;
     DenseVector<Number> Fe;
     std::vector<Real> old_solution_values;
-    DenseSubVector<Number> F(Fe);
+    DenseSubVector<Number> F_aux[3] = {DenseSubVector<Number>(FFe), DenseSubVector<Number>(FFe), DenseSubVector<Number>(FFe)};
 
     auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
+    // check correct time stepper get
+    // Get the cell data from the vtkGrid
     vtkCellData *cell_data = eq_sys.parameters.get<vtkCellData *>("cell_data");
+    // check that cell data has been correctly passed
+    if (cell_data == nullptr)
+    {
+        libmesh_error_msg("Error: cell data not found in vtkCellData.");
+    }
+    // Get the materials properties
     MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
     ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, qrule);
-
+    std::string array_name = "Js_" + std::to_string(time_step.get_step() + 1);
+    vtkDataArray *js_array;
+    js_array = cell_data->GetArray(array_name.c_str());
+    if (!js_array)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: Js_" + std::to_string(time_step.get_step() + 1) + " array not found in vtkCellData.");
+    }
+    Real js[3];
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -148,10 +163,12 @@ void AssemblerLinear::assemble()
         // current element.  These define where in the global
         // matrix and right-hand-side this element will
         // contribute to.
-        if (ts->get_cumulative_substep() == 0) // Here add the check for nonlinear elements
+        if (ts->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
         {
+            // this can be done at the beginning only
             dof_map.dof_indices(elem, dof_indices);
             this->insert_dof_indices(elem_id, dof_indices);
+
             // Cache the number of degrees of freedom on this element, for
             // use as a loop bound later.  We use cast_int to explicitly
             // convert from size() (which may be 64-bit) to unsigned int
@@ -159,7 +176,6 @@ void AssemblerLinear::assemble()
             // *local* degrees of freedom.
             const unsigned int n_dofs =
                 cast_int<unsigned int>(dof_indices.size());
-
             // Compute the element-specific data for the current
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
@@ -178,37 +194,82 @@ void AssemblerLinear::assemble()
             elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
 
             this->insert_ke_matrix(elem_id, Ke);
-            KKe.resize(n_dofs, n_dofs);
-            KKe += Ke;
             if (subdomain_id == 1)
             {
-                Ce.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                 this->insert_ce_matrix(elem_id, Ce);
-                if (time_step.get_transient_effect())
-                    KKe += Ce;
             }
-            Fe.resize(n_dofs);
-            elem_builder.build_element_rhs(elem, dof_map, subdomain_id, formulation, dim, fe_family);
-            this->insert_rhs_vector(elem_id, Fe);
-            system.old_local_solution->get(dof_indices, old_solution_values);
+            if (subdomain_id == 0)
+            {
+                Fe.resize(n_dofs);
+                elem_builder.build_element_rhs(elem, dof_map, subdomain_id, formulation, dim, fe_family);
+                this->insert_rhs_vector(elem_id, Fe);
+            }
         }
-        // Matrix changes when we have nonlinearities or different dt
-        else if (ts->get_cumulative_substep() != 0 && ts->get_prev_time_substep_dt() != ts->get_time_step_dt())
+        if (ts->get_cumulative_substep() >= 1 && ts->get_current_substep() == 0)
         {
+            dof_indices = this->get_dof_indices(elem_id);
+            const unsigned int n_dofs =
+                cast_int<unsigned int>(dof_indices.size());
+            KKe.resize(n_dofs, n_dofs);
+            KKe += this->get_ke_matrix(elem_id);
+
             if (subdomain_id == 1)
             {
-                dof_indices = this->get_dof_indices(elem_id);
-                const unsigned int n_dofs = dof_indices.size();
-                KKe.resize(n_dofs, n_dofs);
-                KKe += this->get_ke_matrix(elem_id);
-                Ce_aux = this->get_ce_matrix(elem_id);
-                Ce_aux.scale(ts->get_prev_time_substep_dt() / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                 if (time_step.get_transient_effect())
-                    KKe += Ce_aux;
-                this->insert_ce_matrix(elem_id, Ce_aux);
-                // this->insert_rhs_vector(elem_id, Fe);
+                {
+                    CCe.resize(n_dofs, n_dofs);
+                    CCe += this->get_ce_matrix(elem_id);
+                    CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                    KKe += CCe;
+                }
             }
+            dof_map.constrain_element_matrix(KKe, dof_indices);
+            matrix.add_matrix(KKe, dof_indices);
+            FFe.resize(n_dofs);
+            if (subdomain_id == 0)
+            {
+                FFe += this->get_rhs_vector(elem_id);
+                if (dim == 2)
+                {
+                    js[0] = js_array->GetTuple1(elem->id());
+                    // here understand if it is better to copy the object or to sum from 0
+                    FFe.scale(js[0]);
+                }
+                else
+                {
+                    js_array->GetTuple(elem_id, js);
+                    for (unsigned int var = 0; var < 3; var++)
+                    {
+                        F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
+                        for (unsigned int y = 0; y < elem->n_nodes(); y++)
+                        {
+                            F_aux[var](y) *= js[var];
+                        }
+                    }
+                }
+                dof_map.constrain_element_vector(FFe, dof_indices);
+                system.rhs->add_vector(FFe, dof_indices);
+            }
+            // here I constrain but I modify later, wrong
         }
+        if (subdomain_id == 1)
+        {
+            dof_indices = this->get_dof_indices(elem_id);
+            const unsigned int n_dofs =
+                cast_int<unsigned int>(dof_indices.size());
+            FFe.resize(n_dofs);
+            if (time_step.get_transient_effect())
+            {
+                system.old_local_solution->get(dof_indices, old_solution_values);
+                this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
+                FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+            }
+            dof_map.constrain_element_vector(FFe, dof_indices);
+            system.rhs->add_vector(FFe, dof_indices);
+        }
+
+        // Matrix changes when we have nonlinearities or different dt
+
         // Zero the element matrix and right-hand side before
         // summing them.  We use the resize member here because
         // the number of degrees of freedom might have changed from
@@ -220,7 +281,6 @@ void AssemblerLinear::assemble()
         // we would have to apply any hanging node constraint equations
         // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
         // to impose a inhomogeneous Dirichlet boundary conditions.
-        dof_map.heterogenously_constrain_element_matrix_and_vector(Ke, Fe, dof_indices);
 
         // The element matrix and right-hand-side are now built
         // for this element.  Add them to the global matrix and
@@ -229,21 +289,18 @@ void AssemblerLinear::assemble()
         // Start logging the insertion of the local (element)
         // matrix and vector into the global matrix and vector
         // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
-
-        matrix.add_matrix(Ke, dof_indices);
-        system.rhs->add_vector(Fe, dof_indices);
     }
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)
     // it will print its log to the screen. Pretty easy, huh?
 }
 
-void AssemblerLinear::insert_ke_matrix(int key, const DenseMatrix<Number> &matrix)
+void AssemblerLinear::insert_ke_matrix(dof_id_type key, DenseMatrix<Number> &matrix)
 {
-    ke_matrix_map[key] = DenseMatrix<Number>(matrix); // Insert a copy of the matrix
+    ke_matrix_map[key] = matrix; // Insert a copy of the matrix
 }
 
-DenseMatrix<Number> &AssemblerLinear::get_ke_matrix(int key)
+DenseMatrix<Number> &AssemblerLinear::get_ke_matrix(dof_id_type key)
 {
     auto it = ke_matrix_map.find(key);
     if (it != ke_matrix_map.end())
@@ -256,12 +313,12 @@ DenseMatrix<Number> &AssemblerLinear::get_ke_matrix(int key)
     }
 }
 
-void AssemblerLinear::insert_ce_matrix(int key, const DenseMatrix<Number> &matrix)
+void AssemblerLinear::insert_ce_matrix(dof_id_type key, DenseMatrix<Number> &matrix)
 {
-    ce_matrix_map[key] = DenseMatrix<Number>(matrix); // Insert a copy of the matrix
+    ce_matrix_map[key] = matrix; // Insert a copy of the matrix
 }
 
-DenseMatrix<Number> &AssemblerLinear::get_ce_matrix(int key)
+DenseMatrix<Number> &AssemblerLinear::get_ce_matrix(dof_id_type key)
 {
     auto it = ce_matrix_map.find(key);
     if (it != ce_matrix_map.end())
@@ -274,12 +331,12 @@ DenseMatrix<Number> &AssemblerLinear::get_ce_matrix(int key)
     }
 }
 
-void AssemblerLinear::insert_rhs_vector(int key, const DenseVector<Number> &vector)
+void AssemblerLinear::insert_rhs_vector(dof_id_type key, DenseVector<Number> &vector)
 {
-    rhs_map[key] = DenseVector<Number>(vector); // Insert a copy of the vector
+    rhs_map[key] = vector; // Insert a copy of the vector
 }
 
-DenseVector<Number> &AssemblerLinear::get_rhs_vector(int key)
+DenseVector<Number> &AssemblerLinear::get_rhs_vector(dof_id_type key)
 {
     auto it = rhs_map.find(key);
     if (it != rhs_map.end())
@@ -292,30 +349,12 @@ DenseVector<Number> &AssemblerLinear::get_rhs_vector(int key)
     }
 }
 
-void AssemblerLinear::insert_old_rhs_vector(int key, const std::vector<Real> &vector)
+void AssemblerLinear::insert_dof_indices(dof_id_type key, std::vector<dof_id_type> &dof_indices_param)
 {
-    old_rhs_map[key] = std::vector<Real>(vector); // Insert a copy of the vector
+    dof_indices[key] = dof_indices_param; // Insert a copy of the vector
 }
 
-std::vector<Real> &AssemblerLinear::get_old_rhs_vector(int key)
-{
-    auto it = old_rhs_map.find(key);
-    if (it != old_rhs_map.end())
-    {
-        return it->second;
-    }
-    else
-    {
-        throw std::out_of_range("Key not found in old_rhs_map");
-    }
-}
-
-void AssemblerLinear::insert_dof_indices(int key, const std::vector<dof_id_type> &dof_indices_param)
-{
-    dof_indices[key] = std::vector<dof_id_type>(dof_indices_param); // Insert a copy of the vector
-}
-
-std::vector<dof_id_type> &AssemblerLinear::get_dof_indices(int key)
+std::vector<dof_id_type> &AssemblerLinear::get_dof_indices(dof_id_type key)
 {
     auto it = dof_indices.find(key);
     if (it != dof_indices.end())

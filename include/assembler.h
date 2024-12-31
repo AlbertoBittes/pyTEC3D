@@ -27,20 +27,17 @@ public:
     void update_rhs();
 
     // Methods to insert and get values from the maps
-    void insert_ke_matrix(int key, const DenseMatrix<Number> &matrix);
-    DenseMatrix<Number> &get_ke_matrix(int key);
+    void insert_ke_matrix(dof_id_type key, DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> &get_ke_matrix(dof_id_type key);
 
-    void insert_ce_matrix(int key, const DenseMatrix<Number> &matrix);
-    DenseMatrix<Number> &get_ce_matrix(int key);
+    void insert_ce_matrix(dof_id_type key, DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> &get_ce_matrix(dof_id_type key);
 
-    void insert_rhs_vector(int key, const DenseVector<Number> &vector);
-    DenseVector<Number> &get_rhs_vector(int key);
+    void insert_rhs_vector(dof_id_type key, DenseVector<Number> &vector);
+    DenseVector<Number> &get_rhs_vector(dof_id_type key);
 
-    void insert_old_rhs_vector(int key, const std::vector<Real> &vector);
-    std::vector<Real> &get_old_rhs_vector(int key);
-
-    void insert_dof_indices(int key, const std::vector<dof_id_type> &dof_indices);
-    std::vector<dof_id_type> &get_dof_indices(int key);
+    void insert_dof_indices(dof_id_type key, std::vector<dof_id_type> &dof_indices_param);
+    std::vector<dof_id_type> &get_dof_indices(dof_id_type key);
 
 private:
     EquationSystems &eq_sys;
@@ -54,7 +51,6 @@ private:
     std::map<dof_id_type, DenseMatrix<Number>> ke_matrix_map;
     std::map<dof_id_type, DenseMatrix<Number>> ce_matrix_map;
     std::map<dof_id_type, DenseVector<Number>> rhs_map;
-    std::map<dof_id_type, std::vector<Real>> old_rhs_map;
     // Here I assume static dofs
     std::map<dof_id_type, std::vector<dof_id_type>> dof_indices;
 };

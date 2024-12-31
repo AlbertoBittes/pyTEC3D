@@ -325,8 +325,7 @@ int main(int argc, char **argv)
             libMesh::out << "  Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
                          << ", dt: " << substep.get_dt()
                          << ", Write Results: " << substep.get_write_results()
-                         << ", Transient Effect: " << substep.get_transient_effect()
-                         << ", Ramped Load: " << substep.get_ramped_load() << std::endl;
+                         << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
