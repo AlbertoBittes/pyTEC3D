@@ -205,69 +205,71 @@ void AssemblerLinear::assemble()
                 this->insert_rhs_vector(elem_id, Fe);
             }
         }
-        if (ts->get_cumulative_substep() >= 1 && ts->get_current_substep() == 0)
-        {
-            dof_indices = this->get_dof_indices(elem_id);
-            const unsigned int n_dofs =
-                cast_int<unsigned int>(dof_indices.size());
-            KKe.resize(n_dofs, n_dofs);
-            KKe += this->get_ke_matrix(elem_id);
+        // if (ts->get_cumulative_substep() >= 1 && ts->get_current_substep() == 0)
+        // {
+        dof_indices = this->get_dof_indices(elem_id);
+        const unsigned int n_dofs =
+            cast_int<unsigned int>(dof_indices.size());
+        KKe.resize(n_dofs, n_dofs);
+        KKe += this->get_ke_matrix(elem_id);
 
-            if (subdomain_id == 1)
+        if (subdomain_id == 1)
+        {
+            if (time_step.get_transient_effect())
             {
-                if (time_step.get_transient_effect())
-                {
-                    CCe.resize(n_dofs, n_dofs);
-                    CCe += this->get_ce_matrix(elem_id);
-                    CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
-                    KKe += CCe;
-                }
+                CCe.resize(n_dofs, n_dofs);
+                CCe += this->get_ce_matrix(elem_id);
+                CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                KKe += CCe;
             }
-            dof_map.constrain_element_matrix(KKe, dof_indices);
-            matrix.add_matrix(KKe, dof_indices);
-            FFe.resize(n_dofs);
-            if (subdomain_id == 0)
+        }
+        // dof_map.constrain_element_matrix(KKe, dof_indices);
+        // matrix.add_matrix(KKe, dof_indices);
+        FFe.resize(n_dofs);
+        if (subdomain_id == 0)
+        {
+            FFe += this->get_rhs_vector(elem_id);
+            if (dim == 2)
             {
-                FFe += this->get_rhs_vector(elem_id);
-                if (dim == 2)
+                js[0] = js_array->GetTuple1(elem->id());
+                // here understand if it is better to copy the object or to sum from 0
+                FFe.scale(js[0]);
+            }
+            else
+            {
+                js_array->GetTuple(elem_id, js);
+                for (unsigned int var = 0; var < 3; var++)
                 {
-                    js[0] = js_array->GetTuple1(elem->id());
-                    // here understand if it is better to copy the object or to sum from 0
-                    FFe.scale(js[0]);
-                }
-                else
-                {
-                    js_array->GetTuple(elem_id, js);
-                    for (unsigned int var = 0; var < 3; var++)
+                    F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
+                    for (unsigned int y = 0; y < elem->n_nodes(); y++)
                     {
-                        F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
-                        for (unsigned int y = 0; y < elem->n_nodes(); y++)
-                        {
-                            F_aux[var](y) *= js[var];
-                        }
+                        F_aux[var](y) *= js[var];
                     }
                 }
-                dof_map.constrain_element_vector(FFe, dof_indices);
-                system.rhs->add_vector(FFe, dof_indices);
             }
-            // here I constrain but I modify later, wrong
+            // dof_map.constrain_element_vector(FFe, dof_indices);
+            // system.rhs->add_vector(FFe, dof_indices);
         }
+        // here I constrain but I modify later, wrong
+        // }
         if (subdomain_id == 1)
         {
             dof_indices = this->get_dof_indices(elem_id);
             const unsigned int n_dofs =
                 cast_int<unsigned int>(dof_indices.size());
-            FFe.resize(n_dofs);
+            // FFe.resize(n_dofs);
             if (time_step.get_transient_effect())
             {
                 system.old_local_solution->get(dof_indices, old_solution_values);
                 this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
                 FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
             }
-            dof_map.constrain_element_vector(FFe, dof_indices);
-            system.rhs->add_vector(FFe, dof_indices);
+            // dof_map.constrain_element_vector(FFe, dof_indices);
+            // system.rhs->add_vector(FFe, dof_indices);
         }
-
+        dof_map.heterogeneously_constrain_element_matrix_and_vector(KKe, FFe, dof_indices);
+        matrix.add_matrix(KKe, dof_indices);
+        system.rhs->add_vector(FFe, dof_indices);
         // Matrix changes when we have nonlinearities or different dt
 
         // Zero the element matrix and right-hand side before

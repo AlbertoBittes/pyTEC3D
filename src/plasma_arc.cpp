@@ -225,7 +225,7 @@ int main(int argc, char **argv)
 
     // Get a reference to the system we want to solve
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
-
+    // system.zero_out_matrix_and_rhs = false;
     // Initialize the data structures for the equation system.
     equation_systems.init();
 
@@ -297,8 +297,6 @@ int main(int argc, char **argv)
     // }
 
     // Build the K matrix, the RHS F and Solve the system Kx=F
-    // libMesh::out << "Building matrix and solving system..." << std::endl;
-    // system.solve(););
     system.solution->zero();
     system.solution->close();
     system.current_local_solution->zero();
