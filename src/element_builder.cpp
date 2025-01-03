@@ -119,7 +119,7 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
                     CAA[k][k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] *
                                                (phi[dof_i][qp] * phi[dof_j][qp]);
 
-                    KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
+                    KAA[k][k](dof_i, dof_j) -= JxW[qp] / mu_matrix[k][k] *
                                                (dphi[dof_i][qp] * dphi[dof_j][qp]);
                 }
     }
@@ -147,7 +147,7 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
             {
                 for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
                 {
-                    KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
+                    KAA[k][k](dof_i, dof_j) -= JxW[qp] / mu_matrix[k][k] *
                                                (dphi[dof_i][qp] * dphi[dof_j][qp]);
                 }
             }
@@ -206,7 +206,7 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
         for (unsigned int i = 0; i != n_var_dofs; i++)
         {
             for (unsigned int j = 0; j != n_var_dofs; j++)
-                Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]) / mu_matrix[0][0];
+                Ke(i, j) -= JxW[qp] * (dphi[i][qp] * dphi[j][qp]) / mu_matrix[0][0];
         }
     }
 }
@@ -253,7 +253,7 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
             {
                 // Here you will put the time factor as well
-                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0][0];
+                Ke(dof_i, dof_j) -= JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0][0];
 
                 Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi[dof_i][qp] * phi[dof_j][qp]);
             }
