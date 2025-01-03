@@ -194,7 +194,7 @@ int main(int argc, char **argv)
     // Use a pointer to the local variable
     MaterialsMap *materials_ptr = &materials;
     libMesh::out << "Identifying conductive domain..." << std::endl;
-    for (auto &elem : mesh.active_element_ptr_range())
+    for (auto &elem : mesh.active_local_element_ptr_range())
     {
         matNum = matArray->GetTuple1(elem->id());
         auto it = materials_ptr->find(matNum);
