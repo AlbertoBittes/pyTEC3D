@@ -180,6 +180,22 @@ public:
             time_stepper.set_current_time(time_stepper.get_current_time() + ts.get_substeps()[substep_index].get_dt());
             time_stepper.get_system().time = time_stepper.get_current_time();
             time_stepper.set_current_substep(substep_index);
+            time_stepper.set_time_substep_dt(ts.get_substeps()[substep_index].get_dt());
+            if (substep_index > 0)
+            {
+                time_stepper.set_prev_time_substep_dt(ts.get_substeps()[substep_index - 1].get_dt());
+            }
+            else
+            {
+                if (ts.get_step() > 0)
+                {
+                    time_stepper.set_prev_time_substep_dt(time_stepper.get_time_steps()[ts.get_step() - 1].get_substeps().back().get_dt());
+                }
+                else
+                {
+                    time_stepper.set_prev_time_substep_dt(0);
+                }
+            }
             time_stepper.set_cumulative_substep(time_stepper.get_cumulative_substep() + 1);
             first = false;
         }
@@ -189,7 +205,6 @@ public:
     {
         first = true;
         substep_index++;
-        time_stepper.set_prev_time_substep_dt(ts.get_substeps()[substep_index].get_dt());
         return *this;
     }
 

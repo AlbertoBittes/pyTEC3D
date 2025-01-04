@@ -322,7 +322,7 @@ int main(int argc, char **argv)
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
         {
-            libMesh::out << "  Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
+            libMesh::out << " Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
                          << ", dt: " << substep.get_dt()
                          << ", Write Results: " << substep.get_write_results()
                          << ", Transient Effect: " << substep.get_transient_effect() << std::endl;

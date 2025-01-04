@@ -152,6 +152,9 @@ void AssemblerLinear::assemble()
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     dof_id_type elem_id;
     subdomain_id_type subdomain_id;
+    const Real relative_epsilon = 1e-9;
+    Real dt1;
+    Real dt2;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -226,9 +229,18 @@ void AssemblerLinear::assemble()
                 this->insert_rhs_vector(elem_id, Fe);
             }
         }
+
+        dt1 = ts->get_time_substep_dt();
+        dt2 = ts->get_prev_time_substep_dt();
+        // in a new time step we could have a different dt, different bcs, different time integration effects
         // Here add the flag for ferromagnetic
-        if (ts->get_time_substep_dt() != ts->get_prev_time_substep_dt())
+        if (std::abs(dt1 - dt2) > relative_epsilon * std::max(std::abs(dt1), std::abs(dt2)) || ts->get_current_substep() == 0)
         {
+            if (elem_id == 0)
+            {
+                // libMesh::out << "Time step changed from " << dt2 << " to " << dt1 << std::endl;
+                libMesh::out << "Computing new system matrix" << std::endl;
+            }
             KKe.resize(n_dofs, n_dofs);
             KKe += this->get_ke_matrix(elem_id);
 
