@@ -15,6 +15,7 @@ TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSy
     : current_time_step(0), current_substep(0), current_time(0.0), cumulative_substep(0), prev_time_substep_dt(0.0), system(system)
 {
     read_config(config);
+    system.time = 0;
 }
 
 // Setters and getters

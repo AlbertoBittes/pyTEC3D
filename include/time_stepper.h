@@ -12,6 +12,7 @@
 #include <libmesh/transient_system.h>
 #include <libmesh/linear_implicit_system.h>
 #include "libmesh/numeric_vector.h"
+#include <libmesh/sparse_matrix.h> // Add this line to include the SparseMatrix definition
 
 using namespace libMesh;
 
@@ -148,6 +149,7 @@ public:
         {
             ts.set_current_time_step(index);
             ts.set_time_step_dt(ts.time_steps[index].get_delta_t());
+            ts.get_system().get_system_matrix().zero();
             first = false;
         }
         return ts.time_steps[index];
@@ -197,6 +199,7 @@ public:
                 }
             }
             time_stepper.set_cumulative_substep(time_stepper.get_cumulative_substep() + 1);
+            time_stepper.get_system().rhs->zero();
             first = false;
         }
         return ts.get_substeps()[substep_index];

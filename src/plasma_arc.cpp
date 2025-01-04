@@ -227,7 +227,7 @@ int main(int argc, char **argv)
 
     // Get a reference to the system we want to solve
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
-    // system.zero_out_matrix_and_rhs = false;
+    system.zero_out_matrix_and_rhs = false;
     // Initialize the data structures for the equation system.
     equation_systems.init();
 
@@ -250,9 +250,6 @@ int main(int argc, char **argv)
     // Extract the time_steps array
     // The list of time steps doesn't include the initial time, t=0 always is assumed
     // A static initial step may be required by the user however to get equilibrium
-
-    // For static analysis, we set the time to 0
-    system.time = 0;
 
     // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
     libMesh::out << "Reading boundary conditions data..." << std::endl;
@@ -299,10 +296,11 @@ int main(int argc, char **argv)
     // }
 
     // Build the K matrix, the RHS F and Solve the system Kx=F
-    system.solution->zero();
-    system.solution->close();
-    system.current_local_solution->zero();
-    system.current_local_solution->close();
+    // This should be already done
+    // system.solution->zero();
+    // system.solution->close();
+    // system.current_local_solution->zero();
+    // system.current_local_solution->close();
     for (auto &step : *timeStepper)
     {
         libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
@@ -329,11 +327,6 @@ int main(int argc, char **argv)
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
-            // for (int j = 0; j < system.n_dofs(); j++)
-            // {
-            //     libMesh::out << "DOF " << j << ": " << system.current_local_solution->el(j) << std::endl;
-            // }
-            // SparseMatrix<Number> &matrix = system.get_system_matrix();
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;
