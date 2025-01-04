@@ -150,15 +150,36 @@ void AssemblerLinear::assemble()
 
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
+    dof_id_type elem_id;
+    subdomain_id_type subdomain_id;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        const unsigned int subdomain_id = elem->subdomain_id();
-        dof_id_type elem_id = elem->id();
+        subdomain_id = elem->subdomain_id();
+        elem_id = elem->id();
+        unsigned int n_dofs;
 
+        if (ts->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
+        {
+            // this can be done at the beginning only
+            dof_map.dof_indices(elem, dof_indices);
+            this->insert_dof_indices(elem_id, dof_indices);
+
+            // Cache the number of degrees of freedom on this element, for
+            // use as a loop bound later.  We use cast_int to explicitly
+            // convert from size() (which may be 64-bit) to unsigned int
+            // (which may be 32-bit but which is definitely enough to count
+            // *local* degrees of freedom.
+            n_dofs = cast_int<unsigned int>(dof_indices.size());
+        }
+        else
+        {
+            dof_indices = this->get_dof_indices(elem_id);
+            n_dofs = cast_int<unsigned int>(dof_indices.size());
+        }
         // Get the degree of freedom indices for the
         // current element.  These define where in the global
         // matrix and right-hand-side this element will
@@ -188,7 +209,7 @@ void AssemblerLinear::assemble()
             // libmesh_assert_equal_to(n_dofs, phi.size());
 
             Ke.resize(n_dofs, n_dofs);
-            if (elem->subdomain_id() == 1)
+            if (subdomain_id == 1)
                 Ce.resize(n_dofs, n_dofs);
 
             elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
@@ -205,26 +226,26 @@ void AssemblerLinear::assemble()
                 this->insert_rhs_vector(elem_id, Fe);
             }
         }
-        // if (ts->get_cumulative_substep() >= 1 && ts->get_current_substep() == 0)
-        // {
-        dof_indices = this->get_dof_indices(elem_id);
-        const unsigned int n_dofs =
-            cast_int<unsigned int>(dof_indices.size());
-        KKe.resize(n_dofs, n_dofs);
-        KKe += this->get_ke_matrix(elem_id);
-
-        if (subdomain_id == 1)
+        // Here add the flag for ferromagnetic
+        if (ts->get_time_substep_dt() != ts->get_prev_time_substep_dt())
         {
-            if (time_step.get_transient_effect())
+            KKe.resize(n_dofs, n_dofs);
+            KKe += this->get_ke_matrix(elem_id);
+
+            if (subdomain_id == 1)
             {
-                CCe.resize(n_dofs, n_dofs);
-                CCe += this->get_ce_matrix(elem_id);
-                CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
-                KKe += CCe;
+                if (time_step.get_transient_effect())
+                {
+                    CCe.resize(n_dofs, n_dofs);
+                    CCe += this->get_ce_matrix(elem_id);
+                    CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                    KKe += CCe;
+                }
             }
+            dof_map.constrain_element_matrix(KKe, dof_indices);
+            matrix.add_matrix(KKe, dof_indices);
         }
-        // dof_map.constrain_element_matrix(KKe, dof_indices);
-        // matrix.add_matrix(KKe, dof_indices);
+
         FFe.resize(n_dofs);
         if (subdomain_id == 0)
         {
@@ -252,23 +273,13 @@ void AssemblerLinear::assemble()
         }
         // here I constrain but I modify later, wrong
         // }
-        if (subdomain_id == 1)
+        if (subdomain_id == 1 && time_step.get_transient_effect())
         {
-            dof_indices = this->get_dof_indices(elem_id);
-            const unsigned int n_dofs =
-                cast_int<unsigned int>(dof_indices.size());
-            // FFe.resize(n_dofs);
-            if (time_step.get_transient_effect())
-            {
-                system.old_local_solution->get(dof_indices, old_solution_values);
-                this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
-                FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
-            }
-            // dof_map.constrain_element_vector(FFe, dof_indices);
-            // system.rhs->add_vector(FFe, dof_indices);
+            system.old_local_solution->get(dof_indices, old_solution_values);
+            this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
+            FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
         }
-        dof_map.heterogeneously_constrain_element_matrix_and_vector(KKe, FFe, dof_indices);
-        matrix.add_matrix(KKe, dof_indices);
+        dof_map.constrain_element_vector(FFe, dof_indices);
         system.rhs->add_vector(FFe, dof_indices);
         // Matrix changes when we have nonlinearities or different dt
 

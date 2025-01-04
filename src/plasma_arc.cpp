@@ -49,6 +49,7 @@
 #include "libmesh/mesh_communication.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/sparse_matrix.h"
+#include "libmesh/mesh_modification.h"
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
@@ -146,33 +147,34 @@ int main(int argc, char **argv)
     //     Hmm... I think if you do it this way, the file is opened and read from simultaneously on all N cores, which is probably not great for the filesystem. Can you try wrapping the mesh.read() line in if (comm().rank() == 0), and then, on all processors call
 
     // MeshCommunication().broadcast(mesh);
-    libMesh::out << "Checking mesh dimensions..." << std::endl;
-    unsigned char dim = 0;
-    double bounds[6];
-    vtkGrid->GetBounds(bounds);
-    // Check x-dimension
-    if (bounds[1] - bounds[0] > 0)
-    {
-        dim++;
-    }
+    // libMesh::out << "Checking mesh dimensions..." << std::endl;
+    // unsigned char dim = 0;
+    // double bounds[6];
+    // vtkGrid->GetBounds(bounds);
+    // // Check x-dimension
+    // if (bounds[1] - bounds[0] > 0)
+    // {
+    //     dim++;
+    // }
 
-    // Check y-dimension
-    if (bounds[3] - bounds[2] > 0)
-    {
-        dim++;
-    }
+    // // Check y-dimension
+    // if (bounds[3] - bounds[2] > 0)
+    // {
+    //     dim++;
+    // }
 
-    // Check z-dimension
-    if (bounds[5] - bounds[4] > 0)
-    {
-        dim++;
-    }
+    // // Check z-dimension
+    // if (bounds[5] - bounds[4] > 0)
+    // {
+    //     dim++;
+    // }
 
-    mesh.set_spatial_dimension(dim);
+    // mesh.set_spatial_dimension(dim);
 
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
 
+    MeshTools::Modification::orient_elements(mesh);
     libMesh::out << "Reading loads data..." << std::endl;
     vtkCellData *cell_data = vtkGrid->GetCellData();
     if (cell_data == nullptr)

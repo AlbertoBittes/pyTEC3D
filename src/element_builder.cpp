@@ -261,7 +261,7 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
-void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     if (subdomain_id == 1 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
@@ -288,7 +288,7 @@ void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_ma
         this->build_plane13(elem, dof_map);
     }
 }
-void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, const unsigned int subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
@@ -323,7 +323,7 @@ void ElementBuilder::fill_rs_matrix(dof_id_type elem_id)
     rs_matrix[2][2] = mat_properties.rsvz;
 }
 
-void ElementBuilder::compute_material_properties(dof_id_type elem_id, const unsigned int subdomain_id)
+void ElementBuilder::compute_material_properties(dof_id_type elem_id, subdomain_id_type subdomain_id)
 {
     // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
     this->fill_mu_matrix(elem_id);
