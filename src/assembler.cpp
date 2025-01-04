@@ -45,6 +45,8 @@
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
 #include <map>                          // Include for std::map
 #include <vtkCellData.h>
+#include <cmath>
+#include <stdexcept>
 
 using namespace libMesh;
 
@@ -130,6 +132,7 @@ void AssemblerLinear::assemble()
     MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
     ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, qrule);
+
     std::string array_name = "Js_" + std::to_string(time_step.get_step() + 1);
     vtkDataArray *js_array;
     js_array = cell_data->GetArray(array_name.c_str());
@@ -137,6 +140,15 @@ void AssemblerLinear::assemble()
     {
         // Get the value from the "Js" array using the element ID
         libmesh_error_msg("Error: Js_" + std::to_string(time_step.get_step() + 1) + " array not found in vtkCellData.");
+    }
+
+    vtkDataArray *js_array_old = nullptr;
+    array_name = "Js_" + std::to_string(time_step.get_step());
+    js_array_old = cell_data->GetArray(array_name.c_str());
+    if (!js_array_old && time_step.get_step() > 0)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: Js_" + std::to_string(time_step.get_step()) + " array not found in vtkCellData.");
     }
     Real js[3];
     // Allocate memory for 3D nodal elements matrixes with transient effects
@@ -265,6 +277,17 @@ void AssemblerLinear::assemble()
             if (dim == 2)
             {
                 js[0] = js_array->GetTuple1(elem->id());
+                if (time_step.get_ramped_load())
+                {
+                    if (js_array_old)
+                    {
+                        js[0] = this->linearInterpolate(time_step.get_time_beginning(), js_array_old->GetTuple1(elem->id()), time_step.get_time(), js_array->GetTuple1(elem->id()), ts->get_current_time());
+                    }
+                    else
+                    {
+                        js[0] = this->linearInterpolate(time_step.get_time_beginning(), 0, time_step.get_time(), js_array->GetTuple1(elem->id()), ts->get_current_time());
+                    }
+                }
                 // here understand if it is better to copy the object or to sum from 0
                 FFe.scale(js[0]);
             }
@@ -273,6 +296,17 @@ void AssemblerLinear::assemble()
                 js_array->GetTuple(elem_id, js);
                 for (unsigned int var = 0; var < 3; var++)
                 {
+                    if (time_step.get_ramped_load())
+                    {
+                        if (js_array_old)
+                        {
+                            js[var] = this->linearInterpolate(time_step.get_time_beginning(), js_array_old->GetComponent(elem->id(), var), time_step.get_time(), js_array->GetComponent(elem->id(), var), ts->get_current_time());
+                        }
+                        else
+                        {
+                            js[var] = this->linearInterpolate(time_step.get_time_beginning(), 0, time_step.get_time(), js_array->GetComponent(elem->id(), var), ts->get_current_time());
+                        }
+                    }
                     F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
                     for (unsigned int y = 0; y < elem->n_nodes(); y++)
                     {
@@ -390,4 +424,14 @@ std::vector<dof_id_type> &AssemblerLinear::get_dof_indices(dof_id_type key)
     {
         throw std::out_of_range("Key not found in dof_indices");
     }
+}
+
+Real AssemblerLinear::linearInterpolate(Real x1, Real y1, Real x2, Real y2, Real x)
+{
+    if (x1 == x2)
+    {
+        libmesh_error_msg("x1 and x2 cannot be the same value.");
+    }
+
+    return y1 + ((y2 - y1) / (x2 - x1)) * (x - x1);
 }

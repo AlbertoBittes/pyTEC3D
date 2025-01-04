@@ -15,7 +15,7 @@ bool Substep::get_ramped_load() const
 }
 // Constructor
 TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSystem &system)
-    : current_time_step(0), current_substep(0), current_time(0.0), cumulative_substep(0), prev_time_substep_dt(0.0), system(system)
+    : current_time_step(0), current_substep(0), current_time(0.0), prev_time(0.0), cumulative_substep(0), prev_time_step_dt(0.0), prev_time_substep_dt(0.0), system(system)
 {
     read_config(config);
     system.time = 0;
@@ -57,17 +57,22 @@ void TimeStepper::set_current_time(Real time)
     current_time = time;
     system.time = time;
 }
-
 Real TimeStepper::get_current_time() const
 {
     return current_time;
 }
-
 void TimeStepper::set_time_step_dt(Real dt)
 {
     time_step_dt = dt;
 }
-
+Real TimeStepper::get_prev_time_step_time() const
+{
+    return time_step_dt;
+}
+void TimeStepper::set_prev_time_step_time(Real dt)
+{
+    prev_time = dt;
+}
 Real TimeStepper::get_time_step_dt() const
 {
     return time_step_dt;
@@ -82,7 +87,14 @@ Real TimeStepper::get_time_substep_dt() const
 {
     return time_substep_dt;
 }
-
+void TimeStepper::set_prev_time_step_dt(Real dt)
+{
+    prev_time_step_dt = dt;
+}
+Real TimeStepper::get_prev_time_step_dt() const
+{
+    return prev_time_step_dt;
+}
 void TimeStepper::set_prev_time_substep_dt(Real dt)
 {
     prev_time_substep_dt = dt;
@@ -146,7 +158,10 @@ void TimeStepper::read_config(const nlohmann::json &config)
                 {
                     libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not greater than the previous time step.");
                 }
-                time_steps.emplace_back(i, time_steps_json[i], delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
+                if (i == 0)
+                    time_steps.emplace_back(i, time_steps_json[i], 0.0, delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
+                else
+                    time_steps.emplace_back(i, time_steps_json[i], previous_time, delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
                 previous_time = time_steps_json[i];
             }
         }
@@ -168,7 +183,7 @@ void TimeStepper::read_config(const nlohmann::json &config)
                 Real dt = time_steps[i].get_delta_t() / substeps_json[i];
                 for (unsigned int j = 0; j < substeps_json[i]; ++j)
                 {
-                    time_steps[i].add_substep(Substep(j, time_steps[i].get_time() + j * dt, dt, &time_steps[i], *this));
+                    time_steps[i].add_substep(Substep(j, time_steps[i].get_time_beginning() + (j + 1) * dt, dt, &time_steps[i], *this));
                 }
             }
         }

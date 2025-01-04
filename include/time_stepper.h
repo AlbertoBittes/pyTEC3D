@@ -47,11 +47,12 @@ private:
 class TimeStep
 {
 public:
-    TimeStep(unsigned int step, Real time, Real delta_t, unsigned int n_substeps, bool write_results, bool transient_effect, bool ramped_load, TimeStepper &time_stepper) : step(step),
-                                                                                                                                                                            time(time), delta_t(delta_t), n_substeps(n_substeps), write_results(write_results), transient_effect(transient_effect), ramped_load(ramped_load), time_stepper(time_stepper) {}
+    TimeStep(unsigned int step, Real time, Real time_beginning, Real delta_t, unsigned int n_substeps, bool write_results, bool transient_effect, bool ramped_load, TimeStepper &time_stepper) : step(step),
+                                                                                                                                                                                                 time(time), time_beginning(time_beginning), delta_t(delta_t), n_substeps(n_substeps), write_results(write_results), transient_effect(transient_effect), ramped_load(ramped_load), time_stepper(time_stepper) {}
 
     unsigned int get_step() const { return step; }
     Real get_time() const { return time; }
+    Real get_time_beginning() const { return time_beginning; }
     Real get_delta_t() const { return delta_t; }
     unsigned int get_n_substeps() const { return n_substeps; }
     bool get_write_results() const { return write_results; }
@@ -62,6 +63,7 @@ public:
 
     void set_step(unsigned int s) { step = s; }
     void set_time(Real t) { time = t; }
+    void set_time_beginning(Real t) { time_beginning = t; }
     void set_delta_t(Real dt) { delta_t = dt; }
     void set_n_substeps(unsigned int n) { n_substeps = n; }
     void set_write_results(bool w) { write_results = w; }
@@ -78,6 +80,7 @@ public:
 private:
     unsigned int step;
     Real time;
+    Real time_beginning;
     Real delta_t;
     unsigned int n_substeps;
     bool write_results;
@@ -106,11 +109,17 @@ public:
     void set_current_time(Real time);
     Real get_current_time() const;
 
+    void set_prev_time_step_time(Real dt);
+    Real get_prev_time_step_time() const;
+
     void set_time_step_dt(Real dt);
     Real get_time_step_dt() const;
 
     void set_time_substep_dt(Real dt);
     Real get_time_substep_dt() const;
+
+    void set_prev_time_step_dt(Real dt);
+    Real get_prev_time_step_dt() const;
 
     void set_prev_time_substep_dt(Real dt);
     Real get_prev_time_substep_dt() const;
@@ -130,8 +139,10 @@ private:
     unsigned int current_substep;
     unsigned int cumulative_substep;
     Real current_time;
+    Real prev_time;
     Real time_step_dt;
     Real time_substep_dt;
+    Real prev_time_step_dt;
     Real prev_time_substep_dt;
     std::vector<TimeStep> time_steps;
     TransientLinearImplicitSystem &system;
@@ -152,7 +163,13 @@ public:
         if (first)
         {
             ts.set_current_time_step(index);
+            // ts.set_current_time(ts.get_time_steps()[index].get_time());
             ts.set_time_step_dt(ts.time_steps[index].get_delta_t());
+            if (index > 0)
+            {
+                ts.set_prev_time_step_dt(ts.time_steps[index - 1].get_delta_t());
+                ts.set_prev_time_step_time(ts.get_time_steps()[index - 1].get_time());
+            }
             ts.get_system().get_system_matrix().zero();
             first = false;
         }

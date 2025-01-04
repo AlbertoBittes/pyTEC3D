@@ -39,6 +39,8 @@ public:
     void insert_dof_indices(dof_id_type key, std::vector<dof_id_type> &dof_indices_param);
     std::vector<dof_id_type> &get_dof_indices(dof_id_type key);
 
+    Real linearInterpolate(Real x1, Real y1, Real x2, Real y2, Real x);
+
 private:
     EquationSystems &eq_sys;
     bool transient;
