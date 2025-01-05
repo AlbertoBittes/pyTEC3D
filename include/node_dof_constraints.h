@@ -15,12 +15,12 @@ private:
     System &_sys;
     vtkPointData *_pointData; // New attribute to store the vtkPointData pointer
     unsigned int _dim;
-    const TimeStepper time_stepper;
+    std::shared_ptr<TimeStepper> timeStepper;
 
 public:
     // Modified constructor to take a vtkPointData pointer
-    NodalBCConstraint(System &sys, vtkPointData *pointData, const TimeStepper &time_stepper)
-        : Constraint(), _sys(sys), _pointData(pointData), time_stepper(time_stepper)
+    NodalBCConstraint(TransientLinearImplicitSystem &system, vtkPointData *pointData, std::shared_ptr<TimeStepper> timeStepper)
+        : _sys(system), _pointData(pointData), timeStepper(timeStepper)
     {
         _dim = _sys.get_mesh().mesh_dimension();
     }

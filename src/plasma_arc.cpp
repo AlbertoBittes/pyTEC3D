@@ -282,7 +282,7 @@ int main(int argc, char **argv)
 
     // Assign boundary conditions
     libMesh::out << "Setting boundary conditions object..." << std::endl;
-    NodalBCConstraint node_dof_constraints(system, pointData, *timeStepper);
+    NodalBCConstraint node_dof_constraints(system, pointData, timeStepper);
     system.attach_constraint_object(node_dof_constraints);
 
     // Compute first step for equilibrium or static analysis
@@ -313,8 +313,7 @@ int main(int argc, char **argv)
 
         libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
         // This will reinitialize the constraints for the system
-        // NodalBCConstraint node_dof_constraints(system, pointData, step.get_step() + 1);
-        // system.attach_constraint_object(node_dof_constraints);
+
         system.reinit_constraints();
 
         // Iterate through the substeps of the current time step

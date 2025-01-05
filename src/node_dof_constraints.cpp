@@ -18,18 +18,19 @@ void NodalBCConstraint::constrain()
 
     // Retrieve the system by name
     const MeshBase &mesh = _sys.get_mesh();
-    std::string array_name = "A_" + std::to_string(time_stepper.get_current_time_step() + 1);
+    std::string array_name = "A_" + std::to_string(timeStepper->get_current_time_step() + 1);
     vtkDataArray *A_Array = _pointData->GetArray(array_name.c_str());
+    DofMap &dof_map = _sys.get_dof_map();
     if (!A_Array)
     {
         // Handle the case where the "Az" array does not exist
         libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
     }
     vtkDataArray *V_Array = nullptr;
-    if (_sys.has_variable("V") && time_stepper.get_time_steps()[time_stepper.get_current_time_step()].get_transient_effect())
+    if (_sys.has_variable("V") && timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect())
     {
-        array_name = "V_" + std::to_string(time_stepper.get_current_time_step() + 1);
-        vtkDataArray *V_Array = _pointData->GetArray(array_name.c_str());
+        array_name = "V_" + std::to_string(timeStepper->get_current_time_step() + 1);
+        V_Array = _pointData->GetArray(array_name.c_str());
         if (!V_Array)
         {
             // Handle the case where the "Az" array does not exist
@@ -49,7 +50,7 @@ void NodalBCConstraint::constrain()
                 // Apply the row constraint
                 dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
                 DofConstraintRow constraint_row;
-                _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, az_bc, false);
+                dof_map.add_constraint_row(dof_id, constraint_row, az_bc, false);
             }
         }
         else if (_dim == 3)
@@ -65,21 +66,21 @@ void NodalBCConstraint::constrain()
             {
                 DofConstraintRow constraint_row;
                 dof_id_type dof_id_ax = node->dof_number(_sys.number(), _sys.variable_number("AX"), 0);
-                _sys.get_dof_map().add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
+                dof_map.add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
             }
             if (!std::isnan(ay_bc))
             {
                 DofConstraintRow constraint_row;
                 dof_id_type dof_id_ay = node->dof_number(_sys.number(), _sys.variable_number("AY"), 0);
-                _sys.get_dof_map().add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
+                dof_map.add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
             }
             if (!std::isnan(az_bc))
             {
                 DofConstraintRow constraint_row;
                 dof_id_type dof_id_az = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
-                _sys.get_dof_map().add_constraint_row(dof_id_az, constraint_row, az_bc, false);
+                dof_map.add_constraint_row(dof_id_az, constraint_row, az_bc, false);
             }
-            if (_sys.has_variable("V") && time_stepper.get_time_steps()[time_stepper.get_current_time_step()].get_transient_effect())
+            if (_sys.has_variable("V") && timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect())
             {
                 Real v_bc = V_Array->GetComponent(node->id(), 0);
 
@@ -88,22 +89,22 @@ void NodalBCConstraint::constrain()
                     // Apply the row constraint
                     dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("V"), 0);
                     DofConstraintRow constraint_row;
-                    _sys.get_dof_map().add_constraint_row(dof_id, constraint_row, v_bc, false);
+                    dof_map.add_constraint_row(dof_id, constraint_row, v_bc, false);
                 }
             }
         }
     }
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (!time_stepper.get_time_steps()[time_stepper.get_current_time_step()].get_transient_effect() && _sys.has_variable("V"))
+    if (!timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect() && _sys.has_variable("V"))
     {
         // Apply the constraint for the time derivative of the magnetic vector potential
         std::vector<dof_id_type> dof_indices;
-        _sys.get_dof_map().local_variable_indices(dof_indices, _sys.get_mesh(), _sys.variable_number("V"));
+        dof_map.local_variable_indices(dof_indices, _sys.get_mesh(), _sys.variable_number("V"));
         for (const auto &dof : dof_indices)
         {
             // Apply the constraint
             DofConstraintRow constraint_row;
-            _sys.get_dof_map().add_constraint_row(dof, constraint_row, false);
+            dof_map.add_constraint_row(dof, constraint_row, false);
         }
     }
 }

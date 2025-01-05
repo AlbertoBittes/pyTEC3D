@@ -48,6 +48,7 @@ def update_vtk_grid(vtk_file_path, node_data, time_step):
     # Get the "A" and "ansys_node_num" arrays
     a_array = grid.GetPointData().GetArray("A_" + str(time_step))
     ansys_node_num_array = grid.GetPointData().GetArray("ansys_node_num")
+    v_array = grid.GetPointData().GetArray("V_" + str(time_step))
 
     # Update the "A" array based on the node data
     for i in range(grid.GetNumberOfPoints()):
@@ -65,6 +66,9 @@ def update_vtk_grid(vtk_file_path, node_data, time_step):
                     a_values.get("AZ", [current_tuple[2]])[0],
                 ]
             a_array.SetTuple(i, a_tuple)
+            if "VOLT" in node_data[node_num]:
+                volt_value = node_data[node_num]["VOLT"][0]
+                v_array.SetValue(i, volt_value)
 
     # Write the updated grid to a new file
     writer = vtk.vtkXMLUnstructuredGridWriter()
