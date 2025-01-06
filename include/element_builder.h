@@ -24,8 +24,7 @@ class ElementBuilder
 {
 public:
     // Constructor
-    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
-
+    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_A, const std::unique_ptr<FEBase> &fe_V, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
     void build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_solid97_cond(const Elem *elem, const DofMap &dof_map);
@@ -42,15 +41,6 @@ public:
     void initialize(const Elem *elem, const DofMap &dof_map, unsigned int num_vars, bool volt);
     void initialize_rhs(const Elem *elem, const DofMap &dof_map, unsigned int num_vars);
 
-    const std::vector<Real> &get_JxW() const { return JxW; }
-    const std::vector<std::vector<Real>> &get_phi() const { return phi; }
-    const std::vector<std::vector<RealGradient>> &get_dphi() const { return dphi; }
-
-    const std::vector<std::vector<double>> &get_mu_matrix() const { return mu_matrix; }
-    const std::vector<std::vector<double>> &get_rs_matrix() const { return rs_matrix; }
-
-    vtkDataArray *get_mat_array() const { return mat_array; }
-
     // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
     // unsigned int get_n_var_dofs() const { return n_var_dofs; }
     // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }
@@ -62,19 +52,22 @@ private:
     DenseMatrix<Number> &Ce;
     DenseVector<Number> &Fe;
     MaterialsMap &materials;
-    DenseSubVector<Number> F[4];
-    DenseSubMatrix<Number> KAA[3][3];
+    DenseSubVector<Number> F;
+    DenseSubMatrix<Number> KAA;
     DenseSubMatrix<Number> KAV[3];
     DenseSubMatrix<Number> KVA[3];
-    DenseSubMatrix<Number> CAA[3][3];
+    DenseSubMatrix<Number> CAA;
     DenseSubMatrix<Number> CAV[3];
     DenseSubMatrix<Number> CVA[3];
     DenseSubMatrix<Number> CVV;
     std::vector<std::vector<double>> mu_matrix;
     std::vector<std::vector<double>> rs_matrix;
     const std::vector<Real> &JxW;
-    const std::vector<std::vector<Real>> &phi;
-    const std::vector<std::vector<RealGradient>> &dphi;
+    const std::vector<std::vector<RealGradient>> &phi_A;
+    const std::vector<std::vector<RealTensor>> &dphi_A;
+    const std::vector<std::vector<RealGradient>> &curl_phi_A;
+    const std::vector<std::vector<Real>> &phi_V;
+    const std::vector<std::vector<RealGradient>> &dphi_V;
     const TimeStep &ts;
     QGauss &qrule;
     vtkDataArray *mat_array;

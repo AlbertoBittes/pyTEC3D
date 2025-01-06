@@ -75,15 +75,16 @@ void SystemBuilder::setVariables()
 
     if (formulation == "AV")
     {
-        if (dim == 3 && fe_family == "LAGRANGE")
+        if (dim == 2)
         {
-            system.add_variable("AX", Utility::string_to_enum<Order>(order),
-                                Utility::string_to_enum<FEFamily>(fe_family));
-            system.add_variable("AY", Utility::string_to_enum<Order>(order),
+            system.add_variable("AZ", Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_family));
         }
-        system.add_variable("AZ", Utility::string_to_enum<Order>(order),
-                            Utility::string_to_enum<FEFamily>(fe_family));
+        if (dim == 3 && fe_family == "LAGRANGE")
+        {
+            system.add_variable("A", Utility::string_to_enum<Order>(order),
+                                Utility::string_to_enum<FEFamily>(fe_family + "_VEC"));
+        }
         if (transient)
         {
             std::set<subdomain_id_type> conductive_subdomain;

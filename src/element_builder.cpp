@@ -1,25 +1,24 @@
 #include "../include/element_builder.h"
 
 // Constructor
-ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEBase> &fe, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule)
+ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_A, const std::unique_ptr<FEBase> &fe_V, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule)
     : Ke(Ke), Ce(Ce), Fe(Fe), materials(materials),
-      F{DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe), DenseSubVector<Number>(Fe)},
-      KAA{{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-          {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-          {DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)}},
+      F(DenseSubVector<Number>(Fe)),
+      KAA(DenseSubMatrix<Number>(Ke)),
       KAV{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
       KVA{DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke), DenseSubMatrix<Number>(Ke)},
-      CAA{{DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
-          {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
-          {DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)}},
+      CAA(DenseSubMatrix<Number>(Ce)),
       CAV{DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
       CVA{DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce), DenseSubMatrix<Number>(Ce)},
       CVV(DenseSubMatrix<Number>(Ce)),
       mu_matrix(3, std::vector<double>(3, 0.0)),
       rs_matrix(3, std::vector<double>(3, 0.0)),
-      JxW(fe->get_JxW()),
-      phi(fe->get_phi()),
-      dphi(fe->get_dphi()),
+      JxW(fe_A->get_JxW()),
+      phi_A(fe_A->get_phi()),
+      dphi_A(fe_A->get_dphi()),
+      curl_phi_A(fe_A->get_curl_phi()),
+      phi_V(fe_V->get_phi()),
+      dphi_V(fe_V->get_dphi()),
       ts(ts),
       qrule(qrule),
       mat_array(nullptr),
@@ -49,16 +48,15 @@ void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigne
     // }
     // else
     // {
-    for (unsigned int var_i = 0; var_i < num_vars; var_i++)
-        for (unsigned int var_j = 0; var_j < num_vars; var_j++)
-            KAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
+    // Here you can get num_vars from the size of the variable (3 for A)
+    // in the future, make it more general with whatever number of variables and their size
+    KAA.reposition(0, 0, n_var_dofs * num_vars, n_var_dofs * num_vars);
 
     if (volt)
     {
+        CAA.reposition(0, 0, n_var_dofs * num_vars, n_var_dofs * num_vars);
         for (unsigned int var_i = 0; var_i < num_vars; var_i++)
         {
-            for (unsigned int var_j = 0; var_j < num_vars; var_j++)
-                CAA[var_i][var_j].reposition(var_i * n_var_dofs, var_j * n_var_dofs, n_var_dofs, n_var_dofs);
 
             // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
             // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
@@ -83,8 +81,9 @@ void ElementBuilder::initialize_rhs(const Elem *elem, const DofMap &dof_map, uns
     // This will have to be fixed once you introduce non-nodal elements!
 
     this->n_var_dofs = elem->n_nodes();
-    for (unsigned int var = 0; var < num_vars; var++)
-        F[var].reposition(var * n_var_dofs, n_var_dofs);
+    // for (unsigned int var = 0; var < num_vars; var++)
+    //     F[var].reposition(var * n_var_dofs, n_var_dofs);
+    F.reposition(0, n_var_dofs * num_vars);
 }
 // Method
 void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
@@ -109,19 +108,26 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
         // // Here check that js is 0
 
         for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+        {
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
+            {
                 for (unsigned int k = 0; k < 3; k++)
                 {
-                    CAV_value = JxW[qp] / rs_matrix[k][k] * phi[dof_i][qp] * dphi[dof_j][qp](k);
+                    CAV_value = JxW[qp] / rs_matrix[k][k] * phi_A[k * 8 + dof_i][qp](k) * dphi_V[dof_j][qp](k);
                     CAV[k](dof_i, dof_j) += CAV_value;
                     CVA[k](dof_j, dof_i) += CAV_value;
-                    CVV(dof_i, dof_j) += JxW[qp] * dphi[dof_i][qp](k) / rs_matrix[k][k] * dphi[dof_j][qp](k);
-                    CAA[k][k](dof_i, dof_j) += JxW[qp] / rs_matrix[k][k] *
-                                               (phi[dof_i][qp] * phi[dof_j][qp]);
-
-                    KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
-                                               (dphi[dof_i][qp] * dphi[dof_j][qp]);
+                    CVV(dof_i, dof_j) += JxW[qp] * dphi_V[dof_i][qp](k) / rs_matrix[k][k] * dphi_V[dof_j][qp](k);
                 }
+            }
+        }
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
+        {
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs * num_vars; dof_j++)
+            {
+                KAA(dof_i, dof_j) += JxW[qp] / mu_matrix[0][0] * (curl_phi_A[dof_j][qp] * curl_phi_A[dof_i][qp]);
+                CAA(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi_A[dof_i][qp] * phi_A[dof_j][qp]);
+            }
+        }
     }
 }
 
@@ -141,15 +147,13 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
     // Now start logging the element matrix computation
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
-        for (unsigned int k = 0; k < 3; k++)
+
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
         {
-            for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs * num_vars; dof_j++)
             {
-                for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
-                {
-                    KAA[k][k](dof_i, dof_j) += JxW[qp] / mu_matrix[k][k] *
-                                               (dphi[dof_i][qp] * dphi[dof_j][qp]);
-                }
+                // I do not think this works with different values of the components components of the material properties
+                KAA(dof_i, dof_j) += JxW[qp] / mu_matrix[0][0] * (curl_phi_A[dof_j][qp] * curl_phi_A[dof_i][qp]);
             }
         }
     }
@@ -159,15 +163,15 @@ void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
 {
     const unsigned int num_vars = 3;
     this->initialize_rhs(elem, dof_map, num_vars);
-
+    RealGradient js;
+    js(0) = 1;
+    js(1) = 1;
+    js(2) = 1;
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
-        for (unsigned int k = 0; k < 3; k++)
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
         {
-            for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
-            {
-                F[k](dof_i) += JxW[qp] * phi[dof_i][qp];
-            }
+            F(dof_i) += JxW[qp] * (phi_A[dof_i][qp] * js);
         }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
@@ -206,7 +210,7 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
         for (unsigned int i = 0; i != n_var_dofs; i++)
         {
             for (unsigned int j = 0; j != n_var_dofs; j++)
-                Ke(i, j) += JxW[qp] * (dphi[i][qp] * dphi[j][qp]) / mu_matrix[0][0];
+                Ke(i, j) += JxW[qp] * (dphi_V[i][qp] * dphi_V[j][qp]) / mu_matrix[0][0];
         }
     }
 }
@@ -232,7 +236,7 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
     {
         for (unsigned int i = 0; i != n_var_dofs; i++)
         {
-            Fe(i) += JxW[qp] * phi[i][qp];
+            Fe(i) += JxW[qp] * phi_V[i][qp];
         }
     }
 }
@@ -253,9 +257,9 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
             {
                 // Here you will put the time factor as well
-                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0][0];
+                Ke(dof_i, dof_j) += JxW[qp] * (dphi_V[dof_i][qp] * dphi_V[dof_j][qp]) / mu_matrix[0][0];
 
-                Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0][0] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
             }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");

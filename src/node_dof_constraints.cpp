@@ -65,19 +65,19 @@ void NodalBCConstraint::constrain()
             if (!std::isnan(ax_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ax = node->dof_number(_sys.number(), _sys.variable_number("AX"), 0);
+                dof_id_type dof_id_ax = node->dof_number(_sys.number(), _sys.variable_number("A"), 0);
                 dof_map.add_constraint_row(dof_id_ax, constraint_row, ax_bc, false);
             }
             if (!std::isnan(ay_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ay = node->dof_number(_sys.number(), _sys.variable_number("AY"), 0);
+                dof_id_type dof_id_ay = node->dof_number(_sys.number(), _sys.variable_number("A"), 1);
                 dof_map.add_constraint_row(dof_id_ay, constraint_row, ay_bc, false);
             }
             if (!std::isnan(az_bc))
             {
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_az = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
+                dof_id_type dof_id_az = node->dof_number(_sys.number(), _sys.variable_number("A"), 2);
                 dof_map.add_constraint_row(dof_id_az, constraint_row, az_bc, false);
             }
             if (_sys.has_variable("V") && timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect())

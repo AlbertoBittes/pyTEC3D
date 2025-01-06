@@ -75,20 +75,35 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type = dof_map.variable_type(0);
+    FEType fe_type_A = dof_map.variable_type(0);
 
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEBase> fe(FEBase::build(dim, fe_type));
+    std::unique_ptr<FEVectorBase> fe_A(FEVectorBase::build(dim, fe_type_A));
 
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dim, fe_type.default_quadrature_order());
+    QGauss qrule(dim, fe_type_A.default_quadrature_order());
 
     // Tell the finite element object to use our quadrature rule.
-    fe->attach_quadrature_rule(&qrule);
+    fe_A->attach_quadrature_rule(&qrule);
 
+    // Get a constant reference to the Finite Element type
+    // for the first variable in the system.
+    FEType fe_type_V = dof_map.variable_type(1);
+
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe_V(FEBase::build(dim, fe_type_V));
+
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss qrule_V(dim, fe_type_V.default_quadrature_order());
+
+    // Tell the finite element object to use our quadrature rule.
+    fe_V->attach_quadrature_rule(&qrule_V);
     // Here we define some references to cell-specific data that
     // will be used to assemble the linear system.
     // We begin with the element Jacobian * quadrature weight at each
@@ -131,7 +146,7 @@ void AssemblerLinear::assemble()
     // Get the materials properties
     MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
-    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe, cell_data, time_step, qrule);
+    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe_A, fe_V, cell_data, time_step, qrule);
 
     std::string array_name = "Js_" + std::to_string(time_step.get_step() + 1);
     vtkDataArray *js_array;
@@ -216,7 +231,8 @@ void AssemblerLinear::assemble()
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
             // (phi, dphi) for the current element.
-            fe->reinit(elem);
+            fe_A->reinit(elem);
+            fe_V->reinit(elem);
 
             elem_builder.compute_material_properties(elem_id, subdomain_id);
             // With one variable, we should have the same number of degrees
@@ -233,6 +249,15 @@ void AssemblerLinear::assemble()
             if (subdomain_id == 1)
             {
                 this->insert_ce_matrix(elem_id, Ce);
+                // Open a file stream for printing
+                std::ofstream ke_file("Ke_matrix.txt");
+                std::ofstream ce_file("Ce_matrix.txt");
+
+                if (ke_file.is_open() && ce_file.is_open())
+                {
+                    Ke.print_scientific(ke_file);
+                    Ce.print_scientific(ce_file);
+                }
             }
             if (subdomain_id == 0)
             {
