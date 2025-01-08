@@ -54,11 +54,9 @@ private:
     MaterialsMap &materials;
     DenseSubVector<Number> F;
     DenseSubMatrix<Number> KAA;
-    DenseSubMatrix<Number> KAV[3];
-    DenseSubMatrix<Number> KVA[3];
     DenseSubMatrix<Number> CAA;
-    DenseSubMatrix<Number> CAV[3];
-    DenseSubMatrix<Number> CVA[3];
+    DenseSubMatrix<Number> CAV;
+    DenseSubMatrix<Number> CVA;
     DenseSubMatrix<Number> CVV;
     std::vector<std::vector<double>> mu_matrix;
     std::vector<std::vector<double>> rs_matrix;
@@ -66,6 +64,7 @@ private:
     const std::vector<std::vector<RealGradient>> &phi_A;
     const std::vector<std::vector<RealTensor>> &dphi_A;
     const std::vector<std::vector<RealGradient>> &curl_phi_A;
+    const std::vector<std::vector<Real>> &div_phi_A;
     const std::vector<std::vector<Real>> &phi_V;
     const std::vector<std::vector<RealGradient>> &dphi_V;
     const TimeStep &ts;

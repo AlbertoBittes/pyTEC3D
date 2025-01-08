@@ -75,13 +75,14 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type_A = dof_map.variable_type(0);
+    FEType fe_type_A(= dof_map.variable_type(0);)
 
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEVectorBase> fe_A(FEVectorBase::build(dim, fe_type_A));
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        std::unique_ptr<FEVectorBase>
+            fe_A(FEVectorBase::build(dim, fe_type_A));
 
     // A 2nd order Gauss quadrature rule for numerical integration.
     QGauss qrule(dim, fe_type_A.default_quadrature_order());
@@ -132,7 +133,6 @@ void AssemblerLinear::assemble()
     DenseVector<Number> FFe;
     DenseVector<Number> Fe;
     std::vector<Real> old_solution_values;
-    DenseSubVector<Number> F_aux[3] = {DenseSubVector<Number>(FFe), DenseSubVector<Number>(FFe), DenseSubVector<Number>(FFe)};
 
     auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     // check correct time stepper get
@@ -250,8 +250,8 @@ void AssemblerLinear::assemble()
             {
                 this->insert_ce_matrix(elem_id, Ce);
                 // Open a file stream for printing
-                std::ofstream ke_file("Ke_matrix.txt");
-                std::ofstream ce_file("Ce_matrix.txt");
+                std::ofstream ke_file("../simulations/single_element_cond/Ke_matrix.txt");
+                std::ofstream ce_file("../simulations/single_element_cond/Ce_matrix.txt");
 
                 if (ke_file.is_open() && ce_file.is_open())
                 {
@@ -289,6 +289,12 @@ void AssemblerLinear::assemble()
                     CCe += this->get_ce_matrix(elem_id);
                     CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                     KKe += CCe;
+                    std::ofstream kke_file("../simulations/single_element_cond/Kke_matrix.txt");
+
+                    if (kke_file.is_open())
+                    {
+                        Ke.print_scientific(kke_file);
+                    }
                 }
             }
             dof_map.constrain_element_matrix(KKe, dof_indices);
@@ -332,10 +338,10 @@ void AssemblerLinear::assemble()
                             js[var] = this->linearInterpolate(time_step.get_time_beginning(), 0, time_step.get_time(), js_array->GetComponent(elem->id(), var), ts->get_current_time());
                         }
                     }
-                    F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
+                    // F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
                     for (unsigned int y = 0; y < elem->n_nodes(); y++)
                     {
-                        F_aux[var](y) *= js[var];
+                        FFe(3 * y + var) *= js[var];
                     }
                 }
             }

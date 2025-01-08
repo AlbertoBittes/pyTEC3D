@@ -41,7 +41,7 @@ public:
 
     Real linearInterpolate(Real x1, Real y1, Real x2, Real y2, Real x);
 
-private:
+protected:
     EquationSystems &eq_sys;
     bool transient;
     bool ferromagnetic;
