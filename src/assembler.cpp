@@ -301,7 +301,7 @@ void AssemblerLinear::assemble()
                 {
                     CCe.resize(n_dofs, n_dofs);
                     CCe += this->get_ce_matrix(elem_id);
-                    CCe.scale(2 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                    CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                     KKe += CCe;
                     std::ofstream kke_file("../simulations/single_element_cond/matrix/Kke_matrix.txt");
 
@@ -367,7 +367,7 @@ void AssemblerLinear::assemble()
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
             this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
-            FFe.scale(2 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+            FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
         }
         dof_map.constrain_element_vector(FFe, dof_indices);
         system.rhs->add_vector(FFe, dof_indices);
