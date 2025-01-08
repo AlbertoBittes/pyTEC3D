@@ -1,15 +1,20 @@
-#ifndef COMPUTE_MAGNETIC_FIELD_H
-#define COMPUTE_MAGNETIC_FIELD_H
+#ifndef COMPUTE_DERIVED_QUANTITIES_H
+#define COMPUTE_DERIVED_QUANTITIES_H
 
 #include "libmesh/equation_systems.h"
 #include "../include/assembler.h"
 
-class AssemblerDerivedQuantitiesLinear : public AssemblerLinear
+class DerivedQuantitiesCalculator
 {
 public:
-    void compute_derived_quantities(libMesh::EquationSystems &es);
-    void compute_magnetic_derived_quantities_2D(libMesh::EquationSystems &es);
-    void compute_magnetic_derived_quantities_3D(libMesh::EquationSystems &es);
+    // Constructor that accepts an AssemblerLinear object and an EquationSystems object
+    DerivedQuantitiesCalculator(const AssemblerLinear &assembler, libMesh::EquationSystems &equation_systems);
+    void compute_derived_quantities(std::string sys_name);
+
+private:
+    // Member variables to store the AssemblerLinear and EquationSystems objects
+    AssemblerLinear assembler;
+    libMesh::EquationSystems &equation_systems;
 };
 
-#endif // COMPUTE_MAGNETIC_FIELD_H
+#endif // COMPUTE_DERIVED_QUANTITIES_H

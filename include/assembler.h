@@ -39,6 +39,12 @@ public:
     void insert_dof_indices(dof_id_type key, std::vector<dof_id_type> &dof_indices_param);
     std::vector<dof_id_type> &get_dof_indices(dof_id_type key);
 
+    void insert_aae_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> &get_aae_matrix_derived(dof_id_type key);
+
+    void insert_me_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix);
+    DenseMatrix<Number> &get_me_matrix_derived(dof_id_type key);
+
     Real linearInterpolate(Real x1, Real y1, Real x2, Real y2, Real x);
 
 protected:
@@ -53,6 +59,8 @@ protected:
     std::map<dof_id_type, DenseMatrix<Number>> ke_matrix_map;
     std::map<dof_id_type, DenseMatrix<Number>> ce_matrix_map;
     std::map<dof_id_type, DenseVector<Number>> rhs_map;
+    std::map<dof_id_type, DenseMatrix<Number>> aae_matrix_derived_map;
+    std::map<dof_id_type, DenseMatrix<Number>> me_matrix_derived_map;
     // Here I assume static dofs
     std::map<dof_id_type, std::vector<dof_id_type>> dof_indices;
 };

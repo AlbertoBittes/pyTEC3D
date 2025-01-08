@@ -75,36 +75,37 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type_A(= dof_map.variable_type(0);)
+    FEType fe_type_vec(FIRST, LAGRANGE_VEC);
 
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        std::unique_ptr<FEVectorBase>
-            fe_A(FEVectorBase::build(dim, fe_type_A));
+    const unsigned int a_var = system.variable_number("A");
 
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dim, fe_type_A.default_quadrature_order());
-
-    // Tell the finite element object to use our quadrature rule.
-    fe_A->attach_quadrature_rule(&qrule);
-
-    // Get a constant reference to the Finite Element type
-    // for the first variable in the system.
-    FEType fe_type_V = dof_map.variable_type(1);
-
+    std::vector<dof_id_type> A_indices_var;
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEBase> fe_V(FEBase::build(dim, fe_type_V));
+    std::unique_ptr<FEVectorBase> fe_vec(FEVectorBase::build(dim, fe_type_vec));
 
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule_V(dim, fe_type_V.default_quadrature_order());
+    QGauss qrule(dim, fe_type_vec.default_quadrature_order());
 
     // Tell the finite element object to use our quadrature rule.
-    fe_V->attach_quadrature_rule(&qrule_V);
+    fe_vec->attach_quadrature_rule(&qrule);
+
+    // Get a constant reference to the Finite Element type
+    // for the first variable in the system.
+    FEType fe_type_scalar = (FIRST, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe_scalar(FEBase::build(dim, fe_type_scalar));
+
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss qrule_scalar(dim, fe_type_scalar.default_quadrature_order());
+
+    // Tell the finite element object to use our quadrature rule.
+    fe_scalar->attach_quadrature_rule(&qrule_scalar);
     // Here we define some references to cell-specific data that
     // will be used to assemble the linear system.
     // We begin with the element Jacobian * quadrature weight at each
@@ -146,7 +147,7 @@ void AssemblerLinear::assemble()
     // Get the materials properties
     MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
-    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe_A, fe_V, cell_data, time_step, qrule);
+    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe_vec, fe_scalar, cell_data, time_step, qrule);
 
     std::string array_name = "Js_" + std::to_string(time_step.get_step() + 1);
     vtkDataArray *js_array;
@@ -231,8 +232,10 @@ void AssemblerLinear::assemble()
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
             // (phi, dphi) for the current element.
-            fe_A->reinit(elem);
-            fe_V->reinit(elem);
+            if (dof_map.variable(0).n_components() > 1)
+                fe_vec->reinit(elem);
+            if (subdomain_id == 1 || dof_map.variable(0).n_components() == 1)
+                fe_scalar->reinit(elem);
 
             elem_builder.compute_material_properties(elem_id, subdomain_id);
             // With one variable, we should have the same number of degrees
@@ -245,13 +248,24 @@ void AssemblerLinear::assemble()
 
             elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
 
+            if (ts->get_cumulative_substep() == 1)
+            {
+                DenseMatrix<Number> AAe;
+                DenseMatrix<Number> Me;
+                dof_map.dof_indices(elem, A_indices_var, a_var);
+                n_A_dofs = std::size(A_indices_var);
+                AAe.resize(n_dofs, n_dofs);
+                Me.resize(n_dofs, n_dofs);
+                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, subdomain_id, formulation, dim, fe_family, n_dofs);
+                this->insert_aae_matrix_derived(elem_id, AAe);
+                this->insert_me_matrix_derived(elem_id, Me);
+            }
             this->insert_ke_matrix(elem_id, Ke);
             if (subdomain_id == 1)
             {
                 this->insert_ce_matrix(elem_id, Ce);
-                // Open a file stream for printing
-                std::ofstream ke_file("../simulations/single_element_cond/Ke_matrix.txt");
-                std::ofstream ce_file("../simulations/single_element_cond/Ce_matrix.txt");
+                std::ofstream ke_file("../simulations/single_element_cond/matrix/Ke_matrix.txt");
+                std::ofstream ce_file("../simulations/single_element_cond/matrix/Ce_matrix.txt");
 
                 if (ke_file.is_open() && ce_file.is_open())
                 {
@@ -287,13 +301,13 @@ void AssemblerLinear::assemble()
                 {
                     CCe.resize(n_dofs, n_dofs);
                     CCe += this->get_ce_matrix(elem_id);
-                    CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+                    CCe.scale(2 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                     KKe += CCe;
-                    std::ofstream kke_file("../simulations/single_element_cond/Kke_matrix.txt");
+                    std::ofstream kke_file("../simulations/single_element_cond/matrix/Kke_matrix.txt");
 
                     if (kke_file.is_open())
                     {
-                        Ke.print_scientific(kke_file);
+                        KKe.print_scientific(kke_file);
                     }
                 }
             }
@@ -338,10 +352,9 @@ void AssemblerLinear::assemble()
                             js[var] = this->linearInterpolate(time_step.get_time_beginning(), 0, time_step.get_time(), js_array->GetComponent(elem->id(), var), ts->get_current_time());
                         }
                     }
-                    // F_aux[var].reposition(var * elem->n_nodes(), elem->n_nodes());
                     for (unsigned int y = 0; y < elem->n_nodes(); y++)
                     {
-                        FFe(3 * y + var) *= js[var];
+                        FFe(y * 3 + var) *= js[var];
                     }
                 }
             }
@@ -354,7 +367,7 @@ void AssemblerLinear::assemble()
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
             this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
-            FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+            FFe.scale(2 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
         }
         dof_map.constrain_element_vector(FFe, dof_indices);
         system.rhs->add_vector(FFe, dof_indices);
@@ -454,6 +467,42 @@ std::vector<dof_id_type> &AssemblerLinear::get_dof_indices(dof_id_type key)
     else
     {
         throw std::out_of_range("Key not found in dof_indices");
+    }
+}
+
+void AssemblerLinear::insert_aae_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix)
+{
+    aae_matrix_derived_map[key] = matrix; // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_aae_matrix_derived(dof_id_type key)
+{
+    auto it = aae_matrix_derived_map.find(key);
+    if (it != aae_matrix_derived_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in ke_matrix_derived_map");
+    }
+}
+
+void AssemblerLinear::insert_me_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix)
+{
+    me_matrix_derived_map[key] = matrix; // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_me_matrix_derived(dof_id_type key)
+{
+    auto it = me_matrix_derived_map.find(key);
+    if (it != me_matrix_derived_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in me_matrix_derived_map");
     }
 }
 

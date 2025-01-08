@@ -1,7 +1,7 @@
 #include "../include/element_builder.h"
 
 // Constructor
-ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_A, const std::unique_ptr<FEBase> &fe_V, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule)
+ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule)
     : Ke(Ke), Ce(Ce), Fe(Fe), materials(materials),
       F(DenseSubVector<Number>(Fe)),
       KAA(DenseSubMatrix<Number>(Ke)),
@@ -11,13 +11,13 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       CVV(DenseSubMatrix<Number>(Ce)),
       mu_matrix(3, std::vector<double>(3, 0.0)),
       rs_matrix(3, std::vector<double>(3, 0.0)),
-      JxW(fe_A->get_JxW()),
-      phi_A(fe_A->get_phi()),
-      dphi_A(fe_A->get_dphi()),
-      curl_phi_A(fe_A->get_curl_phi()),
-      div_phi_A(fe_A->get_div_phi()),
-      phi_V(fe_V->get_phi()),
-      dphi_V(fe_V->get_dphi()),
+      JxW(fe_vec->get_JxW()),
+      phi_A(fe_vec->get_phi()),
+      dphi_A(fe_vec->get_dphi()),
+      curl_phi_A(fe_vec->get_curl_phi()),
+      div_phi_A(fe_vec->get_div_phi()),
+      phi_V(fe_scalar->get_phi()),
+      dphi_V(fe_scalar->get_dphi()),
       ts(ts),
       qrule(qrule),
       mat_array(nullptr),
@@ -327,4 +327,20 @@ void ElementBuilder::compute_material_properties(dof_id_type elem_id, subdomain_
     this->fill_mu_matrix(elem_id);
     if (subdomain_id == 1)
         this->fill_rs_matrix(elem_id);
+}
+
+void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_dofs)
+{
+    if (dim == 3)
+    {
+        for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
+        {
+            for (unsigned int i = 0; i < n_dofs; i++)
+                for (unsigned int j = 0; j < n_dofs; j++)
+                {
+                    AAe(i, j) += JxW[qp] * (phi_A[i][qp] * curl_phi_A[j][qp]);
+                    Me(i, j) += JxW[qp] * (phi_A[i][qp] * phi_A[j][qp]);
+                }
+        }
+    }
 }

@@ -24,7 +24,7 @@ class ElementBuilder
 {
 public:
     // Constructor
-    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_A, const std::unique_ptr<FEBase> &fe_V, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
+    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
     void build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_solid97_cond(const Elem *elem, const DofMap &dof_map);
@@ -41,6 +41,7 @@ public:
     void initialize(const Elem *elem, const DofMap &dof_map, unsigned int num_vars, bool volt);
     void initialize_rhs(const Elem *elem, const DofMap &dof_map, unsigned int num_vars);
 
+    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_dofs);
     // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
     // unsigned int get_n_var_dofs() const { return n_var_dofs; }
     // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }
