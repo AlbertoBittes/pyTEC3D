@@ -41,7 +41,7 @@
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
-#include "../include/compute_magnetic_field.h"
+#include "../include/compute_derived_quantities.h"
 #include "../include/materials_properties.h"
 #include "../include/time_stepper.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
@@ -285,6 +285,7 @@ int main(int argc, char **argv)
     NodalBCConstraint node_dof_constraints(system, pointData, timeStepper);
     system.attach_constraint_object(node_dof_constraints);
 
+    std::shared_ptr<DerivedQuantitiesCalculator> derived_quantities_calculator = nullptr;
     // Compute first step for equilibrium or static analysis
     // if (compute_equilibrium_first_step)
     // {
@@ -330,13 +331,13 @@ int main(int argc, char **argv)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
-                // if (dim == 2)
-                //     compute_magnetic_field_static_2D(equation_systems);
-                // else
-                //     compute_magnetic_field_static_3D(equation_systems);
+
+                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 libMesh::out << "Writing time substep results..." << std::endl;
                 output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".pvtu";
                 final_output_path = output_path / output_filename;
+
                 // Write the results
                 VTKIO vtk_output(mesh);
                 vtk_output.write_equation_systems(final_output_path, equation_systems);

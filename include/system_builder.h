@@ -3,12 +3,27 @@
 
 #include "libmesh/equation_systems.h"
 #include "../include/json.hpp"
+#include "../include/compute_derived_quantities.h"
 
 using namespace libMesh;
 
 class SystemBuilder
 {
 public:
+    // Modified constructor to accept additional parameters
+    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config)
+        : equation_systems(eq_systems), config(config)
+    {
+        createSystem(); // Call createSystem at the end of the constructor
+        setVariables(); // Call setVariables at the end of the constructor
+    }
+    std::shared_ptr<DerivedQuantitiesCalculator> getDerivedQuantitiesCalculator();
+
+    void createSystem();
+
+    void setVariables();
+
+private:
     EquationSystems &equation_systems;
     bool transient;
     bool ferromagnetic;
@@ -20,19 +35,8 @@ public:
     std::string system_name;
     std::string order;
     const nlohmann::json &config;
-    std::shared_ptr<System::Assembly> assembler; // Add AssemblerBase attribute
-
-    // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config)
-        : equation_systems(eq_systems), config(config)
-    {
-        createSystem(); // Call createSystem at the end of the constructor
-        setVariables(); // Call setVariables at the end of the constructor
-    }
-
-    void createSystem();
-
-    void setVariables();
+    std::shared_ptr<AssemblerLinear> assembler; // Add AssemblerBase attribute
+    std::shared_ptr<DerivedQuantitiesCalculator> derived_quantities_calculator;
 };
 
 #endif // SYSTEM_BUILDER_H

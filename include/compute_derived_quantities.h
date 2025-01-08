@@ -8,13 +8,13 @@ class DerivedQuantitiesCalculator
 {
 public:
     // Constructor that accepts an AssemblerLinear object and an EquationSystems object
-    DerivedQuantitiesCalculator(const AssemblerLinear &assembler, libMesh::EquationSystems &equation_systems);
+    DerivedQuantitiesCalculator(std::shared_ptr<AssemblerLinear> assembler, EquationSystems &equation_systems);
     void compute_derived_quantities(std::string sys_name);
 
 private:
     // Member variables to store the AssemblerLinear and EquationSystems objects
-    AssemblerLinear assembler;
-    libMesh::EquationSystems &equation_systems;
+    std::shared_ptr<AssemblerLinear> assembler;
+    EquationSystems &equation_systems;
 };
 
 #endif // COMPUTE_DERIVED_QUANTITIES_H

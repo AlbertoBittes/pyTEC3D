@@ -32,61 +32,11 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
     }
 }
 
-void ElementBuilder::initialize(const Elem *elem, const DofMap &dof_map, unsigned int num_vars, bool volt)
-{
-    // this->get_dof_indices_var()->resize(num_vars);
-
-    // for (unsigned int var = 0; var < num_vars; var++)
-    //     dof_map.dof_indices(elem, this->get_dof_indices_var()[var], var);
-    // This will have to be fixed once you introduce non-nodal elements!
-
-    // if (this->n_var_dofs == this->n_var_dofs_old)
-    // {
-    //     return;
-    // }
-    // else
-    // {
-    // Here you can get num_vars from the size of the variable (3 for A)
-    // in the future, make it more general with whatever number of variables and their size
-    // KAA.reposition(0, 0, n_var_dofs * num_vars, n_var_dofs * num_vars);
-
-    // if (volt)
-    // {
-    //     CAA.reposition(0, 0, n_var_dofs * num_vars, n_var_dofs * num_vars);
-
-    //     // KAV[var_i].reposition(var_i * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-    //     // KVA[var_i].reposition(num_vars * n_var_dofs, var_i * n_var_dofs, n_var_dofs, n_var_dofs);
-
-    //     CAV.reposition(0, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-    //     CVA.reposition(num_vars * n_var_dofs, 0, n_var_dofs, n_var_dofs);
-
-    //     CVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-    // }
-    // // KVV.reposition(num_vars * n_var_dofs, num_vars * n_var_dofs, n_var_dofs, n_var_dofs);
-    // if (ts.get_transient_effect())
-    // this->n_var_dofs_old = this->n_var_dofs;
-    // }
-}
-
-void ElementBuilder::initialize_rhs(const Elem *elem, const DofMap &dof_map, unsigned int num_vars)
-{
-    // this->get_dof_indices_var()->resize(num_vars);
-
-    // for (unsigned int var = 0; var < num_vars; var++)
-    //     dof_map.dof_indices(elem, this->get_dof_indices_var()[var], var);
-    // This will have to be fixed once you introduce non-nodal elements!
-
-    this->n_var_dofs = elem->n_nodes();
-    // for (unsigned int var = 0; var < num_vars; var++)
-    //     F[var].reposition(var * n_var_dofs, n_var_dofs);
-    F.reposition(0, n_var_dofs * num_vars);
-}
 // Method
 void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
 {
     // Numeric ids corresponding to each variable in the system
     unsigned int num_vars = 3;
-    this->initialize(elem, dof_map, num_vars, true);
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -126,8 +76,6 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
 void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
 {
     const unsigned int num_vars = 3;
-    this->initialize(elem, dof_map, num_vars, false);
-
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -156,7 +104,6 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
 void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
 {
     const unsigned int num_vars = 3;
-    this->initialize_rhs(elem, dof_map, num_vars);
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
         for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
@@ -187,8 +134,6 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
     // object will probably catch the error and abort.
-    const unsigned int num_vars = 1;
-    this->initialize(elem, dof_map, num_vars, false);
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -213,8 +158,6 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
     // object will probably catch the error and abort.
-    const unsigned int num_vars = 1;
-    this->initialize_rhs(elem, dof_map, num_vars);
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -236,9 +179,6 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
 // Temporary placeholder for build_plane13_cond
 void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
 {
-    // Numeric ids corresponding to each variable in the system
-    const unsigned int num_vars = 1;
-    this->initialize(elem, dof_map, num_vars, false);
 
     for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
     {
@@ -288,6 +228,8 @@ void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_ma
 }
 void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
+    this->n_var_dofs = elem->n_nodes();
+
     if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
         this->build_solid97_rhs(elem, dof_map);
@@ -329,14 +271,14 @@ void ElementBuilder::compute_material_properties(dof_id_type elem_id, subdomain_
         this->fill_rs_matrix(elem_id);
 }
 
-void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_dofs)
+void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
 {
     if (dim == 3)
     {
         for (unsigned int qp = 0; qp < qrule.n_points(); qp++)
         {
-            for (unsigned int i = 0; i < n_dofs; i++)
-                for (unsigned int j = 0; j < n_dofs; j++)
+            for (unsigned int i = 0; i < n_A_dofs; i++)
+                for (unsigned int j = 0; j < n_A_dofs; j++)
                 {
                     AAe(i, j) += JxW[qp] * (phi_A[i][qp] * curl_phi_A[j][qp]);
                     Me(i, j) += JxW[qp] * (phi_A[i][qp] * phi_A[j][qp]);

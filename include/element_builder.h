@@ -38,10 +38,8 @@ public:
     void fill_mu_matrix(dof_id_type elem_id);
     void fill_rs_matrix(dof_id_type elem_id);
     void compute_material_properties(dof_id_type elem_id, subdomain_id_type subdomain_id);
-    void initialize(const Elem *elem, const DofMap &dof_map, unsigned int num_vars, bool volt);
-    void initialize_rhs(const Elem *elem, const DofMap &dof_map, unsigned int num_vars);
 
-    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_dofs);
+    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs);
     // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
     // unsigned int get_n_var_dofs() const { return n_var_dofs; }
     // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }

@@ -38,6 +38,7 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
+#include "libmesh/transient_system.h"
 #include "../include/system_builder.h"
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
@@ -87,14 +88,14 @@
 using namespace libMesh;
 
 // Constructor implementation
-DerivedQuantitiesCalculator::DerivedQuantitiesCalculator(const AssemblerLinear &assembler, libMesh::EquationSystems &equation_systems)
+DerivedQuantitiesCalculator::DerivedQuantitiesCalculator(std::shared_ptr<AssemblerLinear> assembler, EquationSystems &equation_systems)
     : assembler(assembler), equation_systems(equation_systems) {}
 
 void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_name)
 {
     const MeshBase &mesh = equation_systems.get_mesh();
     ExplicitSystem &derived_quantities_system = equation_systems.get_system<ExplicitSystem>(sys_name);
-    LinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
     const unsigned int a_var = system.variable_number("A");
 
@@ -109,43 +110,54 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     DenseMatrix<Number> AAe;
     DenseMatrix<Number> Me;
     DenseVector<Number> Ae;
+    DenseVector<Number> Ae_old;
     DenseVector<Number> Be;
     DenseVector<Number> Be_q;
     dof_id_type elem_id;
-    unsigned int n_dofs;
+    unsigned int n_A_dofs;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         elem_id = elem->id();
         dof_map.dof_indices(elem, A_indices_var, a_var);
-        n_dofs = std::size(A_indices_var);
-        for (std::size_t j = 0; j < n_dofs; j++)
-            Ae(j) = system.current_solution(A_indices_var[j]);
+        derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
+        n_A_dofs = std::size(A_indices_var);
 
-        AAe = assembler.get_aae_matrix_derived(elem_id);
+        AAe.resize(n_A_dofs, n_A_dofs);
+        Ae.resize(n_A_dofs);
+        Ae_old.resize(n_A_dofs);
+        Me.resize(n_A_dofs, n_A_dofs);
+        Be_q.resize(n_A_dofs);
+        Be.resize(n_A_dofs);
+        for (std::size_t j = 0; j < n_A_dofs; j++)
+        {
+            Ae(j) = system.current_solution(A_indices_var[j]);
+            Ae_old(j) = system.old_solution(A_indices_var[j]);
+        }
+
+        AAe = assembler->get_aae_matrix_derived(elem_id);
 
         AAe.vector_mult(Be_q, Ae);
-        derived_quantities_system_dof_map.dof_indices(elem, B_indices_var);
 
         // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
         // Note that this gives a discontinuous stress plot on element boundaries, which is
         // appropriate. We then also get the von Mises stress from the projected stress tensor.
-        Me = assembler.get_me_matrix_derived(elem_id);
+        Me = assembler->get_me_matrix_derived(elem_id);
 
         Me.cholesky_solve(Be_q, Be);
 
         dof_id_type dof_index;
         // Loop over B_indices_var_values
-        for (unsigned int i = 0; i < n_dofs; i++)
+        for (unsigned int i = 0; i < n_A_dofs; i++)
         {
             dof_index = B_indices_var[i];
-            if ((magnetic_field_system.solution->first_local_index() <= dof_index) &&
-                (dof_index < magnetic_field_system.solution->last_local_index()))
-                magnetic_field_system.solution->set(dof_index, Be(i));
+            if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
+                (dof_index < derived_quantities_system.solution->last_local_index()))
+                derived_quantities_system.solution->set(dof_index, Be(i));
         }
     }
     // Should call close and update when we set vector entries directly
-    magnetic_field_system.solution->close();
-    magnetic_field_system.update();
+    derived_quantities_system.solution->close();
+    derived_quantities_system.update();
 }
 
 // const MeshBase &mesh = es.get_mesh();

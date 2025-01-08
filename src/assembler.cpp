@@ -77,8 +77,9 @@ void AssemblerLinear::assemble()
     // for the first variable in the system.
     FEType fe_type_vec(FIRST, LAGRANGE_VEC);
 
+    // this doesn't work in 2D
     const unsigned int a_var = system.variable_number("A");
-
+    unsigned int n_A_dofs;
     std::vector<dof_id_type> A_indices_var;
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -94,7 +95,7 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type_scalar = (FIRST, LAGRANGE);
+    FEType fe_type_scalar(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -218,23 +219,25 @@ void AssemblerLinear::assemble()
         if (ts->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
         {
             // this can be done at the beginning only
-            dof_map.dof_indices(elem, dof_indices);
-            this->insert_dof_indices(elem_id, dof_indices);
+            // dof_map.dof_indices(elem, dof_indices);
+            // this->insert_dof_indices(elem_id, dof_indices);
 
-            // Cache the number of degrees of freedom on this element, for
-            // use as a loop bound later.  We use cast_int to explicitly
-            // convert from size() (which may be 64-bit) to unsigned int
-            // (which may be 32-bit but which is definitely enough to count
-            // *local* degrees of freedom.
-            const unsigned int n_dofs =
-                cast_int<unsigned int>(dof_indices.size());
+            // // Cache the number of degrees of freedom on this element, for
+            // // use as a loop bound later.  We use cast_int to explicitly
+            // // convert from size() (which may be 64-bit) to unsigned int
+            // // (which may be 32-bit but which is definitely enough to count
+            // // *local* degrees of freedom.
+            // const unsigned int n_dofs =
+            //     cast_int<unsigned int>(dof_indices.size());
             // Compute the element-specific data for the current
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
             // (phi, dphi) for the current element.
-            if (dof_map.variable(0).n_components() > 1)
+            const Variable &var = dof_map.variable(0);
+            const unsigned int n_components = var.n_components();
+            if (dim == 3)
                 fe_vec->reinit(elem);
-            if (subdomain_id == 1 || dof_map.variable(0).n_components() == 1)
+            if (subdomain_id == 1 || dim == 2)
                 fe_scalar->reinit(elem);
 
             elem_builder.compute_material_properties(elem_id, subdomain_id);
@@ -254,9 +257,9 @@ void AssemblerLinear::assemble()
                 DenseMatrix<Number> Me;
                 dof_map.dof_indices(elem, A_indices_var, a_var);
                 n_A_dofs = std::size(A_indices_var);
-                AAe.resize(n_dofs, n_dofs);
-                Me.resize(n_dofs, n_dofs);
-                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, subdomain_id, formulation, dim, fe_family, n_dofs);
+                AAe.resize(n_A_dofs, n_A_dofs);
+                Me.resize(n_A_dofs, n_A_dofs);
+                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, subdomain_id, formulation, dim, fe_family, n_A_dofs);
                 this->insert_aae_matrix_derived(elem_id, AAe);
                 this->insert_me_matrix_derived(elem_id, Me);
             }
@@ -484,7 +487,7 @@ DenseMatrix<Number> &AssemblerLinear::get_aae_matrix_derived(dof_id_type key)
     }
     else
     {
-        throw std::out_of_range("Key not found in ke_matrix_derived_map");
+        throw std::out_of_range("Key not found in aae_matrix_derived_map");
     }
 }
 
