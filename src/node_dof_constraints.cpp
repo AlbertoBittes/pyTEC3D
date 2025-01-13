@@ -48,7 +48,7 @@ void NodalBCConstraint::constrain()
             if (!std::isnan(az_bc))
             {
                 // Apply the row constraint
-                dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("AZ"), 0);
+                dof_id_type dof_id = node->dof_number(_sys.number(), _sys.variable_number("A"), 0);
                 DofConstraintRow constraint_row;
                 dof_map.add_constraint_row(dof_id, constraint_row, az_bc, false);
             }

@@ -320,7 +320,7 @@ int main(int argc, char **argv)
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
         {
-            libMesh::out << " Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
+            libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
                          << ", dt: " << substep.get_dt()
                          << ", Write Results: " << substep.get_write_results()
                          << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
@@ -333,7 +333,7 @@ int main(int argc, char **argv)
                 // Call the function to compute the magnetic field
 
                 system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
-                equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
+                // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 libMesh::out << "Writing time substep results..." << std::endl;
                 output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".pvtu";
                 final_output_path = output_path / output_filename;

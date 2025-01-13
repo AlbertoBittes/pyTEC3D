@@ -94,6 +94,7 @@ DerivedQuantitiesCalculator::DerivedQuantitiesCalculator(std::shared_ptr<Assembl
 void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_name)
 {
     const MeshBase &mesh = equation_systems.get_mesh();
+    const unsigned int dim = mesh.mesh_dimension();
     ExplicitSystem &derived_quantities_system = equation_systems.get_system<ExplicitSystem>(sys_name);
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
@@ -115,23 +116,33 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     DenseVector<Number> Be_q;
     dof_id_type elem_id;
     unsigned int n_A_dofs;
+    unsigned int n_B_dofs;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         elem_id = elem->id();
         dof_map.dof_indices(elem, A_indices_var, a_var);
         derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
+        n_B_dofs = std::size(B_indices_var);
         n_A_dofs = std::size(A_indices_var);
 
-        AAe.resize(n_A_dofs, n_A_dofs);
+        // AAe.resize(n_B_dofs, n_A_dofs);
         Ae.resize(n_A_dofs);
-        Ae_old.resize(n_A_dofs);
-        Me.resize(n_A_dofs, n_A_dofs);
-        Be_q.resize(n_A_dofs);
-        Be.resize(n_A_dofs);
+        Ae_old.resize(n_B_dofs);
+        // Me.resize(n_B_dofs, n_B_dofs);
+        Be_q.resize(n_B_dofs);
+        Be.resize(n_B_dofs);
         for (std::size_t j = 0; j < n_A_dofs; j++)
         {
+            // if (dim == 2)
+            // {
+            //     Ae(j) = system.current_solution(A_indices_var[j / 2]);
+            //     Ae_old(j) = system.old_solution(A_indices_var[j / 2]);
+            // }
+            // else
+            // {
             Ae(j) = system.current_solution(A_indices_var[j]);
             Ae_old(j) = system.old_solution(A_indices_var[j]);
+            // }
         }
 
         AAe = assembler->get_aae_matrix_derived(elem_id);
@@ -143,7 +154,10 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         // appropriate. We then also get the von Mises stress from the projected stress tensor.
         Me = assembler->get_me_matrix_derived(elem_id);
 
+        // if (dim == 3)
         Me.cholesky_solve(Be_q, Be);
+        // else
+        //     Me.svd_solve(Be_q, Be);
 
         dof_id_type dof_index;
         // Loop over B_indices_var_values

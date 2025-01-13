@@ -24,7 +24,7 @@ class ElementBuilder
 {
 public:
     // Constructor
-    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts, QGauss &qrule);
+    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts);
     void build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_solid97_cond(const Elem *elem, const DofMap &dof_map);
@@ -51,26 +51,19 @@ private:
     DenseMatrix<Number> &Ce;
     DenseVector<Number> &Fe;
     MaterialsMap &materials;
-    DenseSubVector<Number> F;
-    DenseSubMatrix<Number> KAA;
-    DenseSubMatrix<Number> CAA;
-    DenseSubMatrix<Number> CAV;
-    DenseSubMatrix<Number> CVA;
-    DenseSubMatrix<Number> CVV;
     std::vector<std::vector<double>> mu_matrix;
     std::vector<std::vector<double>> rs_matrix;
-    const std::vector<Real> &JxW;
+    const std::vector<Real> &JxW_A;
+    const std::vector<Real> &JxW_V;
     const std::vector<std::vector<RealGradient>> &phi_A;
     const std::vector<std::vector<RealTensor>> &dphi_A;
     const std::vector<std::vector<RealGradient>> &curl_phi_A;
-    const std::vector<std::vector<Real>> &div_phi_A;
+    // const std::vector<std::vector<Real>> &div_phi_A;
     const std::vector<std::vector<Real>> &phi_V;
     const std::vector<std::vector<RealGradient>> &dphi_V;
     const TimeStep &ts;
-    QGauss &qrule;
     vtkDataArray *mat_array;
     unsigned int n_var_dofs;
-    unsigned int n_var_dofs_old;
     // std::vector<std::vector<dof_id_type>> dof_indices_var;
 };
 

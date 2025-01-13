@@ -75,12 +75,13 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type_vec(FIRST, LAGRANGE_VEC);
 
     // this doesn't work in 2D
     const unsigned int a_var = system.variable_number("A");
     unsigned int n_A_dofs;
     std::vector<dof_id_type> A_indices_var;
+
+    FEType fe_type_vec(Utility::string_to_enum<Order>(order), LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -95,7 +96,7 @@ void AssemblerLinear::assemble()
 
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
-    FEType fe_type_scalar(FIRST, LAGRANGE);
+    FEType fe_type_scalar(Utility::string_to_enum<Order>(order), LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -148,7 +149,7 @@ void AssemblerLinear::assemble()
     // Get the materials properties
     MaterialsMap *materials = eq_sys.parameters.get<MaterialsMap *>("materials_properties");
     const TimeStep &time_step = ts->get_time_steps()[ts->get_current_time_step()];
-    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe_vec, fe_scalar, cell_data, time_step, qrule);
+    ElementBuilder elem_builder(Ke, Ce, Fe, *materials, fe_vec, fe_scalar, cell_data, time_step);
 
     std::string array_name = "Js_" + std::to_string(time_step.get_step() + 1);
     vtkDataArray *js_array;
@@ -184,7 +185,7 @@ void AssemblerLinear::assemble()
     const Real relative_epsilon = 1e-9;
     Real dt1;
     Real dt2;
-
+    unsigned int n_dofs;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -192,7 +193,6 @@ void AssemblerLinear::assemble()
         // the name of the event to log.
         subdomain_id = elem->subdomain_id();
         elem_id = elem->id();
-        unsigned int n_dofs;
 
         if (ts->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
         {
@@ -233,8 +233,6 @@ void AssemblerLinear::assemble()
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
             // (phi, dphi) for the current element.
-            const Variable &var = dof_map.variable(0);
-            const unsigned int n_components = var.n_components();
             if (dim == 3)
                 fe_vec->reinit(elem);
             if (subdomain_id == 1 || dim == 2)
@@ -256,9 +254,18 @@ void AssemblerLinear::assemble()
                 DenseMatrix<Number> AAe;
                 DenseMatrix<Number> Me;
                 dof_map.dof_indices(elem, A_indices_var, a_var);
+                // here maybe you will want to add the A dof indices to a map
                 n_A_dofs = std::size(A_indices_var);
-                AAe.resize(n_A_dofs, n_A_dofs);
-                Me.resize(n_A_dofs, n_A_dofs);
+                if (dim == 2)
+                {
+                    AAe.resize(2 * n_A_dofs, n_A_dofs);
+                    Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
+                }
+                else
+                {
+                    AAe.resize(n_A_dofs, n_A_dofs);
+                    Me.resize(n_A_dofs, n_A_dofs);
+                }
                 elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, subdomain_id, formulation, dim, fe_family, n_A_dofs);
                 this->insert_aae_matrix_derived(elem_id, AAe);
                 this->insert_me_matrix_derived(elem_id, Me);
@@ -267,14 +274,14 @@ void AssemblerLinear::assemble()
             if (subdomain_id == 1)
             {
                 this->insert_ce_matrix(elem_id, Ce);
-                std::ofstream ke_file("../simulations/single_element_cond/matrix/Ke_matrix.txt");
-                std::ofstream ce_file("../simulations/single_element_cond/matrix/Ce_matrix.txt");
+                // std::ofstream ke_file("../simulations/single_element_cond/matrix/Ke_matrix.txt");
+                // std::ofstream ce_file("../simulations/single_element_cond/matrix/Ce_matrix.txt");
 
-                if (ke_file.is_open() && ce_file.is_open())
-                {
-                    Ke.print_scientific(ke_file);
-                    Ce.print_scientific(ce_file);
-                }
+                // if (ke_file.is_open() && ce_file.is_open())
+                // {
+                //     Ke.print_scientific(ke_file);
+                //     Ce.print_scientific(ce_file);
+                // }
             }
             if (subdomain_id == 0)
             {
@@ -306,12 +313,12 @@ void AssemblerLinear::assemble()
                     CCe += this->get_ce_matrix(elem_id);
                     CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                     KKe += CCe;
-                    std::ofstream kke_file("../simulations/single_element_cond/matrix/Kke_matrix.txt");
+                    // std::ofstream kke_file("../simulations/single_element_cond/matrix/Kke_matrix.txt");
 
-                    if (kke_file.is_open())
-                    {
-                        KKe.print_scientific(kke_file);
-                    }
+                    // if (kke_file.is_open())
+                    // {
+                    //     KKe.print_scientific(kke_file);
+                    // }
                 }
             }
             dof_map.constrain_element_matrix(KKe, dof_indices);
