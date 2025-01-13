@@ -285,7 +285,20 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
             }
         }
     }
-
+    // if (dim == 2)
+    // {
+    //     for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
+    //     {
+    //         for (unsigned int i = 0; i < n_A_dofs; i++)
+    //         {
+    //             for (unsigned int j = 0; j < n_A_dofs; j++)
+    //             {
+    //                 AAe(i, j) += JxW_V[qp] * (phi_V[i][qp] * dphi_V[j][qp](1));
+    //                 Me(i, j) += JxW_V[qp] * (phi_V[i][qp] * phi_V[j][qp]);
+    //             }
+    //         }
+    //     }
+    // }
     else if (dim == 3)
     {
         for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)

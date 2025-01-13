@@ -161,7 +161,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
 
         dof_id_type dof_index;
         // Loop over B_indices_var_values
-        for (unsigned int i = 0; i < n_A_dofs; i++)
+        for (unsigned int i = 0; i < n_B_dofs; i++)
         {
             dof_index = B_indices_var[i];
             if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
