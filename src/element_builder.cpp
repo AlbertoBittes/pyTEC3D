@@ -191,43 +191,43 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
-void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     this->n_var_dofs = elem->n_nodes();
-    if (subdomain_id == 1 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    if (conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
         this->build_solid97_cond(elem, dof_map);
     }
-    if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
         this->build_solid97(elem, dof_map);
     }
-    if (subdomain_id == 1 && formulation == "AV" && fe_family == "NEDELEC_ONE")
+    if (conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
     {
         this->build_solid236_cond(elem, dof_map);
     }
-    if (subdomain_id == 0 && formulation == "AV" && fe_family == "NEDELEC_ONE")
+    if (!conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
     {
         this->build_solid236(elem, dof_map);
     }
-    if (subdomain_id == 1 && formulation == "AV" && dim == 2)
+    if (conductive && formulation == "AV" && dim == 2)
     {
         this->build_plane13_cond(elem, dof_map);
     }
-    if (subdomain_id == 0 && formulation == "AV" && dim == 2)
+    if (!conductive && formulation == "AV" && dim == 2)
     {
         this->build_plane13(elem, dof_map);
     }
 }
-void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     this->n_var_dofs = elem->n_nodes();
 
-    if (subdomain_id == 0 && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
+    if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
         this->build_solid97_rhs(elem, dof_map);
     }
-    if (subdomain_id == 0 && formulation == "AV" && dim == 2)
+    if (!conductive && formulation == "AV" && dim == 2)
     {
         this->build_plane13_rhs(elem, dof_map);
     }
@@ -256,15 +256,15 @@ void ElementBuilder::fill_rs_matrix(dof_id_type local_elem_id)
     rs_matrix[2][2] = mat_properties.rsvz;
 }
 
-void ElementBuilder::compute_material_properties(dof_id_type local_elem_id, subdomain_id_type subdomain_id)
+void ElementBuilder::compute_material_properties(dof_id_type local_elem_id, bool conductive)
 {
     // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
     this->fill_mu_matrix(local_elem_id);
-    if (subdomain_id == 1)
+    if (conductive)
         this->fill_rs_matrix(local_elem_id);
 }
 
-void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
+void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
 {
 
     if (dim == 2)

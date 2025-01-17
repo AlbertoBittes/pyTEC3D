@@ -181,20 +181,23 @@ void AssemblerLinear::assemble()
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     dof_id_type elem_id;
-    subdomain_id_type subdomain_id;
     const Real relative_epsilon = 1e-9;
     Real dt1;
     Real dt2;
     unsigned int n_dofs;
     dof_id_type elem_local_id = 0;
+    bool conductive;
+    std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        subdomain_id = elem->subdomain_id();
+        if (conductive_subdomain->find(elem->subdomain_id()) != conductive_subdomain->end())
+            conductive = true;
+        else
+            conductive = false;
         elem_id = elem->id();
-
         if (ts->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
         {
             // this can be done at the beginning only
@@ -236,19 +239,19 @@ void AssemblerLinear::assemble()
             // (phi, dphi) for the current element.
             if (dim == 3)
                 fe_vec->reinit(elem);
-            if (subdomain_id == 1 || dim == 2)
+            if (conductive || dim == 2)
                 fe_scalar->reinit(elem);
 
-            elem_builder.compute_material_properties(elem_local_id, subdomain_id);
+            elem_builder.compute_material_properties(elem_local_id, conductive);
             // With one variable, we should have the same number of degrees
             // of freedom as shape functions.
             // libmesh_assert_equal_to(n_dofs, phi.size());
 
             Ke.resize(n_dofs, n_dofs);
-            if (subdomain_id == 1)
+            if (conductive)
                 Ce.resize(n_dofs, n_dofs);
 
-            elem_builder.build_element_matrix(elem, dof_map, subdomain_id, formulation, dim, fe_family);
+            elem_builder.build_element_matrix(elem, dof_map, conductive, formulation, dim, fe_family);
 
             if (ts->get_cumulative_substep() == 1)
             {
@@ -267,12 +270,12 @@ void AssemblerLinear::assemble()
                     AAe.resize(n_A_dofs, n_A_dofs);
                     Me.resize(n_A_dofs, n_A_dofs);
                 }
-                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, subdomain_id, formulation, dim, fe_family, n_A_dofs);
+                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, conductive, formulation, dim, fe_family, n_A_dofs);
                 this->insert_aae_matrix_derived(elem_id, AAe);
                 this->insert_me_matrix_derived(elem_id, Me);
             }
             this->insert_ke_matrix(elem_id, Ke);
-            if (subdomain_id == 1)
+            if (conductive)
             {
                 this->insert_ce_matrix(elem_id, Ce);
                 // std::ofstream ke_file("../simulations/single_element_cond/matrix/Ke_matrix.txt");
@@ -284,10 +287,11 @@ void AssemblerLinear::assemble()
                 //     Ce.print_scientific(ce_file);
                 // }
             }
-            if (subdomain_id == 0)
+            else
             {
                 Fe.resize(n_dofs);
-                elem_builder.build_element_rhs(elem, dof_map, subdomain_id, formulation, dim, fe_family);
+                // Here remove conductive from list of parameters
+                elem_builder.build_element_rhs(elem, dof_map, conductive, formulation, dim, fe_family);
                 this->insert_rhs_vector(elem_id, Fe);
             }
         }
@@ -305,8 +309,7 @@ void AssemblerLinear::assemble()
             }
             KKe.resize(n_dofs, n_dofs);
             KKe += this->get_ke_matrix(elem_id);
-
-            if (subdomain_id == 1)
+            if (conductive)
             {
                 if (time_step.get_transient_effect())
                 {
@@ -325,9 +328,8 @@ void AssemblerLinear::assemble()
             dof_map.constrain_element_matrix(KKe, dof_indices);
             matrix.add_matrix(KKe, dof_indices);
         }
-
         FFe.resize(n_dofs);
-        if (subdomain_id == 0)
+        if (!conductive)
         {
             FFe += this->get_rhs_vector(elem_id);
             if (dim == 2)
@@ -374,7 +376,7 @@ void AssemblerLinear::assemble()
         }
         // here I constrain but I modify later, wrong
         // }
-        if (subdomain_id == 1 && time_step.get_transient_effect())
+        if (conductive && time_step.get_transient_effect())
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
             this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);

@@ -25,8 +25,8 @@ class ElementBuilder
 public:
     // Constructor
     ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts);
-    void build_element_matrix(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
-    void build_element_rhs(const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
+    void build_element_matrix(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
+    void build_element_rhs(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_solid97_cond(const Elem *elem, const DofMap &dof_map);
     void build_solid97(const Elem *elem, const DofMap &dof_map);
     void build_solid97_rhs(const Elem *elem, const DofMap &dof_map);
@@ -37,9 +37,9 @@ public:
     void build_plane13_cond(const Elem *elem, const DofMap &dof_map);
     void fill_mu_matrix(dof_id_type elem_id);
     void fill_rs_matrix(dof_id_type elem_id);
-    void compute_material_properties(dof_id_type elem_id, subdomain_id_type subdomain_id);
+    void compute_material_properties(dof_id_type elem_id, bool conductive);
 
-    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs);
+    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs);
     // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
     // unsigned int get_n_var_dofs() const { return n_var_dofs; }
     // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }
