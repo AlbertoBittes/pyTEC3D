@@ -33,6 +33,7 @@
 #include "libmesh/mesh_generation.h"
 #include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
 #include <libmesh/exodusII_io.h>
+#include <libmesh/nemesis_io.h>
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
@@ -57,7 +58,13 @@
 #include <vtkCellData.h>
 #include <vtkSmartPointer.h>
 #include <vtkXMLPUnstructuredGridReader.h>
+#include <vtkPUnstructuredGridGhostCellsGenerator.h>
 #include <iostream>
+#include <vtkSmartPointer.h>
+#include <vtkDoubleArray.h>
+#include <vtkIdList.h>
+#include <vtkExtractCells.h>
+#include "../include/vtk_io_updated.h"
 
 using namespace libMesh;
 
@@ -117,10 +124,25 @@ int main(int argc, char **argv)
     mesh.allow_renumbering(false);
 
     vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    vtkSmartPointer<vtkUnstructuredGrid> ghostedGrid = nullptr;
     if (init.comm().rank() == 0)
     {
         vtkio.read(mesh_filepath);
         vtkGrid = vtkio.get_vtk_grid();
+        // // Create an instance of vtkGhostCellsGenerator
+        // vtkSmartPointer<vtkPUnstructuredGridGhostCellsGenerator> ghostCellsGenerator = vtkSmartPointer<vtkPUnstructuredGridGhostCellsGenerator>::New();
+
+        // // Set the input data to vtkGrid
+        // ghostCellsGenerator->SetInputData(vtkGrid);
+
+        // // Set the ghost level to 1
+        // ghostCellsGenerator->SetMinimumNumberOfGhostLevels(1);
+
+        // // Update the ghost cells generator to produce the ghost cells
+        // ghostCellsGenerator->Update();
+
+        // // Now you can use the output of ghostCellsGenerator
+        // ghostedGrid = ghostCellsGenerator->GetOutput();
     }
     else
     {
@@ -136,47 +158,52 @@ int main(int argc, char **argv)
 
         // read in the grid
         vtkGrid = reader->GetOutput();
+        // // Create an instance of vtkGhostCellsGenerator
+        // vtkSmartPointer<vtkPUnstructuredGridGhostCellsGenerator> ghostCellsGenerator = vtkSmartPointer<vtkPUnstructuredGridGhostCellsGenerator>::New();
+
+        // // Set the input data to vtkGrid
+        // ghostCellsGenerator->SetInputData(vtkGrid);
+
+        // // Set the ghost level to 1
+        // ghostCellsGenerator->SetMinimumNumberOfGhostLevels(2);
+
+        // // Update the ghost cells generator to produce the ghost cells
+        // ghostCellsGenerator->Update();
+
+        // // Now you can use the output of ghostCellsGenerator
+        // ghostedGrid = ghostCellsGenerator->GetOutput();
     }
     MeshCommunication().broadcast(mesh);
 
-    // vtkUnstructuredGrid *vtkGrid = vtkio.get_vtk_grid();
-
-    // This is needed because of wron libMesh function when reading dimensions
-    // Ask if they plan to fix it
-    // Plus, check because this is not working with MPI,
-    //     Hmm... I think if you do it this way, the file is opened and read from simultaneously on all N cores, which is probably not great for the filesystem. Can you try wrapping the mesh.read() line in if (comm().rank() == 0), and then, on all processors call
-
-    // MeshCommunication().broadcast(mesh);
-    // libMesh::out << "Checking mesh dimensions..." << std::endl;
-    // unsigned char dim = 0;
-    // double bounds[6];
-    // vtkGrid->GetBounds(bounds);
-    // // Check x-dimension
-    // if (bounds[1] - bounds[0] > 0)
-    // {
-    //     dim++;
-    // }
-
-    // // Check y-dimension
-    // if (bounds[3] - bounds[2] > 0)
-    // {
-    //     dim++;
-    // }
-
-    // // Check z-dimension
-    // if (bounds[5] - bounds[4] > 0)
-    // {
-    //     dim++;
-    // }
-
-    // mesh.set_spatial_dimension(dim);
-
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
-
     MeshTools::Modification::orient_elements(mesh);
+    vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    std::set<ElemType> elem_types;
+    {
+        vtkSmartPointer<vtkIdList> cellIds = vtkSmartPointer<vtkIdList>::New();
+        vtkSmartPointer<vtkExtractCells> extractCells = vtkSmartPointer<vtkExtractCells>::New();
+        for (const auto &elem : mesh.active_local_element_ptr_range())
+        {
+            elem_types.insert(elem->type());
+            cellIds->InsertNextId(elem->id());
+        }
+        extractCells->SetInputData(vtkGrid);
+        extractCells->SetCellList(cellIds);
+        extractCells->Update();
+        partitionedGrid = extractCells->GetOutput();
+    }
+    init.comm().set_union(elem_types);
+    std::map<ElemType, subdomain_id_type> subdomain_map;
+    subdomain_id_type subdomain_id = 0;
+    for (const auto &elem_type : elem_types)
+    {
+        subdomain_map[elem_type] = subdomain_id;
+        subdomain_id++;
+    }
+    vtkGrid = nullptr;
     libMesh::out << "Reading loads data..." << std::endl;
-    vtkCellData *cell_data = vtkGrid->GetCellData();
+    vtkCellData *cell_data = partitionedGrid->GetCellData();
     if (cell_data == nullptr)
     {
         libmesh_error_msg("Error: vtkGrid does not contain any Cell Data.");
@@ -196,9 +223,14 @@ int main(int argc, char **argv)
     // Use a pointer to the local variable
     MaterialsMap *materials_ptr = &materials;
     libMesh::out << "Identifying conductive domain..." << std::endl;
+    unsigned int k = 0;
+    std::set<subdomain_id_type> conductive_subdomain;
+    ElemType elem_type;
+    // Do this before partitioning the mesh
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        matNum = matArray->GetTuple1(elem->id());
+        elem_type = elem->type();
+        matNum = matArray->GetTuple1(k);
         auto it = materials_ptr->find(matNum);
         if (it == materials_ptr->end())
         {
@@ -206,13 +238,17 @@ int main(int argc, char **argv)
         }
         if (std::isnan(it->second.rsvx))
         {
-            elem->subdomain_id() = 0;
+            elem->subdomain_id() = subdomain_map[elem_type];
         }
         else
         {
-            elem->subdomain_id() = 1;
+            elem->subdomain_id() = subdomain_id + 100;
+            conductive_subdomain.insert(subdomain_id + 100);
         }
+        k++;
     }
+    init.comm().set_union(conductive_subdomain);
+    // init.comm().set_union(subdomain_types);
     // Print information about the mesh to the screen.
     mesh.print_info();
 
@@ -235,7 +271,7 @@ int main(int argc, char **argv)
     equation_systems.print_info();
 
     equation_systems.parameters.set<MaterialsMap *>("materials_properties") = materials_ptr;
-
+    equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems.parameters.set<vtkCellData *>("cell_data") = cell_data;
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
@@ -253,7 +289,7 @@ int main(int argc, char **argv)
 
     // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
     libMesh::out << "Reading boundary conditions data..." << std::endl;
-    vtkPointData *pointData = vtkGrid->GetPointData();
+    vtkPointData *pointData = partitionedGrid->GetPointData();
     if (pointData == nullptr)
     {
         libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
@@ -302,6 +338,7 @@ int main(int argc, char **argv)
     // system.solution->close();
     // system.current_local_solution->zero();
     // system.current_local_solution->close();
+    // VTKIOUpdated vtk_output(partitionedGrid);
     for (auto &step : *timeStepper)
     {
         libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
@@ -335,18 +372,24 @@ int main(int argc, char **argv)
                 system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 libMesh::out << "Writing time substep results..." << std::endl;
-                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".pvtu";
-                final_output_path = output_path / output_filename;
+                // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
+                // // output_filename = output_filename + ".pvtu";
+                // final_output_path = output_path / output_filename;
 
                 // Write the results
-                VTKIO vtk_output(mesh);
-                vtk_output.write_equation_systems(final_output_path, equation_systems);
+                // VTKIO vtk_output(mesh);
+                // vtk_output.write_equation_systems(final_output_path, equation_systems);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".exo";
                 // final_output_path = output_path / output_filename;
-                // // Write the results
+                // // // Write the results
                 // ExodusII_IO vtk_output(mesh);
                 // vtk_output.write_equation_systems(final_output_path, equation_systems);
+                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".nem";
+                final_output_path = output_path / output_filename;
+                // // Write the results
+                Nemesis_IO vtk_output(mesh);
+                vtk_output.write_timestep(final_output_path, equation_systems, timeStepper->get_cumulative_substep(), substep.get_time());
             }
 
             libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;

@@ -186,6 +186,7 @@ void AssemblerLinear::assemble()
     Real dt1;
     Real dt2;
     unsigned int n_dofs;
+    dof_id_type elem_local_id = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -238,7 +239,7 @@ void AssemblerLinear::assemble()
             if (subdomain_id == 1 || dim == 2)
                 fe_scalar->reinit(elem);
 
-            elem_builder.compute_material_properties(elem_id, subdomain_id);
+            elem_builder.compute_material_properties(elem_local_id, subdomain_id);
             // With one variable, we should have the same number of degrees
             // of freedom as shape functions.
             // libmesh_assert_equal_to(n_dofs, phi.size());
@@ -331,7 +332,7 @@ void AssemblerLinear::assemble()
             FFe += this->get_rhs_vector(elem_id);
             if (dim == 2)
             {
-                js[0] = js_array->GetTuple1(elem->id());
+                js[0] = js_array->GetTuple1(elem_local_id);
                 if (time_step.get_ramped_load())
                 {
                     if (js_array_old)
@@ -348,7 +349,7 @@ void AssemblerLinear::assemble()
             }
             else
             {
-                js_array->GetTuple(elem_id, js);
+                js_array->GetTuple(elem_local_id, js);
                 for (unsigned int var = 0; var < 3; var++)
                 {
                     if (time_step.get_ramped_load())
@@ -402,6 +403,7 @@ void AssemblerLinear::assemble()
         // Start logging the insertion of the local (element)
         // matrix and vector into the global matrix and vector
         // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
+        elem_local_id++;
     }
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)

@@ -8,6 +8,7 @@
 #include <vtkDataArray.h>
 
 using namespace libMesh;
+// BCs are probably broken now
 
 void NodalBCConstraint::constrain()
 {

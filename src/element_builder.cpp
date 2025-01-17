@@ -233,11 +233,11 @@ void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, 
     }
 }
 // Method to fill mu_matrix
-void ElementBuilder::fill_mu_matrix(dof_id_type elem_id)
+void ElementBuilder::fill_mu_matrix(dof_id_type local_elem_id)
 {
     // get ansys_material_type from the materials map
 
-    const unsigned int material_number = mat_array->GetTuple1(elem_id); // Retrieve the material number using GetTuple1
+    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
     const MaterialsProperties &mat_properties = materials.at(material_number);
 
     mu_matrix[0][0] = 4 * libMesh::pi * 1e-7 * mat_properties.murx;
@@ -246,9 +246,9 @@ void ElementBuilder::fill_mu_matrix(dof_id_type elem_id)
 }
 
 // Method to fill rs_matrix
-void ElementBuilder::fill_rs_matrix(dof_id_type elem_id)
+void ElementBuilder::fill_rs_matrix(dof_id_type local_elem_id)
 {
-    const unsigned int material_number = mat_array->GetTuple1(elem_id); // Retrieve the material number using GetTuple1
+    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
     const MaterialsProperties &mat_properties = materials.at(material_number);
 
     rs_matrix[0][0] = mat_properties.rsvx;
@@ -256,12 +256,12 @@ void ElementBuilder::fill_rs_matrix(dof_id_type elem_id)
     rs_matrix[2][2] = mat_properties.rsvz;
 }
 
-void ElementBuilder::compute_material_properties(dof_id_type elem_id, subdomain_id_type subdomain_id)
+void ElementBuilder::compute_material_properties(dof_id_type local_elem_id, subdomain_id_type subdomain_id)
 {
     // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
-    this->fill_mu_matrix(elem_id);
+    this->fill_mu_matrix(local_elem_id);
     if (subdomain_id == 1)
-        this->fill_rs_matrix(elem_id);
+        this->fill_rs_matrix(local_elem_id);
 }
 
 void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, subdomain_id_type subdomain_id, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
