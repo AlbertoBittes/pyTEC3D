@@ -264,7 +264,7 @@ void ElementBuilder::compute_material_properties(dof_id_type local_elem_id, bool
         this->fill_rs_matrix(local_elem_id);
 }
 
-void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
+void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, DenseMatrix<Number> &JAe, DenseMatrix<Number> &JVe, const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
 {
 
     if (dim == 2)
@@ -273,6 +273,12 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
         {
             for (unsigned int i = 0; i < 2 * n_A_dofs; i++)
             {
+                if (conductive)
+                    if (i < n_var_dofs)
+                    {
+                        // JAe(0, i) -= JxW_V[qp] * phi_V[i][qp] / phi_V[0].size();
+                        JAe(0, i) -= phi_V[i][qp] / phi_V[0].size();
+                    }
                 for (unsigned int j = 0; j < 2 * n_A_dofs; j++)
                 {
                     if (j < n_A_dofs)
@@ -304,11 +310,69 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
         for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
         {
             for (unsigned int i = 0; i < n_A_dofs; i++)
+            {
+                if (conductive)
+                    for (unsigned int k = 0; k < 3; k++)
+                    {
+                        // JAe(k, i) += JxW_A[qp] * phi_A[i][qp](k);
+                        JAe(k, i) -= phi_A[i][qp](k) / phi_A[0].size();
+                        // JAe(k, i) -= phi_A[i][qp](k);
+                        if (i < n_var_dofs)
+                            // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k);
+                            JVe(k, i) += dphi_V[i][qp](k) / dphi_V[0].size();
+                        // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k) / dphi_V[0].size();
+                    }
+
                 for (unsigned int j = 0; j < n_A_dofs; j++)
                 {
                     AAe(i, j) += JxW_A[qp] * (phi_A[i][qp] * curl_phi_A[j][qp]);
                     Me(i, j) += JxW_A[qp] * (phi_A[i][qp] * phi_A[j][qp]);
                 }
+            }
         }
     }
+}
+
+MaterialBuilder::MaterialBuilder(MaterialsMap &materials, vtkCellData *cell_data)
+    : materials(materials)
+{
+    std::string array_name = "ansys_material_type";
+    mat_array = cell_data->GetArray(array_name.c_str());
+    if (mat_array == nullptr)
+    {
+        libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
+    }
+    mu_matrix.resize(3);
+    rs_matrix.resize(3);
+}
+// Method to fill mu_matrix
+void MaterialBuilder::fill_mu_matrix(dof_id_type local_elem_id)
+{
+    // get ansys_material_type from the materials map
+
+    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
+    const MaterialsProperties &mat_properties = materials.at(material_number);
+
+    mu_matrix(0) = 4 * libMesh::pi * 1e-7 * mat_properties.murx;
+    mu_matrix(1) = 4 * libMesh::pi * 1e-7 * mat_properties.mury;
+    mu_matrix(2) = 4 * libMesh::pi * 1e-7 * mat_properties.murz;
+}
+
+// Method to fill rs_matrix
+void MaterialBuilder::fill_rs_matrix(dof_id_type local_elem_id)
+{
+    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
+    const MaterialsProperties &mat_properties = materials.at(material_number);
+
+    rs_matrix(0) = mat_properties.rsvx;
+    rs_matrix(1) = mat_properties.rsvy;
+    rs_matrix(2) = mat_properties.rsvz;
+}
+
+void MaterialBuilder::compute_material_properties(dof_id_type local_elem_id, bool conductive)
+{
+    // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
+    this->fill_mu_matrix(local_elem_id);
+    if (conductive)
+        this->fill_rs_matrix(local_elem_id);
 }

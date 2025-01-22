@@ -32,7 +32,7 @@
 #include "libmesh/mesh.h"
 // #include "libmesh/mesh_generation.h"
 #include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
-// #include <libmesh/exodusII_io.h>
+#include <libmesh/exodusII_io.h>
 #include <libmesh/nemesis_io.h>
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
@@ -322,25 +322,51 @@ int main(int argc, char **argv)
 
                 system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
-                libMesh::out << "Writing time substep results..." << std::endl;
-                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
-                output_filename = output_filename + ".pvtu";
-                final_output_path = output_path / output_filename;
-                std::set<std::string> system_names = {"PlasmaArcLinearSystem", "DerivedQuantitiesSystem"};
-                // Write the results
-                VTKIO vtk_output(mesh);
-                vtk_output.write_equation_systems(final_output_path, equation_systems, &system_names);
                 // libMesh::out << "Writing time substep results..." << std::endl;
-                // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".exo";
+                // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
+                // output_filename = output_filename + ".pvtu";
                 // final_output_path = output_path / output_filename;
-                // // // Write the results
-                // ExodusII_IO vtk_output(mesh);
-                // vtk_output.write_equation_systems(final_output_path, equation_systems);
-                // output_filename = mesh_filename_without_extension + "_out.nem";
+                std::set<std::string> system_names = {"PlasmaArcLinearSystem", "DerivedQuantitiesSystem"};
+                // // Write the results
+                // VTKIO vtk_output(mesh);
+                // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
+                libMesh::out << "Writing time substep results..." << std::endl;
+                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".exo";
+                // output_filename = mesh_filename_without_extension + "_out.exo";
+                final_output_path = output_path / output_filename;
+                // // Write the results
+                ExodusII_IO exo_output(mesh);
+                exo_output.write_timestep(final_output_path, equation_systems, 1, substep.get_time(), &system_names);
+                exo_output.write_element_data(equation_systems);
+                // output_filename = mesh_filename_without_extension + "_out";
                 // final_output_path = output_path / output_filename;
+                // std::ostringstream file_name;
+                // // // We write the file in the ExodusII format.
+                // file_name << final_output_path.string() << "_"
+                //           << std::setw(3)
+                //           << std::setfill('0')
+                //           << std::right
+                //           << timeStepper->get_cumulative_substep();
+
                 // // // Write the results
-                // Nemesis_IO vtk_output(mesh);
-                // vtk_output.write_timestep(final_output_path, equation_systems, timeStepper->get_cumulative_substep(), substep.get_time());
+                // Nemesis_IO nem_output(mesh);
+                // std::vector<std::string> var_names;
+                // unsigned int var_num = system.n_vars();
+                // for (unsigned int i = 0; i < var_num; ++i)
+                // {
+                //     var_names.push_back(system.variable_name(i));
+                // }
+                // ExplicitSystem &derived_system = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
+                // var_num = derived_system.n_vars();
+                // for (unsigned int i = 0; i < var_num; ++i)
+                // {
+                //     var_names.push_back(derived_system.variable_name(i));
+                // }
+                // nem_output.set_output_variables(var_names);
+
+                // nem_output.write_timestep(file_name.str(), equation_systems, 1, substep.get_time());
+                // // Empty var_names
+                // nem_output.write_element_data(equation_systems);
             }
 
             libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;

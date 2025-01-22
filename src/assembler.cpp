@@ -257,6 +257,9 @@ void AssemblerLinear::assemble()
             {
                 DenseMatrix<Number> AAe;
                 DenseMatrix<Number> Me;
+
+                DenseMatrix<Number> JAe;
+                DenseMatrix<Number> JVe;
                 dof_map.dof_indices(elem, A_indices_var, a_var);
                 // here maybe you will want to add the A dof indices to a map
                 n_A_dofs = std::size(A_indices_var);
@@ -264,15 +267,29 @@ void AssemblerLinear::assemble()
                 {
                     AAe.resize(2 * n_A_dofs, n_A_dofs);
                     Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
+                    if (conductive)
+                        JAe.resize(1, n_A_dofs);
+                    // JVe.resize(1, n_A_dofs);
                 }
                 else
                 {
                     AAe.resize(n_A_dofs, n_A_dofs);
                     Me.resize(n_A_dofs, n_A_dofs);
+                    if (conductive)
+                    {
+                        JAe.resize(3, n_A_dofs);
+                        JVe.resize(3, n_A_dofs / 3);
+                    }
                 }
-                elem_builder.build_element_matrix_derived(AAe, Me, elem, dof_map, conductive, formulation, dim, fe_family, n_A_dofs);
+
+                elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, elem, dof_map, conductive, formulation, dim, fe_family, n_A_dofs);
                 this->insert_aae_matrix_derived(elem_id, AAe);
                 this->insert_me_matrix_derived(elem_id, Me);
+                if (conductive)
+                {
+                    this->insert_jae_matrix_derived(elem_id, JAe);
+                    this->insert_jve_matrix_derived(elem_id, JVe);
+                }
             }
             this->insert_ke_matrix(elem_id, Ke);
             if (conductive)
@@ -517,6 +534,42 @@ DenseMatrix<Number> &AssemblerLinear::get_me_matrix_derived(dof_id_type key)
     else
     {
         throw std::out_of_range("Key not found in me_matrix_derived_map");
+    }
+}
+
+void AssemblerLinear::insert_jae_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix)
+{
+    jae_matrix_derived_map[key] = matrix; // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_jae_matrix_derived(dof_id_type key)
+{
+    auto it = jae_matrix_derived_map.find(key);
+    if (it != jae_matrix_derived_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in jae_matrix_derived_map");
+    }
+}
+
+void AssemblerLinear::insert_jve_matrix_derived(dof_id_type key, DenseMatrix<Number> &matrix)
+{
+    jve_matrix_derived_map[key] = matrix; // Insert a copy of the matrix
+}
+
+DenseMatrix<Number> &AssemblerLinear::get_jve_matrix_derived(dof_id_type key)
+{
+    auto it = jve_matrix_derived_map.find(key);
+    if (it != jve_matrix_derived_map.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        throw std::out_of_range("Key not found in jve_matrix_derived_map");
     }
 }
 

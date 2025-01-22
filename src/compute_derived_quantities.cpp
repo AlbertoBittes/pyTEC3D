@@ -95,54 +95,133 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
 {
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
-    ExplicitSystem &derived_quantities_system = equation_systems.get_system<ExplicitSystem>(sys_name);
+    ExplicitSystem &derived_quantities_system = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
+    ExplicitSystem &derived_quantities_system_elem = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
     const unsigned int a_var = system.variable_number("A");
+    unsigned int v_var;
+    if (dim == 3)
+        v_var = system.variable_number("V");
 
     const DofMap &dof_map = system.get_dof_map();
 
     unsigned int b_n_var = derived_quantities_system.variable_number("B");
+    unsigned int b_elem_var = derived_quantities_system_elem.variable_number("B_elem");
+    unsigned int j_elem_var = derived_quantities_system_elem.variable_number("J_elem");
+    unsigned int f_elem_var = derived_quantities_system_elem.variable_number("F_elem");
     const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();
+    const DofMap &derived_quantities_system_elem_dof_map = derived_quantities_system_elem.get_dof_map();
 
+    std::shared_ptr<TimeStepper> timeStepper = equation_systems.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
+    Real dt = timeStepper->get_time_substep_dt();
+    bool trans_effects = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect();
     // Storage for the stress dof indices on each element
     std::vector<dof_id_type> B_indices_var;
     std::vector<dof_id_type> A_indices_var;
+    std::vector<dof_id_type> V_indices_var;
+    std::vector<dof_id_type> J_indices_var;
+
+    MaterialBuilder mat_builder(*(equation_systems.parameters.get<MaterialsMap *>("materials_properties")), equation_systems.parameters.get<vtkCellData *>("cell_data"));
+
     DenseMatrix<Number> AAe;
     DenseMatrix<Number> Me;
+    DenseMatrix<Number> JAe;
+    DenseMatrix<Number> JVe;
     DenseVector<Number> Ae;
-    DenseVector<Number> Ae_old;
+    DenseVector<Number> Ae_dt;
+    DenseVector<Number> Ve;
+    DenseVector<Number> Ve_dt;
     DenseVector<Number> Be;
+    DenseVector<Number> Fe;
     DenseVector<Number> Be_q;
+    DenseVector<Number> J_elem;
+    DenseVector<Number> J_elem_A;
+    DenseVector<Number> J_elem_V;
+    DenseVector<Number> B_elem;
+    DenseVector<Number> F_elem;
+    char n_J_dofs;
+    if (dim == 2)
+    {
+        n_J_dofs = 1;
+        J_elem.resize(n_J_dofs);
+        // B_elem.resize(2);
+        // F_elem.resize(2);
+    }
+    else
+    {
+        n_J_dofs = 3;
+        J_elem.resize(n_J_dofs);
+        J_elem_A.resize(n_J_dofs);
+        J_elem_V.resize(n_J_dofs);
+        B_elem.resize(n_J_dofs);
+        F_elem.resize(n_J_dofs);
+    }
     dof_id_type elem_id;
-    unsigned int n_A_dofs;
-    unsigned int n_B_dofs;
+    char n_A_dofs;
+    char n_V_dofs;
+    char n_B_dofs;
+    bool conductive;
+    std::set<subdomain_id_type> *conductive_subdomain = equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+    unsigned int local_elem_idx = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         elem_id = elem->id();
+
+        if (conductive_subdomain->find(elem->subdomain_id()) != conductive_subdomain->end())
+            conductive = true;
+        else
+            conductive = false;
+
+        if (!trans_effects)
+            conductive = false;
+
+        mat_builder.compute_material_properties(local_elem_idx, conductive);
+
         dof_map.dof_indices(elem, A_indices_var, a_var);
+        n_A_dofs = std::size(A_indices_var);
+        Ae.resize(n_A_dofs);
+        Ae_dt.resize(n_A_dofs);
+
         derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
         n_B_dofs = std::size(B_indices_var);
-        n_A_dofs = std::size(A_indices_var);
-
-        // AAe.resize(n_B_dofs, n_A_dofs);
-        Ae.resize(n_A_dofs);
-        Ae_old.resize(n_B_dofs);
-        // Me.resize(n_B_dofs, n_B_dofs);
         Be_q.resize(n_B_dofs);
         Be.resize(n_B_dofs);
+
+        derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
+
+        B_elem.zero();
+        F_elem.zero();
+        if (conductive)
+        {
+
+            J_elem.zero();
+            if (dim == 3)
+            {
+                dof_map.dof_indices(elem, V_indices_var, v_var);
+                n_V_dofs = std::size(V_indices_var);
+                Ve.resize(n_V_dofs);
+                Ve_dt.resize(n_V_dofs);
+                J_elem_A.zero();
+                J_elem_V.zero();
+            }
+        }
+
         for (std::size_t j = 0; j < n_A_dofs; j++)
         {
-            // if (dim == 2)
-            // {
-            //     Ae(j) = system.current_solution(A_indices_var[j / 2]);
-            //     Ae_old(j) = system.old_solution(A_indices_var[j / 2]);
-            // }
-            // else
-            // {
             Ae(j) = system.current_solution(A_indices_var[j]);
-            Ae_old(j) = system.old_solution(A_indices_var[j]);
-            // }
+            if (conductive)
+            {
+                Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+                if (dim == 3)
+                {
+                    if (j < n_V_dofs)
+                    {
+                        Ve(j) = system.current_solution(V_indices_var[j]);
+                        Ve_dt(j) = (Ve(j) - system.old_solution(V_indices_var[j])) / dt;
+                    }
+                }
+            }
         }
 
         AAe = assembler->get_aae_matrix_derived(elem_id);
@@ -154,10 +233,27 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         // appropriate. We then also get the von Mises stress from the projected stress tensor.
         Me = assembler->get_me_matrix_derived(elem_id);
 
-        // if (dim == 3)
         Me.cholesky_solve(Be_q, Be);
-        // else
-        //     Me.svd_solve(Be_q, Be);
+
+        if (conductive)
+        {
+            if (dim == 2)
+            {
+                JAe = assembler->get_jae_matrix_derived(elem_id);
+                JAe.vector_mult(J_elem, Ae);
+            }
+            else
+            {
+                JAe = assembler->get_jae_matrix_derived(elem_id);
+                JVe = assembler->get_jve_matrix_derived(elem_id);
+                JAe.vector_mult(J_elem_A, Ae_dt);
+                JVe.vector_mult(J_elem_V, Ve_dt);
+                J_elem += J_elem_A;
+                J_elem += J_elem_V;
+            }
+            for (char k = 0; k < n_J_dofs; k++)
+                J_elem(k) *= 1 / mat_builder.rs_matrix(k);
+        }
 
         dof_id_type dof_index;
         // Loop over B_indices_var_values
@@ -168,12 +264,22 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
                 (dof_index < derived_quantities_system.solution->last_local_index()))
                 derived_quantities_system.solution->set(dof_index, Be(i));
         }
+        if (conductive)
+            for (unsigned int i = 0; i < n_J_dofs; i++)
+            {
+                dof_index = J_indices_var[i];
+                if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
+                    (dof_index < derived_quantities_system.solution->last_local_index()))
+                    derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
+            }
+        // Should call close and update when we set vector entries directly
+        derived_quantities_system.solution->close();
+        derived_quantities_system.update();
+        derived_quantities_system_elem.solution->close();
+        derived_quantities_system_elem.update();
+        local_elem_idx++;
     }
-    // Should call close and update when we set vector entries directly
-    derived_quantities_system.solution->close();
-    derived_quantities_system.update();
 }
-
 // const MeshBase &mesh = es.get_mesh();
 // const unsigned int dim = mesh.mesh_dimension();
 // LinearImplicitSystem &system = es.get_system<LinearImplicitSystem>(0);
