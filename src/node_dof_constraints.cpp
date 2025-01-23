@@ -95,7 +95,7 @@ void NodalBCConstraint::constrain()
             if (_sys.has_variable("V") && timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect())
             {
 
-                Real v_bc = V_Array->GetComponent(j, 0);
+                Real v_bc = V_Array->GetTuple1(j);
 
                 if (!std::isnan(v_bc))
                 {
