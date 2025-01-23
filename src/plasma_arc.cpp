@@ -324,7 +324,7 @@ int main(int argc, char **argv)
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
 
-                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                // system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
