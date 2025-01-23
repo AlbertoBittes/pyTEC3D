@@ -268,7 +268,7 @@ void AssemblerLinear::assemble()
                     AAe.resize(2 * n_A_dofs, n_A_dofs);
                     Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
                     if (conductive)
-                        JAe.resize(1, n_A_dofs);
+                        JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
                     // JVe.resize(1, n_A_dofs);
                 }
                 else
@@ -277,8 +277,9 @@ void AssemblerLinear::assemble()
                     Me.resize(n_A_dofs, n_A_dofs);
                     if (conductive)
                     {
-                        JAe.resize(3, n_A_dofs);
-                        JVe.resize(3, n_A_dofs / 3);
+                        JAe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
+                        // fix this / 3
+                        JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs / 3);
                     }
                 }
 
@@ -288,7 +289,8 @@ void AssemblerLinear::assemble()
                 if (conductive)
                 {
                     this->insert_jae_matrix_derived(elem_id, JAe);
-                    this->insert_jve_matrix_derived(elem_id, JVe);
+                    if (dim == 3)
+                        this->insert_jve_matrix_derived(elem_id, JVe);
                 }
             }
             this->insert_ke_matrix(elem_id, Ke);

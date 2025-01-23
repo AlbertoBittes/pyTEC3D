@@ -152,8 +152,6 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     {
         n_J_dofs = 3;
         J_elem.resize(n_J_dofs);
-        J_elem_A.resize(n_J_dofs);
-        J_elem_V.resize(n_J_dofs);
         B_elem.resize(n_J_dofs);
         F_elem.resize(n_J_dofs);
     }
@@ -194,7 +192,6 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         F_elem.zero();
         if (conductive)
         {
-
             J_elem.zero();
             if (dim == 3)
             {
@@ -212,13 +209,15 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
             Ae(j) = system.current_solution(A_indices_var[j]);
             if (conductive)
             {
-                Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+                Ae_dt(j) = (-system.old_solution(A_indices_var[j])) / dt;
+                Ae_dt(j) += Ae(j) / dt;
                 if (dim == 3)
                 {
                     if (j < n_V_dofs)
                     {
                         Ve(j) = system.current_solution(V_indices_var[j]);
-                        Ve_dt(j) = (Ve(j) - system.old_solution(V_indices_var[j])) / dt;
+                        Ve_dt(j) = (-system.old_solution(V_indices_var[j])) / dt;
+                        Ve_dt(j) += Ve(j) / dt;
                     }
                 }
             }
@@ -235,24 +234,31 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
 
         Me.cholesky_solve(Be_q, Be);
 
+        unsigned int j_qp_size;
         if (conductive)
         {
+            JAe = assembler->get_jae_matrix_derived(elem_id);
             if (dim == 2)
             {
-                JAe = assembler->get_jae_matrix_derived(elem_id);
-                JAe.vector_mult(J_elem, Ae);
+                j_qp_size = JAe.m();
+                J_elem_A.resize(j_qp_size);
+                JAe.vector_mult(J_elem_A, Ae);
+                for (char k = 0; k < n_J_dofs; k++)
+                    for (char qp = 0; qp < j_qp_size; qp++)
+                        J_elem(k) += J_elem_A(qp + k) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
             }
             else
             {
-                JAe = assembler->get_jae_matrix_derived(elem_id);
                 JVe = assembler->get_jve_matrix_derived(elem_id);
+                j_qp_size = JAe.m();
+                J_elem_A.resize(j_qp_size);
+                J_elem_V.resize(j_qp_size);
                 JAe.vector_mult(J_elem_A, Ae_dt);
                 JVe.vector_mult(J_elem_V, Ve_dt);
-                J_elem += J_elem_A;
-                J_elem += J_elem_V;
+                for (char k = 0; k < n_J_dofs; k++)
+                    for (char qp = 0; qp < j_qp_size / n_J_dofs; qp++)
+                        J_elem(k) += (J_elem_A(qp * 3 + k) + J_elem_V(qp * 3 + k)) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
             }
-            for (char k = 0; k < n_J_dofs; k++)
-                J_elem(k) *= 1 / mat_builder.rs_matrix(k);
         }
 
         dof_id_type dof_index;

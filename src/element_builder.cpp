@@ -277,7 +277,7 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
                     if (i < n_var_dofs)
                     {
                         // JAe(0, i) -= JxW_V[qp] * phi_V[i][qp] / phi_V[0].size();
-                        JAe(0, i) -= phi_V[i][qp] / phi_V[0].size();
+                        JAe(qp, i) -= phi_V[i][qp];
                     }
                 for (unsigned int j = 0; j < 2 * n_A_dofs; j++)
                 {
@@ -315,11 +315,11 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
                     for (unsigned int k = 0; k < 3; k++)
                     {
                         // JAe(k, i) += JxW_A[qp] * phi_A[i][qp](k);
-                        JAe(k, i) -= phi_A[i][qp](k) / phi_A[0].size();
+                        JAe(qp * 3 + k, i) -= phi_A[i][qp](k);
                         // JAe(k, i) -= phi_A[i][qp](k);
                         if (i < n_var_dofs)
                             // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k);
-                            JVe(k, i) += dphi_V[i][qp](k) / dphi_V[0].size();
+                            JVe(qp * 3 + k, i) += dphi_V[i][qp](k);
                         // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k) / dphi_V[0].size();
                     }
 
