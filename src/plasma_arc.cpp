@@ -49,8 +49,10 @@
 #include "libmesh/vtk_io.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/numeric_vector.h"
+#include "libmesh/petsc_linear_solver.h"
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/mesh_modification.h"
+#include "libmesh/dof_map.h"
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
@@ -289,7 +291,7 @@ int main(int argc, char **argv)
     // {
     //     libMesh::out << "Computing static analysis..." << std::endl;
     // }
-
+    auto solver = system.get_linear_solver();
     for (auto &step : *timeStepper)
     {
         libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
@@ -304,6 +306,7 @@ int main(int argc, char **argv)
         // This will reinitialize the constraints for the system
 
         system.reinit_constraints();
+        // system.get_dof_map().print_dof_constraints();
 
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
@@ -315,6 +318,7 @@ int main(int argc, char **argv)
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
+            solver->print_converged_reason();
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
                 libMesh::out << "Computing derived quantities..." << std::endl;

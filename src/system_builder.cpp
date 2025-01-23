@@ -103,7 +103,8 @@ void SystemBuilder::setVariables()
         }
         // if (transient)
         // {
-
+        auto cond_subdomain_ptr = equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+        std::set<subdomain_id_type> cond_subd_obj = *cond_subdomain_ptr;
         if (dim == 3)
         {
             system.add_variable("V",
