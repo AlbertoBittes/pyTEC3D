@@ -86,14 +86,19 @@ public:
 
         // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCILU));
         // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // Initialize PETSc logging
+        ierr = PetscLogDefaultBegin();
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         // Set the solver type to GMRES
         ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPGMRES));
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
 
         // Set the preconditioner type to MUMPS
-        ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCLU));
+        // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCLU));
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+        ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCCHOLESKY));
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
         ierr = PCFactorSetMatSolverType(_petsc_linear_solver.pc(), MATSOLVERMUMPS);
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         // Set the verbosity level
@@ -422,12 +427,12 @@ int main(int argc, char **argv)
             // nonlinear step, it means that the delta between solutions
             // is being inaccurately measured as "0" since the solution
             // did not change.  Decrease the tolerance and try again.
-            while (system.n_linear_iterations() == 0)
-            {
-                Real old_linear_solver_tolerance = equation_systems.parameters.get<Real>("linear solver tolerance");
-                equation_systems.parameters.set<Real>("linear solver tolerance") = 1.e-3 * old_linear_solver_tolerance;
-                system.solve();
-            }
+            // while (system.n_linear_iterations() == 0)
+            // {
+            //     Real old_linear_solver_tolerance = equation_systems.parameters.get<Real>("linear solver tolerance");
+            //     equation_systems.parameters.set<Real>("linear solver tolerance") = 1.e-3 * old_linear_solver_tolerance;
+            //     system.solve();
+            // }
             solver->print_converged_reason();
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
