@@ -8,7 +8,7 @@ INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.
 CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp
 
 # Linker flags, add your project-specific libraries not related to MPI
-LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -pthread -fopenmp \
+LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -lpetsc -pthread -fopenmp \
 -lvtkCommonCore-9.1 -lvtkCommonDataModel-9.1 -lvtkFiltersCore-9.1 -lvtkIOXML-9.1 \
 -lvtkCommonExecutionModel-9.1 -lvtkIOParallelXML-9.1 -lvtkIOCore-9.1 -lvtkIOGeometry-9.1 \
 -lvtkIOLegacy-9.1 -lvtkParallelCore-9.1 -lvtkRenderingCore-9.1 -lvtkRenderingFreeType-9.1 \

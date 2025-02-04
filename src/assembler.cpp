@@ -297,14 +297,18 @@ void AssemblerLinear::assemble()
             if (conductive)
             {
                 this->insert_ce_matrix(elem_id, Ce);
-                // std::ofstream ke_file("../simulations/single_element_cond/matrix/Ke_matrix.txt");
-                // std::ofstream ce_file("../simulations/single_element_cond/matrix/Ce_matrix.txt");
+                if (elem_id == 969)
+                {
+                    std::ofstream ke_file("../simulations/two_wires_3D/matrix/Ke_matrix"
+                                          ".txt");
+                    std::ofstream ce_file("../simulations/two_wires_3D/matrix/Ce_matrix.txt");
 
-                // if (ke_file.is_open() && ce_file.is_open())
-                // {
-                //     Ke.print_scientific(ke_file);
-                //     Ce.print_scientific(ce_file);
-                // }
+                    if (ke_file.is_open() && ce_file.is_open())
+                    {
+                        Ke.print_scientific(ke_file);
+                        Ce.print_scientific(ce_file);
+                    }
+                }
             }
             else
             {
@@ -336,12 +340,14 @@ void AssemblerLinear::assemble()
                     CCe += this->get_ce_matrix(elem_id);
                     CCe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
                     KKe += CCe;
-                    // std::ofstream kke_file("../simulations/single_element_cond/matrix/Kke_matrix.txt");
-
-                    // if (kke_file.is_open())
-                    // {
-                    //     KKe.print_scientific(kke_file);
-                    // }
+                    if (elem_id == 969)
+                    {
+                        std::ofstream kke_file("../simulations/two_wires_3D/matrix/Kke_matrix.txt");
+                        if (kke_file.is_open())
+                        {
+                            KKe.print_scientific(kke_file);
+                        }
+                    }
                 }
             }
             dof_map.constrain_element_matrix(KKe, dof_indices);
@@ -400,6 +406,14 @@ void AssemblerLinear::assemble()
             system.old_local_solution->get(dof_indices, old_solution_values);
             this->get_ce_matrix(elem_id).vector_mult(FFe, old_solution_values);
             FFe.scale(1 / time_step.get_substeps()[ts->get_current_substep()].get_dt());
+            if (elem_id == 969)
+            {
+                std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
+                if (ffe_file.is_open())
+                {
+                    FFe.print_scientific(ffe_file);
+                }
+            }
         }
         dof_map.constrain_element_vector(FFe, dof_indices);
         system.rhs->add_vector(FFe, dof_indices);

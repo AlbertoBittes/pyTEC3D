@@ -53,6 +53,11 @@
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/mesh_modification.h"
 #include "libmesh/dof_map.h"
+#include "libmesh/solver_configuration.h"
+#include "libmesh/string_to_enum.h"
+#include "libmesh/enum_solver_type.h"
+#include "libmesh/enum_solver_package.h"
+
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
@@ -66,6 +71,74 @@
 
 using namespace libMesh;
 
+class PetscSolverConfiguration : public SolverConfiguration
+{
+public:
+    PetscSolverConfiguration(PetscLinearSolver<Number> &petsc_linear_solver) : _petsc_linear_solver(petsc_linear_solver)
+    {
+    }
+
+    virtual void configure_solver()
+    {
+        PetscErrorCode ierr = 0;
+        // ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPGMRES));
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCILU));
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+        // Set the solver type to GMRES
+        ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPGMRES));
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // Set the preconditioner type to MUMPS
+        ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCLU));
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        ierr = PCFactorSetMatSolverType(_petsc_linear_solver.pc(), MATSOLVERMUMPS);
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+        // Set the verbosity level
+        ierr = KSPSetFromOptions(_petsc_linear_solver.ksp());
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+        // Set additional options for verbosity
+        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        ierr = PetscOptionsSetValue(NULL, "-ksp_view", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        ierr = PetscOptionsSetValue(NULL, "-ksp_converged_reason", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        ierr = PetscOptionsSetValue(NULL, "-log_view", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_singular_value", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_solution", "");
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_short", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_range", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_residualnorm", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_true_residualnorm", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
+        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_range", "");
+        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+    }
+
+    // The linear solver object that we are configuring
+    PetscLinearSolver<Number> &_petsc_linear_solver;
+};
 // Begin the main program.
 int main(int argc, char **argv)
 {
@@ -291,7 +364,19 @@ int main(int argc, char **argv)
     // {
     //     libMesh::out << "Computing static analysis..." << std::endl;
     // }
-    auto solver = system.get_linear_solver();
+    // Build the K matrix, the RHS F and Solve the system Kx=F
+    // This should be already done
+    system.solution->zero();
+    system.solution->close();
+    system.current_local_solution->zero();
+    system.current_local_solution->close();
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
+    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
+    // solver->set_solver_type(GMRES);
+    PetscSolverConfiguration solver_configuration(*solver);
+    solver_configuration.configure_solver();
+    solver->set_solver_configuration(solver_configuration);
+    // solver->set_preconditioner_type(Utility::string_to_enum<PreconditionerType>("ILU"));
     for (auto &step : *timeStepper)
     {
         libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
@@ -307,7 +392,7 @@ int main(int argc, char **argv)
 
         system.reinit_constraints();
         // system.get_dof_map().print_dof_constraints();
-
+        unsigned int n_linear_iterations;
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
         {
@@ -318,6 +403,31 @@ int main(int argc, char **argv)
             // Assemble & solve the linear system
             libMesh::out << "Building matrix and solving system..." << std::endl;
             system.solve();
+            // // How many iterations were required to solve the linear system?
+            // const unsigned int n_linear_iterations = system.n_linear_iterations();
+
+            // // What was the final residual of the linear system?
+            // const Real final_linear_residual = system.final_linear_residual();
+
+            // If the solver did no work (sometimes -ksp_converged_reason
+            // says "Linear solve converged due to CONVERGED_RTOL
+            // iterations 0") but the nonlinear residual norm is above
+            // the tolerance, we need to pick an even lower linear
+            // solver tolerance and try again.  Note that the tolerance
+            // is relative to the norm of the RHS, which for this
+            // particular problem does not go to zero, since we are
+            // solving for the full solution rather than the update.
+            //
+            // Similarly, if the solver did no work and this is the 0th
+            // nonlinear step, it means that the delta between solutions
+            // is being inaccurately measured as "0" since the solution
+            // did not change.  Decrease the tolerance and try again.
+            while (system.n_linear_iterations() == 0)
+            {
+                Real old_linear_solver_tolerance = equation_systems.parameters.get<Real>("linear solver tolerance");
+                equation_systems.parameters.set<Real>("linear solver tolerance") = 1.e-3 * old_linear_solver_tolerance;
+                system.solve();
+            }
             solver->print_converged_reason();
             if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
             {
@@ -342,6 +452,11 @@ int main(int argc, char **argv)
                 ExodusII_IO exo_output(mesh);
                 exo_output.write_timestep(final_output_path, equation_systems, 1, substep.get_time(), &system_names);
                 exo_output.write_element_data(equation_systems);
+                // Print to a file the rhs
+                std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
+                system.rhs->print_global(rhs_file);
+                system.rhs->zero();
+                system.rhs->close();
                 // output_filename = mesh_filename_without_extension + "_out";
                 // final_output_path = output_path / output_filename;
                 // std::ostringstream file_name;
