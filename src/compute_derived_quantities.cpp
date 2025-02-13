@@ -130,6 +130,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     DenseMatrix<Number> JVe;
     DenseVector<Number> Ae;
     DenseVector<Number> Ae_dt;
+    DenseVector<Number> Ae_temp;
     DenseVector<Number> Ve;
     DenseVector<Number> Ve_dt;
     DenseVector<Number> Be;
@@ -187,7 +188,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         Be.resize(n_B_dofs);
 
         derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
-
+        Ae_temp.resize(n_A_dofs);
         B_elem.zero();
         F_elem.zero();
         if (conductive)
@@ -209,15 +210,14 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
             Ae(j) = system.current_solution(A_indices_var[j]);
             if (conductive)
             {
-                Ae_dt(j) = (-system.old_solution(A_indices_var[j])) / dt;
-                Ae_dt(j) += Ae(j) / dt;
+                Ae_temp(j) = system.old_solution(A_indices_var[j]);
+                Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+
                 if (dim == 3)
                 {
                     if (j < n_V_dofs)
                     {
-                        Ve(j) = system.current_solution(V_indices_var[j]);
-                        Ve_dt(j) = (-system.old_solution(V_indices_var[j])) / dt;
-                        Ve_dt(j) += Ve(j) / dt;
+                        Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
                     }
                 }
             }
@@ -245,7 +245,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
                 JAe.vector_mult(J_elem_A, Ae);
                 for (char k = 0; k < n_J_dofs; k++)
                     for (char qp = 0; qp < j_qp_size; qp++)
-                        J_elem(k) += J_elem_A(qp + k) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
+                        J_elem(k) -= J_elem_A(qp + k) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
             }
             else
             {
@@ -257,7 +257,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
                 JVe.vector_mult(J_elem_V, Ve_dt);
                 for (char k = 0; k < n_J_dofs; k++)
                     for (char qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-                        J_elem(k) += (J_elem_A(qp * 3 + k) + J_elem_V(qp * 3 + k)) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
+                        J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
             }
         }
 

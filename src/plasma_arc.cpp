@@ -91,14 +91,16 @@ public:
         ierr = PetscLogDefaultBegin();
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         // Set the solver type to GMRES
-        ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPGMRES));
+        ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPPREONLY));
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
+        ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver.ksp(), PETSC_FALSE);
+        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         // Set the preconditioner type to MUMPS
         // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCLU));
         // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCCHOLESKY));
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
         ierr = PCFactorSetMatSolverType(_petsc_linear_solver.pc(), MATSOLVERMUMPS);
         CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
         // Set the verbosity level
@@ -439,7 +441,7 @@ int main(int argc, char **argv)
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
 
-                // system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());

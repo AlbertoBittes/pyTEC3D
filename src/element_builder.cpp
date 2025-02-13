@@ -315,7 +315,7 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
                     for (unsigned int k = 0; k < 3; k++)
                     {
                         // JAe(k, i) += JxW_A[qp] * phi_A[i][qp](k);
-                        JAe(qp * 3 + k, i) -= phi_A[i][qp](k);
+                        JAe(qp * 3 + k, i) += phi_A[i][qp](k);
                         // JAe(k, i) -= phi_A[i][qp](k);
                         if (i < n_var_dofs)
                             // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k);
