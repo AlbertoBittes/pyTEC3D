@@ -18,6 +18,7 @@
 
 // Define Gauss quadrature rules.
 #include "libmesh/quadrature_gauss.h"
+#include "libmesh/petsc_linear_solver.h"
 
 // Define the DofMap, which handles degree of freedom
 // indexing.
@@ -136,7 +137,7 @@ void AssemblerLinear::assemble()
     DenseVector<Number> FFe;
     DenseVector<Number> Fe;
     std::vector<Real> old_solution_values;
-
+    update_matrix = false;
     auto ts = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     // check correct time stepper get
     // Get the cell data from the vtkGrid
@@ -188,6 +189,39 @@ void AssemblerLinear::assemble()
     dof_id_type elem_local_id = 0;
     bool conductive;
     std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
+    dt1 = ts->get_time_substep_dt();
+    dt2 = ts->get_prev_time_substep_dt();
+    // in a new time step we could have a different dt, different bcs, different time integration effects
+    // Here add the flag for ferromagnetic
+    if (ts->get_cumulative_substep() == 1)
+    {
+        update_matrix = true;
+        solver->reuse_preconditioner(false);
+    }
+    else
+    {
+        if (ts->get_current_substep() > 0)
+        {
+            update_matrix = false;
+            solver->reuse_preconditioner(true);
+        }
+        else
+        {
+            if (std::abs(dt1 - dt2) > relative_epsilon * std::max(std::abs(dt1), std::abs(dt2)) ||
+                updated_bcs ||
+                ts->get_time_steps()[ts->get_current_time_step()].get_transient_effect() != ts->get_time_steps()[ts->get_current_time_step() - 1].get_transient_effect())
+            {
+                update_matrix = true;
+                solver->reuse_preconditioner(false);
+            }
+            else
+            {
+                update_matrix = false;
+                solver->reuse_preconditioner(true);
+            }
+        }
+    }
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -253,46 +287,44 @@ void AssemblerLinear::assemble()
 
             elem_builder.build_element_matrix(elem, dof_map, conductive, formulation, dim, fe_family);
 
-            if (ts->get_cumulative_substep() == 1)
+            DenseMatrix<Number> AAe;
+            DenseMatrix<Number> Me;
+
+            DenseMatrix<Number> JAe;
+            DenseMatrix<Number> JVe;
+            dof_map.dof_indices(elem, A_indices_var, a_var);
+            // here maybe you will want to add the A dof indices to a map
+            n_A_dofs = std::size(A_indices_var);
+            if (dim == 2)
             {
-                DenseMatrix<Number> AAe;
-                DenseMatrix<Number> Me;
-
-                DenseMatrix<Number> JAe;
-                DenseMatrix<Number> JVe;
-                dof_map.dof_indices(elem, A_indices_var, a_var);
-                // here maybe you will want to add the A dof indices to a map
-                n_A_dofs = std::size(A_indices_var);
-                if (dim == 2)
-                {
-                    AAe.resize(2 * n_A_dofs, n_A_dofs);
-                    Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
-                    if (conductive)
-                        JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
-                    // JVe.resize(1, n_A_dofs);
-                }
-                else
-                {
-                    AAe.resize(n_A_dofs, n_A_dofs);
-                    Me.resize(n_A_dofs, n_A_dofs);
-                    if (conductive)
-                    {
-                        JAe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
-                        // fix this / 3
-                        JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs / 3);
-                    }
-                }
-
-                elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, elem, dof_map, conductive, formulation, dim, fe_family, n_A_dofs);
-                this->insert_aae_matrix_derived(elem_id, AAe);
-                this->insert_me_matrix_derived(elem_id, Me);
+                AAe.resize(2 * n_A_dofs, n_A_dofs);
+                Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
+                if (conductive)
+                    JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
+                // JVe.resize(1, n_A_dofs);
+            }
+            else
+            {
+                AAe.resize(n_A_dofs, n_A_dofs);
+                Me.resize(n_A_dofs, n_A_dofs);
                 if (conductive)
                 {
-                    this->insert_jae_matrix_derived(elem_id, JAe);
-                    if (dim == 3)
-                        this->insert_jve_matrix_derived(elem_id, JVe);
+                    JAe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
+                    // fix this / 3
+                    JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs / 3);
                 }
             }
+
+            elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, elem, dof_map, conductive, formulation, dim, fe_family, n_A_dofs);
+            this->insert_aae_matrix_derived(elem_id, AAe);
+            this->insert_me_matrix_derived(elem_id, Me);
+            if (conductive)
+            {
+                this->insert_jae_matrix_derived(elem_id, JAe);
+                if (dim == 3)
+                    this->insert_jve_matrix_derived(elem_id, JVe);
+            }
+
             this->insert_ke_matrix(elem_id, Ke);
             if (conductive)
             {
@@ -318,12 +350,9 @@ void AssemblerLinear::assemble()
                 this->insert_rhs_vector(elem_id, Fe);
             }
         }
-
-        dt1 = ts->get_time_substep_dt();
-        dt2 = ts->get_prev_time_substep_dt();
         // in a new time step we could have a different dt, different bcs, different time integration effects
         // Here add the flag for ferromagnetic
-        if (std::abs(dt1 - dt2) > relative_epsilon * std::max(std::abs(dt1), std::abs(dt2)) || ts->get_current_substep() == 0)
+        if (update_matrix)
         {
             if (elem_id == 0)
             {

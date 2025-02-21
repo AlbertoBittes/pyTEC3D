@@ -396,8 +396,19 @@ int main(int argc, char **argv)
 
         libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
         // This will reinitialize the constraints for the system
-
-        system.reinit_constraints();
+        if (step.get_step() > 0)
+        {
+            node_dof_constraints.check_boundary_conditions();
+        }
+        if (node_dof_constraints.update_boundary_conditions)
+        {
+            system.reinit_constraints();
+            system_builder.getAssembler()->updated_bcs = true;
+        }
+        else
+        {
+            system_builder.getAssembler()->updated_bcs = false;
+        }
         // system.get_dof_map().print_dof_constraints();
         unsigned int n_linear_iterations;
         // Iterate through the substeps of the current time step
@@ -441,7 +452,7 @@ int main(int argc, char **argv)
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
 
-                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                // system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
@@ -460,8 +471,8 @@ int main(int argc, char **argv)
                 exo_output.write_timestep(final_output_path, equation_systems, 1, substep.get_time(), &system_names);
                 exo_output.write_element_data(equation_systems);
                 // Print to a file the rhs
-                std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
-                system.rhs->print_global(rhs_file);
+                // std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
+                // system.rhs->print_global(rhs_file);
                 system.rhs->zero();
                 system.rhs->close();
                 // output_filename = mesh_filename_without_extension + "_out";

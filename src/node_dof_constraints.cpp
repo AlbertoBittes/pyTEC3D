@@ -122,3 +122,88 @@ void NodalBCConstraint::constrain()
         }
     }
 }
+
+void NodalBCConstraint::check_boundary_conditions()
+{
+    // Example implementation
+    // This function should implement the logic to check the boundary conditions applied to the nodes of the system
+    // identified by system_name within the provided equation_systems object.
+    // The actual implementation would depend on the specific constraints to be checked.
+
+    // Retrieve the system by name
+    bool update_bc = false;
+    std::string array_name = "A_" + std::to_string(timeStepper->get_current_time_step() + 1);
+    vtkDataArray *A_Array = _pointData->GetArray(array_name.c_str());
+    array_name = "V_" + std::to_string(timeStepper->get_current_time_step() + 1);
+    vtkDataArray *V_Array = _pointData->GetArray(array_name.c_str());
+    array_name = "A_" + std::to_string(timeStepper->get_current_time_step());
+    vtkDataArray *prev_A_array = _pointData->GetArray(array_name.c_str());
+    array_name = "V_" + std::to_string(timeStepper->get_current_time_step());
+    vtkDataArray *prev_V_array = _pointData->GetArray(array_name.c_str());
+    Real A_bc;
+    Real prev_A_bc;
+    Real V_bc;
+    Real prev_V_bc;
+    vtkIdType size_vtk = A_Array->GetNumberOfTuples();
+    char n_comps;
+
+    if (_dim == 2)
+    {
+        n_comps = 1;
+    }
+    else
+    {
+        n_comps = 3;
+    }
+
+    if (!A_Array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
+    }
+    if (!V_Array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
+    }
+    if (!prev_A_array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
+    }
+    if (!prev_V_array)
+    {
+        // Handle the case where the "Az" array does not exist
+        libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
+    }
+
+    for (vtkIdType j = 0; j < size_vtk; j++)
+    {
+        for (char i = 0; i < n_comps; i++)
+        {
+            prev_A_bc = prev_A_array->GetComponent(j, i);
+            A_bc = A_Array->GetComponent(j, i);
+            if ((A_bc != prev_A_bc && !(std::isnan(A_bc) && std::isnan(prev_A_bc))) ||
+                (std::isnan(A_bc) && !std::isnan(prev_A_bc)) ||
+                (!std::isnan(A_bc) && std::isnan(prev_A_bc)))
+            {
+                update_bc = true;
+            }
+        }
+        prev_V_bc = prev_V_array->GetTuple1(j);
+        V_bc = V_Array->GetTuple1(j);
+        if ((V_bc != prev_V_bc && !(std::isnan(V_bc) && std::isnan(prev_V_bc))) ||
+            (std::isnan(V_bc) && !std::isnan(prev_V_bc)) ||
+            (!std::isnan(V_bc) && std::isnan(prev_V_bc)))
+        {
+            update_bc = true;
+        }
+        if (update_bc)
+        {
+            break;
+        }
+    }
+
+    _sys.get_mesh().comm().max(update_bc);
+    update_boundary_conditions = update_bc;
+}

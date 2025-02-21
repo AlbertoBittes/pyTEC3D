@@ -18,9 +18,10 @@ private:
     std::shared_ptr<TimeStepper> timeStepper;
 
 public:
+    bool update_boundary_conditions;
     // Modified constructor to take a vtkPointData pointer
     NodalBCConstraint(TransientLinearImplicitSystem &system, vtkPointData *pointData, std::shared_ptr<TimeStepper> timeStepper)
-        : _sys(system), _pointData(pointData), timeStepper(timeStepper)
+        : _sys(system), _pointData(pointData), update_boundary_conditions(true), timeStepper(timeStepper)
     {
         _dim = _sys.get_mesh().mesh_dimension();
     }
@@ -28,6 +29,8 @@ public:
     virtual ~NodalBCConstraint() {}
 
     void constrain();
+
+    void check_boundary_conditions();
 };
 
 #endif // NODE_DOF_CONSTRAINTS_H

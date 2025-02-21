@@ -18,7 +18,7 @@ public:
         setVariables(); // Call setVariables at the end of the constructor
     }
     std::shared_ptr<DerivedQuantitiesCalculator> getDerivedQuantitiesCalculator();
-
+    std::shared_ptr<AssemblerLinear> getAssembler() { return assembler; }
     void createSystem();
 
     void setVariables();

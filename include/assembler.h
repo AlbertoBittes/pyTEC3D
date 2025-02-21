@@ -12,7 +12,7 @@ class AssemblerLinear : public System::Assembly
 {
 public:
     AssemblerLinear(EquationSystems &eq_sys, nlohmann::json config)
-        : eq_sys(eq_sys), config(config)
+        : eq_sys(eq_sys), config(config), updated_bcs(false), update_matrix(true)
     {
         transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
         ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
@@ -52,6 +52,9 @@ public:
     DenseMatrix<Number> &get_jve_matrix_derived(dof_id_type key);
 
     Real linearInterpolate(Real x1, Real y1, Real x2, Real y2, Real x);
+
+    bool updated_bcs;
+    bool update_matrix;
 
 protected:
     EquationSystems &eq_sys;
