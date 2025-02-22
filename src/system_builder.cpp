@@ -5,6 +5,7 @@
 #include "../include/system_builder.h"
 #include "../include/compute_derived_quantities.h"
 #include "../include/assembler.h"
+#include "../include/session.h"
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -22,11 +23,11 @@ using namespace libMesh;
 void SystemBuilder::createSystem()
 {
     libMesh::out << "Checking system options..." << std::endl;
-    transient = config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
-    ferromagnetic = config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
-    fe_family = config["Finite Elements Settings"]["fe_family"].get<std::string>();
-    formulation = config["Finite Elements Settings"]["formulation"].get<std::string>();
-    order = config["Finite Elements Settings"]["approx_order"].get<std::string>();
+    transient = equation_systems.parameters.get<Session *>("session")->config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
+    ferromagnetic = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
+    fe_family = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
+    formulation = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
+    order = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["approx_order"].get<std::string>();
     dim = equation_systems.get_mesh().mesh_dimension();
 
     // Check if dim is 2 or 3
@@ -112,7 +113,7 @@ void SystemBuilder::setVariables()
                                 Utility::string_to_enum<FEFamily>(fe_family),
                                 equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain"));
         }
-        assembler = std::make_shared<AssemblerLinear>(equation_systems, config);
+        assembler = std::make_shared<AssemblerLinear>(equation_systems);
         system.attach_assemble_object(*assembler);
         derived_quantities_calculator = std::make_shared<DerivedQuantitiesCalculator>(assembler, equation_systems);
     }

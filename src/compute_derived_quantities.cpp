@@ -122,15 +122,10 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     std::vector<dof_id_type> V_indices_var;
     std::vector<dof_id_type> J_indices_var;
 
-    MaterialBuilder mat_builder(*(equation_systems.parameters.get<MaterialsMap *>("materials_properties")), equation_systems.parameters.get<vtkCellData *>("cell_data"));
+    std::shared_ptr<ElementDataManager> element_data_manager = equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
 
-    DenseMatrix<Number> AAe;
-    DenseMatrix<Number> Me;
-    DenseMatrix<Number> JAe;
-    DenseMatrix<Number> JVe;
     DenseVector<Number> Ae;
     DenseVector<Number> Ae_dt;
-    DenseVector<Number> Ae_temp;
     DenseVector<Number> Ve;
     DenseVector<Number> Ve_dt;
     DenseVector<Number> Be;
@@ -156,7 +151,6 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         B_elem.resize(n_J_dofs);
         F_elem.resize(n_J_dofs);
     }
-    dof_id_type elem_id;
     char n_A_dofs;
     char n_V_dofs;
     char n_B_dofs;
@@ -165,7 +159,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
     unsigned int local_elem_idx = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        elem_id = elem->id();
+        element_data_manager->local_elem_id = local_elem_idx;
 
         if (conductive_subdomain->find(elem->subdomain_id()) != conductive_subdomain->end())
             conductive = true;
@@ -175,7 +169,7 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         if (!trans_effects)
             conductive = false;
 
-        mat_builder.compute_material_properties(local_elem_idx, conductive);
+        element_data_manager->compute_material_properties(conductive);
 
         dof_map.dof_indices(elem, A_indices_var, a_var);
         n_A_dofs = std::size(A_indices_var);
@@ -188,7 +182,6 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
         Be.resize(n_B_dofs);
 
         derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
-        Ae_temp.resize(n_A_dofs);
         B_elem.zero();
         F_elem.zero();
         if (conductive)
@@ -210,7 +203,6 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
             Ae(j) = system.current_solution(A_indices_var[j]);
             if (conductive)
             {
-                Ae_temp(j) = system.old_solution(A_indices_var[j]);
                 Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
 
                 if (dim == 3)
@@ -223,41 +215,42 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
             }
         }
 
-        AAe = assembler->get_aae_matrix_derived(elem_id);
-
-        AAe.vector_mult(Be_q, Ae);
+        element_data_manager->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
 
         // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
         // Note that this gives a discontinuous stress plot on element boundaries, which is
         // appropriate. We then also get the von Mises stress from the projected stress tensor.
-        Me = assembler->get_me_matrix_derived(elem_id);
-
-        Me.cholesky_solve(Be_q, Be);
+        element_data_manager->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
 
         unsigned int j_qp_size;
         if (conductive)
         {
-            JAe = assembler->get_jae_matrix_derived(elem_id);
             if (dim == 2)
             {
-                j_qp_size = JAe.m();
+                j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
                 J_elem_A.resize(j_qp_size);
-                JAe.vector_mult(J_elem_A, Ae);
+                element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
                 for (char k = 0; k < n_J_dofs; k++)
                     for (char qp = 0; qp < j_qp_size; qp++)
-                        J_elem(k) -= J_elem_A(qp + k) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
+                        J_elem(k) -= J_elem_A(qp + k) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
             }
             else
             {
-                JVe = assembler->get_jve_matrix_derived(elem_id);
-                j_qp_size = JAe.m();
+                j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
                 J_elem_A.resize(j_qp_size);
                 J_elem_V.resize(j_qp_size);
-                JAe.vector_mult(J_elem_A, Ae_dt);
-                JVe.vector_mult(J_elem_V, Ve_dt);
-                for (char k = 0; k < n_J_dofs; k++)
-                    for (char qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-                        J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / mat_builder.rs_matrix(k) / (j_qp_size / n_J_dofs);
+                element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
+                element_data_manager->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
+                for (unsigned int k = 0; k < n_J_dofs; k++)
+                    for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
+                        J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
+            }
+        }
+        else
+        {
+            for (unsigned int k = 0; k < n_J_dofs; k++)
+            {
+                J_elem(k) = element_data_manager->compute_js(k);
             }
         }
 
@@ -270,14 +263,14 @@ void DerivedQuantitiesCalculator::compute_derived_quantities(std::string sys_nam
                 (dof_index < derived_quantities_system.solution->last_local_index()))
                 derived_quantities_system.solution->set(dof_index, Be(i));
         }
-        if (conductive)
-            for (unsigned int i = 0; i < n_J_dofs; i++)
-            {
-                dof_index = J_indices_var[i];
-                if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
-                    (dof_index < derived_quantities_system.solution->last_local_index()))
-                    derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
-            }
+
+        for (unsigned int i = 0; i < n_J_dofs; i++)
+        {
+            dof_index = J_indices_var[i];
+            if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
+                (dof_index < derived_quantities_system.solution->last_local_index()))
+                derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
+        }
         // Should call close and update when we set vector entries directly
         derived_quantities_system.solution->close();
         derived_quantities_system.update();

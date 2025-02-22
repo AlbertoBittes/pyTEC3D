@@ -11,8 +11,8 @@ class SystemBuilder
 {
 public:
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems, const nlohmann::json &config)
-        : equation_systems(eq_systems), config(config)
+    SystemBuilder(EquationSystems &eq_systems)
+        : equation_systems(eq_systems)
     {
         createSystem(); // Call createSystem at the end of the constructor
         setVariables(); // Call setVariables at the end of the constructor
@@ -34,7 +34,6 @@ private:
     int type_num;
     std::string system_name;
     std::string order;
-    const nlohmann::json &config;
     std::shared_ptr<AssemblerLinear> assembler; // Add AssemblerBase attribute
     std::shared_ptr<DerivedQuantitiesCalculator> derived_quantities_calculator;
 };

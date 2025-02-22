@@ -1,10 +1,16 @@
 #include "../include/element_builder.h"
+#include "libmesh/equation_systems.h"
+#include "libmesh/string_to_enum.h"
+// Define the Finite Element object.
+#include "libmesh/fe.h"
+
+// Define Gauss quadrature rules.
+#include "libmesh/quadrature_gauss.h"
+#include "../include/session.h" // Ensure the Session class is included
 #include <cmath>
 // Constructor
-ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, MaterialsMap &materials, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar, vtkCellData *cell_data, const TimeStep &ts)
-    : Ke(Ke), Ce(Ce), Fe(Fe), materials(materials),
-      mu_matrix(3, std::vector<double>(3, 0.0)),
-      rs_matrix(3, std::vector<double>(3, 0.0)),
+ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, std::shared_ptr<ElementDataManager> element_data_manager, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar)
+    : Ke(Ke), Ce(Ce), Fe(Fe), element_data_manager(element_data_manager),
       JxW_A(fe_vec->get_JxW()),
       JxW_V(fe_scalar->get_JxW()),
       phi_A(fe_vec->get_phi()),
@@ -13,20 +19,12 @@ ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce,
       //   div_phi_A(fe_vec->get_div_phi()),
       phi_V(fe_scalar->get_phi()),
       dphi_V(fe_scalar->get_dphi()),
-      ts(ts),
-      mat_array(nullptr),
       n_var_dofs(0)
 {
-    std::string array_name = "ansys_material_type";
-    mat_array = cell_data->GetArray(array_name.c_str());
-    if (mat_array == nullptr)
-    {
-        libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
-    }
 }
 
 // Method
-void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_solid97_cond()
 {
     // Numeric ids corresponding to each variable in the system
     unsigned int num_vars = 3;
@@ -49,16 +47,16 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
                 for (unsigned int k = 0; k < 3; k++)
                 {
 
-                    Ke(dof_i, dof_j) += JxW_A[qp] / mu_matrix[k][k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
-                    Ce(dof_i, dof_j) += JxW_A[qp] / rs_matrix[k][k] * (phi_A[dof_i][qp](k) * phi_A[dof_j][qp](k));
+                    Ke(dof_i, dof_j) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
+                    Ce(dof_i, dof_j) += JxW_A[qp] / element_data_manager->rs_matrix[k] * (phi_A[dof_i][qp](k) * phi_A[dof_j][qp](k));
                     if (dof_j < n_var_dofs)
                     {
-                        CAV_value = JxW_A[qp] / rs_matrix[k][k] * phi_A[dof_i][qp](k) * dphi_V[dof_j][qp](k);
+                        CAV_value = JxW_A[qp] / element_data_manager->rs_matrix[k] * phi_A[dof_i][qp](k) * dphi_V[dof_j][qp](k);
                         Ce(dof_i, num_vars * n_var_dofs + dof_j) += CAV_value;
                         Ce(num_vars * n_var_dofs + dof_j, dof_i) += CAV_value;
                         if (dof_i < n_var_dofs)
                         {
-                            Ce(num_vars * n_var_dofs + dof_i, num_vars * n_var_dofs + dof_j) += JxW_A[qp] * dphi_V[dof_i][qp](k) / rs_matrix[k][k] * dphi_V[dof_j][qp](k);
+                            Ce(num_vars * n_var_dofs + dof_i, num_vars * n_var_dofs + dof_j) += JxW_A[qp] * dphi_V[dof_i][qp](k) / element_data_manager->rs_matrix[k] * dphi_V[dof_j][qp](k);
                         }
                     }
                 }
@@ -66,7 +64,7 @@ void ElementBuilder::build_solid97_cond(const Elem *elem, const DofMap &dof_map)
         }
     }
 }
-void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_solid97()
 {
     const unsigned int num_vars = 3;
     // Now we will build the element matrix.  This involves
@@ -87,14 +85,14 @@ void ElementBuilder::build_solid97(const Elem *elem, const DofMap &dof_map)
             {
                 for (unsigned int k = 0; k < 3; k++)
                 {
-                    Ke(dof_i, dof_j) += JxW_A[qp] / mu_matrix[k][k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
+                    Ke(dof_i, dof_j) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
                 }
             }
         }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
-void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_solid97_rhs()
 {
     const unsigned int num_vars = 3;
     for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
@@ -110,19 +108,19 @@ void ElementBuilder::build_solid97_rhs(const Elem *elem, const DofMap &dof_map)
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 // Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_solid236()
 {
     libmesh_error_msg("build_solid236 is not implemented yet.");
 }
 
 // Temporary placeholder for build_solid236_cond
-void ElementBuilder::build_solid236_cond(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_solid236_cond()
 {
     libmesh_error_msg("build_solid236_cond is not implemented yet.");
 }
 
 // Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_plane13()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -141,12 +139,12 @@ void ElementBuilder::build_plane13(const Elem *elem, const DofMap &dof_map)
         for (unsigned int i = 0; i != n_var_dofs; i++)
         {
             for (unsigned int j = 0; j != n_var_dofs; j++)
-                Ke(i, j) += JxW_V[qp] * (dphi_V[i][qp] * dphi_V[j][qp]) / mu_matrix[0][0];
+                Ke(i, j) += JxW_V[qp] * (dphi_V[i][qp] * dphi_V[j][qp]) / element_data_manager->mu_matrix[0];
         }
     }
 }
 // Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_plane13_rhs()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -170,7 +168,7 @@ void ElementBuilder::build_plane13_rhs(const Elem *elem, const DofMap &dof_map)
     }
 }
 // Temporary placeholder for build_plane13_cond
-void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
+void ElementBuilder::build_plane13_cond()
 {
 
     for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
@@ -183,88 +181,57 @@ void ElementBuilder::build_plane13_cond(const Elem *elem, const DofMap &dof_map)
             for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
             {
                 // Here you will put the time factor as well
-                Ke(dof_i, dof_j) += JxW_V[qp] * (dphi_V[dof_i][qp] * dphi_V[dof_j][qp]) / mu_matrix[0][0];
+                Ke(dof_i, dof_j) += JxW_V[qp] * (dphi_V[dof_i][qp] * dphi_V[dof_j][qp]) / element_data_manager->mu_matrix[0];
 
-                Ce(dof_i, dof_j) += JxW_V[qp] / rs_matrix[0][0] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
+                Ce(dof_i, dof_j) += JxW_V[qp] / element_data_manager->rs_matrix[0] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
             }
     }
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
-void ElementBuilder::build_element_matrix(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_matrix(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
-    this->n_var_dofs = elem->n_nodes();
+    this->n_var_dofs = n_dofs_var;
     if (conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
-        this->build_solid97_cond(elem, dof_map);
+        this->build_solid97_cond();
     }
     if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
-        this->build_solid97(elem, dof_map);
+        this->build_solid97();
     }
     if (conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
     {
-        this->build_solid236_cond(elem, dof_map);
+        this->build_solid236_cond();
     }
     if (!conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
     {
-        this->build_solid236(elem, dof_map);
+        this->build_solid236();
     }
     if (conductive && formulation == "AV" && dim == 2)
     {
-        this->build_plane13_cond(elem, dof_map);
+        this->build_plane13_cond();
     }
     if (!conductive && formulation == "AV" && dim == 2)
     {
-        this->build_plane13(elem, dof_map);
+        this->build_plane13();
     }
 }
-void ElementBuilder::build_element_rhs(const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
+void ElementBuilder::build_element_rhs(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
-    this->n_var_dofs = elem->n_nodes();
+    this->n_var_dofs = n_dofs_var;
 
     if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
     {
-        this->build_solid97_rhs(elem, dof_map);
+        this->build_solid97_rhs();
     }
     if (!conductive && formulation == "AV" && dim == 2)
     {
-        this->build_plane13_rhs(elem, dof_map);
+        this->build_plane13_rhs();
     }
 }
-// Method to fill mu_matrix
-void ElementBuilder::fill_mu_matrix(dof_id_type local_elem_id)
-{
-    // get ansys_material_type from the materials map
 
-    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
-    const MaterialsProperties &mat_properties = materials.at(material_number);
-
-    mu_matrix[0][0] = 4 * libMesh::pi * 1e-7 * mat_properties.murx;
-    mu_matrix[1][1] = 4 * libMesh::pi * 1e-7 * mat_properties.mury;
-    mu_matrix[2][2] = 4 * libMesh::pi * 1e-7 * mat_properties.murz;
-}
-
-// Method to fill rs_matrix
-void ElementBuilder::fill_rs_matrix(dof_id_type local_elem_id)
-{
-    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
-    const MaterialsProperties &mat_properties = materials.at(material_number);
-
-    rs_matrix[0][0] = mat_properties.rsvx;
-    rs_matrix[1][1] = mat_properties.rsvy;
-    rs_matrix[2][2] = mat_properties.rsvz;
-}
-
-void ElementBuilder::compute_material_properties(dof_id_type local_elem_id, bool conductive)
-{
-    // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
-    this->fill_mu_matrix(local_elem_id);
-    if (conductive)
-        this->fill_rs_matrix(local_elem_id);
-}
-
-void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, DenseMatrix<Number> &JAe, DenseMatrix<Number> &JVe, const Elem *elem, const DofMap &dof_map, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
+void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, DenseMatrix<Number> &JAe, DenseMatrix<Number> &JVe, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
 {
 
     if (dim == 2)
@@ -333,46 +300,42 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
     }
 }
 
-MaterialBuilder::MaterialBuilder(MaterialsMap &materials, vtkCellData *cell_data)
-    : materials(materials)
+ElementDataManager::ElementDataManager(MaterialsMap &materials, vtkCellData *cell_data, std::shared_ptr<TimeStepper> timeStepper)
+    : materials(materials), cell_data(cell_data), timeStepper(timeStepper)
 {
+    if (cell_data == nullptr)
+    {
+        libmesh_error_msg("Error: cell data not found in vtkCellData.");
+    }
     std::string array_name = "ansys_material_type";
     mat_array = cell_data->GetArray(array_name.c_str());
     if (mat_array == nullptr)
     {
         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
     }
-    mu_matrix.resize(3);
-    rs_matrix.resize(3);
-}
-// Method to fill mu_matrix
-void MaterialBuilder::fill_mu_matrix(dof_id_type local_elem_id)
-{
-    // get ansys_material_type from the materials map
-
-    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
-    const MaterialsProperties &mat_properties = materials.at(material_number);
-
-    mu_matrix(0) = 4 * libMesh::pi * 1e-7 * mat_properties.murx;
-    mu_matrix(1) = 4 * libMesh::pi * 1e-7 * mat_properties.mury;
-    mu_matrix(2) = 4 * libMesh::pi * 1e-7 * mat_properties.murz;
 }
 
-// Method to fill rs_matrix
-void MaterialBuilder::fill_rs_matrix(dof_id_type local_elem_id)
+void ElementDataManager::update_time_step()
 {
-    const unsigned int material_number = mat_array->GetTuple1(local_elem_id); // Retrieve the material number using GetTuple1
-    const MaterialsProperties &mat_properties = materials.at(material_number);
+    time_step_starting_time = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_time_beginning();
+    time_step_ending_time = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_time();
+    current_time = timeStepper->get_current_time();
+    ramped = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_ramped_load();
+    // Get the materials properties
+    std::string array_name = "Js_" + std::to_string(timeStepper->get_current_time_step() + 1);
 
-    rs_matrix(0) = mat_properties.rsvx;
-    rs_matrix(1) = mat_properties.rsvy;
-    rs_matrix(2) = mat_properties.rsvz;
-}
+    js_array = cell_data->GetArray(array_name.c_str());
+    if (!js_array)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: Js_" + std::to_string(timeStepper->get_current_time_step() + 1) + " array not found in vtkCellData.");
+    }
 
-void MaterialBuilder::compute_material_properties(dof_id_type local_elem_id, bool conductive)
-{
-    // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
-    this->fill_mu_matrix(local_elem_id);
-    if (conductive)
-        this->fill_rs_matrix(local_elem_id);
+    array_name = "Js_" + std::to_string(timeStepper->get_current_time_step());
+    js_array_old = cell_data->GetArray(array_name.c_str());
+    if (!js_array_old && timeStepper->get_current_time_step() > 0)
+    {
+        // Get the value from the "Js" array using the element ID
+        libmesh_error_msg("Error: Js_" + std::to_string(timeStepper->get_current_time_step()) + " array not found in vtkCellData.");
+    }
 }

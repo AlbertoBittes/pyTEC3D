@@ -39,6 +39,7 @@
 // you an idea where bottlenecks lie.
 #include "libmesh/perf_log.h"
 
+#include "../include/element_builder.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
@@ -54,6 +55,7 @@
 #include "libmesh/mesh_modification.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
+#include "../include/solver_configuration.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/enum_solver_type.h"
 #include "libmesh/enum_solver_package.h"
@@ -71,81 +73,6 @@
 
 using namespace libMesh;
 
-class PetscSolverConfiguration : public SolverConfiguration
-{
-public:
-    PetscSolverConfiguration(PetscLinearSolver<Number> &petsc_linear_solver) : _petsc_linear_solver(petsc_linear_solver)
-    {
-    }
-
-    virtual void configure_solver()
-    {
-        PetscErrorCode ierr = 0;
-        // ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPGMRES));
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCILU));
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // Initialize PETSc logging
-        ierr = PetscLogDefaultBegin();
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        // Set the solver type to GMRES
-        ierr = KSPSetType(_petsc_linear_solver.ksp(), const_cast<KSPType>(KSPPREONLY));
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver.ksp(), PETSC_FALSE);
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        // Set the preconditioner type to MUMPS
-        // ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCLU));
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        ierr = PCSetType(_petsc_linear_solver.pc(), const_cast<PCType>(PCCHOLESKY));
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        ierr = PCFactorSetMatSolverType(_petsc_linear_solver.pc(), MATSOLVERMUMPS);
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        // Set the verbosity level
-        ierr = KSPSetFromOptions(_petsc_linear_solver.ksp());
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        // Set additional options for verbosity
-        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        ierr = PetscOptionsSetValue(NULL, "-ksp_view", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        ierr = PetscOptionsSetValue(NULL, "-ksp_converged_reason", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        ierr = PetscOptionsSetValue(NULL, "-log_view", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_singular_value", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_solution", "");
-        CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_short", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_range", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_residualnorm", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_true_residualnorm", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-
-        // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_lg_range", "");
-        // CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
-    }
-
-    // The linear solver object that we are configuring
-    PetscLinearSolver<Number> &_petsc_linear_solver;
-};
 // Begin the main program.
 int main(int argc, char **argv)
 {
@@ -176,15 +103,15 @@ int main(int argc, char **argv)
 
     Session session(argv[1]);
 
+    // You will put these file paths in Session
     std::string mesh_filepath = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
-
     std::string output_folderpath;
     if (session.config["Output Section"]["output_filepath"].is_null())
         output_folderpath = std::filesystem::path(mesh_filepath).parent_path().string();
     else
         output_folderpath = session.config["Output Section"]["output_filepath"].get<std::string>();
-
     std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
+
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
     libMesh::out << "Reading mesh..." << std::endl;
@@ -219,6 +146,8 @@ int main(int argc, char **argv)
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
     MeshTools::Modification::orient_elements(mesh);
+
+    // Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
     vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     std::set<subdomain_id_type> elem_types;
     {
@@ -243,6 +172,7 @@ int main(int argc, char **argv)
         subdomain_id++;
     }
     vtkGrid = nullptr;
+
     libMesh::out << "Reading loads data..." << std::endl;
     vtkCellData *cell_data = partitionedGrid->GetCellData();
     if (cell_data == nullptr)
@@ -263,6 +193,8 @@ int main(int argc, char **argv)
 
     // Use a pointer to the local variable
     MaterialsMap *materials_ptr = &materials;
+
+    // Also here you can set the subdomain_id for the conductive elements, just choose
     libMesh::out << "Identifying conductive domain..." << std::endl;
     unsigned int k = 0;
     std::set<subdomain_id_type> conductive_subdomain;
@@ -289,36 +221,34 @@ int main(int argc, char **argv)
         k++;
     }
     init.comm().set_union(conductive_subdomain);
+
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh.print_info();
 
     libMesh::out << "Building equations systems..." << std::endl;
-
     EquationSystems equation_systems(mesh);
     equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
+    equation_systems.parameters.set<Session *>("session") = &session;
     // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems, session.config);
+    SystemBuilder system_builder(equation_systems);
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
-
     // Get a reference to the system we want to solve
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
     system.zero_out_matrix_and_rhs = false;
     // Initialize the data structures for the equation system.
     equation_systems.init();
-
     // Print information about the system to the screen.
     equation_systems.print_info();
 
-    equation_systems.parameters.set<MaterialsMap *>("materials_properties") = materials_ptr;
-    equation_systems.parameters.set<vtkCellData *>("cell_data") = cell_data;
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    bool transient = session.config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
     auto timeStepper = std::make_shared<TimeStepper>(session.config, system);
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
+    auto element_data_manager = std::make_shared<ElementDataManager>(*materials_ptr, cell_data, timeStepper);
+    equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
     // Iterate through the time steps
 
     // Extract the time_steps array
@@ -396,6 +326,8 @@ int main(int argc, char **argv)
 
         libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
         // This will reinitialize the constraints for the system
+        element_data_manager->update_time_step();
+
         if (step.get_step() > 0)
         {
             node_dof_constraints.check_boundary_conditions();
@@ -410,7 +342,6 @@ int main(int argc, char **argv)
             system_builder.getAssembler()->updated_bcs = false;
         }
         // system.get_dof_map().print_dof_constraints();
-        unsigned int n_linear_iterations;
         // Iterate through the substeps of the current time step
         for (auto &substep : step)
         {
@@ -452,7 +383,7 @@ int main(int argc, char **argv)
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
 
-                // system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
@@ -509,66 +440,6 @@ int main(int argc, char **argv)
             libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;
         }
     }
-    // for (unsigned int time_idx = 0; time_idx < time_steps.size(); ++time_idx)
-    // {
-    //     // Increment the time counter, set the time and the
-    //     // time step size as parameters in the EquationSystem.
-    //     dt = time_steps[time_idx] - system.time;
-    //     dt_substep = dt / n_substeps[time_idx];
-
-    //     libMesh::out << "Solving time step " << time_idx + 1 << " of " << time_steps.size() << std::endl;
-
-    //     libMesh::out << "Time increment at the end of time step: " << dt << std::endl;
-
-    //     libMesh::out << "Number of time substeps: " << n_substeps[time_idx] << std::endl;
-
-    //     libMesh::out << "Setting boundary conditions..." << std::endl;
-
-    //     for (unsigned int substep = 0; substep < n_substeps[time_idx]; ++substep)
-    //     {
-    //         equation_systems.parameters.set<Real>("dt") = dt_substep;
-    //         system.time += dt_substep;
-    //         // A pretty update message
-    //         libMesh::out << "Solving time substep " << substep + 1 << " of " << n_substeps[time_idx] << std::endl;
-    //         libMesh::out << "Time increment: " << dt_substep << std::endl;
-    //         libMesh::out << "Time: " << system.time << std::endl;
-    //         // At this point we need to update the old
-    //         // solution vector.  The old solution vector
-    //         // will be the current solution vector from the
-    //         // previous time step. We will do this by extracting the
-    //         // system from the EquationSystems object and using
-    //         // vector assignment. Since only TransientSystems
-    //         // (and systems derived from them) contain old solutions
-    //         // we need to specify the system type when we ask for it.
-    //         libMesh::out << "Updating old solution..." << std::endl;
-    //         *system.old_local_solution = *system.current_local_solution;
-
-    //         // Here do 2 things: ramp the load and assemble the matrix only if first substep
-
-    //         if (write_substeps_results[time_idx] || substep == n_substeps[time_idx] - 1)
-    //         {
-    //             libMesh::out << "Computing derived quantities..." << std::endl;
-    //             // Call the function to compute the magnetic field
-    //             if (dim == 2)
-    //                 compute_magnetic_field_static_2D(equation_systems);
-    //             else
-    //                 compute_magnetic_field_static_3D(equation_systems);
-    //             libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
-    //             libMesh::out << "Writing time substep results..." << std::endl;
-    //             output_filename = mesh_filename_without_extension + "_out_" + std::to_string(cumulative_n_substeps + 1);
-    //             final_output_path = output_path / output_filename;
-    //             // Write the results
-    //             vtkio.write_equation_systems(final_output_path, equation_systems);
-    //         }
-    //         else
-    //         {
-    //             libMesh::out << "Time substep " << substep + 1 << " of " << n_substeps[time_idx] << " completed." << std::endl;
-    //         }
-    //         cumulative_n_substeps += 1;
-    //     }
-
-    //     libMesh::out << "Time step " << time_idx + 1 << " of " << time_steps.size() << " completed." << std::endl;
-    // }
     // All done.
     return 0;
 }
