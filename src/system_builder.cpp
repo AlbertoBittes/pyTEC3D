@@ -102,13 +102,16 @@ void SystemBuilder::setVariables()
         }
         // if (transient)
         // {
-        auto cond_subdomain_ptr = equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+        std::set<subdomain_id_type> conductive_subdomain;
+
+        conductive_subdomain.clear();
+        conductive_subdomain.insert(1);
         if (dim == 3)
         {
             system.add_variable("V",
                                 Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_family),
-                                equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain"));
+                                conductive_subdomain);
         }
         std::shared_ptr<AssemblerLinear> assembler = std::make_shared<AssemblerLinear>(equation_systems);
         system.attach_assemble_object(*assembler);
