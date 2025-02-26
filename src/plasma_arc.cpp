@@ -300,11 +300,11 @@ int main(int argc, char **argv)
         }
         if (std::isnan(it->second.rsvx))
         {
-            elem->subdomain_id() = 1;
+            elem->subdomain_id() = 0;
         }
         else
         {
-            elem->subdomain_id() = 0;
+            elem->subdomain_id() = 1;
         }
         k++;
     }
@@ -479,8 +479,11 @@ int main(int argc, char **argv)
                 // // Write the results
                 VTKIO_Updated vtk_output(mesh, &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
                 vtk_output.write_equation_systems(session.final_output_path, equation_systems, &system_names);
+                // change the extension of filepath to .exo
+                // std::string exo_output_path = session.final_output_path;
+                // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
                 // ExodusII_IO exo_output(mesh);
-                // exo_output.write_timestep(session.final_output_path, equation_systems, 1, substep.get_time(), &system_names);
+                // exo_output.write_timestep(exo_output_path, equation_systems, 1, substep.get_time(), &system_names);
                 // exo_output.write_element_data(equation_systems);
 
                 // Print to a file the rhs
