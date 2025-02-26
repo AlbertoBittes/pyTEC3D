@@ -3,7 +3,6 @@
 
 #include "libmesh/equation_systems.h"
 #include "../include/json.hpp"
-#include "../include/compute_derived_quantities.h"
 
 using namespace libMesh;
 
@@ -17,8 +16,7 @@ public:
         createSystem(); // Call createSystem at the end of the constructor
         setVariables(); // Call setVariables at the end of the constructor
     }
-    std::shared_ptr<DerivedQuantitiesCalculator> getDerivedQuantitiesCalculator();
-    std::shared_ptr<AssemblerLinear> getAssembler() { return assembler; }
+
     void createSystem();
 
     void setVariables();
@@ -34,8 +32,6 @@ private:
     int type_num;
     std::string system_name;
     std::string order;
-    std::shared_ptr<AssemblerLinear> assembler; // Add AssemblerBase attribute
-    std::shared_ptr<DerivedQuantitiesCalculator> derived_quantities_calculator;
 };
 
 #endif // SYSTEM_BUILDER_H

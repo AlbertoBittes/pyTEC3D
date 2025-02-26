@@ -16,29 +16,18 @@ class Session
 {
 public:
     nlohmann::json config;
+    std::string output_folderpath;
+    std::string mesh_filepath;
+    std::filesystem::path output_path;
+    std::filesystem::path mesh_path;
+    std::filesystem::path final_output_path;
+    std::string mesh_filename_without_extension;
+    std::string output_filename;
+    Session(const std::string &configFile);
 
-    Session(const std::string &configFile)
-    {
-        read_config(configFile);
-    }
+    void read_config(const std::string &configFile);
 
-    void read_config(const std::string &configFile)
-    {
-        std::ifstream i(configFile);
-        if (!i.is_open())
-        {
-            libmesh_error_msg("Could not open config file: " + configFile);
-        }
-        config = nlohmann::json::parse(i);
-
-        // Perform checks on the configuration
-        // checkTransientAnalysisSettings();
-        // checkFilePaths();
-        // checkStringValues();
-        // checkBooleanValues();
-        // checkMandatoryVariables();
-    }
-
+    void set_output_filepath(unsigned int output_label);
     // private:
     //     void checkTransientAnalysisSettings()
     //     {

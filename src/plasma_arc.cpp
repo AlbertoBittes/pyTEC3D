@@ -40,10 +40,10 @@
 #include "libmesh/perf_log.h"
 
 #include "../include/element_builder.h"
+#include "../include/assembler.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
-#include "../include/compute_derived_quantities.h"
 #include "../include/materials_properties.h"
 #include "../include/time_stepper.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
@@ -56,6 +56,7 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
 #include "../include/solver_configuration.h"
+#include "../include/vtkio_updated.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/enum_solver_type.h"
 #include "libmesh/enum_solver_package.h"
@@ -73,6 +74,101 @@
 
 using namespace libMesh;
 
+// vtkSmartPointer<vtkUnstructuredGrid> read_mesh_vtk(Mesh &mesh, const std::string &mesh_filepath)
+// {
+//     vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+//     if (mesh.comm().rank() == 0)
+//     {
+//         VTKIO vtkio(mesh);
+//         vtkio.read(mesh_filepath);
+//         vtkGrid = vtkio.get_vtk_grid();
+//     }
+//     else
+//     {
+//         vtkSmartPointer<vtkXMLPUnstructuredGridReader> reader = vtkSmartPointer<vtkXMLPUnstructuredGridReader>::New();
+
+//         // Pass the filename along to the reader
+//         reader->SetFileName(mesh_filepath.c_str());
+
+//         // Force reading
+//         reader->Update();
+
+//         // read in the grid
+//         vtkGrid = reader->GetOutput();
+//     }
+//     return vtkGrid;
+// }
+
+// vtkSmartPointer<vtkUnstructuredGrid> partition_vtk_grid(Mesh &mesh, vtkSmartPointer<vtkUnstructuredGrid> vtkGrid, std::map<subdomain_id_type, subdomain_id_type> *subdomain_map_pointer)
+// {
+//     std::set<subdomain_id_type> elem_types;
+
+//     vtkSmartPointer<vtkIdList> cellIds = vtkSmartPointer<vtkIdList>::New();
+//     vtkSmartPointer<vtkExtractCells> extractCells = vtkSmartPointer<vtkExtractCells>::New();
+//     for (const auto &elem : mesh.active_local_element_ptr_range())
+//     {
+//         elem_types.insert(static_cast<subdomain_id_type>(elem->type()));
+//         cellIds->InsertNextId(elem->id());
+//     }
+//     extractCells->SetInputData(vtkGrid);
+//     extractCells->SetCellList(cellIds);
+//     extractCells->Update();
+//     vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = extractCells->GetOutput();
+
+//     mesh.comm().set_union(elem_types);
+//     subdomain_id_type subdomain_id = 0;
+//     for (const auto &elem_type : elem_types)
+//     {
+//         (*subdomain_map_pointer)[elem_type] = subdomain_id;
+//         subdomain_id++;
+//     }
+//     return partitionedGrid;
+// }
+
+// std::set<subdomain_id_type> extract_conductive_subdomain(Mesh &mesh, vtkCellData *cell_data, std::map<subdomain_id_type, subdomain_id_type> &subdomain_map, MaterialsMap &materials)
+// {
+//     // Here I read material properties and assign conductive and non-conductive subdomains
+//     libMesh::out << "Reading materials properties..." << std::endl;
+//     vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
+//     if (matArray == nullptr)
+//     {
+//         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
+//     }
+//     unsigned int matNum;
+
+//     // Use a pointer to the local variable
+//     MaterialsMap *materials_ptr = &materials;
+
+//     // Also here you can set the subdomain_id for the conductive elements, just choose
+//     libMesh::out << "Identifying conductive domain..." << std::endl;
+//     unsigned int k = 0;
+//     std::set<subdomain_id_type> conductive_subdomain;
+//     subdomain_id_type elem_type;
+//     // Do this before partitioning the mesh
+//     for (auto &elem : mesh.active_local_element_ptr_range())
+//     {
+//         elem_type = static_cast<int>(elem->type());
+//         matNum = matArray->GetTuple1(k);
+//         auto it = materials_ptr->find(matNum);
+//         if (it == materials_ptr->end())
+//         {
+//             libmesh_error_msg("Error: Material number " + std::to_string(matNum) + " not found in material properties.");
+//         }
+//         if (std::isnan(it->second.rsvx))
+//         {
+//             elem->subdomain_id() = subdomain_map[elem_type];
+//         }
+//         else
+//         {
+//             elem->subdomain_id() = subdomain_map[elem_type] + 100;
+//             conductive_subdomain.insert(subdomain_map[elem_type] + 100);
+//         }
+//         k++;
+//     }
+//     mesh.comm().set_union(conductive_subdomain);
+//     return conductive_subdomain;
+// }
 // Begin the main program.
 int main(int argc, char **argv)
 {
@@ -103,15 +199,6 @@ int main(int argc, char **argv)
 
     Session session(argv[1]);
 
-    // You will put these file paths in Session
-    std::string mesh_filepath = session.config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
-    std::string output_folderpath;
-    if (session.config["Output Section"]["output_filepath"].is_null())
-        output_folderpath = std::filesystem::path(mesh_filepath).parent_path().string();
-    else
-        output_folderpath = session.config["Output Section"]["output_filepath"].get<std::string>();
-    std::string inp_name = std::filesystem::path(mesh_filepath).stem().string(); // Extract basename without extension
-
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
     libMesh::out << "Reading mesh..." << std::endl;
@@ -125,7 +212,7 @@ int main(int argc, char **argv)
     if (init.comm().rank() == 0)
     {
         VTKIO vtkio(mesh);
-        vtkio.read(mesh_filepath);
+        vtkio.read(session.mesh_filepath);
         vtkGrid = vtkio.get_vtk_grid();
     }
     else
@@ -133,7 +220,7 @@ int main(int argc, char **argv)
         vtkSmartPointer<vtkXMLPUnstructuredGridReader> reader = vtkSmartPointer<vtkXMLPUnstructuredGridReader>::New();
 
         // Pass the filename along to the reader
-        reader->SetFileName(mesh_filepath.c_str());
+        reader->SetFileName(session.mesh_filepath.c_str());
 
         // Force reading
         reader->Update();
@@ -149,13 +236,13 @@ int main(int argc, char **argv)
 
     // Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
     vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    std::set<subdomain_id_type> elem_types;
+    // std::set<subdomain_id_type> elem_types;
     {
         vtkSmartPointer<vtkIdList> cellIds = vtkSmartPointer<vtkIdList>::New();
         vtkSmartPointer<vtkExtractCells> extractCells = vtkSmartPointer<vtkExtractCells>::New();
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            elem_types.insert(static_cast<subdomain_id_type>(elem->type()));
+            // elem_types.insert(static_cast<subdomain_id_type>(elem->type()));
             cellIds->InsertNextId(elem->id());
         }
         extractCells->SetInputData(vtkGrid);
@@ -163,14 +250,14 @@ int main(int argc, char **argv)
         extractCells->Update();
         partitionedGrid = extractCells->GetOutput();
     }
-    init.comm().set_union(elem_types);
-    std::map<subdomain_id_type, subdomain_id_type> subdomain_map;
-    subdomain_id_type subdomain_id = 0;
-    for (const auto &elem_type : elem_types)
-    {
-        subdomain_map[elem_type] = subdomain_id;
-        subdomain_id++;
-    }
+    // init.comm().set_union(elem_types);
+    // std::map<subdomain_id_type, subdomain_id_type> subdomain_map;
+    // subdomain_id_type subdomain_id = 0;
+    // for (const auto &elem_type : elem_types)
+    // {
+    //     subdomain_map[elem_type] = subdomain_id;
+    //     subdomain_id++;
+    // }
     vtkGrid = nullptr;
 
     libMesh::out << "Reading loads data..." << std::endl;
@@ -198,11 +285,13 @@ int main(int argc, char **argv)
     libMesh::out << "Identifying conductive domain..." << std::endl;
     unsigned int k = 0;
     std::set<subdomain_id_type> conductive_subdomain;
-    subdomain_id_type elem_type;
+    // subdomain_id_type elem_type;
     // Do this before partitioning the mesh
+    conductive_subdomain.insert(1);
+
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        elem_type = static_cast<int>(elem->type());
+        // elem_type = static_cast<int>(elem->type());
         matNum = matArray->GetTuple1(k);
         auto it = materials_ptr->find(matNum);
         if (it == materials_ptr->end())
@@ -211,16 +300,15 @@ int main(int argc, char **argv)
         }
         if (std::isnan(it->second.rsvx))
         {
-            elem->subdomain_id() = subdomain_map[elem_type];
+            elem->subdomain_id() = 1;
         }
         else
         {
-            elem->subdomain_id() = subdomain_map[elem_type] + 100;
-            conductive_subdomain.insert(subdomain_map[elem_type] + 100);
+            elem->subdomain_id() = 0;
         }
         k++;
     }
-    init.comm().set_union(conductive_subdomain);
+    // init.comm().set_union(conductive_subdomain);
 
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
@@ -247,7 +335,7 @@ int main(int argc, char **argv)
     // Initializing variables for transient analysis options
     auto timeStepper = std::make_shared<TimeStepper>(session.config, system);
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
-    auto element_data_manager = std::make_shared<ElementDataManager>(*materials_ptr, cell_data, timeStepper);
+    auto element_data_manager = std::make_shared<ElementDataManager>(materials, cell_data, timeStepper);
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
     // Iterate through the time steps
 
@@ -278,20 +366,12 @@ int main(int argc, char **argv)
     //         new_vec.set(j, pointData->GetArray(i)->GetComponent(j, 0));
     //     }
     // }
-    libMesh::out << "Setting output path..." << std::endl;
-    // Use filesystem to modify the basename
-    std::filesystem::path output_path(output_folderpath);
-    std::filesystem::path mesh_path(mesh_filepath);
-    std::filesystem::path final_output_path;
-    std::string mesh_filename_without_extension = mesh_path.stem().string();
-    std::string output_filename;
 
     // Assign boundary conditions
     libMesh::out << "Setting boundary conditions object..." << std::endl;
     NodalBCConstraint node_dof_constraints(system, pointData, timeStepper);
     system.attach_constraint_object(node_dof_constraints);
 
-    std::shared_ptr<DerivedQuantitiesCalculator> derived_quantities_calculator = nullptr;
     // Compute first step for equilibrium or static analysis
     // if (compute_equilibrium_first_step)
     // {
@@ -335,11 +415,11 @@ int main(int argc, char **argv)
         if (node_dof_constraints.update_boundary_conditions)
         {
             system.reinit_constraints();
-            system_builder.getAssembler()->updated_bcs = true;
+            equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = true;
         }
         else
         {
-            system_builder.getAssembler()->updated_bcs = false;
+            equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = false;
         }
         // system.get_dof_map().print_dof_constraints();
         // Iterate through the substeps of the current time step
@@ -383,7 +463,8 @@ int main(int argc, char **argv)
                 libMesh::out << "Computing derived quantities..." << std::endl;
                 // Call the function to compute the magnetic field
 
-                system_builder.getDerivedQuantitiesCalculator()->compute_derived_quantities("DerivedQuantitiesSystem");
+                equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
+                // init.comm().barrier();
                 // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
                 // libMesh::out << "Writing time substep results..." << std::endl;
                 // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
@@ -394,18 +475,19 @@ int main(int argc, char **argv)
                 // VTKIO vtk_output(mesh);
                 // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
                 libMesh::out << "Writing time substep results..." << std::endl;
-                output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep()) + ".exo";
-                // output_filename = mesh_filename_without_extension + "_out.exo";
-                final_output_path = output_path / output_filename;
+                session.set_output_filepath(timeStepper->get_cumulative_substep());
                 // // Write the results
-                ExodusII_IO exo_output(mesh);
-                exo_output.write_timestep(final_output_path, equation_systems, 1, substep.get_time(), &system_names);
-                exo_output.write_element_data(equation_systems);
+                VTKIO_Updated vtk_output(mesh, &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
+                vtk_output.write_equation_systems(session.final_output_path, equation_systems, &system_names);
+                // ExodusII_IO exo_output(mesh);
+                // exo_output.write_timestep(session.final_output_path, equation_systems, 1, substep.get_time(), &system_names);
+                // exo_output.write_element_data(equation_systems);
+
                 // Print to a file the rhs
                 // std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
                 // system.rhs->print_global(rhs_file);
-                system.rhs->zero();
-                system.rhs->close();
+                // system.rhs->zero();
+                // system.rhs->close();
                 // output_filename = mesh_filename_without_extension + "_out";
                 // final_output_path = output_path / output_filename;
                 // std::ostringstream file_name;

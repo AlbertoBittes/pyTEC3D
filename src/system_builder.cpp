@@ -3,7 +3,6 @@
 #include "libmesh/nonlinear_implicit_system.h"
 #include "libmesh/transient_system.h"
 #include "../include/system_builder.h"
-#include "../include/compute_derived_quantities.h"
 #include "../include/assembler.h"
 #include "../include/session.h"
 #include "libmesh/string_to_enum.h"
@@ -23,7 +22,6 @@ using namespace libMesh;
 void SystemBuilder::createSystem()
 {
     libMesh::out << "Checking system options..." << std::endl;
-    transient = equation_systems.parameters.get<Session *>("session")->config["Transient Analysis Settings"]["transient_analysis"].get<bool>();
     ferromagnetic = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
     fe_family = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
     formulation = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
@@ -98,14 +96,13 @@ void SystemBuilder::setVariables()
         if (fe_family == "LAGRANGE")
         {
             derived_quantities_system.add_variable("B", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family + "_VEC"));
-            derived_quantities_system_elem.add_variable("B_elem", CONSTANT, MONOMIAL_VEC);
+            // derived_quantities_system_elem.add_variable("B_elem", CONSTANT, MONOMIAL_VEC);
             // derived_quantities_system.add_variable("F", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family + "_VEC"));
-            derived_quantities_system_elem.add_variable("F_elem", CONSTANT, MONOMIAL_VEC);
+            // derived_quantities_system_elem.add_variable("F_elem", CONSTANT, MONOMIAL_VEC);
         }
         // if (transient)
         // {
         auto cond_subdomain_ptr = equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
-        std::set<subdomain_id_type> cond_subd_obj = *cond_subdomain_ptr;
         if (dim == 3)
         {
             system.add_variable("V",
@@ -113,18 +110,13 @@ void SystemBuilder::setVariables()
                                 Utility::string_to_enum<FEFamily>(fe_family),
                                 equation_systems.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain"));
         }
-        assembler = std::make_shared<AssemblerLinear>(equation_systems);
+        std::shared_ptr<AssemblerLinear> assembler = std::make_shared<AssemblerLinear>(equation_systems);
         system.attach_assemble_object(*assembler);
-        derived_quantities_calculator = std::make_shared<DerivedQuantitiesCalculator>(assembler, equation_systems);
+        equation_systems.parameters.set<std::shared_ptr<AssemblerLinear>>("assembler") = assembler;
     }
     else
     {
         libmesh_error_msg("not implemented");
     }
     // Add more conditions as needed for other combinations
-}
-
-std::shared_ptr<DerivedQuantitiesCalculator> SystemBuilder::getDerivedQuantitiesCalculator()
-{
-    return derived_quantities_calculator;
 }

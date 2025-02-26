@@ -22,6 +22,8 @@ public:
 
     void check_update_matrix();
 
+    void compute_derived_quantities();
+
     bool updated_bcs;
     bool update_matrix;
 
