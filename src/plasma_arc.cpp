@@ -284,10 +284,10 @@ int main(int argc, char **argv)
     // Also here you can set the subdomain_id for the conductive elements, just choose
     libMesh::out << "Identifying conductive domain..." << std::endl;
     unsigned int k = 0;
-    std::set<subdomain_id_type> conductive_subdomain;
+    // std::set<subdomain_id_type> conductive_subdomain;
     // subdomain_id_type elem_type;
     // Do this before partitioning the mesh
-    conductive_subdomain.insert(1);
+    // conductive_subdomain.insert(1);
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -316,7 +316,7 @@ int main(int argc, char **argv)
 
     libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
-    equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
+    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems.parameters.set<Session *>("session") = &session;
     // Declare the system and its variables
     SystemBuilder system_builder(equation_systems);

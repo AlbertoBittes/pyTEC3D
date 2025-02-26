@@ -508,13 +508,13 @@ void AssemblerLinear::compute_derived_quantities()
     char n_V_dofs;
     char n_B_dofs;
     bool conductive;
-    std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
     unsigned int local_elem_idx = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         element_data_manager->local_elem_id = local_elem_idx;
 
-        if (conductive_subdomain->find(elem->subdomain_id()) != conductive_subdomain->end())
+        if (elem->subdomain_id() == 1)
             conductive = true;
         else
             conductive = false;

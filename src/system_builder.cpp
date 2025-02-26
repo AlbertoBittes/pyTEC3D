@@ -111,7 +111,7 @@ void SystemBuilder::setVariables()
             system.add_variable("V",
                                 Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_family),
-                                conductive_subdomain);
+                                &conductive_subdomain);
         }
         std::shared_ptr<AssemblerLinear> assembler = std::make_shared<AssemblerLinear>(equation_systems);
         system.attach_assemble_object(*assembler);
