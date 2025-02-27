@@ -208,6 +208,83 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     mesh.allow_renumbering(false);
 
+    // std::vector<unsigned int> cell_data_array_sizes;
+    // Loop over all cell data arrays and add their names to the vector
+    // vtkCellData *cell_data = vtkGrid->GetCellData();
+    // for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+    // {
+    //     const char *array_name = cell_data->GetArrayName(i);
+    //     if (array_name)
+    //     {
+    //         // Check if the array names contains "Js"
+    //         if (std::string(array_name).find("Js_") != std::string::npos)
+    //         {
+    //             mesh.add_elem_datum<Real *>(array_name);
+    //         }
+    //         else
+    //         {
+    //             mesh.add_elem_integer(array_name);
+    //         }
+    //     }
+
+    // Repeat for point data
+    // std::vector<std::string> point_data_int_array_names;
+    // std::string array_name;
+    // vtkPointData *point_data = vtkGrid->GetPointData();
+    // for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+    // {
+    //     array_name = point_data->GetArrayName(i);
+    //     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
+    //     {
+    //         point_data_int_array_names.push_back(array_name);
+    //     }
+    // }
+    // mesh.add_node_integers(point_data_int_array_names);
+
+    // std::vector<std::string> cell_data_int_array_names;
+    // vtkCellData *cell_data = vtkGrid->GetCellData();
+    // for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+    // {
+    //     array_name = cell_data->GetArrayName(i);
+    //     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
+    //     {
+    //         cell_data_int_array_names.push_back(array_name);
+    //     }
+    // }
+    // mesh.add_elem_integers(point_data_int_array_names);
+    // mesh.add_elem_data<Real>(point_data_float_array_names);
+    // vtkDataArray *data_array;
+    // for (const auto &elem : mesh.active_local_element_ptr_range())
+    // {
+    //     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
+    //     {
+    //         data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+    //         elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
+    //     }
+    //     for (unsigned int i = 0; i < cell_data_float_array_names.size(); ++i)
+    //     {
+    //         data_array = cell_data->GetArray(cell_data_float_array_names[i].c_str());
+
+    //         elem->set_extra_datum(i, data_array->GetTuple(elem->id()));
+    //     }
+    // }
+    // for (const auto &node : mesh.local_node_ptr_range())
+    // {
+    //     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
+    //     {
+    //         data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+    //         node->set_extra_integer(i, data_array->GetTuple1(node->id()));
+    //     }
+    //     for (unsigned int i = 0; i < point_data_float_array_names.size(); ++i)
+    //     {
+    //         data_array = point_data->GetArray(point_data_float_array_names[i].c_str());
+    //         node->set_extra_datum(i, data_array->GetTuple(node->id()));
+    //     }
+    // }
+    // Node &node = mesh.node_ref(18);
+    // Real *real_val = node.get_extra_datum<Real *>(5);
+    // vtkIntArray *int_array_vtk;
+
     vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     if (init.comm().rank() == 0)
     {
