@@ -620,8 +620,8 @@ void AssemblerLinear::compute_derived_quantities()
         for (unsigned int i = 0; i < n_J_dofs; i++)
         {
             dof_index = J_indices_var[i];
-            if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
-                (dof_index < derived_quantities_system.solution->last_local_index()))
+            if ((derived_quantities_system_elem.solution->first_local_index() <= dof_index) &&
+                (dof_index < derived_quantities_system_elem.solution->last_local_index()))
                 derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
         }
         // Should call close and update when we set vector entries directly
