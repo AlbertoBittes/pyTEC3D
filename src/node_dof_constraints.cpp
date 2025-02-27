@@ -176,34 +176,37 @@ void NodalBCConstraint::check_boundary_conditions()
         // Handle the case where the "Az" array does not exist
         libmesh_error_msg("Error: " + array_name + " Boundary Conditions array not found in vtkPointData.");
     }
-
-    for (vtkIdType j = 0; j < size_vtk; j++)
+    if (timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect() != timeStepper->get_time_steps()[timeStepper->get_current_time_step() - 1].get_transient_effect())
+        update_bc = true;
+    else
     {
-        for (char i = 0; i < n_comps; i++)
+        for (vtkIdType j = 0; j < size_vtk; j++)
         {
-            prev_A_bc = prev_A_array->GetComponent(j, i);
-            A_bc = A_Array->GetComponent(j, i);
-            if ((A_bc != prev_A_bc && !(std::isnan(A_bc) && std::isnan(prev_A_bc))) ||
-                (std::isnan(A_bc) && !std::isnan(prev_A_bc)) ||
-                (!std::isnan(A_bc) && std::isnan(prev_A_bc)))
+            for (char i = 0; i < n_comps; i++)
+            {
+                prev_A_bc = prev_A_array->GetComponent(j, i);
+                A_bc = A_Array->GetComponent(j, i);
+                if ((A_bc != prev_A_bc && !(std::isnan(A_bc) && std::isnan(prev_A_bc))) ||
+                    (std::isnan(A_bc) && !std::isnan(prev_A_bc)) ||
+                    (!std::isnan(A_bc) && std::isnan(prev_A_bc)))
+                {
+                    update_bc = true;
+                }
+            }
+            prev_V_bc = prev_V_array->GetTuple1(j);
+            V_bc = V_Array->GetTuple1(j);
+            if ((V_bc != prev_V_bc && !(std::isnan(V_bc) && std::isnan(prev_V_bc))) ||
+                (std::isnan(V_bc) && !std::isnan(prev_V_bc)) ||
+                (!std::isnan(V_bc) && std::isnan(prev_V_bc)))
             {
                 update_bc = true;
             }
-        }
-        prev_V_bc = prev_V_array->GetTuple1(j);
-        V_bc = V_Array->GetTuple1(j);
-        if ((V_bc != prev_V_bc && !(std::isnan(V_bc) && std::isnan(prev_V_bc))) ||
-            (std::isnan(V_bc) && !std::isnan(prev_V_bc)) ||
-            (!std::isnan(V_bc) && std::isnan(prev_V_bc)))
-        {
-            update_bc = true;
-        }
-        if (update_bc)
-        {
-            break;
+            if (update_bc)
+            {
+                break;
+            }
         }
     }
-
     _sys.get_mesh().comm().max(update_bc);
     update_boundary_conditions = update_bc;
 }
