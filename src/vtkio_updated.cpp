@@ -34,7 +34,7 @@
 // I get a lot of "warning: extra ';' inside a class [-Wextra-semi]" from clang
 // on VTK header files.
 #include "libmesh/ignore_warnings.h"
-
+#include "libmesh/fe_interface.h"
 #include "vtkXMLUnstructuredGridReader.h"
 #include "vtkXMLPUnstructuredGridReader.h"
 #include "vtkXMLUnstructuredGridWriter.h"
@@ -422,7 +422,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
         for (unsigned int var_num = 0; var_num < sys_n_vars; var_num++)
         {
             FEFamily var_family = _sys->get_equation_systems().get_system(k).variable(var_num).type().family;
-            if (var_family == LAGRANGE_VEC || var_family == MONOMIAL_VEC || var_family == NEDELEC_ONE || var_family == L2_LAGRANGE_VEC)
+            if (FEInterface::field_type(var_family) == TYPE_VECTOR)
                 n_comps = dim;
             else
                 n_comps = 1;
@@ -613,7 +613,7 @@ void VTKIO_Updated::cells_to_vtk()
         elem_data_vars.push_back(vtkSmartPointer<vtkDoubleArray>::New());
         elem_data_vars[i]->SetName(_sys->variable_name(i).c_str());
         FEFamily fe_family = _sys->variable(i).type().family;
-        if (fe_family == LAGRANGE_VEC || fe_family == MONOMIAL_VEC || fe_family == NEDELEC_ONE || fe_family == L2_LAGRANGE_VEC)
+        if (FEInterface::field_type(fe_family) == TYPE_VECTOR)
             elem_data_vars[i]->SetNumberOfComponents(dim);
         else
             elem_data_vars[i]->SetNumberOfComponents(1);

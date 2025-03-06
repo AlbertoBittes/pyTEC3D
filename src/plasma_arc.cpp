@@ -53,6 +53,7 @@
 #include "libmesh/petsc_linear_solver.h"
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/mesh_modification.h"
+#include "libmesh/boundary_mesh.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
 #include "../include/solver_configuration.h"
@@ -60,7 +61,8 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/enum_solver_type.h"
 #include "libmesh/enum_solver_package.h"
-
+#include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
+#include "../include/azimuthal_periodic_boundary.h"
 // Include the necessary header files for vtkDataArray and vtkPointData
 #include <vtkUnstructuredGrid.h>
 #include <vtkDataArray.h>
@@ -206,85 +208,22 @@ int main(int argc, char **argv)
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
     Mesh mesh(init.comm());
-    mesh.allow_renumbering(false);
-
-    // std::vector<unsigned int> cell_data_array_sizes;
-    // Loop over all cell data arrays and add their names to the vector
-    // vtkCellData *cell_data = vtkGrid->GetCellData();
-    // for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
-    // {
-    //     const char *array_name = cell_data->GetArrayName(i);
-    //     if (array_name)
-    //     {
-    //         // Check if the array names contains "Js"
-    //         if (std::string(array_name).find("Js_") != std::string::npos)
-    //         {
-    //             mesh.add_elem_datum<Real *>(array_name);
-    //         }
-    //         else
-    //         {
-    //             mesh.add_elem_integer(array_name);
-    //         }
-    //     }
-
-    // Repeat for point data
-    // std::vector<std::string> point_data_int_array_names;
-    // std::string array_name;
-    // vtkPointData *point_data = vtkGrid->GetPointData();
-    // for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
-    // {
-    //     array_name = point_data->GetArrayName(i);
-    //     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
-    //     {
-    //         point_data_int_array_names.push_back(array_name);
-    //     }
-    // }
-    // mesh.add_node_integers(point_data_int_array_names);
-
-    // std::vector<std::string> cell_data_int_array_names;
-    // vtkCellData *cell_data = vtkGrid->GetCellData();
-    // for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
-    // {
-    //     array_name = cell_data->GetArrayName(i);
-    //     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
-    //     {
-    //         cell_data_int_array_names.push_back(array_name);
-    //     }
-    // }
-    // mesh.add_elem_integers(point_data_int_array_names);
-    // mesh.add_elem_data<Real>(point_data_float_array_names);
-    // vtkDataArray *data_array;
-    // for (const auto &elem : mesh.active_local_element_ptr_range())
-    // {
-    //     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
-    //     {
-    //         data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
-    //         elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
-    //     }
-    //     for (unsigned int i = 0; i < cell_data_float_array_names.size(); ++i)
-    //     {
-    //         data_array = cell_data->GetArray(cell_data_float_array_names[i].c_str());
-
-    //         elem->set_extra_datum(i, data_array->GetTuple(elem->id()));
-    //     }
-    // }
-    // for (const auto &node : mesh.local_node_ptr_range())
-    // {
-    //     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
-    //     {
-    //         data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
-    //         node->set_extra_integer(i, data_array->GetTuple1(node->id()));
-    //     }
-    //     for (unsigned int i = 0; i < point_data_float_array_names.size(); ++i)
-    //     {
-    //         data_array = point_data->GetArray(point_data_float_array_names[i].c_str());
-    //         node->set_extra_datum(i, data_array->GetTuple(node->id()));
-    //     }
-    // }
-    // Node &node = mesh.node_ref(18);
-    // Real *real_val = node.get_extra_datum<Real *>(5);
-    // vtkIntArray *int_array_vtk;
-
+    // mesh.allow_renumbering(false);
+    libMesh::out << "Building equations systems..." << std::endl;
+    EquationSystems equation_systems(mesh);
+    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
+    equation_systems.parameters.set<Session *>("session") = &session;
+    // Declare the system and its variables
+    SystemBuilder system_builder(equation_systems);
+    {
+        Point center(0., 0., 0.);
+        Point axis(0., 0., 1.);
+        Real angle = -90 * 2 * libMesh::pi / 360;
+        AzimuthalPeriodicBoundary periodic_bc(center, axis, angle);
+        periodic_bc.myboundary = 7;
+        periodic_bc.pairedboundary = 8;
+        equation_systems.get_system<TransientLinearImplicitSystem>(0).get_dof_map().add_periodic_boundary(periodic_bc);
+    }
     vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     if (init.comm().rank() == 0)
     {
@@ -309,8 +248,25 @@ int main(int argc, char **argv)
 
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
-    MeshTools::Modification::orient_elements(mesh);
+    // mesh.add_node_integer("boundary_id");
 
+    MeshTools::Modification::orient_elements(mesh);
+    // for (auto &elem : mesh.active_local_element_ptr_range())
+    // {
+    //     for ( auto &side : elem->boundary_sides_begin)
+    // }
+    // BoundaryMesh boundary_mesh(mesh.comm());
+
+    // boundaryInfo.print_summary();
+    // // std::map<dof_id_type, dof_id_type> node_id_map;
+    // // std::map<dof_id_type, unsigned char> side_id_map;
+    // // boundary_mesh.print_info();
+    // // boundaryInfo.get_side_and_node_maps(boundary_mesh, node_id_map, side_id_map);
+    // // iterate over the boundary mesh
+    // for (auto &elem : boundary_mesh.active_local_element_ptr_range())
+    // {
+
+    // }
     // Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
     vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     // std::set<subdomain_id_type> elem_types;
@@ -336,6 +292,37 @@ int main(int argc, char **argv)
     //     subdomain_id++;
     // }
     vtkGrid = nullptr;
+    BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
+    // boundaryInfo.sync(boundary_mesh);
+
+    vtkDataArray *orig_id = partitionedGrid->GetPointData()->GetArray("VTKorigID");
+    vtkDataArray *boundary_id = partitionedGrid->GetPointData()->GetArray("boundary_id");
+    // Print the names of the arrays in the vtkPointData
+    // for (int i = 0; i < partitionedGrid->GetPointData()->GetNumberOfArrays(); i++)
+    // {
+    //     libMesh::out << "Array " << i << ": " << partitionedGrid->GetPointData()->GetArrayName(i) << std::endl;
+    // }
+    if (!boundary_id)
+    {
+        libmesh_error_msg("Error: 'boundary_id' array not found in vtkPointData.");
+    }
+
+    vtkIdType size_vtk = orig_id->GetNumberOfTuples();
+    dof_id_type orig_id_num;
+    const Node *node_ptr = nullptr;
+    unsigned int val;
+    for (vtkIdType j = 0; j < size_vtk; j++)
+    {
+        orig_id_num = static_cast<dof_id_type>(orig_id->GetTuple1(j));
+        node_ptr = mesh.node_ptr(orig_id_num);
+        val = boundary_id->GetTuple1(j);
+        if (val != 0)
+            boundaryInfo.add_node(node_ptr, boundary_id->GetTuple1(j));
+    }
+    boundaryInfo.build_side_list_from_node_list();
+    boundaryInfo.clear_boundary_node_ids();
+    boundaryInfo.print_info();
+    boundaryInfo.print_summary();
 
     libMesh::out << "Reading loads data..." << std::endl;
     vtkCellData *cell_data = partitionedGrid->GetCellData();
@@ -390,13 +377,6 @@ int main(int argc, char **argv)
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh.print_info();
-
-    libMesh::out << "Building equations systems..." << std::endl;
-    EquationSystems equation_systems(mesh);
-    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<Session *>("session") = &session;
-    // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems);
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     // Get a reference to the system we want to solve
@@ -605,3 +585,79 @@ int main(int argc, char **argv)
     // All done.
     return 0;
 }
+
+// std::vector<unsigned int> cell_data_array_sizes;
+// Loop over all cell data arrays and add their names to the vector
+// vtkCellData *cell_data = vtkGrid->GetCellData();
+// for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+// {
+//     const char *array_name = cell_data->GetArrayName(i);
+//     if (array_name)
+//     {
+//         // Check if the array names contains "Js"
+//         if (std::string(array_name).find("Js_") != std::string::npos)
+//         {
+//             mesh.add_elem_datum<Real *>(array_name);
+//         }
+//         else
+//         {
+//             mesh.add_elem_integer(array_name);
+//         }
+//     }
+
+// Repeat for point data
+// std::vector<std::string> point_data_int_array_names;
+// std::string array_name;
+// vtkPointData *point_data = vtkGrid->GetPointData();
+// for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+// {
+//     array_name = point_data->GetArrayName(i);
+//     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
+//     {
+//         point_data_int_array_names.push_back(array_name);
+//     }
+// }
+
+// std::vector<std::string> cell_data_int_array_names;
+// vtkCellData *cell_data = vtkGrid->GetCellData();
+// for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+// {
+//     array_name = cell_data->GetArrayName(i);
+//     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
+//     {
+//         cell_data_int_array_names.push_back(array_name);
+//     }
+// }
+// mesh.add_elem_integers(point_data_int_array_names);
+// mesh.add_elem_data<Real>(point_data_float_array_names);
+// vtkDataArray *data_array;
+// for (const auto &elem : mesh.active_local_element_ptr_range())
+// {
+//     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
+//     {
+//         data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+//         elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
+//     }
+//     for (unsigned int i = 0; i < cell_data_float_array_names.size(); ++i)
+//     {
+//         data_array = cell_data->GetArray(cell_data_float_array_names[i].c_str());
+
+//         elem->set_extra_datum(i, data_array->GetTuple(elem->id()));
+//     }
+// }
+// for (const auto &node : mesh.local_node_ptr_range())
+// {
+//     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
+//     {
+//         data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+//         node->set_extra_integer(i, data_array->GetTuple1(node->id()));
+//     }
+//     for (unsigned int i = 0; i < point_data_float_array_names.size(); ++i)
+//     {
+//         data_array = point_data->GetArray(point_data_float_array_names[i].c_str());
+//         node->set_extra_datum(i, data_array->GetTuple(node->id()));
+//     }
+// }
+// Node &node = mesh.node_ref(18);
+// Real *real_val = node.get_extra_datum<Real *>(5);
+// vtkIntArray *int_array_vtk;

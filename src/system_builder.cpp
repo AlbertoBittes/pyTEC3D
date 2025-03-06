@@ -26,8 +26,8 @@ void SystemBuilder::createSystem()
     fe_family = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
     formulation = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
     order = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["approx_order"].get<std::string>();
-    dim = equation_systems.get_mesh().mesh_dimension();
-
+    // dim = equation_systems.get_mesh().mesh_dimension();
+    dim = 3;
     // Check if dim is 2 or 3
     if (dim != 2 && dim != 3)
     {

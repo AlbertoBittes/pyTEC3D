@@ -83,8 +83,8 @@ public:
           _theta(angle)
     {
         set_variable(0);
-        set_variable(1);
-        set_variable(2);
+        // set_variable(1);
+        // set_variable(2);
         set_up_rotation_matrix();
     }
 
@@ -101,8 +101,8 @@ public:
         }
 
         set_variable(0);
-        set_variable(1);
-        set_variable(2);
+        // set_variable(1);
+        // set_variable(2);
         set_up_rotation_matrix();
     }
 

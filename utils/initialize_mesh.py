@@ -6,8 +6,8 @@ from ansys.mapdl import reader as pymapdl_reader
 import vtk
 
 # Get the mesh file path from the configuration
-fileName = "3D_loop_cond.cdb"
-config_file = "config_3D_loop.json"
+fileName = "3D_loop_cond_period.cdb"
+config_file = "config_3D_loop_cond_period.json"
 
 # Check if the configuration file exists
 if not os.path.exists(config_file):
@@ -125,6 +125,31 @@ for i in range(1, number_time_steps + 1):
     elif dimension == 2:
         Js_i = np.zeros((num_cells, 1))
     archive.grid.cell_data[f"Js_{i}"] = Js_i
+
+# Add a point data array called boundary_id to the grid
+boundary_id = np.full(num_points, 0)
+archive.grid.point_data["boundary_id"] = boundary_id
+# Check if PERIODIC_BOUNDARY_1 is present in the point data
+if "PERIODIC_BOUNDARY_1" in archive.grid.point_data:
+    periodic_boundary_1 = archive.grid.point_data["PERIODIC_BOUNDARY_1"]
+    boundary_id = archive.grid.point_data["boundary_id"]
+    
+    # Assign the value 7 to all points where PERIODIC_BOUNDARY_1 is 1
+    boundary_id[periodic_boundary_1 == 1] = 7
+    
+    # Update the boundary_id in the point data
+    archive.grid.point_data["boundary_id"] = boundary_id
+
+# Check if PERIODIC_BOUNDARY_2 is present in the point data
+if "PERIODIC_BOUNDARY_2" in archive.grid.point_data:
+    periodic_boundary_2 = archive.grid.point_data["PERIODIC_BOUNDARY_2"]
+    boundary_id = archive.grid.point_data["boundary_id"]
+    
+    # Assign the value 8 to all points where PERIODIC_BOUNDARY_2 is 1
+    boundary_id[periodic_boundary_2 == 1] = 8
+    
+    # Update the boundary_id in the point data
+    archive.grid.point_data["boundary_id"] = boundary_id
 # else:
 #     # Initialize and add point datasets
 #     num_points = archive.grid.n_points
@@ -143,4 +168,4 @@ for i in range(1, number_time_steps + 1):
 
 # Print overview of data read from cdb
 print(archive)
-archive.grid.save("3D_loop_cond.vtu", binary=False)
+archive.grid.save("3D_loop_cond_period.vtu", binary=False)

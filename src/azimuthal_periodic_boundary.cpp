@@ -20,5 +20,5 @@ void AzimuthalPeriodicBoundary::set_up_rotation_matrix()
 
     // For generality, PeriodicBoundaryBase::set_transformation_matrix() takes an
     // (n_vars * n_vars) DenseMatrix which we construct on the fly.
-    this->set_transformation_matrix(DenseMatrix<Real>(3, 3, {_R(0, 0), _R(0, 1), _R(0, 2), _R(1, 0), _R(1, 1), _R(1, 2), _R(2, 0), _R(2, 1), _R(2, 2)}));
+    // this->set_transformation_matrix(DenseMatrix<Real>(3, 3, {_R(0, 0), _R(0, 1), _R(0, 2), _R(1, 0), _R(1, 1), _R(1, 2), _R(2, 0), _R(2, 1), _R(2, 2)}));
 }
