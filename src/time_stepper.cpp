@@ -1,4 +1,5 @@
 #include "../include/time_stepper.h"
+#include <fstream>
 
 bool Substep::get_write_results() const
 {
@@ -14,32 +15,8 @@ bool Substep::get_ramped_load() const
     return parent->get_ramped_load();
 }
 // Constructor
-TimeStepper::TimeStepper(const nlohmann::json &config, TransientLinearImplicitSystem &system)
-    : current_time_step(0), current_substep(0), current_time(0.0), prev_time(0.0), cumulative_substep(0), prev_time_step_dt(0.0), prev_time_substep_dt(0.0), system(system)
+TimeStepper::TimeStepper()
 {
-    read_config(config);
-    system.time = 0;
-}
-
-// Setters and getters
-void TimeStepper::set_current_time_step(unsigned int step)
-{
-    current_time_step = step;
-}
-
-unsigned int TimeStepper::get_current_time_step() const
-{
-    return current_time_step;
-}
-
-void TimeStepper::set_current_substep(unsigned int substep)
-{
-    current_substep = substep;
-}
-
-unsigned int TimeStepper::get_current_substep() const
-{
-    return current_substep;
 }
 
 void TimeStepper::set_cumulative_substep(unsigned int cum_substep)
@@ -51,66 +28,97 @@ unsigned int TimeStepper::get_cumulative_substep() const
 {
     return cumulative_substep;
 }
-
-void TimeStepper::set_current_time(Real time)
-{
-    current_time = time;
-    system.time = time;
-}
-Real TimeStepper::get_current_time() const
-{
-    return current_time;
-}
-void TimeStepper::set_time_step_dt(Real dt)
-{
-    time_step_dt = dt;
-}
-Real TimeStepper::get_prev_time_step_time() const
-{
-    return time_step_dt;
-}
-void TimeStepper::set_prev_time_step_time(Real dt)
-{
-    prev_time = dt;
-}
-Real TimeStepper::get_time_step_dt() const
-{
-    return time_step_dt;
-}
-
-void TimeStepper::set_time_substep_dt(Real dt)
-{
-    time_substep_dt = dt;
-}
-
-Real TimeStepper::get_time_substep_dt() const
-{
-    return time_substep_dt;
-}
-void TimeStepper::set_prev_time_step_dt(Real dt)
-{
-    prev_time_step_dt = dt;
-}
-Real TimeStepper::get_prev_time_step_dt() const
-{
-    return prev_time_step_dt;
-}
-void TimeStepper::set_prev_time_substep_dt(Real dt)
-{
-    prev_time_substep_dt = dt;
-}
-
-Real TimeStepper::get_prev_time_substep_dt() const
-{
-    return prev_time_substep_dt;
-}
-
 // Method to update the old solution
-void TimeStepper::update_old_solution()
+// This should go before a solve, but in solve
+void TimeStepper::update_old_solution(TransientLinearImplicitSystem &system)
 {
     *system.old_local_solution = *system.current_local_solution;
 }
+void TimeStepper::read_time_data_from_csv(const std::string &filename)
+{
+    std::ifstream file(filename);
 
+    if (!file.is_open())
+    {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return;
+    }
+
+    std::string line;
+    // Skip the header line
+    std::getline(file, line);
+
+    while (std::getline(file, line))
+    {
+        std::istringstream ss(line);
+        unsigned int time_step_num;
+        Real time;
+        unsigned int number_of_substeps;
+        bool transient_effects;
+        bool ramped_loads;
+        bool write_substep_results;
+        char comma; // to consume the commas
+
+        ss >> time_step_num >> comma >> time >> comma >> number_of_substeps >> comma >> transient_effects >> comma >> ramped_loads >> comma >> write_substep_results;
+
+        time_data.emplace_back(time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results);
+    }
+
+    file.close();
+}
+
+void TimeStepper::allocate_time_steps()
+{
+    for (const auto &[time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results] : time_data)
+    {
+        TimeStep time_step(time_step_num, time, *this);
+        time_step.set_transient_effect(transient_effects);
+        time_step.set_ramped_load(ramped_loads);
+        time_step.set_write_results(write_substep_results);
+        time_step.set_substeps(number_of_substeps);
+        add_time_step(time_step);
+    }
+}
+
+TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper) : step(step),
+                                                                              time(time),
+                                                                              time_stepper(time_stepper),
+                                                                              write_results(false),
+                                                                              transient_effect(true),
+                                                                              ramped_load(true)
+{
+    if (time <= 0)
+    {
+        libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
+    }
+    delta_t = time - time_beginning;
+    if (delta_t < 0)
+    {
+        libmesh_error_msg("Error: Time step " + std::to_string(delta_t) + " is not greater than the previous time step.");
+    }
+    if (step == 0)
+        time_beginning = 0.0;
+    else
+        time_beginning = time_stepper.get_time_steps()[step - 1].get_time();
+}
+
+void TimeStep::set_substeps(unsigned int n)
+{
+    Real dt;
+    substeps.clear();
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (n <= 0)
+        {
+            libmesh_error_msg("Error: Number of substeps " + std::to_string(i) + " is not positive.");
+        }
+        dt = this->get_delta_t() / n;
+        for (unsigned int j = 0; j < n; ++j)
+        {
+            this->add_substep(Substep(j, dt, this, this->get_time_stepper()));
+        }
+    }
+}
 // Iteration methods
 TimeStepper::Iterator TimeStepper::begin()
 {
@@ -129,109 +137,5 @@ TimeStep::Iterator TimeStep::begin()
 
 TimeStep::Iterator TimeStep::end()
 {
-    return TimeStep::Iterator(*this, n_substeps);
-}
-
-// Helper methods
-void TimeStepper::read_config(const nlohmann::json &config)
-{
-    if (config.contains("Transient Analysis Settings"))
-    {
-        const auto &settings = config["Transient Analysis Settings"];
-
-        if (settings.contains("time_steps"))
-        {
-            auto time_steps_json = settings["time_steps"].get<std::vector<Real>>();
-            auto write_results_json = settings["write_substeps_results"].get<std::vector<bool>>();
-            auto transient_effects_json = settings["transient_effects"].get<std::vector<bool>>();
-            auto ramped_load_json = settings["ramped_load"].get<std::vector<bool>>();
-
-            Real previous_time = 0.0;
-            for (unsigned int i = 0; i < time_steps_json.size(); ++i)
-            {
-                if (time_steps_json[i] <= 0)
-                {
-                    libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not positive.");
-                }
-                Real delta_t = time_steps_json[i] - previous_time;
-                if (delta_t < 0)
-                {
-                    libmesh_error_msg("Error: Time step " + std::to_string(time_steps_json[i]) + " is not greater than the previous time step.");
-                }
-                if (i == 0)
-                    time_steps.emplace_back(i, time_steps_json[i], 0.0, delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
-                else
-                    time_steps.emplace_back(i, time_steps_json[i], previous_time, delta_t, 0, write_results_json[i], transient_effects_json[i], ramped_load_json[i], *this);
-                previous_time = time_steps_json[i];
-            }
-        }
-        else
-        {
-            libmesh_error_msg("time_steps not found in config file");
-        }
-
-        if (settings.contains("number_of_substeps"))
-        {
-            auto substeps_json = settings["number_of_substeps"].get<std::vector<unsigned int>>();
-            for (size_t i = 0; i < substeps_json.size(); ++i)
-            {
-                if (substeps_json[i] <= 0)
-                {
-                    libmesh_error_msg("Error: Number of substeps " + std::to_string(i) + " is not positive.");
-                }
-                time_steps[i].set_n_substeps(substeps_json[i]);
-                Real dt = time_steps[i].get_delta_t() / substeps_json[i];
-                for (unsigned int j = 0; j < substeps_json[i]; ++j)
-                {
-                    time_steps[i].add_substep(Substep(j, time_steps[i].get_time_beginning() + (j + 1) * dt, dt, &time_steps[i], *this));
-                }
-            }
-        }
-        else
-        {
-            libmesh_error_msg("number_of_substeps not found in config file");
-        }
-
-        if (settings.contains("write_substeps_results"))
-        {
-            auto write_results_json = settings["write_substeps_results"].get<std::vector<bool>>();
-            for (size_t i = 0; i < write_results_json.size(); ++i)
-            {
-                time_steps[i].set_write_results(write_results_json[i]);
-            }
-        }
-        else
-        {
-            libmesh_error_msg("write_substeps_results not found in config file");
-        }
-
-        if (settings.contains("transient_effects"))
-        {
-            auto transient_effects_json = settings["transient_effects"].get<std::vector<bool>>();
-            for (size_t i = 0; i < transient_effects_json.size(); ++i)
-            {
-                time_steps[i].set_transient_effect(transient_effects_json[i]);
-            }
-        }
-        else
-        {
-            libmesh_error_msg("transient_effects not found in config file");
-        }
-        if (settings.contains("ramped_load"))
-        {
-            auto ramped_load_json = settings["ramped_load"].get<std::vector<bool>>();
-            for (size_t i = 0; i < ramped_load_json.size(); ++i)
-            {
-                time_steps[i].set_ramped_load(ramped_load_json[i]);
-            }
-        }
-        else
-        {
-            libmesh_error_msg("ramped_load not found in config file");
-        }
-    }
-    else
-    {
-        libmesh_error_msg("Transient Analysis Settings not found in config file");
-    }
+    return TimeStep::Iterator(*this, this->get_n_substeps());
 }

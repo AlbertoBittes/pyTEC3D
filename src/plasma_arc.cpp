@@ -45,7 +45,8 @@
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
 #include "../include/materials_properties.h"
-#include "../include/time_stepper.h" // Add this line to include the TimeStepper header
+#include "../include/element_types_map.h" // Add this line to include the ElementTypesMap header
+#include "../include/time_stepper.h"      // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/vtk_io.h"
 #include "libmesh/mesh_communication.h"
@@ -57,7 +58,7 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
 #include "../include/solver_configuration.h"
-#include "../include/vtkio_updated.h"
+#include "../include/vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
 #include "libmesh/string_to_enum.h"
 #include "libmesh/enum_solver_type.h"
 #include "libmesh/enum_solver_package.h"
@@ -76,101 +77,23 @@
 
 using namespace libMesh;
 
-// vtkSmartPointer<vtkUnstructuredGrid> read_mesh_vtk(Mesh &mesh, const std::string &mesh_filepath)
-// {
-//     vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+void read_and_prepare_mesh(std::shared_ptr<Session> session, Mesh &mesh)
+{
+    libMesh::out << "Reading mesh..." << std::endl;
+    if (mesh.comm().rank() == 0)
+    {
+        VTKIO_Updated vtkio(mesh);
+        vtkio.read(session->mesh_filepath);
+    }
+    MeshCommunication().broadcast(mesh);
+    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
+    mesh.prepare_for_use();
+    MeshTools::Modification::orient_elements(mesh);
+    // Print information about the mesh to the screen.
+    std::cout << "Mesh Information: " << std::endl;
+    mesh.print_info();
+}
 
-//     if (mesh.comm().rank() == 0)
-//     {
-//         VTKIO vtkio(mesh);
-//         vtkio.read(mesh_filepath);
-//         vtkGrid = vtkio.get_vtk_grid();
-//     }
-//     else
-//     {
-//         vtkSmartPointer<vtkXMLPUnstructuredGridReader> reader = vtkSmartPointer<vtkXMLPUnstructuredGridReader>::New();
-
-//         // Pass the filename along to the reader
-//         reader->SetFileName(mesh_filepath.c_str());
-
-//         // Force reading
-//         reader->Update();
-
-//         // read in the grid
-//         vtkGrid = reader->GetOutput();
-//     }
-//     return vtkGrid;
-// }
-
-// vtkSmartPointer<vtkUnstructuredGrid> partition_vtk_grid(Mesh &mesh, vtkSmartPointer<vtkUnstructuredGrid> vtkGrid, std::map<subdomain_id_type, subdomain_id_type> *subdomain_map_pointer)
-// {
-//     std::set<subdomain_id_type> elem_types;
-
-//     vtkSmartPointer<vtkIdList> cellIds = vtkSmartPointer<vtkIdList>::New();
-//     vtkSmartPointer<vtkExtractCells> extractCells = vtkSmartPointer<vtkExtractCells>::New();
-//     for (const auto &elem : mesh.active_local_element_ptr_range())
-//     {
-//         elem_types.insert(static_cast<subdomain_id_type>(elem->type()));
-//         cellIds->InsertNextId(elem->id());
-//     }
-//     extractCells->SetInputData(vtkGrid);
-//     extractCells->SetCellList(cellIds);
-//     extractCells->Update();
-//     vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = extractCells->GetOutput();
-
-//     mesh.comm().set_union(elem_types);
-//     subdomain_id_type subdomain_id = 0;
-//     for (const auto &elem_type : elem_types)
-//     {
-//         (*subdomain_map_pointer)[elem_type] = subdomain_id;
-//         subdomain_id++;
-//     }
-//     return partitionedGrid;
-// }
-
-// std::set<subdomain_id_type> extract_conductive_subdomain(Mesh &mesh, vtkCellData *cell_data, std::map<subdomain_id_type, subdomain_id_type> &subdomain_map, MaterialsMap &materials)
-// {
-//     // Here I read material properties and assign conductive and non-conductive subdomains
-//     libMesh::out << "Reading materials properties..." << std::endl;
-//     vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
-//     if (matArray == nullptr)
-//     {
-//         libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
-//     }
-//     unsigned int matNum;
-
-//     // Use a pointer to the local variable
-//     MaterialsMap *materials_ptr = &materials;
-
-//     // Also here you can set the subdomain_id for the conductive elements, just choose
-//     libMesh::out << "Identifying conductive domain..." << std::endl;
-//     unsigned int k = 0;
-//     std::set<subdomain_id_type> conductive_subdomain;
-//     subdomain_id_type elem_type;
-//     // Do this before partitioning the mesh
-//     for (auto &elem : mesh.active_local_element_ptr_range())
-//     {
-//         elem_type = static_cast<int>(elem->type());
-//         matNum = matArray->GetTuple1(k);
-//         auto it = materials_ptr->find(matNum);
-//         if (it == materials_ptr->end())
-//         {
-//             libmesh_error_msg("Error: Material number " + std::to_string(matNum) + " not found in material properties.");
-//         }
-//         if (std::isnan(it->second.rsvx))
-//         {
-//             elem->subdomain_id() = subdomain_map[elem_type];
-//         }
-//         else
-//         {
-//             elem->subdomain_id() = subdomain_map[elem_type] + 100;
-//             conductive_subdomain.insert(subdomain_map[elem_type] + 100);
-//         }
-//         k++;
-//     }
-//     mesh.comm().set_union(conductive_subdomain);
-//     return conductive_subdomain;
-// }
 // Begin the main program.
 int main(int argc, char **argv)
 {
@@ -199,58 +122,29 @@ int main(int argc, char **argv)
                  << std::endl;
     libMesh::out << "Reading PlasmaArc configurations..." << std::endl;
 
-    Session session(argv[1]);
-
-    // Declare a performance log for the main program
-    // PerfLog perf_main("Main Program");
-    libMesh::out << "Reading mesh..." << std::endl;
-
+    auto session = std::make_shared<Session>(argv[1]);
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
     Mesh mesh(init.comm());
+    // Declare a performance log for the main program
+    // PerfLog perf_main("Main Program");
+
+    libMesh::out << "Reading mesh..." << std::endl;
+    read_and_prepare_mesh(session, mesh);
     // mesh.allow_renumbering(false);
+
+    // Read element types
+    std::shared_ptr<ElementTypesMap> elementTypes = readElementTypes(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
+
+    std::shared_ptr<MaterialsMap> materials = readMaterialsProperties(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
+
     libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<Session *>("session") = &session;
+    equation_systems.parameters.set<std::shared_ptr<Session>>("session") = session;
     // Declare the system and its variables
     SystemBuilder system_builder(equation_systems);
-    {
-        Point center(0., 0., 0.);
-        Point axis(0., 0., 1.);
-        Real angle = -90 * 2 * libMesh::pi / 360;
-        AzimuthalPeriodicBoundary periodic_bc(center, axis, angle);
-        periodic_bc.myboundary = 7;
-        periodic_bc.pairedboundary = 8;
-        equation_systems.get_system<TransientLinearImplicitSystem>(0).get_dof_map().add_periodic_boundary(periodic_bc);
-    }
-    vtkSmartPointer<vtkUnstructuredGrid> vtkGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    if (init.comm().rank() == 0)
-    {
-        VTKIO vtkio(mesh);
-        vtkio.read(session.mesh_filepath);
-        vtkGrid = vtkio.get_vtk_grid();
-    }
-    else
-    {
-        vtkSmartPointer<vtkXMLPUnstructuredGridReader> reader = vtkSmartPointer<vtkXMLPUnstructuredGridReader>::New();
 
-        // Pass the filename along to the reader
-        reader->SetFileName(session.mesh_filepath.c_str());
-
-        // Force reading
-        reader->Update();
-
-        // read in the grid
-        vtkGrid = reader->GetOutput();
-    }
-    MeshCommunication().broadcast(mesh);
-
-    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh.prepare_for_use();
-    // mesh.add_node_integer("boundary_id");
-
-    MeshTools::Modification::orient_elements(mesh);
     // for (auto &elem : mesh.active_local_element_ptr_range())
     // {
     //     for ( auto &side : elem->boundary_sides_begin)
@@ -268,21 +162,6 @@ int main(int argc, char **argv)
 
     // }
     // Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
-    vtkSmartPointer<vtkUnstructuredGrid> partitionedGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    // std::set<subdomain_id_type> elem_types;
-    {
-        vtkSmartPointer<vtkIdList> cellIds = vtkSmartPointer<vtkIdList>::New();
-        vtkSmartPointer<vtkExtractCells> extractCells = vtkSmartPointer<vtkExtractCells>::New();
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            // elem_types.insert(static_cast<subdomain_id_type>(elem->type()));
-            cellIds->InsertNextId(elem->id());
-        }
-        extractCells->SetInputData(vtkGrid);
-        extractCells->SetCellList(cellIds);
-        extractCells->Update();
-        partitionedGrid = extractCells->GetOutput();
-    }
     // init.comm().set_union(elem_types);
     // std::map<subdomain_id_type, subdomain_id_type> subdomain_map;
     // subdomain_id_type subdomain_id = 0;
@@ -291,38 +170,45 @@ int main(int argc, char **argv)
     //     subdomain_map[elem_type] = subdomain_id;
     //     subdomain_id++;
     // }
-    vtkGrid = nullptr;
-    BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
-    // boundaryInfo.sync(boundary_mesh);
-
-    vtkDataArray *orig_id = partitionedGrid->GetPointData()->GetArray("VTKorigID");
-    vtkDataArray *boundary_id = partitionedGrid->GetPointData()->GetArray("boundary_id");
+    // BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
+    // // boundaryInfo.sync(boundary_mesh);
+    // {
+    //     Point center(0., 0., 0.);
+    //     Point axis(0., 0., 1.);
+    //     Real angle = -90 * 2 * libMesh::pi / 360;
+    //     AzimuthalPeriodicBoundary periodic_bc(center, axis, angle);
+    //     periodic_bc.myboundary = 7;
+    //     periodic_bc.pairedboundary = 8;
+    //     equation_systems.get_system<TransientLinearImplicitSystem>(0).get_dof_map().add_periodic_boundary(periodic_bc);
+    // }
+    // vtkDataArray *orig_id = partitionedGrid->GetPointData()->GetArray("VTKorigID");
+    // vtkDataArray *boundary_id = partitionedGrid->GetPointData()->GetArray("boundary_id");
     // Print the names of the arrays in the vtkPointData
     // for (int i = 0; i < partitionedGrid->GetPointData()->GetNumberOfArrays(); i++)
     // {
     //     libMesh::out << "Array " << i << ": " << partitionedGrid->GetPointData()->GetArrayName(i) << std::endl;
     // }
-    if (!boundary_id)
-    {
-        libmesh_error_msg("Error: 'boundary_id' array not found in vtkPointData.");
-    }
+    // if (!boundary_id)
+    // {
+    //     libmesh_error_msg("Error: 'boundary_id' array not found in vtkPointData.");
+    // }
 
-    vtkIdType size_vtk = orig_id->GetNumberOfTuples();
-    dof_id_type orig_id_num;
-    const Node *node_ptr = nullptr;
-    unsigned int val;
-    for (vtkIdType j = 0; j < size_vtk; j++)
-    {
-        orig_id_num = static_cast<dof_id_type>(orig_id->GetTuple1(j));
-        node_ptr = mesh.node_ptr(orig_id_num);
-        val = boundary_id->GetTuple1(j);
-        if (val != 0)
-            boundaryInfo.add_node(node_ptr, boundary_id->GetTuple1(j));
-    }
-    boundaryInfo.build_side_list_from_node_list();
-    boundaryInfo.clear_boundary_node_ids();
-    boundaryInfo.print_info();
-    boundaryInfo.print_summary();
+    // vtkIdType size_vtk = orig_id->GetNumberOfTuples();
+    // dof_id_type orig_id_num;
+    // const Node *node_ptr = nullptr;
+    // unsigned int val;
+    // for (vtkIdType j = 0; j < size_vtk; j++)
+    // {
+    //     orig_id_num = static_cast<dof_id_type>(orig_id->GetTuple1(j));
+    //     node_ptr = mesh.node_ptr(orig_id_num);
+    //     val = boundary_id->GetTuple1(j);
+    //     if (val != 0)
+    //         boundaryInfo.add_node(node_ptr, boundary_id->GetTuple1(j));
+    // }
+    // boundaryInfo.build_side_list_from_node_list();
+    // boundaryInfo.clear_boundary_node_ids();
+    // boundaryInfo.print_info();
+    // boundaryInfo.print_summary();
 
     libMesh::out << "Reading loads data..." << std::endl;
     vtkCellData *cell_data = partitionedGrid->GetCellData();
@@ -340,10 +226,7 @@ int main(int argc, char **argv)
     }
     unsigned int matNum;
 
-    MaterialsMap materials = readMaterialsProperties(session.config["Mesh Input Section"]["materials_filepath"].get<std::string>());
-
     // Use a pointer to the local variable
-    MaterialsMap *materials_ptr = &materials;
 
     // Also here you can set the subdomain_id for the conductive elements, just choose
     libMesh::out << "Identifying conductive domain..." << std::endl;
@@ -353,30 +236,7 @@ int main(int argc, char **argv)
     // Do this before partitioning the mesh
     // conductive_subdomain.insert(1);
 
-    for (auto &elem : mesh.active_local_element_ptr_range())
-    {
-        // elem_type = static_cast<int>(elem->type());
-        matNum = matArray->GetTuple1(k);
-        auto it = materials_ptr->find(matNum);
-        if (it == materials_ptr->end())
-        {
-            libmesh_error_msg("Error: Material number " + std::to_string(matNum) + " not found in material properties.");
-        }
-        if (std::isnan(it->second.rsvx))
-        {
-            elem->subdomain_id() = 0;
-        }
-        else
-        {
-            elem->subdomain_id() = 1;
-        }
-        k++;
-    }
     // init.comm().set_union(conductive_subdomain);
-
-    // Print information about the mesh to the screen.
-    std::cout << "Mesh Information: " << std::endl;
-    mesh.print_info();
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     // Get a reference to the system we want to solve
@@ -390,7 +250,7 @@ int main(int argc, char **argv)
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    auto timeStepper = std::make_shared<TimeStepper>(session.config, system);
+    auto timeStepper = std::make_shared<TimeStepper>(session->config, system);
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
     auto element_data_manager = std::make_shared<ElementDataManager>(materials, cell_data, timeStepper);
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;

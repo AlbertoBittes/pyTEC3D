@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <string>
+#include <memory>
 #include <libmesh/libmesh.h>
 
 using namespace libMesh;
@@ -18,6 +19,6 @@ struct MaterialsProperties
 typedef std::unordered_map<int, MaterialsProperties> MaterialsMap;
 
 // Function to read material properties from a CSV file
-MaterialsMap readMaterialsProperties(const std::string &filename);
+std::shared_ptr<MaterialsMap> readMaterialsProperties(const std::string &filename);
 
-#endif // MATERIAL_PROPERTIES_H
+#endif // MATERIALS_PROPERTIES_H

@@ -15,6 +15,7 @@ using namespace libMesh;
 class Session
 {
 public:
+    bool interactive;
     nlohmann::json config;
     std::string output_folderpath;
     std::string mesh_filepath;
