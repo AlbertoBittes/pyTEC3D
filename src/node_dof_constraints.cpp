@@ -55,7 +55,7 @@ void NodalBCConstraint::constrain()
             {
                 // Apply the row constraint
                 node_ptr = mesh.node_ptr(orig_id_num);
-                dof_id_type dof_id = node_ptr->dof_number(_sys.number(), _sys.variable_number("A"), 0);
+                dof_id_type dof_id = node_ptr->dof_number(_sys.number(), _sys.variable_number("A_z"), 0);
                 DofConstraintRow constraint_row;
                 dof_map.add_constraint_row(dof_id, constraint_row, az_bc, true);
             }
@@ -74,14 +74,14 @@ void NodalBCConstraint::constrain()
                 node_ptr = mesh.node_ptr(orig_id_num);
 
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ax = node_ptr->dof_number(_sys.number(), _sys.variable_number("A"), 0);
+                dof_id_type dof_id_ax = node_ptr->dof_number(_sys.number(), _sys.variable_number("A_x"), 0);
                 dof_map.add_constraint_row(dof_id_ax, constraint_row, ax_bc, true);
             }
             if (!std::isnan(ay_bc))
             {
                 node_ptr = mesh.node_ptr(orig_id_num);
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_ay = node_ptr->dof_number(_sys.number(), _sys.variable_number("A"), 1);
+                dof_id_type dof_id_ay = node_ptr->dof_number(_sys.number(), _sys.variable_number("A_y"), 0);
                 dof_map.add_constraint_row(dof_id_ay, constraint_row, ay_bc, true);
             }
             if (!std::isnan(az_bc))
@@ -89,7 +89,7 @@ void NodalBCConstraint::constrain()
                 node_ptr = mesh.node_ptr(orig_id_num);
 
                 DofConstraintRow constraint_row;
-                dof_id_type dof_id_az = node_ptr->dof_number(_sys.number(), _sys.variable_number("A"), 2);
+                dof_id_type dof_id_az = node_ptr->dof_number(_sys.number(), _sys.variable_number("A_z"), 0);
                 dof_map.add_constraint_row(dof_id_az, constraint_row, az_bc, true);
             }
             if (_sys.has_variable("V") && timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect())

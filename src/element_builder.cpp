@@ -38,26 +38,24 @@ void ElementBuilder::build_solid97_cond()
     //
     // Now start logging the element matrix computation
     Real CAV_value;
+    unsigned int n_dofs_A;
+    n_dofs_A = n_var_dofs * num_vars;
     for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
     {
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
         {
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs * num_vars; dof_j++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
             {
-                for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int l = 0; l < 3; l++)
                 {
-
-                    Ke(dof_i, dof_j) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
-                    Ce(dof_i, dof_j) += JxW_A[qp] / element_data_manager->rs_matrix[k] * (phi_A[dof_i][qp](k) * phi_A[dof_j][qp](k));
-                    if (dof_j < n_var_dofs)
+                    Ce(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->rs_matrix[l] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
+                    CAV_value = JxW_A[qp] / element_data_manager->rs_matrix[l] * phi_V[dof_i][qp] * dphi_V[dof_j][qp](l);
+                    Ce(dof_i + l * n_var_dofs, n_dofs_A + dof_j) += CAV_value;
+                    Ce(n_dofs_A + dof_j, dof_i + l * n_var_dofs) += CAV_value;
+                    Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW_A[qp] * dphi_V[dof_i][qp](l) / element_data_manager->rs_matrix[l] * dphi_V[dof_j][qp](l);
+                    for (unsigned int k = 0; k < 3; k++)
                     {
-                        CAV_value = JxW_A[qp] / element_data_manager->rs_matrix[k] * phi_A[dof_i][qp](k) * dphi_V[dof_j][qp](k);
-                        Ce(dof_i, num_vars * n_var_dofs + dof_j) += CAV_value;
-                        Ce(num_vars * n_var_dofs + dof_j, dof_i) += CAV_value;
-                        if (dof_i < n_var_dofs)
-                        {
-                            Ce(num_vars * n_var_dofs + dof_i, num_vars * n_var_dofs + dof_j) += JxW_A[qp] * dphi_V[dof_i][qp](k) / element_data_manager->rs_matrix[k] * dphi_V[dof_j][qp](k);
-                        }
+                        Ke(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_V[dof_i][qp](k) * dphi_V[dof_j][qp](k));
                     }
                 }
             }
@@ -76,16 +74,29 @@ void ElementBuilder::build_solid97()
     // computation separately.
     //
     // Now start logging the element matrix computation
+    // Numeric ids corresponding to each variable in the system
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    unsigned int n_dofs_A;
     for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
     {
-
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
+        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
         {
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs * num_vars; dof_j++)
+            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
             {
-                for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int l = 0; l < 3; l++)
                 {
-                    Ke(dof_i, dof_j) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_A[dof_j][qp].row(k) * dphi_A[dof_i][qp].row(k));
+                    for (unsigned int k = 0; k < 3; k++)
+                    {
+                        Ke(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_V[dof_i][qp](k) * dphi_V[dof_j][qp](k));
+                    }
                 }
             }
         }
@@ -101,7 +112,7 @@ void ElementBuilder::build_solid97_rhs()
         {
             for (unsigned int k = 0; k < num_vars; k++)
             {
-                Fe(dof_i) += JxW_A[qp] * (phi_A[dof_i][qp](k));
+                Fe(dof_i + k * n_var_dofs) += JxW_A[qp] * (phi_V[dof_i][qp]);
             }
         }
     }
@@ -182,7 +193,6 @@ void ElementBuilder::build_plane13_cond()
             {
                 // Here you will put the time factor as well
                 Ke(dof_i, dof_j) += JxW_V[qp] * (dphi_V[dof_i][qp] * dphi_V[dof_j][qp]) / element_data_manager->mu_matrix[0];
-
                 Ce(dof_i, dof_j) += JxW_V[qp] / element_data_manager->rs_matrix[0] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
             }
     }
@@ -238,14 +248,12 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
     {
         for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
         {
-            for (unsigned int i = 0; i < 2 * n_A_dofs; i++)
+            for (unsigned int i = 0; i < 2 * n_var_dofs; i++)
             {
                 if (conductive)
-                    if (i < n_var_dofs)
-                    {
-                        // JAe(0, i) -= JxW_V[qp] * phi_V[i][qp] / phi_V[0].size();
-                        JAe(qp, i) -= phi_V[i][qp];
-                    }
+                    // JAe(0, i) -= JxW_V[qp] * phi_V[i][qp] / phi_V[0].size();
+                    JAe(qp, i) -= phi_V[i][qp];
+
                 for (unsigned int j = 0; j < 2 * n_A_dofs; j++)
                 {
                     if (j < n_A_dofs)
@@ -279,21 +287,21 @@ void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, Dens
             for (unsigned int i = 0; i < n_A_dofs; i++)
             {
                 if (conductive)
+                {
+                    JAe(qp, i) += phi_V[i][qp];
                     for (unsigned int k = 0; k < 3; k++)
-                    {
-                        // JAe(k, i) += JxW_A[qp] * phi_A[i][qp](k);
-                        JAe(qp * 3 + k, i) += phi_A[i][qp](k);
-                        // JAe(k, i) -= phi_A[i][qp](k);
-                        if (i < n_var_dofs)
-                            // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k);
-                            JVe(qp * 3 + k, i) += dphi_V[i][qp](k);
-                        // JVe(k, i) += JxW_A[qp] * dphi_V[i][qp](k) / dphi_V[0].size();
-                    }
-
+                        JVe(qp + k * n_A_dofs, i) += dphi_V[i][qp](k);
+                }
                 for (unsigned int j = 0; j < n_A_dofs; j++)
                 {
-                    AAe(i, j) += JxW_A[qp] * (phi_A[i][qp] * curl_phi_A[j][qp]);
-                    Me(i, j) += JxW_A[qp] * (phi_A[i][qp] * phi_A[j][qp]);
+                    for (unsigned int k = 0; k < 3; k++)
+                    {
+                        for (unsigned int l = 0; l < 3; l++)
+                        {
+                            AAe(i + k * n_A_dofs, j + l * n_A_dofs) += JxW_A[qp] * (phi_A[i * 3 + k][qp] * curl_phi_A[j * 3 + l][qp]);
+                            Me(i + k * n_A_dofs, j + l * n_A_dofs) += JxW_A[qp] * (phi_A[i * 3 + k][qp] * phi_A[j * 3 + l][qp]);
+                        }
+                    }
                 }
             }
         }

@@ -422,6 +422,8 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
         for (unsigned int var_num = 0; var_num < sys_n_vars; var_num++)
         {
             FEFamily var_family = _sys->get_equation_systems().get_system(k).variable(var_num).type().family;
+            std::string var_name = _sys->get_equation_systems().get_system(k).variable_name(var_num);
+
             if (FEInterface::field_type(var_family) == TYPE_VECTOR)
                 n_comps = dim;
             else
@@ -432,7 +434,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
                 vtkSmartPointer<vtkMergeVectorComponents> merger = vtkSmartPointer<vtkMergeVectorComponents>::New();
                 if (var_family == MONOMIAL || var_family == MONOMIAL_VEC)
                 {
-                    continue;
+                    merger->SetAttributeTypeToCellData();
                 }
                 else
                 {

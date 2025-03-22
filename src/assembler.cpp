@@ -79,7 +79,7 @@ void AssemblerLinear::assemble()
     // for the first variable in the system.
 
     // this doesn't work in 2D
-    const unsigned int a_var = system.variable_number("A");
+    const unsigned int ax_var = system.variable_number("A_x");
     unsigned int n_A_dofs;
     std::vector<dof_id_type> A_indices_var;
 
@@ -160,7 +160,6 @@ void AssemblerLinear::assemble()
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
     std::vector<dof_id_type> dof_indices;
-
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     check_update_matrix();
@@ -222,6 +221,9 @@ void AssemblerLinear::assemble()
             if (conductive || dim == 2)
                 fe_scalar->reinit(elem);
 
+            dof_map.dof_indices(elem, A_indices_var, ax_var);
+            // here maybe you will want to add the A dof indices to a map
+            n_A_dofs = std::size(A_indices_var);
             element_data_manager->compute_material_properties(conductive);
             // With one variable, we should have the same number of degrees
             // of freedom as shape functions.
@@ -231,16 +233,13 @@ void AssemblerLinear::assemble()
             if (conductive)
                 Ce.resize(n_dofs, n_dofs);
 
-            elem_builder.build_element_matrix(elem->n_nodes(), conductive, formulation, dim, fe_family);
+            elem_builder.build_element_matrix(n_A_dofs, conductive, formulation, dim, fe_family);
 
             DenseMatrix<Number> AAe;
             DenseMatrix<Number> Me;
-
             DenseMatrix<Number> JAe;
             DenseMatrix<Number> JVe;
-            dof_map.dof_indices(elem, A_indices_var, a_var);
-            // here maybe you will want to add the A dof indices to a map
-            n_A_dofs = std::size(A_indices_var);
+
             if (dim == 2)
             {
                 AAe.resize(2 * n_A_dofs, n_A_dofs);
@@ -251,13 +250,13 @@ void AssemblerLinear::assemble()
             }
             else
             {
-                AAe.resize(n_A_dofs, n_A_dofs);
-                Me.resize(n_A_dofs, n_A_dofs);
+                AAe.resize(3 * n_A_dofs, 3 * n_A_dofs);
+                Me.resize(3 * n_A_dofs, 3 * n_A_dofs);
                 if (conductive)
                 {
-                    JAe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
+                    JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
                     // fix this / 3
-                    JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs / 3);
+                    JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
                 }
             }
 
@@ -292,7 +291,7 @@ void AssemblerLinear::assemble()
             {
                 Fe.resize(n_dofs);
                 // Here remove conductive from list of parameters
-                elem_builder.build_element_rhs(elem->n_nodes(), conductive, formulation, dim, fe_family);
+                elem_builder.build_element_rhs(n_A_dofs, conductive, formulation, dim, fe_family);
                 element_data_manager->rhs_map[local_elem_id] = Fe;
             }
         }
@@ -343,9 +342,9 @@ void AssemblerLinear::assemble()
                 for (unsigned int var = 0; var < 3; var++)
                 {
                     js[var] = element_data_manager->compute_js(var);
-                    for (unsigned int y = 0; y < elem->n_nodes(); y++)
+                    for (unsigned int y = 0; y < n_A_dofs; y++)
                     {
-                        FFe(y * 3 + var) *= js[var];
+                        FFe(y + var * n_A_dofs) *= js[var];
                     }
                 }
             }
@@ -448,32 +447,48 @@ void AssemblerLinear::compute_derived_quantities()
 {
     const MeshBase &mesh = eq_sys.get_mesh();
     const unsigned int dim = mesh.mesh_dimension();
+
     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
-    const unsigned int a_var = system.variable_number("A");
-    unsigned int v_var;
-    if (dim == 3)
-        v_var = system.variable_number("V");
-
     const DofMap &dof_map = system.get_dof_map();
-
-    unsigned int b_n_var = derived_quantities_system.variable_number("B");
-    // unsigned int b_elem_var = derived_quantities_system_elem.variable_number("B_elem");
-    unsigned int j_elem_var = derived_quantities_system_elem.variable_number("J_elem");
-    // unsigned int f_elem_var = derived_quantities_system_elem.variable_number("F_elem");
     const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();
     const DofMap &derived_quantities_system_elem_dof_map = derived_quantities_system_elem.get_dof_map();
+
+    std::vector<unsigned int> A_num_var;
+    std::vector<unsigned int> B_num_var;
+    std::vector<unsigned int> J_num_var;
+    unsigned int v_var;
+
+    A_num_var.push_back(system.variable_number("A_z"));
+    B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
+    B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
+    J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
+
+    if (dim == 3)
+    {
+        A_num_var.push_back(system.variable_number("A_x"));
+        A_num_var.push_back(system.variable_number("A_y"));
+        v_var = system.variable_number("V");
+
+        B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
+        J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
+        J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
+    }
 
     std::shared_ptr<TimeStepper> timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     Real dt = timeStepper->get_time_substep_dt();
     bool trans_effects = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect();
+
     // Storage for the stress dof indices on each element
-    std::vector<dof_id_type> B_indices_var;
-    std::vector<dof_id_type> A_indices_var;
+    std::vector<std::vector<dof_id_type>> A_dof_indices_var;
+    std::vector<std::vector<dof_id_type>> B_dof_indices_var;
+    std::vector<std::vector<dof_id_type>> J_dof_indices_var;
+    std::vector<dof_id_type> A_scalar_dof_indices_var;
+    std::vector<dof_id_type> B_scalar_dof_indices_var;
+    std::vector<dof_id_type> J_scalar_dof_indices_var;
     std::vector<dof_id_type> V_indices_var;
-    std::vector<dof_id_type> J_indices_var;
 
     std::shared_ptr<ElementDataManager> element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
 
@@ -482,13 +497,13 @@ void AssemblerLinear::compute_derived_quantities()
     DenseVector<Number> Ve;
     DenseVector<Number> Ve_dt;
     DenseVector<Number> Be;
-    DenseVector<Number> Fe;
+    // DenseVector<Number> Fe;
     DenseVector<Number> Be_q;
     DenseVector<Number> J_elem;
     DenseVector<Number> J_elem_A;
     DenseVector<Number> J_elem_V;
-    DenseVector<Number> B_elem;
-    DenseVector<Number> F_elem;
+    // DenseVector<Number> B_elem;
+    // DenseVector<Number> F_elem;
     char n_J_dofs;
     if (dim == 2)
     {
@@ -524,6 +539,21 @@ void AssemblerLinear::compute_derived_quantities()
 
         element_data_manager->compute_material_properties(conductive);
 
+        for (unsigned int var = 0; var < A_num_var.size(); var++)
+        {
+            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        }
+        for (unsigned int var = 0; var < B_num_var.size(); var++)
+        {
+            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        }
+        for (unsigned int var = 0; var < A_num_var.size(); var++)
+        {
+            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        }
         dof_map.dof_indices(elem, A_indices_var, a_var);
         n_A_dofs = std::size(A_indices_var);
         Ae.resize(n_A_dofs);

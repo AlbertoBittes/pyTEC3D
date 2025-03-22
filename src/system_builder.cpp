@@ -80,28 +80,28 @@ void SystemBuilder::setVariables()
     {
         if (dim == 2)
         {
-            system.add_variable("A", Utility::string_to_enum<Order>(order),
+            system.add_variable("A_z", Utility::string_to_enum<Order>(order),
                                 Utility::string_to_enum<FEFamily>(fe_family));
             equation_systems.parameters.set<std::string>("FE_family_A") = fe_family;
             // derived_quantities_system.add_variable("J", Utility ::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
             derived_quantities_system_elem.add_variable("J_elem", CONSTANT, MONOMIAL);
+            derived_quantities_system.add_variable("B_x", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
+            derived_quantities_system.add_variable("B_y", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
         }
         if (dim == 3 && fe_family == "LAGRANGE")
         {
-            system.add_variable("A", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family + "_VEC"));
-            equation_systems.parameters.set<std::string>("FE_family_A") = fe_family + "_VEC";
+            system.add_variable("A_x", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+            system.add_variable("A_y", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+            system.add_variable("A_z", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
             // derived_quantities_system.add_variable("J", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family + "_VEC"));
-            derived_quantities_system_elem.add_variable("J_elem", CONSTANT, MONOMIAL_VEC);
+            derived_quantities_system_elem.add_variable("J_elem_x", CONSTANT, MONOMIAL);
+            derived_quantities_system_elem.add_variable("J_elem_y", CONSTANT, MONOMIAL);
+            derived_quantities_system_elem.add_variable("J_elem_z", CONSTANT, MONOMIAL);
+            derived_quantities_system.add_variable("B_x", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
+            derived_quantities_system.add_variable("B_y", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
+            derived_quantities_system.add_variable("B_z", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family));
         }
-        if (fe_family == "LAGRANGE")
-        {
-            derived_quantities_system.add_variable("B", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family + "_VEC"));
-            // derived_quantities_system_elem.add_variable("B_elem", CONSTANT, MONOMIAL_VEC);
-            // derived_quantities_system.add_variable("F", Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>("L2_" + fe_family + "_VEC"));
-            // derived_quantities_system_elem.add_variable("F_elem", CONSTANT, MONOMIAL_VEC);
-        }
-        // if (transient)
-        // {
+
         std::set<subdomain_id_type> conductive_subdomain;
 
         conductive_subdomain.clear();
