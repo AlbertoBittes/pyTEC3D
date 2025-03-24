@@ -108,7 +108,7 @@ void SystemBuilder::setVariables()
             fe_fam = elem_type.getVariableFEFamily(variable);
             order = elem_type.getVariableOrder(variable);
 
-            system.add_variable(variable, Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_fam), );
+            system.add_variable(variable, Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_fam), subdomain_ids);
         }
     }
     // Add more conditions as needed for other combinations
