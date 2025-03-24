@@ -25,6 +25,8 @@ public:
     ElementType(const ElementTypeProperties &properties, const std::string &order = "default_order", const std::string &fe_family = "default_family", unsigned int quadrature_order = 0, unsigned int dimension = 0)
         : properties(properties), order(order), fe_family(fe_family), quadrature_order(quadrature_order), dimension(dimension), az_dofs(0) {}
 
+    virtual std::vector<std::string> getActiveVariables(std::string variables_set) const = 0;
+
     virtual std::vector<std::string> getVariables(std::string variables_set) const = 0;
 
     std::string getVariableFEFamily(std::string variable)
@@ -104,7 +106,7 @@ public:
         az_dofs = 3;
     }
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
         {
@@ -113,6 +115,29 @@ public:
             {
                 variables.push_back("V");
             }
+            return variables;
+        }
+        else if (variables_set == "NodalDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
+            return variables;
+        }
+        else if (variables_set == "ElementDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
+            return variables;
+        }
+        else
+        {
+            libmesh_error_msg("Invalid variables set: " + variables_set);
+        }
+    }
+
+    std::vector<std::string> getVariables(std::string variables_set) const override
+    {
+        if (variables_set == "DOFVariables")
+        {
+            std::vector<std::string> variables = {"A_x", "A_y", "A_z", "v"};
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -141,7 +166,7 @@ public:
         az_dofs = 1;
     }
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
         {
@@ -150,6 +175,29 @@ public:
             {
                 variables.push_back("V");
             }
+            return variables;
+        }
+        else if (variables_set == "NodalDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
+            return variables;
+        }
+        else if (variables_set == "ElementDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
+            return variables;
+        }
+        else
+        {
+            libmesh_error_msg("Invalid variables set: " + variables_set);
+        }
+    }
+
+    std::vector<std::string> getVariables(std::string variables_set) const override
+    {
+        if (variables_set == "DOFVariables")
+        {
+            std::vector<std::string> variables = {"Az", "V"};
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -178,7 +226,7 @@ public:
         az_dofs = 1;
     } // Default dimension for PLANE13 is 2
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
         {
@@ -187,6 +235,29 @@ public:
             {
                 variables.push_back("V");
             }
+            return variables;
+        }
+        else if (variables_set == "NodalDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"B_x", "B_y"};
+            return variables;
+        }
+        else if (variables_set == "ElementDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"J_z"};
+            return variables;
+        }
+        else
+        {
+            libmesh_error_msg("Invalid variables set: " + variables_set);
+        }
+    }
+
+    std::vector<std::string> getVariables(std::string variables_set) const override
+    {
+        if (variables_set == "DOFVariables")
+        {
+            std::vector<std::string> variables = {"A_z", "V"};
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -215,7 +286,7 @@ public:
         az_dofs = 1;
     } // Default dimension for PLANE13 is 2
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
         {
@@ -224,6 +295,29 @@ public:
             {
                 variables.push_back("V");
             }
+            return variables;
+        }
+        else if (variables_set == "NodalDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"B_x", "B_y"};
+            return variables;
+        }
+        else if (variables_set == "ElementDerivedQuantitiesVariables")
+        {
+            std::vector<std::string> variables = {"J_z"};
+            return variables;
+        }
+        else
+        {
+            libmesh_error_msg("Invalid variables set: " + variables_set);
+        }
+    }
+
+    std::vector<std::string> getVariables(std::string variables_set) const override
+    {
+        if (variables_set == "DOFVariables")
+        {
+            std::vector<std::string> variables = {"Az", "V"};
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -268,7 +362,7 @@ public:
             subdomain_id_type elementId = pair.first;
             const auto &elementType = pair.second;
 
-            for (const auto &variable : elementType.getVariables(variables_set))
+            for (const auto &variable : elementType.getActiveVariables(variables_set))
             {
                 variableToElementIds[variable].insert(elementId);
             }
