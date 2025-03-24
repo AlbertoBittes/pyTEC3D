@@ -8,6 +8,7 @@
 
 std::shared_ptr<MaterialsMap> readMaterialsProperties(const std::string &filename)
 {
+    libMesh::out << "Reading materials properties..." << std::endl;
     auto materials = std::make_shared<MaterialsMap>();
     std::ifstream file(filename);
 

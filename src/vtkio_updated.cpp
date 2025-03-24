@@ -362,19 +362,19 @@ void VTKIO_Updated::read(const std::string &name)
     }
     mesh.add_elem_integers(point_data_int_array_names);
     vtkDataArray *data_array;
-    for (const auto &elem : mesh.active_local_element_ptr_range())
+    for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
     {
-        for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
+        data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+        for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
             elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
         }
     }
-    for (const auto &node : mesh.local_node_ptr_range())
+    for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
     {
-        for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
+        data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+        for (const auto &node : mesh.local_node_ptr_range())
         {
-            data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
             node->set_extra_integer(i, data_array->GetTuple1(node->id()));
         }
     }

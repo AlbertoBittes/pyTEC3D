@@ -48,6 +48,7 @@
 #include "../include/time_stepper.h"  // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh_communication.h"
+#include "libmesh/communicator.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/petsc_linear_solver.h"
 #include "libmesh/sparse_matrix.h"
@@ -65,6 +66,84 @@
 
 using namespace libMesh;
 
+EquationSystems &init_equation_systems(Mesh &mesh, std::shared_ptr<Session> session)
+{
+    // libMesh::out << "Building equations systems..." << std::endl;
+    EquationSystems equation_systems(mesh);
+    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
+    equation_systems.parameters.set<std::shared_ptr<Session>>("session") = session;
+    return equation_systems;
+}
+
+void init_system(EquationSystems &equation_systems)
+{
+    // Declare the system and its variables
+    libMesh::out << "Building system of equations..." << std::endl;
+
+    std::string system_name = "PlasmaArcLinearSystem";
+    // Add TransientLinearImplicitSystem as System and return its pointer
+    libMesh::out << "Checking system options..." << std::endl;
+    // Here I will implement various checks about the system element types, the mesh and everything
+    // ferromagnetic = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
+    // fe_family = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
+    // formulation = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
+    // order = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["approx_order"].get<std::string>();
+    // // dim = equation_systems.get_mesh().mesh_dimension();
+    // dim = 3;
+    // // Check if dim is 2 or 3
+    // if (dim != 2 && dim != 3)
+    // {
+    //     libmesh_error_msg("Error: dim must be 2 or 3.");
+    // }
+    // // Check if fe_family is not "LAGRANGE" and dim is not 3
+    // if (fe_family != "LAGRANGE" && fe_family != "NEDELEC_ONE")
+    // {
+    //     libmesh_error_msg("Error: Element type must be 'LAGRANGE' (nodal formulation) or 'NEDELEC_ONE' (edge formulation).");
+    // }
+    // // Check if fe_family is not "LAGRANGE" and dim is not 3
+    // if (fe_family != "LAGRANGE" && dim != 3)
+    // {
+    //     libmesh_error_msg("Error: Mesh must be 3D for edge elements.");
+    // }
+    // // Check if order is "FIRST" or "SECOND"
+    // if (order != "FIRST" && order != "SECOND")
+    // {
+    //     libmesh_error_msg("Error: order must be 'FIRST' or 'SECOND'.");
+    // }
+    // // Check if formulation is "AV" or "Hphi"
+    // if (formulation != "AV" && formulation != "Hphi")
+    // {
+    //     libmesh_error_msg("Error: formulation must be 'AV' or 'Hphi'.");
+    // }
+
+    // libMesh::out << "Creating system..." << std::endl;
+    // if (ferromagnetic)
+    // {
+    //     system_name = "NonlinearTransient";
+    //     // Add TransientSystem<NonlinearImplicitSystem> as System and return its pointer
+    //     equation_systems.add_system<TransientSystem<NonlinearImplicitSystem>>(system_name);
+    // }
+    // else
+    // {
+    equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>(system_name);
+    equation_systems.add_system<ExplicitSystem>("DerivedQuantitiesSystem");
+    equation_systems.add_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
+
+    SystemBuilder system_builder(equation_systems);
+    equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    system.attach_init_object(system_builder);
+
+    system.zero_out_matrix_and_rhs = false;
+    system.solution->zero();
+    system.solution->close();
+    system.current_local_solution->zero();
+    system.current_local_solution->close();
+
+    equation_systems.init();
+    equation_systems.print_info();
+}
+
 void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
 {
     libMesh::out << "Reading element types..." << std::endl;
@@ -73,9 +152,10 @@ void read_parse_element_types(std::string element_types_filepath, EquationSystem
     equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = elementTypesCollector;
 }
 
-void read_and_prepare_mesh(std::string mesh_filepath, Mesh &mesh)
+Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
 {
     libMesh::out << "Reading mesh..." << std::endl;
+    Mesh mesh(comm);
     // mesh.clear();
     if (mesh.comm().rank() == 0)
     {
@@ -89,6 +169,7 @@ void read_and_prepare_mesh(std::string mesh_filepath, Mesh &mesh)
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh.print_info();
+    return mesh;
 }
 
 // Begin the main program.
@@ -123,25 +204,17 @@ int main(int argc, char **argv)
     auto session = std::make_shared<Session>(argv[1]);
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
-    Mesh mesh(init.comm());
+
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-    read_and_prepare_mesh(session->mesh_filepath, mesh);
+    Mesh &mesh = read_and_prepare_mesh(session->mesh_filepath, init.comm());
     // mesh.allow_renumbering(false);
 
-    libMesh::out << "Building equations systems..." << std::endl;
-    EquationSystems equation_systems(mesh);
-    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<std::shared_ptr<Session>>("session") = session;
     // Read element types
 
     read_parse_element_types(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
     // This will be done much later
-    libMesh::out << "Reading materials properties..." << std::endl;
     std::shared_ptr<MaterialsMap> materials = readMaterialsProperties(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
-
-    // Declare the system and its variables
-    SystemBuilder system_builder(equation_systems);
 
     // for (auto &elem : mesh.active_local_element_ptr_range())
     // {
@@ -212,8 +285,6 @@ int main(int argc, char **argv)
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     // Get a reference to the system we want to solve
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
-    system.zero_out_matrix_and_rhs = false;
     // Initialize the data structures for the equation system.
     equation_systems.init();
     // Print information about the system to the screen.
@@ -272,10 +343,6 @@ int main(int argc, char **argv)
     // }
     // Build the K matrix, the RHS F and Solve the system Kx=F
     // This should be already done
-    system.solution->zero();
-    system.solution->close();
-    system.current_local_solution->zero();
-    system.current_local_solution->close();
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
     // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
     // solver->set_solver_type(GMRES);

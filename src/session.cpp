@@ -10,16 +10,21 @@
 Session::Session(const std::string &configFile)
 {
     read_config(configFile);
-    mesh_filepath = config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
-    if (config["Output Section"]["output_filepath"].is_null())
-        output_folderpath = std::filesystem::path(mesh_filepath).parent_path().string();
+    input_mesh_filepath = config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+    if (config["Output Section"]["output_folderpath"].is_null())
+    {
+        // Create an output folder path based on the input mesh file path
+        output_folderpath = (std::filesystem::path(input_mesh_filepath).parent_path() / "output");
+        create_output_folder();
+    }
     else
-        output_folderpath = config["Output Section"]["output_filepath"].get<std::string>();
+        output_folderpath = std::filesystem::path(config["Output Section"]["output_filepath"].get<std::string>());
     libMesh::out << "Setting output path..." << std::endl;
     // Use filesystem to modify the basename
-    output_path = std::filesystem::path(output_folderpath);
-    mesh_path = std::filesystem::path(mesh_filepath);
+    mesh_path = std::filesystem::path(input_mesh_filepath);
     mesh_filename_without_extension = mesh_path.stem().string();
+
+    create_temp_folder();
 }
 
 void Session::read_config(const std::string &configFile)
@@ -42,10 +47,37 @@ void Session::read_config(const std::string &configFile)
 void Session::set_output_filepath(unsigned int output_label)
 {
     output_filename = mesh_filename_without_extension + "_out_" + std::to_string(output_label) + ".pvtu";
-    final_output_path = output_path / output_filename;
+    final_output_path = output_folderpath / output_filename;
     // std::filesystem::path output_path(output_folderpath);
     // std::filesystem::path mesh_path(mesh_filepath);
     // std::filesystem::path final_output_path;
     // std::string mesh_filename_without_extension = mesh_path.stem().string();
     // std::string output_filename;
+}
+
+void Session::create_temp_folder()
+{
+    temp_folder_path = std::filesystem::current_path() / "temp_files";
+    if (!std::filesystem::exists(temp_folder_path))
+    {
+        std::filesystem::create_directory(temp_folder_path);
+        libMesh::out << "Temporary folder 'temp_files' created at " << temp_folder_path << std::endl;
+    }
+    else
+    {
+        libMesh::out << "Temporary folder 'temp_files' already exists at " << temp_folder_path << std::endl;
+    }
+}
+
+void Session::create_output_folder()
+{
+    if (!std::filesystem::exists(output_path))
+    {
+        std::filesystem::create_directory(output_path);
+        libMesh::out << "Output folder created at " << output_path << std::endl;
+    }
+    else
+    {
+        libMesh::out << "Output folder already exists at " << output_path << std::endl;
+    }
 }
