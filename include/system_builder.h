@@ -6,7 +6,7 @@
 
 using namespace libMesh;
 
-class SystemBuilder
+class SystemBuilder : public System::Initialization
 {
 public:
     // Modified constructor to accept additional parameters
@@ -26,12 +26,7 @@ private:
     bool transient;
     bool ferromagnetic;
     // Assuming var1, var2, var3 are placeholders; replace with actual types and names
-    std::string fe_family;
-    int dim;
-    std::string formulation;
-    int type_num;
     std::string system_name;
-    std::string order;
 };
 
 #endif // SYSTEM_BUILDER_H

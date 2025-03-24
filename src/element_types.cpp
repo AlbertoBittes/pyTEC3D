@@ -8,50 +8,46 @@
 #include <limits> // for std::numeric_limits
 #include "../include/element_types.h"
 
-std::shared_ptr<ElementTypesMap> readElementTypes(const std::string &filename)
+ElementTypesMapCSV readElementTypes(const std::string &filename)
 {
-    auto elementTypes = std::make_shared<ElementTypesMap>();
+    ElementTypesMapCSV elementTypesMap;
     std::ifstream file(filename);
 
     if (!file.is_open())
     {
-        std::cerr << "Error opening file: " << filename << std::endl;
-        return elementTypes;
+        throw std::runtime_error("Could not open file: " + filename);
     }
 
     std::string line;
-    // Skip the header line
-    std::getline(file, line);
+    std::getline(file, line); // Skip the header line
 
     while (std::getline(file, line))
     {
-        std::istringstream ss(line);
-        ElementTypeProperties elementType;
-        int element_number;
-        char comma; // to consume the commas
+        std::istringstream iss(line);
+        std::string ansys_element_type_str, element_type;
+        std::vector<int> keyopts(9, 0); // Initialize with 9 zeros
+        unsigned int ansys_element_type;
 
-        ss >> element_number >> comma;
-
-        // Read ansys_element_type
-        std::getline(ss, elementType.ansys_element_type, ',');
-
-        // Read keyopts
-        std::string value;
-        while (std::getline(ss, value, ','))
+        if (!(std::getline(iss, ansys_element_type_str, ',') && std::getline(iss, element_type, ',')))
         {
-            if (!value.empty())
+            throw std::runtime_error("Error parsing line: " + line);
+        }
+
+        ansys_element_type = std::stoul(ansys_element_type_str);
+
+        for (int i = 0; i < 9; ++i)
+        {
+            std::string keyopt_str;
+            if (std::getline(iss, keyopt_str, ',') && !keyopt_str.empty())
             {
-                elementType.keyopts.push_back(std::stod(value));
-            }
-            else
-            {
-                elementType.keyopts.push_back(std::numeric_limits<double>::quiet_NaN()); // Default value for empty keyopts
+                keyopts[i] = std::stoi(keyopt_str);
             }
         }
 
-        (*elementTypes)[element_number] = elementType;
+        ElementTypeProperties properties = {element_type, keyopts};
+        (*elementTypesMap)[ansys_element_type] = properties;
     }
 
     file.close();
-    return elementTypes;
+    return elementTypesMap;
 }

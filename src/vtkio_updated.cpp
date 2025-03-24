@@ -28,6 +28,7 @@
 #include "libmesh/explicit_system.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/string_to_enum.h"
+#include "libmesh/mesh_communication.h"
 
 #ifdef LIBMESH_HAVE_VTK
 
@@ -213,13 +214,15 @@ void VTKIO_Updated::read(const std::string &name)
         _vtk_grid->GetPointData()->GetAbstractArray("libmesh_node_id");
     vtkAbstractArray *abstract_subdomain_id =
         _vtk_grid->GetCellData()->GetAbstractArray("subdomain_id");
-
+    vtkAbstractArray *abstract_elemtype_id =
+        _vtk_grid->GetCellData()->GetAbstractArray("ansys_elem_type");
     // Get ids as integers.  This will be null if they are another data
     // type, e.g. if a non-libMesh program used the names we thought
     // were unique for different data.
     vtkIntArray *elem_id = vtkIntArray::SafeDownCast(abstract_elem_id);
     vtkIntArray *node_id = vtkIntArray::SafeDownCast(abstract_node_id);
     vtkIntArray *subdomain_id = vtkIntArray::SafeDownCast(abstract_subdomain_id);
+    vtkIntArray *elemtype_id = vtkIntArray::SafeDownCast(abstract_elemtype_id);
 
     if (abstract_elem_id && !elem_id)
         libmesh_warning("Found non-integral libmesh_elem_id array; forced to ignore it.\n"
@@ -233,6 +236,9 @@ void VTKIO_Updated::read(const std::string &name)
         libmesh_warning("Found non-integral subdomain_id array; forced to ignore it.\n"
                         "This is technically valid but probably broken.");
 
+    if (abstract_elemtype_id && !elemtype_id)
+        libmesh_warning("Found non-integral ansys_elem_type array; forced to ignore it.\n"
+                        "This is technically valid but probably broken.");
     // Get the number of points from the _vtk_grid object
     const unsigned int vtk_num_points = static_cast<unsigned int>(_vtk_grid->GetNumberOfPoints());
 
@@ -314,6 +320,11 @@ void VTKIO_Updated::read(const std::string &name)
             auto sbdid = subdomain_id->GetValue(i);
             elem->subdomain_id() = sbdid;
         }
+        else if (elemtype_id)
+        {
+            auto elemtype = elemtype_id->GetValue(i);
+            elem->subdomain_id() = elemtype;
+        }
 
         elems_of_dimension[elem->dim()] = true;
 
@@ -325,6 +336,48 @@ void VTKIO_Updated::read(const std::string &name)
         if (elems_of_dimension[i])
             mesh.set_mesh_dimension(i);
 
+    // Repeat for point data
+    std::vector<std::string> point_data_int_array_names;
+    std::string array_name;
+    vtkPointData *point_data = _vtk_grid->GetPointData();
+    for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+    {
+        array_name = point_data->GetArrayName(i);
+        if (!(std::string(array_name).find("A") != std::string::npos || std::string(array_name).find("V") != std::string::npos))
+        {
+            point_data_int_array_names.push_back(array_name);
+        }
+    }
+    mesh.add_node_integers(point_data_int_array_names);
+
+    std::vector<std::string> cell_data_int_array_names;
+    vtkCellData *cell_data = _vtk_grid->GetCellData();
+    for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+    {
+        array_name = cell_data->GetArrayName(i);
+        if (!(std::string(array_name).find("Js") != std::string::npos))
+        {
+            cell_data_int_array_names.push_back(array_name);
+        }
+    }
+    mesh.add_elem_integers(point_data_int_array_names);
+    vtkDataArray *data_array;
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
+        {
+            data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+            elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
+        }
+    }
+    for (const auto &node : mesh.local_node_ptr_range())
+    {
+        for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
+        {
+            data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+            node->set_extra_integer(i, data_array->GetTuple1(node->id()));
+        }
+    }
 #if LIBMESH_DIM < 3
     libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
                          "Cannot open dimension "

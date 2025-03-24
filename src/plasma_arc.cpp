@@ -32,8 +32,7 @@
 #include "libmesh/mesh.h"
 // #include "libmesh/mesh_generation.h"
 #include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
-#include <libmesh/exodusII_io.h>
-#include <libmesh/nemesis_io.h>
+
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
@@ -45,10 +44,9 @@
 #include "../include/system_builder.h"
 #include "../include/node_dof_constraints.h"
 #include "../include/materials_properties.h"
-#include "../include/element_types_map.h" // Add this line to include the ElementTypesMap header
-#include "../include/time_stepper.h"      // Add this line to include the TimeStepper header
+#include "../include/element_types.h" // Add this line to include the ElementTypesMap header
+#include "../include/time_stepper.h"  // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
-#include "libmesh/vtk_io.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/petsc_linear_solver.h"
@@ -64,26 +62,25 @@
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
 #include "../include/azimuthal_periodic_boundary.h"
-// Include the necessary header files for vtkDataArray and vtkPointData
-#include <vtkUnstructuredGrid.h>
-#include <vtkDataArray.h>
-#include <vtkPointData.h>
-#include <vtkCellData.h>
-#include <vtkSmartPointer.h>
-#include <vtkXMLPUnstructuredGridReader.h>
-#include <vtkDoubleArray.h>
-#include <vtkIdList.h>
-#include <vtkExtractCells.h>
 
 using namespace libMesh;
 
-void read_and_prepare_mesh(std::shared_ptr<Session> session, Mesh &mesh)
+void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
+{
+    libMesh::out << "Reading element types..." << std::endl;
+    ElementTypesMapCSV elementTypes = readElementTypes(element_types_filepath);
+    auto elementTypesCollector = std::make_shared<ElementTypesCollector>(elementTypes);
+    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = elementTypesCollector;
+}
+
+void read_and_prepare_mesh(std::string mesh_filepath, Mesh &mesh)
 {
     libMesh::out << "Reading mesh..." << std::endl;
+    // mesh.clear();
     if (mesh.comm().rank() == 0)
     {
         VTKIO_Updated vtkio(mesh);
-        vtkio.read(session->mesh_filepath);
+        vtkio.read(mesh_filepath);
     }
     MeshCommunication().broadcast(mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
@@ -120,6 +117,7 @@ int main(int argc, char **argv)
 
     libMesh::out << std::endl
                  << std::endl;
+
     libMesh::out << "Reading PlasmaArc configurations..." << std::endl;
 
     auto session = std::make_shared<Session>(argv[1]);
@@ -128,20 +126,20 @@ int main(int argc, char **argv)
     Mesh mesh(init.comm());
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-
-    libMesh::out << "Reading mesh..." << std::endl;
-    read_and_prepare_mesh(session, mesh);
+    read_and_prepare_mesh(session->mesh_filepath, mesh);
     // mesh.allow_renumbering(false);
-
-    // Read element types
-    std::shared_ptr<ElementTypesMap> elementTypes = readElementTypes(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
-
-    std::shared_ptr<MaterialsMap> materials = readMaterialsProperties(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
 
     libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems.parameters.set<std::shared_ptr<Session>>("session") = session;
+    // Read element types
+
+    read_parse_element_types(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
+    // This will be done much later
+    libMesh::out << "Reading materials properties..." << std::endl;
+    std::shared_ptr<MaterialsMap> materials = readMaterialsProperties(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
+
     // Declare the system and its variables
     SystemBuilder system_builder(equation_systems);
 
@@ -210,33 +208,7 @@ int main(int argc, char **argv)
     // boundaryInfo.print_info();
     // boundaryInfo.print_summary();
 
-    libMesh::out << "Reading loads data..." << std::endl;
-    vtkCellData *cell_data = partitionedGrid->GetCellData();
-    if (cell_data == nullptr)
-    {
-        libmesh_error_msg("Error: vtkGrid does not contain any Cell Data.");
-    }
-
-    // Here I read material properties and assign conductive and non-conductive subdomains
-    libMesh::out << "Reading materials properties..." << std::endl;
-    vtkDataArray *matArray = cell_data->GetArray("ansys_material_type");
-    if (matArray == nullptr)
-    {
-        libmesh_error_msg("Error: 'ansys_material_type' array not found in vtkCellData.");
-    }
-    unsigned int matNum;
-
     // Use a pointer to the local variable
-
-    // Also here you can set the subdomain_id for the conductive elements, just choose
-    libMesh::out << "Identifying conductive domain..." << std::endl;
-    unsigned int k = 0;
-    // std::set<subdomain_id_type> conductive_subdomain;
-    // subdomain_id_type elem_type;
-    // Do this before partitioning the mesh
-    // conductive_subdomain.insert(1);
-
-    // init.comm().set_union(conductive_subdomain);
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     // Get a reference to the system we want to solve
@@ -250,7 +222,7 @@ int main(int argc, char **argv)
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    auto timeStepper = std::make_shared<TimeStepper>(session->config, system);
+    auto timeStepper = std::make_shared<TimeStepper>();
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
     auto element_data_manager = std::make_shared<ElementDataManager>(materials, cell_data, timeStepper);
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
