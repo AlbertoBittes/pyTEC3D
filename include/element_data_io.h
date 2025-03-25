@@ -6,6 +6,7 @@
 #include <vector>
 #include <stdexcept>
 #include <utility> // for std::pair
+#include <cstdint>
 #include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
 
@@ -37,35 +38,6 @@ void writeElementData(std::ofstream &outFile, unsigned int numItems, const std::
 
 template <typename Container>
 void readElementData(std::ifstream &inFile, unsigned int numItems, std::vector<unsigned int> &sizes, std::vector<Container> &containers);
-
-class FileHandler
-{
-public:
-    FileHandler(const std::string &filename)
-    {
-        inFile.open(filename, std::ios::binary);
-        if (!inFile)
-        {
-            libmesh_error_msg("Cannot open file for reading");
-        }
-    }
-
-    ~FileHandler()
-    {
-        if (inFile.is_open())
-        {
-            inFile.close();
-        }
-    }
-
-    std::ifstream &getStream()
-    {
-        return inFile;
-    }
-
-private:
-    std::ifstream inFile;
-};
 
 // int main() {
 //     try {

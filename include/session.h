@@ -16,12 +16,6 @@ class Session
 {
 public:
     Session(const std::string &configFile);
-    void set_output_filepath(unsigned int output_label);
-
-private:
-    void read_config(const std::string &configFile);
-    void create_temp_folder();
-    void create_output_folder();
 
     bool interactive;
     std::string input_mesh_filepath;
@@ -33,6 +27,13 @@ private:
     std::filesystem::path final_output_path;
     std::filesystem::path temp_folder_path; // Add this line
     nlohmann::json config;
+
+    void set_output_filepath(unsigned int output_label);
+    void read_config(const std::string &configFile);
+
+private:
+    void create_temp_folder();
+    void create_output_folder();
 };
 // private:
 //     void checkTransientAnalysisSettings()

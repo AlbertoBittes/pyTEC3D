@@ -207,10 +207,11 @@ int main(int argc, char **argv)
 
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-    Mesh &mesh = read_and_prepare_mesh(session->mesh_filepath, init.comm());
+    Mesh &mesh = read_and_prepare_mesh(session->input_mesh_filepath, init.comm());
     // mesh.allow_renumbering(false);
 
     // Read element types
+    EquationSystems &equation_systems = init_equation_systems(mesh, session);
 
     read_parse_element_types(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
     // This will be done much later
@@ -295,6 +296,7 @@ int main(int argc, char **argv)
     // Initializing variables for transient analysis options
     auto timeStepper = std::make_shared<TimeStepper>();
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
+
     auto element_data_manager = std::make_shared<ElementDataManager>(materials, cell_data, timeStepper);
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
     // Iterate through the time steps
