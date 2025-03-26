@@ -34,6 +34,7 @@ public:
     bool get_write_results() const;
     bool get_transient_effect() const;
     bool get_ramped_load() const;
+    TimeStep *get_parent() { return parent; }
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }

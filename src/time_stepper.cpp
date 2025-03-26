@@ -87,6 +87,11 @@ TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper) : st
                                                                               transient_effect(true),
                                                                               ramped_load(true)
 {
+    if (step == 0)
+        time_beginning = 0.0;
+    else
+        time_beginning = time_stepper.get_time_steps()[step - 1].get_time();
+
     if (time <= 0)
     {
         libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
@@ -96,10 +101,6 @@ TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper) : st
     {
         libmesh_error_msg("Error: Time step " + std::to_string(delta_t) + " is not greater than the previous time step.");
     }
-    if (step == 0)
-        time_beginning = 0.0;
-    else
-        time_beginning = time_stepper.get_time_steps()[step - 1].get_time();
 }
 
 void TimeStep::set_substeps(unsigned int n)

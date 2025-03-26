@@ -5,6 +5,7 @@
 #include <libmesh/equation_systems.h>
 #include <string>
 #include "../include/time_stepper.h"
+#include "../include/loads_bc_io.h" // Add this line to include the definition of BoundaryConditionsMap
 
 // Forward declaration from libMesh
 using namespace libMesh;
@@ -12,18 +13,12 @@ using namespace libMesh;
 class NodalBCConstraint : public System::Constraint
 {
 private:
-    System &_sys;
-    vtkPointData *_pointData; // New attribute to store the vtkPointData pointer
-    unsigned int _dim;
-    std::shared_ptr<TimeStepper> timeStepper;
-
 public:
     bool update_boundary_conditions;
     // Modified constructor to take a vtkPointData pointer
-    NodalBCConstraint(TransientLinearImplicitSystem &system, vtkPointData *pointData, std::shared_ptr<TimeStepper> timeStepper)
+    NodalBCConstraint()
         : _sys(system), _pointData(pointData), update_boundary_conditions(true), timeStepper(timeStepper)
     {
-        _dim = _sys.get_mesh().mesh_dimension();
     }
 
     virtual ~NodalBCConstraint() {}
@@ -31,6 +26,37 @@ public:
     void constrain();
 
     void check_boundary_conditions();
+
+    void update_time_step(Substep &time_substep)
+    {
+        this->time_substep = &time_substep;
+        time_step = time_substep.get_parent();
+    }
+
+    // void set_bc_quantity(std::string load_name)
+    // {
+    //     // Get the load quantity from the cell data
+    //     bc_node = &(*active_bc_map)[load_name];
+    //     bc_node_old = &(*old_bc_map)[load_name];
+    // }
+
+    void update_bc_map(std::unique_ptr<BoundaryConditionsMap> new_bc_map)
+    {
+        // Swap the old load with the new load vector
+        std::swap(old_bc_map, active_bc_map);
+        // Move the new load to the new load vector
+        active_bc_map = std::move(new_bc_map);
+        // After this, oldLoad contains the previous contents of newLoadVector,
+        // and newLoadVector contains the new load.
+    }
+
+    std::unique_ptr<BoundaryConditionsMap> old_bc_map;
+    std::unique_ptr<BoundaryConditionsMap> active_bc_map;
+
+    NodeBoundaryConditions *bc_node;
+    NodeBoundaryConditions *bc_node_old;
+    TimeStep *time_step;
+    Substep *time_substep;
 };
 
 #endif // NODE_DOF_CONSTRAINTS_H

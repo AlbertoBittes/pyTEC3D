@@ -6,10 +6,10 @@
 #include <limits> // for std::numeric_limits
 #include "../include/materials_properties.h"
 
-std::shared_ptr<MaterialsMap> readMaterialsProperties(const std::string &filename)
+MaterialsMap readMaterialsProperties(const std::string &filename)
 {
     libMesh::out << "Reading materials properties..." << std::endl;
-    auto materials = std::make_shared<MaterialsMap>();
+    auto materials = MaterialsMap();
     std::ifstream file(filename);
 
     if (!file.is_open())
@@ -69,13 +69,13 @@ std::shared_ptr<MaterialsMap> readMaterialsProperties(const std::string &filenam
         std::getline(ss, value, ',');
         material.perz = value.empty() ? std::numeric_limits<double>::quiet_NaN() : std::stod(value);
 
-        (*materials)[material_number] = material;
+        materials[material_number] = material;
     }
 
     file.close();
 
     // Validate that murx, mury, and murz are defined for all materials
-    for (const auto &[material_number, material] : *materials)
+    for (const auto &[material_number, material] : materials)
     {
         if (std::isnan(material.murx) || std::isnan(material.mury) || std::isnan(material.murz))
         {

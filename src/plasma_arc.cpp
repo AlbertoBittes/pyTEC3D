@@ -66,12 +66,12 @@
 
 using namespace libMesh;
 
-EquationSystems &init_equation_systems(Mesh &mesh, std::shared_ptr<Session> session)
+EquationSystems &init_equation_systems(Mesh &mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<std::shared_ptr<Session>>("session") = session;
+    equation_systems.parameters.set<Session>("session") = session;
     return equation_systems;
 }
 
@@ -201,21 +201,21 @@ int main(int argc, char **argv)
 
     libMesh::out << "Reading PlasmaArc configurations..." << std::endl;
 
-    auto session = std::make_shared<Session>(argv[1]);
+    Session session(argv[1]);
     // Create a mesh, with dimension to be overridden later, distributed
     // across the default MPI communicator.
 
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-    Mesh &mesh = read_and_prepare_mesh(session->input_mesh_filepath, init.comm());
+    Mesh &mesh = read_and_prepare_mesh(session.input_mesh_filepath, init.comm());
     // mesh.allow_renumbering(false);
 
     // Read element types
     EquationSystems &equation_systems = init_equation_systems(mesh, session);
 
-    read_parse_element_types(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
+    read_parse_element_types(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
     // This will be done much later
-    std::shared_ptr<MaterialsMap> materials = readMaterialsProperties(session->config["Mesh Input Section"]["element_types_filepath"].get<std::string>());
+    std::unique_ptr<MaterialsMap> materials = std::make_unique<MaterialsMap>(readMaterialsProperties(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>()));
 
     // for (auto &elem : mesh.active_local_element_ptr_range())
     // {
@@ -297,7 +297,7 @@ int main(int argc, char **argv)
     auto timeStepper = std::make_shared<TimeStepper>();
     equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
 
-    auto element_data_manager = std::make_shared<ElementDataManager>(materials, cell_data, timeStepper);
+    auto element_data_manager = std::make_shared<ElementDataManager>();
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
     // Iterate through the time steps
 
@@ -309,11 +309,6 @@ int main(int argc, char **argv)
 
     // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
     libMesh::out << "Reading boundary conditions data..." << std::endl;
-    vtkPointData *pointData = partitionedGrid->GetPointData();
-    if (pointData == nullptr)
-    {
-        libmesh_error_msg("Error: vtkGrid does not contain Point Data.");
-    }
     // unsigned int first_idx;
     // unsigned int last_idx;
     // for (int i = 0; i < pointData->GetNumberOfArrays(); i++)
