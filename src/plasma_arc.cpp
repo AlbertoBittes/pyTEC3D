@@ -308,7 +308,6 @@ int main(int argc, char **argv)
     // A static initial step may be required by the user however to get equilibrium
 
     // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
-    libMesh::out << "Reading boundary conditions data..." << std::endl;
     // unsigned int first_idx;
     // unsigned int last_idx;
     // for (int i = 0; i < pointData->GetNumberOfArrays(); i++)
@@ -326,7 +325,8 @@ int main(int argc, char **argv)
 
     // Assign boundary conditions
     libMesh::out << "Setting boundary conditions object..." << std::endl;
-    NodalBCConstraint node_dof_constraints(system, pointData, timeStepper);
+    System &system = equation_systems.get_system(0);
+    NodalBCConstraint node_dof_constraints(system);
     system.attach_constraint_object(node_dof_constraints);
 
     // Compute first step for equilibrium or static analysis

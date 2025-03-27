@@ -2,6 +2,7 @@
 
 void read_boundary_conditions(FileHandler &fileHandler, BoundaryConditionsMap &node_conditions)
 {
+    libMesh::out << "Reading boundary conditions data..." << std::endl;
     std::ifstream &file = fileHandler.getStream();
 
     while (file)

@@ -49,6 +49,7 @@
 #include <vtkCellData.h>
 #include <cmath>
 #include <stdexcept>
+#include "../include/element_data_io.h" // Include the header file for ElementHeader
 
 using namespace libMesh;
 
@@ -83,38 +84,6 @@ void AssemblerLinear::assemble()
     unsigned int n_A_dofs;
     std::vector<dof_id_type> A_indices_var;
 
-    std::string fe_family = eq_sys.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
-    std::string formulation = eq_sys.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
-    std::string order = eq_sys.parameters.get<Session *>("session")->config["Finite Elements Settings"]["approx_order"].get<std::string>();
-    unsigned int dim = eq_sys.get_mesh().mesh_dimension();
-
-    FEType fe_type_vec(Utility::string_to_enum<Order>(order), LAGRANGE_VEC);
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEVectorBase> fe_vec(FEVectorBase::build(eq_sys.get_mesh().mesh_dimension(), fe_type_vec));
-
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(eq_sys.get_mesh().mesh_dimension(), fe_type_vec.default_quadrature_order());
-
-    // Tell the finite element object to use our quadrature rule.
-    fe_vec->attach_quadrature_rule(&qrule);
-
-    // Get a constant reference to the Finite Element type
-    // for the first variable in the system.
-    FEType fe_type_scalar(Utility::string_to_enum<Order>(order), LAGRANGE);
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEBase> fe_scalar(FEBase::build(dim, fe_type_scalar));
-
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule_scalar(dim, fe_type_scalar.default_quadrature_order());
-
-    // Tell the finite element object to use our quadrature rule.
-    fe_scalar->attach_quadrature_rule(&qrule_scalar);
     // Here we define some references to cell-specific data that
     // will be used to assemble the linear system.
     // We begin with the element Jacobian * quadrature weight at each
@@ -150,7 +119,7 @@ void AssemblerLinear::assemble()
     // Get the materials properties
     auto element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
     const TimeStep &time_step = timeStepper->get_time_steps()[timeStepper->get_current_time_step()];
-    ElementBuilder elem_builder(Ke, Ce, Fe, element_data_manager, fe_vec, fe_scalar);
+    ElementBuilder elem_builder(element_data_manager);
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
@@ -164,10 +133,9 @@ void AssemblerLinear::assemble()
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     check_update_matrix();
     unsigned int n_dofs;
-    dof_id_type local_elem_id = 0;
     bool conductive;
     // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
-
+    ElementHeader header;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -177,24 +145,16 @@ void AssemblerLinear::assemble()
             conductive = true;
         else
             conductive = false;
-        element_data_manager->local_elem_id = local_elem_id;
-        if (timeStepper->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
-        {
-            // this can be done at the beginning only
-            dof_map.dof_indices(elem, dof_indices);
-            element_data_manager->dof_indices[local_elem_id] = dof_indices;
-            // Cache the number of degrees of freedom on this element, for
-            // use as a loop bound later.  We use cast_int to explicitly
-            // convert from size() (which may be 64-bit) to unsigned int
-            // (which may be 32-bit but which is definitely enough to count
-            // *local* degrees of freedom.
-            n_dofs = cast_int<unsigned int>(dof_indices.size());
-        }
-        else
-        {
-            dof_indices = element_data_manager->dof_indices[local_elem_id];
-            n_dofs = cast_int<unsigned int>(dof_indices.size());
-        }
+
+        // this can be done at the beginning only
+        dof_map.dof_indices(elem, dof_indices);
+        // Cache the number of degrees of freedom on this element, for
+        // use as a loop bound later.  We use cast_int to explicitly
+        // convert from size() (which may be 64-bit) to unsigned int
+        // (which may be 32-bit but which is definitely enough to count
+        // *local* degrees of freedom.
+        n_dofs = cast_int<unsigned int>(dof_indices.size());
+
         // Get the degree of freedom indices for the
         // current element.  These define where in the global
         // matrix and right-hand-side this element will
@@ -391,7 +351,6 @@ void AssemblerLinear::assemble()
         // Start logging the insertion of the local (element)
         // matrix and vector into the global matrix and vector
         // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
-        local_elem_id++;
     }
     // That's it.  We don't need to do anything else to the
     // PerfLog.  When it goes out of scope (at this function return)

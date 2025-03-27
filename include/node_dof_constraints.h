@@ -16,8 +16,14 @@ private:
 public:
     bool update_boundary_conditions;
     // Modified constructor to take a vtkPointData pointer
-    NodalBCConstraint()
-        : _sys(system), _pointData(pointData), update_boundary_conditions(true), timeStepper(timeStepper)
+    NodalBCConstraint(System &system)
+        : system(system),
+          update_boundary_conditions(true),
+          old_bc_map(nullptr),
+          active_bc_map(nullptr),
+          bc_node(nullptr),
+          bc_node_old(nullptr),
+          time_step(nullptr)
     {
     }
 
@@ -27,10 +33,9 @@ public:
 
     void check_boundary_conditions();
 
-    void update_time_step(Substep &time_substep)
+    void update_time_step(TimeStep &time_step)
     {
-        this->time_substep = &time_substep;
-        time_step = time_substep.get_parent();
+        this->time_step = &time_step;
     }
 
     // void set_bc_quantity(std::string load_name)
@@ -56,7 +61,10 @@ public:
     NodeBoundaryConditions *bc_node;
     NodeBoundaryConditions *bc_node_old;
     TimeStep *time_step;
-    Substep *time_substep;
+
+    bool update_boundary_conditions;
+
+    System &system;
 };
 
 #endif // NODE_DOF_CONSTRAINTS_H

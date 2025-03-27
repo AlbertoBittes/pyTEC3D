@@ -8,9 +8,10 @@
 #include "libmesh/quadrature_gauss.h"
 #include "../include/session.h" // Ensure the Session class is included
 #include <cmath>
+#include "../include/element_types.h" // Include the header defining ElementType
 // Constructor
-ElementBuilder::ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, std::shared_ptr<ElementDataManager> element_data_manager, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar)
-    : Ke(Ke), Ce(Ce), Fe(Fe), element_data_manager(element_data_manager),
+ElementBuilder::ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager)
+    : element_data_manager(element_data_manager),
       JxW_A(fe_vec->get_JxW()),
       JxW_V(fe_scalar->get_JxW()),
       phi_A(fe_vec->get_phi()),
@@ -199,6 +200,10 @@ void ElementBuilder::build_plane13_cond()
     // libmesh_error_msg("build_solid97 is not implemented yet.");
 }
 
+void ElementBuilder::build_element(const ElementType &element_type)
+{
+    // Implementation goes here
+}
 void ElementBuilder::build_element_matrix(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
 {
     this->n_var_dofs = n_dofs_var;

@@ -27,7 +27,7 @@ class ElementBuilder
 {
 public:
     // Constructor
-    ElementBuilder(DenseMatrix<Number> &Ke, DenseMatrix<Number> &Ce, DenseVector<Number> &Fe, std::shared_ptr<ElementDataManager> element_data_manager, const std::unique_ptr<FEVectorBase> &fe_vec, const std::unique_ptr<FEBase> &fe_scalar);
+    ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager);
     void build_element_matrix(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_element_rhs(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
     void build_solid97_cond();
@@ -47,9 +47,9 @@ public:
     // void set_n_var_dofs(unsigned int n) { n_var_dofs = n; }
 
 private:
-    DenseMatrix<Number> &Ke;
-    DenseMatrix<Number> &Ce;
-    DenseVector<Number> &Fe;
+    DenseMatrix<Number> Ke;
+    DenseMatrix<Number> Ce;
+    DenseVector<Number> Fe;
     const std::vector<Real> &JxW_A;
     const std::vector<Real> &JxW_V;
     const std::vector<std::vector<RealGradient>> &phi_A;
@@ -60,6 +60,7 @@ private:
     const std::vector<std::vector<RealGradient>> &dphi_V;
     std::shared_ptr<ElementDataManager> element_data_manager;
     unsigned int n_var_dofs;
+    unsigned int n_dofs;
     // std::vector<std::vector<dof_id_type>> dof_indices_var;
 };
 
@@ -67,7 +68,16 @@ class ElementDataManager
 {
 public:
     // Constructor
-    ElementDataManager();
+    ElementDataManager()
+        : oldLoadsVector(nullptr),
+          activeLoadsVector(nullptr),
+          materials(nullptr),
+          load_array(nullptr),
+          old_load_array(nullptr),
+          time_step(nullptr),
+          time_substep(nullptr)
+    {
+    }
 
     inline void fill_mu_matrix(dof_id_type elem_id)
     {

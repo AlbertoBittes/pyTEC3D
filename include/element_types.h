@@ -95,6 +95,8 @@ public:
     unsigned int quadrature_order;
     unsigned int dimension;
     unsigned int az_dofs;
+    std::unique_ptr<FEBase> fe;
+    std::unique_ptr<FEVectorBase> fe_vec;
 };
 
 class SOLID97Type : public ElementType
@@ -104,6 +106,28 @@ public:
         : ElementType(properties, "FIRST", "LAGRANGE", 0, 3)
     {
         az_dofs = 3;
+
+        FEType fe_type(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(dimension, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
+
+        FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe_vec = FEVectorBase::build(dimension, fe_type_vec);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe_vec->attach_quadrature_rule(&qrule);
     }
 
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
@@ -164,6 +188,28 @@ public:
         : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 3)
     {
         az_dofs = 1;
+
+        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(dimension, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
+
+        FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe_vec = FEVectorBase::build(dimension, fe_type_vec);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe_vec->attach_quadrature_rule(&qrule);
     }
 
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
@@ -224,6 +270,17 @@ public:
         : ElementType(properties, "FIRST", "LAGRANGE", 0, 2)
     {
         az_dofs = 1;
+
+        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(dimension, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
     } // Default dimension for PLANE13 is 2
 
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
@@ -284,6 +341,17 @@ public:
         : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 2)
     {
         az_dofs = 1;
+
+        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(dimension, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(dimension, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
     } // Default dimension for PLANE13 is 2
 
     std::vector<std::string> getActiveVariables(std::string variables_set) const override

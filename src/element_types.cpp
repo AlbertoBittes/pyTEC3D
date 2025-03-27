@@ -45,7 +45,7 @@ ElementTypesMapCSV readElementTypes(const std::string &filename)
         }
 
         ElementTypeProperties properties = {element_type, keyopts};
-        (*elementTypesMap)[ansys_element_type] = properties;
+        elementTypesMap[ansys_element_type] = properties;
     }
 
     file.close();
