@@ -15,6 +15,21 @@ struct ElementTypeProperties
     std::vector<int> keyopts;
 };
 
+struct ScalarShapeFunctions
+{
+    const std::vector<Real> &JxW;
+    const std::vector<std::vector<Real>> &phi;
+    const std::vector<std::vector<RealGradient>> &dphi;
+};
+
+struct VectorShapeFunctions
+{
+    const std::vector<Real> &JxW;
+    const std::vector<std::vector<RealGradient>> &phi_vec;
+    const std::vector<std::vector<RealTensor>> &dphi_vec;
+    const std::vector<std::vector<RealGradient>> &curl_phi_vec;
+};
+
 typedef std::unordered_map<unsigned int, ElementTypeProperties> ElementTypesMapCSV;
 
 ElementTypesMapCSV readElementTypes(const std::string &filename);
@@ -28,6 +43,8 @@ public:
     virtual std::vector<std::string> getActiveVariables(std::string variables_set) const = 0;
 
     virtual std::vector<std::string> getVariables(std::string variables_set) const = 0;
+
+    virtual bool is_conductive() const = 0;
 
     std::string getVariableFEFamily(std::string variable)
     {
@@ -89,6 +106,23 @@ public:
             }
         }
     }
+
+    ScalarShapeFunctions get_scalar_shape_functions() const
+    {
+        // initialize the ShapeFunctions struct
+        // and fill it with the shape functions from the finite element object
+        // and the finite element vector object
+        return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
+    }
+
+    VectorShapeFunctions get_vector_shape_functions() const
+    {
+        // initialize the ShapeFunctions struct
+        // and fill it with the shape functions from the finite element object
+        // and the finite element vector object
+        return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
+    }
+
     ElementTypeProperties properties;
     std::string order;
     std::string fe_family;
@@ -179,6 +213,11 @@ public:
             libmesh_error_msg("Invalid variables set: " + variables_set);
         }
     }
+
+    bool is_conductive() const override
+    {
+        return properties.keyopts[0] == 1;
+    }
 };
 
 class SOLID236Type : public ElementType
@@ -261,6 +300,10 @@ public:
             libmesh_error_msg("Invalid variables set: " + variables_set);
         }
     }
+    bool is_conductive() const override
+    {
+        return properties.keyopts[0] == 1;
+    }
 };
 
 class PLANE13Type : public ElementType
@@ -332,6 +375,10 @@ public:
             libmesh_error_msg("Invalid variables set: " + variables_set);
         }
     }
+    bool is_conductive() const override
+    {
+        return properties.keyopts[0] == 1;
+    }
 };
 
 class PLANE233Type : public ElementType
@@ -402,6 +449,10 @@ public:
         {
             libmesh_error_msg("Invalid variables set: " + variables_set);
         }
+    }
+    bool is_conductive() const override
+    {
+        return properties.keyopts[0] == 1;
     }
 };
 

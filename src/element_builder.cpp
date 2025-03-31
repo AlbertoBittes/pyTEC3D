@@ -9,63 +9,17 @@
 #include "../include/session.h" // Ensure the Session class is included
 #include <cmath>
 #include "../include/element_types.h" // Include the header defining ElementType
+
 // Constructor
 ElementBuilder::ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager)
-    : element_data_manager(element_data_manager),
-      JxW_A(fe_vec->get_JxW()),
-      JxW_V(fe_scalar->get_JxW()),
-      phi_A(fe_vec->get_phi()),
-      dphi_A(fe_vec->get_dphi()),
-      curl_phi_A(fe_vec->get_curl_phi()),
-      //   div_phi_A(fe_vec->get_div_phi()),
-      phi_V(fe_scalar->get_phi()),
-      dphi_V(fe_scalar->get_dphi()),
-      n_var_dofs(0)
+    : element_data_manager(element_data_manager)
 {
 }
 
 // Method
-void ElementBuilder::build_solid97_cond()
+
+void ElementBuilder::build_solid97(const ElementType &element_type, bool build_matrix)
 {
-    // Numeric ids corresponding to each variable in the system
-    unsigned int num_vars = 3;
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    Real CAV_value;
-    unsigned int n_dofs_A;
-    n_dofs_A = n_var_dofs * num_vars;
-    for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
-    {
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
-        {
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
-            {
-                for (unsigned int l = 0; l < 3; l++)
-                {
-                    Ce(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->rs_matrix[l] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
-                    CAV_value = JxW_A[qp] / element_data_manager->rs_matrix[l] * phi_V[dof_i][qp] * dphi_V[dof_j][qp](l);
-                    Ce(dof_i + l * n_var_dofs, n_dofs_A + dof_j) += CAV_value;
-                    Ce(n_dofs_A + dof_j, dof_i + l * n_var_dofs) += CAV_value;
-                    Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW_A[qp] * dphi_V[dof_i][qp](l) / element_data_manager->rs_matrix[l] * dphi_V[dof_j][qp](l);
-                    for (unsigned int k = 0; k < 3; k++)
-                    {
-                        Ke(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_V[dof_i][qp](k) * dphi_V[dof_j][qp](k));
-                    }
-                }
-            }
-        }
-    }
-}
-void ElementBuilder::build_solid97()
-{
-    const unsigned int num_vars = 3;
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -85,54 +39,71 @@ void ElementBuilder::build_solid97()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    unsigned int n_dofs_A;
-    for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
+    ScalarShapeFunctions shape_functions = element_type.get_scalar_shape_functions();
+    VectorShapeFunctions vector_shape_functions = element_type.get_vector_shape_functions();
+
+    unsigned int n_dofs_var = shape_functions.phi.size();
+    unsigned int n_dofs_A = n_dofs_var * 3;
+
+    if (build_matrix)
     {
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
+        if (element_type.is_conductive())
         {
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
-            {
-                for (unsigned int l = 0; l < 3; l++)
+            // Now start logging the element matrix computation
+            Real CAV_value;
+
+            for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
+                    JAe(qp, dof_i) += shape_functions.phi[dof_i][qp];
+
                     for (unsigned int k = 0; k < 3; k++)
-                    {
-                        Ke(dof_i + l * n_var_dofs, dof_j + l * n_var_dofs) += JxW_A[qp] / element_data_manager->mu_matrix[k] * (dphi_V[dof_i][qp](k) * dphi_V[dof_j][qp](k));
-                    }
+                        JVe(qp + k * n_dofs_var, dof_i) += shape_functions.dphi[dof_i][qp](k);
+
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                        for (unsigned int l = 0; l < 3; l++)
+                        {
+                            Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->rs_matrix[l] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
+                            CAV_value = shape_functions.JxW[qp] / element_data_manager->rs_matrix[l] * shape_functions.phi[dof_i][qp] * shape_functions.dphi[dof_j][qp](l);
+                            Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
+                            Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
+                            Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += shape_functions.JxW[qp] * shape_functions.dphi[dof_i][qp](l) / element_data_manager->rs_matrix[l] * shape_functions.dphi[dof_j][qp](l);
+                            for (unsigned int k = 0; k < 3; k++)
+                            {
+                                Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
+                                AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
+                                Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
+                            }
+                        }
                 }
-            }
         }
+        else
+            for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                        for (unsigned int l = 0; l < 3; l++)
+                            for (unsigned int k = 0; k < 3; k++)
+                            {
+                                Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
+                                AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
+                                Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
+                            }
     }
-    // libmesh_error_msg("build_solid97 is not implemented yet.");
+
+    for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var * 3; dof_i++)
+            for (unsigned int k = 0; k < 3; k++)
+                Fe(dof_i + k * n_dofs_var) += shape_functions.JxW[qp] * (shape_functions.phi[dof_i][qp]);
 }
-void ElementBuilder::build_solid97_rhs()
-{
-    const unsigned int num_vars = 3;
-    for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
-    {
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs * num_vars; dof_i++)
-        {
-            for (unsigned int k = 0; k < num_vars; k++)
-            {
-                Fe(dof_i + k * n_var_dofs) += JxW_A[qp] * (phi_V[dof_i][qp]);
-            }
-        }
-    }
-    // libmesh_error_msg("build_solid97 is not implemented yet.");
-}
+
 // Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236()
+void ElementBuilder::build_solid236(const ElementType &element_type, bool build_matrix)
 {
     libmesh_error_msg("build_solid236 is not implemented yet.");
 }
 
-// Temporary placeholder for build_solid236_cond
-void ElementBuilder::build_solid236_cond()
-{
-    libmesh_error_msg("build_solid236_cond is not implemented yet.");
-}
-
 // Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13()
+void ElementBuilder::build_plane13(const ElementType &element_type, bool build_matrix)
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -146,21 +117,6 @@ void ElementBuilder::build_plane13()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
-    {
-        for (unsigned int i = 0; i != n_var_dofs; i++)
-        {
-            for (unsigned int j = 0; j != n_var_dofs; j++)
-                Ke(i, j) += JxW_V[qp] * (dphi_V[i][qp] * dphi_V[j][qp]) / element_data_manager->mu_matrix[0];
-        }
-    }
-}
-// Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13_rhs()
-{
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -170,145 +126,94 @@ void ElementBuilder::build_plane13_rhs()
     // computation separately.
     //
     // Now start logging the element matrix computation
+    // Numeric ids corresponding to each variable in the system
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    ScalarShapeFunctions shape_functions = element_type.get_scalar_shape_functions();
+    VectorShapeFunctions vector_shape_functions = element_type.get_vector_shape_functions();
 
-    for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
+    unsigned int n_dofs_var = shape_functions.phi.size();
+
+    if (build_matrix)
     {
-        for (unsigned int i = 0; i != n_var_dofs; i++)
+        if (element_type.is_conductive())
         {
-            Fe(i) += JxW_V[qp] * phi_V[i][qp];
-        }
-    }
-}
-// Temporary placeholder for build_plane13_cond
-void ElementBuilder::build_plane13_cond()
-{
+            // Now start logging the element matrix computation
+            Real CAV_value;
 
-    for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
-    {
-        // Real js[3];
-        // jsArray->GetTuple(el_id, js);
-        // // Here check that js is 0
-
-        for (unsigned int dof_i = 0; dof_i < n_var_dofs; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_var_dofs; dof_j++)
+            for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
             {
-                // Here you will put the time factor as well
-                Ke(dof_i, dof_j) += JxW_V[qp] * (dphi_V[dof_i][qp] * dphi_V[dof_j][qp]) / element_data_manager->mu_matrix[0];
-                Ce(dof_i, dof_j) += JxW_V[qp] / element_data_manager->rs_matrix[0] * (phi_V[dof_i][qp] * phi_V[dof_j][qp]);
-            }
-    }
-    // libmesh_error_msg("build_solid97 is not implemented yet.");
-}
-
-void ElementBuilder::build_element(const ElementType &element_type)
-{
-    // Implementation goes here
-}
-void ElementBuilder::build_element_matrix(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
-{
-    this->n_var_dofs = n_dofs_var;
-    if (conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
-    {
-        this->build_solid97_cond();
-    }
-    if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
-    {
-        this->build_solid97();
-    }
-    if (conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
-    {
-        this->build_solid236_cond();
-    }
-    if (!conductive && formulation == "AV" && fe_family == "NEDELEC_ONE")
-    {
-        this->build_solid236();
-    }
-    if (conductive && formulation == "AV" && dim == 2)
-    {
-        this->build_plane13_cond();
-    }
-    if (!conductive && formulation == "AV" && dim == 2)
-    {
-        this->build_plane13();
-    }
-}
-void ElementBuilder::build_element_rhs(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family)
-{
-    this->n_var_dofs = n_dofs_var;
-
-    if (!conductive && formulation == "AV" && dim == 3 && fe_family == "LAGRANGE")
-    {
-        this->build_solid97_rhs();
-    }
-    if (!conductive && formulation == "AV" && dim == 2)
-    {
-        this->build_plane13_rhs();
-    }
-}
-
-void ElementBuilder::build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, DenseMatrix<Number> &JAe, DenseMatrix<Number> &JVe, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs)
-{
-
-    if (dim == 2)
-    {
-        for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
-        {
-            for (unsigned int i = 0; i < 2 * n_var_dofs; i++)
-            {
-                if (conductive)
-                    // JAe(0, i) -= JxW_V[qp] * phi_V[i][qp] / phi_V[0].size();
-                    JAe(qp, i) -= phi_V[i][qp];
-
-                for (unsigned int j = 0; j < 2 * n_A_dofs; j++)
-                {
-                    if (j < n_A_dofs)
+                for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
                     {
-                        AAe(i, j) += JxW_V[qp] * std::pow(-1, i) * (phi_V[i / 2][qp] * dphi_V[j][qp](1 - (i % 2)));
+                        if (dof_j < n_dofs_var)
+                            AAe(dof_i, dof_j) += shape_functions.JxW[qp] * std::pow(-1, dof_i) * (shape_functions.phi[dof_i / 2][qp] * shape_functions.dphi[dof_j][qp](1 - (dof_i % 2)));
+
+                        if ((dof_i + dof_j) % 2 == 0)
+                            Me(dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.phi[dof_i / 2][qp] * shape_functions.phi[dof_j / 2][qp]);
                     }
-                    if ((i + j) % 2 == 0)
-                        Me(i, j) += JxW_V[qp] * (phi_V[i / 2][qp] * phi_V[j / 2][qp]);
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                {
+                    // JAe(0, i) -= shape_functions.JxW[qp] * shape_functions.phi[i][qp] / shape_functions.phi[0].size();
+                    JAe(qp, dof_i) -= shape_functions.phi[dof_i][qp];
+
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        Ke(dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / element_data_manager->mu_matrix[0];
+                        Ce(dof_i, dof_j) += shape_functions.JxW[qp] / element_data_manager->rs_matrix[0] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
+                    }
                 }
             }
         }
-    }
-    // if (dim == 2)
-    // {
-    //     for (unsigned int qp = 0; qp < phi_V[0].size(); qp++)
-    //     {
-    //         for (unsigned int i = 0; i < n_A_dofs; i++)
-    //         {
-    //             for (unsigned int j = 0; j < n_A_dofs; j++)
-    //             {
-    //                 AAe(i, j) += JxW_V[qp] * (phi_V[i][qp] * dphi_V[j][qp](1));
-    //                 Me(i, j) += JxW_V[qp] * (phi_V[i][qp] * phi_V[j][qp]);
-    //             }
-    //         }
-    //     }
-    // }
-    else if (dim == 3)
-    {
-        for (unsigned int qp = 0; qp < phi_A[0].size(); qp++)
-        {
-            for (unsigned int i = 0; i < n_A_dofs; i++)
+        else
+            for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
             {
-                if (conductive)
-                {
-                    JAe(qp, i) += phi_V[i][qp];
-                    for (unsigned int k = 0; k < 3; k++)
-                        JVe(qp + k * n_A_dofs, i) += dphi_V[i][qp](k);
-                }
-                for (unsigned int j = 0; j < n_A_dofs; j++)
-                {
-                    for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
                     {
+                        if (dof_j < n_dofs_var)
+                            AAe(dof_i, dof_j) += shape_functions.JxW[qp] * std::pow(-1, dof_i) * (shape_functions.phi[dof_i / 2][qp] * shape_functions.dphi[dof_j][qp](1 - (dof_i % 2)));
+
+                        if ((dof_i + dof_j) % 2 == 0)
+                            Me(dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.phi[dof_i / 2][qp] * shape_functions.phi[dof_j / 2][qp]);
+                    }
+
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                         for (unsigned int l = 0; l < 3; l++)
-                        {
-                            AAe(i + k * n_A_dofs, j + l * n_A_dofs) += JxW_A[qp] * (phi_A[i * 3 + k][qp] * curl_phi_A[j * 3 + l][qp]);
-                            Me(i + k * n_A_dofs, j + l * n_A_dofs) += JxW_A[qp] * (phi_A[i * 3 + k][qp] * phi_A[j * 3 + l][qp]);
-                        }
-                    }
-                }
+                            for (unsigned int k = 0; k < 3; k++)
+                                Ke(dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / element_data_manager->mu_matrix[0];
             }
-        }
+    }
+
+    for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Fe(dof_i) += shape_functions.JxW[qp] * shape_functions.phi[dof_i][qp];
+}
+
+void ElementBuilder::build_element(const ElementType &element_type, bool build_matrix)
+{
+    if (element_type.properties.element_type == "SOLID97")
+    {
+        build_solid97(element_type, build_matrix);
+    }
+    else if (element_type.properties.element_type == "SOLID236")
+    {
+        build_solid236(element_type, build_matrix);
+    }
+    else if (element_type.properties.element_type == "PLANE13")
+    {
+        build_plane13(element_type, build_matrix);
+    }
+    else
+    {
+        libmesh_error_msg("Element type not supported: " + element_type.properties.element_type);
     }
 }

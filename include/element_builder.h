@@ -28,40 +28,24 @@ class ElementBuilder
 public:
     // Constructor
     ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager);
-    void build_element_matrix(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
-    void build_element_rhs(unsigned int n_dofs_var, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family);
-    void build_solid97_cond();
-    void build_solid97();
-    void build_solid97_rhs();
-    void build_solid236();
-    void build_solid236_cond();
-    void build_plane13();
-    void build_plane13_rhs();
-    void build_plane13_cond();
 
-    void build_element_matrix_derived(DenseMatrix<Number> &AAe, DenseMatrix<Number> &Me, DenseMatrix<Number> &JAe, DenseMatrix<Number> &JVe, bool conductive, const std::string &formulation, const unsigned int dim, const std::string &fe_family, unsigned int n_A_dofs);
-    // std::vector<std::vector<dof_id_type>> *get_dof_indices_var() { return &dof_indices_var; }
-    // unsigned int get_n_var_dofs() const { return n_var_dofs; }
-    // unsigned int get_n_var_dofs_old() const { return n_var_dofs_old; }
-    // void set_n_var_dofs_old(unsigned int n) { n_var_dofs_old = n; }
-    // void set_n_var_dofs(unsigned int n) { n_var_dofs = n; }
+    void build_element(const ElementType &element_type, bool build_matrix);
+
+    void build_solid97(const ElementType &element_type, bool build_matrix);
+    void build_solid236(const ElementType &element_type, bool build_matrix);
+    void build_plane13(const ElementType &element_type, bool build_matrix);
 
 private:
     DenseMatrix<Number> Ke;
     DenseMatrix<Number> Ce;
     DenseVector<Number> Fe;
-    const std::vector<Real> &JxW_A;
-    const std::vector<Real> &JxW_V;
-    const std::vector<std::vector<RealGradient>> &phi_A;
-    const std::vector<std::vector<RealTensor>> &dphi_A;
-    const std::vector<std::vector<RealGradient>> &curl_phi_A;
-    // const std::vector<std::vector<Real>> &div_phi_A;
-    const std::vector<std::vector<Real>> &phi_V;
-    const std::vector<std::vector<RealGradient>> &dphi_V;
+
+    DenseMatrix<Number> AAe;
+    DenseMatrix<Number> Me;
+    DenseMatrix<Number> JAe;
+    DenseMatrix<Number> JVe;
+
     std::shared_ptr<ElementDataManager> element_data_manager;
-    unsigned int n_var_dofs;
-    unsigned int n_dofs;
-    // std::vector<std::vector<dof_id_type>> dof_indices_var;
 };
 
 class ElementDataManager
