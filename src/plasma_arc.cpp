@@ -299,6 +299,8 @@ int main(int argc, char **argv)
 
     auto element_data_manager = std::make_shared<ElementDataManager>();
     equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
+
+    auto element_types_collector = equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     // Iterate through the time steps
 
     // Extract the time_steps array

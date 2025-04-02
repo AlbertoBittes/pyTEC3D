@@ -1,24 +1,6 @@
 #include "../include/time_stepper.h"
 #include <fstream>
 
-bool Substep::get_write_results() const
-{
-    return parent->get_write_results();
-}
-
-bool Substep::get_transient_effect() const
-{
-    return parent->get_transient_effect();
-}
-bool Substep::get_ramped_load() const
-{
-    return parent->get_ramped_load();
-}
-// Constructor
-TimeStepper::TimeStepper()
-{
-}
-
 void TimeStepper::set_cumulative_substep(unsigned int cum_substep)
 {
     cumulative_substep = cum_substep;
@@ -34,8 +16,10 @@ void TimeStepper::update_old_solution(TransientLinearImplicitSystem &system)
 {
     *system.old_local_solution = *system.current_local_solution;
 }
-void TimeStepper::read_time_data_from_csv(const std::string &filename)
+
+TimeDataVector &TimeStepper::read_time_data_from_csv(const std::string &filename)
 {
+    TimeDataVector time_data;
     std::ifstream file(filename);
 
     if (!file.is_open())
@@ -65,9 +49,10 @@ void TimeStepper::read_time_data_from_csv(const std::string &filename)
     }
 
     file.close();
+    return time_data;
 }
 
-void TimeStepper::allocate_time_steps()
+void TimeStepper::allocate_time_steps(TimeDataVector &time_data)
 {
     for (const auto &[time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results] : time_data)
     {
@@ -116,7 +101,7 @@ void TimeStep::set_substeps(unsigned int n)
         dt = this->get_delta_t() / n;
         for (unsigned int j = 0; j < n; ++j)
         {
-            this->add_substep(Substep(j, dt, this, this->get_time_stepper()));
+            this->add_substep(Substep(j, dt, *this, this->get_time_stepper()));
         }
     }
 }

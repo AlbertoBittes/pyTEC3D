@@ -7,6 +7,13 @@
 #include <memory>
 #include <vector>
 #include <libmesh/libmesh.h> // Include the libMesh header
+// Define the Finite Element object.
+#include "libmesh/fe.h"
+
+// Define Gauss quadrature rules.
+#include "libmesh/quadrature_gauss.h"
+#include "libmesh/string_to_enum.h"
+
 using namespace libMesh;
 
 struct ElementTypeProperties
@@ -31,6 +38,8 @@ struct VectorShapeFunctions
 };
 
 typedef std::unordered_map<unsigned int, ElementTypeProperties> ElementTypesMapCSV;
+typedef std::unordered_map<unsigned int, ElementType> ElementTypesMap;
+typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 
 ElementTypesMapCSV readElementTypes(const std::string &filename);
 
@@ -459,9 +468,6 @@ public:
 class ElementTypesCollector
 {
 public:
-    typedef std::unordered_map<unsigned int, ElementType> ElementTypesMap;
-    typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
-
     ElementTypesCollector(ElementTypesMapCSV &elementTypesMapCSV)
     {
         collectElementTypes(elementTypesMapCSV);
@@ -472,51 +478,9 @@ public:
         return elementTypes;
     }
 
-    VariableToElementIdsMapType associateVariablesWithElementIds(std::string variables_set) const
-    {
-        VariableToElementIdsMapType variableToElementIds;
+    VariableToElementIdsMapType associateVariablesWithElementIds(std::string variables_set) const;
 
-        for (const auto &pair : elementTypes)
-        {
-            subdomain_id_type elementId = pair.first;
-            const auto &elementType = pair.second;
-
-            for (const auto &variable : elementType.getActiveVariables(variables_set))
-            {
-                variableToElementIds[variable].insert(elementId);
-            }
-        }
-
-        return variableToElementIds;
-    }
-
-private:
-    void collectElementTypes(ElementTypesMapCSV elementTypesMapCSV)
-    {
-        for (const auto &pair : elementTypesMapCSV)
-        {
-            const auto &properties = pair.second;
-
-            // Create the appropriate ElementType object
-            if (properties.element_type == "SOLID97")
-            {
-                elementTypes[pair.first] = SOLID97Type(properties);
-            }
-            else if (properties.element_type == "SOLID236")
-            {
-                elementTypes[pair.first] = SOLID236Type(properties);
-            }
-            else if (properties.element_type == "PLANE13")
-            {
-                elementTypes[pair.first] = PLANE13Type(properties);
-            }
-            else if (properties.element_type == "PLANE233")
-            {
-                elementTypes[pair.first] = PLANE233Type(properties);
-            }
-            // Add more conditions for other ElementType subclasses as needed
-        }
-    }
+    void collectElementTypes(ElementTypesMapCSV elementTypesMapCSV);
 
     ElementTypesMap elementTypes;
 };

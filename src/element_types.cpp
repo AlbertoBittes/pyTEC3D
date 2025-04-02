@@ -51,3 +51,48 @@ ElementTypesMapCSV readElementTypes(const std::string &filename)
     file.close();
     return elementTypesMap;
 }
+
+void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV elementTypesMapCSV)
+{
+    for (const auto &pair : elementTypesMapCSV)
+    {
+        const auto &properties = pair.second;
+
+        // Create the appropriate ElementType object
+        if (properties.element_type == "SOLID97")
+        {
+            elementTypes[pair.first] = SOLID97Type(properties);
+        }
+        else if (properties.element_type == "SOLID236")
+        {
+            elementTypes[pair.first] = SOLID236Type(properties);
+        }
+        else if (properties.element_type == "PLANE13")
+        {
+            elementTypes[pair.first] = PLANE13Type(properties);
+        }
+        else if (properties.element_type == "PLANE233")
+        {
+            elementTypes[pair.first] = PLANE233Type(properties);
+        }
+        // Add more conditions for other ElementType subclasses as needed
+    }
+}
+
+VariableToElementIdsMapType ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
+{
+    VariableToElementIdsMapType variableToElementIds;
+
+    for (const auto &pair : elementTypes)
+    {
+        subdomain_id_type elementId = pair.first;
+        const auto &elementType = pair.second;
+
+        for (const auto &variable : elementType.getActiveVariables(variables_set))
+        {
+            variableToElementIds[variable].insert(elementId);
+        }
+    }
+
+    return variableToElementIds;
+}

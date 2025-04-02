@@ -45,6 +45,7 @@
 #include "../include/json.hpp"
 #include "../include/assembler.h"
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
+#include "../include/element_types.h"   // Include the header file for ElementTypesCollector
 #include <map>                          // Include for std::map
 #include <vtkCellData.h>
 #include <cmath>
@@ -79,10 +80,10 @@ void AssemblerLinear::assemble()
     // Get a constant reference to the Finite Element type
     // for the first variable in the system.
 
-    // this doesn't work in 2D
-    const unsigned int ax_var = system.variable_number("A_x");
-    unsigned int n_A_dofs;
-    std::vector<dof_id_type> A_indices_var;
+    // // this doesn't work in 2D
+    // const unsigned int ax_var = system.variable_number("A_x");
+    // unsigned int n_A_dofs;
+    // std::vector<dof_id_type> A_indices_var;
 
     // Here we define some references to cell-specific data that
     // will be used to assemble the linear system.
@@ -104,23 +105,19 @@ void AssemblerLinear::assemble()
     // and right-hand-side vector contribution.  Following
     // basic finite element terminology we will denote these
     // "Ke" and "Fe". More detail is in example 3.
-    DenseMatrix<Number> KKe;
-    DenseMatrix<Number> CCe;
-    DenseMatrix<Number> Ke;
-    DenseMatrix<Number> Ce;
 
-    DenseVector<Number> FFe;
-    DenseVector<Number> Fe;
     std::vector<Real> old_solution_values;
-    auto timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
     // check correct time stepper get
     // Get the cell data from the vtkGrid
 
     // Get the materials properties
     auto element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
-    const TimeStep &time_step = timeStepper->get_time_steps()[timeStepper->get_current_time_step()];
     ElementBuilder elem_builder(element_data_manager);
 
+    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("time_stepper");
+    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
+
+    Real dt = time_substep->get_dt();
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -131,36 +128,37 @@ void AssemblerLinear::assemble()
     std::vector<dof_id_type> dof_indices;
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
-    check_update_matrix();
+    bool update_matrix = check_update_matrix();
     unsigned int n_dofs;
     bool conductive;
     // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
     ElementHeader header;
-    for (const auto &elem : mesh.active_local_element_ptr_range())
+    ElementHeader header_derived;
+    unsigned int num_integer = mesh.get_elem_integer_index("ansys_element_type");
+    if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     {
-        // Start logging the shape function initialization.
-        // This is done through a simple function call with
-        // the name of the event to log.
-        if (elem->subdomain_id() == 1)
-            conductive = true;
-        else
-            conductive = false;
-
-        // this can be done at the beginning only
-        dof_map.dof_indices(elem, dof_indices);
-        // Cache the number of degrees of freedom on this element, for
-        // use as a loop bound later.  We use cast_int to explicitly
-        // convert from size() (which may be 64-bit) to unsigned int
-        // (which may be 32-bit but which is definitely enough to count
-        // *local* degrees of freedom.
-        n_dofs = cast_int<unsigned int>(dof_indices.size());
-
-        // Get the degree of freedom indices for the
-        // current element.  These define where in the global
-        // matrix and right-hand-side this element will
-        // contribute to.
-        if (timeStepper->get_cumulative_substep() == 1) // Here add the check for nonlinear elements
+        for (const auto &elem : mesh.active_local_element_ptr_range())
         {
+            const ElementType &elem_type = element_types_map[elem->get_extra_integer(num_integer)];
+            // Start logging the shape function initialization.
+            // This is done through a simple function call with
+            // the name of the event to log.
+            conductive = elem_type.is_conductive();
+
+            // this can be done at the beginning only
+            dof_map.dof_indices(elem, dof_indices);
+            // Cache the number of degrees of freedom on this element, for
+            // use as a loop bound later.  We use cast_int to explicitly
+            // convert from size() (which may be 64-bit) to unsigned int
+            // (which may be 32-bit but which is definitely enough to count
+            // *local* degrees of freedom.
+            n_dofs = cast_int<unsigned int>(dof_indices.size());
+
+            // Get the degree of freedom indices for the
+            // current element.  These define where in the global
+            // matrix and right-hand-side this element will
+            // contribute to.
+
             // this can be done at the beginning only
             // dof_map.dof_indices(elem, dof_indices);
             // this->insert_dof_indices(elem_id, dof_indices);
@@ -176,87 +174,100 @@ void AssemblerLinear::assemble()
             // element.  This involves computing the location of the
             // quadrature points (q_point) and the shape functions
             // (phi, dphi) for the current element.
-            if (dim == 3)
-                fe_vec->reinit(elem);
-            if (conductive || dim == 2)
-                fe_scalar->reinit(elem);
 
-            dof_map.dof_indices(elem, A_indices_var, ax_var);
+            // dof_map.dof_indices(elem, A_indices_var, ax_var);
+            // n_A_dofs = std::size(A_indices_var);
             // here maybe you will want to add the A dof indices to a map
-            n_A_dofs = std::size(A_indices_var);
-            element_data_manager->compute_material_properties(conductive);
+
+            element_data_manager->compute_material_properties(elem->id(), conductive);
             // With one variable, we should have the same number of degrees
             // of freedom as shape functions.
             // libmesh_assert_equal_to(n_dofs, phi.size());
 
-            Ke.resize(n_dofs, n_dofs);
-            if (conductive)
-                Ce.resize(n_dofs, n_dofs);
+            // populate header function here
 
-            elem_builder.build_element_matrix(n_A_dofs, conductive, formulation, dim, fe_family);
+            // here call the function to resize the matrices and vectors in Elem_builder according to the header
 
-            DenseMatrix<Number> AAe;
-            DenseMatrix<Number> Me;
-            DenseMatrix<Number> JAe;
-            DenseMatrix<Number> JVe;
+            // Ke.resize(n_dofs, n_dofs);
+            // if (conductive)
+            //     Ce.resize(n_dofs, n_dofs);
 
-            if (dim == 2)
-            {
-                AAe.resize(2 * n_A_dofs, n_A_dofs);
-                Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
-                if (conductive)
-                    JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
-                // JVe.resize(1, n_A_dofs);
-            }
-            else
-            {
-                AAe.resize(3 * n_A_dofs, 3 * n_A_dofs);
-                Me.resize(3 * n_A_dofs, 3 * n_A_dofs);
-                if (conductive)
-                {
-                    JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
-                    // fix this / 3
-                    JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
-                }
-            }
+            elem_builder.build_element(elem, elem_type, true);
 
-            elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, conductive, formulation, dim, fe_family, n_A_dofs);
-            element_data_manager->aae_matrix_derived_map[local_elem_id] = AAe;
-            element_data_manager->me_matrix_derived_map[local_elem_id] = Me;
-            if (conductive)
-            {
-                element_data_manager->jae_matrix_derived_map[local_elem_id] = JAe;
-                if (dim == 3)
-                    element_data_manager->jve_matrix_derived_map[local_elem_id] = JVe;
-            }
+            // Here the function to write the matrices and vectors down to file
 
-            element_data_manager->ke_matrix_map[local_elem_id] = Ke;
-            if (conductive)
-            {
-                element_data_manager->ce_matrix_map[local_elem_id] = Ce;
-                // if (elem_id == 969)
-                // {
-                //     std::ofstream ke_file("../simulations/two_wires_3D/matrix/Ke_matrix"
-                //                           ".txt");
-                //     std::ofstream ce_file("../simulations/two_wires_3D/matrix/Ce_matrix.txt");
+            // if (dim == 2)
+            // {
+            //     AAe.resize(2 * n_A_dofs, n_A_dofs);
+            //     Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
+            //     if (conductive)
+            //         JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
+            //     // JVe.resize(1, n_A_dofs);
+            // }
+            // else
+            // {
+            //     AAe.resize(3 * n_A_dofs, 3 * n_A_dofs);
+            //     Me.resize(3 * n_A_dofs, 3 * n_A_dofs);
+            //     if (conductive)
+            //     {
+            //         JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
+            //         // fix this / 3
+            //         JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
+            //     }
+            // }
 
-                //     if (ke_file.is_open() && ce_file.is_open())
-                //     {
-                //         Ke.print_scientific(ke_file);
-                //         Ce.print_scientific(ce_file);
-                //     }
-                // }
-            }
-            else
-            {
-                Fe.resize(n_dofs);
-                // Here remove conductive from list of parameters
-                elem_builder.build_element_rhs(n_A_dofs, conductive, formulation, dim, fe_family);
-                element_data_manager->rhs_map[local_elem_id] = Fe;
-            }
+            // elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, conductive, formulation, dim, fe_family, n_A_dofs);
+            // element_data_manager->aae_matrix_derived_map[local_elem_id] = AAe;
+            // element_data_manager->me_matrix_derived_map[local_elem_id] = Me;
+            // if (conductive)
+            // {
+            //     element_data_manager->jae_matrix_derived_map[local_elem_id] = JAe;
+            //     if (dim == 3)
+            //         element_data_manager->jve_matrix_derived_map[local_elem_id] = JVe;
+            // }
+
+            // element_data_manager->ke_matrix_map[local_elem_id] = Ke;
+            // if (conductive)
+            // {
+            //     element_data_manager->ce_matrix_map[local_elem_id] = Ce;
+            //     // if (elem_id == 969)
+            //     // {
+            //     //     std::ofstream ke_file("../simulations/two_wires_3D/matrix/Ke_matrix"
+            //     //                           ".txt");
+            //     //     std::ofstream ce_file("../simulations/two_wires_3D/matrix/Ce_matrix.txt");
+
+            //     //     if (ke_file.is_open() && ce_file.is_open())
+            //     //     {
+            //     //         Ke.print_scientific(ke_file);
+            //     //         Ce.print_scientific(ce_file);
+            //     //     }
+            //     // }
+            // }
+
+            // else
+            // {
+            //     Fe.resize(n_dofs);
+            //     // Here remove conductive from list of parameters
+            //     elem_builder.build_element_rhs(n_A_dofs, conductive, formulation, dim, fe_family);
+            //     element_data_manager->rhs_map[local_elem_id] = Fe;
+            // }
         }
-        // in a new time step we could have a different dt, different bcs, different time integration effects
-        // Here add the flag for ferromagnetic
+    }
+
+    // in a new time step we could have a different dt, different bcs, different time integration effects
+    // Here add the flag for ferromagnetic
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        const ElementType &elem_type = element_types_map[elem->get_extra_integer(num_integer)];
+        // Start logging the shape function initialization.
+        // This is done through a simple function call with
+        // the name of the event to log.
+        conductive = elem_type.is_conductive();
+
+        // this can be done at the beginning only
+        dof_map.dof_indices(elem, dof_indices);
+
+        // Read the matrices and vector from file
         if (update_matrix)
         {
             // if (elem_id == 0)
@@ -264,36 +275,31 @@ void AssemblerLinear::assemble()
             //     // libMesh::out << "Time step changed from " << dt2 << " to " << dt1 << std::endl;
             //     libMesh::out << "Computing new system matrix" << std::endl;
             // }
-            KKe.resize(n_dofs, n_dofs);
-            KKe += element_data_manager->ke_matrix_map[local_elem_id];
+
+            // read matrices from file with the function
+            // KKe.resize(n_dofs, n_dofs);
+            // KKe += element_data_manager->ke_matrix_map[local_elem_id];
             if (conductive)
             {
-                if (time_step.get_transient_effect())
+                if (time_substep->get_transient_effect())
                 {
-                    CCe.resize(n_dofs, n_dofs);
-                    CCe += element_data_manager->ce_matrix_map[local_elem_id];
-                    CCe.scale(1 / time_step.get_substeps()[timeStepper->get_current_substep()].get_dt());
-                    KKe += CCe;
-                    // if (elem_id == 969)
-                    // {
-                    //     std::ofstream kke_file("../simulations/two_wires_3D/matrix/Kke_matrix.txt");
-                    //     if (kke_file.is_open())
-                    //     {
-                    //         KKe.print_scientific(kke_file);
-                    //     }
-                    // }
+                    elem_builder.matrices[1].scale(1 / dt);
+                    elem_builder.matrices[0] += elem_builder.matrices[1];
                 }
             }
-            dof_map.constrain_element_matrix(KKe, dof_indices);
-            matrix.add_matrix(KKe, dof_indices);
+
+            dof_map.constrain_element_matrix(elem_builder.matrices[0], dof_indices);
+            matrix.add_matrix(elem_builder.matrices[0], dof_indices);
         }
+
         FFe.resize(n_dofs);
         if (!conductive)
         {
             FFe += element_data_manager->rhs_map[local_elem_id];
+            // Move Js to elem builder
             if (dim == 2)
             {
-                FFe.scale(element_data_manager->compute_js(0));
+                FFe.scale(element_data_manager->compute_js(elem->id(), 0));
             }
             // here understand if it is better to copy the object or to sum from 0
             else
@@ -301,7 +307,7 @@ void AssemblerLinear::assemble()
                 Real js[3];
                 for (unsigned int var = 0; var < 3; var++)
                 {
-                    js[var] = element_data_manager->compute_js(var);
+                    js[var] = element_data_manager->compute_js(elem->id(), var);
                     for (unsigned int y = 0; y < n_A_dofs; y++)
                     {
                         FFe(y + var * n_A_dofs) *= js[var];
@@ -313,12 +319,12 @@ void AssemblerLinear::assemble()
         }
         // here I constrain but I modify later, wrong
         // }
-        if (conductive && time_step.get_transient_effect())
+        if (conductive && time_substep->get_transient_effect())
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
 
             element_data_manager->ce_matrix_map[local_elem_id].vector_mult(FFe, old_solution_values);
-            FFe.scale(1 / time_step.get_substeps()[timeStepper->get_current_substep()].get_dt());
+            FFe.scale(1 / time_substep->get_dt());
             // if (elem_id == 969)
             // {
             //     std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
@@ -357,37 +363,32 @@ void AssemblerLinear::assemble()
     // it will print its log to the screen. Pretty easy, huh?
 }
 
-void AssemblerLinear::check_update_matrix()
+bool AssemblerLinear::check_update_matrix()
 {
-    update_matrix = false;
+    bool update_matrix = false;
 
     const Real relative_epsilon = 1e-9;
-    Real dt1;
-    Real dt2;
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem").get_linear_solver());
-    auto timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
 
-    dt1 = timeStepper->get_time_substep_dt();
-    dt2 = timeStepper->get_prev_time_substep_dt();
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
-    if (timeStepper->get_cumulative_substep() == 1)
+    if (old_time_substep == nullptr)
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
     }
     else
     {
-        if (timeStepper->get_current_substep() > 0)
+        if (time_substep->get_index() > 0)
         {
             update_matrix = false;
             solver->reuse_preconditioner(true);
         }
         else
         {
-            if (std::abs(dt1 - dt2) > relative_epsilon * std::max(std::abs(dt1), std::abs(dt2)) ||
+            if (std::abs(time_substep->get_dt() - old_time_substep->get_dt()) > relative_epsilon * std::max(std::abs(time_substep->get_dt()), std::abs(old_time_substep->get_dt())) ||
                 updated_bcs ||
-                timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect() != timeStepper->get_time_steps()[timeStepper->get_current_time_step() - 1].get_transient_effect())
+                time_substep->get_transient_effect() != old_time_substep->get_transient_effect())
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);
@@ -399,7 +400,7 @@ void AssemblerLinear::check_update_matrix()
             }
         }
     }
-    return;
+    return update_matrix;
 }
 
 void AssemblerLinear::compute_derived_quantities()

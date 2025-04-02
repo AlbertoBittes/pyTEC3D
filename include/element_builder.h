@@ -29,21 +29,15 @@ public:
     // Constructor
     ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager);
 
-    void build_element(const ElementType &element_type, bool build_matrix);
+    void build_element(Elem *elem, const ElementType &element_type, bool build_matrix);
 
-    void build_solid97(const ElementType &element_type, bool build_matrix);
-    void build_solid236(const ElementType &element_type, bool build_matrix);
-    void build_plane13(const ElementType &element_type, bool build_matrix);
+    void build_solid97(Elem *elem, const ElementType &element_type, bool build_matrix);
+    void build_solid236(Elem *elem, const ElementType &element_type, bool build_matrix);
+    void build_plane13(Elem *elem, const ElementType &element_type, bool build_matrix);
 
-private:
-    DenseMatrix<Number> Ke;
-    DenseMatrix<Number> Ce;
-    DenseVector<Number> Fe;
-
-    DenseMatrix<Number> AAe;
-    DenseMatrix<Number> Me;
-    DenseMatrix<Number> JAe;
-    DenseMatrix<Number> JVe;
+    std::vector<DenseMatrix<Number>> matrices;
+    std::vector<DenseMatrix<Number>> matrices_derived;
+    std::vector<DenseVector<Number>> vectors;
 
     std::shared_ptr<ElementDataManager> element_data_manager;
 };
@@ -116,10 +110,10 @@ public:
         return y1 + ((y2 - y1) / (time_step->get_time() - time_step->get_time_beginning())) * (time_substep->get_time() - time_step->get_time_beginning());
     }
 
-    void ElementDataManager::update_time_step(Substep &time_substep)
+    void ElementDataManager::update_time_step(Substep *time_substep)
     {
-        this->time_substep = &time_substep;
-        time_step = time_substep.get_parent();
+        this->time_substep = time_substep;
+        time_step = &(this->time_substep->get_parent());
     }
 
     void set_materials_map(std::unique_ptr<MaterialsMap> materials)
