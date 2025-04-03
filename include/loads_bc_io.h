@@ -3,20 +3,19 @@
 
 // Include necessary headers
 #include <vector>
-#include <fstream>
-#include <stdexcept>
-#include <utility> // for std::pair
-#include <cstdint>
-#include "../include/file_handler.h"
+#include <unordered_map>
+#include <libmesh/libmesh.h>
+
+using namespace libMesh;
 
 typedef std::unordered_map<std::string, Real> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> ElementLoad;
 typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
-void read_boundary_conditions(FileHandler &fileHandler, BoundaryConditionsMap &node_conditions);
+void read_boundary_conditions(std::string &filename, BoundaryConditionsMap &node_conditions);
 
-void read_loads_arrays(FileHandler &fileHandler, LoadArraysMap &loads_arrays);
+void read_loads_arrays(std::string &filename, LoadArraysMap &loads_arrays);
 
 // int main() {
 //     try {

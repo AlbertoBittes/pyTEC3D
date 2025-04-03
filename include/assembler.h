@@ -2,9 +2,8 @@
 #define ASSEMBLER_H
 
 #include "libmesh/equation_systems.h"
-#include "../include/materials_properties.h"
+#include "../include/time_stepper.h"
 #include "../include/json.hpp"
-#include <vtkCellData.h>
 
 using namespace libMesh;
 

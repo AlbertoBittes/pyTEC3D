@@ -12,10 +12,10 @@ unsigned int TimeStepper::get_cumulative_substep() const
 }
 // Method to update the old solution
 // This should go before a solve, but in solve
-void TimeStepper::update_old_solution(TransientLinearImplicitSystem &system)
-{
-    *system.old_local_solution = *system.current_local_solution;
-}
+// void TimeStepper::update_old_solution(TransientLinearImplicitSystem &system)
+// {
+//     *system.old_local_solution = *system.current_local_solution;
+// }
 
 TimeDataVector &TimeStepper::read_time_data_from_csv(const std::string &filename)
 {

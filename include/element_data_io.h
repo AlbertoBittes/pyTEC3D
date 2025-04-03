@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <utility> // for std::pair
 #include <cstdint>
+#include "../include/element_types.h" // Include the header file for ElementTypesCollector
 #include "libmesh/dense_matrix.h"
 #include "libmesh/dense_vector.h"
 
@@ -28,6 +29,10 @@ struct ElementHeader
     //     this->matrixDimensions = matrixDimensions;
     // }
 };
+
+void populate_header_matrices(unsigned int n_dof_objects, std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, ElementHeader &header);
+
+void populate_header_vectors(unsigned int n_dof_objects, std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, ElementHeader &header);
 
 void buildVectors(const ElementHeader &header, std::vector<DenseVector<Number>> &vectors);
 

@@ -26,14 +26,14 @@ void SystemBuilder::initialize()
     std::string order;
 
     std::string vars_set;
-    auto element_types = equation_systems.parameters.get<std::shared_ptr<ElementTypesMapCSV>>("element_types");
-    auto element_types_collector = std::make_shared<ElementTypesCollector>(element_types);
+
+    auto element_types_collector = equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
     // Do not do the loop here, attacht the initialization object to the other systems too
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
-    auto &system = equation_systems.get_system(k);
+    auto &system = equation_systems.get_system(this->system_name);
     if (system.name() == "PlasmaArcLinearSystem")
     {
         vars_set = "DOFVariables";

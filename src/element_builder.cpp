@@ -201,7 +201,7 @@ void ElementBuilder::build_plane13(Elem *elem, const ElementType &element_type, 
 
     for (unsigned int qp = 0; qp < element_type.fe->n_quadrature_points(); qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            vectors[0(dof_i) += shape_functions.JxW[qp] * shape_functions.phi[dof_i][qp];
+            vectors[0](dof_i) += shape_functions.JxW[qp] * shape_functions.phi[dof_i][qp];
 }
 
 void ElementBuilder::build_element(Elem *elem, const ElementType &element_type, bool build_matrix)

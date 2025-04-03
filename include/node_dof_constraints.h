@@ -1,7 +1,6 @@
 #ifndef NODE_DOF_CONSTRAINTS_H
 #define NODE_DOF_CONSTRAINTS_H
 
-#include "vtkPointData.h"
 #include <libmesh/equation_systems.h>
 #include <string>
 #include "../include/time_stepper.h"
@@ -21,8 +20,6 @@ public:
           update_boundary_conditions(true),
           old_bc_map(nullptr),
           active_bc_map(nullptr),
-          bc_node(nullptr),
-          bc_node_old(nullptr),
           time_step(nullptr)
     {
     }
@@ -58,8 +55,6 @@ public:
     std::unique_ptr<BoundaryConditionsMap> old_bc_map;
     std::unique_ptr<BoundaryConditionsMap> active_bc_map;
 
-    NodeBoundaryConditions *bc_node;
-    NodeBoundaryConditions *bc_node_old;
     TimeStep *time_step;
 
     bool update_boundary_conditions;

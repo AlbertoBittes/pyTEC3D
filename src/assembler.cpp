@@ -403,222 +403,222 @@ bool AssemblerLinear::check_update_matrix()
     return update_matrix;
 }
 
-void AssemblerLinear::compute_derived_quantities()
-{
-    const MeshBase &mesh = eq_sys.get_mesh();
-    const unsigned int dim = mesh.mesh_dimension();
+// void AssemblerLinear::compute_derived_quantities()
+// {
+//     const MeshBase &mesh = eq_sys.get_mesh();
+//     const unsigned int dim = mesh.mesh_dimension();
 
-    ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
-    ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
-    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+//     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
+//     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
+//     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
-    const DofMap &dof_map = system.get_dof_map();
-    const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();
-    const DofMap &derived_quantities_system_elem_dof_map = derived_quantities_system_elem.get_dof_map();
+//     const DofMap &dof_map = system.get_dof_map();
+//     const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();
+//     const DofMap &derived_quantities_system_elem_dof_map = derived_quantities_system_elem.get_dof_map();
 
-    std::vector<unsigned int> A_num_var;
-    std::vector<unsigned int> B_num_var;
-    std::vector<unsigned int> J_num_var;
-    unsigned int v_var;
+//     std::vector<unsigned int> A_num_var;
+//     std::vector<unsigned int> B_num_var;
+//     std::vector<unsigned int> J_num_var;
+//     unsigned int v_var;
 
-    A_num_var.push_back(system.variable_number("A_z"));
-    B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
-    B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
-    J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
+//     A_num_var.push_back(system.variable_number("A_z"));
+//     B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
+//     B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
+//     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
 
-    if (dim == 3)
-    {
-        A_num_var.push_back(system.variable_number("A_x"));
-        A_num_var.push_back(system.variable_number("A_y"));
-        v_var = system.variable_number("V");
+//     if (dim == 3)
+//     {
+//         A_num_var.push_back(system.variable_number("A_x"));
+//         A_num_var.push_back(system.variable_number("A_y"));
+//         v_var = system.variable_number("V");
 
-        B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
-        J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
-        J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
-    }
+//         B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
+//         J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
+//         J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
+//     }
 
-    std::shared_ptr<TimeStepper> timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
-    Real dt = timeStepper->get_time_substep_dt();
-    bool trans_effects = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect();
+//     std::shared_ptr<TimeStepper> timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
+//     Real dt = timeStepper->get_time_substep_dt();
+//     bool trans_effects = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect();
 
-    // Storage for the stress dof indices on each element
-    std::vector<std::vector<dof_id_type>> A_dof_indices_var;
-    std::vector<std::vector<dof_id_type>> B_dof_indices_var;
-    std::vector<std::vector<dof_id_type>> J_dof_indices_var;
-    std::vector<dof_id_type> A_scalar_dof_indices_var;
-    std::vector<dof_id_type> B_scalar_dof_indices_var;
-    std::vector<dof_id_type> J_scalar_dof_indices_var;
-    std::vector<dof_id_type> V_indices_var;
+//     // Storage for the stress dof indices on each element
+//     std::vector<std::vector<dof_id_type>> A_dof_indices_var;
+//     std::vector<std::vector<dof_id_type>> B_dof_indices_var;
+//     std::vector<std::vector<dof_id_type>> J_dof_indices_var;
+//     std::vector<dof_id_type> A_scalar_dof_indices_var;
+//     std::vector<dof_id_type> B_scalar_dof_indices_var;
+//     std::vector<dof_id_type> J_scalar_dof_indices_var;
+//     std::vector<dof_id_type> V_indices_var;
 
-    std::shared_ptr<ElementDataManager> element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
+//     std::shared_ptr<ElementDataManager> element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
 
-    DenseVector<Number> Ae;
-    DenseVector<Number> Ae_dt;
-    DenseVector<Number> Ve;
-    DenseVector<Number> Ve_dt;
-    DenseVector<Number> Be;
-    // DenseVector<Number> Fe;
-    DenseVector<Number> Be_q;
-    DenseVector<Number> J_elem;
-    DenseVector<Number> J_elem_A;
-    DenseVector<Number> J_elem_V;
-    // DenseVector<Number> B_elem;
-    // DenseVector<Number> F_elem;
-    char n_J_dofs;
-    if (dim == 2)
-    {
-        n_J_dofs = 1;
-        J_elem.resize(n_J_dofs);
-        // B_elem.resize(2);
-        // F_elem.resize(2);
-    }
-    else
-    {
-        n_J_dofs = 3;
-        J_elem.resize(n_J_dofs);
-        B_elem.resize(n_J_dofs);
-        F_elem.resize(n_J_dofs);
-    }
-    char n_A_dofs;
-    char n_V_dofs;
-    char n_B_dofs;
-    bool conductive;
-    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
-    unsigned int local_elem_idx = 0;
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        element_data_manager->local_elem_id = local_elem_idx;
+//     DenseVector<Number> Ae;
+//     DenseVector<Number> Ae_dt;
+//     DenseVector<Number> Ve;
+//     DenseVector<Number> Ve_dt;
+//     DenseVector<Number> Be;
+//     // DenseVector<Number> Fe;
+//     DenseVector<Number> Be_q;
+//     DenseVector<Number> J_elem;
+//     DenseVector<Number> J_elem_A;
+//     DenseVector<Number> J_elem_V;
+//     // DenseVector<Number> B_elem;
+//     // DenseVector<Number> F_elem;
+//     char n_J_dofs;
+//     if (dim == 2)
+//     {
+//         n_J_dofs = 1;
+//         J_elem.resize(n_J_dofs);
+//         // B_elem.resize(2);
+//         // F_elem.resize(2);
+//     }
+//     else
+//     {
+//         n_J_dofs = 3;
+//         J_elem.resize(n_J_dofs);
+//         B_elem.resize(n_J_dofs);
+//         F_elem.resize(n_J_dofs);
+//     }
+//     char n_A_dofs;
+//     char n_V_dofs;
+//     char n_B_dofs;
+//     bool conductive;
+//     // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+//     unsigned int local_elem_idx = 0;
+//     for (const auto &elem : mesh.active_local_element_ptr_range())
+//     {
+//         element_data_manager->local_elem_id = local_elem_idx;
 
-        if (elem->subdomain_id() == 1)
-            conductive = true;
-        else
-            conductive = false;
+//         if (elem->subdomain_id() == 1)
+//             conductive = true;
+//         else
+//             conductive = false;
 
-        if (!trans_effects)
-            conductive = false;
+//         if (!trans_effects)
+//             conductive = false;
 
-        element_data_manager->compute_material_properties(conductive);
+//         element_data_manager->compute_material_properties(conductive);
 
-        for (unsigned int var = 0; var < A_num_var.size(); var++)
-        {
-            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        }
-        for (unsigned int var = 0; var < B_num_var.size(); var++)
-        {
-            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        }
-        for (unsigned int var = 0; var < A_num_var.size(); var++)
-        {
-            dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-            A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        }
-        dof_map.dof_indices(elem, A_indices_var, a_var);
-        n_A_dofs = std::size(A_indices_var);
-        Ae.resize(n_A_dofs);
-        Ae_dt.resize(n_A_dofs);
+//         for (unsigned int var = 0; var < A_num_var.size(); var++)
+//         {
+//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+//         }
+//         for (unsigned int var = 0; var < B_num_var.size(); var++)
+//         {
+//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+//         }
+//         for (unsigned int var = 0; var < A_num_var.size(); var++)
+//         {
+//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+//         }
+//         dof_map.dof_indices(elem, A_indices_var, a_var);
+//         n_A_dofs = std::size(A_indices_var);
+//         Ae.resize(n_A_dofs);
+//         Ae_dt.resize(n_A_dofs);
 
-        derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
-        n_B_dofs = std::size(B_indices_var);
-        Be_q.resize(n_B_dofs);
-        Be.resize(n_B_dofs);
+//         derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
+//         n_B_dofs = std::size(B_indices_var);
+//         Be_q.resize(n_B_dofs);
+//         Be.resize(n_B_dofs);
 
-        derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
-        B_elem.zero();
-        F_elem.zero();
-        if (conductive)
-        {
-            J_elem.zero();
-            if (dim == 3)
-            {
-                dof_map.dof_indices(elem, V_indices_var, v_var);
-                n_V_dofs = std::size(V_indices_var);
-                Ve.resize(n_V_dofs);
-                Ve_dt.resize(n_V_dofs);
-                J_elem_A.zero();
-                J_elem_V.zero();
-            }
-        }
+//         derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
+//         B_elem.zero();
+//         F_elem.zero();
+//         if (conductive)
+//         {
+//             J_elem.zero();
+//             if (dim == 3)
+//             {
+//                 dof_map.dof_indices(elem, V_indices_var, v_var);
+//                 n_V_dofs = std::size(V_indices_var);
+//                 Ve.resize(n_V_dofs);
+//                 Ve_dt.resize(n_V_dofs);
+//                 J_elem_A.zero();
+//                 J_elem_V.zero();
+//             }
+//         }
 
-        for (std::size_t j = 0; j < n_A_dofs; j++)
-        {
-            Ae(j) = system.current_solution(A_indices_var[j]);
-            if (conductive)
-            {
-                Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+//         for (std::size_t j = 0; j < n_A_dofs; j++)
+//         {
+//             Ae(j) = system.current_solution(A_indices_var[j]);
+//             if (conductive)
+//             {
+//                 Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
 
-                if (dim == 3)
-                {
-                    if (j < n_V_dofs)
-                    {
-                        Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
-                    }
-                }
-            }
-        }
+//                 if (dim == 3)
+//                 {
+//                     if (j < n_V_dofs)
+//                     {
+//                         Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
+//                     }
+//                 }
+//             }
+//         }
 
-        element_data_manager->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
+//         element_data_manager->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
 
-        // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
-        // Note that this gives a discontinuous stress plot on element boundaries, which is
-        // appropriate. We then also get the von Mises stress from the projected stress tensor.
-        element_data_manager->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
+//         // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
+//         // Note that this gives a discontinuous stress plot on element boundaries, which is
+//         // appropriate. We then also get the von Mises stress from the projected stress tensor.
+//         element_data_manager->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
 
-        unsigned int j_qp_size;
-        if (conductive)
-        {
-            if (dim == 2)
-            {
-                j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
-                J_elem_A.resize(j_qp_size);
-                element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
-                for (char k = 0; k < n_J_dofs; k++)
-                    for (char qp = 0; qp < j_qp_size; qp++)
-                        J_elem(k) -= J_elem_A(qp + k) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
-            }
-            else
-            {
-                j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
-                J_elem_A.resize(j_qp_size);
-                J_elem_V.resize(j_qp_size);
-                element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
-                element_data_manager->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
-                for (unsigned int k = 0; k < n_J_dofs; k++)
-                    for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-                        J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
-            }
-        }
-        else
-        {
-            for (unsigned int k = 0; k < n_J_dofs; k++)
-            {
-                J_elem(k) = element_data_manager->compute_js(k);
-            }
-        }
+//         unsigned int j_qp_size;
+//         if (conductive)
+//         {
+//             if (dim == 2)
+//             {
+//                 j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
+//                 J_elem_A.resize(j_qp_size);
+//                 element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
+//                 for (char k = 0; k < n_J_dofs; k++)
+//                     for (char qp = 0; qp < j_qp_size; qp++)
+//                         J_elem(k) -= J_elem_A(qp + k) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
+//             }
+//             else
+//             {
+//                 j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
+//                 J_elem_A.resize(j_qp_size);
+//                 J_elem_V.resize(j_qp_size);
+//                 element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
+//                 element_data_manager->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
+//                 for (unsigned int k = 0; k < n_J_dofs; k++)
+//                     for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
+//                         J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
+//             }
+//         }
+//         else
+//         {
+//             for (unsigned int k = 0; k < n_J_dofs; k++)
+//             {
+//                 J_elem(k) = element_data_manager->compute_js(k);
+//             }
+//         }
 
-        dof_id_type dof_index;
-        // Loop over B_indices_var_values
-        for (unsigned int i = 0; i < n_B_dofs; i++)
-        {
-            dof_index = B_indices_var[i];
-            if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
-                (dof_index < derived_quantities_system.solution->last_local_index()))
-                derived_quantities_system.solution->set(dof_index, Be(i));
-        }
+//         dof_id_type dof_index;
+//         // Loop over B_indices_var_values
+//         for (unsigned int i = 0; i < n_B_dofs; i++)
+//         {
+//             dof_index = B_indices_var[i];
+//             if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
+//                 (dof_index < derived_quantities_system.solution->last_local_index()))
+//                 derived_quantities_system.solution->set(dof_index, Be(i));
+//         }
 
-        for (unsigned int i = 0; i < n_J_dofs; i++)
-        {
-            dof_index = J_indices_var[i];
-            if ((derived_quantities_system_elem.solution->first_local_index() <= dof_index) &&
-                (dof_index < derived_quantities_system_elem.solution->last_local_index()))
-                derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
-        }
-        // Should call close and update when we set vector entries directly
-        local_elem_idx++;
-    }
-    derived_quantities_system.solution->close();
-    derived_quantities_system.update();
-    derived_quantities_system_elem.solution->close();
-    derived_quantities_system_elem.update();
-}
+//         for (unsigned int i = 0; i < n_J_dofs; i++)
+//         {
+//             dof_index = J_indices_var[i];
+//             if ((derived_quantities_system_elem.solution->first_local_index() <= dof_index) &&
+//                 (dof_index < derived_quantities_system_elem.solution->last_local_index()))
+//                 derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
+//         }
+//         // Should call close and update when we set vector entries directly
+//         local_elem_idx++;
+//     }
+//     derived_quantities_system.solution->close();
+//     derived_quantities_system.update();
+//     derived_quantities_system_elem.solution->close();
+//     derived_quantities_system_elem.update();
+// }

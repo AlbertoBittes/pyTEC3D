@@ -148,8 +148,7 @@ void read_parse_element_types(std::string element_types_filepath, EquationSystem
 {
     libMesh::out << "Reading element types..." << std::endl;
     ElementTypesMapCSV elementTypes = readElementTypes(element_types_filepath);
-    auto elementTypesCollector = std::make_shared<ElementTypesCollector>(elementTypes);
-    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = elementTypesCollector;
+    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(elementTypes);
 }
 
 Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)

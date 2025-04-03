@@ -45,7 +45,7 @@ void NodalBCConstraint::constrain()
     }
 
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (this->time_step->get_transient_effect() && system.has_variable("V"))
+    if (!this->time_step->get_transient_effect() && system.has_variable("V"))
     {
         // Apply the constraint for the time derivative of the magnetic vector potential
         std::vector<dof_id_type> dof_indices;

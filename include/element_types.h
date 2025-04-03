@@ -38,7 +38,7 @@ struct VectorShapeFunctions
 };
 
 typedef std::unordered_map<unsigned int, ElementTypeProperties> ElementTypesMapCSV;
-typedef std::unordered_map<unsigned int, ElementType> ElementTypesMap;
+typedef std::unordered_map<unsigned int, std::shared_ptr<ElementType>> ElementTypesMap;
 typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 
 ElementTypesMapCSV readElementTypes(const std::string &filename);
@@ -132,6 +132,10 @@ public:
         return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
     }
 
+    virtual void populate_matrix_idx_size_map() = 0;
+    virtual void populate_derived_matrix_idx_size_map() = 0;
+    virtual void populate_vector_idx_size_map() = 0;
+
     ElementTypeProperties properties;
     std::string order;
     std::string fe_family;
@@ -140,6 +144,9 @@ public:
     unsigned int az_dofs;
     std::unique_ptr<FEBase> fe;
     std::unique_ptr<FEVectorBase> fe_vec;
+    std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
+    std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
+    std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
 };
 
 class SOLID97Type : public ElementType
@@ -173,6 +180,22 @@ public:
         fe_vec->attach_quadrature_rule(&qrule);
     }
 
+    void populate_matrix_idx_size_map() override
+    {
+        matrix_idx_size_map["Ke"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
+        matrix_idx_size_map["Ce"] = {1, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
+    }
+    void populate_derived_matrix_idx_size_map() override
+    {
+        derived_matrix_idx_size_map["Me"] = {0, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
+        derived_matrix_idx_size_map["AAe"] = {1, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
+        derived_matrix_idx_size_map["JAe"] = {2, fe->n_quadrature_points(), fe_vec->n_shape_functions()};
+        derived_matrix_idx_size_map["JVe"] = {3, 3 * fe->n_quadrature_points(), fe_vec->n_shape_functions()};
+    }
+    void populate_vector_idx_size_map() override
+    {
+        vector_idx_size_map["Fe"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
+    }
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
@@ -335,15 +358,30 @@ public:
         fe->attach_quadrature_rule(&qrule);
     } // Default dimension for PLANE13 is 2
 
+    void populate_matrix_idx_size_map() override
+    {
+        matrix_idx_size_map["Ke"] = {0, fe->n_shape_functions(), fe->n_shape_functions()};
+        matrix_idx_size_map["Ce"] = {1, fe->n_shape_functions(), fe->n_shape_functions()};
+    }
+    void populate_derived_matrix_idx_size_map() override
+    {
+        derived_matrix_idx_size_map["Me"] = {0, 2 * fe->n_shape_functions(), 2 * fe->n_shape_functions()};
+        derived_matrix_idx_size_map["AAe"] = {1, 2 * fe->n_shape_functions(), fe->n_shape_functions()};
+        derived_matrix_idx_size_map["JAe"] = {2, fe->n_quadrature_points(), fe->n_shape_functions()};
+    }
+    void populate_vector_idx_size_map() override
+    {
+        vector_idx_size_map["Fe"] = {0, fe->n_shape_functions()};
+    }
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
         {
             std::vector<std::string> variables = {"A_z"};
-            if (properties.keyopts[0] == 1)
-            {
-                variables.push_back("V");
-            }
+            // if (properties.keyopts[0] == 1)
+            // {
+            //     variables.push_back("V");
+            // }
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")

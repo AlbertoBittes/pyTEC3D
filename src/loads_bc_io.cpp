@@ -1,9 +1,15 @@
 #include "../include/loads_bc_io.h"
+#include <fstream>
 
-void read_boundary_conditions(FileHandler &fileHandler, BoundaryConditionsMap &node_conditions)
+void read_boundary_conditions(std::string &file_name, BoundaryConditionsMap &node_conditions)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
-    std::ifstream &file = fileHandler.getStream();
+    // Open the file for reading in binary mode
+    std::ifstream file(file_name, std::ios::binary);
+    if (!file.is_open())
+    {
+        libmesh_error_msg("Error: Could not open file " + file_name);
+    }
 
     while (file)
     {
@@ -40,12 +46,19 @@ void read_boundary_conditions(FileHandler &fileHandler, BoundaryConditionsMap &n
             it->second.emplace(std::move(label_str), value);
         }
     }
+    // Close the file when done
+    file.close();
 }
 
-void read_loads_arrays(FileHandler &fileHandler, LoadArraysMap &loads_arrays)
+void read_loads_arrays(std::string &file_name, LoadArraysMap &loads_arrays)
 {
-    std::ifstream &file = fileHandler.getStream();
-
+    libMesh::out << "Reading loads data..." << std::endl;
+    // Open the file for reading in binary mode
+    std::ifstream file(file_name, std::ios::binary);
+    if (!file.is_open())
+    {
+        libmesh_error_msg("Error: Could not open file " + file_name);
+    }
     while (file)
     {
         uint8_t name_length;
@@ -100,4 +113,6 @@ void read_loads_arrays(FileHandler &fileHandler, LoadArraysMap &loads_arrays)
             }
         }
     }
+    // Close the file when done
+    file.close();
 }

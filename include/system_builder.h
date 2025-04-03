@@ -10,13 +10,17 @@ class SystemBuilder : public System::Initialization
 {
 public:
     // Modified constructor to accept additional parameters
-    SystemBuilder(EquationSystems &eq_systems)
-        : equation_systems(eq_systems) {}
+    SystemBuilder(EquationSystems &eq_systems, std::string &system_name)
+        : equation_systems(eq_systems)
+    {
+        this->system_name = system_name;
+    }
 
     void initialize() override;
 
 private:
     EquationSystems &equation_systems;
+    std::string system_name;
 };
 
 #endif // SYSTEM_BUILDER_H
