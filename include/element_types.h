@@ -24,9 +24,9 @@ struct ElementTypeProperties
 
 struct ScalarShapeFunctions
 {
-    const std::vector<Real> &JxW;
-    const std::vector<std::vector<Real>> &phi;
-    const std::vector<std::vector<RealGradient>> &dphi;
+    const std::vector<Real> JxW;
+    const std::vector<std::vector<Real>> phi;
+    const std::vector<std::vector<RealGradient>> dphi;
 };
 
 struct VectorShapeFunctions
@@ -40,8 +40,6 @@ struct VectorShapeFunctions
 typedef std::unordered_map<unsigned int, ElementTypeProperties> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::shared_ptr<ElementType>> ElementTypesMap;
 typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
-
-ElementTypesMapCSV readElementTypes(const std::string &filename);
 
 class ElementType
 {
@@ -116,7 +114,7 @@ public:
         }
     }
 
-    ScalarShapeFunctions get_scalar_shape_functions() const
+    const ScalarShapeFunctions &get_scalar_shape_functions() const
     {
         // initialize the ShapeFunctions struct
         // and fill it with the shape functions from the finite element object
@@ -124,7 +122,7 @@ public:
         return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
     }
 
-    VectorShapeFunctions get_vector_shape_functions() const
+    const VectorShapeFunctions &get_vector_shape_functions() const
     {
         // initialize the ShapeFunctions struct
         // and fill it with the shape functions from the finite element object
@@ -136,6 +134,13 @@ public:
     virtual void populate_derived_matrix_idx_size_map() = 0;
     virtual void populate_vector_idx_size_map() = 0;
 
+    // think if this can be don with n_dofs
+    void populate_all()
+    {
+        this->populate_matrix_idx_size_map();
+        this->populate_derived_matrix_idx_size_map();
+        this->populate_vector_idx_size_map();
+    }
     ElementTypeProperties properties;
     std::string order;
     std::string fe_family;
@@ -182,11 +187,13 @@ public:
 
     void populate_matrix_idx_size_map() override
     {
+        // Check this when you have periodic BCs
         matrix_idx_size_map["Ke"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
         matrix_idx_size_map["Ce"] = {1, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
     }
     void populate_derived_matrix_idx_size_map() override
     {
+        // Check this when you have periodic BCs
         derived_matrix_idx_size_map["Me"] = {0, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
         derived_matrix_idx_size_map["AAe"] = {1, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
         derived_matrix_idx_size_map["JAe"] = {2, fe->n_quadrature_points(), fe_vec->n_shape_functions()};
@@ -227,7 +234,7 @@ public:
     {
         if (variables_set == "DOFVariables")
         {
-            std::vector<std::string> variables = {"A_x", "A_y", "A_z", "v"};
+            std::vector<std::string> variables = {"A_x", "A_y", "A_z", "V"};
             return variables;
         }
         else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -373,6 +380,7 @@ public:
     {
         vector_idx_size_map["Fe"] = {0, fe->n_shape_functions()};
     }
+
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
@@ -497,7 +505,7 @@ public:
             libmesh_error_msg("Invalid variables set: " + variables_set);
         }
     }
-    bool is_conductive() const override
+    inline bool is_conductive() const override
     {
         return properties.keyopts[0] == 1;
     }
@@ -508,17 +516,19 @@ class ElementTypesCollector
 public:
     ElementTypesCollector(ElementTypesMapCSV &elementTypesMapCSV)
     {
-        collectElementTypes(elementTypesMapCSV);
+        // collectElementTypes(elementTypesMapCSV);
     }
 
-    const ElementTypesMap &getElementTypes() const
+    ElementTypesMap &getElementTypes()
     {
         return elementTypes;
     }
 
-    VariableToElementIdsMapType associateVariablesWithElementIds(std::string variables_set) const;
+    ElementTypesMapCSV &readElementTypes(const std::string &filename);
 
-    void collectElementTypes(ElementTypesMapCSV elementTypesMapCSV);
+    VariableToElementIdsMapType &associateVariablesWithElementIds(std::string variables_set) const;
+
+    void collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV);
 
     ElementTypesMap elementTypes;
 };

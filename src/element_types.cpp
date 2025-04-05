@@ -8,7 +8,7 @@
 #include <limits> // for std::numeric_limits
 #include "../include/element_types.h"
 
-ElementTypesMapCSV readElementTypes(const std::string &filename)
+ElementTypesMapCSV &ElementTypesCollector::readElementTypes(const std::string &filename)
 {
     ElementTypesMapCSV elementTypesMap;
     std::ifstream file(filename);
@@ -52,7 +52,7 @@ ElementTypesMapCSV readElementTypes(const std::string &filename)
     return elementTypesMap;
 }
 
-void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV elementTypesMapCSV)
+void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV)
 {
     for (const auto &pair : elementTypesMapCSV)
     {
@@ -61,25 +61,25 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV elementTypesM
         // Create the appropriate ElementType object
         if (properties.element_type == "SOLID97")
         {
-            elementTypes[pair.first] = SOLID97Type(properties);
+            elementTypes[pair.first] = std::make_shared<SOLID97Type>(SOLID97Type(properties));
         }
         else if (properties.element_type == "SOLID236")
         {
-            elementTypes[pair.first] = SOLID236Type(properties);
+            elementTypes[pair.first] = std::make_shared<SOLID236Type>(SOLID236Type(properties));
         }
         else if (properties.element_type == "PLANE13")
         {
-            elementTypes[pair.first] = PLANE13Type(properties);
+            elementTypes[pair.first] = std::make_shared<PLANE13Type>(PLANE13Type(properties));
         }
         else if (properties.element_type == "PLANE233")
         {
-            elementTypes[pair.first] = PLANE233Type(properties);
+            elementTypes[pair.first] = std::make_shared<PLANE233Type>(PLANE233Type(properties));
         }
         // Add more conditions for other ElementType subclasses as needed
     }
 }
 
-VariableToElementIdsMapType ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
+VariableToElementIdsMapType &ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
 {
     VariableToElementIdsMapType variableToElementIds;
 

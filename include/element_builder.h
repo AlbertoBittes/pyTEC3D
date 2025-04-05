@@ -16,6 +16,7 @@
 #include <vector>
 #include <map>
 #include "../include/time_stepper.h"
+#include "../include/element_types.h" // Include the header file for ElementTypesMap
 #include "../include/loads_bc_io.h"
 #include "../include/materials_properties.h" // Add this line to include the definition of MaterialsProperties
 
@@ -29,11 +30,17 @@ public:
     // Constructor
     ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager);
 
-    void build_element(Elem *elem, const ElementType &element_type, bool build_matrix);
+    // here for performance, delete all the arguments passing and add the objects as attributes
+    void build_element(Elem *elem, std::shared_ptr<ElementType> element_type);
 
-    void build_solid97(Elem *elem, const ElementType &element_type, bool build_matrix);
-    void build_solid236(Elem *elem, const ElementType &element_type, bool build_matrix);
-    void build_plane13(Elem *elem, const ElementType &element_type, bool build_matrix);
+    void build_solid97(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void build_solid236(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void build_plane13(Elem *elem, std::shared_ptr<ElementType> element_type);
+
+    void apply_load(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void apply_load_solid97(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void apply_load_solid236(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void apply_load_plane13(Elem *elem, std::shared_ptr<ElementType> element_type);
 
     std::vector<DenseMatrix<Number>> matrices;
     std::vector<DenseMatrix<Number>> matrices_derived;

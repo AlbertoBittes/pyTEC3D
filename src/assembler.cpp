@@ -46,6 +46,7 @@
 #include "../include/assembler.h"
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
 #include "../include/element_types.h"   // Include the header file for ElementTypesCollector
+#include "../include/element_data_io.h" // Include the header file for ElementDataManager
 #include <map>                          // Include for std::map
 #include <vtkCellData.h>
 #include <cmath>
@@ -71,52 +72,23 @@ void AssemblerLinear::assemble()
     // Get a reference to the LinearImplicitSystem we are solving
     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
 
+    const auto &comm = eq_sys.comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
     const DofMap &dof_map = system.get_dof_map();
 
-    // Get a constant reference to the Finite Element type
-    // for the first variable in the system.
+    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
 
-    // // this doesn't work in 2D
-    // const unsigned int ax_var = system.variable_number("A_x");
-    // unsigned int n_A_dofs;
-    // std::vector<dof_id_type> A_indices_var;
-
-    // Here we define some references to cell-specific data that
-    // will be used to assemble the linear system.
-    // We begin with the element Jacobian * quadrature weight at each
-    // integration point.
-    // const std::vector<Real> &JxW = fe->get_JxW();
-
-    // // The element shape functions evaluated at the quadrature points.
-    // const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // // The element shape function gradients for the velocity
-    // // variables evaluated at the quadrature points.
-    // const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-    // const Real time_factor = eq_sys.parameters.get<Real>("time_factor");
-    // const unsigned int time_step = eq_sys.parameters.get<unsigned int>("time_step");
-
-    // Define data structures to contain the element matrix
-    // and right-hand-side vector contribution.  Following
-    // basic finite element terminology we will denote these
-    // "Ke" and "Fe". More detail is in example 3.
-
-    std::vector<Real> old_solution_values;
-    // check correct time stepper get
-    // Get the cell data from the vtkGrid
-
-    // Get the materials properties
     auto element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
     ElementBuilder elem_builder(element_data_manager);
 
-    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("time_stepper");
+    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
 
+    std::vector<dof_id_type> dof_indices;
+    std::vector<Real> old_solution_values;
     Real dt = time_substep->get_dt();
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
@@ -125,34 +97,51 @@ void AssemblerLinear::assemble()
     // This vector will hold the degree of freedom indices for
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
-    std::vector<dof_id_type> dof_indices;
+
     // The global system matrix
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     bool update_matrix = check_update_matrix();
     unsigned int n_dofs;
     bool conductive;
-    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
-    ElementHeader header;
-    ElementHeader header_derived;
+
+    std::filesystem::path filepath;
+    std::string mtrc_filename;
+
     unsigned int num_integer = mesh.get_elem_integer_index("ansys_element_type");
     if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     {
+        mtrc_filename = "mtrc_" + std::to_string(comm.rank()) + ".temp";
+        filepath = session->temp_folder_path / mtrc_filename;
+        std::ofstream mtrc_output_file(filepath);
+        if (!mtrc_output_file.is_open())
+        {
+            libmesh_error_msg("Failed to open element data file for writing.");
+        }
+
+        mtrc_filename = "der_mtrc_" + std::to_string(comm.rank()) + ".temp";
+        filepath = session->temp_folder_path / mtrc_filename;
+        std::ofstream der_mtrc_output_file(filepath);
+
+        if (!der_mtrc_output_file.is_open())
+        {
+            libmesh_error_msg("Failed to open element data file for writing.");
+        }
+
+        mtrc_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+        filepath = session->temp_folder_path / mtrc_filename;
+        std::ofstream rhs_output_file(filepath);
+        if (!rhs_output_file.is_open())
+        {
+            libmesh_error_msg("Failed to open element data file for writing.");
+        }
+
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            const ElementType &elem_type = element_types_map[elem->get_extra_integer(num_integer)];
+            std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(num_integer)];
             // Start logging the shape function initialization.
             // This is done through a simple function call with
             // the name of the event to log.
-            conductive = elem_type.is_conductive();
-
-            // this can be done at the beginning only
-            dof_map.dof_indices(elem, dof_indices);
-            // Cache the number of degrees of freedom on this element, for
-            // use as a loop bound later.  We use cast_int to explicitly
-            // convert from size() (which may be 64-bit) to unsigned int
-            // (which may be 32-bit but which is definitely enough to count
-            // *local* degrees of freedom.
-            n_dofs = cast_int<unsigned int>(dof_indices.size());
+            conductive = elem_type->is_conductive();
 
             // Get the degree of freedom indices for the
             // current element.  These define where in the global
@@ -195,7 +184,11 @@ void AssemblerLinear::assemble()
             elem_builder.build_element(elem, elem_type, true);
 
             // Here the function to write the matrices and vectors down to file
+            writeElementMatrices(mtrc_output_file, elem_builder.matrices);
 
+            writeElementMatrices(der_mtrc_output_file, elem_builder.matrices_derived);
+
+            writeElementVectors(rhs_output_file, elem_builder.vectors);
             // if (dim == 2)
             // {
             //     AAe.resize(2 * n_A_dofs, n_A_dofs);
@@ -252,79 +245,78 @@ void AssemblerLinear::assemble()
             //     element_data_manager->rhs_map[local_elem_id] = Fe;
             // }
         }
+        mtrc_output_file.close();
+        der_mtrc_output_file.close();
+        rhs_output_file.close();
     }
 
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
+
+    mtrc_filename = "mtrc_" + std::to_string(comm.rank()) + ".temp";
+    filepath = session->temp_folder_path / mtrc_filename;
+    std::ifstream mtrc_input_file(filepath);
+    if (!mtrc_input_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for reading.");
+    }
+
+    mtrc_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = session->temp_folder_path / mtrc_filename;
+    std::ifstream rhs_input_file(filepath);
+    if (!rhs_input_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for reading.");
+    }
+
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        const ElementType &elem_type = element_types_map[elem->get_extra_integer(num_integer)];
+        std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(num_integer)];
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        conductive = elem_type.is_conductive();
+        conductive = elem_type->is_conductive();
 
         // this can be done at the beginning only
         dof_map.dof_indices(elem, dof_indices);
-
+        // Cache the number of degrees of freedom on this element, for
+        // use as a loop bound later.  We use cast_int to explicitly
+        // convert from size() (which may be 64-bit) to unsigned int
+        // (which may be 32-bit but which is definitely enough to count
+        // *local* degrees of freedom.
+        n_dofs = cast_int<unsigned int>(dof_indices.size());
         // Read the matrices and vector from file
+
+        // if (elem_id == 0)
+        // {
+        //     // libMesh::out << "Time step changed from " << dt2 << " to " << dt1 << std::endl;
+        //     libMesh::out << "Computing new system matrix" << std::endl;
+        // }
+
+        readElementMatrices(mtrc_input_file, elem_builder.matrices);
+        elem_builder.matrices[1].scale(1 / dt);
         if (update_matrix)
         {
-            // if (elem_id == 0)
-            // {
-            //     // libMesh::out << "Time step changed from " << dt2 << " to " << dt1 << std::endl;
-            //     libMesh::out << "Computing new system matrix" << std::endl;
-            // }
-
-            // read matrices from file with the function
-            // KKe.resize(n_dofs, n_dofs);
-            // KKe += element_data_manager->ke_matrix_map[local_elem_id];
             if (conductive)
-            {
                 if (time_substep->get_transient_effect())
-                {
-                    elem_builder.matrices[1].scale(1 / dt);
                     elem_builder.matrices[0] += elem_builder.matrices[1];
-                }
-            }
 
             dof_map.constrain_element_matrix(elem_builder.matrices[0], dof_indices);
             matrix.add_matrix(elem_builder.matrices[0], dof_indices);
         }
 
-        FFe.resize(n_dofs);
-        if (!conductive)
-        {
-            FFe += element_data_manager->rhs_map[local_elem_id];
-            // Move Js to elem builder
-            if (dim == 2)
-            {
-                FFe.scale(element_data_manager->compute_js(elem->id(), 0));
-            }
-            // here understand if it is better to copy the object or to sum from 0
-            else
-            {
-                Real js[3];
-                for (unsigned int var = 0; var < 3; var++)
-                {
-                    js[var] = element_data_manager->compute_js(elem->id(), var);
-                    for (unsigned int y = 0; y < n_A_dofs; y++)
-                    {
-                        FFe(y + var * n_A_dofs) *= js[var];
-                    }
-                }
-            }
-            // dof_map.constrain_element_vector(FFe, dof_indices);
-            // system.rhs->add_vector(FFe, dof_indices);
-        }
+        readElementVectors(rhs_input_file, elem_builder.vectors);
+
+        elem_builder.apply_load(elem, elem_type);
+        // dof_map.constrain_element_vector(FFe, dof_indices);
+        // system.rhs->add_vector(FFe, dof_indices);
         // here I constrain but I modify later, wrong
         // }
         if (conductive && time_substep->get_transient_effect())
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
 
-            element_data_manager->ce_matrix_map[local_elem_id].vector_mult(FFe, old_solution_values);
-            FFe.scale(1 / time_substep->get_dt());
+            elem_builder.matrices[1].vector_mult_add(elem_builder.vectors[0], 1, old_solution_values);
             // if (elem_id == 969)
             // {
             //     std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
@@ -334,34 +326,37 @@ void AssemblerLinear::assemble()
             //     }
             // }
         }
-        dof_map.constrain_element_vector(FFe, dof_indices);
-        system.rhs->add_vector(FFe, dof_indices);
-        // Matrix changes when we have nonlinearities or different dt
 
-        // Zero the element matrix and right-hand side before
-        // summing them.  We use the resize member here because
-        // the number of degrees of freedom might have changed from
-        // the last element.  Note that this will be the case if the
-        // element type is different (i.e. the last element was a
-        // triangle, now we are on a quadrilateral).
-
-        // If this assembly program were to be used on an adaptive mesh,
-        // we would have to apply any hanging node constraint equations
-        // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
-        // to impose a inhomogeneous Dirichlet boundary conditions.
-
-        // The element matrix and right-hand-side are now built
-        // for this element.  Add them to the global matrix and
-        // right-hand-side vector.  The SparseMatrix::add_matrix()
-        // and NumericVector::add_vector() members do this for us.
-        // Start logging the insertion of the local (element)
-        // matrix and vector into the global matrix and vector
-        // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
+        dof_map.constrain_element_vector(elem_builder.vectors[0], dof_indices);
+        system.rhs->add_vector(elem_builder.vectors[0], dof_indices);
     }
-    // That's it.  We don't need to do anything else to the
-    // PerfLog.  When it goes out of scope (at this function return)
-    // it will print its log to the screen. Pretty easy, huh?
+    mtrc_input_file.close();
+    rhs_input_file.close();
+    // Matrix changes when we have nonlinearities or different dt
+
+    // Zero the element matrix and right-hand side before
+    // summing them.  We use the resize member here because
+    // the number of degrees of freedom might have changed from
+    // the last element.  Note that this will be the case if the
+    // element type is different (i.e. the last element was a
+    // triangle, now we are on a quadrilateral).
+
+    // If this assembly program were to be used on an adaptive mesh,
+    // we would have to apply any hanging node constraint equations
+    // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
+    // to impose a inhomogeneous Dirichlet boundary conditions.
+
+    // The element matrix and right-hand-side are now built
+    // for this element.  Add them to the global matrix and
+    // right-hand-side vector.  The SparseMatrix::add_matrix()
+    // and NumericVector::add_vector() members do this for us.
+    // Start logging the insertion of the local (element)
+    // matrix and vector into the global matrix and vector
+    // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
 }
+// That's it.  We don't need to do anything else to the
+// PerfLog.  When it goes out of scope (at this function return)
+// it will print its log to the screen. Pretty easy, huh?
 
 bool AssemblerLinear::check_update_matrix()
 {

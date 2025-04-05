@@ -30,8 +30,6 @@ public:
 
     void set_output_filepath(unsigned int output_label);
     void read_config(const std::string &configFile);
-
-private:
     void create_temp_folder();
     void create_output_folder();
 };

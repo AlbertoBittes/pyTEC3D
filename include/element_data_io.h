@@ -13,36 +13,21 @@
 
 using namespace libMesh;
 
-struct ElementHeader
-{
-    unsigned int numMatrices;
-    unsigned int numVectors;
-    std::vector<unsigned int> matrixSizes;                               // Each entry is the size of a matrix (rows * cols)
-    std::vector<unsigned int> vectorSizes;                               // Each entry is the size of a vector
-    std::vector<std::pair<unsigned int, unsigned int>> matrixDimensions; // Each entry is a pair (rows, cols)
+void buildVectors(std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map, std::vector<DenseVector<Number>> &vectors);
 
-    // void modify(unsigned int numMatrices, unsigned int numVectors, const std::vector<unsigned int>& matrixSizes, const std::vector<unsigned int>& vectorSizes, const std::vector<std::pair<unsigned int, unsigned int>>& matrixDimensions) {
-    //     this->numMatrices = numMatrices;
-    //     this->numVectors = numVectors;
-    //     this->matrixSizes = matrixSizes;
-    //     this->vectorSizes = vectorSizes;
-    //     this->matrixDimensions = matrixDimensions;
-    // }
-};
+void buildMatrices(std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, std::vector<DenseMatrix<Number>> &matrices);
 
-void populate_header_matrices(unsigned int n_dof_objects, std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, ElementHeader &header);
+void writeElementMatrices(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector);
 
-void populate_header_vectors(unsigned int n_dof_objects, std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, ElementHeader &header);
+void readElementMatrices(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector);
 
-void buildVectors(const ElementHeader &header, std::vector<DenseVector<Number>> &vectors);
+void writeElementVectors(std::ofstream &outFile, const std::vector<DenseVector<Number>> &elem_vectors_vector);
 
-void buildMatrices(const ElementHeader &header, std::vector<DenseMatrix<Number>> &matrices);
+void readElementVectors(std::ifstream &inFile, std::vector<DenseVector<Number>> &elem_vectors_vector);
 
-template <typename Container>
-void writeElementData(std::ofstream &outFile, unsigned int numItems, const std::vector<unsigned int> &sizes, const std::vector<Container> &containers);
+void readElementData(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector, std::vector<DenseVector<Number>> &elem_vectors_vector);
 
-template <typename Container>
-void readElementData(std::ifstream &inFile, unsigned int numItems, std::vector<unsigned int> &sizes, std::vector<Container> &containers);
+void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
 
 // int main() {
 //     try {
