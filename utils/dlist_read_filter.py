@@ -20,6 +20,12 @@ def parse_node_data(file_path):
             if node_match:
                 node_num = int(node_match.group(1))
                 label = node_match.group(2)
+                if label.endswith("X"):
+                    label = label[:-1] + "_x"
+                elif label.endswith("Y"):
+                    label = label[:-1] + "_y"
+                elif label.endswith("Z"):
+                    label = label[:-1] + "_z"
                 real = float(node_match.group(3))
                 imag = float(node_match.group(4))
 
@@ -31,50 +37,32 @@ def parse_node_data(file_path):
     return node_data
 
 
-def update_vtk_grid(vtk_file_path, node_data, time_step):
+def update_vtk_grid(self, node_data):
     # Read the VTK file
-    reader = vtk.vtkXMLUnstructuredGridReader()
-    reader.SetFileName(vtk_file_path)
-    reader.Update()
-    grid = reader.GetOutput()
-
-    # Get the dimension of the unstructured grid
-    bounds = grid.GetBounds()
-    if bounds[4] == bounds[5]:  # Check if Z bounds are the same
-        spatial_dimension = 2
-    else:
-        spatial_dimension = 3
 
     # Get the "A" and "ansys_node_num" arrays
-    a_array = grid.GetPointData().GetArray("A_" + str(time_step))
-    ansys_node_num_array = grid.GetPointData().GetArray("ansys_node_num")
-    v_array = grid.GetPointData().GetArray("V_" + str(time_step))
+    a_array = self.mesh.GetPointData().GetArray("A")
+    ansys_node_num_array = self.mesh.GetPointData().GetArray("ansys_node_num")
+    v_array = self.mesh.GetPointData().GetArray("V")
 
     # Update the "A" array based on the node data
-    for i in range(grid.GetNumberOfPoints()):
+
+    for i in range(self.mesh.GetNumberOfPoints()):
         node_num = int(ansys_node_num_array.GetValue(i))
-        if node_num in node_data:
+        if node_num in node_data.keys():
+
             a_values = node_data[node_num]
-            if spatial_dimension == 2:
-                a_tuple = (a_values["AZ"][0],)  # Only Az exists in 2D
-            else:
-                # Initialize with current values
-                current_tuple = a_array.GetTuple(i)
-                a_tuple = [
-                    a_values.get("AX", [current_tuple[0]])[0],
-                    a_values.get("AY", [current_tuple[1]])[0],
-                    a_values.get("AZ", [current_tuple[2]])[0],
-                ]
+            # Initialize with current values
+            current_tuple = a_array.GetTuple(i)
+            a_tuple = [
+                a_values.get("A_x", [current_tuple[0]])[0],
+                a_values.get("A_y", [current_tuple[1]])[0],
+                a_values.get("A_z", [current_tuple[2]])[0],
+            ]
             a_array.SetTuple(i, a_tuple)
             if "VOLT" in node_data[node_num]:
                 volt_value = node_data[node_num]["VOLT"][0]
                 v_array.SetValue(i, volt_value)
-
-    # Write the updated grid to a new file
-    writer = vtk.vtkXMLUnstructuredGridWriter()
-    writer.SetFileName(vtk_file_path)
-    writer.SetInputData(grid)
-    writer.Write()
 
 
 if __name__ == "__main__":
