@@ -51,6 +51,8 @@ public:
 
     virtual std::vector<std::string> getVariables(std::string variables_set) const = 0;
 
+    virtual std::vector<std::string> getElementLoads() const = 0;
+
     virtual bool is_conductive() const = 0;
 
     std::string getVariableFEFamily(std::string variable)
@@ -185,6 +187,12 @@ public:
         fe_vec->attach_quadrature_rule(&qrule);
     }
 
+    std::vector<std::string> getElementLoads() const override
+    {
+        std::vector<std::string> loads = {"Js"};
+        return loads;
+    }
+
     void populate_matrix_idx_size_map() override
     {
         // Check this when you have periodic BCs
@@ -290,6 +298,12 @@ public:
         fe_vec->attach_quadrature_rule(&qrule);
     }
 
+    std::vector<std::string> getElementLoads() const override
+    {
+        std::vector<std::string> loads = {"Js"};
+        return loads;
+    }
+
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
@@ -364,6 +378,12 @@ public:
         // Tell the finite element object to use our quadrature rule.
         fe->attach_quadrature_rule(&qrule);
     } // Default dimension for PLANE13 is 2
+
+    std::vector<std::string> getElementLoads() const override
+    {
+        std::vector<std::string> loads = {"Js"};
+        return loads;
+    }
 
     void populate_matrix_idx_size_map() override
     {
@@ -456,6 +476,11 @@ public:
         fe->attach_quadrature_rule(&qrule);
     } // Default dimension for PLANE13 is 2
 
+    std::vector<std::string> getElementLoads() const override
+    {
+        std::vector<std::string> loads = {"Js"};
+        return loads;
+    }
     std::vector<std::string> getActiveVariables(std::string variables_set) const override
     {
         if (variables_set == "DOFVariables")
@@ -514,9 +539,17 @@ public:
 class ElementTypesCollector
 {
 public:
+    ElementTypesCollector() {}
+
     ElementTypesCollector(ElementTypesMapCSV &elementTypesMapCSV)
     {
-        // collectElementTypes(elementTypesMapCSV);
+        collectElementTypes(elementTypesMapCSV);
+    }
+
+    ElementTypesCollector(std::string &filename)
+    {
+        ElementTypesMapCSV &elementTypesMapCSV = readElementTypes(filename);
+        collectElementTypes(elementTypesMapCSV);
     }
 
     ElementTypesMap &getElementTypes()

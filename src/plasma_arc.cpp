@@ -63,24 +63,49 @@
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
 #include "../include/azimuthal_periodic_boundary.h"
-
+#include "../include/loads_bc_io.h"
 using namespace libMesh;
 
-EquationSystems &init_equation_systems(Mesh &mesh, Session &session)
+void check_boundary_conditions(TimeStep &time_step, EquationSystems &equation_systems)
+{
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&system.get_constraint_object());
+
+    node_dof_constraints->check_boundary_conditions();
+
+    if (node_dof_constraints->update_boundary_conditions)
+    {
+        system.reinit_constraints();
+        equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = true;
+    }
+    else
+    {
+        equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = false;
+    }
+}
+
+EquationSystems &build_equation_systems(Mesh &mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems.parameters.set<Session>("session") = session;
+
+    equation_systems.parameters.set<std::unique_ptr<TimeStepper>>("time_stepper") = std::make_unique<TimeStepper>();
+
+    equation_systems.parameters.set<std::unique_ptr<ElementDataManager>>("element_data_manager") = std::make_unique<ElementDataManager>(ElementDataManager());
+
     return equation_systems;
 }
 
-void init_system(EquationSystems &equation_systems)
+void init_equation_systems(EquationSystems &equation_systems)
 {
     // Declare the system and its variables
     libMesh::out << "Building system of equations..." << std::endl;
 
     std::string system_name = "PlasmaArcLinearSystem";
+    std::string der_system_name = "DerivedQuantitiesSystem";
+    std::string der_elem_system_name = "DerivedQuantitiesSystemElem";
     // Add TransientLinearImplicitSystem as System and return its pointer
     libMesh::out << "Checking system options..." << std::endl;
     // Here I will implement various checks about the system element types, the mesh and everything
@@ -125,14 +150,30 @@ void init_system(EquationSystems &equation_systems)
     // }
     // else
     // {
+    equation_systems.clear();
+
+    read_parse_element_types(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
+
     equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>(system_name);
-    equation_systems.add_system<ExplicitSystem>("DerivedQuantitiesSystem");
-    equation_systems.add_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
+    ExplicitSystem &der_system = equation_systems.add_system<ExplicitSystem>(der_system_name);
+    ExplicitSystem &der_elem_system = equation_systems.add_system<ExplicitSystem>(der_elem_system_name);
 
-    SystemBuilder system_builder(equation_systems);
-    equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    SystemBuilder system_builder(equation_systems, system_name);
     system.attach_init_object(system_builder);
+
+    SystemBuilder system_builder_der(equation_systems, der_system_name);
+    der_system.attach_init_object(system_builder_der);
+
+    SystemBuilder system_builder_der_elem(equation_systems, der_elem_system_name);
+    der_system.attach_init_object(system_builder_der_elem);
+
+    // This will go in /solu
+    libMesh::out << "Distributing degrees of freedom..." << std::endl;
+    equation_systems.init();
+    equation_systems.print_info();
+
+    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors();
 
     system.zero_out_matrix_and_rhs = false;
     system.solution->zero();
@@ -140,15 +181,18 @@ void init_system(EquationSystems &equation_systems)
     system.current_local_solution->zero();
     system.current_local_solution->close();
 
-    equation_systems.init();
-    equation_systems.print_info();
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
+    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
+    // solver->set_solver_type(GMRES);
+    PetscSolverConfiguration solver_configuration(*solver);
+    solver_configuration.configure_solver();
+    solver->set_solver_configuration(solver_configuration);
 }
 
 void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
 {
     libMesh::out << "Reading element types..." << std::endl;
-    ElementTypesMapCSV elementTypes = readElementTypes(element_types_filepath);
-    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(elementTypes);
+    equation_systems.parameters.set<std::unique_ptr<ElementTypesCollector>>("element_types_collector") = std::make_unique<ElementTypesCollector>(element_types_filepath);
 }
 
 Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
@@ -169,6 +213,113 @@ Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Commun
     std::cout << "Mesh Information: " << std::endl;
     mesh.print_info();
     return mesh;
+}
+
+void solve(EquationSystems &equation_systems, TimeStep &time_step)
+{
+    libMesh::out << "Solving time step " << time_step.get_step() + 1 << std::endl;
+
+    libMesh::out << "Time increment at the end of time step: " << time_step.get_delta_t() << std::endl;
+
+    libMesh::out << "Number of time substeps: " << time_step.get_n_substeps() << std::endl;
+
+    libMesh::out << "Setting boundary conditions..." << std::endl;
+
+    libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
+
+    auto session = equation_systems.parameters.get<Session>("session");
+    // read material properties
+    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_unique<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["element_types_filepath"].get<std::string>()));
+
+    // Read loads
+    read_loads_arrays(session.mesh_folderpath.string(), equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->);
+    // Get the system
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    // This will reinitialize the constraints for the system
+
+    check_boundary_conditions(time_step, equation_systems);
+
+    // system.get_dof_map().print_dof_constraints();
+    // Iterate through the substeps of the current time step
+    for (auto &substep : time_step)
+    {
+        libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
+                     << ", dt: " << substep.get_dt()
+                     << ", Write Results: " << substep.get_write_results()
+                     << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
+        // update time in element data manager
+        equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->update_time_step(&substep);
+        // Assemble & solve the linear system
+        libMesh::out << "Building matrix and solving system..." << std::endl;
+        system.solve();
+
+        system.get_linear_solver()->print_converged_reason();
+        if (substep.get_write_results() || substep.get_index() == time_step.get_n_substeps() - 1)
+        {
+            libMesh::out << "Computing derived quantities..." << std::endl;
+            // Call the function to compute the magnetic field
+
+            // equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
+            // init.comm().barrier();
+            // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
+            // libMesh::out << "Writing time substep results..." << std::endl;
+            // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
+            // output_filename = output_filename + ".pvtu";
+            // final_output_path = output_path / output_filename;
+            std::set<std::string> system_names = {"PlasmaArcLinearSystem", "DerivedQuantitiesSystem"};
+            // // Write the results
+            // VTKIO vtk_output(mesh);
+            // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
+            libMesh::out << "Writing time substep results..." << std::endl;
+            session.set_output_filepath(timeStepper->get_cumulative_substep());
+            // // Write the results
+            VTKIO_Updated vtk_output(equation_systems.get_mesh(), &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
+            vtk_output.write_equation_systems(session.final_output_path, equation_systems, &system_names);
+            // change the extension of filepath to .exo
+            // std::string exo_output_path = session.final_output_path;
+            // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
+            // ExodusII_IO exo_output(mesh);
+            // exo_output.write_timestep(exo_output_path, equation_systems, 1, substep.get_time(), &system_names);
+            // exo_output.write_element_data(equation_systems);
+
+            // Print to a file the rhs
+            // std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
+            // system.rhs->print_global(rhs_file);
+            // system.rhs->zero();
+            // system.rhs->close();
+            // output_filename = mesh_filename_without_extension + "_out";
+            // final_output_path = output_path / output_filename;
+            // std::ostringstream file_name;
+            // // // We write the file in the ExodusII format.
+            // file_name << final_output_path.string() << "_"
+            //           << std::setw(3)
+            //           << std::setfill('0')
+            //           << std::right
+            //           << timeStepper->get_cumulative_substep();
+
+            // // // Write the results
+            // Nemesis_IO nem_output(mesh);
+            // std::vector<std::string> var_names;
+            // unsigned int var_num = system.n_vars();
+            // for (unsigned int i = 0; i < var_num; ++i)
+            // {
+            //     var_names.push_back(system.variable_name(i));
+            // }
+            // ExplicitSystem &derived_system = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
+            // var_num = derived_system.n_vars();
+            // for (unsigned int i = 0; i < var_num; ++i)
+            // {
+            //     var_names.push_back(derived_system.variable_name(i));
+            // }
+            // nem_output.set_output_variables(var_names);
+
+            // nem_output.write_timestep(file_name.str(), equation_systems, 1, substep.get_time());
+            // // Empty var_names
+            // nem_output.write_element_data(equation_systems);
+        }
+
+        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;
+    }
 }
 
 // Begin the main program.
@@ -210,11 +361,9 @@ int main(int argc, char **argv)
     // mesh.allow_renumbering(false);
 
     // Read element types
-    EquationSystems &equation_systems = init_equation_systems(mesh, session);
+    EquationSystems &equation_systems = build_equation_systems(mesh, session);
 
-    read_parse_element_types(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
     // This will be done much later
-    std::unique_ptr<MaterialsMap> materials = std::make_unique<MaterialsMap>(readMaterialsProperties(session.config["Mesh Input Section"]["element_types_filepath"].get<std::string>()));
 
     // for (auto &elem : mesh.active_local_element_ptr_range())
     // {
@@ -283,23 +432,10 @@ int main(int argc, char **argv)
 
     // Use a pointer to the local variable
 
-    libMesh::out << "Distributing degrees of freedom..." << std::endl;
-    // Get a reference to the system we want to solve
-    // Initialize the data structures for the equation system.
-    equation_systems.init();
-    // Print information about the system to the screen.
-    equation_systems.print_info();
-
     // Setup transient options
     libMesh::out << "Setting up transient analysis options..." << std::endl;
     // Initializing variables for transient analysis options
-    auto timeStepper = std::make_shared<TimeStepper>();
-    equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = timeStepper;
 
-    auto element_data_manager = std::make_shared<ElementDataManager>();
-    equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = element_data_manager;
-
-    auto element_types_collector = equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     // Iterate through the time steps
 
     // Extract the time_steps array
@@ -325,10 +461,6 @@ int main(int argc, char **argv)
     // }
 
     // Assign boundary conditions
-    libMesh::out << "Setting boundary conditions object..." << std::endl;
-    System &system = equation_systems.get_system(0);
-    NodalBCConstraint node_dof_constraints(system);
-    system.attach_constraint_object(node_dof_constraints);
 
     // Compute first step for equilibrium or static analysis
     // if (compute_equilibrium_first_step)
@@ -341,143 +473,11 @@ int main(int argc, char **argv)
     // }
     // Build the K matrix, the RHS F and Solve the system Kx=F
     // This should be already done
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
-    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
-    // solver->set_solver_type(GMRES);
-    PetscSolverConfiguration solver_configuration(*solver);
-    solver_configuration.configure_solver();
-    solver->set_solver_configuration(solver_configuration);
+
     // solver->set_preconditioner_type(Utility::string_to_enum<PreconditionerType>("ILU"));
-    for (auto &step : *timeStepper)
+    for (auto &step : *equation_systems.parameters.get<std::unique_ptr<TimeStepper>>("time_stepper"))
     {
-        libMesh::out << "Solving time step " << step.get_step() + 1 << std::endl;
-
-        libMesh::out << "Time increment at the end of time step: " << step.get_delta_t() << std::endl;
-
-        libMesh::out << "Number of time substeps: " << step.get_n_substeps() << std::endl;
-
-        libMesh::out << "Setting boundary conditions..." << std::endl;
-
-        libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
-        // This will reinitialize the constraints for the system
-        element_data_manager->update_time_step();
-
-        if (step.get_step() > 0)
-        {
-            node_dof_constraints.check_boundary_conditions();
-        }
-        if (node_dof_constraints.update_boundary_conditions)
-        {
-            system.reinit_constraints();
-            equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = true;
-        }
-        else
-        {
-            equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = false;
-        }
-        // system.get_dof_map().print_dof_constraints();
-        // Iterate through the substeps of the current time step
-        for (auto &substep : step)
-        {
-            libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
-                         << ", dt: " << substep.get_dt()
-                         << ", Write Results: " << substep.get_write_results()
-                         << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
-            // Assemble & solve the linear system
-            libMesh::out << "Building matrix and solving system..." << std::endl;
-            system.solve();
-            // // How many iterations were required to solve the linear system?
-            // const unsigned int n_linear_iterations = system.n_linear_iterations();
-
-            // // What was the final residual of the linear system?
-            // const Real final_linear_residual = system.final_linear_residual();
-
-            // If the solver did no work (sometimes -ksp_converged_reason
-            // says "Linear solve converged due to CONVERGED_RTOL
-            // iterations 0") but the nonlinear residual norm is above
-            // the tolerance, we need to pick an even lower linear
-            // solver tolerance and try again.  Note that the tolerance
-            // is relative to the norm of the RHS, which for this
-            // particular problem does not go to zero, since we are
-            // solving for the full solution rather than the update.
-            //
-            // Similarly, if the solver did no work and this is the 0th
-            // nonlinear step, it means that the delta between solutions
-            // is being inaccurately measured as "0" since the solution
-            // did not change.  Decrease the tolerance and try again.
-            // while (system.n_linear_iterations() == 0)
-            // {
-            //     Real old_linear_solver_tolerance = equation_systems.parameters.get<Real>("linear solver tolerance");
-            //     equation_systems.parameters.set<Real>("linear solver tolerance") = 1.e-3 * old_linear_solver_tolerance;
-            //     system.solve();
-            // }
-            solver->print_converged_reason();
-            if (substep.get_write_results() || substep.get_index() == step.get_n_substeps() - 1)
-            {
-                libMesh::out << "Computing derived quantities..." << std::endl;
-                // Call the function to compute the magnetic field
-
-                // equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
-                // init.comm().barrier();
-                // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
-                // libMesh::out << "Writing time substep results..." << std::endl;
-                // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
-                // output_filename = output_filename + ".pvtu";
-                // final_output_path = output_path / output_filename;
-                std::set<std::string> system_names = {"PlasmaArcLinearSystem", "DerivedQuantitiesSystem"};
-                // // Write the results
-                // VTKIO vtk_output(mesh);
-                // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
-                libMesh::out << "Writing time substep results..." << std::endl;
-                session.set_output_filepath(timeStepper->get_cumulative_substep());
-                // // Write the results
-                VTKIO_Updated vtk_output(mesh, &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
-                vtk_output.write_equation_systems(session.final_output_path, equation_systems, &system_names);
-                // change the extension of filepath to .exo
-                // std::string exo_output_path = session.final_output_path;
-                // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
-                // ExodusII_IO exo_output(mesh);
-                // exo_output.write_timestep(exo_output_path, equation_systems, 1, substep.get_time(), &system_names);
-                // exo_output.write_element_data(equation_systems);
-
-                // Print to a file the rhs
-                // std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
-                // system.rhs->print_global(rhs_file);
-                // system.rhs->zero();
-                // system.rhs->close();
-                // output_filename = mesh_filename_without_extension + "_out";
-                // final_output_path = output_path / output_filename;
-                // std::ostringstream file_name;
-                // // // We write the file in the ExodusII format.
-                // file_name << final_output_path.string() << "_"
-                //           << std::setw(3)
-                //           << std::setfill('0')
-                //           << std::right
-                //           << timeStepper->get_cumulative_substep();
-
-                // // // Write the results
-                // Nemesis_IO nem_output(mesh);
-                // std::vector<std::string> var_names;
-                // unsigned int var_num = system.n_vars();
-                // for (unsigned int i = 0; i < var_num; ++i)
-                // {
-                //     var_names.push_back(system.variable_name(i));
-                // }
-                // ExplicitSystem &derived_system = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
-                // var_num = derived_system.n_vars();
-                // for (unsigned int i = 0; i < var_num; ++i)
-                // {
-                //     var_names.push_back(derived_system.variable_name(i));
-                // }
-                // nem_output.set_output_variables(var_names);
-
-                // nem_output.write_timestep(file_name.str(), equation_systems, 1, substep.get_time());
-                // // Empty var_names
-                // nem_output.write_element_data(equation_systems);
-            }
-
-            libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;
-        }
+        solve(equation_systems, step);
     }
     // All done.
     return 0;

@@ -22,6 +22,7 @@ public:
     std::filesystem::path output_folderpath;
     std::filesystem::path output_path;
     std::filesystem::path mesh_path;
+    std::filesystem::path mesh_folderpath;
     std::string mesh_filename_without_extension;
     std::string output_filename;
     std::filesystem::path final_output_path;

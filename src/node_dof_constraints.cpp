@@ -14,7 +14,6 @@ void NodalBCConstraint::constrain()
     // This function should implement the logic to apply constraints to the nodes of the system
     // identified by system_name within the provided equation_systems object.
     // The actual implementation would depend on the specific constraints to be applied.
-
     // Retrieve the system by name
     MeshBase &mesh = system.get_mesh();
     DofMap &dof_map = system.get_dof_map();

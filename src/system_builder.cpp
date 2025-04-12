@@ -6,6 +6,7 @@
 #include "../include/assembler.h"
 #include "../include/session.h"
 #include "../include/element_types.h"
+#include "../include/node_dof_constraints.h" // Include the header for NodalBCConstraint
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -37,6 +38,14 @@ void SystemBuilder::initialize()
     if (system.name() == "PlasmaArcLinearSystem")
     {
         vars_set = "DOFVariables";
+
+        AssemblerLinear assembler_linear(equation_systems);
+        system.attach_assemble_object(assembler_linear);
+        equation_systems.parameters.set<AssemblerLinear *>("assembler") = &assembler_linear;
+
+        libMesh::out << "Setting boundary conditions object..." << std::endl;
+        NodalBCConstraint node_dof_constraints(system);
+        system.attach_constraint_object(node_dof_constraints);
     }
     else if (system.name() == "DerivedQuantitiesSystem")
     {

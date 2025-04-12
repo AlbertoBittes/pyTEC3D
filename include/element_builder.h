@@ -64,6 +64,20 @@ public:
     {
     }
 
+    void build_load_data_vectors(const MeshBase &mesh, std::set<std::string> loads_labels)
+    {
+        // Get the load quantity from the cell data
+        for (const auto &label : loads_labels)
+        {
+            // If not, create a new load vector for this label
+            (*activeLoadsVector)[label] = ElementLoad();
+            for (const auto &elem : mesh.active_local_element_ptr_range())
+            {
+                // If not, create a new load for this element ID
+                (*activeLoadsVector)[label][elem->id()] = std::vector<Real>();
+            }
+        }
+    }
     inline void fill_mu_matrix(dof_id_type elem_id)
     {
         // get ansys_material_type from the materials map
@@ -117,16 +131,16 @@ public:
         return y1 + ((y2 - y1) / (time_step->get_time() - time_step->get_time_beginning())) * (time_substep->get_time() - time_step->get_time_beginning());
     }
 
-    void ElementDataManager::update_time_step(Substep *time_substep)
+    void ElementDataManager::update_time_step(const Substep *time_substep)
     {
         this->time_substep = time_substep;
         time_step = &(this->time_substep->get_parent());
     }
 
-    void set_materials_map(std::unique_ptr<MaterialsMap> materials)
-    {
-        this->materials = std::move(materials);
-    }
+    // void set_materials_map(std::unique_ptr<MaterialsMap> materials)
+    // {
+    //     this->materials = std::move(materials);
+    // }
 
     void set_load_quantity(std::string load_name)
     {
@@ -152,12 +166,11 @@ public:
 
     Real mu_matrix[3];
     Real rs_matrix[3];
-    Real js[3];
 
     ElementLoad *load_array;
     ElementLoad *old_load_array;
-    TimeStep *time_step;
-    Substep *time_substep;
+    const TimeStep *time_step;
+    const Substep *time_substep;
     // std::shared_ptr<TimeStepper> timeStepper;
     // Real time_step_starting_time;
     // Real time_step_ending_time;

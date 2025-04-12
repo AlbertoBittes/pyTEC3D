@@ -34,7 +34,7 @@ public:
     bool get_write_results() const { return parent.get_write_results(); };
     bool get_transient_effect() const { return parent.get_transient_effect(); };
     bool get_ramped_load() const { return parent.get_ramped_load(); };
-    TimeStep &get_parent() { return parent; }
+    const TimeStep &get_parent() const { return parent; }
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }

@@ -268,6 +268,7 @@ void ElementBuilder::apply_load_solid236(Elem *elem, std::shared_ptr<ElementType
 {
     libmesh_error_msg("apply_load_solid236 is not implemented yet.");
 }
+
 void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType> element_type)
 {
     // Now we will build the element matrix.  This involves
@@ -281,6 +282,9 @@ void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType>
     // Now start logging the element matrix computation
     if (element_type->is_conductive())
         return;
+
+    element_data_manager->set_load_quantity("Js");
+
     element_type->fe->reinit(elem);
     unsigned int n_dofs_var = element_type->fe->n_shape_functions();
 
@@ -290,25 +294,7 @@ void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType>
     }
 }
 
-void ElementBuilder::apply_load_solid236(Elem *elem, std::shared_ptr<ElementType> element_type, bool build_matrix)
+void ElementBuilder::apply_load_solid236(Elem *elem, std::shared_ptr<ElementType> element_type)
 {
     libmesh_error_msg("apply_load_solid236 is not implemented yet.");
-}
-void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType> element_type, bool build_matrix)
-{
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    const ScalarShapeFunctions &shape_functions = element_type->get_scalar_shape_functions();
-    const VectorShapeFunctions &vector_shape_functions = element_type->get_vector_shape_functions();
-
-    element_type->fe->reinit(elem);
-
-    unsigned int n_dofs_var = shape_functions.phi.size();
 }

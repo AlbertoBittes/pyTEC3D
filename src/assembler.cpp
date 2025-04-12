@@ -181,7 +181,7 @@ void AssemblerLinear::assemble()
             // if (conductive)
             //     Ce.resize(n_dofs, n_dofs);
 
-            elem_builder.build_element(elem, elem_type, true);
+            elem_builder.build_element(elem, elem_type);
 
             // Here the function to write the matrices and vectors down to file
             writeElementMatrices(mtrc_output_file, elem_builder.matrices);

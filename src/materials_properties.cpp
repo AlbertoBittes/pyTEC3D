@@ -6,7 +6,7 @@
 #include <limits> // for std::numeric_limits
 #include "../include/materials_properties.h"
 
-MaterialsMap readMaterialsProperties(const std::string &filename)
+MaterialsMap &readMaterialsProperties(const std::string &filename)
 {
     libMesh::out << "Reading materials properties..." << std::endl;
     auto materials = MaterialsMap();

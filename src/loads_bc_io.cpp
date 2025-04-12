@@ -1,5 +1,6 @@
 #include "../include/loads_bc_io.h"
 #include <fstream>
+#include <memory>
 
 void read_boundary_conditions(std::string &file_name, BoundaryConditionsMap &node_conditions)
 {
@@ -50,7 +51,7 @@ void read_boundary_conditions(std::string &file_name, BoundaryConditionsMap &nod
     file.close();
 }
 
-void read_loads_arrays(std::string &file_name, LoadArraysMap &loads_arrays)
+void read_loads_arrays(std::string &file_name, std::unique_ptr<LoadArraysMap> loads_arrays)
 {
     libMesh::out << "Reading loads data..." << std::endl;
     // Open the file for reading in binary mode
@@ -87,8 +88,8 @@ void read_loads_arrays(std::string &file_name, LoadArraysMap &loads_arrays)
             break;
 
         std::string variable_name(name.data(), name_length);
-        ElementLoad &load_arrays = loads_arrays[variable_name];
-        load_arrays.reserve(num_elements); // Preallocate memory
+        ElementLoad &load_arrays = (*loads_arrays)[variable_name];
+        // load_arrays.reserve(num_elements); // Preallocate memory
 
         for (unsigned int i = 0; i < num_elements; ++i)
         {

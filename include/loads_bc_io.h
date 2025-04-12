@@ -15,7 +15,7 @@ typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
 void read_boundary_conditions(std::string &filename, BoundaryConditionsMap &node_conditions);
 
-void read_loads_arrays(std::string &filename, LoadArraysMap &loads_arrays);
+void read_loads_arrays(std::string &filename, std::unique_ptr<LoadArraysMap> loads_arrays);
 
 // int main() {
 //     try {

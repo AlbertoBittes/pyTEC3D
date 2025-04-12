@@ -19,6 +19,6 @@ struct MaterialsProperties
 typedef std::unordered_map<int, MaterialsProperties> MaterialsMap;
 
 // Function to read material properties from a CSV file
-MaterialsMap readMaterialsProperties(const std::string &filename);
+MaterialsMap &readMaterialsProperties(const std::string &filename);
 
 #endif // MATERIALS_PROPERTIES_H

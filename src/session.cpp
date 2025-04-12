@@ -11,15 +11,18 @@ Session::Session(const std::string &configFile)
 {
     read_config(configFile);
     input_mesh_filepath = config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
+    libMesh::out << "Setting output path..." << std::endl;
+    mesh_folderpath = std::filesystem::path(input_mesh_filepath).parent_path();
+
     if (config["Output Section"]["output_folderpath"].is_null())
     {
         // Create an output folder path based on the input mesh file path
-        output_folderpath = (std::filesystem::path(input_mesh_filepath).parent_path() / "output");
+        output_folderpath = (mesh_folderpath / "output");
         create_output_folder();
     }
     else
         output_folderpath = std::filesystem::path(config["Output Section"]["output_filepath"].get<std::string>());
-    libMesh::out << "Setting output path..." << std::endl;
+
     // Use filesystem to modify the basename
     mesh_path = std::filesystem::path(input_mesh_filepath);
     mesh_filename_without_extension = mesh_path.stem().string();

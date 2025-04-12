@@ -29,11 +29,12 @@ public:
 
     void compute_derived_quantities();
 
+    bool updated_bcs;
+
 protected:
     EquationSystems &eq_sys;
     Substep *time_substep;
     Substep *old_time_substep;
-    bool updated_bcs;
 };
 
 #endif // ASSEMBLER_H
