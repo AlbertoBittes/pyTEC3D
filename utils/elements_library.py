@@ -158,6 +158,17 @@ class APEC:
                 array.SetNumberOfTuples(self.mesh.GetNumberOfCells())
                 self.mesh.GetCellData().AddArray(array)
 
+    def replot(self):
+        """
+        Replot the mesh in the active view.
+        """
+        # Assuming you have a function to replot the mesh in your application
+        # This is a placeholder for the actual replotting logic
+        print("Replotting the mesh...")
+        producer = TrivialProducer()
+        producer.GetClientSideObject().SetOutput(self.mesh)
+        Show(producer)
+        Render()
 
 class ElementType(ABC):
     """
@@ -234,4 +245,3 @@ class ElementTypesCollector:
         return self.element_types_map
 
 apec = APEC()
-apec.mesh = GetActiveSource()
