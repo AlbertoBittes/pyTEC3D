@@ -17,8 +17,9 @@ class APEC:
         """
         self.csv_file_path = None
         self.element_types_collector = None
+        self.mesh = vtk.vtkUnstructuredGrid()
 
-    def load_element_types(self, csv_file_path):
+    def read_element_types(self, csv_file_path):
         """
         Load element types from the CSV file into the ElementTypesCollector.
 
@@ -28,9 +29,22 @@ class APEC:
         self.csv_file_path = csv_file_path
         self.element_types_collector = ElementTypesCollector(self.csv_file_path)
 
-    def write_multiple_cell_data_to_file(self, unstructured_grid, input_basename, array_names, num=None):
+    def read_mesh(self, vtk_file_path):
         """
-        Writes multiple cell data arrays from a vtkUnstructuredGrid object to a single binary file.
+        Reads a VTK unstructured grid from a file in XML format.
+
+        Parameters:
+            vtk_file_path (str): Path to the VTK file in XML format.
+        """
+        reader = vtk.vtkXMLUnstructuredGridReader()
+        reader.SetFileName(vtk_file_path)
+        reader.Update()
+        self.mesh = reader.GetOutput()
+        print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
+
+    def write_multiple_cell_data_to_file(self, input_basename, array_names, num=None):
+        """
+        Writes multiple cell data arrays from the object's vtkUnstructuredGrid to a single binary file.
         """
         output_file_name = f"{input_basename}_loads"
         if num is not None:
@@ -39,7 +53,7 @@ class APEC:
 
         with open(output_file_name, 'wb') as file:
             for array_name in array_names:
-                cell_data = unstructured_grid.GetCellData()
+                cell_data = self.mesh.GetCellData()
                 data_array = cell_data.GetArray(array_name)
                 if data_array is None:
                     raise ValueError(f"Array '{array_name}' not found in cell data.")
@@ -61,20 +75,9 @@ class APEC:
 
         print(f"All cell data arrays {array_names} written to '{output_file_name}'.")
 
-    def process_loads(self, vtk_file_path, array_names, num=None):
+    def write_multiple_boundary_conditions(self, output_basename, array_names, num=None):
         """
-        Reads a VTK unstructured grid from a file and writes its cell data arrays to a single binary file.
-        """
-        input_basename = os.path.splitext(os.path.basename(vtk_file_path))[0]
-        reader = vtk.vtkXMLUnstructuredGridReader()
-        reader.SetFileName(vtk_file_path)
-        reader.Update()
-        unstructured_grid = reader.GetOutput()
-        self.write_multiple_cell_data_to_file(unstructured_grid, input_basename, array_names, num)
-
-    def write_multiple_boundary_conditions(self, vtk_grid, output_basename, array_names, num=None):
-        """
-        Writes multiple point data arrays from a VTK unstructured grid to a single binary file.
+        Writes multiple point data arrays from the object's vtkUnstructuredGrid to a single binary file.
         """
         output_file = f"{output_basename}_bc"
         if num is not None:
@@ -83,7 +86,7 @@ class APEC:
 
         with open(output_file, "wb") as file:
             for array_name in array_names:
-                point_data = vtk_grid.GetPointData()
+                point_data = self.mesh.GetPointData()
                 data_array = point_data.GetArray(array_name)
                 if data_array is None:
                     raise ValueError(f"Point data array '{array_name}' not found in the VTK grid.")
@@ -111,20 +114,9 @@ class APEC:
 
         print(f"Boundary conditions for arrays {array_names} written to {output_file}.")
 
-    def process_boundary_conditions(self, vtk_file_path, array_names, num=None):
+    def distribute_dofs(self):
         """
-        Reads a VTK unstructured grid from a file and writes its point data arrays to a single binary file.
-        """
-        output_basename = os.path.splitext(os.path.basename(vtk_file_path))[0]
-        reader = vtk.vtkXMLUnstructuredGridReader()
-        reader.SetFileName(vtk_file_path)
-        reader.Update()
-        vtk_grid = reader.GetOutput()
-        self.write_multiple_boundary_conditions(vtk_grid, output_basename, array_names, num)
-
-    def initialize_mesh(self, grid):
-        """
-        Initialize a vtkUnstructuredGrid object by adding variables as point data
+        Initialize the object's vtkUnstructuredGrid by adding variables as point data
         and element loads as cell data.
         """
         if self.element_types_collector is None:
@@ -138,8 +130,8 @@ class APEC:
                 array = vtk.vtkDoubleArray()
                 array.SetName(var_name)
                 array.SetNumberOfComponents(num_components)
-                array.SetNumberOfTuples(grid.GetNumberOfPoints())
-                grid.GetPointData().AddArray(array)
+                array.SetNumberOfTuples(self.mesh.GetNumberOfPoints())
+                self.mesh.GetPointData().AddArray(array)
 
         for element_id, element in element_types.items():
             element_loads = element.getElementLoads()
@@ -147,8 +139,8 @@ class APEC:
                 array = vtk.vtkDoubleArray()
                 array.SetName(load_name)
                 array.SetNumberOfComponents(num_components)
-                array.SetNumberOfTuples(grid.GetNumberOfCells())
-                grid.GetCellData().AddArray(array)
+                array.SetNumberOfTuples(self.mesh.GetNumberOfCells())
+                self.mesh.GetCellData().AddArray(array)
 
 
 class ElementType(ABC):
@@ -225,25 +217,4 @@ class ElementTypesCollector:
     def get_element_types(self):
         return self.element_types_map
 
-
-if __name__ == "__main__":
-    apec = APEC()
-
-    # Load element types
-    csv_file_path = "/home/bitteal/PlasmaArc/simulations/3D_loop_cond/element_types.csv"
-    apec.load_element_types(csv_file_path)
-
-    # Create a VTK unstructured grid (example grid)
-    grid = vtk.vtkUnstructuredGrid()
-
-    # Initialize the mesh with data
-    apec.initialize_mesh(grid)
-
-    # Print point data and cell data for verification
-    print("Point Data Arrays:")
-    for i in range(grid.GetPointData().GetNumberOfArrays()):
-        print(grid.GetPointData().GetArrayName(i))
-
-    print("Cell Data Arrays:")
-    for i in range(grid.GetCellData().GetNumberOfArrays()):
-        print(grid.GetCellData().GetArrayName(i))
+apec = APEC()
