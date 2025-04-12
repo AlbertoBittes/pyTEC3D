@@ -70,7 +70,8 @@ TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper) : st
                                                                               time_stepper(time_stepper),
                                                                               write_results(false),
                                                                               transient_effect(true),
-                                                                              ramped_load(true)
+                                                                              ramped_load(true),
+                                                                              solved(false)
 {
     if (step == 0)
         time_beginning = 0.0;

@@ -564,5 +564,19 @@ public:
     void collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV);
 
     ElementTypesMap elementTypes;
+
+    std::set<std::string> getLoadsLabels() const
+    {
+        std::set<std::string> loads_labels;
+        for (const auto &elem_type : elementTypes)
+        {
+            auto loads = elem_type.second->getElementLoads();
+            for (const auto &load : loads)
+            {
+                loads_labels.insert(load);
+            }
+        }
+        return loads_labels;
+    }
 };
 #endif // ELEMENT_TYPES_H

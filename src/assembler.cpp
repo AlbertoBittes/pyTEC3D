@@ -47,11 +47,13 @@
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
 #include "../include/element_types.h"   // Include the header file for ElementTypesCollector
 #include "../include/element_data_io.h" // Include the header file for ElementDataManager
-#include <map>                          // Include for std::map
+#include "../include/element_data_manager.h"
+#include <map> // Include for std::map
 #include <vtkCellData.h>
 #include <cmath>
 #include <stdexcept>
-#include "../include/element_data_io.h" // Include the header file for ElementHeader
+#include "../include/element_data_io.h"      // Include the header file for ElementHeader
+#include "../include/node_dof_constraints.h" // Include the header file for NodalBCConstraint
 
 using namespace libMesh;
 
@@ -381,8 +383,10 @@ bool AssemblerLinear::check_update_matrix()
         }
         else
         {
+            NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&eq_sys.get_system(0).get_constraint_object());
+
             if (std::abs(time_substep->get_dt() - old_time_substep->get_dt()) > relative_epsilon * std::max(std::abs(time_substep->get_dt()), std::abs(old_time_substep->get_dt())) ||
-                updated_bcs ||
+                node_dof_constraints->get_update_boundary_conditions() ||
                 time_substep->get_transient_effect() != old_time_substep->get_transient_effect())
             {
                 update_matrix = true;

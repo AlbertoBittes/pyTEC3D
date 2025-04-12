@@ -22,6 +22,7 @@ public:
         this->old_time_substep = this->time_substep;
         this->time_substep = time_substep;
     };
+
     Substep *get_time_substep() const { return time_substep; };
     Substep *get_old_time_substep() const { return old_time_substep; };
 

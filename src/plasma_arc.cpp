@@ -45,7 +45,8 @@
 #include "../include/node_dof_constraints.h"
 #include "../include/materials_properties.h"
 #include "../include/element_types.h" // Add this line to include the ElementTypesMap header
-#include "../include/time_stepper.h"  // Add this line to include the TimeStepper header
+#include "../include/element_data_manager.h"
+#include "../include/time_stepper.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/communicator.h"
@@ -63,37 +64,17 @@
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
 #include "../include/azimuthal_periodic_boundary.h"
-#include "../include/loads_bc_io.h"
+
 using namespace libMesh;
-
-void check_boundary_conditions(TimeStep &time_step, EquationSystems &equation_systems)
-{
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
-    NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&system.get_constraint_object());
-
-    node_dof_constraints->check_boundary_conditions();
-
-    if (node_dof_constraints->update_boundary_conditions)
-    {
-        system.reinit_constraints();
-        equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = true;
-    }
-    else
-    {
-        equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->updated_bcs = false;
-    }
-}
 
 EquationSystems &build_equation_systems(Mesh &mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<Session>("session") = session;
+    equation_systems.parameters.set<Session *>("session") = &session;
 
     equation_systems.parameters.set<std::unique_ptr<TimeStepper>>("time_stepper") = std::make_unique<TimeStepper>();
-
-    equation_systems.parameters.set<std::unique_ptr<ElementDataManager>>("element_data_manager") = std::make_unique<ElementDataManager>(ElementDataManager());
 
     return equation_systems;
 }
@@ -152,7 +133,7 @@ void init_equation_systems(EquationSystems &equation_systems)
     // {
     equation_systems.clear();
 
-    read_parse_element_types(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
+    read_parse_element_types(equation_systems.parameters.get<Session *>("session")->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
 
     equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>(system_name);
@@ -173,7 +154,9 @@ void init_equation_systems(EquationSystems &equation_systems)
     equation_systems.init();
     equation_systems.print_info();
 
-    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors();
+    equation_systems.parameters.set<std::unique_ptr<ElementDataManager>>("element_data_manager") = std::make_unique<ElementDataManager>(ElementDataManager());
+
+    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::unique_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
 
     system.zero_out_matrix_and_rhs = false;
     system.solution->zero();
@@ -227,17 +210,21 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
 
-    auto session = equation_systems.parameters.get<Session>("session");
+    auto session = equation_systems.parameters.get<Session *>("session");
     // read material properties
-    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_unique<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["element_types_filepath"].get<std::string>()));
+    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_unique<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>()));
 
     // Read loads
-    read_loads_arrays(session.mesh_folderpath.string(), equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->);
+    std::string loads_path = session->mesh_filename_without_extension + "_loads_" + std::to_string(time_step.get_step() + 1);
+
+    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->read_update_loads_vectors(loads_path);
     // Get the system
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
     // This will reinitialize the constraints for the system
-
-    check_boundary_conditions(time_step, equation_systems);
+    // Read boundary conditions
+    NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&system.get_constraint_object());
+    std::string bc_path = session->mesh_filename_without_extension + "_bc_" + std::to_string(time_step.get_step() + 1);
+    node_dof_constraints->read_update_boundary_conditions(bc_path, time_step);
 
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
@@ -248,7 +235,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
                      << ", Write Results: " << substep.get_write_results()
                      << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
         // update time in element data manager
-        equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->update_time_step(&substep);
+        equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->update_time_step(substep);
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();
@@ -271,10 +258,10 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
             // VTKIO vtk_output(mesh);
             // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
             libMesh::out << "Writing time substep results..." << std::endl;
-            session.set_output_filepath(timeStepper->get_cumulative_substep());
+            session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
             // // Write the results
             VTKIO_Updated vtk_output(equation_systems.get_mesh(), &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
-            vtk_output.write_equation_systems(session.final_output_path, equation_systems, &system_names);
+            vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
             // change the extension of filepath to .exo
             // std::string exo_output_path = session.final_output_path;
             // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
@@ -318,7 +305,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
             // nem_output.write_element_data(equation_systems);
         }
 
-        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << step.get_n_substeps() << " completed." << std::endl;
+        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step.get_n_substeps() << " completed." << std::endl;
     }
 }
 

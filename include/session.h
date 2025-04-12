@@ -27,6 +27,8 @@ public:
     std::string output_filename;
     std::filesystem::path final_output_path;
     std::filesystem::path temp_folder_path; // Add this line
+    std::filesystem::path loads_folderpath;
+    std::filesystem::path bc_folderpath;
     nlohmann::json config;
 
     void set_output_filepath(unsigned int output_label);

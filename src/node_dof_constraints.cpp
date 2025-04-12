@@ -58,6 +58,64 @@ void NodalBCConstraint::constrain()
     }
 }
 
+void NodalBCConstraint::read_update_boundary_conditions(std::string file_name, TimeStep &time_step)
+{
+    this->update_boundary_conditions = true;
+    this->update_time_step(time_step);
+    this->stash_bc_map();
+    this->read_boundary_conditions(file_name);
+    this->set_boundary_conditions();
+}
+
+void NodalBCConstraint::read_boundary_conditions(std::string &file_name)
+{
+    libMesh::out << "Reading boundary conditions data..." << std::endl;
+    // Open the file for reading in binary mode
+    std::ifstream file(file_name, std::ios::binary);
+    if (!file.is_open())
+    {
+        libmesh_error_msg("Error: Could not open file " + file_name);
+    }
+
+    while (file)
+    {
+        dof_id_type node;
+        uint8_t label_length;
+        Real value;
+
+        // Read node number
+        file.read(reinterpret_cast<char *>(&node), sizeof(node));
+        if (!file)
+            break;
+
+        // Read label length
+        file.read(reinterpret_cast<char *>(&label_length), sizeof(label_length));
+        if (!file)
+            break;
+
+        // Read label
+        std::vector<char> label(label_length);
+        file.read(label.data(), label_length);
+        if (!file)
+            break;
+
+        // Read value
+        file.read(reinterpret_cast<char *>(&value), sizeof(value));
+        if (!file)
+            break;
+
+        // Store the boundary condition if the node exists in the map
+        auto it = active_bc_map->find(node);
+        if (it != active_bc_map->end())
+        {
+            std::string label_str(label.data(), label_length); // Convert char array to string
+            it->second.emplace(std::move(label_str), value);
+        }
+    }
+    // Close the file when done
+    file.close();
+}
+
 void NodalBCConstraint::check_boundary_conditions()
 {
     // Example implementation
@@ -78,5 +136,17 @@ void NodalBCConstraint::check_boundary_conditions()
             update_bc = true;
     }
     system.comm().max(update_bc);
-    update_boundary_conditions = update_bc;
+    this->update_boundary_conditions = update_bc;
+}
+
+void NodalBCConstraint::set_boundary_conditions()
+{
+    EquationSystems &equation_systems = system.get_equation_systems();
+
+    this->check_boundary_conditions();
+
+    if (this->update_boundary_conditions)
+    {
+        system.reinit_constraints();
+    }
 }

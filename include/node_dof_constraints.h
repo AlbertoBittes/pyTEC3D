@@ -4,10 +4,14 @@
 #include <libmesh/equation_systems.h>
 #include <string>
 #include "../include/time_stepper.h"
-#include "../include/loads_bc_io.h" // Add this line to include the definition of BoundaryConditionsMap
-
+#include <fstream>
+#include <memory>
+#include "../include/assembler.h" // Include the header for AssemblerLinear
 // Forward declaration from libMesh
 using namespace libMesh;
+
+typedef std::unordered_map<std::string, Real> NodeBoundaryConditions;
+typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 
 class NodalBCConstraint : public System::Constraint
 {
@@ -35,30 +39,34 @@ public:
         this->time_step = &time_step;
     }
 
-    // void set_bc_quantity(std::string load_name)
-    // {
-    //     // Get the load quantity from the cell data
-    //     bc_node = &(*active_bc_map)[load_name];
-    //     bc_node_old = &(*old_bc_map)[load_name];
-    // }
+    void set_boundary_conditions();
 
-    void update_bc_map(std::unique_ptr<BoundaryConditionsMap> new_bc_map)
+    void stash_bc_map()
     {
         // Swap the old load with the new load vector
         std::swap(old_bc_map, active_bc_map);
-        // Move the new load to the new load vector
-        active_bc_map = std::move(new_bc_map);
-        // After this, oldLoad contains the previous contents of newLoadVector,
-        // and newLoadVector contains the new load.
+    }
+
+    void read_boundary_conditions(std::string &file_name);
+
+    void read_update_boundary_conditions(std::string file_name, TimeStep &time_step);
+
+    void set_update_boundary_conditions(bool update)
+    {
+        update_boundary_conditions = update;
+    }
+
+    bool get_update_boundary_conditions() const
+    {
+        return update_boundary_conditions;
     }
 
     std::unique_ptr<BoundaryConditionsMap> old_bc_map;
     std::unique_ptr<BoundaryConditionsMap> active_bc_map;
 
+private:
     TimeStep *time_step;
-
     bool update_boundary_conditions;
-
     System &system;
 };
 
