@@ -41,6 +41,13 @@ class APEC:
         reader.Update()
         self.mesh = reader.GetOutput()
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
+        # print a summary of the mesh
+        print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
+        print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
+        print(f"Number of cell types: {self.mesh.GetNumberOfCellTypes()}")
+        print(f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}")
+        print(f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}")
+        print(f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}")
 
     def write_multiple_cell_data_to_file(self, input_basename, array_names, num=None):
         """
