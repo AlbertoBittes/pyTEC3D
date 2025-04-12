@@ -41,10 +41,6 @@ class APEC:
         reader.Update()
         self.mesh = reader.GetOutput()
 
-        # Give a name to the mesh
-        file_name = os.path.basename(vtk_file_path)
-        file_name_without_extension = os.path.splitext(file_name)[0]
-        self.mesh.SetName(file_name_without_extension)
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -184,9 +180,9 @@ class APEC:
         print("Replotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
-        producer.GetExecutive().GetOutputInformation(0).Set(
-            vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
-        )
+        # producer.GetExecutive().GetOutputInformation(0).Set(
+        #     vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
+        # )
         Show(producer)
         Render()
 
