@@ -17,7 +17,7 @@ class APEC:
         """
         self.csv_file_path = None
         self.element_types_collector = None
-        self.mesh = vtk.vtkUnstructuredGrid()
+        self.mesh = None
 
     def read_element_types(self, csv_file_path):
         """
@@ -40,14 +40,24 @@ class APEC:
         reader.SetFileName(vtk_file_path)
         reader.Update()
         self.mesh = reader.GetOutput()
-        
+
+        # Give a name to the mesh
+        file_name = os.path.basename(vtk_file_path)
+        file_name_without_extension = os.path.splitext(file_name)[0]
+        self.mesh.SetName(file_name_without_extension)
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
         print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
-        print(f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}")
-        print(f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}")
-        print(f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}")
+        print(
+            f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
+        )
 
     # def read_pipeline(self):
     #     # Get the active object in the pipeline
@@ -56,7 +66,6 @@ class APEC:
     #     # Check if an active object exists
     #     if self.pipeline_object is None:
     #         raise RuntimeError("No active object in the pipeline. Please select an object.")
-
 
     def write_multiple_cell_data_to_file(self, input_basename, array_names, num=None):
         """
@@ -67,7 +76,7 @@ class APEC:
             output_file_name += f"_{num}"
         output_file_name += ".bin"
 
-        with open(output_file_name, 'wb') as file:
+        with open(output_file_name, "wb") as file:
             for array_name in array_names:
                 cell_data = self.mesh.GetCellData()
                 data_array = cell_data.GetArray(array_name)
@@ -75,23 +84,25 @@ class APEC:
                     raise ValueError(f"Array '{array_name}' not found in cell data.")
 
                 name_length = len(array_name)
-                file.write(struct.pack('B', name_length))
-                file.write(array_name.encode('utf-8'))
+                file.write(struct.pack("B", name_length))
+                file.write(array_name.encode("utf-8"))
 
                 num_components = data_array.GetNumberOfComponents()
-                file.write(struct.pack('I', num_components))
+                file.write(struct.pack("I", num_components))
 
                 num_elements = data_array.GetNumberOfTuples()
-                file.write(struct.pack('I', num_elements))
+                file.write(struct.pack("I", num_elements))
 
                 for cell_id in range(num_elements):
-                    file.write(struct.pack('I', cell_id))
+                    file.write(struct.pack("I", cell_id))
                     values = data_array.GetTuple(cell_id)
-                    file.write(struct.pack(f'{num_components}d', *values))
+                    file.write(struct.pack(f"{num_components}d", *values))
 
         print(f"All cell data arrays {array_names} written to '{output_file_name}'.")
 
-    def write_multiple_boundary_conditions(self, output_basename, array_names, num=None):
+    def write_multiple_boundary_conditions(
+        self, output_basename, array_names, num=None
+    ):
         """
         Writes multiple point data arrays from the object's vtkUnstructuredGrid to a single binary file.
         """
@@ -105,7 +116,9 @@ class APEC:
                 point_data = self.mesh.GetPointData()
                 data_array = point_data.GetArray(array_name)
                 if data_array is None:
-                    raise ValueError(f"Point data array '{array_name}' not found in the VTK grid.")
+                    raise ValueError(
+                        f"Point data array '{array_name}' not found in the VTK grid."
+                    )
 
                 num_components = data_array.GetNumberOfComponents()
 
@@ -117,7 +130,9 @@ class APEC:
                             continue
 
                         if num_components > 1:
-                            component_label = f"{array_name}_{['x', 'y', 'z'][component_idx]}"
+                            component_label = (
+                                f"{array_name}_{['x', 'y', 'z'][component_idx]}"
+                            )
                         else:
                             component_label = array_name
 
@@ -136,7 +151,9 @@ class APEC:
         and element loads as cell data.
         """
         if self.element_types_collector is None:
-            raise ValueError("Element types have not been loaded. Call 'load_element_types' first.")
+            raise ValueError(
+                "Element types have not been loaded. Call 'load_element_types' first."
+            )
 
         element_types = self.element_types_collector.get_element_types()
 
@@ -158,7 +175,7 @@ class APEC:
                 array.SetNumberOfTuples(self.mesh.GetNumberOfCells())
                 self.mesh.GetCellData().AddArray(array)
 
-    def replot(self):
+    def plot(self):
         """
         Replot the mesh in the active view.
         """
@@ -167,8 +184,12 @@ class APEC:
         print("Replotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
+        producer.GetExecutive().GetOutputInformation(0).Set(
+            vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
+        )
         Show(producer)
         Render()
+
 
 class ElementType(ABC):
     """
@@ -243,5 +264,6 @@ class ElementTypesCollector:
 
     def get_element_types(self):
         return self.element_types_map
+
 
 apec = APEC()
