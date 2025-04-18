@@ -110,6 +110,8 @@ class APEC:
 
                 # Write the data for this component
                 for cell_id, value in zip(filtered_cell_ids, filtered_values):
+                    if np.isnan(value):
+                        continue
                     # Write the element number (cell ID)
                     file.write(struct.pack("I", cell_id))  # 'I' is for uint32_t (dof_id_type)
 
@@ -156,6 +158,8 @@ class APEC:
 
                 # Write the data for this component
                 for point_id, value in zip(filtered_point_ids, filtered_values):
+                    if np.isnan(value):
+                        continue
                     # Write the point ID (node number)
                     file.write(struct.pack("I", point_id))  # 'I' is for uint32_t (dof_id_type)
 
