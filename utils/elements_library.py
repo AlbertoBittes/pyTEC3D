@@ -76,9 +76,10 @@ class APEC:
 
     def write_loads_to_binary(self, array_name):
         """
-        Optimized function to write VTK cell data to a binary file using NumPy masking.
+        Writes a binary file for loads from a VTK cell data array.
+        Handles multi-component arrays by iterating over components and writing the component number.
+        Skips NaN values using NumPy masking for optimization.
         """
-
         # Get the cell data array
         cell_data = self.mesh.GetCellData()
         load_array = cell_data.GetArray(array_name)
@@ -91,35 +92,24 @@ class APEC:
         # Get the number of components and cells
         num_components = load_array.GetNumberOfComponents()
         num_cells = self.mesh.GetNumberOfCells()
-
-        # Create a mask to filter out NaN values
-        if num_components == 1:
-            # Scalar array: directly check for NaN
-            mask = ~np.isnan(load_array_np)
-        else:
-            # Multi-component array: check for NaN across all components
-            mask = ~np.isnan(load_array_np).any(axis=1)
-
-        # Get the filtered cell IDs and values
-        filtered_cell_ids = np.arange(num_cells)[mask]
-        filtered_values = load_array_np[mask]
+        output_file = os.path.join(self.folderpath, f"{self.jobname}_loads.bin")
 
         # Open the output file in binary mode
-        output_file = os.path.join(self.folderpath, f"{self.jobname}_loads_{array_name}.bin")
         with open(output_file, "wb") as file:
-            # Write the length of the load name
-            load_name_length = len(array_name)
-            file.write(struct.pack("Q", load_name_length))  # 'Q' is for unsigned long long (size_t)
+            # Iterate over components
+            for component in range(num_components):
+                print(f"Processing component {component} of array '{array_name}'")
 
-            # Write the load name
-            file.write(array_name.encode("utf-8"))
+                # Extract the values for the current component
+                component_values = load_array_np[:, component]
+                mask = ~np.isnan(component_values)
 
-            # Write the number of components
-            file.write(struct.pack("I", num_components))  # 'I' is for unsigned int
+                # Get the filtered cell IDs and values
+                filtered_cell_ids = np.arange(num_cells)[mask]
+                filtered_values = component_values[mask]
 
-            # Write the filtered data
-            for cell_id, values in zip(filtered_cell_ids, filtered_values):
-                for component, value in enumerate(values if num_components > 1 else [values]):
+                # Write the data for this component
+                for cell_id, value in zip(filtered_cell_ids, filtered_values):
                     # Write the element number (cell ID)
                     file.write(struct.pack("I", cell_id))  # 'I' is for uint32_t (dof_id_type)
 
@@ -128,7 +118,6 @@ class APEC:
 
                     # Write the load value
                     file.write(struct.pack("d", value))  # 'd' is for double (Real)
-
 
     def write_boundary_conditions_to_binary(self, array_name):
         """
@@ -237,80 +226,179 @@ class APEC:
         Show(producer)
         Render()
 
-    def parse_element_load_data(self, file_path):
-        """_summary_
-
-        Parameters
-        ----------
-        file_path : _type_
-            _description_
-
-        Returns
-        -------
-        _type_
-            _description_
+    def parse_element_bfelist_data(self, file_path):
         """
-        # Dictionary to store current densities for each element
-        current_densities = {}
+        Parses element load data from the given file and associates a label based on the file's content.
+        If the first row contains "CURRENT DENSITIES", the label is set to "Js".
 
-        # Regular expression patterns
+        Args:
+            file_path (str): Path to the file containing element load data.
+
+        Returns:
+            tuple: A tuple containing:
+                - load_label (str): The label associated with the load (e.g., "Js").
+                - loads_dict (dict): A dictionary where keys are element IDs and values are dictionaries
+                of component values (0, 1, 2), defaulting to np.nan if not present.
+        """
+        import re
+        import numpy as np
+
+        # Regular expressions to match element and density lines
         element_pattern = re.compile(r"ELEMENT=\s+(\d+)")
-        density_pattern = re.compile(
-            r"\s*([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)"
-        )
+        density_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)")
+
+        # Initialize variables
+        current_densities = {}
+        current_element = None
+        load_label = None
 
         with open(file_path, "r") as file:
-            current_element = None
+            # Check the first line for "CURRENT DENSITIES"
+            first_line = file.readline()
+            if "CURRENT DENSITIES" in first_line:
+                load_label = "Js"
+
+            # Parse the rest of the file
             for line in file:
-                # Check for element line
-                element_match = element_pattern.search(line)
+                # Match element line
+                element_match = element_pattern.match(line)
                 if element_match:
                     current_element = int(element_match.group(1))
                     current_densities[current_element] = {
-                        "Js_x": None,
-                        "Js_y": None,
-                        "Js_z": None,
+                        0: np.nan,  # Default to NaN for Component 0
+                        1: np.nan,  # Default to NaN for Component 1
+                        2: np.nan,  # Default to NaN for Component 2
                     }
                     continue
 
-                # Check for density line (only the first one after the element line)
-                if (
-                    current_element is not None
-                    and current_densities[current_element]["Js_x"] is None
-                ):
+                # Match density line
+                if current_element is not None:
                     density_match = density_pattern.match(line)
                     if density_match:
-                        current_densities[current_element]["Js_x"] = float(
-                            density_match.group(1)
-                        )
-                        current_densities[current_element]["Js_y"] = float(
-                            density_match.group(2)
-                        )
-                        current_densities[current_element]["Js_z"] = float(
-                            density_match.group(3)
-                        )
+                        current_densities[current_element][0] = float(density_match.group(1))  # Component 0
+                        current_densities[current_element][1] = float(density_match.group(2))  # Component 1
+                        current_densities[current_element][2] = float(density_match.group(3))  # Component 2
 
-        return current_densities
+        return load_label, current_densities
 
-    def update_vtk_grid_loads(self, element_data):
+    def update_vtk_grid_bfelist(self, load_label, element_data):
+        """
+        Updates the VTK grid's cell data array corresponding to the given load label
+        with the provided element data. Defaults to np.nan if a value is not present.
 
-        conv_dict = {0: "_x", 1: "_y", 2: "_z"}
-        loads_arrays = 
-        # Get the "Js" and "ansys_elem_num" arrays
-        js_array = self.mesh.GetCellData().GetArray("Js")
+        Args:
+            load_label (str): The label of the load (e.g., "Js").
+            element_data (dict): A dictionary where keys are element IDs and values are dictionaries
+                                of component values (0, 1, 2).
+        """
+        import numpy as np
+
+        # Get the VTK array corresponding to the load label
+        load_array = self.mesh.GetCellData().GetArray(load_label)
+        if load_array is None:
+            raise ValueError(f"Array '{load_label}' not found in the VTK file.")
+
+        # Get the "ansys_elem_num" array to map element IDs
         ansys_elem_num_array = self.mesh.GetCellData().GetArray("ansys_elem_num")
+        if ansys_elem_num_array is None:
+            raise ValueError("Array 'ansys_elem_num' not found in the VTK file.")
 
-        # Update the "Js" array based on the element data
+        # Update the load array based on the element data
         for i in range(self.mesh.GetNumberOfCells()):
             elem_num = int(ansys_elem_num_array.GetValue(i))
             if elem_num in element_data:
                 js_values = element_data[elem_num]
-                for j, component in enumerate(js_values.keys()):
-                    if js_values[component] is not None:
-                        js_array.SetComponent(i, j, js_values[component])
-                    else:
-                        js_array.SetComponent(i, j, 0.0)
+                for component, value in js_values.items():
+                    load_array.SetComponent(i, component, value if not np.isnan(value) else np.nan)
+            # else:
+            #     # If the element is not in the data, set all components to NaN
+            #     for component in range(load_array.GetNumberOfComponents()):
+            #         load_array.SetComponent(i, component, np.nan)
 
+    def parse_node_dlist_data(self, file_path):
+        """
+        Parses node data from the given file.
+
+        Args:
+            file_path (str): Path to the file containing node data.
+
+        Returns:
+            dict: A dictionary where keys are node IDs and values are dictionaries
+                of variable labels with their corresponding components and values.
+                Components are 0, 1, 2 for vector variables and 0 for scalar variables.
+        """
+
+        # Regular expression to match node data lines
+        node_pattern = re.compile(r"^\s*(\d+)\s+(\S+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)")
+
+        # Dictionary to store parsed node data
+        node_data = {}
+
+        with open(file_path, "r") as file:
+            for line in file:
+                # Skip header lines
+                if line.startswith("NODE") or line.startswith("//"):
+                    continue
+
+                # Match node data line
+                node_match = node_pattern.match(line)
+                if node_match:
+                    node_num = int(node_match.group(1))
+                    label = node_match.group(2)
+                    real = float(node_match.group(3))
+
+                    # Determine the component based on the label
+                    if label.endswith("X"):
+                        component = 0
+                        label = label[:-1]
+                    elif label.endswith("Y"):
+                        component = 1
+                        label = label[:-1]
+                    elif label.endswith("Z"):
+                        component = 2
+                        label = label[:-1]
+                    else:
+                        component = 0  # Scalar variable
+
+                    if node_num not in node_data:
+                        node_data[node_num] = {}
+
+                    if label not in node_data[node_num]:
+                        node_data[node_num][label] = {}
+
+                    node_data[node_num][label][component] = real
+
+        return node_data
+
+    def update_vtk_grid_dlist(self, node_data):
+        """
+        Updates the VTK grid's point data arrays based on the parsed node data.
+
+        Args:
+            node_data (dict): A dictionary where keys are node IDs and values are dictionaries
+                            of variable labels with their corresponding components and values.
+                            Scalars are represented with component 0.
+        """
+        # Get the "ansys_node_num" array to map node IDs
+        ansys_node_num_array = self.mesh.GetPointData().GetArray("ansys_node_num")
+        if ansys_node_num_array is None:
+            raise ValueError("Array 'ansys_node_num' not found in the VTK file.")
+
+        # Iterate over the points in the VTK grid
+        for i in range(self.mesh.GetNumberOfPoints()):
+            node_num = int(ansys_node_num_array.GetValue(i))
+            if node_num in node_data:
+                node_values = node_data[node_num]
+
+                for label, components in node_values.items():
+                    # Get the corresponding VTK array
+                    vtk_array = self.mesh.GetPointData().GetArray(label)
+                    if vtk_array is None:
+                        raise ValueError(f"Array '{label}' not found in the VTK file.")
+
+                    # Update the VTK array with the parsed values
+                    for component, value in components.items():
+                        vtk_array.SetComponent(i, component, value)
 
 class ElementType(ABC):
     """
@@ -344,18 +432,18 @@ class SOLID236Type(ElementType):
 
 class PLANE13Type(ElementType):
     def getVariables(self):
-        return {"A_z": 1}
+        return {"A": 3}
 
     def getElementLoads(self):
-        return {"Js": 1}
+        return {"Js": 3}
 
 
 class PLANE233Type(ElementType):
     def getVariables(self):
-        return {"A_z": 1}
+        return {"A": 3}
 
     def getElementLoads(self):
-        return {"Js": 1}
+        return {"Js": 3}
 
 
 class ElementTypesCollector:

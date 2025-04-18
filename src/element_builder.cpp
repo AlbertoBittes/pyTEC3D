@@ -9,7 +9,7 @@
 #include "../include/session.h" // Ensure the Session class is included
 #include <cmath>
 #include "../include/element_types.h" // Include the header defining ElementType
-
+#include "../include/element_data_manager.h"
 // Constructor
 ElementBuilder::ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager)
     : element_data_manager(element_data_manager)
@@ -254,6 +254,7 @@ void ElementBuilder::apply_load_solid97(Elem *elem, std::shared_ptr<ElementType>
 
     element_type->fe->reinit(elem);
 
+    // Here you should point to the correct load
     unsigned int n_dofs_var = element_type->fe->n_shape_functions();
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
     {
@@ -290,7 +291,7 @@ void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType>
 
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
     {
-        vectors[0](dof_i) *= element_data_manager->compute_js(elem->id(), 0);
+        vectors[0](dof_i) *= element_data_manager->compute_js(elem->id(), 2);
     }
 }
 
