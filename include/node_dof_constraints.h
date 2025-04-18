@@ -34,6 +34,11 @@ public:
 
     void check_boundary_conditions();
 
+    void reinit_constraints_map()
+    {
+        active_bc_map->clear();
+    }
+
     void update_time_step(TimeStep &time_step)
     {
         this->time_step = &time_step;

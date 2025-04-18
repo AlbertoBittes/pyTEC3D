@@ -1,6 +1,7 @@
 import pandas as pd
 from abc import ABC, abstractmethod
 import vtk
+import vtk.util.numpy_support as vtknp
 import numpy as np
 import struct
 import os
@@ -18,6 +19,8 @@ class APEC:
         self.csv_file_path = None
         self.element_types_collector = None
         self.mesh = vtk.vtkUnstructuredGrid()
+        self.jobname = None
+        self.folderpath = None
 
     def read_element_types(self, csv_file_path):
         """
@@ -40,7 +43,10 @@ class APEC:
         reader.SetFileName(vtk_file_path)
         reader.Update()
         self.mesh = reader.GetOutput()
-        
+
+        self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
+        self.folderpath = os.path.dirname(vtk_file_path)
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -57,78 +63,111 @@ class APEC:
     #     if self.pipeline_object is None:
     #         raise RuntimeError("No active object in the pipeline. Please select an object.")
 
-
-    def write_multiple_cell_data_to_file(self, input_basename, array_names, num=None):
+    def write_loads_to_binary(self, array_name):
         """
-        Writes multiple cell data arrays from the object's vtkUnstructuredGrid to a single binary file.
+        Optimized function to write VTK cell data to a binary file using NumPy masking.
         """
-        output_file_name = f"{input_basename}_loads"
-        if num is not None:
-            output_file_name += f"_{num}"
-        output_file_name += ".bin"
 
-        with open(output_file_name, 'wb') as file:
-            for array_name in array_names:
-                cell_data = self.mesh.GetCellData()
-                data_array = cell_data.GetArray(array_name)
-                if data_array is None:
-                    raise ValueError(f"Array '{array_name}' not found in cell data.")
+        # Get the cell data array
+        cell_data = self.mesh.GetCellData()
+        load_array = cell_data.GetArray(array_name)
+        if load_array is None:
+            raise ValueError(f"Array '{array_name}' not found in the VTK file.")
 
-                name_length = len(array_name)
-                file.write(struct.pack('B', name_length))
-                file.write(array_name.encode('utf-8'))
+        # Convert the VTK array to a NumPy array
+        load_array_np = vtknp.vtk_to_numpy(load_array)
 
-                num_components = data_array.GetNumberOfComponents()
-                file.write(struct.pack('I', num_components))
+        # Get the number of components and cells
+        num_components = load_array.GetNumberOfComponents()
+        num_cells = self.mesh.GetNumberOfCells()
 
-                num_elements = data_array.GetNumberOfTuples()
-                file.write(struct.pack('I', num_elements))
+        # Create a mask to filter out NaN values
+        if num_components == 1:
+            # Scalar array: directly check for NaN
+            mask = ~np.isnan(load_array_np)
+        else:
+            # Multi-component array: check for NaN across all components
+            mask = ~np.isnan(load_array_np).any(axis=1)
 
-                for cell_id in range(num_elements):
-                    file.write(struct.pack('I', cell_id))
-                    values = data_array.GetTuple(cell_id)
-                    file.write(struct.pack(f'{num_components}d', *values))
+        # Get the filtered cell IDs and values
+        filtered_cell_ids = np.arange(num_cells)[mask]
+        filtered_values = load_array_np[mask]
 
-        print(f"All cell data arrays {array_names} written to '{output_file_name}'.")
-
-    def write_multiple_boundary_conditions(self, output_basename, array_names, num=None):
-        """
-        Writes multiple point data arrays from the object's vtkUnstructuredGrid to a single binary file.
-        """
-        output_file = f"{output_basename}_bc"
-        if num is not None:
-            output_file += f"_{num}"
-        output_file += ".dat"
-
+        # Open the output file in binary mode
+        output_file = os.path.join(self.folderpath, f"{self.jobname}_loads_{array_name}.bin")
         with open(output_file, "wb") as file:
-            for array_name in array_names:
-                point_data = self.mesh.GetPointData()
-                data_array = point_data.GetArray(array_name)
-                if data_array is None:
-                    raise ValueError(f"Point data array '{array_name}' not found in the VTK grid.")
+            # Write the length of the load name
+            load_name_length = len(array_name)
+            file.write(struct.pack("Q", load_name_length))  # 'Q' is for unsigned long long (size_t)
 
-                num_components = data_array.GetNumberOfComponents()
+            # Write the load name
+            file.write(array_name.encode("utf-8"))
 
-                for node_id in range(data_array.GetNumberOfTuples()):
-                    values = data_array.GetTuple(node_id)
+            # Write the number of components
+            file.write(struct.pack("I", num_components))  # 'I' is for unsigned int
 
-                    for component_idx, value in enumerate(values):
-                        if np.isnan(value):
-                            continue
+            # Write the filtered data
+            for cell_id, values in zip(filtered_cell_ids, filtered_values):
+                for component, value in enumerate(values if num_components > 1 else [values]):
+                    # Write the element number (cell ID)
+                    file.write(struct.pack("I", cell_id))  # 'I' is for uint32_t (dof_id_type)
 
-                        if num_components > 1:
-                            component_label = f"{array_name}_{['x', 'y', 'z'][component_idx]}"
-                        else:
-                            component_label = array_name
+                    # Write the component number
+                    file.write(struct.pack("I", component))  # 'I' is for unsigned int
 
-                        file.write(struct.pack("Q", node_id))
-                        label = component_label.encode("utf-8")
-                        label_length = len(label)
-                        file.write(struct.pack("B", label_length))
-                        file.write(label)
-                        file.write(struct.pack("d", value))
+                    # Write the load value
+                    file.write(struct.pack("d", value))  # 'd' is for double (Real)
 
-        print(f"Boundary conditions for arrays {array_names} written to {output_file}.")
+
+    def write_boundary_conditions_to_binary(self, array_name):
+        """
+        Writes a binary file for boundary conditions from a VTK point data array.
+        Handles multi-component arrays by appending "_x", "_y", "_z", etc., to the variable name.
+        Skips NaN values using NumPy masking for optimization.
+        """
+        # Get the point data array
+        point_data = self.mesh.GetPointData()
+        bc_array = point_data.GetArray(array_name)
+        if bc_array is None:
+            raise ValueError(f"Array '{array_name}' not found in the VTK file.")
+
+        # Convert the VTK array to a NumPy array
+        bc_array_np = vtknp.vtk_to_numpy(bc_array)
+
+        # Get the number of components and points
+        num_components = bc_array.GetNumberOfComponents()
+        num_points = self.mesh.GetNumberOfPoints()
+        output_file = os.path.join(self.folderpath, f"{self.jobname}_bcs.bin")
+
+        # Open the output file in binary mode
+        with open(output_file, "wb") as file:
+            # Iterate over components
+            for component in range(num_components):
+                # Generate the label for this component (e.g., "A_x", "A_y", "A_z")
+                component_label = f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
+
+                # Create a mask to filter out NaN values for this component
+                component_values = bc_array_np[:, component]
+                mask = ~np.isnan(component_values)
+
+                # Get the filtered point IDs and values
+                filtered_point_ids = np.arange(num_points)[mask]
+                filtered_values = component_values[mask]
+
+                # Write the data for this component
+                for point_id, value in zip(filtered_point_ids, filtered_values):
+                    # Write the point ID (node number)
+                    file.write(struct.pack("I", point_id))  # 'I' is for uint32_t (dof_id_type)
+
+                    # Write the label length
+                    label_length = len(component_label)
+                    file.write(struct.pack("B", label_length))  # 'B' is for uint8_t
+
+                    # Write the label
+                    file.write(component_label.encode("utf-8"))
+
+                    # Write the value
+                    file.write(struct.pack("d", value))  # 'd' is for double (Real)
 
     def distribute_dofs(self):
         """
@@ -140,6 +179,7 @@ class APEC:
 
         element_types = self.element_types_collector.get_element_types()
 
+        # Add point data arrays
         for element_id, element in element_types.items():
             variables = element.getVariables()
             for var_name, num_components in variables.items():
@@ -147,8 +187,14 @@ class APEC:
                 array.SetName(var_name)
                 array.SetNumberOfComponents(num_components)
                 array.SetNumberOfTuples(self.mesh.GetNumberOfPoints())
+                
+                # Initialize all components to NaN
+                for component in range(num_components):
+                    array.FillComponent(component, np.nan)
+                
                 self.mesh.GetPointData().AddArray(array)
 
+        # Add cell data arrays
         for element_id, element in element_types.items():
             element_loads = element.getElementLoads()
             for load_name, num_components in element_loads.items():
@@ -156,6 +202,11 @@ class APEC:
                 array.SetName(load_name)
                 array.SetNumberOfComponents(num_components)
                 array.SetNumberOfTuples(self.mesh.GetNumberOfCells())
+                
+                # Initialize all components to NaN
+                for component in range(num_components):
+                    array.FillComponent(component, np.nan)
+                
                 self.mesh.GetCellData().AddArray(array)
 
     def replot(self):
@@ -243,5 +294,11 @@ class ElementTypesCollector:
 
     def get_element_types(self):
         return self.element_types_map
+
+    def get_all_loads(self):
+        all_loads = {}
+        for element_type in self.element_types_map.values():
+            all_loads.update(element_type.getElementLoads())
+        return all_loads
 
 apec = APEC()

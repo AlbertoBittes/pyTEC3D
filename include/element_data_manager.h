@@ -48,6 +48,8 @@ public:
 
     void build_load_data_vectors(const MeshBase &mesh, std::set<std::string> loads_labels);
 
+    void zero_load_arrays();
+
     inline void fill_mu_matrix(dof_id_type elem_id);
 
     inline void fill_rs_matrix(dof_id_type elem_id);

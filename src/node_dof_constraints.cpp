@@ -63,6 +63,7 @@ void NodalBCConstraint::read_update_boundary_conditions(std::string file_name, T
     this->update_boundary_conditions = true;
     this->update_time_step(time_step);
     this->stash_bc_map();
+    this->reinit_constraints_map();
     this->read_boundary_conditions(file_name);
     this->set_boundary_conditions();
 }
@@ -104,13 +105,9 @@ void NodalBCConstraint::read_boundary_conditions(std::string &file_name)
         if (!file)
             break;
 
-        // Store the boundary condition if the node exists in the map
-        auto it = active_bc_map->find(node);
-        if (it != active_bc_map->end())
-        {
-            std::string label_str(label.data(), label_length); // Convert char array to string
-            it->second.emplace(std::move(label_str), value);
-        }
+        // Populate the map
+        std::string label_str(label.data(), label_length); // Convert char array to string
+        (*active_bc_map)[node].emplace(std::move(label_str), value);
     }
     // Close the file when done
     file.close();
