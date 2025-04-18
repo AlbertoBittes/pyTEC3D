@@ -12,25 +12,25 @@ void ElementDataManager::read_loads_arrays(std::string &file_name)
     }
 
     // Read the length of the load name
-    size_t load_name_length;
-    file.read(reinterpret_cast<char *>(&load_name_length), sizeof(load_name_length));
+    // size_t load_name_length;
+    // file.read(reinterpret_cast<char *>(&load_name_length), sizeof(load_name_length));
 
-    // Read the load name
-    std::string load_name(load_name_length, '\0');
-    file.read(&load_name[0], load_name_length);
+    // // Read the load name
+    // std::string load_name(load_name_length, '\0');
+    // file.read(&load_name[0], load_name_length);
 
-    // Check if the load name exists in the activeLoadsVector
-    if (!activeLoadsVector || activeLoadsVector->find(load_name) == activeLoadsVector->end())
-    {
-        libmesh_error_msg("Error: Load name " + load_name + " not found in activeLoadsVector.");
-    }
+    // // Check if the load name exists in the activeLoadsVector
+    // if (!activeLoadsVector || activeLoadsVector->find(load_name) == activeLoadsVector->end())
+    // {
+    //     libmesh_error_msg("Error: Load name " + load_name + " not found in activeLoadsVector.");
+    // }
 
-    // Read the number of components
-    unsigned int num_components;
-    file.read(reinterpret_cast<char *>(&num_components), sizeof(num_components));
+    // // Read the number of components
+    // unsigned int num_components;
+    // file.read(reinterpret_cast<char *>(&num_components), sizeof(num_components));
 
     // Get the ElementLoad map for the given load name
-    ElementLoad &element_load = (*activeLoadsVector)[load_name];
+    // ElementLoad &element_load = (*activeLoadsVector)[load_name];
 
     // Read the element data and modify the existing pairs in the map
     while (file.peek() != EOF)
@@ -49,8 +49,8 @@ void ElementDataManager::read_loads_arrays(std::string &file_name)
         file.read(reinterpret_cast<char *>(&load_value), sizeof(load_value));
 
         // Modify the existing pair in the map
-        auto it = element_load.find(element_number);
-        if (it != element_load.end())
+        auto it = load_array->find(element_number);
+        if (it != load_array->end())
         {
             it->second[component_number] = load_value; // Update the component number
         } // Update the load value

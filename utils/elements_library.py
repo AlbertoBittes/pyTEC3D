@@ -96,6 +96,16 @@ class APEC:
 
         # Open the output file in binary mode
         with open(output_file, "wb") as file:
+            # # Write the length of the load name
+            # load_name_length = len(array_name)
+            # file.write(struct.pack("Q", load_name_length))  # 'Q' is for unsigned long long (size_t)
+
+            # # Write the load name
+            # file.write(array_name.encode("utf-8"))
+
+            # # Write the number of components
+            # file.write(struct.pack("I", num_components))  # 'I' is for unsigned int
+
             # Iterate over components
             for component in range(num_components):
                 print(f"Processing component {component} of array '{array_name}'")
@@ -145,9 +155,13 @@ class APEC:
         with open(output_file, "wb") as file:
             # Iterate over components
             for component in range(num_components):
-                # Generate the label for this component (e.g., "A_x", "A_y", "A_z")
-                component_label = f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
-
+                # Generate the label for this component
+                if num_components == 1:
+                    # If there is only one component, use the array name directly
+                    component_label = array_name
+                else:
+                    # Append '_x', '_y', '_z', etc., for multi-component arrays
+                    component_label = f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
                 # Create a mask to filter out NaN values for this component
                 component_values = bc_array_np[:, component]
                 mask = ~np.isnan(component_values)
