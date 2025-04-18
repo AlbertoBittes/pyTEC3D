@@ -5,6 +5,7 @@ import vtk.util.numpy_support as vtknp
 import numpy as np
 import struct
 import os
+import re
 
 
 class APEC:
@@ -39,6 +40,10 @@ class APEC:
         Parameters:
             vtk_file_path (str): Path to the VTK file in XML format.
         """
+        # Check if the mesh file exists
+        if not os.path.exists(vtk_file_path):
+            raise FileNotFoundError(f"Mesh file '{vtk_file_path}' not found.")
+
         reader = vtk.vtkXMLUnstructuredGridReader()
         reader.SetFileName(vtk_file_path)
         reader.Update()
@@ -51,9 +56,15 @@ class APEC:
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
         print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
-        print(f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}")
-        print(f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}")
-        print(f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}")
+        print(
+            f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
+        )
 
     # def read_pipeline(self):
     #     # Get the active object in the pipeline
@@ -175,7 +186,9 @@ class APEC:
         and element loads as cell data.
         """
         if self.element_types_collector is None:
-            raise ValueError("Element types have not been loaded. Call 'load_element_types' first.")
+            raise ValueError(
+                "Element types have not been loaded. Call 'load_element_types' first."
+            )
 
         element_types = self.element_types_collector.get_element_types()
 
@@ -209,17 +222,95 @@ class APEC:
                 
                 self.mesh.GetCellData().AddArray(array)
 
-    def replot(self):
+    def plot(self):
         """
         Replot the mesh in the active view.
         """
         # Assuming you have a function to replot the mesh in your application
         # This is a placeholder for the actual replotting logic
-        print("Replotting the mesh...")
+        print("Plotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
+        # producer.GetExecutive().GetOutputInformation(0).Set(
+        #     vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
+        # )
         Show(producer)
         Render()
+
+    def parse_element_load_data(self, file_path):
+        """_summary_
+
+        Parameters
+        ----------
+        file_path : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        # Dictionary to store current densities for each element
+        current_densities = {}
+
+        # Regular expression patterns
+        element_pattern = re.compile(r"ELEMENT=\s+(\d+)")
+        density_pattern = re.compile(
+            r"\s*([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)"
+        )
+
+        with open(file_path, "r") as file:
+            current_element = None
+            for line in file:
+                # Check for element line
+                element_match = element_pattern.search(line)
+                if element_match:
+                    current_element = int(element_match.group(1))
+                    current_densities[current_element] = {
+                        "Js_x": None,
+                        "Js_y": None,
+                        "Js_z": None,
+                    }
+                    continue
+
+                # Check for density line (only the first one after the element line)
+                if (
+                    current_element is not None
+                    and current_densities[current_element]["Js_x"] is None
+                ):
+                    density_match = density_pattern.match(line)
+                    if density_match:
+                        current_densities[current_element]["Js_x"] = float(
+                            density_match.group(1)
+                        )
+                        current_densities[current_element]["Js_y"] = float(
+                            density_match.group(2)
+                        )
+                        current_densities[current_element]["Js_z"] = float(
+                            density_match.group(3)
+                        )
+
+        return current_densities
+
+    def update_vtk_grid_loads(self, element_data):
+
+        conv_dict = {0: "_x", 1: "_y", 2: "_z"}
+        loads_arrays = 
+        # Get the "Js" and "ansys_elem_num" arrays
+        js_array = self.mesh.GetCellData().GetArray("Js")
+        ansys_elem_num_array = self.mesh.GetCellData().GetArray("ansys_elem_num")
+
+        # Update the "Js" array based on the element data
+        for i in range(self.mesh.GetNumberOfCells()):
+            elem_num = int(ansys_elem_num_array.GetValue(i))
+            if elem_num in element_data:
+                js_values = element_data[elem_num]
+                for j, component in enumerate(js_values.keys()):
+                    if js_values[component] is not None:
+                        js_array.SetComponent(i, j, js_values[component])
+                    else:
+                        js_array.SetComponent(i, j, 0.0)
+
 
 class ElementType(ABC):
     """
