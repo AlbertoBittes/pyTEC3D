@@ -83,6 +83,9 @@ private:
 
     vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid;
 
+    std::vector<std::string> loads_labels = {"Js"};
+    std::vector<std::string> dof_labels = {"A", "Az", "V"};
+
     bool _compress;
     ExplicitSystem *_sys;
     std::map<dof_id_type, dof_id_type> _local_node_map;

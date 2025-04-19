@@ -343,7 +343,7 @@ void VTKIO_Updated::read(const std::string &name)
     for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
     {
         array_name = point_data->GetArrayName(i);
-        if (!(std::string(array_name).find("A") != std::string::npos || std::string(array_name).find("V") != std::string::npos))
+        if (std::find(dof_labels.begin(), dof_labels.end(), array_name) == dof_labels.end() && std::find(loads_labels.begin(), loads_labels.end(), array_name) == loads_labels.end())
         {
             point_data_int_array_names.push_back(array_name);
         }
@@ -355,7 +355,7 @@ void VTKIO_Updated::read(const std::string &name)
     for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
     {
         array_name = cell_data->GetArrayName(i);
-        if (!(std::string(array_name).find("Js") != std::string::npos))
+        if (std::find(dof_labels.begin(), dof_labels.end(), array_name) == dof_labels.end() && std::find(loads_labels.begin(), loads_labels.end(), array_name) == loads_labels.end())
         {
             cell_data_int_array_names.push_back(array_name);
         }

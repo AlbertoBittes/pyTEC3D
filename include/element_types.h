@@ -55,94 +55,21 @@ public:
 
     virtual bool is_conductive() const = 0;
 
-    std::string getVariableFEFamily(std::string variable)
-    {
-        auto vars = this->getVariables("DOFVariables");
-        if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-        {
-            if (variable == "V")
-                return "LAGRANGE";
-            else
-                return fe_family;
-        }
-        else
-        {
-            auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-            if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-            {
-                return "L2_LAGRANGE";
-            }
-            else
-            {
-                auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-                if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-                {
-                    return "MONOMIAL";
-                }
-                else
-                {
-                    libmesh_error_msg("Invalid variable set: " + variable);
-                }
-            }
-        }
-    }
+    std::string getVariableFEFamily(std::string variable);
 
-    std::string getVariableOrder(std::string variable)
-    {
-        auto vars = this->getVariables("DOFVariables");
-        if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-        {
-            return order;
-        }
-        else
-        {
-            auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-            if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-            {
-                return "FIRST";
-            }
-            else
-            {
-                auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-                if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-                {
-                    return "CONSTANT";
-                }
-                else
-                {
-                    libmesh_error_msg("Invalid variable set: " + variable);
-                }
-            }
-        }
-    }
+    std::string getVariableOrder(std::string variable);
 
-    const ScalarShapeFunctions &get_scalar_shape_functions() const
-    {
-        // initialize the ShapeFunctions struct
-        // and fill it with the shape functions from the finite element object
-        // and the finite element vector object
-        return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
-    }
+    inline const ScalarShapeFunctions &get_scalar_shape_functions() const;
 
-    const VectorShapeFunctions &get_vector_shape_functions() const
-    {
-        // initialize the ShapeFunctions struct
-        // and fill it with the shape functions from the finite element object
-        // and the finite element vector object
-        return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
-    }
+    inline const VectorShapeFunctions &get_vector_shape_functions() const;
 
     virtual void populate_matrix_idx_size_map() = 0;
     virtual void populate_derived_matrix_idx_size_map() = 0;
     virtual void populate_vector_idx_size_map() = 0;
 
     // think if this can be don with n_dofs
-    void populate_all()
-    {
-        this->populate_matrix_idx_size_map();
-        this->populate_derived_matrix_idx_size_map();
-        this->populate_vector_idx_size_map();
-    }
+    void populate_all();
+
     ElementTypeProperties properties;
     std::string order;
     std::string fe_family;
@@ -159,109 +86,21 @@ public:
 class SOLID97Type : public ElementType
 {
 public:
-    SOLID97Type(const ElementTypeProperties &properties)
-        : ElementType(properties, "FIRST", "LAGRANGE", 0, 3)
-    {
-        az_dofs = 3;
+    SOLID97Type(const ElementTypeProperties &properties);
 
-        FEType fe_type(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe = FEBase::build(dimension, fe_type);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
+    std::vector<std::string> getElementLoads() const override;
 
-        FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe_vec = FEVectorBase::build(dimension, fe_type_vec);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe_vec->attach_quadrature_rule(&qrule);
-    }
+    void populate_matrix_idx_size_map() override;
 
-    std::vector<std::string> getElementLoads() const override
-    {
-        std::vector<std::string> loads = {"Js"};
-        return loads;
-    }
+    void populate_derived_matrix_idx_size_map() override;
 
-    void populate_matrix_idx_size_map() override
-    {
-        // Check this when you have periodic BCs
-        matrix_idx_size_map["Ke"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
-        matrix_idx_size_map["Ce"] = {1, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
-    }
-    void populate_derived_matrix_idx_size_map() override
-    {
-        // Check this when you have periodic BCs
-        derived_matrix_idx_size_map["Me"] = {0, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
-        derived_matrix_idx_size_map["AAe"] = {1, fe_vec->n_shape_functions(), fe_vec->n_shape_functions()};
-        derived_matrix_idx_size_map["JAe"] = {2, fe->n_quadrature_points(), fe_vec->n_shape_functions()};
-        derived_matrix_idx_size_map["JVe"] = {3, 3 * fe->n_quadrature_points(), fe_vec->n_shape_functions()};
-    }
-    void populate_vector_idx_size_map() override
-    {
-        vector_idx_size_map["Fe"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
-    }
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"A_x", "A_y", "A_z"};
-            if (properties.keyopts[0] == 1)
-            {
-                variables.push_back("V");
-            }
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    void populate_vector_idx_size_map() override;
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"A_x", "A_y", "A_z", "V"};
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
 
-    bool is_conductive() const override
+    std::vector<std::string> getVariables(std::string variables_set) const override;
+
+    inline bool is_conductive() const override
     {
         return properties.keyopts[0] == 1;
     }
@@ -270,90 +109,19 @@ public:
 class SOLID236Type : public ElementType
 {
 public:
-    SOLID236Type(const ElementTypeProperties &properties)
-        : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 3)
-    {
-        az_dofs = 1;
+    SOLID236Type(const ElementTypeProperties &properties);
 
-        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe = FEBase::build(dimension, fe_type);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
+    std::vector<std::string> getElementLoads() const override;
 
-        FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe_vec = FEVectorBase::build(dimension, fe_type_vec);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe_vec->attach_quadrature_rule(&qrule);
-    }
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
 
-    std::vector<std::string> getElementLoads() const override
-    {
-        std::vector<std::string> loads = {"Js"};
-        return loads;
-    }
+    std::vector<std::string> getVariables(std::string variables_set) const override;
 
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"Az"};
-            if (properties.keyopts[0] == 1)
-            {
-                variables.push_back("V");
-            }
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"Az", "V"};
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
-    bool is_conductive() const override
+    inline bool is_conductive() const override
     {
         return properties.keyopts[0] == 1;
     }
@@ -362,95 +130,21 @@ public:
 class PLANE13Type : public ElementType
 {
 public:
-    PLANE13Type(const ElementTypeProperties &properties)
-        : ElementType(properties, "FIRST", "LAGRANGE", 0, 2)
-    {
-        az_dofs = 1;
+    PLANE13Type(const ElementTypeProperties &properties);
 
-        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe = FEBase::build(dimension, fe_type);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
-    } // Default dimension for PLANE13 is 2
+    std::vector<std::string> getElementLoads() const override;
 
-    std::vector<std::string> getElementLoads() const override
-    {
-        std::vector<std::string> loads = {"Js"};
-        return loads;
-    }
+    void populate_matrix_idx_size_map() override;
 
-    void populate_matrix_idx_size_map() override
-    {
-        matrix_idx_size_map["Ke"] = {0, fe->n_shape_functions(), fe->n_shape_functions()};
-        matrix_idx_size_map["Ce"] = {1, fe->n_shape_functions(), fe->n_shape_functions()};
-    }
-    void populate_derived_matrix_idx_size_map() override
-    {
-        derived_matrix_idx_size_map["Me"] = {0, 2 * fe->n_shape_functions(), 2 * fe->n_shape_functions()};
-        derived_matrix_idx_size_map["AAe"] = {1, 2 * fe->n_shape_functions(), fe->n_shape_functions()};
-        derived_matrix_idx_size_map["JAe"] = {2, fe->n_quadrature_points(), fe->n_shape_functions()};
-    }
-    void populate_vector_idx_size_map() override
-    {
-        vector_idx_size_map["Fe"] = {0, fe->n_shape_functions()};
-    }
+    void populate_derived_matrix_idx_size_map() override;
 
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"A_z"};
-            // if (properties.keyopts[0] == 1)
-            // {
-            //     variables.push_back("V");
-            // }
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    void populate_vector_idx_size_map() override;
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"A_z", "V"};
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
-    bool is_conductive() const override
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
+
+    std::vector<std::string> getVariables(std::string variables_set) const override;
+
+    inline bool is_conductive() const override
     {
         return properties.keyopts[0] == 1;
     }
@@ -459,77 +153,18 @@ public:
 class PLANE233Type : public ElementType
 {
 public:
-    PLANE233Type(const ElementTypeProperties &properties)
-        : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 2)
-    {
-        az_dofs = 1;
+    PLANE233Type(const ElementTypeProperties &properties);
 
-        FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
-        // Build a Finite Element object of the specified type.  Since the
-        // FEBase::build() member dynamically creates memory we will
-        // store the object as a std::unique_ptr<FEBase>.  This can be thought
-        // of as a pointer that will clean up after itself.
-        fe = FEBase::build(dimension, fe_type);
-        // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(dimension, fe_type.default_quadrature_order());
-        // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
-    } // Default dimension for PLANE13 is 2
+    std::vector<std::string> getElementLoads() const override;
 
-    std::vector<std::string> getElementLoads() const override
-    {
-        std::vector<std::string> loads = {"Js"};
-        return loads;
-    }
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"Az"};
-            if (properties.keyopts[0] == 1)
-            {
-                variables.push_back("V");
-            }
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
 
-    std::vector<std::string> getVariables(std::string variables_set) const override
-    {
-        if (variables_set == "DOFVariables")
-        {
-            std::vector<std::string> variables = {"Az", "V"};
-            return variables;
-        }
-        else if (variables_set == "NodalDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"B_x", "B_y"};
-            return variables;
-        }
-        else if (variables_set == "ElementDerivedQuantitiesVariables")
-        {
-            std::vector<std::string> variables = {"J_z"};
-            return variables;
-        }
-        else
-        {
-            libmesh_error_msg("Invalid variables set: " + variables_set);
-        }
-    }
+    std::vector<std::string> getVariables(std::string variables_set) const override;
+
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
+
     inline bool is_conductive() const override
     {
         return properties.keyopts[0] == 1;
@@ -565,18 +200,6 @@ public:
 
     ElementTypesMap elementTypes;
 
-    std::set<std::string> getLoadsLabels() const
-    {
-        std::set<std::string> loads_labels;
-        for (const auto &elem_type : elementTypes)
-        {
-            auto loads = elem_type.second->getElementLoads();
-            for (const auto &load : loads)
-            {
-                loads_labels.insert(load);
-            }
-        }
-        return loads_labels;
-    }
+    std::set<std::string> getLoadsLabels() const;
 };
 #endif // ELEMENT_TYPES_H
