@@ -15,9 +15,7 @@ typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditio
 
 class NodalBCConstraint : public System::Constraint
 {
-private:
 public:
-    bool update_boundary_conditions;
     // Modified constructor to take a vtkPointData pointer
     NodalBCConstraint(System &system)
         : system(system),

@@ -294,8 +294,3 @@ void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType>
         vectors[0](dof_i) *= element_data_manager->compute_js(elem->id(), 2);
     }
 }
-
-void ElementBuilder::apply_load_solid236(Elem *elem, std::shared_ptr<ElementType> element_type)
-{
-    libmesh_error_msg("apply_load_solid236 is not implemented yet.");
-}

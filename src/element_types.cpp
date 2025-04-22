@@ -566,7 +566,7 @@ VariableToElementIdsMapType &ElementTypesCollector::associateVariablesWithElemen
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
 
-        for (const auto &variable : elementType.getActiveVariables(variables_set))
+        for (const auto &variable : elementType->getActiveVariables(variables_set))
         {
             variableToElementIds[variable].insert(elementId);
         }

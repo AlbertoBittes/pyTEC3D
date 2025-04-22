@@ -16,41 +16,8 @@
 
 using namespace libMesh;
 
-class TimeStep;
+class Substep;
 class TimeStepper;
-
-class Substep
-{
-public:
-    Substep(unsigned int index, Real dt, TimeStep &parent, TimeStepper &time_stepper)
-        : index(index), dt(dt), parent(parent), time_stepper(time_stepper), solved(false)
-    {
-        time = parent.get_time_beginning() + (index + 1) * dt;
-    }
-
-    unsigned int get_index() const { return index; }
-    Real get_time() const { return time; }
-    Real get_dt() const { return dt; }
-    bool get_solved() const { return solved; }
-    bool get_write_results() const { return parent.get_write_results(); };
-    bool get_transient_effect() const { return parent.get_transient_effect(); };
-    bool get_ramped_load() const { return parent.get_ramped_load(); };
-    const TimeStep &get_parent() const { return parent; }
-    TimeStep &get_parent() { return parent; }
-
-    void set_index(unsigned int i) { index = i; }
-    void set_time(Real t) { time = t; }
-    void set_dt(Real d) { dt = d; }
-    void set_solved(bool s) { solved = s; }
-
-private:
-    unsigned int index;
-    Real time;
-    Real dt;
-    TimeStep &parent;
-    TimeStepper &time_stepper;
-    bool solved;
-};
 
 class TimeStep
 {
@@ -97,6 +64,39 @@ private:
     bool transient_effect;
     bool ramped_load;
     std::vector<Substep> substeps;
+    TimeStepper &time_stepper;
+    bool solved;
+};
+
+class Substep
+{
+public:
+    Substep(unsigned int index, Real dt, TimeStep &parent, TimeStepper &time_stepper)
+        : index(index), dt(dt), parent(parent), time_stepper(time_stepper), solved(false)
+    {
+        time = parent.get_time_beginning() + (index + 1) * dt;
+    }
+
+    unsigned int get_index() const { return index; }
+    Real get_time() const { return time; }
+    Real get_dt() const { return dt; }
+    bool get_solved() const { return solved; }
+    bool get_write_results() const { return parent.get_write_results(); };
+    bool get_transient_effect() const { return parent.get_transient_effect(); };
+    bool get_ramped_load() const { return parent.get_ramped_load(); };
+    const TimeStep &get_parent() const { return parent; }
+    TimeStep &get_parent() { return parent; }
+
+    void set_index(unsigned int i) { index = i; }
+    void set_time(Real t) { time = t; }
+    void set_dt(Real d) { dt = d; }
+    void set_solved(bool s) { solved = s; }
+
+private:
+    unsigned int index;
+    Real time;
+    Real dt;
+    TimeStep &parent;
     TimeStepper &time_stepper;
     bool solved;
 };

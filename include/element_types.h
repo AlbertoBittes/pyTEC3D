@@ -16,6 +16,8 @@
 
 using namespace libMesh;
 
+class ElementType;
+
 struct ElementTypeProperties
 {
     std::string element_type;
