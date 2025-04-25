@@ -56,7 +56,7 @@ void SystemBuilder::initialize()
         vars_set = "ElementDerivedQuantitiesVariables";
     }
     auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds(vars_set);
-    for (const auto &pair : vars_to_subdomain_ids)
+    for (const auto &pair : *vars_to_subdomain_ids)
     {
         const std::string &variable = pair.first;
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;

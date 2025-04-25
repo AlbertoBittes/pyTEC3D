@@ -70,13 +70,13 @@ using namespace libMesh;
 EquationSystems *build_equation_systems(Mesh &mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
-    EquationSystems equation_systems(mesh);
+    EquationSystems *equation_systems = new EquationSystems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<Session *>("session") = &session;
+    equation_systems->parameters.set<Session *>("session") = &session;
 
-    equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
+    equation_systems->parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
 
-    return &equation_systems;
+    return equation_systems;
 }
 
 void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
@@ -181,21 +181,21 @@ void init_equation_systems(EquationSystems &equation_systems)
 Mesh *read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
 {
     libMesh::out << "Reading mesh..." << std::endl;
-    Mesh mesh(comm);
+    Mesh *mesh = new Mesh(comm);
     // mesh.clear();
-    if (mesh.comm().rank() == 0)
+    if (mesh->comm().rank() == 0)
     {
-        VTKIO_Updated vtkio(mesh);
+        VTKIO_Updated vtkio(*mesh);
         vtkio.read(mesh_filepath);
     }
-    MeshCommunication().broadcast(mesh);
+    MeshCommunication().broadcast(*mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh.prepare_for_use();
-    MeshTools::Modification::orient_elements(mesh);
+    mesh->prepare_for_use();
+    MeshTools::Modification::orient_elements(*mesh);
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
-    mesh.print_info();
-    return &mesh;
+    mesh->print_info();
+    return mesh;
 }
 
 void solve(EquationSystems &equation_systems, TimeStep &time_step)
@@ -212,7 +212,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     auto session = equation_systems.parameters.get<Session *>("session");
     // read material properties
-    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_shared<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>()));
+    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_shared<MaterialsMap>(*(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>())));
 
     // Read loads
     std::string loads_path = session->mesh_filename_without_extension + "_loads_" + std::to_string(time_step.get_step() + 1);

@@ -10,22 +10,6 @@
 
 // Base ElementType class
 
-inline const ScalarShapeFunctions &ElementType::get_scalar_shape_functions() const
-{
-    // initialize the ShapeFunctions struct
-    // and fill it with the shape functions from the finite element object
-    // and the finite element vector object
-    return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
-}
-
-inline const VectorShapeFunctions &ElementType::get_vector_shape_functions() const
-{
-    // initialize the ShapeFunctions struct
-    // and fill it with the shape functions from the finite element object
-    // and the finite element vector object
-    return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
-}
-
 // think if this can be don with n_dofs
 void ElementType::populate_all()
 {
@@ -422,9 +406,9 @@ void PLANE233Type::populate_vector_idx_size_map()
 
 // elementTpesCollector
 
-ElementTypesMapCSV &ElementTypesCollector::readElementTypes(const std::string &filename)
+ElementTypesMapCSV *ElementTypesCollector::readElementTypes(const std::string &filename)
 {
-    ElementTypesMapCSV elementTypesMap;
+    ElementTypesMapCSV *elementTypesMap = new ElementTypesMapCSV();
     std::ifstream file(filename);
 
     if (!file.is_open())
@@ -459,7 +443,7 @@ ElementTypesMapCSV &ElementTypesCollector::readElementTypes(const std::string &f
         }
 
         ElementTypeProperties properties = {element_type, keyopts};
-        elementTypesMap[ansys_element_type] = properties;
+        (*elementTypesMap)[ansys_element_type] = properties;
     }
 
     file.close();
@@ -493,9 +477,9 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypes
     }
 }
 
-VariableToElementIdsMapType &ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
+VariableToElementIdsMapType *ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
 {
-    VariableToElementIdsMapType variableToElementIds;
+    VariableToElementIdsMapType *variableToElementIds = new VariableToElementIdsMapType();
 
     for (const auto &pair : elementTypes)
     {
@@ -504,7 +488,7 @@ VariableToElementIdsMapType &ElementTypesCollector::associateVariablesWithElemen
 
         for (const auto &variable : elementType->getActiveVariables(variables_set))
         {
-            variableToElementIds[variable].insert(elementId);
+            (*variableToElementIds)[variable].insert(elementId);
         }
     }
 

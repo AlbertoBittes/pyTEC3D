@@ -18,7 +18,6 @@ void NodalBCConstraint::constrain()
     MeshBase &mesh = system.get_mesh();
     DofMap &dof_map = system.get_dof_map();
 
-    dof_id_type dof_id;
     const Node *node_ptr = nullptr;
     for (const auto &bc_pair : *(active_bc_map))
     {

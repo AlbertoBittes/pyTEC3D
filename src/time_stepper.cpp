@@ -19,7 +19,7 @@ unsigned int TimeStepper::get_cumulative_substep() const
 
 TimeDataVector *TimeStepper::read_time_data_from_csv(const std::string &filename)
 {
-    TimeDataVector *time_data;
+    TimeDataVector *time_data = new TimeDataVector();
     std::ifstream file(filename);
 
     if (!file.is_open())
@@ -53,7 +53,7 @@ TimeDataVector *TimeStepper::read_time_data_from_csv(const std::string &filename
 
 void TimeStepper::allocate_time_steps(TimeDataVector *time_data)
 {
-    for (const auto &[time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results] : time_data)
+    for (const auto &[time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results] : *time_data)
     {
         TimeStep time_step(time_step_num, time, *this);
         time_step.set_transient_effect(transient_effects);
@@ -72,7 +72,7 @@ TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper)
       write_results(false),
       transient_effect(true),
       ramped_load(true),
-      solved(false),
+      solved(false),             // Initialize solved before time_stepper
       time_stepper(time_stepper) // Initialize time_stepper last
 {
     if (step == 0)

@@ -61,9 +61,21 @@ public:
 
     std::string getVariableOrder(std::string variable);
 
-    inline const ScalarShapeFunctions &get_scalar_shape_functions() const;
+    inline ScalarShapeFunctions get_scalar_shape_functions() const
+    {
+        // initialize the ShapeFunctions struct
+        // and fill it with the shape functions from the finite element object
+        // and the finite element vector object
+        return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
+    }
 
-    inline const VectorShapeFunctions &get_vector_shape_functions() const;
+    inline VectorShapeFunctions get_vector_shape_functions() const
+    {
+        // initialize the ShapeFunctions struct
+        // and fill it with the shape functions from the finite element object
+        // and the finite element vector object
+        return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
+    }
 
     virtual void populate_matrix_idx_size_map() = 0;
     virtual void populate_derived_matrix_idx_size_map() = 0;
@@ -185,8 +197,8 @@ public:
 
     ElementTypesCollector(std::string &filename)
     {
-        ElementTypesMapCSV &elementTypesMapCSV = readElementTypes(filename);
-        collectElementTypes(elementTypesMapCSV);
+        ElementTypesMapCSV *elementTypesMapCSV = readElementTypes(filename);
+        collectElementTypes(*elementTypesMapCSV);
     }
 
     ElementTypesMap &getElementTypes()
@@ -194,9 +206,9 @@ public:
         return elementTypes;
     }
 
-    ElementTypesMapCSV &readElementTypes(const std::string &filename);
+    ElementTypesMapCSV *readElementTypes(const std::string &filename);
 
-    VariableToElementIdsMapType &associateVariablesWithElementIds(std::string variables_set) const;
+    VariableToElementIdsMapType *associateVariablesWithElementIds(std::string variables_set) const;
 
     void collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV);
 
