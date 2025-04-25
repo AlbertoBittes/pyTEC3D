@@ -18,11 +18,7 @@ class NodalBCConstraint : public System::Constraint
 public:
     // Modified constructor to take a vtkPointData pointer
     NodalBCConstraint(System &system)
-        : system(system),
-          update_boundary_conditions(true),
-          old_bc_map(nullptr),
-          active_bc_map(nullptr),
-          time_step(nullptr)
+        : system(system), update_boundary_conditions(true), old_bc_map(nullptr), active_bc_map(nullptr), time_step(nullptr)
     {
     }
 

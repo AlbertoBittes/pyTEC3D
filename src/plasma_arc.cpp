@@ -67,16 +67,22 @@
 
 using namespace libMesh;
 
-EquationSystems &build_equation_systems(Mesh &mesh, Session &session)
+EquationSystems *build_equation_systems(Mesh &mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
     EquationSystems equation_systems(mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems.parameters.set<Session *>("session") = &session;
 
-    equation_systems.parameters.set<std::unique_ptr<TimeStepper>>("time_stepper") = std::make_unique<TimeStepper>();
+    equation_systems.parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
 
-    return equation_systems;
+    return &equation_systems;
+}
+
+void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
+{
+    libMesh::out << "Reading element types..." << std::endl;
+    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(element_types_filepath);
 }
 
 void init_equation_systems(EquationSystems &equation_systems)
@@ -147,16 +153,16 @@ void init_equation_systems(EquationSystems &equation_systems)
     der_system.attach_init_object(system_builder_der);
 
     SystemBuilder system_builder_der_elem(equation_systems, der_elem_system_name);
-    der_system.attach_init_object(system_builder_der_elem);
+    der_elem_system.attach_init_object(system_builder_der_elem);
 
     // This will go in /solu
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     equation_systems.init();
     equation_systems.print_info();
 
-    equation_systems.parameters.set<std::unique_ptr<ElementDataManager>>("element_data_manager") = std::make_unique<ElementDataManager>(ElementDataManager());
+    equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = std::make_shared<ElementDataManager>(ElementDataManager());
 
-    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::unique_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
+    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
 
     system.zero_out_matrix_and_rhs = false;
     system.solution->zero();
@@ -172,13 +178,7 @@ void init_equation_systems(EquationSystems &equation_systems)
     solver->set_solver_configuration(solver_configuration);
 }
 
-void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
-{
-    libMesh::out << "Reading element types..." << std::endl;
-    equation_systems.parameters.set<std::unique_ptr<ElementTypesCollector>>("element_types_collector") = std::make_unique<ElementTypesCollector>(element_types_filepath);
-}
-
-Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
+Mesh *read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
 {
     libMesh::out << "Reading mesh..." << std::endl;
     Mesh mesh(comm);
@@ -195,7 +195,7 @@ Mesh &read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Commun
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh.print_info();
-    return mesh;
+    return &mesh;
 }
 
 void solve(EquationSystems &equation_systems, TimeStep &time_step)
@@ -212,12 +212,12 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     auto session = equation_systems.parameters.get<Session *>("session");
     // read material properties
-    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_unique<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>()));
+    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_shared<MaterialsMap>(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>()));
 
     // Read loads
     std::string loads_path = session->mesh_filename_without_extension + "_loads_" + std::to_string(time_step.get_step() + 1);
 
-    equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->read_update_loads_vectors(loads_path);
+    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->read_update_loads_vectors(loads_path);
     // Get the system
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
     // This will reinitialize the constraints for the system
@@ -235,7 +235,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
                      << ", Write Results: " << substep.get_write_results()
                      << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
         // update time in element data manager
-        equation_systems.parameters.get<std::unique_ptr<ElementDataManager>>("element_data_manager")->update_time_step(substep);
+        equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->update_time_step(substep);
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();
@@ -344,11 +344,11 @@ int main(int argc, char **argv)
 
     // Declare a performance log for the main program
     // PerfLog perf_main("Main Program");
-    Mesh &mesh = read_and_prepare_mesh(session.input_mesh_filepath, init.comm());
+    Mesh &mesh = *(read_and_prepare_mesh(session.input_mesh_filepath, init.comm()));
     // mesh.allow_renumbering(false);
 
     // Read element types
-    EquationSystems &equation_systems = build_equation_systems(mesh, session);
+    EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
 
     // This will be done much later
 
@@ -462,7 +462,7 @@ int main(int argc, char **argv)
     // This should be already done
 
     // solver->set_preconditioner_type(Utility::string_to_enum<PreconditionerType>("ILU"));
-    for (auto &step : *equation_systems.parameters.get<std::unique_ptr<TimeStepper>>("time_stepper"))
+    for (auto &step : *equation_systems.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper"))
     {
         solve(equation_systems, step);
     }

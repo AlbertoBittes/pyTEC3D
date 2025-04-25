@@ -62,8 +62,8 @@ void SystemBuilder::initialize()
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;
         auto elem_type = element_types_collector->getElementTypes().at(*subdomain_ids.begin());
         // Add the variable to the system
-        fe_fam = elem_type.getVariableFEFamily(variable);
-        order = elem_type.getVariableOrder(variable);
+        fe_fam = elem_type->getVariableFEFamily(variable);
+        order = elem_type->getVariableOrder(variable);
 
         system.add_variable(variable, Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_fam), &subdomain_ids);
     }

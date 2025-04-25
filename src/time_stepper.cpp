@@ -17,15 +17,14 @@ unsigned int TimeStepper::get_cumulative_substep() const
 //     *system.old_local_solution = *system.current_local_solution;
 // }
 
-TimeDataVector &TimeStepper::read_time_data_from_csv(const std::string &filename)
+TimeDataVector *TimeStepper::read_time_data_from_csv(const std::string &filename)
 {
-    TimeDataVector time_data;
+    TimeDataVector *time_data;
     std::ifstream file(filename);
 
     if (!file.is_open())
     {
-        std::cerr << "Error opening file: " << filename << std::endl;
-        return;
+        libmesh_error_msg("Error opening time file");
     }
 
     std::string line;
@@ -45,14 +44,14 @@ TimeDataVector &TimeStepper::read_time_data_from_csv(const std::string &filename
 
         ss >> time_step_num >> comma >> time >> comma >> number_of_substeps >> comma >> transient_effects >> comma >> ramped_loads >> comma >> write_substep_results;
 
-        time_data.emplace_back(time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results);
+        time_data->emplace_back(time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results);
     }
 
     file.close();
     return time_data;
 }
 
-void TimeStepper::allocate_time_steps(TimeDataVector &time_data)
+void TimeStepper::allocate_time_steps(TimeDataVector *time_data)
 {
     for (const auto &[time_step_num, time, number_of_substeps, transient_effects, ramped_loads, write_substep_results] : time_data)
     {
@@ -65,13 +64,16 @@ void TimeStepper::allocate_time_steps(TimeDataVector &time_data)
     }
 }
 
-TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper) : step(step),
-                                                                              time(time),
-                                                                              time_stepper(time_stepper),
-                                                                              write_results(false),
-                                                                              transient_effect(true),
-                                                                              ramped_load(true),
-                                                                              solved(false)
+TimeStep::TimeStep(unsigned int step, Real time, TimeStepper &time_stepper)
+    : step(step),
+      time(time),
+      time_beginning(0.0), // Initialize time_beginning before delta_t
+      delta_t(0.0),
+      write_results(false),
+      transient_effect(true),
+      ramped_load(true),
+      solved(false),
+      time_stepper(time_stepper) // Initialize time_stepper last
 {
     if (step == 0)
         time_beginning = 0.0;

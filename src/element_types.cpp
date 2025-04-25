@@ -10,70 +10,6 @@
 
 // Base ElementType class
 
-ElementType::ElementType(const ElementTypeProperties &properties, const std::string &order = "default_order", const std::string &fe_family = "default_family", unsigned int quadrature_order = 0, unsigned int dimension = 0)
-    : properties(properties), order(order), fe_family(fe_family), quadrature_order(quadrature_order), dimension(dimension), az_dofs(0) {}
-
-std::string ElementType::getVariableFEFamily(std::string variable)
-{
-    auto vars = this->getVariables("DOFVariables");
-    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-    {
-        if (variable == "V")
-            return "LAGRANGE";
-        else
-            return fe_family;
-    }
-    else
-    {
-        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-        {
-            return "L2_LAGRANGE";
-        }
-        else
-        {
-            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-            {
-                return "MONOMIAL";
-            }
-            else
-            {
-                libmesh_error_msg("Invalid variable set: " + variable);
-            }
-        }
-    }
-}
-
-std::string ElementType::getVariableOrder(std::string variable)
-{
-    auto vars = this->getVariables("DOFVariables");
-    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-    {
-        return order;
-    }
-    else
-    {
-        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-        {
-            return "FIRST";
-        }
-        else
-        {
-            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-            {
-                return "CONSTANT";
-            }
-            else
-            {
-                libmesh_error_msg("Invalid variable set: " + variable);
-            }
-        }
-    }
-}
-
 inline const ScalarShapeFunctions &ElementType::get_scalar_shape_functions() const
 {
     // initialize the ShapeFunctions struct
@@ -123,9 +59,9 @@ SOLID97Type::SOLID97Type(const ElementTypeProperties &properties)
     // of as a pointer that will clean up after itself.
     fe_vec = FEVectorBase::build(dimension, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
+    QGauss qrule_vec(dimension, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
-    fe_vec->attach_quadrature_rule(&qrule);
+    fe_vec->attach_quadrature_rule(&qrule_vec);
 }
 
 std::vector<std::string> SOLID97Type::getElementLoads() const
@@ -227,9 +163,9 @@ SOLID236Type::SOLID236Type(const ElementTypeProperties &properties)
     // of as a pointer that will clean up after itself.
     fe_vec = FEVectorBase::build(dimension, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type_vec.default_quadrature_order());
+    QGauss qrule_vec(dimension, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
-    fe_vec->attach_quadrature_rule(&qrule);
+    fe_vec->attach_quadrature_rule(&qrule_vec);
 }
 
 std::vector<std::string> SOLID236Type::getElementLoads() const

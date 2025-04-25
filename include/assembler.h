@@ -11,7 +11,7 @@ class AssemblerLinear : public System::Assembly
 {
 public:
     AssemblerLinear(EquationSystems &eq_sys)
-        : eq_sys(eq_sys), time_substep(nullptr), old_time_substep(nullptr), updated_bcs(true)
+        : eq_sys(eq_sys), updated_bcs(true), time_substep(nullptr), old_time_substep(nullptr)
     {
     }
 

@@ -147,8 +147,6 @@ void ElementBuilder::build_plane13(Elem *elem, std::shared_ptr<ElementType> elem
     if (element_type->is_conductive())
     {
         // Now start logging the element matrix computation
-        Real CAV_value;
-
         for (unsigned int qp = 0; qp < element_type->fe->n_quadrature_points(); qp++)
         {
             for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)

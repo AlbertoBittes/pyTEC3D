@@ -60,7 +60,10 @@ public:
 
     inline Real ramp_current(dof_id_type elem_id, unsigned int comp);
 
-    inline void update_time_step(const Substep &time_substep);
+    inline void update_time_step(const Substep &time_substep)
+    {
+        this->time_substep = &time_substep;
+    };
 
     inline void set_load_quantity(std::string load_name);
 
@@ -72,7 +75,7 @@ public:
 
     std::unique_ptr<LoadArraysMap> oldLoadsVector;
     std::unique_ptr<LoadArraysMap> activeLoadsVector;
-    std::unique_ptr<MaterialsMap> materials;
+    std::shared_ptr<MaterialsMap> materials;
 
     Real mu_matrix[3];
     Real rs_matrix[3];

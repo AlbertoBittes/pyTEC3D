@@ -119,8 +119,8 @@ public:
     void update_old_solution(TransientLinearImplicitSystem &system);
 
     void add_time_step(const TimeStep &time_step) { time_steps.push_back(time_step); }
-    TimeDataVector &read_time_data_from_csv(const std::string &filename);
-    void allocate_time_steps(TimeDataVector &time_data);
+    TimeDataVector *read_time_data_from_csv(const std::string &filename);
+    void allocate_time_steps(TimeDataVector *time_data);
 
     // Iteration methods
     class Iterator;

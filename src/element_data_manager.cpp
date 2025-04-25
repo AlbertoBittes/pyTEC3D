@@ -161,11 +161,6 @@ inline Real ElementDataManager::ramp_current(dof_id_type elem_id, unsigned int c
     return y1 + ((y2 - y1) / (time_substep->get_parent().get_time() - time_substep->get_parent().get_time_beginning())) * (time_substep->get_time() - time_substep->get_parent().get_time_beginning());
 }
 
-inline void ElementDataManager::update_time_step(const Substep &time_substep)
-{
-    this->time_substep = &time_substep;
-}
-
 inline void ElementDataManager::set_load_quantity(std::string load_name)
 {
     // Get the load quantity from the cell data
