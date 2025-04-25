@@ -9,7 +9,66 @@
 #include "../include/element_types.h"
 
 // Base ElementType class
+std::string ElementType::getVariableFEFamily(std::string variable)
+{
+    auto vars = this->getVariables("DOFVariables");
+    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
+    {
+        if (variable == "V")
+            return "LAGRANGE";
+        else
+            return fe_family;
+    }
+    else
+    {
+        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
+        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
+        {
+            return "L2_LAGRANGE";
+        }
+        else
+        {
+            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
+            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
+            {
+                return "MONOMIAL";
+            }
+            else
+            {
+                libmesh_error_msg("Invalid variable set: " + variable);
+            }
+        }
+    }
+}
 
+std::string ElementType::getVariableOrder(std::string variable)
+{
+    auto vars = this->getVariables("DOFVariables");
+    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
+    {
+        return order;
+    }
+    else
+    {
+        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
+        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
+        {
+            return "FIRST";
+        }
+        else
+        {
+            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
+            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
+            {
+                return "CONSTANT";
+            }
+            else
+            {
+                libmesh_error_msg("Invalid variable set: " + variable);
+            }
+        }
+    }
+}
 // think if this can be don with n_dofs
 void ElementType::populate_all()
 {
