@@ -20,6 +20,12 @@ class APEC:
         self.csv_file_path = None
         self.element_types_collector = None
         self.mesh = vtk.vtkUnstructuredGrid()
+
+        # Add three vtkTable attributes
+        self.element_types = vtk.vtkTable()
+        self.materials = vtk.vtkTable()
+        self.time_data = vtk.vtkTable()
+        self.apec_settings = vtk.vtkTable()        
         self.jobname = None
         self.folderpath = None
 
@@ -241,6 +247,16 @@ class APEC:
         # producer.GetExecutive().GetOutputInformation(0).Set(
         #     vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
         # )
+        for table, name in [
+            (self.element_types, "Element Types"),
+            (self.materials, "Materials"),
+            (self.time_data, "Time Data"),
+            (self.apec_settings, "APEC Settings"),
+        ]:
+            # print(f"Adding table to pipeline: {name}")
+            table_producer = TrivialProducer()
+            table_producer.GetClientSideObject().SetOutput(table)
+            Show(table_producer)
         Show(producer)
         Render()
 

@@ -74,9 +74,9 @@ void Session::create_temp_folder()
 
 void Session::create_output_folder()
 {
-    if (!std::filesystem::exists(output_path))
+    if (!std::filesystem::exists(output_folderpath))
     {
-        std::filesystem::create_directory(output_path);
+        std::filesystem::create_directory(output_folderpath);
         libMesh::out << "Output folder created at " << output_path << std::endl;
     }
     else

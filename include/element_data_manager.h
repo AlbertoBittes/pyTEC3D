@@ -50,7 +50,7 @@ public:
 
     void zero_load_arrays();
 
-    inline void ElementDataManager::fill_mu_matrix(dof_id_type elem_id)
+    inline void fill_mu_matrix(dof_id_type elem_id)
     {
         // get ansys_material_type from the materials map
         const MaterialsProperties &mat_properties = materials->at(elem_id);
@@ -60,7 +60,7 @@ public:
         mu_matrix[2] = 4 * libMesh::pi * 1e-7 * mat_properties.murz;
     }
 
-    inline void ElementDataManager::fill_rs_matrix(dof_id_type elem_id)
+    inline void fill_rs_matrix(dof_id_type elem_id)
     {
         const MaterialsProperties &mat_properties = materials->at(elem_id);
 
@@ -69,7 +69,7 @@ public:
         rs_matrix[2] = mat_properties.rsvz;
     }
 
-    inline void ElementDataManager::compute_material_properties(dof_id_type elem_id, bool conductive)
+    inline void compute_material_properties(dof_id_type elem_id, bool conductive)
     {
         // Call fill_mu_matrix and fill_rs_matrix to compute the material properties
         this->fill_mu_matrix(elem_id);
@@ -77,7 +77,7 @@ public:
             this->fill_rs_matrix(elem_id);
     }
 
-    inline Real ElementDataManager::compute_js(dof_id_type elem_id, unsigned int comp)
+    inline Real compute_js(dof_id_type elem_id, unsigned int comp)
     {
         // Get the value from the "Js" array using the element ID
         if (time_substep->get_parent().get_ramped_load())
@@ -86,7 +86,7 @@ public:
             return (*load_array)[elem_id][comp];
     }
 
-    inline Real ElementDataManager::ramp_current(dof_id_type elem_id, unsigned int comp)
+    inline Real ramp_current(dof_id_type elem_id, unsigned int comp)
     {
         Real y1;
         Real y2;

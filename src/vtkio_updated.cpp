@@ -360,7 +360,7 @@ void VTKIO_Updated::read(const std::string &name)
             cell_data_int_array_names.push_back(array_name);
         }
     }
-    mesh.add_elem_integers(point_data_int_array_names);
+    mesh.add_elem_integers(cell_data_int_array_names);
     vtkDataArray *data_array;
     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
     {
