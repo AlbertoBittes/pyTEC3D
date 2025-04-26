@@ -1,80 +1,86 @@
 import os
+import sys
 import numpy as np
-import pyvista as pv
-import json
 from ansys.mapdl import reader as pymapdl_reader
-import vtk
-
-# Get the mesh file path from the configuration
-fileName = "3D_loop_cond_period.cdb"
-
-# Check if the mesh file exists
-if not os.path.exists(fileName):
-    raise FileNotFoundError(f"Mesh file '{fileName}' not found.")
-
-# Get the file extension
-file_extension = os.path.splitext(fileName)[1]
-
-# Check the file extension and read the file accordingly
-if file_extension == ".cdb":
-    # Read ansys archive file
-    archive = pymapdl_reader.Archive(fileName)
-else:
-    raise ValueError(f"Unsupported file extension: {file_extension}")
-
-# Check if the archive is successfully read
-if archive is None:
-    raise ValueError("Failed to read the mesh file.")
 
 
-# Example usage:
-# Assuming `unstructured_grid` is your vtkUnstructuredGrid object
-num_points = archive.grid.n_points
-num_cells = archive.grid.n_cells
-# PVTU format doesn't support time varying data, only implemented for VTKHDF5
-# This is a workaround to store time varying data in a single VTK file
-# One day I will try to fix it, but I will need to rewrite also the libmesh code
+def process_mesh(file_path):
+    """
+    Processes the mesh file, modifies the grid, and saves it as a .vtu file.
 
-# Add a point data array called boundary_id to the grid
-boundary_id = np.full(num_points, 0)
-archive.grid.point_data["boundary_id"] = boundary_id
-# Check if PERIODIC_BOUNDARY_1 is present in the point data
-if "PERIODIC_BOUNDARY_1" in archive.grid.point_data:
-    periodic_boundary_1 = archive.grid.point_data["PERIODIC_BOUNDARY_1"]
-    boundary_id = archive.grid.point_data["boundary_id"]
+    Parameters:
+        file_path (str): Path to the input mesh file.
+    """
+    # Check if the mesh file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Mesh file '{file_path}' not found.")
 
-    # Assign the value 7 to all points where PERIODIC_BOUNDARY_1 is 1
-    boundary_id[periodic_boundary_1 == 1] = 7
+    # Get the file extension
+    file_extension = os.path.splitext(file_path)[1]
 
-    # Update the boundary_id in the point data
+    # Check the file extension and read the file accordingly
+    if file_extension == ".cdb":
+        # Read ansys archive file
+        archive = pymapdl_reader.Archive(file_path)
+    else:
+        raise ValueError(f"Unsupported file extension: {file_extension}")
+
+    # Check if the archive is successfully read
+    if archive is None:
+        raise ValueError("Failed to read the mesh file.")
+
+    # Get the number of points and cells
+    num_points = archive.grid.n_points
+    num_cells = archive.grid.n_cells
+
+    # Remove specified arrays if they exist in the grid
+    # Check and remove from cell data
+    for array_name in ["ansys_elem_type_num", "ansys_real_constant"]:
+        if array_name in archive.grid.cell_data:
+            del archive.grid.cell_data[array_name]
+
+    # Check and remove from point data
+    for array_name in ["angles", "angles_magnitude", "origid", "VTKorigID"]:
+        if array_name in archive.grid.point_data:
+            del archive.grid.point_data[array_name]
+
+    # Add a point data array called boundary_id to the grid
+    boundary_id = np.full(num_points, 0)
     archive.grid.point_data["boundary_id"] = boundary_id
 
-# Check if PERIODIC_BOUNDARY_2 is present in the point data
-if "PERIODIC_BOUNDARY_2" in archive.grid.point_data:
-    periodic_boundary_2 = archive.grid.point_data["PERIODIC_BOUNDARY_2"]
-    boundary_id = archive.grid.point_data["boundary_id"]
+    # Check for arrays with "PERIODIC_BOUNDARY_" or "INFINITE_BOUNDARY_" in their names
+    for array_name in archive.grid.point_data.keys():
+        if array_name.startswith("PERIODIC_BOUNDARY_") or array_name.startswith(
+            "INFINITE_BOUNDARY_"
+        ):
+            # Extract the number after the last underscore
+            boundary_number = int(array_name.split("_")[-1])
+            periodic_boundary = archive.grid.point_data[array_name]
+            boundary_id = archive.grid.point_data["boundary_id"]
 
-    # Assign the value 8 to all points where PERIODIC_BOUNDARY_2 is 1
-    boundary_id[periodic_boundary_2 == 1] = 8
+            # Assign the boundary number to points where the array value is 1
+            boundary_id[periodic_boundary == 1] = boundary_number
 
-    # Update the boundary_id in the point data
-    archive.grid.point_data["boundary_id"] = boundary_id
-# else:
-#     # Initialize and add point datasets
-#     num_points = archive.grid.n_points
-#     if dimension == 3:
-#         A = np.full((num_points, 3), np.nan)
-#     elif dimension == 2:
-#         A = np.full((num_points, 1), np.nan)
-#     archive.grid.point_data["A"] = A
-#     # Initialize and add cell datasets
-#     num_cells = archive.grid.n_cells
-#     if dimension == 3:
-#         Js = np.zeros((num_cells, 3))
-#     elif dimension == 2:
-#         Js = np.zeros((num_cells, 1))
-#     archive.grid.cell_data["Js"] = Js
+            # Update the boundary_id in the point data
+            archive.grid.point_data["boundary_id"] = boundary_id
 
-# Print overview of data read from cdb
-print(archive)
-archive.grid.save("3D_loop_cond_period.vtu", binary=False)
+    # Save the modified grid to a .vtu file
+    output_file = os.path.splitext(os.path.basename(file_path))[0] + ".vtu"
+    archive.grid.save(output_file, binary=True)
+
+    # Print overview of data read from cdb
+    print(f"Processed mesh saved to '{output_file}'.")
+
+
+# Allow the script to be run from the command line
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python initialize_mesh.py <filename>")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    try:
+        process_mesh(input_file)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)

@@ -481,16 +481,16 @@ ElementTypesMapCSV *ElementTypesCollector::readElementTypes(const std::string &f
     while (std::getline(file, line))
     {
         std::istringstream iss(line);
-        std::string ansys_element_type_str, element_type;
+        std::string ansys_etype_str, element_type;
         std::vector<int> keyopts(9, 0); // Initialize with 9 zeros
-        unsigned int ansys_element_type;
+        unsigned int ansys_etype;
 
-        if (!(std::getline(iss, ansys_element_type_str, ',') && std::getline(iss, element_type, ',')))
+        if (!(std::getline(iss, ansys_etype_str, ',') && std::getline(iss, element_type, ',')))
         {
             throw std::runtime_error("Error parsing line: " + line);
         }
 
-        ansys_element_type = std::stoul(ansys_element_type_str);
+        ansys_etype = std::stoul(ansys_etype_str);
 
         for (int i = 0; i < 9; ++i)
         {
@@ -502,7 +502,7 @@ ElementTypesMapCSV *ElementTypesCollector::readElementTypes(const std::string &f
         }
 
         ElementTypeProperties properties = {element_type, keyopts};
-        (*elementTypesMap)[ansys_element_type] = properties;
+        (*elementTypesMap)[ansys_etype] = properties;
     }
 
     file.close();

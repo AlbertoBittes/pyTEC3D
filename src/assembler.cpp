@@ -109,7 +109,7 @@ void AssemblerLinear::assemble()
     std::filesystem::path filepath;
     std::string mtrc_filename;
 
-    unsigned int num_integer = mesh.get_elem_integer_index("ansys_element_type");
+    unsigned int num_integer = mesh.get_elem_integer_index("ansys_etype");
     if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     {
         mtrc_filename = "mtrc_" + std::to_string(comm.rank()) + ".temp";

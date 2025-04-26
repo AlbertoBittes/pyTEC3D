@@ -17,27 +17,133 @@ class APEC:
         """
         Initialize the APEC object without requiring a file path.
         """
-        self.csv_file_path = None
+        # self.csv_file_path = None
         self.element_types_collector = None
         self.mesh = vtk.vtkUnstructuredGrid()
 
-        # Add three vtkTable attributes
-        self.element_types = vtk.vtkTable()
-        self.materials = vtk.vtkTable()
-        self.time_data = vtk.vtkTable()
-        self.apec_settings = vtk.vtkTable()        
+        self.initialize_dataframes()
         self.jobname = None
         self.folderpath = None
+        self.solve_settings = {}
+        self.solve_settings["time"] = 1
+        self.solve_settings["nsubsteps"] = 1
+        self.solve_settings["timint"] = False
+        self.solve_settings["kbc"] = True
+        self.solve_settings["outres"] = True
+        self.solve_settings["solver"] = "Direct"
+        self.solve_settings["preconditioner"] = "LU"
+        self.solve_settings["theta"] = 1.0
+
+    def initialize_dataframes(self):
+        """
+        Initialize the DataFrames with the proper columns.
+        """
+        self.element_types = pd.DataFrame(
+            columns=[
+                "ansys_etype",
+                "element_type",
+                "keyopt1",
+                "keyopt2",
+                "keyopt3",
+                "keyopt4",
+                "keyopt5",
+                "keyopt6",
+                "keyopt7",
+                "keyopt8",
+                "keyopt9",
+            ]
+        )
+        self.materials = pd.DataFrame(
+            columns=[
+                "ansys_material_type",
+                "murx",
+                "mury",
+                "murz",
+                "rsvx",
+                "rsvy",
+                "rsvz",
+                "perx",
+                "pery",
+                "perz",
+            ]
+        )
+        self.time_data = pd.DataFrame(
+            columns=[
+                "time_step_num",
+                "time",
+                "number_of_substeps",
+                "transient_effects",
+                "ramped_loads",
+                "write_substep_results",
+            ]
+        )
+        self.apec_parameters = pd.DataFrame(columns=["Setting", "Value"])
+
+        # print("DataFrames initialized with proper columns.")
+
+    def read_dataframe_from_csv(self, csv_file_path):
+        """
+        Generic function to read a DataFrame from a CSV file.
+
+        Parameters:
+            csv_file_path (str): Path to the CSV file.
+
+        Returns:
+            pd.DataFrame: The DataFrame read from the CSV file.
+        """
+        if not os.path.exists(csv_file_path):
+            raise FileNotFoundError(f"CSV file '{csv_file_path}' not found.")
+        return pd.read_csv(csv_file_path)
 
     def read_element_types(self, csv_file_path):
         """
-        Load element types from the CSV file into the ElementTypesCollector.
+        Read the element types DataFrame from a CSV file.
 
         Parameters:
-            csv_file_path (str): Path to the CSV file for initializing the ElementTypesCollector.
+            csv_file_path (str): Path to the CSV file.
         """
-        self.csv_file_path = csv_file_path
-        self.element_types_collector = ElementTypesCollector(self.csv_file_path)
+        self.element_types = self.read_dataframe_from_csv(csv_file_path)
+        print(f"Element types loaded from '{csv_file_path}'.")
+
+    def read_materials(self, csv_file_path):
+        """
+        Read the materials DataFrame from a CSV file.
+
+        Parameters:
+            csv_file_path (str): Path to the CSV file.
+        """
+        self.materials = self.read_dataframe_from_csv(csv_file_path)
+        print(f"Materials loaded from '{csv_file_path}'.")
+
+    def read_time_data(self, csv_file_path):
+        """
+        Read the time data DataFrame from a CSV file.
+
+        Parameters:
+            csv_file_path (str): Path to the CSV file.
+        """
+        self.time_data = self.read_dataframe_from_csv(csv_file_path)
+        print(f"Time data loaded from '{csv_file_path}'.")
+
+    def read_apec_settings(self, csv_file_path):
+        """
+        Read the APEC settings DataFrame from a CSV file.
+
+        Parameters:
+            csv_file_path (str): Path to the CSV file.
+        """
+        self.apec_settings = self.read_dataframe_from_csv(csv_file_path)
+        print(f"APEC settings loaded from '{csv_file_path}'.")
+
+    # def read_element_types(self, csv_file_path):
+    #     """
+    #     Load element types from the CSV file into the ElementTypesCollector.
+
+    #     Parameters:
+    #         csv_file_path (str): Path to the CSV file for initializing the ElementTypesCollector.
+    #     """
+    #     self.csv_file_path = csv_file_path
+    #     self.element_types_collector = ElementTypesCollector(self.csv_file_path)
 
     def read_mesh(self, vtk_file_path):
         """
@@ -57,6 +163,16 @@ class APEC:
 
         self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
         self.folderpath = os.path.dirname(vtk_file_path)
+
+        # Set the current working directory
+        os.chdir(self.folderpath)
+
+        # Create a folder named 'loads_bcs' in the current working directory
+        self.loads_bcs_folder = os.path.join(os.getcwd(), "loads_bcs")
+        if not os.path.exists(self.loads_bcs_folder):
+            os.makedirs(self.loads_bcs_folder)
+
+        self.distribute_dofs()
 
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
@@ -80,7 +196,7 @@ class APEC:
     #     if self.pipeline_object is None:
     #         raise RuntimeError("No active object in the pipeline. Please select an object.")
 
-    def write_loads_to_binary(self, array_name):
+    def write_loads_to_binary(self, array_name, time_step=None):
         """
         Writes a binary file for loads from a VTK cell data array.
         Handles multi-component arrays by iterating over components and writing the component number.
@@ -98,7 +214,15 @@ class APEC:
         # Get the number of components and cells
         num_components = load_array.GetNumberOfComponents()
         num_cells = self.mesh.GetNumberOfCells()
-        output_file = os.path.join(self.folderpath, f"{self.jobname}_loads.bin")
+
+        if time_step is None:
+            output_file = os.path.join(
+                self.loads_bcs_folder, f"{self.jobname}_loads.bin"
+            )
+        else:
+            output_file = os.path.join(
+                self.loads_bcs_folder, f"{self.jobname}_loads_{time_step}.bin"
+            )
 
         # Open the output file in binary mode
         with open(output_file, "wb") as file:
@@ -129,7 +253,9 @@ class APEC:
                     if np.isnan(value):
                         continue
                     # Write the element number (cell ID)
-                    file.write(struct.pack("I", cell_id))  # 'I' is for uint32_t (dof_id_type)
+                    file.write(
+                        struct.pack("I", cell_id)
+                    )  # 'I' is for uint32_t (dof_id_type)
 
                     # Write the component number
                     file.write(struct.pack("I", component))  # 'I' is for unsigned int
@@ -137,7 +263,7 @@ class APEC:
                     # Write the load value
                     file.write(struct.pack("d", value))  # 'd' is for double (Real)
 
-    def write_boundary_conditions_to_binary(self, array_name):
+    def write_boundary_conditions_to_binary(self, array_name, time_step=None):
         """
         Writes a binary file for boundary conditions from a VTK point data array.
         Handles multi-component arrays by appending "_x", "_y", "_z", etc., to the variable name.
@@ -155,7 +281,13 @@ class APEC:
         # Get the number of components and points
         num_components = bc_array.GetNumberOfComponents()
         num_points = self.mesh.GetNumberOfPoints()
-        output_file = os.path.join(self.folderpath, f"{self.jobname}_bcs.bin")
+
+        if time_step is None:
+            output_file = os.path.join(self.loads_bcs_folder, f"{self.jobname}_bcs.bin")
+        else:
+            output_file = os.path.join(
+                self.loads_bcs_folder, f"{self.jobname}_bcs_{time_step}.bin"
+            )
 
         # Open the output file in binary mode
         with open(output_file, "wb") as file:
@@ -167,7 +299,9 @@ class APEC:
                     component_label = array_name
                 else:
                     # Append '_x', '_y', '_z', etc., for multi-component arrays
-                    component_label = f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
+                    component_label = (
+                        f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
+                    )
                 # Create a mask to filter out NaN values for this component
                 component_values = bc_array_np[:, component]
                 mask = ~np.isnan(component_values)
@@ -181,7 +315,9 @@ class APEC:
                     if np.isnan(value):
                         continue
                     # Write the point ID (node number)
-                    file.write(struct.pack("I", point_id))  # 'I' is for uint32_t (dof_id_type)
+                    file.write(
+                        struct.pack("I", point_id)
+                    )  # 'I' is for uint32_t (dof_id_type)
 
                     # Write the label length
                     label_length = len(component_label)
@@ -198,12 +334,10 @@ class APEC:
         Initialize the object's vtkUnstructuredGrid by adding variables as point data
         and element loads as cell data.
         """
-        if self.element_types_collector is None:
-            raise ValueError(
-                "Element types have not been loaded. Call 'load_element_types' first."
-            )
 
-        element_types = self.element_types_collector.get_element_types()
+        self.element_types_collector = ElementTypesCollector(self)
+
+        element_types = self.element_types_collector.collect_type_classes()
 
         # Add point data arrays
         for element_id, element in element_types.items():
@@ -213,11 +347,11 @@ class APEC:
                 array.SetName(var_name)
                 array.SetNumberOfComponents(num_components)
                 array.SetNumberOfTuples(self.mesh.GetNumberOfPoints())
-                
+
                 # Initialize all components to NaN
                 for component in range(num_components):
                     array.FillComponent(component, np.nan)
-                
+
                 self.mesh.GetPointData().AddArray(array)
 
         # Add cell data arrays
@@ -228,35 +362,38 @@ class APEC:
                 array.SetName(load_name)
                 array.SetNumberOfComponents(num_components)
                 array.SetNumberOfTuples(self.mesh.GetNumberOfCells())
-                
+
                 # Initialize all components to NaN
                 for component in range(num_components):
                     array.FillComponent(component, np.nan)
-                
+
                 self.mesh.GetCellData().AddArray(array)
 
     def plot(self):
         """
-        Replot the mesh in the active view.
+        Replot the mesh in the active view in Paraview.
         """
         # Assuming you have a function to replot the mesh in your application
         # This is a placeholder for the actual replotting logic
         print("Plotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
+        RenameSource("Mesh", producer)
         # producer.GetExecutive().GetOutputInformation(0).Set(
         #     vtk.vtkDataObject.DATA_PIECE_NAME(), "Mesh"
         # )
-        for table, name in [
-            (self.element_types, "Element Types"),
-            (self.materials, "Materials"),
-            (self.time_data, "Time Data"),
-            (self.apec_settings, "APEC Settings"),
-        ]:
-            # print(f"Adding table to pipeline: {name}")
-            table_producer = TrivialProducer()
-            table_producer.GetClientSideObject().SetOutput(table)
-            Show(table_producer)
+        # for table, name in [
+        #     (self.element_types, "Element Types"),
+        #     (self.materials, "Materials"),
+        #     (self.time_data, "Time Data"),
+        #     (self.apec_settings, "APEC Settings"),
+        # ]:
+        #     # print(f"Adding table to pipeline: {name}")
+        #     table_producer = TrivialProducer()
+        #     table_producer.GetClientSideObject().SetOutput(table)
+        #     RenameSource(name, table_producer)
+        #     Show(table_producer)
+
         Show(producer)
         Render()
 
@@ -279,7 +416,9 @@ class APEC:
 
         # Regular expressions to match element and density lines
         element_pattern = re.compile(r"ELEMENT=\s+(\d+)")
-        density_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)")
+        density_pattern = re.compile(
+            r"([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)"
+        )
 
         # Initialize variables
         current_densities = {}
@@ -309,9 +448,15 @@ class APEC:
                 if current_element is not None:
                     density_match = density_pattern.match(line)
                     if density_match:
-                        current_densities[current_element][0] = float(density_match.group(1))  # Component 0
-                        current_densities[current_element][1] = float(density_match.group(2))  # Component 1
-                        current_densities[current_element][2] = float(density_match.group(3))  # Component 2
+                        current_densities[current_element][0] = float(
+                            density_match.group(1)
+                        )  # Component 0
+                        current_densities[current_element][1] = float(
+                            density_match.group(2)
+                        )  # Component 1
+                        current_densities[current_element][2] = float(
+                            density_match.group(3)
+                        )  # Component 2
 
         return load_label, current_densities
 
@@ -325,7 +470,6 @@ class APEC:
             element_data (dict): A dictionary where keys are element IDs and values are dictionaries
                                 of component values (0, 1, 2).
         """
-        import numpy as np
 
         # Get the VTK array corresponding to the load label
         load_array = self.mesh.GetCellData().GetArray(load_label)
@@ -343,11 +487,99 @@ class APEC:
             if elem_num in element_data:
                 js_values = element_data[elem_num]
                 for component, value in js_values.items():
-                    load_array.SetComponent(i, component, value if not np.isnan(value) else np.nan)
+                    load_array.SetComponent(
+                        i, component, value if not np.isnan(value) else np.nan
+                    )
             # else:
             #     # If the element is not in the data, set all components to NaN
             #     for component in range(load_array.GetNumberOfComponents()):
             #         load_array.SetComponent(i, component, np.nan)
+
+    def read_bfelist(self, file_path):
+        """
+        Combines parsing element load data and updating the VTK grid.
+        Parses the element load data from the given file and populates the VTK grid.
+
+        Args:
+            file_path (str): Path to the file containing element load data.
+
+        Returns:
+            str: The label of the load (e.g., "Js").
+        """
+        # Parse the element load data
+        load_label, element_data = self.parse_element_bfelist_data(file_path)
+
+        # Update the VTK grid with the parsed data
+        self.update_vtk_grid_bfelist(load_label, element_data)
+
+        print(f"Grid updated with element loads from '{file_path}'.")
+        return load_label
+
+    def read_write_bfelist(self, file_path, time_step=None):
+        """
+        Combines reading element load data, updating the VTK grid, and writing the loads to a binary file.
+
+        Args:
+            file_path (str): Path to the file containing element load data.
+            time_step (int, optional): Time step to include in the binary file name. Defaults to None.
+        """
+        # Step 1: Read and update the VTK grid with element load data, and get the load label
+        load_label = self.read_bfelist(file_path)
+
+        # Step 2: Write the updated loads to a binary file
+        self.write_loads_to_binary(load_label, time_step)
+
+        print(f"Processed and wrote loads from '{file_path}' to binary file.")
+
+    def read_bfelist_files(self):
+        """
+        Processes a series of bfelist files for the current jobname and writes one binary load file for each time step.
+
+        Uses self.jobname as the basename to identify the files.
+
+        Raises:
+            FileNotFoundError: If no bfelist files are found for the current jobname.
+        """
+
+        # Ensure jobname is set
+        if not self.jobname:
+            raise ValueError(
+                "Jobname is not set. Please set self.jobname before calling this function."
+            )
+
+        # Get the directory containing the files
+        directory = os.getcwd()
+
+        # Initialize a list to store matching files
+        bfelist_files = []
+
+        # Iterate over files in the directory
+        for file_name in os.listdir(directory):
+            # Check if the file name matches the expected pattern
+            if (
+                file_name.startswith(self.jobname)
+                and file_name.endswith(".out")
+                and "_bfelist_" in file_name
+            ):
+                bfelist_files.append(file_name)
+
+        # Sort the files to ensure they are processed in order
+        bfelist_files.sort()
+
+        if not bfelist_files:
+            raise FileNotFoundError(
+                f"No bfelist files found for jobname '{self.jobname}'."
+            )
+
+        print(f"Found {len(bfelist_files)} bfelist files for jobname '{self.jobname}'.")
+
+        # Process each file and write the corresponding binary load file
+        for time_step, file_name in enumerate(bfelist_files, start=1):
+            file_path = os.path.join(directory, file_name)
+            print(f"Processing file '{file_path}' for time step {time_step}...")
+            self.read_write_bfelist(file_path, time_step)
+
+        print(f"Processed all bfelist files for jobname '{self.jobname}'.")
 
     def parse_node_dlist_data(self, file_path):
         """
@@ -434,6 +666,100 @@ class APEC:
                     for component, value in components.items():
                         vtk_array.SetComponent(i, component, value)
 
+    def read_dlist(self, file_path):
+        """
+        Combines parsing node data and updating the VTK grid.
+        Parses the node data from the given file and populates the VTK grid.
+
+        Args:
+            file_path (str): Path to the file containing node data.
+
+        Returns:
+            list: A list of variable labels found in the file.
+        """
+        # Parse the node data
+        node_data = self.parse_node_dlist_data(file_path)
+
+        # Update the VTK grid with the parsed data
+        self.update_vtk_grid_dlist(node_data)
+
+        # Extract variable labels from the parsed data
+        variable_labels = set()
+        for node_values in node_data.values():
+            variable_labels.update(node_values.keys())
+
+        print(f"Grid updated with node data from '{file_path}'.")
+        return list(variable_labels)
+
+    def read_write_dlist(self, file_path, time_step=None):
+        """
+        Combines reading node data, updating the VTK grid, and writing the boundary conditions to a binary file.
+
+        Args:
+            file_path (str): Path to the file containing node data.
+            time_step (int, optional): Time step to include in the binary file name. Defaults to None.
+        """
+        # Step 1: Read and update the VTK grid with node data, and get the variable labels
+        variable_labels = self.read_dlist(file_path)
+
+        # Step 2: Write the updated boundary conditions to a binary file for each variable label
+        for label in variable_labels:
+            self.write_boundary_conditions_to_binary(label, time_step)
+
+        print(
+            f"Processed and wrote boundary conditions from '{file_path}' to binary file."
+        )
+
+    def read_dlist_files(self):
+        """
+        Processes a series of dlist files for the current jobname and writes one binary boundary condition file for each time step.
+
+        Uses self.jobname as the basename to identify the files.
+
+        Raises:
+            FileNotFoundError: If no dlist files are found for the current jobname.
+        """
+        # Ensure jobname is set
+        if not self.jobname:
+            raise ValueError(
+                "Jobname is not set. Please set self.jobname before calling this function."
+            )
+
+        # Get the directory containing the files
+        directory = os.getcwd()
+
+        # Initialize a list to store matching files
+        dlist_files = []
+
+        # Iterate over files in the directory
+        for file_name in os.listdir(directory):
+            # Check if the file name matches the expected pattern
+            if (
+                file_name.startswith(self.jobname)
+                and file_name.endswith(".out")
+                and "_dlist_" in file_name
+            ):
+                dlist_files.append(file_name)
+
+        # Sort the files to ensure they are processed in order
+        dlist_files.sort()
+
+        if not dlist_files:
+            raise FileNotFoundError(
+                f"No dlist files found for jobname '{self.jobname}'."
+            )
+
+        print(f"Found {len(dlist_files)} dlist files for jobname '{self.jobname}'.")
+
+        # Process each file and write the corresponding binary boundary condition file
+        for time_step, file_name in enumerate(dlist_files, start=1):
+            file_path = os.path.join(directory, file_name)
+            print(f"Processing file '{file_path}' for time step {time_step}...")
+            self.read_write_dlist(file_path, time_step)
+
+        print(f"Processed all dlist files for jobname '{self.jobname}'.")
+
+
 class ElementType(ABC):
     """
     Abstract base class for all element types.
@@ -485,33 +811,60 @@ class ElementTypesCollector:
     Class to collect and manage element types from a CSV file.
     """
 
-    def __init__(self, csv_file_path):
+    def __init__(self, apec):
+        """
+        Initializes the instance with the given APEC data.
+        Args:
+            apec: The APEC data to be associated with the instance.
+        """
+
+        self.apec = apec
         self.element_types_map = {}
-        self.read_element_types(csv_file_path)
 
-    def read_element_types(self, csv_file_path):
-        df = pd.read_csv(csv_file_path)
+    def read_element_types(self):
 
-        for _, row in df.iterrows():
+        for _, row in apec.element_types.iterrows():
             element_type = row["element_type"]
-            if element_type == "SOLID97":
-                self.element_types_map[row["ansys_element_type"]] = SOLID97Type()
-            elif element_type == "SOLID236":
-                self.element_types_map[row["ansys_element_type"]] = SOLID236Type()
-            elif element_type == "PLANE13":
-                self.element_types_map[row["ansys_element_type"]] = PLANE13Type()
-            elif element_type == "PLANE233":
-                self.element_types_map[row["ansys_element_type"]] = PLANE233Type()
-            else:
-                raise ValueError(f"Unknown element type: {element_type}")
+            ansys_etype = row["ansys_etype"]
+            self.element_types_map[ansys_etype] = self.build_element_types(element_type)
 
-    def get_element_types(self):
-        return self.element_types_map
+    def build_element_types(self, element_type):
+        """
+        Maps a given element type to its corresponding ANSYS element type object and
+        stores it in the `element_types_map` dictionary.
+        Parameters:
+            element_type (str): The name of the element type to map.
+                                Supported values are "SOLID97", "SOLID236", "PLANE13", and "PLANE233".
+        Raises:
+            ValueError: If the provided `element_type` is not recognized.
+        """
+        element_type_string = element_type + "Type"
+
+        try:
+            return globals()[element_type_string]()
+        except KeyError:
+            raise ValueError(f"Unknown element type: {element_type}")
+
+    def collect_type_classes(self):
+        """
+        Collects all class names in the current script that have 'Type' in their name
+        and creates instances of those classes.
+
+        Returns:
+            dict: A dictionary where keys are class names (strings) and values are instances of those classes.
+        """
+        class_instances_with_type = {
+            name: cls()
+            for name, cls in globals().items()
+            if isinstance(cls, type) and "Type" in name
+        }
+        return class_instances_with_type
 
     def get_all_loads(self):
         all_loads = {}
         for element_type in self.element_types_map.values():
             all_loads.update(element_type.getElementLoads())
         return all_loads
+
 
 apec = APEC()
