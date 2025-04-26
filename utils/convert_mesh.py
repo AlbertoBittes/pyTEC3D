@@ -65,7 +65,10 @@ def process_mesh(file_path):
             archive.grid.point_data["boundary_id"] = boundary_id
 
     # Save the modified grid to a .vtu file
-    output_file = os.path.splitext(os.path.basename(file_path))[0] + ".vtu"
+    output_file = os.path.join(
+        os.path.dirname(file_path),
+        os.path.splitext(os.path.basename(file_path))[0] + ".vtu",
+    )
     archive.grid.save(output_file, binary=True)
 
     # Print overview of data read from cdb
