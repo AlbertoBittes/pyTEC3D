@@ -9,10 +9,10 @@
 #include "../include/session.h" // Ensure the Session class is included
 #include <cmath>
 #include "../include/element_types.h" // Include the header defining ElementType
-#include "../include/element_data_manager.h"
+#include "../include/loads_object.h"
 // Constructor
-ElementBuilder::ElementBuilder(std::shared_ptr<ElementDataManager> element_data_manager)
-    : element_data_manager(element_data_manager)
+ElementBuilder::ElementBuilder(std::shared_ptr<LoadsObject> loads_object)
+    : loads_object(loads_object)
 {
 }
 
@@ -66,14 +66,14 @@ void ElementBuilder::build_solid97(Elem *elem, std::shared_ptr<ElementType> elem
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
                     {
-                        matrices[1](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->rs_matrix[l] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
-                        CAV_value = shape_functions.JxW[qp] / element_data_manager->rs_matrix[l] * shape_functions.phi[dof_i][qp] * shape_functions.dphi[dof_j][qp](l);
+                        matrices[1](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / loads_object->rs_matrix[l] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
+                        CAV_value = shape_functions.JxW[qp] / loads_object->rs_matrix[l] * shape_functions.phi[dof_i][qp] * shape_functions.dphi[dof_j][qp](l);
                         matrices[1](dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
                         matrices[1](n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-                        matrices[1](n_dofs_A + dof_i, n_dofs_A + dof_j) += shape_functions.JxW[qp] * shape_functions.dphi[dof_i][qp](l) / element_data_manager->rs_matrix[l] * shape_functions.dphi[dof_j][qp](l);
+                        matrices[1](n_dofs_A + dof_i, n_dofs_A + dof_j) += shape_functions.JxW[qp] * shape_functions.dphi[dof_i][qp](l) / loads_object->rs_matrix[l] * shape_functions.dphi[dof_j][qp](l);
                         for (unsigned int k = 0; k < 3; k++)
                         {
-                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
+                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / loads_object->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
                             matrices[3](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
                             matrices[2](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
                         }
@@ -87,7 +87,7 @@ void ElementBuilder::build_solid97(Elem *elem, std::shared_ptr<ElementType> elem
                     for (unsigned int l = 0; l < 3; l++)
                         for (unsigned int k = 0; k < 3; k++)
                         {
-                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / element_data_manager->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
+                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / loads_object->mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
                             matrices[3](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
                             matrices[2](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
                         }
@@ -165,8 +165,8 @@ void ElementBuilder::build_plane13(Elem *elem, std::shared_ptr<ElementType> elem
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                 {
-                    matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / element_data_manager->mu_matrix[0];
-                    matrices[1](dof_i, dof_j) += shape_functions.JxW[qp] / element_data_manager->rs_matrix[0] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
+                    matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / loads_object->mu_matrix[0];
+                    matrices[1](dof_i, dof_j) += shape_functions.JxW[qp] / loads_object->rs_matrix[0] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
                 }
             }
         }
@@ -188,7 +188,7 @@ void ElementBuilder::build_plane13(Elem *elem, std::shared_ptr<ElementType> elem
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
                         for (unsigned int k = 0; k < 3; k++)
-                            matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / element_data_manager->mu_matrix[0];
+                            matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / loads_object->mu_matrix[0];
         }
 
     for (unsigned int qp = 0; qp < element_type->fe->n_quadrature_points(); qp++)
@@ -258,7 +258,7 @@ void ElementBuilder::apply_load_solid97(Elem *elem, std::shared_ptr<ElementType>
     {
         for (unsigned int k = 0; k < 3; k++)
         {
-            vectors[0](dof_i + k * n_dofs_var) *= element_data_manager->compute_js(elem->id(), k);
+            vectors[0](dof_i + k * n_dofs_var) *= loads_object->compute_js(elem->id(), k);
         }
     }
 }
@@ -282,13 +282,13 @@ void ElementBuilder::apply_load_plane13(Elem *elem, std::shared_ptr<ElementType>
     if (element_type->is_conductive())
         return;
 
-    element_data_manager->set_load_quantity("Js");
+    loads_object->set_load_quantity("Js");
 
     element_type->fe->reinit(elem);
     unsigned int n_dofs_var = element_type->fe->n_shape_functions();
 
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
     {
-        vectors[0](dof_i) *= element_data_manager->compute_js(elem->id(), 2);
+        vectors[0](dof_i) *= loads_object->compute_js(elem->id(), 2);
     }
 }

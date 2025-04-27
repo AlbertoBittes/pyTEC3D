@@ -45,7 +45,7 @@
 #include "../include/node_dof_constraints.h"
 #include "../include/materials_properties.h"
 #include "../include/element_types.h" // Add this line to include the ElementTypesMap header
-#include "../include/element_data_manager.h"
+#include "../include/loads_object.h"
 #include "../include/time_stepper.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh_communication.h"
@@ -160,9 +160,9 @@ void init_equation_systems(EquationSystems &equation_systems)
     equation_systems.init();
     equation_systems.print_info();
 
-    equation_systems.parameters.set<std::shared_ptr<ElementDataManager>>("element_data_manager") = std::make_shared<ElementDataManager>(ElementDataManager());
+    equation_systems.parameters.set<std::shared_ptr<LoadsObject>>("loads_object") = std::make_shared<LoadsObject>(LoadsObject());
 
-    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
+    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
 
     system.zero_out_matrix_and_rhs = false;
     system.solution->zero();
@@ -212,17 +212,17 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     auto session = equation_systems.parameters.get<Session *>("session");
     // read material properties
-    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->materials = std::make_shared<MaterialsMap>(*(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>())));
+    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->materials = std::make_shared<MaterialsMap>(*(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>())));
 
     // Read loads
     std::string loads_path = session->mesh_filename_without_extension + "_loads_" + std::to_string(time_step.get_step() + 1);
 
-    equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->read_update_loads_vectors(loads_path);
+    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->read_update_loads_vectors(loads_path);
     // Get the system
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
     // This will reinitialize the constraints for the system
     // Read boundary conditions
-    NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&system.get_constraint_object());
+    NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&system.get_constraint_object());
     std::string bc_path = session->mesh_filename_without_extension + "_bc_" + std::to_string(time_step.get_step() + 1);
     node_dof_constraints->read_update_boundary_conditions(bc_path, time_step);
 
@@ -234,8 +234,8 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
                      << ", dt: " << substep.get_dt()
                      << ", Write Results: " << substep.get_write_results()
                      << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
-        // update time in element data manager
-        equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->update_time_step(substep);
+        // update time in element data object
+        equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->update_time_step(substep);
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();

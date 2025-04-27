@@ -14,7 +14,7 @@ std::string ElementType::getVariableFEFamily(std::string variable)
     auto vars = this->getVariables("DOFVariables");
     if (std::find(vars.begin(), vars.end(), variable) != vars.end())
     {
-        if (variable == "V")
+        if (variable == "VOLT")
             return "LAGRANGE";
         else
             return fe_family;
@@ -138,7 +138,7 @@ std::vector<std::string> SOLID97Type::getActiveVariables(std::string variables_s
         std::vector<std::string> variables = {"A_x", "A_y", "A_z"};
         if (properties.keyopts[0] == 1)
         {
-            variables.push_back("V");
+            variables.push_back("VOLT");
         }
         return variables;
     }
@@ -162,7 +162,7 @@ std::vector<std::string> SOLID97Type::getVariables(std::string variables_set) co
 {
     if (variables_set == "DOFVariables")
     {
-        std::vector<std::string> variables = {"A_x", "A_y", "A_z", "V"};
+        std::vector<std::string> variables = {"A_x", "A_y", "A_z", "VOLT"};
         return variables;
     }
     else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -224,7 +224,7 @@ std::vector<std::string> SOLID236Type::getActiveVariables(std::string variables_
         std::vector<std::string> variables = {"Az"};
         if (properties.keyopts[0] == 1)
         {
-            variables.push_back("V");
+            variables.push_back("VOLT");
         }
         return variables;
     }
@@ -248,7 +248,7 @@ std::vector<std::string> SOLID236Type::getVariables(std::string variables_set) c
 {
     if (variables_set == "DOFVariables")
     {
-        std::vector<std::string> variables = {"Az", "V"};
+        std::vector<std::string> variables = {"Az", "VOLT"};
         return variables;
     }
     else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -328,10 +328,6 @@ std::vector<std::string> PLANE13Type::getActiveVariables(std::string variables_s
     if (variables_set == "DOFVariables")
     {
         std::vector<std::string> variables = {"A_z"};
-        // if (properties.keyopts[0] == 1)
-        // {
-        //     variables.push_back("V");
-        // }
         return variables;
     }
     else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -354,7 +350,7 @@ std::vector<std::string> PLANE13Type::getVariables(std::string variables_set) co
 {
     if (variables_set == "DOFVariables")
     {
-        std::vector<std::string> variables = {"A_z", "V"};
+        std::vector<std::string> variables = {"A_z", "VOLT"};
         return variables;
     }
     else if (variables_set == "NodalDerivedQuantitiesVariables")
@@ -405,7 +401,7 @@ std::vector<std::string> PLANE233Type::getActiveVariables(std::string variables_
         std::vector<std::string> variables = {"Az"};
         if (properties.keyopts[0] == 1)
         {
-            variables.push_back("V");
+            variables.push_back("VOLT");
         }
         return variables;
     }
@@ -429,7 +425,7 @@ std::vector<std::string> PLANE233Type::getVariables(std::string variables_set) c
 {
     if (variables_set == "DOFVariables")
     {
-        std::vector<std::string> variables = {"Az", "V"};
+        std::vector<std::string> variables = {"Az", "VOLT"};
         return variables;
     }
     else if (variables_set == "NodalDerivedQuantitiesVariables")

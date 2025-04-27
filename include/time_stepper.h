@@ -6,23 +6,74 @@
 #include <regex>
 #include <string>
 #include <vector>
-#include "../include/json.hpp"
 #include <libmesh/libmesh.h>
-#include <libmesh/system.h>
-#include <libmesh/transient_system.h>
-#include <libmesh/linear_implicit_system.h>
-#include "libmesh/numeric_vector.h"
-#include <libmesh/sparse_matrix.h> // Add this line to include the SparseMatrix definition
+#include "../include/load_step.h"
 
 using namespace libMesh;
 
 class Substep;
-class TimeStepper;
+class LoadStepper;
+class LoadStep;
 
 class TimeStep
 {
 public:
-    TimeStep(unsigned int step, Real time, TimeStepper &time_stepper);
+    TimeStep(unsigned int step, Real time, LoadStep *load_step, LoadStep *prev_load_step = nullptr)
+        : step(step),
+          time(time),
+          time_beginning(0.0), // Initialize time_beginning before delta_t
+          delta_t(0.0),
+          write_results(false),
+          transient_effect(true),
+          ramped_load(true),
+          solved(false),       // Initialize solved before time_stepper
+          load_step(load_step) // Initialize time_stepper last
+    {
+        if (prev_load_step == nullptr)
+            time_beginning = 0.0;
+        else
+            time_beginning = prev_load_step->get_time_step()->get_time();
+
+        if (time <= 0)
+        {
+            libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
+        }
+        delta_t = time - time_beginning;
+        if (delta_t < 0)
+        {
+            libmesh_error_msg("Error: Time step " + std::to_string(delta_t) + " is not greater than the previous time step.");
+        }
+    }
+
+    // New constructor to set all parameters explicitly
+    TimeStep(unsigned int step,
+             Real time,
+             Real time_beginning,
+             Real delta_t,
+             bool write_results,
+             bool transient_effect,
+             bool ramped_load,
+             bool solved,
+             LoadStep *load_step)
+        : step(step),
+          time(time),
+          time_beginning(time_beginning),
+          delta_t(delta_t),
+          write_results(write_results),
+          transient_effect(transient_effect),
+          ramped_load(ramped_load),
+          solved(solved),
+          load_step(load_step)
+    {
+        if (time <= 0)
+        {
+            libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
+        }
+        if (delta_t < 0)
+        {
+            libmesh_error_msg("Error: Time step " + std::to_string(delta_t) + " is not greater than the previous time step.");
+        }
+    }
 
     unsigned int get_step() const { return step; }
     Real get_time() const { return time; }
@@ -36,7 +87,7 @@ public:
 
     std::vector<Substep> &get_substeps() { return substeps; }
     const std::vector<Substep> &get_substeps() const { return substeps; }
-    TimeStepper &get_time_stepper() { return time_stepper; }
+    LoadStep &get_load_step() { return *load_step; }
 
     void set_step(unsigned int s) { step = s; }
     void set_time(Real t) { time = t; }
@@ -64,28 +115,30 @@ private:
     bool transient_effect;
     bool ramped_load;
     std::vector<Substep> substeps;
-    TimeStepper &time_stepper;
+    LoadStep *load_step;
     bool solved;
 };
 
 class Substep
 {
 public:
-    Substep(unsigned int index, Real dt, TimeStep &parent, TimeStepper &time_stepper)
-        : index(index), dt(dt), parent(parent), time_stepper(time_stepper), solved(false)
+    Substep(unsigned int index, Real dt, TimeStep *parent)
+        : index(index), dt(dt), parent(parent), solved(false)
     {
-        time = parent.get_time_beginning() + (index + 1) * dt;
+        time = parent->get_time_beginning() + (index + 1) * dt;
     }
 
     unsigned int get_index() const { return index; }
     Real get_time() const { return time; }
     Real get_dt() const { return dt; }
     bool get_solved() const { return solved; }
-    bool get_write_results() const { return parent.get_write_results(); };
-    bool get_transient_effect() const { return parent.get_transient_effect(); };
-    bool get_ramped_load() const { return parent.get_ramped_load(); };
-    const TimeStep &get_parent() const { return parent; }
-    TimeStep &get_parent() { return parent; }
+
+    bool get_write_results() const { return parent->get_write_results(); };
+    bool get_transient_effect() const { return parent->get_transient_effect(); };
+    bool get_ramped_load() const { return parent->get_ramped_load(); };
+
+    const TimeStep &get_parent() const { return *parent; }
+    TimeStep &get_parent() { return *parent; }
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }
@@ -96,88 +149,26 @@ private:
     unsigned int index;
     Real time;
     Real dt;
-    TimeStep &parent;
-    TimeStepper &time_stepper;
+    TimeStep *parent;
     bool solved;
-};
-
-typedef std::vector<std::tuple<unsigned int, Real, unsigned int, bool, bool, bool>> TimeDataVector;
-
-class TimeStepper
-{
-public:
-    // Constructor
-    TimeStepper() {};
-
-    void set_cumulative_substep(unsigned int cum_substep);
-    unsigned int get_cumulative_substep() const;
-
-    const std::vector<TimeStep> &get_time_steps() const { return time_steps; }
-    TimeStep &get_current_time_step() { return time_steps.back(); }
-    // Method to update the old solution
-    // Has to go in solve
-    void update_old_solution(TransientLinearImplicitSystem &system);
-
-    void add_time_step(const TimeStep &time_step) { time_steps.push_back(time_step); }
-    TimeDataVector *read_time_data_from_csv(const std::string &filename);
-    void allocate_time_steps(TimeDataVector *time_data);
-
-    // Iteration methods
-    class Iterator;
-    Iterator begin();
-    Iterator end();
-
-private:
-    std::vector<TimeStep> time_steps;
-    // unsigned int active_time_step;
-    // unsigned int current_substep;
-    unsigned int cumulative_substep;
-    // Helper methods
-};
-
-// Custom iterator for TimeStepper
-class TimeStepper::Iterator
-{
-public:
-    Iterator(TimeStepper &ts, unsigned int index) : ts(ts), index(index), first(true) {}
-
-    bool operator!=(const Iterator &other) const { return index != other.index; }
-    TimeStep &operator*()
-    {
-        if (first)
-            first = false;
-        return ts.time_steps[index];
-    }
-    Iterator &operator++()
-    {
-        first = true;
-        index++;
-        return *this;
-    }
-
-private:
-    TimeStepper &ts;
-    unsigned int index;
-    bool first;
 };
 
 class TimeStep::Iterator
 {
 public:
-    Iterator(TimeStep &time_step, unsigned int substep_index)
-        : time_step(time_step), time_stepper(time_step.get_time_stepper()), substep_index(substep_index), first(true) {}
+    Iterator(TimeStep *time_step, unsigned int substep_index)
+        : time_step(time_step), substep_index(substep_index), first(true) {}
 
     bool operator!=(const Iterator &other) const { return substep_index != other.substep_index; }
     const Substep &operator*()
     {
         if (first)
         {
-            time_stepper.set_cumulative_substep(time_stepper.get_cumulative_substep() + 1);
             // This should go after a solve
             // time_stepper.get_system().rhs->zero();
             first = false;
         }
-        return time_step.get_substeps()[substep_index];
+        return time_step->get_substeps()[substep_index];
     }
     Iterator &operator++()
     {
@@ -187,8 +178,7 @@ public:
     }
 
 private:
-    TimeStep &time_step;
-    TimeStepper &time_stepper;
+    TimeStep *time_step;
     unsigned int substep_index;
     bool first;
 };

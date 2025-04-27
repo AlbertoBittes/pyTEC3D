@@ -3,20 +3,20 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/mesh.h"
 #include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
-#include "../include/node_dof_constraints.h"
+#include "../include/node_bc_object.h"
 
 using namespace libMesh;
 // BCs are probably broken now
 
-void NodalBCConstraint::constrain()
+void NodeBCObject::constrain()
 {
     // Example implementation
     // This function should implement the logic to apply constraints to the nodes of the system
     // identified by system_name within the provided equation_systems object.
     // The actual implementation would depend on the specific constraints to be applied.
     // Retrieve the system by name
-    MeshBase &mesh = system.get_mesh();
-    DofMap &dof_map = system.get_dof_map();
+    MeshBase &mesh = system->get_mesh();
+    DofMap &dof_map = system->get_dof_map();
 
     const Node *node_ptr = nullptr;
     for (const auto &bc_pair : *(active_bc_map))
@@ -30,24 +30,24 @@ void NodalBCConstraint::constrain()
         {
             for (const auto &bc_value : bc_values)
             {
-                if (system.has_variable(bc_value.first))
+                if (system->has_variable(bc_value.first))
                 {
-                    dof_id_type dof_id = node_ptr->dof_number(system.number(), system.variable_number(bc_value.first), 0);
+                    dof_id_type dof_id = node_ptr->dof_number(system->number(), system->variable_number(bc_value.first), 0);
                     DofConstraintRow constraint_row;
                     dof_map.add_constraint_row(dof_id, constraint_row, bc_value.second, true);
                 }
                 else
-                    libmesh_error_msg("Variable " + bc_value.first + " not found in system " + system.name());
+                    libmesh_error_msg("Variable " + bc_value.first + " not found in system " + system->name());
             }
         }
     }
 
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (!this->time_step->get_transient_effect() && system.has_variable("V"))
+    if (!this->parent_load_step->get_time_step()->get_transient_effect() && system->has_variable("VOLT"))
     {
         // Apply the constraint for the time derivative of the magnetic vector potential
         std::vector<dof_id_type> dof_indices;
-        dof_map.local_variable_indices(dof_indices, system.get_mesh(), system.variable_number("V"));
+        dof_map.local_variable_indices(dof_indices, system->get_mesh(), system->variable_number("VOLT"));
         for (const auto &dof : dof_indices)
         {
             // Apply the constraint
@@ -57,27 +57,26 @@ void NodalBCConstraint::constrain()
     }
 }
 
-void NodalBCConstraint::read_update_boundary_conditions(std::string file_name, TimeStep &time_step)
-{
-    this->update_boundary_conditions = true;
-    this->update_time_step(time_step);
-    this->stash_bc_map();
-    this->reinit_constraints_map();
-    this->read_boundary_conditions(file_name);
-    this->set_boundary_conditions();
-}
-
-void NodalBCConstraint::read_boundary_conditions(std::string &file_name)
+void NodeBCObject::read_boundary_conditions(std::istream &file)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
-    // Open the file for reading in binary mode
-    std::ifstream file(file_name, std::ios::binary);
-    if (!file.is_open())
+
+    // Initialize the map if it is a nullptr
+    if (!active_bc_map)
     {
-        libmesh_error_msg("Error: Could not open file " + file_name);
+        active_bc_map = std::make_shared<BoundaryConditionsMap>();
     }
 
-    while (file)
+    // Read the number of boundary conditions
+    unsigned int num_bcs;
+    file.read(reinterpret_cast<char *>(&num_bcs), sizeof(num_bcs));
+    if (!file)
+    {
+        libmesh_error_msg("Error: Failed to read the number of boundary conditions from the binary stream.");
+    }
+
+    // Read each boundary condition
+    for (unsigned int i = 0; i < num_bcs; ++i)
     {
         dof_id_type node;
         uint8_t label_length;
@@ -86,33 +85,41 @@ void NodalBCConstraint::read_boundary_conditions(std::string &file_name)
         // Read node number
         file.read(reinterpret_cast<char *>(&node), sizeof(node));
         if (!file)
-            break;
+        {
+            libmesh_error_msg("Error: Failed to read node number from the binary stream.");
+        }
 
         // Read label length
         file.read(reinterpret_cast<char *>(&label_length), sizeof(label_length));
         if (!file)
-            break;
+        {
+            libmesh_error_msg("Error: Failed to read label length from the binary stream.");
+        }
 
         // Read label
         std::vector<char> label(label_length);
         file.read(label.data(), label_length);
         if (!file)
-            break;
+        {
+            libmesh_error_msg("Error: Failed to read label from the binary stream.");
+        }
 
         // Read value
         file.read(reinterpret_cast<char *>(&value), sizeof(value));
         if (!file)
-            break;
+        {
+            libmesh_error_msg("Error: Failed to read value from the binary stream.");
+        }
 
         // Populate the map
         std::string label_str(label.data(), label_length); // Convert char array to string
         (*active_bc_map)[node].emplace(std::move(label_str), value);
     }
-    // Close the file when done
-    file.close();
+
+    // Do not close the file, as another function will continue reading
 }
 
-void NodalBCConstraint::check_boundary_conditions()
+void NodeBCObject::check_boundary_conditions(LoadStep *prev_load_step)
 {
     // Example implementation
     // This function should implement the logic to check the boundary conditions applied to the nodes of the system
@@ -120,29 +127,25 @@ void NodalBCConstraint::check_boundary_conditions()
     // The actual implementation would depend on the specific constraints to be checked.
 
     // Retrieve the system by name
-    bool update_bc = false;
+    this->update_boundary_conditions = false;
 
-    if (old_bc_map == nullptr)
-        update_bc = true;
+    if (prev_load_step == nullptr)
+        this->update_boundary_conditions = true;
     else
     {
-        if (*old_bc_map == *active_bc_map)
-            update_bc = false;
+        if (*(prev_load_step->get_node_bc()->get_active_bc_map()) == *active_bc_map)
+            this->update_boundary_conditions = false;
         else
-            update_bc = true;
+            this->update_boundary_conditions = true;
     }
-    system.comm().max(update_bc);
-    this->update_boundary_conditions = update_bc;
 }
 
-void NodalBCConstraint::set_boundary_conditions()
+void NodeBCObject::set_boundary_conditions()
 {
-    EquationSystems &equation_systems = system.get_equation_systems();
-
     this->check_boundary_conditions();
 
     if (this->update_boundary_conditions)
     {
-        system.reinit_constraints();
+        system->reinit_constraints();
     }
 }

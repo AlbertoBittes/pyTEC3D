@@ -1,21 +1,29 @@
-#include "../include/element_data_manager.h"
+#include "../include/loads_object.h"
 
-void ElementDataManager::read_loads_arrays(std::string &file_name)
+void LoadsObject::read_loads_array(std::istream &file)
 {
-    libMesh::out << "Reading loads data..." << std::endl;
+    libMesh::out << "Reading loads data from an open file stream..." << std::endl;
 
-    // Open the file for reading in binary mode
-    std::ifstream file(file_name, std::ios::binary);
-    if (!file.is_open())
+    // Initialize the activeLoadsVector if it is a nullptr
+    if (!activeLoadsVector)
     {
-        libmesh_error_msg("Error: Could not open file " + file_name);
+        activeLoadsVector = std::make_shared<LoadArraysMap>();
+    }
+
+    // Read the number of load instances
+    unsigned int num_loads;
+    file.read(reinterpret_cast<char *>(&num_loads), sizeof(num_loads));
+    if (!file)
+    {
+        libmesh_error_msg("Error: Failed to read the number of loads from the binary stream.");
     }
 
     // Define the vector of load labels for mapping
-    std::vector<std::string> loads_labels = {"Js", "Jm", "Jc"}; // Example load labels
+    std::vector<std::string> loads_labels = {"Js"}; // Example load labels
     std::string load_label;
+
     // Read the loads data
-    while (file.peek() != EOF)
+    for (unsigned int i = 0; i < num_loads; ++i)
     {
         dof_id_type element_number;
         unsigned int load_label_number;
@@ -58,30 +66,16 @@ void ElementDataManager::read_loads_arrays(std::string &file_name)
             }
             else
             {
-                libMesh::out << "Warning: Invalid component number " << component_number
-                             << " for element " << element_number << std::endl;
+                libmesh_error_msg("Warning: Invalid component number " +
+                                  std::to_string(component_number) + " for element " +
+                                  std::to_string(element_number) + " in load label " +
+                                  load_label);
             }
         }
-        else
-        {
-            // Element ID not found, skip this entry
-            libMesh::out << "Warning: Element ID " << element_number
-                         << " not found in activeLoadsVector for load label " << load_label << std::endl;
-        }
     }
-
-    file.close();
 }
 
-void ElementDataManager::read_update_loads_vectors(std::string file_name)
-{
-    this->stashLoadsVector();
-    // Read the loads data from the file
-    this->read_loads_arrays(file_name);
-    // Update the old load vector with the new load vector
-}
-
-void ElementDataManager::zero_load_arrays()
+void LoadsObject::zero_loads_array()
 {
     if (!activeLoadsVector)
     {
@@ -106,7 +100,7 @@ void ElementDataManager::zero_load_arrays()
     }
 }
 
-void ElementDataManager::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> loads_labels)
+void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> loads_labels)
 {
     // Get the load quantity from the cell data
     for (const auto &label : loads_labels)
@@ -119,18 +113,4 @@ void ElementDataManager::build_load_data_vectors(const MeshBase &mesh, std::set<
             (*activeLoadsVector)[label][elem->id()] = std::vector<Real>(3, 0.0);
         }
     }
-    oldLoadsVector = std::make_unique<LoadArraysMap>(*activeLoadsVector);
-}
-
-void ElementDataManager::set_load_quantity(std::string load_name)
-{
-    // Get the load quantity from the cell data
-    load_array = &(*activeLoadsVector)[load_name];
-    load_array = &(*oldLoadsVector)[load_name];
-}
-
-void ElementDataManager::stashLoadsVector()
-{
-    // Swap the old load with the new load vector
-    std::swap(oldLoadsVector, activeLoadsVector);
 }

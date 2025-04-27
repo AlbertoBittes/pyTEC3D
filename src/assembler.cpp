@@ -42,18 +42,16 @@
 
 #include "libmesh/enum_solver_package.h"
 #include "vtkDataArray.h"
-#include "../include/json.hpp"
 #include "../include/assembler.h"
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
 #include "../include/element_types.h"   // Include the header file for ElementTypesCollector
-#include "../include/element_data_io.h" // Include the header file for ElementDataManager
-#include "../include/element_data_manager.h"
+#include "../include/element_data_io.h" // Include the header file for LoadsObject
+#include "../include/loads_object.h"
 #include <map> // Include for std::map
 #include <vtkCellData.h>
 #include <cmath>
 #include <stdexcept>
-#include "../include/element_data_io.h"      // Include the header file for ElementHeader
-#include "../include/node_dof_constraints.h" // Include the header file for NodalBCConstraint
+#include "../include/element_data_io.h" // Include the header file for ElementHeader
 
 using namespace libMesh;
 
@@ -83,8 +81,9 @@ void AssemblerLinear::assemble()
 
     auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
 
-    auto element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
-    ElementBuilder elem_builder(element_data_manager);
+    auto loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
+
+    ElementBuilder elem_builder(loads_object);
 
     auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
@@ -107,12 +106,12 @@ void AssemblerLinear::assemble()
     bool conductive;
 
     std::filesystem::path filepath;
-    std::string mtrc_filename;
+    std::string mtrx_filename;
 
-    unsigned int num_integer = mesh.get_elem_integer_index("ansys_etype");
+    unsigned int etype_num_integer = mesh.get_elem_integer_index("ansys_etype");
     if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     {
-        mtrc_filename = "mtrc_" + std::to_string(comm.rank()) + ".temp";
+        mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
         filepath = session->temp_folder_path / mtrc_filename;
         std::ofstream mtrc_output_file(filepath);
         if (!mtrc_output_file.is_open())
@@ -120,7 +119,7 @@ void AssemblerLinear::assemble()
             libmesh_error_msg("Failed to open element data file for writing.");
         }
 
-        mtrc_filename = "der_mtrc_" + std::to_string(comm.rank()) + ".temp";
+        mtrx_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
         filepath = session->temp_folder_path / mtrc_filename;
         std::ofstream der_mtrc_output_file(filepath);
 
@@ -129,7 +128,7 @@ void AssemblerLinear::assemble()
             libmesh_error_msg("Failed to open element data file for writing.");
         }
 
-        mtrc_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+        mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
         filepath = session->temp_folder_path / mtrc_filename;
         std::ofstream rhs_output_file(filepath);
         if (!rhs_output_file.is_open())
@@ -145,43 +144,9 @@ void AssemblerLinear::assemble()
             // the name of the event to log.
             conductive = elem_type->is_conductive();
 
-            // Get the degree of freedom indices for the
-            // current element.  These define where in the global
-            // matrix and right-hand-side this element will
-            // contribute to.
+            unsigned int material_num = elem->get_extra_integer(0);
 
-            // this can be done at the beginning only
-            // dof_map.dof_indices(elem, dof_indices);
-            // this->insert_dof_indices(elem_id, dof_indices);
-
-            // // Cache the number of degrees of freedom on this element, for
-            // // use as a loop bound later.  We use cast_int to explicitly
-            // // convert from size() (which may be 64-bit) to unsigned int
-            // // (which may be 32-bit but which is definitely enough to count
-            // // *local* degrees of freedom.
-            // const unsigned int n_dofs =
-            //     cast_int<unsigned int>(dof_indices.size());
-            // Compute the element-specific data for the current
-            // element.  This involves computing the location of the
-            // quadrature points (q_point) and the shape functions
-            // (phi, dphi) for the current element.
-
-            // dof_map.dof_indices(elem, A_indices_var, ax_var);
-            // n_A_dofs = std::size(A_indices_var);
-            // here maybe you will want to add the A dof indices to a map
-
-            element_data_manager->compute_material_properties(elem->id(), conductive);
-            // With one variable, we should have the same number of degrees
-            // of freedom as shape functions.
-            // libmesh_assert_equal_to(n_dofs, phi.size());
-
-            // populate header function here
-
-            // here call the function to resize the matrices and vectors in Elem_builder according to the header
-
-            // Ke.resize(n_dofs, n_dofs);
-            // if (conductive)
-            //     Ce.resize(n_dofs, n_dofs);
+            load_step->get_materials()->compute_material_properties(elem->id(), conductive);
 
             elem_builder.build_element(elem, elem_type);
 
@@ -191,63 +156,8 @@ void AssemblerLinear::assemble()
             writeElementMatrices(der_mtrc_output_file, elem_builder.matrices_derived);
 
             writeElementVectors(rhs_output_file, elem_builder.vectors);
-            // if (dim == 2)
-            // {
-            //     AAe.resize(2 * n_A_dofs, n_A_dofs);
-            //     Me.resize(2 * n_A_dofs, 2 * n_A_dofs);
-            //     if (conductive)
-            //         JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
-            //     // JVe.resize(1, n_A_dofs);
-            // }
-            // else
-            // {
-            //     AAe.resize(3 * n_A_dofs, 3 * n_A_dofs);
-            //     Me.resize(3 * n_A_dofs, 3 * n_A_dofs);
-            //     if (conductive)
-            //     {
-            //         JAe.resize(fe_scalar->n_quadrature_points(), n_A_dofs);
-            //         // fix this / 3
-            //         JVe.resize(3 * fe_scalar->n_quadrature_points(), n_A_dofs);
-            //     }
-            // }
-
-            // elem_builder.build_element_matrix_derived(AAe, Me, JAe, JVe, conductive, formulation, dim, fe_family, n_A_dofs);
-            // element_data_manager->aae_matrix_derived_map[local_elem_id] = AAe;
-            // element_data_manager->me_matrix_derived_map[local_elem_id] = Me;
-            // if (conductive)
-            // {
-            //     element_data_manager->jae_matrix_derived_map[local_elem_id] = JAe;
-            //     if (dim == 3)
-            //         element_data_manager->jve_matrix_derived_map[local_elem_id] = JVe;
-            // }
-
-            // element_data_manager->ke_matrix_map[local_elem_id] = Ke;
-            // if (conductive)
-            // {
-            //     element_data_manager->ce_matrix_map[local_elem_id] = Ce;
-            //     // if (elem_id == 969)
-            //     // {
-            //     //     std::ofstream ke_file("../simulations/two_wires_3D/matrix/Ke_matrix"
-            //     //                           ".txt");
-            //     //     std::ofstream ce_file("../simulations/two_wires_3D/matrix/Ce_matrix.txt");
-
-            //     //     if (ke_file.is_open() && ce_file.is_open())
-            //     //     {
-            //     //         Ke.print_scientific(ke_file);
-            //     //         Ce.print_scientific(ce_file);
-            //     //     }
-            //     // }
-            // }
-
-            // else
-            // {
-            //     Fe.resize(n_dofs);
-            //     // Here remove conductive from list of parameters
-            //     elem_builder.build_element_rhs(n_A_dofs, conductive, formulation, dim, fe_family);
-            //     element_data_manager->rhs_map[local_elem_id] = Fe;
-            // }
         }
-        mtrc_output_file.close();
+        mtrx_output_file.close();
         der_mtrc_output_file.close();
         rhs_output_file.close();
     }
@@ -255,16 +165,16 @@ void AssemblerLinear::assemble()
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
 
-    mtrc_filename = "mtrc_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folder_path / mtrc_filename;
+    mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = session->temp_folder_path / mtrx_filename;
     std::ifstream mtrc_input_file(filepath);
     if (!mtrc_input_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for reading.");
     }
 
-    mtrc_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folder_path / mtrc_filename;
+    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = session->temp_folder_path / mtrx_filename;
     std::ifstream rhs_input_file(filepath);
     if (!rhs_input_file.is_open())
     {
@@ -273,7 +183,7 @@ void AssemblerLinear::assemble()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(num_integer)];
+        std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(etype_num_integer)];
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
@@ -383,7 +293,7 @@ bool AssemblerLinear::check_update_matrix()
         }
         else
         {
-            NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&eq_sys.get_system(0).get_constraint_object());
+            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys.get_system(0).get_constraint_object());
 
             if (std::abs(time_substep->get_dt() - old_time_substep->get_dt()) > relative_epsilon * std::max(std::abs(time_substep->get_dt()), std::abs(old_time_substep->get_dt())) ||
                 node_dof_constraints->get_update_boundary_conditions() ||
@@ -449,7 +359,7 @@ bool AssemblerLinear::check_update_matrix()
 //     std::vector<dof_id_type> J_scalar_dof_indices_var;
 //     std::vector<dof_id_type> V_indices_var;
 
-//     std::shared_ptr<ElementDataManager> element_data_manager = eq_sys.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager");
+//     std::shared_ptr<LoadsObject> loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
 
 //     DenseVector<Number> Ae;
 //     DenseVector<Number> Ae_dt;
@@ -486,7 +396,7 @@ bool AssemblerLinear::check_update_matrix()
 //     unsigned int local_elem_idx = 0;
 //     for (const auto &elem : mesh.active_local_element_ptr_range())
 //     {
-//         element_data_manager->local_elem_id = local_elem_idx;
+//         loads_object->local_elem_id = local_elem_idx;
 
 //         if (elem->subdomain_id() == 1)
 //             conductive = true;
@@ -496,7 +406,7 @@ bool AssemblerLinear::check_update_matrix()
 //         if (!trans_effects)
 //             conductive = false;
 
-//         element_data_manager->compute_material_properties(conductive);
+//         loads_object->compute_material_properties(conductive);
 
 //         for (unsigned int var = 0; var < A_num_var.size(); var++)
 //         {
@@ -557,42 +467,42 @@ bool AssemblerLinear::check_update_matrix()
 //             }
 //         }
 
-//         element_data_manager->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
+//         loads_object->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
 
 //         // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
 //         // Note that this gives a discontinuous stress plot on element boundaries, which is
 //         // appropriate. We then also get the von Mises stress from the projected stress tensor.
-//         element_data_manager->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
+//         loads_object->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
 
 //         unsigned int j_qp_size;
 //         if (conductive)
 //         {
 //             if (dim == 2)
 //             {
-//                 j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
+//                 j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
 //                 J_elem_A.resize(j_qp_size);
-//                 element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
+//                 loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
 //                 for (char k = 0; k < n_J_dofs; k++)
 //                     for (char qp = 0; qp < j_qp_size; qp++)
-//                         J_elem(k) -= J_elem_A(qp + k) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
+//                         J_elem(k) -= J_elem_A(qp + k) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
 //             }
 //             else
 //             {
-//                 j_qp_size = element_data_manager->jae_matrix_derived_map[local_elem_idx].m();
+//                 j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
 //                 J_elem_A.resize(j_qp_size);
 //                 J_elem_V.resize(j_qp_size);
-//                 element_data_manager->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
-//                 element_data_manager->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
+//                 loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
+//                 loads_object->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
 //                 for (unsigned int k = 0; k < n_J_dofs; k++)
 //                     for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-//                         J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / element_data_manager->rs_matrix[k] / (j_qp_size / n_J_dofs);
+//                         J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
 //             }
 //         }
 //         else
 //         {
 //             for (unsigned int k = 0; k < n_J_dofs; k++)
 //             {
-//                 J_elem(k) = element_data_manager->compute_js(k);
+//                 J_elem(k) = loads_object->compute_js(k);
 //             }
 //         }
 
