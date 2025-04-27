@@ -112,7 +112,7 @@ void AssemblerLinear::assemble()
     if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     {
         mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folder_path / mtrc_filename;
+        filepath = session->temp_folderpath / mtrx_filename;
         std::ofstream mtrc_output_file(filepath);
         if (!mtrc_output_file.is_open())
         {
@@ -120,7 +120,7 @@ void AssemblerLinear::assemble()
         }
 
         mtrx_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folder_path / mtrc_filename;
+        filepath = session->temp_folderpath / mtrx_filename;
         std::ofstream der_mtrc_output_file(filepath);
 
         if (!der_mtrc_output_file.is_open())
@@ -129,7 +129,7 @@ void AssemblerLinear::assemble()
         }
 
         mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folder_path / mtrc_filename;
+        filepath = session->temp_folderpath / mtrc_filename;
         std::ofstream rhs_output_file(filepath);
         if (!rhs_output_file.is_open())
         {
@@ -166,7 +166,7 @@ void AssemblerLinear::assemble()
     // Here add the flag for ferromagnetic
 
     mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folder_path / mtrx_filename;
+    filepath = session->temp_folderpath / mtrx_filename;
     std::ifstream mtrc_input_file(filepath);
     if (!mtrc_input_file.is_open())
     {
@@ -174,7 +174,7 @@ void AssemblerLinear::assemble()
     }
 
     mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folder_path / mtrx_filename;
+    filepath = session->temp_folderpath / mtrx_filename;
     std::ifstream rhs_input_file(filepath);
     if (!rhs_input_file.is_open())
     {

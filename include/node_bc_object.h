@@ -9,7 +9,7 @@
 // Forward declaration from libMesh
 using namespace libMesh;
 
-typedef std::unordered_map<std::string, Real> NodeBoundaryConditions;
+typedef std::unordered_map<std::string, std::pair<unsigned int, Real>> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 
 class NodeBCObject : public System::Constraint
@@ -45,7 +45,7 @@ public:
     // Methods
     void constrain();
     void check_boundary_conditions(LoadStep *prev_load_step);
-    void set_boundary_conditions();
+    void set_boundary_conditions(LoadStep *prev_load_step);
     void read_boundary_conditions(std::istream &file);
 
 private:

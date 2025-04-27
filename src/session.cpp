@@ -2,50 +2,9 @@
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
-#include <regex>
 #include <string>
-#include "../include/json.hpp"
+#include <filesystem>
 #include <libmesh/libmesh.h>
-
-Session::Session(const std::string &configFile)
-{
-    read_config(configFile);
-    input_mesh_filepath = config["Mesh Input Section"]["mesh_filepath"].get<std::string>();
-    libMesh::out << "Setting output path..." << std::endl;
-    mesh_folderpath = std::filesystem::path(input_mesh_filepath).parent_path();
-
-    if (config["Output Section"]["output_folderpath"].is_null())
-    {
-        // Create an output folder path based on the input mesh file path
-        output_folderpath = (mesh_folderpath / "output");
-        create_output_folder();
-    }
-    else
-        output_folderpath = std::filesystem::path(config["Output Section"]["output_filepath"].get<std::string>());
-
-    // Use filesystem to modify the basename
-    mesh_path = std::filesystem::path(input_mesh_filepath);
-    mesh_filename_without_extension = mesh_path.stem().string();
-
-    create_temp_folder();
-}
-
-void Session::read_config(const std::string &configFile)
-{
-    std::ifstream i(configFile);
-    if (!i.is_open())
-    {
-        libmesh_error_msg("Could not open config file: " + configFile);
-    }
-    config = nlohmann::json::parse(i);
-
-    // Perform checks on the configuration
-    // checkTransientAnalysisSettings();
-    // checkFilePaths();
-    // checkStringValues();
-    // checkBooleanValues();
-    // checkMandatoryVariables();
-}
 
 void Session::set_output_filepath(unsigned int output_label)
 {
@@ -60,15 +19,15 @@ void Session::set_output_filepath(unsigned int output_label)
 
 void Session::create_temp_folder()
 {
-    temp_folder_path = std::filesystem::current_path() / "temp_files";
-    if (!std::filesystem::exists(temp_folder_path))
+    temp_folderpath = std::filesystem::current_path() / "temp_files";
+    if (!std::filesystem::exists(temp_folderpath))
     {
-        std::filesystem::create_directory(temp_folder_path);
-        libMesh::out << "Temporary folder 'temp_files' created at " << temp_folder_path << std::endl;
+        std::filesystem::create_directory(temp_folderpath);
+        libMesh::out << "Temporary folder 'temp_files' created at " << temp_folderpath << std::endl;
     }
     else
     {
-        libMesh::out << "Temporary folder 'temp_files' already exists at " << temp_folder_path << std::endl;
+        libMesh::out << "Temporary folder 'temp_files' already exists at " << temp_folderpath << std::endl;
     }
 }
 
@@ -82,5 +41,18 @@ void Session::create_output_folder()
     else
     {
         libMesh::out << "Output folder already exists at " << output_path << std::endl;
+    }
+}
+
+void Session::check_load_steps_folder()
+{
+    load_steps_folderpath = output_folderpath / "load_steps";
+    if (!std::filesystem::exists(load_steps_folderpath))
+    {
+        libmesh_error_msg("Load steps folder does not exist");
+    }
+    else
+    {
+        libMesh::out << "Load steps folder already exists at " << load_steps_folderpath << std::endl;
     }
 }

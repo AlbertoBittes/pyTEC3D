@@ -18,6 +18,7 @@ void NodeBCObject::constrain()
     MeshBase &mesh = system->get_mesh();
     DofMap &dof_map = system->get_dof_map();
 
+    std::string variable_label;
     const Node *node_ptr = nullptr;
     for (const auto &bc_pair : *(active_bc_map))
     {
@@ -30,15 +31,38 @@ void NodeBCObject::constrain()
         {
             for (const auto &bc_value : bc_values)
             {
-                if (system->has_variable(bc_value.first))
+                if (bc_value.second.first == 0)
                 {
-                    dof_id_type dof_id = node_ptr->dof_number(system->number(), system->variable_number(bc_value.first), 0);
+                    if (system->has_variable(bc_value.first))
+                    {
+                        variable_label = bc_value.first;
+                    }
+                    else
+                    {
+                        variable_label = bc_value.first + "_x";
+                    }
+                }
+                else if (bc_value.second.first == 1)
+                {
+                    variable_label = bc_value.first + "_y";
+                }
+                else if (bc_value.second.first == 2)
+                {
+                    variable_label = bc_value.first + "_z";
+                }
+                if (system->has_variable(variable_label))
+                {
+                    dof_id_type dof_id = node_ptr->dof_number(system->number(), system->variable_number(variable_label), 0);
                     DofConstraintRow constraint_row;
-                    dof_map.add_constraint_row(dof_id, constraint_row, bc_value.second, true);
+                    dof_map.add_constraint_row(dof_id, constraint_row, bc_value.second.second, true);
                 }
                 else
-                    libmesh_error_msg("Variable " + bc_value.first + " not found in system " + system->name());
+                    libmesh_error_msg("Variable " + variable_label + " not found");
             }
+        }
+        else
+        {
+            libmesh_error_msg("Node " + std::to_string(bc_pair.first) + " not found in mesh.");
         }
     }
 
@@ -61,6 +85,7 @@ void NodeBCObject::read_boundary_conditions(std::istream &file)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
 
+    std::vector<std::string> labels = {"A", "VOLT", "Az"};
     // Initialize the map if it is a nullptr
     if (!active_bc_map)
     {
@@ -79,41 +104,24 @@ void NodeBCObject::read_boundary_conditions(std::istream &file)
     for (unsigned int i = 0; i < num_bcs; ++i)
     {
         dof_id_type node;
-        uint8_t label_length;
+        unsigned int label_number;
+        unsigned int component_number;
         Real value;
 
         // Read node number
         file.read(reinterpret_cast<char *>(&node), sizeof(node));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read node number from the binary stream.");
-        }
 
-        // Read label length
-        file.read(reinterpret_cast<char *>(&label_length), sizeof(label_length));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read label length from the binary stream.");
-        }
+        // Read label number
+        file.read(reinterpret_cast<char *>(&label_number), sizeof(label_number));
 
         // Read label
-        std::vector<char> label(label_length);
-        file.read(label.data(), label_length);
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read label from the binary stream.");
-        }
+        file.read(reinterpret_cast<char *>(&component_number), sizeof(component_number));
 
         // Read value
         file.read(reinterpret_cast<char *>(&value), sizeof(value));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read value from the binary stream.");
-        }
 
         // Populate the map
-        std::string label_str(label.data(), label_length); // Convert char array to string
-        (*active_bc_map)[node].emplace(std::move(label_str), value);
+        (*active_bc_map)[node][labels[label_number]] = std::make_pair(component_number, value);
     }
 
     // Do not close the file, as another function will continue reading
@@ -140,9 +148,9 @@ void NodeBCObject::check_boundary_conditions(LoadStep *prev_load_step)
     }
 }
 
-void NodeBCObject::set_boundary_conditions()
+void NodeBCObject::set_boundary_conditions(LoadStep *prev_load_step)
 {
-    this->check_boundary_conditions();
+    this->check_boundary_conditions(prev_load_step);
 
     if (this->update_boundary_conditions)
     {

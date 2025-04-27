@@ -42,11 +42,9 @@
 #include "../include/assembler.h"
 #include "../include/session.h"
 #include "../include/system_builder.h"
-#include "../include/node_dof_constraints.h"
-#include "../include/materials_properties.h"
 #include "../include/element_types.h" // Add this line to include the ElementTypesMap header
 #include "../include/loads_object.h"
-#include "../include/time_stepper.h" // Add this line to include the TimeStepper header
+#include "../include/time_step.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/communicator.h"
@@ -74,16 +72,16 @@ EquationSystems *build_equation_systems(Mesh &mesh, Session &session)
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems->parameters.set<Session *>("session") = &session;
 
-    equation_systems->parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
+    // equation_systems->parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
 
     return equation_systems;
 }
 
-void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
-{
-    libMesh::out << "Reading element types..." << std::endl;
-    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(element_types_filepath);
-}
+// void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
+// {
+//     libMesh::out << "Reading element types..." << std::endl;
+//     equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(element_types_filepath);
+// }
 
 void init_equation_systems(EquationSystems &equation_systems)
 {
@@ -95,51 +93,10 @@ void init_equation_systems(EquationSystems &equation_systems)
     std::string der_elem_system_name = "DerivedQuantitiesSystemElem";
     // Add TransientLinearImplicitSystem as System and return its pointer
     libMesh::out << "Checking system options..." << std::endl;
-    // Here I will implement various checks about the system element types, the mesh and everything
-    // ferromagnetic = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["nonlinear_analysis_ferrom"].get<bool>();
-    // fe_family = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["fe_family"].get<std::string>();
-    // formulation = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["formulation"].get<std::string>();
-    // order = equation_systems.parameters.get<Session *>("session")->config["Finite Elements Settings"]["approx_order"].get<std::string>();
-    // // dim = equation_systems.get_mesh().mesh_dimension();
-    // dim = 3;
-    // // Check if dim is 2 or 3
-    // if (dim != 2 && dim != 3)
-    // {
-    //     libmesh_error_msg("Error: dim must be 2 or 3.");
-    // }
-    // // Check if fe_family is not "LAGRANGE" and dim is not 3
-    // if (fe_family != "LAGRANGE" && fe_family != "NEDELEC_ONE")
-    // {
-    //     libmesh_error_msg("Error: Element type must be 'LAGRANGE' (nodal formulation) or 'NEDELEC_ONE' (edge formulation).");
-    // }
-    // // Check if fe_family is not "LAGRANGE" and dim is not 3
-    // if (fe_family != "LAGRANGE" && dim != 3)
-    // {
-    //     libmesh_error_msg("Error: Mesh must be 3D for edge elements.");
-    // }
-    // // Check if order is "FIRST" or "SECOND"
-    // if (order != "FIRST" && order != "SECOND")
-    // {
-    //     libmesh_error_msg("Error: order must be 'FIRST' or 'SECOND'.");
-    // }
-    // // Check if formulation is "AV" or "Hphi"
-    // if (formulation != "AV" && formulation != "Hphi")
-    // {
-    //     libmesh_error_msg("Error: formulation must be 'AV' or 'Hphi'.");
-    // }
 
-    // libMesh::out << "Creating system..." << std::endl;
-    // if (ferromagnetic)
-    // {
-    //     system_name = "NonlinearTransient";
-    //     // Add TransientSystem<NonlinearImplicitSystem> as System and return its pointer
-    //     equation_systems.add_system<TransientSystem<NonlinearImplicitSystem>>(system_name);
-    // }
-    // else
-    // {
     equation_systems.clear();
 
-    read_parse_element_types(equation_systems.parameters.get<Session *>("session")->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
+    // read_parse_element_types(equation_systems.parameters.get<Session *>("session")->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
 
     equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>(system_name);
@@ -160,13 +117,9 @@ void init_equation_systems(EquationSystems &equation_systems)
     equation_systems.init();
     equation_systems.print_info();
 
-    equation_systems.parameters.set<std::shared_ptr<LoadsObject>>("loads_object") = std::make_shared<LoadsObject>(LoadsObject());
-
-    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->build_load_data_vectors(equation_systems.get_mesh(), equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector")->getLoadsLabels());
-
     system.zero_out_matrix_and_rhs = false;
-    system.solution->zero();
-    system.solution->close();
+    // system.solution->zero();
+    // system.solution->close();
     system.current_local_solution->zero();
     system.current_local_solution->close();
 
@@ -309,239 +262,144 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
     }
 }
 
-// Begin the main program.
-int main(int argc, char **argv)
+// Function to execute the batch mode logic
+void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communicator &comm)
 {
-    // Initialize libMesh and any dependent libraries, like in example 2.
-    LibMeshInit init(argc, argv);
-    // {
-    //     if (init.comm().rank() != 0)
-    //     {
-    //         int i = 0;
-    //         while (0 == i)
-    //             sleep(1);
-    //     }
-    // }
-    // Check for proper calling arguments.
-    libmesh_error_msg_if(argc < 2, "Usage:\n"
-                                       << "\t " << argv[0] << " config.json");
+    libMesh::out << "Running in batch mode with mesh file: " << mesh_filename << std::endl;
 
-    // Brief message to the user regarding the program name
-    // and command line arguments.
-    libMesh::out << "Running " << argv[0];
+    // Create a session with the mesh filename
+    Session session(mesh_filename);
 
-    for (int i = 1; i < argc; i++)
-        libMesh::out << " " << argv[i];
+    // Read and prepare the mesh
+    Mesh &mesh = *(read_and_prepare_mesh(session.get_input_mesh_filepath(), comm));
 
-    libMesh::out << std::endl
-                 << std::endl;
-
-    libMesh::out << "Reading ApecM configurations..." << std::endl;
-
-    Session session(argv[1]);
-    // Create a mesh, with dimension to be overridden later, distributed
-    // across the default MPI communicator.
-
-    // Declare a performance log for the main program
-    // PerfLog perf_main("Main Program");
-    Mesh &mesh = *(read_and_prepare_mesh(session.input_mesh_filepath, init.comm()));
-    // mesh.allow_renumbering(false);
-
-    // Read element types
+    // Build and initialize equation systems
     EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
 
-    // This will be done much later
+    init_equation_systems(equation_systems);
 
-    // for (auto &elem : mesh.active_local_element_ptr_range())
-    // {
-    //     for ( auto &side : elem->boundary_sides_begin)
-    // }
-    // BoundaryMesh boundary_mesh(mesh.comm());
-
-    // boundaryInfo.print_summary();
-    // // std::map<dof_id_type, dof_id_type> node_id_map;
-    // // std::map<dof_id_type, unsigned char> side_id_map;
-    // // boundary_mesh.print_info();
-    // // boundaryInfo.get_side_and_node_maps(boundary_mesh, node_id_map, side_id_map);
-    // // iterate over the boundary mesh
-    // for (auto &elem : boundary_mesh.active_local_element_ptr_range())
-    // {
-
-    // }
-    // Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
-    // init.comm().set_union(elem_types);
-    // std::map<subdomain_id_type, subdomain_id_type> subdomain_map;
-    // subdomain_id_type subdomain_id = 0;
-    // for (const auto &elem_type : elem_types)
-    // {
-    //     subdomain_map[elem_type] = subdomain_id;
-    //     subdomain_id++;
-    // }
-    // BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
-    // // boundaryInfo.sync(boundary_mesh);
-    // {
-    //     Point center(0., 0., 0.);
-    //     Point axis(0., 0., 1.);
-    //     Real angle = -90 * 2 * libMesh::pi / 360;
-    //     AzimuthalPeriodicBoundary periodic_bc(center, axis, angle);
-    //     periodic_bc.myboundary = 7;
-    //     periodic_bc.pairedboundary = 8;
-    //     equation_systems.get_system<TransientLinearImplicitSystem>(0).get_dof_map().add_periodic_boundary(periodic_bc);
-    // }
-    // vtkDataArray *orig_id = partitionedGrid->GetPointData()->GetArray("VTKorigID");
-    // vtkDataArray *boundary_id = partitionedGrid->GetPointData()->GetArray("boundary_id");
-    // Print the names of the arrays in the vtkPointData
-    // for (int i = 0; i < partitionedGrid->GetPointData()->GetNumberOfArrays(); i++)
-    // {
-    //     libMesh::out << "Array " << i << ": " << partitionedGrid->GetPointData()->GetArrayName(i) << std::endl;
-    // }
-    // if (!boundary_id)
-    // {
-    //     libmesh_error_msg("Error: 'boundary_id' array not found in vtkPointData.");
-    // }
-
-    // vtkIdType size_vtk = orig_id->GetNumberOfTuples();
-    // dof_id_type orig_id_num;
-    // const Node *node_ptr = nullptr;
-    // unsigned int val;
-    // for (vtkIdType j = 0; j < size_vtk; j++)
-    // {
-    //     orig_id_num = static_cast<dof_id_type>(orig_id->GetTuple1(j));
-    //     node_ptr = mesh.node_ptr(orig_id_num);
-    //     val = boundary_id->GetTuple1(j);
-    //     if (val != 0)
-    //         boundaryInfo.add_node(node_ptr, boundary_id->GetTuple1(j));
-    // }
-    // boundaryInfo.build_side_list_from_node_list();
-    // boundaryInfo.clear_boundary_node_ids();
-    // boundaryInfo.print_info();
-    // boundaryInfo.print_summary();
-
-    // Use a pointer to the local variable
-
-    // Setup transient options
-    libMesh::out << "Setting up transient analysis options..." << std::endl;
-    // Initializing variables for transient analysis options
-
-    // Iterate through the time steps
-
-    // Extract the time_steps array
-    // Check if the user wants to compute the equilibrium first step
-    // Extract the time_steps array
-    // The list of time steps doesn't include the initial time, t=0 always is assumed
-    // A static initial step may be required by the user however to get equilibrium
-
-    // Get Point Data from the vtkGrid, it contains the boundary conditions to be applied to mesh nodes
-    // unsigned int first_idx;
-    // unsigned int last_idx;
-    // for (int i = 0; i < pointData->GetNumberOfArrays(); i++)
-    // {
-    //     libMesh::out << "Array " << i << ": " << pointData->GetArrayName(i) << std::endl;
-    //     system.add_vector(pointData->GetArrayName(i));
-    //     NumericVector<Number> &new_vec = system.get_vector(pointData->GetArrayName(i));
-    //     first_idx = new_vec.first_local_index();
-    //     last_idx = new_vec.last_local_index();
-    //     for(unsigned int j = first_idx; j <= last_idx; ++j)
-    //     {
-    //         new_vec.set(j, pointData->GetArray(i)->GetComponent(j, 0));
-    //     }
-    // }
-
-    // Assign boundary conditions
-
-    // Compute first step for equilibrium or static analysis
-    // if (compute_equilibrium_first_step)
-    // {
-    //     libMesh::out << "Computing equilibrium first step..." << std::endl;
-    // }
-    // else
-    // {
-    //     libMesh::out << "Computing static analysis..." << std::endl;
-    // }
-    // Build the K matrix, the RHS F and Solve the system Kx=F
-    // This should be already done
-
-    // solver->set_preconditioner_type(Utility::string_to_enum<PreconditionerType>("ILU"));
+    // Solve the system for each time step
     for (auto &step : *equation_systems.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper"))
     {
         solve(equation_systems, step);
     }
-    // All done.
+
+    // Clean up
+    delete &mesh;
+    delete &equation_systems;
+}
+
+// Main function
+int main(int argc, char **argv)
+{
+    // Initialize libMesh and any dependent libraries
+    LibMeshInit init(argc, argv);
+
+    // Check for proper calling arguments
+    if (argc < 2)
+    {
+        libmesh_error_msg("Usage:\n"
+                          << "\t" << argv[0] << " -b mesh_filename\n"
+                          << "\t" << argv[0] << " -i");
+    }
+
+    // Parse command-line arguments
+    std::string mode = argv[1];
+    if (mode == "-b")
+    {
+        if (argc < 3)
+        {
+            libmesh_error_msg("Error: Missing mesh filename. Usage:\n"
+                              << "\t" << argv[0] << " -b mesh_filename");
+        }
+
+        // Get the mesh filename
+        std::string mesh_filename = argv[2];
+
+        // Run batch mode
+        run_batch_mode(mesh_filename, init.comm());
+    }
+    else if (mode == "-i")
+    {
+        libMesh::out << "Running in interactive mode..." << std::endl;
+
+        // Interactive mode logic
+        libMesh::out << "Interactive mode is not yet implemented." << std::endl;
+    }
+    else
+    {
+        libmesh_error_msg("Error: Invalid mode. Usage:\n"
+                          << "\t" << argv[0] << " -b mesh_filename\n"
+                          << "\t" << argv[0] << " -i");
+    }
+
+    // All done
     return 0;
 }
 
-// std::vector<unsigned int> cell_data_array_sizes;
-// Loop over all cell data arrays and add their names to the vector
-// vtkCellData *cell_data = vtkGrid->GetCellData();
-// for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
-// {
-//     const char *array_name = cell_data->GetArrayName(i);
-//     if (array_name)
-//     {
-//         // Check if the array names contains "Js"
-//         if (std::string(array_name).find("Js_") != std::string::npos)
-//         {
-//             mesh.add_elem_datum<Real *>(array_name);
-//         }
-//         else
-//         {
-//             mesh.add_elem_integer(array_name);
-//         }
-//     }
+// This will be done much later
 
-// Repeat for point data
-// std::vector<std::string> point_data_int_array_names;
-// std::string array_name;
-// vtkPointData *point_data = vtkGrid->GetPointData();
-// for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+// for (auto &elem : mesh.active_local_element_ptr_range())
 // {
-//     array_name = point_data->GetArrayName(i);
-//     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
-//     {
-//         point_data_int_array_names.push_back(array_name);
-//     }
+//     for ( auto &side : elem->boundary_sides_begin)
+// }
+// BoundaryMesh boundary_mesh(mesh.comm());
+
+// boundaryInfo.print_summary();
+// // std::map<dof_id_type, dof_id_type> node_id_map;
+// // std::map<dof_id_type, unsigned char> side_id_map;
+// // boundary_mesh.print_info();
+// // boundaryInfo.get_side_and_node_maps(boundary_mesh, node_id_map, side_id_map);
+// // iterate over the boundary mesh
+// for (auto &elem : boundary_mesh.active_local_element_ptr_range())
+// {
+
+// }
+// Put all this part in a function, it must also add an array of bools called conductive to make it easier to identify conductive elements
+// init.comm().set_union(elem_types);
+// std::map<subdomain_id_type, subdomain_id_type> subdomain_map;
+// subdomain_id_type subdomain_id = 0;
+// for (const auto &elem_type : elem_types)
+// {
+//     subdomain_map[elem_type] = subdomain_id;
+//     subdomain_id++;
+// }
+// BoundaryInfo &boundaryInfo = mesh.get_boundary_info(); // Retrieves the BoundaryInfo object
+// // boundaryInfo.sync(boundary_mesh);
+// {
+//     Point center(0., 0., 0.);
+//     Point axis(0., 0., 1.);
+//     Real angle = -90 * 2 * libMesh::pi / 360;
+//     AzimuthalPeriodicBoundary periodic_bc(center, axis, angle);
+//     periodic_bc.myboundary = 7;
+//     periodic_bc.pairedboundary = 8;
+//     equation_systems.get_system<TransientLinearImplicitSystem>(0).get_dof_map().add_periodic_boundary(periodic_bc);
+// }
+// vtkDataArray *orig_id = partitionedGrid->GetPointData()->GetArray("VTKorigID");
+// vtkDataArray *boundary_id = partitionedGrid->GetPointData()->GetArray("boundary_id");
+// Print the names of the arrays in the vtkPointData
+// for (int i = 0; i < partitionedGrid->GetPointData()->GetNumberOfArrays(); i++)
+// {
+//     libMesh::out << "Array " << i << ": " << partitionedGrid->GetPointData()->GetArrayName(i) << std::endl;
+// }
+// if (!boundary_id)
+// {
+//     libmesh_error_msg("Error: 'boundary_id' array not found in vtkPointData.");
 // }
 
-// std::vector<std::string> cell_data_int_array_names;
-// vtkCellData *cell_data = vtkGrid->GetCellData();
-// for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
+// vtkIdType size_vtk = orig_id->GetNumberOfTuples();
+// dof_id_type orig_id_num;
+// const Node *node_ptr = nullptr;
+// unsigned int val;
+// for (vtkIdType j = 0; j < size_vtk; j++)
 // {
-//     array_name = cell_data->GetArrayName(i);
-//     if (!(std::string(array_name).find("A_") != std::string::npos || std::string(array_name).find("V_") != std::string::npos))
-//     {
-//         cell_data_int_array_names.push_back(array_name);
-//     }
+//     orig_id_num = static_cast<dof_id_type>(orig_id->GetTuple1(j));
+//     node_ptr = mesh.node_ptr(orig_id_num);
+//     val = boundary_id->GetTuple1(j);
+//     if (val != 0)
+//         boundaryInfo.add_node(node_ptr, boundary_id->GetTuple1(j));
 // }
-// mesh.add_elem_integers(point_data_int_array_names);
-// mesh.add_elem_data<Real>(point_data_float_array_names);
-// vtkDataArray *data_array;
-// for (const auto &elem : mesh.active_local_element_ptr_range())
-// {
-//     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
-//     {
-//         data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
-//         elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
-//     }
-//     for (unsigned int i = 0; i < cell_data_float_array_names.size(); ++i)
-//     {
-//         data_array = cell_data->GetArray(cell_data_float_array_names[i].c_str());
-
-//         elem->set_extra_datum(i, data_array->GetTuple(elem->id()));
-//     }
-// }
-// for (const auto &node : mesh.local_node_ptr_range())
-// {
-//     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
-//     {
-//         data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
-//         node->set_extra_integer(i, data_array->GetTuple1(node->id()));
-//     }
-//     for (unsigned int i = 0; i < point_data_float_array_names.size(); ++i)
-//     {
-//         data_array = point_data->GetArray(point_data_float_array_names[i].c_str());
-//         node->set_extra_datum(i, data_array->GetTuple(node->id()));
-//     }
-// }
-// Node &node = mesh.node_ref(18);
-// Real *real_val = node.get_extra_datum<Real *>(5);
-// vtkIntArray *int_array_vtk;
+// boundaryInfo.build_side_list_from_node_list();
+// boundaryInfo.clear_boundary_node_ids();
+// boundaryInfo.print_info();
+// boundaryInfo.print_summary();

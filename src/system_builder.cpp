@@ -6,7 +6,6 @@
 #include "../include/assembler.h"
 #include "../include/session.h"
 #include "../include/element_types.h"
-#include "../include/node_dof_constraints.h" // Include the header for NodeBCObject
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -28,24 +27,24 @@ void SystemBuilder::initialize()
 
     std::string vars_set;
 
-    auto element_types_collector = equation_systems.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    auto element_types_collector = equation_systems->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
     // Do not do the loop here, attacht the initialization object to the other systems too
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
-    auto &system = equation_systems.get_system(this->system_name);
+    auto &system = equation_systems->get_system(this->system_name);
     if (system.name() == "ApecMLinearSystem")
     {
         vars_set = "DOFVariables";
 
-        AssemblerLinear assembler_linear(equation_systems);
+        AssemblerLinear assembler_linear(*equation_systems);
         system.attach_assemble_object(assembler_linear);
-        equation_systems.parameters.set<AssemblerLinear *>("assembler") = &assembler_linear;
+        equation_systems->parameters.set<AssemblerLinear *>("assembler") = &assembler_linear;
 
-        libMesh::out << "Setting boundary conditions object..." << std::endl;
-        NodeBCObject node_dof_constraints(system);
-        system.attach_constraint_object(node_dof_constraints);
+        // libMesh::out << "Setting boundary conditions object..." << std::endl;
+        // NodeBCObject node_dof_constraints(system);
+        // system.attach_constraint_object(node_dof_constraints);
     }
     else if (system.name() == "DerivedQuantitiesSystem")
     {

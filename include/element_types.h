@@ -46,52 +46,76 @@ typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToE
 class ElementType
 {
 public:
+    // Constructor
     ElementType(const ElementTypeProperties &properties, const std::string &order = "default_order", const std::string &fe_family = "default_family", unsigned int quadrature_order = 0, unsigned int dimension = 0)
         : properties(properties), order(order), fe_family(fe_family), quadrature_order(quadrature_order), dimension(dimension), az_dofs(0) {}
 
+    // Virtual methods to be implemented by derived classes
     virtual std::vector<std::string> getActiveVariables(std::string variables_set) const = 0;
-
     virtual std::vector<std::string> getVariables(std::string variables_set) const = 0;
-
     virtual std::vector<std::string> getElementLoads() const = 0;
-
+    std::string ElementType::getVariableFEFamily(std::string variable);
+    std::string ElementType::getVariableOrder(std::string variable);
     virtual bool is_conductive() const = 0;
 
-    std::string getVariableFEFamily(std::string variable);
+    // Getters
+    const ElementTypeProperties &get_properties() const { return properties; }
+    const std::string &get_order() const { return order; }
+    const std::string &get_fe_family() const { return fe_family; }
+    unsigned int get_quadrature_order() const { return quadrature_order; }
+    unsigned int get_dimension() const { return dimension; }
+    unsigned int get_az_dofs() const { return az_dofs; }
+    const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
+    const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
+    const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
 
-    std::string getVariableOrder(std::string variable);
+    // Setters
+    void set_order(const std::string &new_order) { order = new_order; }
+    void set_fe_family(const std::string &new_fe_family) { fe_family = new_fe_family; }
+    void set_quadrature_order(unsigned int new_quadrature_order) { quadrature_order = new_quadrature_order; }
+    void set_dimension(unsigned int new_dimension) { dimension = new_dimension; }
+    void set_az_dofs(unsigned int new_az_dofs) { az_dofs = new_az_dofs; }
 
+    // Shape functions
     inline ScalarShapeFunctions get_scalar_shape_functions() const
     {
-        // initialize the ShapeFunctions struct
-        // and fill it with the shape functions from the finite element object
-        // and the finite element vector object
         return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
     }
 
     inline VectorShapeFunctions get_vector_shape_functions() const
     {
-        // initialize the ShapeFunctions struct
-        // and fill it with the shape functions from the finite element object
-        // and the finite element vector object
         return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
     }
 
+    // Virtual methods for populating maps
     virtual void populate_matrix_idx_size_map() = 0;
     virtual void populate_derived_matrix_idx_size_map() = 0;
     virtual void populate_vector_idx_size_map() = 0;
 
-    // think if this can be don with n_dofs
+    // Populate all maps
     void populate_all();
 
-    ElementTypeProperties properties;
-    std::string order;
-    std::string fe_family;
-    unsigned int quadrature_order;
-    unsigned int dimension;
-    unsigned int az_dofs;
-    std::unique_ptr<FEBase> fe;
-    std::unique_ptr<FEVectorBase> fe_vec;
+    void reinit_fe(Elem *elem)
+    {
+        fe->reinit(elem);
+    }
+    void reinit_fe_vec(Elem *elem)
+    {
+        fe_vec->reinit(elem);
+    }
+
+protected:
+    std::unique_ptr<FEBase> fe;           // Finite element object
+    std::unique_ptr<FEVectorBase> fe_vec; // Finite element vector object
+    ElementTypeProperties properties;     // Element type properties
+
+    std::string order;             // Order of the element
+    std::string fe_family;         // Finite element family
+    unsigned int quadrature_order; // Quadrature order
+    unsigned int dimension;        // Dimension of the element
+    unsigned int az_dofs;          // Number of DOFs
+
+    // Maps for matrix and vector sizes
     std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
     std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
     std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
