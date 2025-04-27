@@ -11,36 +11,22 @@ void ElementDataManager::read_loads_arrays(std::string &file_name)
         libmesh_error_msg("Error: Could not open file " + file_name);
     }
 
-    // Read the length of the load name
-    // size_t load_name_length;
-    // file.read(reinterpret_cast<char *>(&load_name_length), sizeof(load_name_length));
-
-    // // Read the load name
-    // std::string load_name(load_name_length, '\0');
-    // file.read(&load_name[0], load_name_length);
-
-    // // Check if the load name exists in the activeLoadsVector
-    // if (!activeLoadsVector || activeLoadsVector->find(load_name) == activeLoadsVector->end())
-    // {
-    //     libmesh_error_msg("Error: Load name " + load_name + " not found in activeLoadsVector.");
-    // }
-
-    // // Read the number of components
-    // unsigned int num_components;
-    // file.read(reinterpret_cast<char *>(&num_components), sizeof(num_components));
-
-    // Get the ElementLoad map for the given load name
-    // ElementLoad &element_load = (*activeLoadsVector)[load_name];
-
-    // Read the element data and modify the existing pairs in the map
+    // Define the vector of load labels for mapping
+    std::vector<std::string> loads_labels = {"Js", "Jm", "Jc"}; // Example load labels
+    std::string load_label;
+    // Read the loads data
     while (file.peek() != EOF)
     {
         dof_id_type element_number;
+        unsigned int load_label_number;
         unsigned int component_number;
         Real load_value;
 
         // Read element number
         file.read(reinterpret_cast<char *>(&element_number), sizeof(element_number));
+
+        // Read load label number
+        file.read(reinterpret_cast<char *>(&load_label_number), sizeof(load_label_number));
 
         // Read component number
         file.read(reinterpret_cast<char *>(&component_number), sizeof(component_number));
@@ -48,12 +34,40 @@ void ElementDataManager::read_loads_arrays(std::string &file_name)
         // Read load value
         file.read(reinterpret_cast<char *>(&load_value), sizeof(load_value));
 
-        // Modify the existing pair in the map
-        auto it = load_array->find(element_number);
-        if (it != load_array->end())
+        // Validate the load label number
+        if (load_label_number >= loads_labels.size())
         {
-            it->second[component_number] = load_value; // Update the component number
-        } // Update the load value
+            libmesh_error_msg("Error: Invalid load label number " + std::to_string(load_label_number));
+        }
+
+        // Map the load label number to the corresponding string
+        load_label = loads_labels[load_label_number];
+
+        // Access the ElementLoad map for the given load label
+        auto &element_load = (*activeLoadsVector)[load_label];
+
+        // Check if the element exists in the map
+        auto element_it = element_load.find(element_number);
+        if (element_it != element_load.end())
+        {
+            // Ensure the component number is valid
+            if (component_number < element_it->second.size())
+            {
+                // Update the specific component with the load value
+                element_it->second[component_number] = load_value;
+            }
+            else
+            {
+                libMesh::out << "Warning: Invalid component number " << component_number
+                             << " for element " << element_number << std::endl;
+            }
+        }
+        else
+        {
+            // Element ID not found, skip this entry
+            libMesh::out << "Warning: Element ID " << element_number
+                         << " not found in activeLoadsVector for load label " << load_label << std::endl;
+        }
     }
 
     file.close();

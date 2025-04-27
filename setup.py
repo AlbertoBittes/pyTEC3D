@@ -1,0 +1,26 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="apec_m",
+    version="0.1.0",
+    packages=find_packages(where="api"),  # Look for packages in the 'api' directory
+    package_dir={"": "api"},  # Root package directory is 'api'
+    install_requires=[
+        "pandas",
+        "vtk",
+        "numpy",
+        "ansys.mapdl.reader",  # Dependency for convert_mesh.py
+    ],
+    entry_points={
+        "console_scripts": [
+            "apec=apec_m.apec_m:main",  # CLI entry point for apec_m
+            "convert_mesh=apec_m.convert_mesh:main",  # CLI entry point for convert_mesh
+        ],
+    },
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    python_requires=">=3.7",
+)

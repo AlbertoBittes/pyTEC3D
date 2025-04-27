@@ -90,7 +90,7 @@ void init_equation_systems(EquationSystems &equation_systems)
     // Declare the system and its variables
     libMesh::out << "Building system of equations..." << std::endl;
 
-    std::string system_name = "PlasmaArcLinearSystem";
+    std::string system_name = "ApecMLinearSystem";
     std::string der_system_name = "DerivedQuantitiesSystem";
     std::string der_elem_system_name = "DerivedQuantitiesSystemElem";
     // Add TransientLinearImplicitSystem as System and return its pointer
@@ -219,7 +219,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     equation_systems.parameters.get<std::shared_ptr<ElementDataManager>>("element_data_manager")->read_update_loads_vectors(loads_path);
     // Get the system
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
     // This will reinitialize the constraints for the system
     // Read boundary conditions
     NodalBCConstraint *node_dof_constraints = dynamic_cast<NodalBCConstraint *>(&system.get_constraint_object());
@@ -253,7 +253,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
             // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
             // output_filename = output_filename + ".pvtu";
             // final_output_path = output_path / output_filename;
-            std::set<std::string> system_names = {"PlasmaArcLinearSystem", "DerivedQuantitiesSystem"};
+            std::set<std::string> system_names = {"ApecMLinearSystem", "DerivedQuantitiesSystem"};
             // // Write the results
             // VTKIO vtk_output(mesh);
             // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
@@ -336,7 +336,7 @@ int main(int argc, char **argv)
     libMesh::out << std::endl
                  << std::endl;
 
-    libMesh::out << "Reading PlasmaArc configurations..." << std::endl;
+    libMesh::out << "Reading ApecM configurations..." << std::endl;
 
     Session session(argv[1]);
     // Create a mesh, with dimension to be overridden later, distributed

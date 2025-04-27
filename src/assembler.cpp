@@ -72,7 +72,7 @@ void AssemblerLinear::assemble()
     const MeshBase &mesh = eq_sys.get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
 
     const auto &comm = eq_sys.comm();
     // A reference to the DofMap object for this system.  The DofMap
@@ -365,7 +365,7 @@ bool AssemblerLinear::check_update_matrix()
     bool update_matrix = false;
 
     const Real relative_epsilon = 1e-9;
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem").get_linear_solver());
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver());
 
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
@@ -409,7 +409,7 @@ bool AssemblerLinear::check_update_matrix()
 
 //     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
 //     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
-//     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("PlasmaArcLinearSystem");
+//     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
 
 //     const DofMap &dof_map = system.get_dof_map();
 //     const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();

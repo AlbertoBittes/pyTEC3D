@@ -55,7 +55,7 @@ dkms.conf
 .vscode
 
 # Compiled binaries
-bin/plasma_arc
+bin/apec_m
 .vscode
 .vscode/c_cpp_properties.json
 simulations

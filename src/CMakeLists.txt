@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(PlasmaArc VERSION 1.0)
+project(ApecM VERSION 1.0)
 
 # Set the C++ standard and compiler flags
 set(CMAKE_CXX_STANDARD 17)

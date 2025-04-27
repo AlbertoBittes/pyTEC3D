@@ -35,7 +35,7 @@ void SystemBuilder::initialize()
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
     auto &system = equation_systems.get_system(this->system_name);
-    if (system.name() == "PlasmaArcLinearSystem")
+    if (system.name() == "ApecMLinearSystem")
     {
         vars_set = "DOFVariables";
 

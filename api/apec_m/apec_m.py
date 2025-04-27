@@ -1,14 +1,18 @@
 import pandas as pd
 from abc import ABC, abstractmethod
 import vtk
+import inspect
 import vtk.util.numpy_support as vtknp
 import numpy as np
 import struct
 import os
 import re
 
+VARIABLES_GLOBAL_NUMBERS = {"A": 0, "VOLT": 1, "Az": 2}
+VARIABLES_LOADS_NUMBERS = {"Js": 0}
 
-class APEC:
+
+class ApecM:
     """
     APEC class to manage VTK unstructured grids and element types.
     """
@@ -250,8 +254,8 @@ class APEC:
 
                 # Write the data for this component
                 for cell_id, value in zip(filtered_cell_ids, filtered_values):
-                    if np.isnan(value):
-                        continue
+                    # if np.isnan(value):
+                    #     continue
                     # Write the element number (cell ID)
                     file.write(
                         struct.pack("I", cell_id)
@@ -297,13 +301,15 @@ class APEC:
                 if num_components == 1:
                     # If there is only one component, use the array name directly
                     component_label = array_name
+                    component_values = bc_array_np  # Use the 1D array directly
                 else:
                     # Append '_x', '_y', '_z', etc., for multi-component arrays
                     component_label = (
                         f"{array_name}_{chr(120 + component)}"  # 'x', 'y', 'z', etc.
                     )
+                    component_values = bc_array_np[:, component]  # Use the 2D array
+
                 # Create a mask to filter out NaN values for this component
-                component_values = bc_array_np[:, component]
                 mask = ~np.isnan(component_values)
 
                 # Get the filtered point IDs and values
@@ -312,8 +318,8 @@ class APEC:
 
                 # Write the data for this component
                 for point_id, value in zip(filtered_point_ids, filtered_values):
-                    if np.isnan(value):
-                        continue
+                    # if np.isnan(value):
+                    #     continue
                     # Write the point ID (node number)
                     file.write(
                         struct.pack("I", point_id)
@@ -411,13 +417,11 @@ class APEC:
                 - loads_dict (dict): A dictionary where keys are element IDs and values are dictionaries
                 of component values (0, 1, 2), defaulting to np.nan if not present.
         """
-        import re
-        import numpy as np
 
         # Regular expressions to match element and density lines
-        element_pattern = re.compile(r"ELEMENT=\s+(\d+)")
+        element_pattern = re.compile(r"ELEMENT\s*=\s*(\d+)")
         density_pattern = re.compile(
-            r"([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)\s+([-+]?\d*\.\d+|\d+)"
+            r"\s*([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)"
         )
 
         # Initialize variables
@@ -426,15 +430,16 @@ class APEC:
         load_label = None
 
         with open(file_path, "r") as file:
-            # Check the first line for "CURRENT DENSITIES"
-            first_line = file.readline()
-            if "CURRENT DENSITIES" in first_line:
-                load_label = "Js"
-
+            # Skip empty lines and find the line with "CURRENT DENSITIES"
+            for line in file:
+                if line.strip():  # Skip empty lines
+                    if "CURRENT DENSITIES" in line:
+                        load_label = "Js"
+                    break  # Exit the loop after finding the first non-empty line
             # Parse the rest of the file
             for line in file:
                 # Match element line
-                element_match = element_pattern.match(line)
+                element_match = element_pattern.search(line)
                 if element_match:
                     current_element = int(element_match.group(1))
                     current_densities[current_element] = {
@@ -457,7 +462,7 @@ class APEC:
                         current_densities[current_element][2] = float(
                             density_match.group(3)
                         )  # Component 2
-
+                        current_element = None  # Reset current element after processing
         return load_label, current_densities
 
     def update_vtk_grid_bfelist(self, load_label, element_data):
@@ -484,7 +489,7 @@ class APEC:
         # Update the load array based on the element data
         for i in range(self.mesh.GetNumberOfCells()):
             elem_num = int(ansys_elem_num_array.GetValue(i))
-            if elem_num in element_data:
+            if elem_num in element_data.keys():
                 js_values = element_data[elem_num]
                 for component, value in js_values.items():
                     load_array.SetComponent(
@@ -776,7 +781,7 @@ class ElementType(ABC):
 
 class SOLID97Type(ElementType):
     def getVariables(self):
-        return {"A": 3, "V": 1}
+        return {"A": 3, "VOLT": 1}
 
     def getElementLoads(self):
         return {"Js": 3}
@@ -784,7 +789,7 @@ class SOLID97Type(ElementType):
 
 class SOLID236Type(ElementType):
     def getVariables(self):
-        return {"Az": 1, "V": 1}
+        return {"Az": 1, "VOLT": 1}
 
     def getElementLoads(self):
         return {"Js": 3}
@@ -811,14 +816,17 @@ class ElementTypesCollector:
     Class to collect and manage element types from a CSV file.
     """
 
-    def __init__(self, apec):
+    def __init__(self, apec_instance):
         """
-        Initializes the instance with the given APEC data.
-        Args:
-            apec: The APEC data to be associated with the instance.
-        """
+        Initializes the instance with the given APEC instance.
 
-        self.apec = apec
+        Args:
+            apec_instance (APEC): The APEC instance to be associated with the collector.
+        """
+        if not isinstance(apec_instance, APEC):
+            raise TypeError("Expected an instance of APEC.")
+
+        self.apec = apec_instance
         self.element_types_map = {}
 
     def read_element_types(self):
@@ -847,16 +855,21 @@ class ElementTypesCollector:
 
     def collect_type_classes(self):
         """
-        Collects all class names in the current script that have 'Type' in their name
-        and creates instances of those classes.
+        Collects all class names in the current script that match the pattern 'NAMEUPPERCASEnumberType',
+        are not abstract, and creates instances of those classes.
 
         Returns:
             dict: A dictionary where keys are class names (strings) and values are instances of those classes.
         """
+        # Define the regex pattern for matching class names
+        pattern = re.compile(r"^[A-Z]+[0-9]+Type$")
+
         class_instances_with_type = {
             name: cls()
             for name, cls in globals().items()
-            if isinstance(cls, type) and "Type" in name
+            if isinstance(cls, type)
+            and pattern.match(name)  # Match the pattern 'NAMEUPPERCASEnumberType'
+            and not inspect.isabstract(cls)  # Exclude abstract classes
         }
         return class_instances_with_type
 
@@ -867,4 +880,8 @@ class ElementTypesCollector:
         return all_loads
 
 
-apec = APEC()
+# Only execute this block if the script is run directly
+if __name__ == "__main__":
+    # Example usage
+    apec = APEC()
+    # print("APEC instance created.")
