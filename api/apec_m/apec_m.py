@@ -8,44 +8,47 @@ import struct
 import os
 import re
 import json
-import logging
+# import logging
 
 VARIABLES_GLOBAL_NUMBERS = {"A": 0, "VOLT": 1, "Az": 2}
 VARIABLES_LOADS_NUMBERS = {"Js": 0}
 
-DEFAULT_SETTINGS = {"ksp_type": "kspreonly",
-                    "pc_type": "lu",
-                    "initial_linear_tolerance": 1e-6,
-                    "max_linear_iterations": 100,
-                    "minimum_linear_tolerance": 1e-10,
-                    "linear_tolerance_multiplier": 1.0,
-                    "theta": 0.5,
-                    "write_full_matrix": 0,
-                    "timesolver_tolerance": 1e-6,
-                    "analytic_jacobians": 0,
-                    "verify_analytic_jacobians": 0,
-                    "numerical_jacobian_h": 1e-6,
-                    "quiet": 0,
-                    "max_nonlinear_it": 25,
-                    "min_steplength": 1e-6,
-                    "realtive_step_toleranee": 1e-6,
-                    "require_residual_reduction": 0,
-                    "reduce_deltat_on_diffsolver_failure": 1,
-                    "continue_after_max_iterations": 0,
-                    "continue_after_backtrack_failure": 0,
-                    "timesolver_core": 1,
-                    "print_solution_norms": 0,
-                    "print_solutions": 0,
-                    "print_residual_norms": 0,
-                    "print_residuals": 0,
-                    "print_jacobian_norms": 0,
-                    "print_jacobians": 0,
-                    "print_element_solutions": 0,
-                    "print_element_residuals": 0,
-                    "print_element_jacobians": 0,
-                    "constrain_in_solver": 0,
-                    "use_petsc_snes": 0,
-                    "min_step_length": 1e-6,}
+DEFAULT_SETTINGS = {
+    "ksp_type": "kspreonly",
+    "pc_type": "lu",
+    "initial_linear_tolerance": 1e-6,
+    "max_linear_iterations": 100,
+    "minimum_linear_tolerance": 1e-10,
+    "linear_tolerance_multiplier": 1.0,
+    "theta": 0.5,
+    "write_full_matrix": 0,
+    "timesolver_tolerance": 1e-6,
+    "analytic_jacobians": 0,
+    "verify_analytic_jacobians": 0,
+    "numerical_jacobian_h": 1e-6,
+    "quiet": 0,
+    "max_nonlinear_it": 25,
+    "min_steplength": 1e-6,
+    "realtive_step_toleranee": 1e-6,
+    "require_residual_reduction": 0,
+    "reduce_deltat_on_diffsolver_failure": 1,
+    "continue_after_max_iterations": 0,
+    "continue_after_backtrack_failure": 0,
+    "timesolver_core": 1,
+    "print_solution_norms": 0,
+    "print_solutions": 0,
+    "print_residual_norms": 0,
+    "print_residuals": 0,
+    "print_jacobian_norms": 0,
+    "print_jacobians": 0,
+    "print_element_solutions": 0,
+    "print_element_residuals": 0,
+    "print_element_jacobians": 0,
+    "constrain_in_solver": 0,
+    "use_petsc_snes": 0,
+    "min_step_length": 1e-6,
+}
+
 
 class APECM:
     """
@@ -93,9 +96,14 @@ class APECM:
         #         "write_substep_results",
         #     ]
         # )
-        self.time_parameters = {"time_step_num": 1, "time": 0.0, "number_of_substeps": 1,
-                                "transient_effects": 1, "ramped_loads": 1,
-                               "write_substep_results": 0}
+        self.time_parameters = {
+            "time_step_num": 1,
+            "time": 0.0,
+            "number_of_substeps": 1,
+            "transient_effects": 1,
+            "ramped_loads": 1,
+            "write_substep_results": 0,
+        }
         self.apec_parameters = {}
 
         # print("DataFrames initialized with proper columns.")
@@ -208,7 +216,9 @@ class APECM:
         # Step 4: Add the vtkTable to the mesh as field data
         self.add_table_to_mesh(vtk_table)
 
-        print(f"Element types loaded and added to mesh field data from '{csv_file_path}'.")
+        print(
+            f"Element types loaded and added to mesh field data from '{csv_file_path}'."
+        )
 
     def get_dataframe_from_field_data(self):
         """
@@ -304,9 +314,9 @@ class APECM:
         os.chdir(self.folderpath)
 
         # Create a folder named 'loads_bcs' in the current working directory
-        self.loads_bcs_folder = os.path.join(os.getcwd(), "loads_bcs")
-        if not os.path.exists(self.loads_bcs_folder):
-            os.makedirs(self.loads_bcs_folder)
+        self.load_steps_folder = os.path.join(os.getcwd(), "loads_bcs")
+        if not os.path.exists(self.load_steps_folder):
+            os.makedirs(self.load_steps_folder)
 
         self.distribute_dofs()
 
@@ -334,7 +344,6 @@ class APECM:
         Raises:
             FileNotFoundError: If the JSON file does not exist.
         """
-        import json
 
         if not os.path.exists(json_file_path):
             raise FileNotFoundError(f"JSON file '{json_file_path}' not found.")
@@ -365,27 +374,27 @@ class APECM:
             file_path (str): The path to the binary file.
         """
         # Open the file in append mode if it exists, otherwise create a new file
-        mode = 'ab' if os.path.exists(file_path) else 'wb'
+        mode = "ab" if os.path.exists(file_path) else "wb"
         with open(file_path, mode) as binary_file:
             # Write the number of settings
-            binary_file.write(struct.pack('i', len(settings)))
+            binary_file.write(struct.pack("i", len(settings)))
 
             for key, value in settings.items():
                 # Write the size of the string label and the label itself
-                binary_file.write(struct.pack('i', len(key)))
-                binary_file.write(key.encode('utf-8'))
+                binary_file.write(struct.pack("i", len(key)))
+                binary_file.write(key.encode("utf-8"))
 
                 # Determine the type of the value and write it
                 if isinstance(value, int):
-                    binary_file.write(struct.pack('i', 0))  # Type: int
-                    binary_file.write(struct.pack('i', value))
+                    binary_file.write(struct.pack("i", 0))  # Type: int
+                    binary_file.write(struct.pack("i", value))
                 elif isinstance(value, float):
-                    binary_file.write(struct.pack('i', 1))  # Type: double
-                    binary_file.write(struct.pack('d', value))
+                    binary_file.write(struct.pack("i", 1))  # Type: double
+                    binary_file.write(struct.pack("d", value))
                 elif isinstance(value, str):
-                    binary_file.write(struct.pack('i', 2))  # Type: string
-                    binary_file.write(struct.pack('i', len(value)))
-                    binary_file.write(value.encode('utf-8'))
+                    binary_file.write(struct.pack("i", 2))  # Type: string
+                    binary_file.write(struct.pack("i", len(value)))
+                    binary_file.write(value.encode("utf-8"))
                 else:
                     raise ValueError(f"Unsupported value type: {type(value)}")
 
@@ -412,13 +421,19 @@ class APECM:
             # Write the number of rows and columns
             num_rows = len(df)
             num_columns = len(df.columns)
-            binary_file.write(struct.pack("I", num_rows))  # Number of rows (unsigned int)
-            binary_file.write(struct.pack("I", num_columns))  # Number of columns (unsigned int)
+            binary_file.write(
+                struct.pack("I", num_rows)
+            )  # Number of rows (unsigned int)
+            binary_file.write(
+                struct.pack("I", num_columns)
+            )  # Number of columns (unsigned int)
 
             # Write column metadata (name and type)
             for column_name in df.columns:
                 # Write the column name length and name
-                binary_file.write(struct.pack("I", len(column_name)))  # Column name length
+                binary_file.write(
+                    struct.pack("I", len(column_name))
+                )  # Column name length
                 binary_file.write(column_name.encode("utf-8"))  # Column name
 
                 # Determine the column type and write it
@@ -429,8 +444,12 @@ class APECM:
                 elif pd.api.types.is_string_dtype(df[column_name]):
                     column_type = 2  # string
                 else:
-                    raise ValueError(f"Unsupported column type for column: {column_name}")
-                binary_file.write(struct.pack("I", column_type))  # Column type (unsigned int)
+                    raise ValueError(
+                        f"Unsupported column type for column: {column_name}"
+                    )
+                binary_file.write(
+                    struct.pack("I", column_type)
+                )  # Column type (unsigned int)
 
             # Write the data row by row
             for _, row in df.iterrows():
@@ -440,12 +459,16 @@ class APECM:
                     if column_type == "integer":
                         binary_file.write(struct.pack("i", int(value)))  # Write int
                     elif column_type == "floating":
-                        binary_file.write(struct.pack("d", float(value)))  # Write double
+                        binary_file.write(
+                            struct.pack("d", float(value))
+                        )  # Write double
                     elif column_type == "string":
                         binary_file.write(struct.pack("I", len(value)))  # String length
                         binary_file.write(value.encode("utf-8"))  # Write string
                     else:
-                        raise ValueError(f"Unsupported value type in column: {column_name}")
+                        raise ValueError(
+                            f"Unsupported value type in column: {column_name}"
+                        )
 
     def write_loads_to_binary(self, output_file):
         """
@@ -500,7 +523,9 @@ class APECM:
                     filtered_values = component_values[mask]
 
                     # Store the filtered data for later writing
-                    filtered_data.append((load_label, component, filtered_cell_ids, filtered_values))
+                    filtered_data.append(
+                        (load_label, component, filtered_cell_ids, filtered_values)
+                    )
 
                     # Update the total number of rows to write
                     total_rows += np.size(filtered_cell_ids)
@@ -509,7 +534,12 @@ class APECM:
             file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
 
             # Iterate over the stored filtered data to write the actual data
-            for load_label, component, filtered_cell_ids, filtered_values in filtered_data:
+            for (
+                load_label,
+                component,
+                filtered_cell_ids,
+                filtered_values,
+            ) in filtered_data:
                 # Get the load number from the VARIABLES_LOADS_NUMBERS mapping
                 load_number = VARIABLES_LOADS_NUMBERS[load_label]
 
@@ -580,7 +610,9 @@ class APECM:
                     filtered_values = component_values[mask]
 
                     # Store the filtered data for later writing
-                    filtered_data.append((variable_label, component, filtered_point_ids, filtered_values))
+                    filtered_data.append(
+                        (variable_label, component, filtered_point_ids, filtered_values)
+                    )
 
                     # Update the total number of rows to write
                     total_rows += np.size(filtered_point_ids)
@@ -589,7 +621,12 @@ class APECM:
             file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
 
             # Iterate over the stored filtered data to write the actual data
-            for variable_label, component, filtered_point_ids, filtered_values in filtered_data:
+            for (
+                variable_label,
+                component,
+                filtered_point_ids,
+                filtered_values,
+            ) in filtered_data:
                 # Get the variable number from the VARIABLES_GLOBAL_NUMBERS mapping
                 variable_number = VARIABLES_GLOBAL_NUMBERS[variable_label]
 
@@ -723,16 +760,20 @@ class APECM:
                     if density_match:
                         for component in range(3):  # Components 0, 1, 2
                             value = float(density_match.group(component + 1))
-                            data.append({
-                                "ansys_elem_num": current_element,
-                                "load_label": load_label,
-                                "component": component,
-                                "value": value
-                            })
+                            data.append(
+                                {
+                                    "ansys_elem_num": current_element,
+                                    "load_label": load_label,
+                                    "component": component,
+                                    "value": value,
+                                }
+                            )
                         current_element = None  # Reset current element after processing
 
         # Convert the data to a pandas DataFrame
-        df = pd.DataFrame(data, columns=["ansys_elem_num", "load_label", "component", "value"])
+        df = pd.DataFrame(
+            data, columns=["ansys_elem_num", "load_label", "component", "value"]
+        )
         return df
 
     def map_ansys_elem_num_to_vtk(self):
@@ -774,7 +815,9 @@ class APECM:
         ansys_elem_nums = df["ansys_elem_num"].to_numpy()
 
         # Extract the VTK IDs using NumPy indexing
-        vtk_ids = mapping_array[:, 0]  # VTK IDs are in the first column of the mapping array
+        vtk_ids = mapping_array[
+            :, 0
+        ]  # VTK IDs are in the first column of the mapping array
         vtk_id_array = vtk_ids[ansys_elem_nums]
 
         # Replace the column in the DataFrame and rename it to 'vtk_id'
@@ -844,7 +887,9 @@ class APECM:
         # Ensure the required columns are present
         required_columns = ["vtk_id", "load_label", "component", "value"]
         if not all(column in df.columns for column in required_columns):
-            raise ValueError(f"CSV file must contain the following columns: {required_columns}")
+            raise ValueError(
+                f"CSV file must contain the following columns: {required_columns}"
+            )
 
         # Call update_vtk_grid_loads to update the VTK grid
         self.update_vtk_grid_loads(df)
@@ -923,15 +968,19 @@ class APECM:
                         component = 0  # Scalar variable
 
                     # Append the parsed data to the list
-                    data.append({
-                        "ansys_node_num": node_num,
-                        "variable_label": label,
-                        "component": component,
-                        "value": value
-                    })
+                    data.append(
+                        {
+                            "ansys_node_num": node_num,
+                            "variable_label": label,
+                            "component": component,
+                            "value": value,
+                        }
+                    )
 
         # Convert the data to a pandas DataFrame
-        df = pd.DataFrame(data, columns=["ansys_node_num", "variable_label", "component", "value"])
+        df = pd.DataFrame(
+            data, columns=["ansys_node_num", "variable_label", "component", "value"]
+        )
         return df
 
     def map_ansys_node_num_to_vtk(self):
@@ -973,7 +1022,9 @@ class APECM:
         ansys_node_nums = df["ansys_node_num"].to_numpy()
 
         # Extract the VTK point IDs using NumPy indexing
-        vtk_ids = mapping_array[:, 0]  # VTK point IDs are in the first column of the mapping array
+        vtk_ids = mapping_array[
+            :, 0
+        ]  # VTK point IDs are in the first column of the mapping array
         vtk_id_array = vtk_ids[np.searchsorted(mapping_array[:, 1], ansys_node_nums)]
 
         # Replace the column in the DataFrame and rename it to 'vtk_id'
@@ -1008,7 +1059,9 @@ class APECM:
         # Ensure the required columns are present
         required_columns = ["vtk_id", "variable_label", "component", "value"]
         if not all(column in df.columns for column in required_columns):
-            raise ValueError(f"CSV file must contain the following columns: {required_columns}")
+            raise ValueError(
+                f"CSV file must contain the following columns: {required_columns}"
+            )
 
         # Call update_vtk_grid_bcs to update the VTK grid
         self.update_vtk_grid_bcs(df)
@@ -1155,7 +1208,7 @@ class APECM:
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
         solver_settings_json="solver_settings.json",
-        output_folder="output_load_steps"
+        output_folder=self.load_steps_folder,
     ):
         """
         Reads time_data.csv and writes multiple load steps based on its rows.
@@ -1176,13 +1229,15 @@ class APECM:
         # Step 2: Read time_data.csv
         if not os.path.exists(time_data_csv):
             raise FileNotFoundError(f"Time data file '{time_data_csv}' not found.")
-        
+
         time_data = pd.read_csv(time_data_csv)
 
         # Ensure the required columns are present
         required_columns = self.time_parameters.keys()
         if not all(column in time_data.columns for column in required_columns):
-            raise ValueError(f"Time data file must contain the following columns: {required_columns}")
+            raise ValueError(
+                f"Time data file must contain the following columns: {required_columns}"
+            )
 
         # Step 3: Read solver settings
         self.read_solver_settings_from_json(solver_settings_json)
@@ -1207,9 +1262,13 @@ class APECM:
 
             # Check if the files exist
             if not os.path.exists(current_loads_csv):
-                raise FileNotFoundError(f"Load file '{current_loads_csv}' not found for step {index + 1}.")
+                raise FileNotFoundError(
+                    f"Load file '{current_loads_csv}' not found for step {index + 1}."
+                )
             if not os.path.exists(current_bcs_csv):
-                raise FileNotFoundError(f"Boundary condition file '{current_bcs_csv}' not found for step {index + 1}.")
+                raise FileNotFoundError(
+                    f"Boundary condition file '{current_bcs_csv}' not found for step {index + 1}."
+                )
 
             # Read and apply loads and boundary conditions
             self.read_csv_loads(current_loads_csv)
@@ -1222,6 +1281,7 @@ class APECM:
             self.write_load_step(output_file)
 
             print(f"Load step {index + 1} written to '{output_file}'.")
+
 
 class ElementType(ABC):
     """
@@ -1288,7 +1348,6 @@ class ElementTypesCollector:
         self.element_types_map = {}
 
     def read_element_types(self):
-
         for _, row in apec.element_types.iterrows():
             element_type = row["element_type"]
             ansys_etype = row["ansys_etype"]
