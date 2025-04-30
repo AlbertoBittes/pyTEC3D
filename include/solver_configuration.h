@@ -25,53 +25,6 @@ public:
         : solver_type(solver_type), preconditioner_type(preconditioner_type), verbose(verbose),
           _petsc_linear_solver(&petsc_linear_solver), parent_load_step(parent_load_step) {}
 
-    // Setters
-    void set_petsc_linear_solver(PetscLinearSolver<Number> &petsc_linear_solver)
-    {
-        _petsc_linear_solver = &petsc_linear_solver;
-    }
-
-    void set_solver_type(unsigned int type)
-    {
-        solver_type = type;
-    }
-
-    void set_preconditioner_type(unsigned int type)
-    {
-        preconditioner_type = type;
-    }
-
-    void set_verbose(bool verbosity)
-    {
-        verbose = verbosity;
-    }
-
-    void set_parent_load_step(LoadStep *load_step)
-    {
-        parent_load_step = load_step;
-    }
-
-    // Getters
-    PetscLinearSolver<Number> *get_petsc_linear_solver() const
-    {
-        return _petsc_linear_solver;
-    }
-
-    unsigned int get_solver_type() const
-    {
-        return solver_type;
-    }
-
-    unsigned int get_preconditioner_type() const
-    {
-        return preconditioner_type;
-    }
-
-    bool is_verbose() const
-    {
-        return verbose;
-    }
-
     LoadStep *get_parent_load_step() const
     {
         return parent_load_step;
@@ -81,9 +34,12 @@ public:
     void configure_solver() override;
 
 private:
-    unsigned int solver_type;                        // Solver type (e.g., GMRES, CG, etc.)
-    unsigned int preconditioner_type;                // Preconditioner type (e.g., ILU, Jacobi, etc.)
-    bool verbose;                                    // Verbosity flag
+    std::string solver_type;         // Solver type (e.g., GMRES, CG, etc.)
+    std::string preconditioner_type; // Preconditioner type (e.g., ILU, Jacobi, etc.)
+    unsigned int n_linear_iterations;
+    Real theta;
+    bool verbose; // Verbosity flag
+    bool reuse_preconditioner;
     PetscLinearSolver<Number> *_petsc_linear_solver; // Pointer to the PetscLinearSolver
     LoadStep *parent_load_step;                      // Pointer to the parent LoadStep
 };

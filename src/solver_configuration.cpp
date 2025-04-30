@@ -42,6 +42,7 @@ void PetscSolverConfiguration::configure_solver()
 
     ierr = PetscOptionsSetValue(NULL, "-log_view", "");
     CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
+
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
     CHKERRABORT(_petsc_linear_solver.comm().get(), ierr);
 
