@@ -77,11 +77,20 @@ def process_mesh(file_path):
 
 # Allow the script to be run from the command line
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python initialize_mesh.py <filename>")
+    print("APEC-M Mesh Converter")
+    # input_file = input("Please enter the path to the mesh file: ")
+
+    if len(sys.argv) == 2:
+        input_file = sys.argv[1]
+    elif len(sys.argv) == 1:
+        # Prompt the user for the file path if no argument is provided
+        input_file = input("Enter the path of the file to be converted: ").strip()
+    else:
+        print(
+            "Usage: python -m apec_m.convert_mesh <path_to_mesh_file> or python -m apec_m.convert_mesh"
+        )
         sys.exit(1)
 
-    input_file = sys.argv[1]
     try:
         process_mesh(input_file)
     except Exception as e:

@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: apec_m
 Version: 0.1.0
 Classifier: Programming Language :: Python :: 3
@@ -10,3 +10,7 @@ Requires-Dist: pandas
 Requires-Dist: vtk
 Requires-Dist: numpy
 Requires-Dist: ansys.mapdl.reader
+Dynamic: classifier
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python

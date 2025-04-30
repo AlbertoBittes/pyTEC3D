@@ -1,3 +1,3 @@
 [console_scripts]
-apec = apec_m.apec_m:main
-convert_mesh = apec_m.convert_mesh:main
+apec = apec_m:main
+convert_mesh = convert_mesh:main

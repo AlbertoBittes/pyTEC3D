@@ -8,6 +8,7 @@ import struct
 import os
 import re
 import json
+import subprocess
 # import logging
 
 VARIABLES_GLOBAL_NUMBERS = {"A": 0, "VOLT": 1, "Az": 2}
@@ -50,7 +51,7 @@ DEFAULT_SETTINGS = {
 }
 
 
-class APECM:
+class APEC_M:
     """
     APEC class to manage VTK unstructured grids and element types.
     """
@@ -67,6 +68,120 @@ class APECM:
         self.jobname = None
         self.folderpath = None
         self.solve_settings = DEFAULT_SETTINGS
+
+        self.process = None
+        self.num_processors = 1
+
+    def start_process(self, command, num_processors=1):
+        """
+        Start a process and set it as an attribute. If num_processors > 1, use mpirun.
+
+        Args:
+            command (list): The command to execute as a list of strings.
+            num_processors (int): The number of processors to use. Defaults to 1.
+        """
+        self.num_processors = num_processors
+        command = command.split(" ")
+        # Prepend mpirun if num_processors > 1
+        if self.num_processors > 1:
+            command = ["mpirun", "-np", str(self.num_processors)] + command
+
+        self.process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        print(f"Process started: {' '.join(command)}")
+        while True:
+            line = self.process.stdout.readline()
+            if not line:
+                break
+            print(line.strip())
+            if line.strip().endswith(">>>"):  # Example stop condition for Python prompt
+                break
+        # line = self.process.stdout.readline()
+        # print(">>", line.strip())
+
+    #     # Start a thread to read the process output
+    #     threading.Thread(target=self._read_output, daemon=True).start()
+
+    # def _read_output(self):
+    #     """
+    #     Continuously read and print the process output.
+    #     """
+    #     if self.process and self.process.stdout:
+    #         for line in iter(self.process.stdout.readline, ""):
+    #             print(line, end="")  # Print the output line by line
+
+    def exec(self, command):
+        """
+        Send a command to the running process.
+
+        Args:
+            command (str): The command to send to the process.
+        """
+        if self.process and self.process.stdin:
+            self.process.stdin.write(command + "\n")
+            self.process.stdin.flush()
+            print(f"Command sent: {command}")
+        else:
+            print("No process is running.")
+        # Read lines until ready for next input (may need a better stop condition)
+        while True:
+            line = self.process.stdout.readline()
+            if not line:
+                break
+            print(line.strip())
+            if line.strip().endswith(">>>"):  # Example stop condition for Python prompt
+                break
+
+    def exit(self):
+        """
+        Stop the running process.
+        """
+        if self.process:
+            self.exec("-exit")  # Send the exit command to the process
+            self.process.wait()  # Wait for the process to terminate
+            print("Process stopped.")
+            self.process = None
+        else:
+            print("No process is running.")
+
+    def start(self, num_processors=1):
+        """
+        Run an interactive session with the process.
+
+        Args:
+            num_processors (int): The number of processors to use. Defaults to 1.
+        """
+        try:
+            # Start the process
+            self.start_process(["apec_m", "-i"], num_processors=num_processors)
+
+            print("Interactive session started with `apec_m -i`.")
+            print(
+                "Enter commands (e.g., -model arg, -solu, -solve arg, -finish, -exit)."
+            )
+            print("Type 'exit' to terminate the session.")
+
+            # Interactive loop for sending commands
+            while True:
+                command = input("> ")  # Prompt for user input
+                if command.strip().lower() == "exit":
+                    self.exit()
+                    break
+                self.exec(command)
+
+        except FileNotFoundError:
+            print("Error: `apec_m` executable not found. Ensure it is in your PATH.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+        finally:
+            if self.process and self.process.poll() is None:
+                self.process.terminate()  # Ensure the process is terminated
 
     def initialize_dataframes(self):
         """
@@ -1208,7 +1323,7 @@ class APECM:
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
         solver_settings_json="solver_settings.json",
-        output_folder=self.load_steps_folder,
+        output_folder=None,
     ):
         """
         Reads time_data.csv and writes multiple load steps based on its rows.
@@ -1222,6 +1337,12 @@ class APECM:
             solver_settings_json (str): Path to the JSON file containing solver settings (default: "solver_settings.json").
             output_folder (str): Path to the folder where load step binary files will be saved (default: "output_load_steps").
         """
+        # Ensure the output folder exists
+        if output_folder is None:
+            output_folder = self.load_steps_folder
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
         # Step 1: Read materials
         self.read_materials(materials_csv)
         print(f"Materials loaded from '{materials_csv}'.")
@@ -1341,7 +1462,7 @@ class ElementTypesCollector:
         Args:
             apec_instance (APEC): The APEC instance to be associated with the collector.
         """
-        if not isinstance(apec_instance, APECM):
+        if not isinstance(apec_instance, APEC_M):
             raise TypeError("Expected an instance of APEC.")
 
         self.apec = apec_instance
@@ -1400,5 +1521,5 @@ class ElementTypesCollector:
 # Only execute this block if the script is run directly
 if __name__ == "__main__":
     # Example usage
-    apec = APECM()
+    apec = APEC_M()
     # print("APEC instance created.")
