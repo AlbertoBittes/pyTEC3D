@@ -13,8 +13,8 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "apec=apec_m.apec_m:main",  # CLI entry point for apec_m
-            "convert_mesh=apec_m.convert_mesh:main",  # CLI entry point for convert_mesh
+            "apec=apec_m:main",  # CLI entry point for apec_m
+            "convert_mesh=convert_mesh:main",  # CLI entry point for convert_mesh
         ],
     },
     classifiers=[
