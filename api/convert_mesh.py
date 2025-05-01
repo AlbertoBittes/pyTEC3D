@@ -35,7 +35,7 @@ def process_mesh(file_path):
 
     # Remove specified arrays if they exist in the grid
     # Check and remove from cell data
-    for array_name in ["ansys_elem_type_num", "ansys_real_constant"]:
+    for array_name in ["ansys_elem_type_num"]:
         if array_name in archive.grid.cell_data:
             del archive.grid.cell_data[array_name]
 

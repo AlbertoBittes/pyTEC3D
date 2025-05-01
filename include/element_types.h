@@ -65,6 +65,7 @@ public:
     unsigned int get_quadrature_order() const { return quadrature_order; }
     unsigned int get_dimension() const { return dimension; }
     unsigned int get_az_dofs() const { return az_dofs; }
+    const FEBase *get_fe() const { return fe.get(); }
     const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
     const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
     const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
@@ -75,7 +76,7 @@ public:
     void set_quadrature_order(unsigned int new_quadrature_order) { quadrature_order = new_quadrature_order; }
     void set_dimension(unsigned int new_dimension) { dimension = new_dimension; }
     void set_az_dofs(unsigned int new_az_dofs) { az_dofs = new_az_dofs; }
-
+    void set_fe(std::unique_ptr<FEBase> new_fe) { fe = std::move(new_fe); }
     // Shape functions
     inline ScalarShapeFunctions get_scalar_shape_functions() const
     {

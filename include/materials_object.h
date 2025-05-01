@@ -27,14 +27,14 @@ class MaterialsObject
 {
 public:
     // Default constructor
-    explicit MaterialsObject(LoadStep *parent = nullptr)
+    explicit MaterialsObject(std::shared_ptr<LoadStep> parent = nullptr)
         : parent_load_step(parent),
           materials_map(std::make_shared<MaterialsMap>()),
           mu_matrix(3, 0.0),
           rs_matrix(3, 0.0) {}
 
     // Constructor with an existing MaterialsMap
-    explicit MaterialsObject(std::shared_ptr<MaterialsMap> map, LoadStep *parent = nullptr)
+    explicit MaterialsObject(std::shared_ptr<MaterialsMap> map, std::shared_ptr<LoadStep> parent = nullptr)
         : parent_load_step(parent),
           materials_map(std::move(map)),
           mu_matrix(3, 0.0),
@@ -93,13 +93,13 @@ public:
     const std::vector<Real> &getRsMatrix() const { return rs_matrix; }
 
     // Set the parent LoadStep
-    void setParentLoadStep(LoadStep *parent) { parent_load_step = parent; }
+    void setParentLoadStep(std::shared_ptr<LoadStep> parent) { parent_load_step = parent; }
 
     // Get the parent LoadStep
-    LoadStep *getParentLoadStep() const { return parent_load_step; }
+    std::shared_ptr<LoadStep> getParentLoadStep() const { return parent_load_step; }
 
 private:
-    LoadStep *parent_load_step;                  // Pointer to the parent LoadStep
+    std::shared_ptr<LoadStep> parent_load_step;  // Pointer to the parent LoadStep
     std::shared_ptr<MaterialsMap> materials_map; // Holds the MaterialsMap
     std::vector<Real> mu_matrix;                 // Magnetic permeability matrix
     std::vector<Real> rs_matrix;                 // Resistivity matrix

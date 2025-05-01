@@ -81,16 +81,12 @@ void AssemblerLinear::assemble()
 
     auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
 
-    auto loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
-
-    ElementBuilder elem_builder(loads_object);
-
     auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
 
     std::vector<dof_id_type> dof_indices;
     std::vector<Real> old_solution_values;
-    Real dt = time_substep->get_dt();
+    auto time_substep = load_step->get_time_step()->get_active_substep();
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -109,78 +105,48 @@ void AssemblerLinear::assemble()
     std::string mtrx_filename;
 
     unsigned int etype_num_integer = mesh.get_elem_integer_index("ansys_etype");
-    if (old_time_substep == nullptr) // Here add the check for nonlinear elements
-    {
-        mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folderpath / mtrx_filename;
-        std::ofstream mtrc_output_file(filepath);
-        if (!mtrc_output_file.is_open())
-        {
-            libmesh_error_msg("Failed to open element data file for writing.");
-        }
 
-        mtrx_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folderpath / mtrx_filename;
-        std::ofstream der_mtrc_output_file(filepath);
-
-        if (!der_mtrc_output_file.is_open())
-        {
-            libmesh_error_msg("Failed to open element data file for writing.");
-        }
-
-        mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-        filepath = session->temp_folderpath / mtrc_filename;
-        std::ofstream rhs_output_file(filepath);
-        if (!rhs_output_file.is_open())
-        {
-            libmesh_error_msg("Failed to open element data file for writing.");
-        }
-
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(num_integer)];
-            // Start logging the shape function initialization.
-            // This is done through a simple function call with
-            // the name of the event to log.
-            conductive = elem_type->is_conductive();
-
-            unsigned int material_num = elem->get_extra_integer(0);
-
-            load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-
-            elem_builder.build_element(elem, elem_type);
-
-            // Here the function to write the matrices and vectors down to file
-            writeElementMatrices(mtrc_output_file, elem_builder.matrices);
-
-            writeElementMatrices(der_mtrc_output_file, elem_builder.matrices_derived);
-
-            writeElementVectors(rhs_output_file, elem_builder.vectors);
-        }
-        mtrx_output_file.close();
-        der_mtrc_output_file.close();
-        rhs_output_file.close();
-    }
-
+    auto temp_folderpath = session->get_temp_folder_path();
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
 
     mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folderpath / mtrx_filename;
-    std::ifstream mtrc_input_file(filepath);
-    if (!mtrc_input_file.is_open())
+    filepath = temp_folderpath / mtrx_filename;
+    std::ifstream mtrx_input_file(filepath);
+    if (!mtrx_input_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for reading.");
     }
 
     mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = session->temp_folderpath / mtrx_filename;
+    filepath = temp_folderpath / mtrx_filename;
     std::ifstream rhs_input_file(filepath);
     if (!rhs_input_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for reading.");
     }
 
+    // Matrix changes when we have nonlinearities or different dt
+
+    // Zero the element matrix and right-hand side before
+    // summing them.  We use the resize member here because
+    // the number of degrees of freedom might have changed from
+    // the last element.  Note that this will be the case if the
+    // element type is different (i.e. the last element was a
+    // triangle, now we are on a quadrilateral).
+
+    // If this assembly program were to be used on an adaptive mesh,
+    // we would have to apply any hanging node constraint equations
+    // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
+    // to impose a inhomogeneous Dirichlet boundary conditions.
+
+    // The element matrix and right-hand-side are now built
+    // for this element.  Add them to the global matrix and
+    // right-hand-side vector.  The SparseMatrix::add_matrix()
+    // and NumericVector::add_vector() members do this for us.
+    // Start logging the insertion of the local (element)
+    // matrix and vector into the global matrix and vector
+    // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(etype_num_integer)];
@@ -205,21 +171,30 @@ void AssemblerLinear::assemble()
         //     libMesh::out << "Computing new system matrix" << std::endl;
         // }
 
-        readElementMatrices(mtrc_input_file, elem_builder.matrices);
-        elem_builder.matrices[1].scale(1 / dt);
+        elem_builder.readElementMatrices(mtrx_input_file, elem_builder.get_matrices());
+
+        auto Ke = elem_builder.get_matrices()[0];
+        auto Ce = elem_builder.get_matrices()[1];
+        auto rhs = elem_builder.get_vectors()[0];
+
+        Ce.scale(1 / time_substep->get_dt());
+
         if (update_matrix)
         {
             if (conductive)
                 if (time_substep->get_transient_effect())
-                    elem_builder.matrices[0] += elem_builder.matrices[1];
+                    Ke += Ce;
 
-            dof_map.constrain_element_matrix(elem_builder.matrices[0], dof_indices);
-            matrix.add_matrix(elem_builder.matrices[0], dof_indices);
+            dof_map.constrain_element_matrix(Ke, dof_indices);
+            matrix.add_matrix(Ke, dof_indices);
         }
 
-        readElementVectors(rhs_input_file, elem_builder.vectors);
+        elem_builder.readElementVectors(mtrx_input_file, elem_builder.get_vectors());
 
-        elem_builder.apply_load(elem, elem_type);
+        // elem_builder.apply_load();
+
+        // HERE YOU HAVE TO RAMP THE LOAD !!!
+
         // dof_map.constrain_element_vector(FFe, dof_indices);
         // system.rhs->add_vector(FFe, dof_indices);
         // here I constrain but I modify later, wrong
@@ -228,7 +203,7 @@ void AssemblerLinear::assemble()
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
 
-            elem_builder.matrices[1].vector_mult_add(elem_builder.vectors[0], 1, old_solution_values);
+            Ce.vector_mult_add(rhs, 1, old_solution_values);
             // if (elem_id == 969)
             // {
             //     std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
@@ -239,10 +214,10 @@ void AssemblerLinear::assemble()
             // }
         }
 
-        dof_map.constrain_element_vector(elem_builder.vectors[0], dof_indices);
-        system.rhs->add_vector(elem_builder.vectors[0], dof_indices);
+        dof_map.constrain_element_vector(rhs, dof_indices);
+        system.rhs->add_vector(rhs, dof_indices);
     }
-    mtrc_input_file.close();
+    mtrx_input_file.close();
     rhs_input_file.close();
     // Matrix changes when we have nonlinearities or different dt
 
@@ -270,6 +245,196 @@ void AssemblerLinear::assemble()
 // PerfLog.  When it goes out of scope (at this function return)
 // it will print its log to the screen. Pretty easy, huh?
 
+void AssemblerLinear::build_write_element_matrices()
+{
+    // Declare a performance log.  Give it a descriptive
+    // string to identify what part of the code we are
+    // logging, since there may be many PerfLogs in an
+    // application.
+    PerfLog perf_log("Matrix Assembly");
+    // Get a constant reference to the mesh object.
+    const MeshBase &mesh = eq_sys.get_mesh();
+
+    // Get a reference to the LinearImplicitSystem we are solving
+    const auto &comm = eq_sys.comm();
+    // A reference to the DofMap object for this system.  The DofMap
+    // object handles the index translation from node and element numbers
+    // to degree of freedom numbers.  We will talk more about the DofMap
+    // in future examples.
+
+    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
+
+    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
+
+    // Allocate memory for 3D nodal elements matrixes with transient effects
+    // I can have up to 4 variables per node/edge
+    // References to momentum equation right hand sides
+
+    // This vector will hold the degree of freedom indices for
+    // the element.  These define where in the global system
+    // the element degrees of freedom get mapped.
+
+    std::filesystem::path filepath;
+    std::string mtrx_filename;
+
+    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
+    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_num");
+    unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
+
+    unsigned int etype_num;
+    unsigned int material_num;
+    unsigned int real_constant_num;
+
+    auto temp_folder = session->get_temp_folder_path();
+    // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
+    // {
+    // This function must be called prior to a check for the need of recomputing the matrix:
+    // e.g. new materials, new real constants, nonlinear elements.
+    mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = temp_folder / mtrx_filename;
+    std::ofstream mtrx_output_file(filepath);
+    if (!mtrx_output_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for writing.");
+    }
+
+    mtrx_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = temp_folder / mtrx_filename;
+    std::ofstream der_mtrx_output_file(filepath);
+
+    if (!der_mtrx_output_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for writing.");
+    }
+
+    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = temp_folder / mtrx_filename;
+    std::ofstream rhs_output_file(filepath);
+    if (!rhs_output_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for writing.");
+    }
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        // Start logging the shape function initialization.
+        // This is done through a simple function call with
+        // the name of the event to log.
+
+        etype_num = elem->get_extra_integer(etype_num_index);
+        material_num = elem->get_extra_integer(mat_num_index);
+        real_constant_num = elem->get_extra_integer(real_constants_num_index);
+
+        std::shared_ptr<ElementType> elem_type = element_types_map[etype_num];
+
+        // Do this elsewhere, logically must no stay here
+        // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
+        elem_builder.set_element_data(elem, elem_type, material_num, real_constant_num);
+        elem_builder.build_element();
+
+        // Here the function to write the matrices and vectors down to file
+        elem_builder.writeElementMatrices(mtrx_output_file, elem_builder.get_matrices());
+
+        elem_builder.writeElementMatrices(der_mtrx_output_file, elem_builder.get_matrices_derived());
+
+        elem_builder.writeElementVectors(rhs_output_file, elem_builder.get_vectors());
+    }
+    mtrx_output_file.close();
+    der_mtrx_output_file.close();
+    rhs_output_file.close();
+}
+
+void AssemblerLinear::update_rhs()
+{
+    // Declare a performance log.  Give it a descriptive
+    // string to identify what part of the code we are
+    // logging, since there may be many PerfLogs in an
+    // application.
+    PerfLog perf_log("Matrix Assembly");
+    // Get a constant reference to the mesh object.
+    const MeshBase &mesh = eq_sys.get_mesh();
+
+    // Get a reference to the LinearImplicitSystem we are solving
+    const auto &comm = eq_sys.comm();
+    // A reference to the DofMap object for this system.  The DofMap
+    // object handles the index translation from node and element numbers
+    // to degree of freedom numbers.  We will talk more about the DofMap
+    // in future examples.
+
+    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
+
+    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
+
+    // Allocate memory for 3D nodal elements matrixes with transient effects
+    // I can have up to 4 variables per node/edge
+    // References to momentum equation right hand sides
+
+    // This vector will hold the degree of freedom indices for
+    // the element.  These define where in the global system
+    // the element degrees of freedom get mapped.
+
+    std::filesystem::path filepath;
+    std::string mtrx_filename;
+
+    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
+    // unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_num");
+    // unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
+
+    unsigned int etype_num;
+    // unsigned int material_num;
+    // unsigned int real_constant_num;
+
+    auto temp_folder = session->get_temp_folder_path();
+    // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
+    // {
+    // This function must be called prior to a check for the need of recomputing the matrix:
+    // e.g. new materials, new real constants, nonlinear elements.
+
+    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = temp_folder / mtrx_filename;
+    std::ifstream rhs_input_file(filepath);
+    if (!rhs_input_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for reading.");
+    }
+    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".tempx";
+    filepath = temp_folder / mtrx_filename;
+    std::ofstream rhs_output_file(filepath);
+    if (!rhs_output_file.is_open())
+    {
+        libmesh_error_msg("Failed to open element data file for writing.");
+    }
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        // Start logging the shape function initialization.
+        // This is done through a simple function call with
+        // the name of the event to log.
+        elem_builder.readElementVectors(rhs_input_file, elem_builder.get_vectors());
+        etype_num = elem->get_extra_integer(etype_num_index);
+        // material_num = elem->get_extra_integer(mat_num_index);
+        // real_constant_num = elem->get_extra_integer(real_constants_num_index);
+
+        std::shared_ptr<ElementType> elem_type = element_types_map[etype_num];
+
+        // Do this elsewhere, logically must no stay here
+        // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
+        elem_builder.set_element_type(elem_type);
+        elem_builder.apply_load();
+
+        elem_builder.writeElementVectors(rhs_output_file, elem_builder.get_vectors());
+    }
+    rhs_output_file.close();
+    rhs_input_file.close();
+
+    std::filesystem::remove(filepath);
+
+    std::filesystem::path new_filepath = temp_folder / ("rhs_" + std::to_string(comm.rank()) + ".temp");
+    std::filesystem::rename(filepath, new_filepath);
+}
+// in a new time step we could have a different dt, different bcs, different time integration effects
+// Here add the flag for ferromagnetic
 bool AssemblerLinear::check_update_matrix()
 {
     bool update_matrix = false;

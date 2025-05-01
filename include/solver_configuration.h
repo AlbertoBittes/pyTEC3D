@@ -3,6 +3,7 @@
 
 #include "libmesh/petsc_linear_solver.h"
 #include "libmesh/solver_configuration.h"
+#include "../include/load_step.h"
 
 #include <string>
 
@@ -20,12 +21,12 @@ public:
         : solver_type(0), preconditioner_type(0), verbose(true), _petsc_linear_solver(&petsc_linear_solver), parent_load_step(nullptr) {}
 
     // Constructor with all attributes
-    PetscSolverConfiguration(PetscLinearSolver<Number> &petsc_linear_solver, unsigned int solver_type,
-                             unsigned int preconditioner_type, bool verbose, LoadStep *parent_load_step = nullptr)
+    PetscSolverConfiguration(PetscLinearSolver<Number> &petsc_linear_solver, std::string solver_type,
+                             std::string preconditioner_type, bool verbose, std::shared_ptr<LoadStep> parent_load_step = nullptr)
         : solver_type(solver_type), preconditioner_type(preconditioner_type), verbose(verbose),
           _petsc_linear_solver(&petsc_linear_solver), parent_load_step(parent_load_step) {}
 
-    LoadStep *get_parent_load_step() const
+    std::shared_ptr<LoadStep> get_parent_load_step() const
     {
         return parent_load_step;
     }
@@ -41,7 +42,7 @@ private:
     bool verbose; // Verbosity flag
     bool reuse_preconditioner;
     PetscLinearSolver<Number> *_petsc_linear_solver; // Pointer to the PetscLinearSolver
-    LoadStep *parent_load_step;                      // Pointer to the parent LoadStep
+    std::shared_ptr<LoadStep> parent_load_step;      // Pointer to the parent LoadStep
 };
 
 #endif // SOLVER_CONFIGURATION_H

@@ -100,8 +100,14 @@ void LoadsObject::zero_loads_array()
     }
 }
 
-void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> loads_labels)
+void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> &loads_labels)
 {
+    // Ensure activeLoadsVector is initialized
+    if (!activeLoadsVector)
+    {
+        activeLoadsVector = std::make_shared<LoadArraysMap>();
+    }
+
     // Get the load quantity from the cell data
     for (const auto &label : loads_labels)
     {
@@ -113,4 +119,10 @@ void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::st
             (*activeLoadsVector)[label][elem->id()] = std::vector<Real>(3, 0.0);
         }
     }
+
+    if (!oldLoadsVector)
+    {
+        oldLoadsVector = std::make_shared<LoadArraysMap>();
+    }
+    *oldLoadsVector = *activeLoadsVector;
 }

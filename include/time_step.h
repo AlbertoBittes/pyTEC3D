@@ -17,7 +17,7 @@ class TimeStep
 {
 public:
     // Constructor with binary file stream
-    TimeStep(std::istream &file, LoadStep *load_step, LoadStep *prev_load_step = nullptr)
+    TimeStep(std::istream &file, std::shared_ptr<LoadStep> load_step, std::shared_ptr<LoadStep> prev_load_step = nullptr)
         : load_step(load_step)
     {
         // Read step
@@ -73,8 +73,8 @@ public:
                          transient_effect, ramped_load, prev_load_step);
     }
 
-    TimeStep(unsigned int step, Real time, LoadStep *load_step, unsigned int num_substeps = 1, bool write_results = true,
-             bool transient_effect = true, bool ramped_load = true, LoadStep *prev_load_step = nullptr)
+    TimeStep(unsigned int step, Real time, std::shared_ptr<LoadStep> load_step, unsigned int num_substeps = 1, bool write_results = true,
+             bool transient_effect = true, bool ramped_load = true, std::shared_ptr<LoadStep> prev_load_step = nullptr)
         : step(step),
           time(time),
           write_results(write_results),
@@ -110,10 +110,11 @@ public:
     bool get_write_results() const { return write_results; }
     bool get_transient_effect() const { return transient_effect; }
     bool get_ramped_load() const { return ramped_load; }
-
+    Substep *get_active_substep() { return active_substep; }
+    Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
     const std::vector<Substep> &get_substeps() const { return substeps; }
-    LoadStep &get_load_step() { return *load_step; }
+    const LoadStep &get_load_step() const { return *load_step; }
 
     void set_step(unsigned int s) { step = s; }
     void set_time(Real t) { time = t; }
@@ -123,6 +124,8 @@ public:
     void set_write_results(bool w) { write_results = w; }
     void set_transient_effect(bool t) { transient_effect = t; }
     void set_ramped_load(bool r) { ramped_load = r; }
+    void set_active_substep(Substep *substep) { active_substep = substep; }
+    void set_previous_substep(Substep *substep) { previous_substep = substep; }
     void add_substep(const Substep &substep) { substeps.push_back(substep); }
     void set_substeps(unsigned int);
     // Custom substep iterator for TimeStep
@@ -131,14 +134,14 @@ public:
     Iterator begin();
     Iterator end();
 
-    void set_beginning_time(LoadStep *load_step)
+    void set_beginning_time(std::shared_ptr<LoadStep> load_step)
     {
         if (load_step == nullptr)
             time_beginning = 0.0;
         else
             time_beginning = load_step->get_time_step()->get_time();
     }
-    void set_dt(LoadStep *load_step)
+    void set_dt(std::shared_ptr<LoadStep> load_step)
     {
         if (load_step == nullptr)
             delta_t = 0.0;
@@ -156,7 +159,9 @@ private:
     bool ramped_load;
 
     std::vector<Substep> substeps;
-    LoadStep *load_step;
+    std::shared_ptr<LoadStep> load_step;
+    Substep *active_substep = nullptr;
+    Substep *previous_substep = nullptr;
 };
 
 class Substep
@@ -204,6 +209,10 @@ public:
     {
         if (first)
         {
+            // Update active_substep and previous_substep
+            time_step->set_previous_substep(time_step->get_active_substep());
+            time_step->set_active_substep(&time_step->get_substeps()[substep_index]);
+
             // This should go after a solve
             // time_stepper.get_system().rhs->zero();
             first = false;

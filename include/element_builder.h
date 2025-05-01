@@ -18,38 +18,79 @@ public:
         : load_step(nullptr) {}
 
     // Constructor with LoadStep
-    explicit ElementBuilder(LoadStep *load_step)
+    ElementBuilder(std::shared_ptr<LoadStep> load_step)
         : load_step(load_step) {}
 
+    // Constructor with LoadStep and old LoadStep
+    ElementBuilder(std::shared_ptr<LoadStep> load_step, std::shared_ptr<LoadStep> old_load_step)
+        : load_step(load_step), old_load_step(old_load_step) {}
+
     // Setters
-    void set_load_step(LoadStep *load_step) { this->load_step = load_step; }
+    void set_load_step(std::shared_ptr<LoadStep> load_step) { this->load_step = load_step; }
+    void set_old_load_step(std::shared_ptr<LoadStep> old_load_step) { this->old_load_step = old_load_step; }
     void set_matrices(const std::vector<DenseMatrix<Number>> &matrices) { this->matrices = matrices; }
     void set_matrices_derived(const std::vector<DenseMatrix<Number>> &matrices_derived) { this->matrices_derived = matrices_derived; }
     void set_vectors(const std::vector<DenseVector<Number>> &vectors) { this->vectors = vectors; }
-
+    void set_elem(Elem *elem) { this->elem = elem; }
+    void set_element_type(std::shared_ptr<ElementType> element_type) { this->element_type = element_type; }
+    void set_material_num(unsigned int material_num) { this->material_num = material_num; }
+    void set_real_constant_num(unsigned int real_constant_num) { this->real_constant_num = real_constant_num; }
     // Getters
-    LoadStep *get_load_step() const { return load_step; }
+    std::shared_ptr<LoadStep> get_load_step() const { return load_step; }
+    std::shared_ptr<LoadStep> get_old_load_step() const { return old_load_step; }
     std::vector<DenseMatrix<Number>> &get_matrices() { return matrices; }
     std::vector<DenseMatrix<Number>> &get_matrices_derived() { return matrices_derived; }
     std::vector<DenseVector<Number>> &get_vectors() { return vectors; }
+    Elem *get_elem() const { return elem; }
+    std::shared_ptr<ElementType> get_element_type() const { return element_type; }
+    unsigned int get_material_num() const { return material_num; }
+    unsigned int get_real_constant_num() const { return real_constant_num; }
+
+    void set_element_data(Elem *elem, std::shared_ptr<ElementType> element_type, unsigned int material_num, unsigned int real_constant_num)
+    {
+        this->elem = elem;
+        this->element_type = element_type;
+        this->material_num = material_num;
+        this->real_constant_num = real_constant_num;
+    }
+    // Methods to build elements
+    void build_element();
+    void build_solid97();
+    void build_solid236();
+    void build_plane13();
 
     // Methods to build elements
-    void build_element(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void build_solid97(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void build_solid236(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void build_plane13(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void build_element_rhs();
+    void build_solid97_rhs();
+    void build_solid236_rhs();
+    void build_plane13_rhs();
 
-    // Methods to apply loads
-    void apply_load(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void apply_load_solid97(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void apply_load_solid236(Elem *elem, std::shared_ptr<ElementType> element_type);
-    void apply_load_plane13(Elem *elem, std::shared_ptr<ElementType> element_type);
+    void apply_load();
+    void apply_load_solid97();
+    void apply_load_plane13();
+    void apply_load_solid236();
+
+    void buildVectors(const std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map, std::vector<DenseVector<Number>> &elem_vectors_vector);
+    void buildMatrices(const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, std::vector<DenseMatrix<Number>> &elem_matrices_vector);
+    void writeElementMatrices(std::ofstream &outFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector);
+    void readElementMatrices(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector);
+    void writeElementVectors(std::ofstream &outFile, std::vector<DenseVector<Number>> &elem_matrices_vector);
+    void readElementVectors(std::ifstream &inFile, std::vector<DenseVector<Number>> &elem_matrices_vector);
+    // void readElementData(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector, std::vector<DenseVector<Number>> &elem_vectors_vector);
+    // void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
 
 private:
-    LoadStep *load_step;                               // Pointer to the associated LoadStep
+    std::shared_ptr<LoadStep> load_step;     // Pointer to the associated LoadStep
+    std::shared_ptr<LoadStep> old_load_step; // Pointer to the previous LoadStep
+
     std::vector<DenseMatrix<Number>> matrices;         // Element matrices
     std::vector<DenseMatrix<Number>> matrices_derived; // Derived element matrices
     std::vector<DenseVector<Number>> vectors;          // Element vectors
+
+    Elem *elem;                                // Pointer to the current element being processed
+    std::shared_ptr<ElementType> element_type; // Pointer to the current element type
+    unsigned int material_num;                 // Current material number
+    unsigned int real_constant_num;            // Current real constant number
 };
 
 #endif // ELEMENT_BUILDER_H

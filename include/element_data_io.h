@@ -13,22 +13,6 @@
 
 using namespace libMesh;
 
-void buildVectors(std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map, std::vector<DenseVector<Number>> &vectors);
-
-void buildMatrices(std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map, std::vector<DenseMatrix<Number>> &matrices);
-
-void writeElementMatrices(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector);
-
-void readElementMatrices(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector);
-
-void writeElementVectors(std::ofstream &outFile, const std::vector<DenseVector<Number>> &elem_vectors_vector);
-
-void readElementVectors(std::ifstream &inFile, std::vector<DenseVector<Number>> &elem_vectors_vector);
-
-void readElementData(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector, std::vector<DenseVector<Number>> &elem_vectors_vector);
-
-void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
-
 // int main() {
 //     try {
 //         std::string filename = "data.bin";

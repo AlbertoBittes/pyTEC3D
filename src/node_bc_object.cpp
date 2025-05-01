@@ -127,7 +127,7 @@ void NodeBCObject::read_boundary_conditions(std::istream &file)
     // Do not close the file, as another function will continue reading
 }
 
-void NodeBCObject::check_boundary_conditions(LoadStep *prev_load_step)
+void NodeBCObject::check_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step)
 {
     // Example implementation
     // This function should implement the logic to check the boundary conditions applied to the nodes of the system
@@ -148,7 +148,7 @@ void NodeBCObject::check_boundary_conditions(LoadStep *prev_load_step)
     }
 }
 
-void NodeBCObject::set_boundary_conditions(LoadStep *prev_load_step)
+void NodeBCObject::set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step)
 {
     this->check_boundary_conditions(prev_load_step);
 
