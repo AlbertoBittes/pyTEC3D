@@ -16,7 +16,8 @@ public:
           input_mesh_filepath(""),
           output_folderpath("output"),
           temp_folderpath("temp"),
-          load_steps_folderpath("load_steps") {}
+          load_steps_folderpath("load_steps"),
+          emat_folderpath("emat_files") {}
 
     // Constructor with mesh filename
     explicit Session(const std::string &mesh_filename)
@@ -25,7 +26,10 @@ public:
           mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string()),
           output_folderpath("output"),
           temp_folderpath("temp"),
-          load_steps_folderpath("load_steps") {}
+          load_steps_folderpath("load_steps"),
+          emat_folderpath("emat_files")
+    {
+    }
 
     // Constructor with mesh filename and batch mode
     Session(const std::string &mesh_filename, bool batch_mode)
@@ -34,7 +38,10 @@ public:
           mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string()),
           output_folderpath("output"),
           temp_folderpath("temp"),
-          load_steps_folderpath("load_steps") {}
+          load_steps_folderpath("load_steps"),
+          emat_folderpath("emat_files")
+    {
+    }
 
     // Setters
     void set_batch_mode(bool mode) { batch_mode = mode; }
@@ -46,6 +53,7 @@ public:
     void set_final_output_path(const std::filesystem::path &path) { final_output_path = path; }
     void set_temp_folder_path(const std::filesystem::path &path) { temp_folderpath = path; }
     void set_load_steps_folderpath(const std::filesystem::path &path) { load_steps_folderpath = path; }
+    void set_emat_folderpath(const std::filesystem::path &path) { emat_folderpath = path; }
 
     // Getters
     bool get_batch_mode() const { return batch_mode; }
@@ -57,11 +65,13 @@ public:
     const std::filesystem::path &get_final_output_path() const { return final_output_path; }
     const std::filesystem::path &get_temp_folder_path() const { return temp_folderpath; }
     const std::filesystem::path &get_load_steps_folderpath() const { return load_steps_folderpath; }
+    const std::filesystem::path &get_emat_folderpath() const { return emat_folderpath; }
 
     // Methods
     void set_output_filepath(unsigned int output_label);
     void create_temp_folder();
     void create_output_folder();
+    void create_emat_folder();
     void check_load_steps_folder();
 
 private:
@@ -74,6 +84,7 @@ private:
     std::filesystem::path final_output_path;
     std::filesystem::path temp_folderpath;
     std::filesystem::path load_steps_folderpath;
+    std::filesystem::path emat_folderpath;
 };
 
 #endif // SESSION_H

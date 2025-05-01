@@ -156,7 +156,7 @@ void ElementBuilder::readElementVectors(std::ifstream &inFile, std::vector<Dense
 }
 
 // {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
-void ElementBuilder::build_solid97()
+void ElementBuilder::build_solid97_matrix()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -177,33 +177,15 @@ void ElementBuilder::build_solid97()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    const ScalarShapeFunctions &shape_functions = element_type->get_scalar_shape_functions();
-    const VectorShapeFunctions &vector_shape_functions = element_type->get_vector_shape_functions();
-
-    element_type->reinit_fe(elem);
-    element_type->reinit_fe_vec(elem);
-
-    element_type->populate_all();
-
-    this->buildMatrices(element_type->get_matrix_idx_size_map(), matrices);
-    this->buildVectors(element_type->get_vector_idx_size_map(), vectors);
-    this->buildMatrices(element_type->get_derived_matrix_idx_size_map(), matrices_derived);
-
     unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
-
-    std::string js_label = "Js";
-
-    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
 
     auto materials = load_step->get_materials();
 
     materials->compute_material_properties(elem->id(), element_type->is_conductive());
     auto mu_matrix = materials->getMuMatrix();
     auto rs_matrix = materials->getRsMatrix();
-
-    Substep *substep = load_step->get_time_step()->get_active_substep();
 
     if (element_type->is_conductive())
     {
@@ -213,24 +195,24 @@ void ElementBuilder::build_solid97()
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
-                matrices[4](qp, dof_i) += shape_functions.phi[dof_i][qp];
+                matrices_derived[2](qp, dof_i) += scalar_shape_functions->phi[dof_i][qp];
 
                 for (unsigned int k = 0; k < 3; k++)
-                    matrices[5](qp + k * n_dofs_var, dof_i) += shape_functions.dphi[dof_i][qp](k);
+                    matrices_derived[3](qp + k * n_dofs_var, dof_i) += scalar_shape_functions->dphi[dof_i][qp](k);
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
                     {
-                        matrices[1](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / rs_matrix[l] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
-                        CAV_value = shape_functions.JxW[qp] / rs_matrix[l] * shape_functions.phi[dof_i][qp] * shape_functions.dphi[dof_j][qp](l);
+                        matrices[1](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] / rs_matrix[l] * (scalar_shape_functions->phi[dof_i][qp] * scalar_shape_functions->phi[dof_j][qp]);
+                        CAV_value = scalar_shape_functions->JxW[qp] / rs_matrix[l] * scalar_shape_functions->phi[dof_i][qp] * scalar_shape_functions->dphi[dof_j][qp](l);
                         matrices[1](dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
                         matrices[1](n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-                        matrices[1](n_dofs_A + dof_i, n_dofs_A + dof_j) += shape_functions.JxW[qp] * shape_functions.dphi[dof_i][qp](l) / rs_matrix[l] * shape_functions.dphi[dof_j][qp](l);
+                        matrices[1](n_dofs_A + dof_i, n_dofs_A + dof_j) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->dphi[dof_i][qp](l) / rs_matrix[l] * scalar_shape_functions->dphi[dof_j][qp](l);
                         for (unsigned int k = 0; k < 3; k++)
                         {
-                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
-                            matrices[3](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
-                            matrices[2](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
+                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] / mu_matrix[k] * (scalar_shape_functions->dphi[dof_i][qp](k) * scalar_shape_functions->dphi[dof_j][qp](k));
+                            matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
+                            matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
                         }
                     }
             }
@@ -242,25 +224,179 @@ void ElementBuilder::build_solid97()
                     for (unsigned int l = 0; l < 3; l++)
                         for (unsigned int k = 0; k < 3; k++)
                         {
-                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] / mu_matrix[k] * (shape_functions.dphi[dof_i][qp](k) * shape_functions.dphi[dof_j][qp](k));
-                            matrices[3](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.curl_phi_vec[dof_j * 3 + l][qp]);
-                            matrices[2](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += shape_functions.JxW[qp] * (vector_shape_functions.phi_vec[dof_i * 3 + k][qp] * vector_shape_functions.phi_vec[dof_j * 3 + l][qp]);
+                            matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] / mu_matrix[k] * (scalar_shape_functions->dphi[dof_i][qp](k) * scalar_shape_functions->dphi[dof_j][qp](k));
+                            matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
+                            matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
                         }
-
-    for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var * 3; dof_i++)
-            for (unsigned int k = 0; k < 3; k++)
-                vectors[0](dof_i + k * n_dofs_var) += shape_functions.JxW[qp] * shape_functions.phi[dof_i][qp] * js_loads[elem->id()][k];
 }
 
 // Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236()
+void ElementBuilder::build_solid236_matrix()
 {
     libmesh_error_msg("build_solid236 is not implemented yet.");
 }
 
 // Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13()
+void ElementBuilder::build_plane13_matrix()
+{
+    // Stop logging the shape function initialization.
+    // If you forget to stop logging an event the PerfLog
+    // object will probably catch the error and abort.
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    // Numeric ids corresponding to each variable in the system
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
+    unsigned int n_dofs_A = n_dofs_var * 3;
+    unsigned int nq = element_type->get_fe()->n_quadrature_points();
+
+    auto materials = load_step->get_materials();
+
+    materials->compute_material_properties(elem->id(), element_type->is_conductive());
+    auto mu_matrix = materials->getMuMatrix();
+    auto rs_matrix = materials->getRsMatrix();
+
+    if (element_type->is_conductive())
+    {
+        // Now start logging the element matrix computation
+        for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
+                {
+                    if (dof_j < n_dofs_var)
+                        matrices_derived[1](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * std::pow(-1, dof_i) * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->dphi[dof_j][qp](1 - (dof_i % 2)));
+
+                    if ((dof_i + dof_j) % 2 == 0)
+                        matrices_derived[0](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->phi[dof_j / 2][qp]);
+                }
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            {
+                // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
+                matrices_derived[2](qp, dof_i) -= scalar_shape_functions->phi[dof_i][qp];
+
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                {
+                    matrices[0](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->dphi[dof_i][qp] * scalar_shape_functions->dphi[dof_j][qp]) / mu_matrix[0];
+                    matrices[1](dof_i, dof_j) += scalar_shape_functions->JxW[qp] / rs_matrix[0] * (scalar_shape_functions->phi[dof_i][qp] * scalar_shape_functions->phi[dof_j][qp]);
+                }
+            }
+        }
+    }
+    else
+        for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
+                {
+                    if (dof_j < n_dofs_var)
+                        matrices[3](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * std::pow(-1, dof_i) * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->dphi[dof_j][qp](1 - (dof_i % 2)));
+
+                    if ((dof_i + dof_j) % 2 == 0)
+                        matrices[2](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->phi[dof_j / 2][qp]);
+                }
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        for (unsigned int k = 0; k < 3; k++)
+                            matrices[0](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->dphi[dof_i][qp] * scalar_shape_functions->dphi[dof_j][qp]) / mu_matrix[0];
+        }
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            vectors[0](dof_i) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp]; // * js_loads[elem->id()][2];
+}
+
+void ElementBuilder::build_element_matrix()
+{
+    auto etype = element_type->get_properties().element_type;
+
+    if (etype == "SOLID97")
+    {
+        this->build_solid97_matrix();
+    }
+    else if (etype == "SOLID236")
+    {
+        this->build_solid236_matrix();
+    }
+    else if (etype == "PLANE13")
+    {
+        this->build_plane13_matrix();
+    }
+    else
+    {
+        libmesh_error_msg("Element type not supported: " + etype);
+    }
+}
+
+void ElementBuilder::build_solid97_rhs()
+{
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    // Numeric ids corresponding to each variable in the system
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+
+    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
+    unsigned int n_dofs_A = n_dofs_var * 3;
+    unsigned int nq = element_type->get_fe()->n_quadrature_points();
+
+    std::string js_label = "Js";
+
+    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var * 3; dof_i++)
+            for (unsigned int k = 0; k < 3; k++)
+                vectors[0](dof_i + k * n_dofs_var) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp] * js_loads[elem->id()][k];
+}
+
+// Temporary placeholder for build_solid236
+void ElementBuilder::build_solid236_rhs()
+{
+    libmesh_error_msg("build_solid236 is not implemented yet.");
+}
+
+// Temporary placeholder for build_plane13
+void ElementBuilder::build_plane13_rhs()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -293,16 +429,6 @@ void ElementBuilder::build_plane13()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    const ScalarShapeFunctions &shape_functions = element_type->get_scalar_shape_functions();
-    const VectorShapeFunctions &vector_shape_functions = element_type->get_vector_shape_functions();
-
-    element_type->reinit_fe(elem);
-
-    element_type->populate_all();
-
-    this->buildMatrices(element_type->get_matrix_idx_size_map(), matrices);
-    this->buildVectors(element_type->get_vector_idx_size_map(), vectors);
-    this->buildMatrices(element_type->get_derived_matrix_idx_size_map(), matrices_derived);
 
     unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
     unsigned int n_dofs_A = n_dofs_var * 3;
@@ -312,86 +438,32 @@ void ElementBuilder::build_plane13()
 
     auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
 
-    auto materials = load_step->get_materials();
-
-    materials->compute_material_properties(elem->id(), element_type->is_conductive());
-    auto mu_matrix = materials->getMuMatrix();
-    auto rs_matrix = materials->getRsMatrix();
-
-    if (element_type->is_conductive())
-    {
-        // Now start logging the element matrix computation
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
-                {
-                    if (dof_j < n_dofs_var)
-                        matrices[3](dof_i, dof_j) += shape_functions.JxW[qp] * std::pow(-1, dof_i) * (shape_functions.phi[dof_i / 2][qp] * shape_functions.dphi[dof_j][qp](1 - (dof_i % 2)));
-
-                    if ((dof_i + dof_j) % 2 == 0)
-                        matrices[2](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.phi[dof_i / 2][qp] * shape_functions.phi[dof_j / 2][qp]);
-                }
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            {
-                // matrices[4](0, i) -= shape_functions.JxW[qp] * shape_functions.phi[i][qp] / shape_functions.phi[0].size();
-                matrices[4](qp, dof_i) -= shape_functions.phi[dof_i][qp];
-
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                {
-                    matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / mu_matrix[0];
-                    matrices[1](dof_i, dof_j) += shape_functions.JxW[qp] / rs_matrix[0] * (shape_functions.phi[dof_i][qp] * shape_functions.phi[dof_j][qp]);
-                }
-            }
-        }
-    }
-    else
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
-                {
-                    if (dof_j < n_dofs_var)
-                        matrices[3](dof_i, dof_j) += shape_functions.JxW[qp] * std::pow(-1, dof_i) * (shape_functions.phi[dof_i / 2][qp] * shape_functions.dphi[dof_j][qp](1 - (dof_i % 2)));
-
-                    if ((dof_i + dof_j) % 2 == 0)
-                        matrices[2](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.phi[dof_i / 2][qp] * shape_functions.phi[dof_j / 2][qp]);
-                }
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        for (unsigned int k = 0; k < 3; k++)
-                            matrices[0](dof_i, dof_j) += shape_functions.JxW[qp] * (shape_functions.dphi[dof_i][qp] * shape_functions.dphi[dof_j][qp]) / mu_matrix[0];
-        }
-
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            vectors[0](dof_i) += shape_functions.JxW[qp] * shape_functions.phi[dof_i][qp] * js_loads[elem->id()][2];
+            vectors[0](dof_i) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp] * js_loads[elem->id()][2];
 }
 
-void ElementBuilder::build_element()
+void ElementBuilder::build_element_rhs()
 {
     auto etype = element_type->get_properties().element_type;
 
     if (etype == "SOLID97")
     {
-        this->build_solid97();
+        this->build_solid97_rhs();
     }
     else if (etype == "SOLID236")
     {
-        this->build_solid236();
+        this->build_solid236_rhs();
     }
     else if (etype == "PLANE13")
     {
-        this->build_plane13();
+        this->build_plane13_rhs();
     }
     else
     {
         libmesh_error_msg("Element type not supported: " + etype);
     }
 }
-
 // void ElementBuilder::apply_material_properties()
 // {
 //     if (element_type->properties.element_type == "SOLID97")
@@ -412,7 +484,7 @@ void ElementBuilder::build_element()
 //     }
 // }
 
-void ElementBuilder::apply_load()
+void ElementBuilder::ramp_load()
 {
     auto etype = element_type->get_properties().element_type;
 
@@ -434,7 +506,7 @@ void ElementBuilder::apply_load()
     }
 }
 
-void ElementBuilder::apply_load_solid97()
+void ElementBuilder::ramp_load_solid97()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -465,12 +537,12 @@ void ElementBuilder::apply_load_solid97()
     }
 }
 // Temporary placeholder for apply_load_solid236
-void ElementBuilder::apply_load_solid236()
+void ElementBuilder::ramp_load_solid236()
 {
     libmesh_error_msg("apply_load_solid236 is not implemented yet.");
 }
 
-void ElementBuilder::apply_load_plane13()
+void ElementBuilder::ramp_load_plane13()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against

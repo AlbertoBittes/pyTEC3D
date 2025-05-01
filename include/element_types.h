@@ -26,9 +26,9 @@ struct ElementTypeProperties
 
 struct ScalarShapeFunctions
 {
-    const std::vector<Real> JxW;
-    const std::vector<std::vector<Real>> phi;
-    const std::vector<std::vector<RealGradient>> dphi;
+    const std::vector<Real> &JxW;
+    const std::vector<std::vector<Real>> &phi;
+    const std::vector<std::vector<RealGradient>> &dphi;
 };
 
 struct VectorShapeFunctions
@@ -66,6 +66,8 @@ public:
     unsigned int get_dimension() const { return dimension; }
     unsigned int get_az_dofs() const { return az_dofs; }
     const FEBase *get_fe() const { return fe.get(); }
+    const FEVectorBase *get_fe_vec() const { return fe_vec.get(); }
+
     const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
     const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
     const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
@@ -78,14 +80,16 @@ public:
     void set_az_dofs(unsigned int new_az_dofs) { az_dofs = new_az_dofs; }
     void set_fe(std::unique_ptr<FEBase> new_fe) { fe = std::move(new_fe); }
     // Shape functions
-    inline ScalarShapeFunctions get_scalar_shape_functions() const
+    inline std::shared_ptr<ScalarShapeFunctions> &get_scalar_shape_functions() const
     {
-        return ScalarShapeFunctions{fe->get_JxW(), fe->get_phi(), fe->get_dphi()};
+        std::shared_ptr<ScalarShapeFunctions> shape_functions = std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
+        return shape_functions;
     }
 
-    inline VectorShapeFunctions get_vector_shape_functions() const
+    inline std::shared_ptr<VectorShapeFunctions> &get_vector_shape_functions() const
     {
-        return VectorShapeFunctions{fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi()};
+        std::shared_ptr<VectorShapeFunctions> shape_functions = std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
+        return shape_functions;
     }
 
     // Virtual methods for populating maps
@@ -106,9 +110,9 @@ public:
     }
 
 protected:
-    std::unique_ptr<FEBase> fe;           // Finite element object
-    std::unique_ptr<FEVectorBase> fe_vec; // Finite element vector object
-    ElementTypeProperties properties;     // Element type properties
+    std::unique_ptr<FEBase> fe = nullptr;           // Finite element object
+    std::unique_ptr<FEVectorBase> fe_vec = nullptr; // Finite element vector object
+    ElementTypeProperties properties;               // Element type properties
 
     std::string order;             // Order of the element
     std::string fe_family;         // Finite element family

@@ -1,8 +1,8 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
-#include "../include/system_builder.h"
 #include "../include/session.h" // Include the header file for Session
+#include "../include/time_step.h"
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -14,11 +14,6 @@
 #include "libmesh/libmesh.h"
 #include "libmesh/mesh.h"
 
-// Define the Finite Element object.
-#include "libmesh/fe.h"
-
-// Define Gauss quadrature rules.
-#include "libmesh/quadrature_gauss.h"
 #include "libmesh/petsc_linear_solver.h"
 
 // Define the DofMap, which handles degree of freedom
@@ -45,13 +40,10 @@
 #include "../include/assembler.h"
 #include "../include/element_builder.h" // Include the header file for ElementBuilder
 #include "../include/element_types.h"   // Include the header file for ElementTypesCollector
-#include "../include/element_data_io.h" // Include the header file for LoadsObject
 #include "../include/loads_object.h"
 #include <map> // Include for std::map
-#include <vtkCellData.h>
 #include <cmath>
 #include <stdexcept>
-#include "../include/element_data_io.h" // Include the header file for ElementHeader
 
 using namespace libMesh;
 
@@ -102,28 +94,45 @@ void AssemblerLinear::assemble()
     bool conductive;
 
     std::filesystem::path filepath;
-    std::string mtrx_filename;
+    std::string mtrx_vec_filename;
 
     unsigned int etype_num_integer = mesh.get_elem_integer_index("ansys_etype");
 
-    auto temp_folderpath = session->get_temp_folder_path();
+    auto emat_folderpath = session->get_emat_folderpath();
+    bool old_rhs = true;
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
 
-    mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folderpath / mtrx_filename;
+    mtrx_vec_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = emat_folderpath / mtrx_vec_filename;
     std::ifstream mtrx_input_file(filepath);
     if (!mtrx_input_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for reading.");
     }
 
-    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folderpath / mtrx_filename;
+    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = emat_folderpath / mtrx_vec_filename;
     std::ifstream rhs_input_file(filepath);
     if (!rhs_input_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for reading.");
+    }
+
+    std::ifstream rhs_prev_input_file;
+    if (time_substep->get_index() == 0 && time_substep->get_parent().get_step() == 0)
+    {
+        old_rhs = false;
+    }
+    else
+    {
+        mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + "_prev.temp";
+        filepath = emat_folderpath / mtrx_vec_filename;
+        rhs_prev_input_file.open(filepath);
+        if (!rhs_prev_input_file.is_open())
+        {
+            libmesh_error_msg("Failed to open element data file for reading.");
+        }
     }
 
     // Matrix changes when we have nonlinearities or different dt
@@ -189,8 +198,18 @@ void AssemblerLinear::assemble()
             matrix.add_matrix(Ke, dof_indices);
         }
 
-        elem_builder.readElementVectors(mtrx_input_file, elem_builder.get_vectors());
-
+        elem_builder.readElementVectors(rhs_input_file, elem_builder.get_vectors());
+        if (time_substep->get_ramped_load())
+        {
+            if (old_rhs)
+                elem_builder.readElementVectors(rhs_prev_input_file, elem_builder.get_prev_vectors());
+            else
+            {
+                elem_builder.get_prev_vectors()[0].resize(rhs.size());
+                elem_builder.get_prev_vectors()[0].zero();
+            }
+            elem_builder.ramp_vectors(time_substep);
+        }
         // elem_builder.apply_load();
 
         // HERE YOU HAVE TO RAMP THE LOAD !!!
@@ -276,7 +295,7 @@ void AssemblerLinear::build_write_element_matrices()
     // the element degrees of freedom get mapped.
 
     std::filesystem::path filepath;
-    std::string mtrx_filename;
+    std::string mtrx_vec_filename;
 
     unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
     unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_num");
@@ -286,21 +305,23 @@ void AssemblerLinear::build_write_element_matrices()
     unsigned int material_num;
     unsigned int real_constant_num;
 
-    auto temp_folder = session->get_temp_folder_path();
+    auto emat_folderpath = session->get_emat_folderpath();
+
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     // {
     // This function must be called prior to a check for the need of recomputing the matrix:
     // e.g. new materials, new real constants, nonlinear elements.
-    mtrx_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folder / mtrx_filename;
+
+    mtrx_vec_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = emat_folderpath / mtrx_vec_filename;
     std::ofstream mtrx_output_file(filepath);
     if (!mtrx_output_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for writing.");
     }
 
-    mtrx_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folder / mtrx_filename;
+    mtrx_vec_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
+    filepath = emat_folderpath / mtrx_vec_filename;
     std::ofstream der_mtrx_output_file(filepath);
 
     if (!der_mtrx_output_file.is_open())
@@ -308,8 +329,13 @@ void AssemblerLinear::build_write_element_matrices()
         libmesh_error_msg("Failed to open element data file for writing.");
     }
 
-    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folder / mtrx_filename;
+    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = emat_folderpath / mtrx_vec_filename;
+    if (std::filesystem::exists(filepath))
+    {
+        std::filesystem::path new_filepath = emat_folderpath / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
+        std::filesystem::rename(filepath, new_filepath);
+    }
     std::ofstream rhs_output_file(filepath);
     if (!rhs_output_file.is_open())
     {
@@ -331,8 +357,12 @@ void AssemblerLinear::build_write_element_matrices()
         // Do this elsewhere, logically must no stay here
         // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
         elem_builder.set_element_data(elem, elem_type, material_num, real_constant_num);
-        elem_builder.build_element();
 
+        elem_builder.prepare_element_matrix_building();
+
+        elem_builder.build_element_matrix();
+
+        elem_builder.build_element_rhs();
         // Here the function to write the matrices and vectors down to file
         elem_builder.writeElementMatrices(mtrx_output_file, elem_builder.get_matrices());
 
@@ -376,62 +406,55 @@ void AssemblerLinear::update_rhs()
     // the element degrees of freedom get mapped.
 
     std::filesystem::path filepath;
-    std::string mtrx_filename;
+    std::string mtrx_vec_filename;
 
     unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-    // unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_num");
-    // unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
 
     unsigned int etype_num;
-    // unsigned int material_num;
-    // unsigned int real_constant_num;
 
     auto temp_folder = session->get_temp_folder_path();
+    auto emat_folderpath = session->get_emat_folderpath();
+
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     // {
     // This function must be called prior to a check for the need of recomputing the matrix:
     // e.g. new materials, new real constants, nonlinear elements.
 
-    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folder / mtrx_filename;
-    std::ifstream rhs_input_file(filepath);
-    if (!rhs_input_file.is_open())
+    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
+    filepath = temp_folder / mtrx_vec_filename;
+    if (std::filesystem::exists(filepath))
     {
-        libmesh_error_msg("Failed to open element data file for reading.");
+        std::filesystem::path new_filepath = temp_folder / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
+        std::filesystem::rename(filepath, new_filepath);
     }
-    mtrx_filename = "rhs_" + std::to_string(comm.rank()) + ".tempx";
-    filepath = temp_folder / mtrx_filename;
     std::ofstream rhs_output_file(filepath);
     if (!rhs_output_file.is_open())
     {
         libmesh_error_msg("Failed to open element data file for writing.");
     }
+
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        elem_builder.readElementVectors(rhs_input_file, elem_builder.get_vectors());
+
         etype_num = elem->get_extra_integer(etype_num_index);
-        // material_num = elem->get_extra_integer(mat_num_index);
-        // real_constant_num = elem->get_extra_integer(real_constants_num_index);
 
         std::shared_ptr<ElementType> elem_type = element_types_map[etype_num];
 
         // Do this elsewhere, logically must no stay here
         // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
         elem_builder.set_element_type(elem_type);
-        elem_builder.apply_load();
+
+        elem_builder.prepare_element_rhs_building();
+
+        elem_builder.build_element_rhs();
+        // Here the function to write the matrices and vectors down to file
 
         elem_builder.writeElementVectors(rhs_output_file, elem_builder.get_vectors());
     }
     rhs_output_file.close();
-    rhs_input_file.close();
-
-    std::filesystem::remove(filepath);
-
-    std::filesystem::path new_filepath = temp_folder / ("rhs_" + std::to_string(comm.rank()) + ".temp");
-    std::filesystem::rename(filepath, new_filepath);
 }
 // in a new time step we could have a different dt, different bcs, different time integration effects
 // Here add the flag for ferromagnetic

@@ -44,6 +44,20 @@ void Session::create_output_folder()
     }
 }
 
+void Session::create_emat_folder()
+{
+    emat_folderpath = output_folderpath / "emat_files";
+    if (!std::filesystem::exists(emat_folderpath))
+    {
+        std::filesystem::create_directory(emat_folderpath);
+        libMesh::out << "Emat folder created at " << emat_folderpath << std::endl;
+    }
+    else
+    {
+        libMesh::out << "Emat folder already exists at " << emat_folderpath << std::endl;
+    }
+}
+
 void Session::check_load_steps_folder()
 {
     load_steps_folderpath = output_folderpath / "load_steps";
