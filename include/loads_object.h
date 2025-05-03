@@ -6,84 +6,61 @@
 #include <map>
 #include <fstream>                    // Include this header for std::ifstream
 #include "../include/element_types.h" // Include the header file for ElementTypesMap
-#include "../include/load_step.h"     // Add this line to include the definition of MaterialsProperties
+#include "../include/load_step.h"     // Include the definition of LoadStep
+#include "../include/fe_data_object.h"
 
 class LoadStep;
 
+// Type aliases for loads
 typedef std::unordered_map<dof_id_type, std::vector<Real>> ElementLoad;
 typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
-class LoadsObject
+class LoadsObject : public FEDataObject<LoadArraysMap>
 {
 public:
-    // Constructor
-    LoadsObject(std::shared_ptr<LoadStep> parent_load_step = nullptr)
-        : activeLoadsVector(std::make_shared<LoadArraysMap>()),
-          oldLoadsVector(std::make_shared<LoadArraysMap>()),
-          parent_load_step(parent_load_step)
-    {
-    }
+    // Default constructor
+    LoadsObject(std::shared_ptr<LoadStep> parent_load_step = nullptr,
+                std::shared_ptr<LoadArraysMap> map = nullptr)
+        : FEDataObject(parent_load_step, map),
+          oldLoadsVector(std::make_shared<LoadArraysMap>()) {}
 
-    LoadsObject(const MeshBase &mesh, std::set<std::string> &loads_labels, std::shared_ptr<LoadStep> parent_load_step = nullptr)
-        : activeLoadsVector(std::make_shared<LoadArraysMap>()),
-          oldLoadsVector(std::make_shared<LoadArraysMap>()),
-          parent_load_step(parent_load_step)
+    // Constructor with MeshBase and load labels
+    LoadsObject(const MeshBase &mesh, std::set<std::string> &loads_labels,
+                std::shared_ptr<LoadStep> parent_load_step = nullptr,
+                std::shared_ptr<LoadArraysMap> map = nullptr)
+        : FEDataObject(parent_load_step, map),
+          oldLoadsVector(std::make_shared<LoadArraysMap>())
     {
         build_load_data_vectors(mesh, loads_labels);
     }
 
+    // Build load data vectors
     void build_load_data_vectors(const MeshBase &mesh, std::set<std::string> &loads_labels);
 
+    // Zero out the loads array
     void zero_loads_array();
 
-    // inline Real compute_load(dof_id_type elem_id, std::shared_ptr<LoadArraysMap> &loads_vector, std::string &load_label, unsigned int comp, std::shared_ptr<LoadStep> &prev_load_step, Substep *time_substep = nullptr)
-    // {
-    //     // Get the value from the "Js" array using the element ID
-    //     if (parent_load_step->get_time_step()->get_ramped_load())
-    //         return this->ramp_load(elem_id, loads_vector, load_label, comp, prev_load_step, time_substep);
-    //     else
-    //         return (*loads_vector)[load_label][elem_id][comp];
-    // }
-
-    // inline Real ramp_load(dof_id_type elem_id, std::shared_ptr<LoadArraysMap> &loads_vector, std::string &load_label, unsigned int comp, std::shared_ptr<LoadStep> &prev_load_step, Substep *time_substep)
-    // {
-    //     Real y1;
-    //     Real y2;
-
-    //     if (prev_load_step != nullptr)
-    //         y1 = (*prev_load_step->get_loads()->get_active_loads_vector())[load_label][elem_id][comp];
-    //     else
-    //         y1 = 0;
-
-    //     y2 = (*loads_vector)[load_label][elem_id][comp];
-    //     return y1 + ((y2 - y1) / (time_substep->get_parent().get_time() - time_substep->get_parent().get_time_beginning())) * (time_substep->get_time() - time_substep->get_parent().get_time_beginning());
-    // }
-
+    // Set the load quantity
     void set_load_quantity(std::string &load_name);
 
-    void read_loads_array(std::istream &file_stream);
+    // Read loads array from a binary file stream
+    void read_data(std::ifstream &file) override;
 
-    // Getters
-    std::shared_ptr<LoadStep> get_parent_load_step() const { return parent_load_step; }
-    std::shared_ptr<LoadArraysMap> &get_active_loads_vector() { return activeLoadsVector; }
-    std::shared_ptr<LoadArraysMap> &get_old_loads_vector() { return oldLoadsVector; }
-
-    // Setters
-    void set_parent_load_step(std::shared_ptr<LoadStep> parent) { parent_load_step = parent; }
-    void set_active_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector) { activeLoadsVector = std::move(loads_vector); }
-    void set_old_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector) { oldLoadsVector = std::move(loads_vector); }
-
+    // Swap the active and old loads vectors
     void swap_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector)
     {
-        *oldLoadsVector = *activeLoadsVector;
-        activeLoadsVector = std::move(loads_vector);
+        *oldLoadsVector = *data_map;
+        data_map = std::move(loads_vector);
     }
 
+    // Getters for old loads vector
+    std::shared_ptr<LoadArraysMap> get_old_loads_vector() const { return oldLoadsVector; }
+
+    // Setter for old loads vector
+    void set_old_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector) { oldLoadsVector = std::move(loads_vector); }
+
 private:
-    // Reference to the parent LoadStep
-    std::shared_ptr<LoadStep> parent_load_step;
-    std::shared_ptr<LoadArraysMap> activeLoadsVector;
-    std::shared_ptr<LoadArraysMap> oldLoadsVector;
+    std::shared_ptr<LoadArraysMap> oldLoadsVector; // Old loads vector
 };
 
 #endif // LOADS_OBJECT_H

@@ -1,58 +1,55 @@
 #ifndef NODE_BC_OBJECT_H
 #define NODE_BC_OBJECT_H
 
+#include "../include/fe_data_object.h" // Include the base class
 #include <libmesh/system.h>
 #include <string>
-#include "../include/load_step.h"
 #include <fstream>
 #include <memory>
-// Forward declaration from libMesh
+#include <unordered_map>
+
 using namespace libMesh;
 
+// Type aliases for boundary conditions
 typedef std::unordered_map<std::string, std::pair<unsigned int, Real>> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 
-class NodeBCObject : public System::Constraint
+class NodeBCObject : public FEDataObject<BoundaryConditionsMap>, public System::Constraint
 {
 public:
     // Default constructor
-    NodeBCObject()
-        : active_bc_map(nullptr), system(nullptr), parent_load_step(nullptr), update_boundary_conditions(true)
-    {
-    }
+    NodeBCObject(std::shared_ptr<LoadStep> parent = nullptr)
+        : FEDataObject(parent),
+          system(nullptr),
+          update_boundary_conditions(true) {}
 
     // Constructor with System pointer
-    NodeBCObject(System *sys)
-        : active_bc_map(nullptr), system(sys), parent_load_step(nullptr), update_boundary_conditions(true)
-    {
-    }
+    NodeBCObject(System *sys, std::shared_ptr<LoadStep> parent = nullptr)
+        : FEDataObject(parent),
+          system(sys),
+          update_boundary_conditions(true) {}
 
     // Destructor
     virtual ~NodeBCObject() {}
 
     // Setters
     void set_system(System *sys) { system = sys; }
-    void set_active_bc_map(std::shared_ptr<BoundaryConditionsMap> &bc_map) { active_bc_map = std::move(bc_map); }
     void set_update_boundary_conditions(bool update) { update_boundary_conditions = update; }
-    void set_parent_load_step(std::shared_ptr<LoadStep> parent) { parent_load_step = parent; }
 
     // Getters
     System *get_system() const { return system; }
-    std::shared_ptr<BoundaryConditionsMap> get_active_bc_map() const { return active_bc_map; }
     bool get_update_boundary_conditions() const { return update_boundary_conditions; }
-    std::shared_ptr<LoadStep> get_parent_load_step() const { return parent_load_step; }
+
+    void read_data(std::ifstream &file) override;
 
     // Methods
-    void constrain();
+    void constrain() override; // Override from System::Constraint
     void check_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
     void set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
-    void read_boundary_conditions(std::istream &file);
 
 private:
-    bool update_boundary_conditions;
-    System *system;
-    std::shared_ptr<BoundaryConditionsMap> active_bc_map;
-    std::shared_ptr<LoadStep> parent_load_step; // Pointer to the parent LoadStep
+    bool update_boundary_conditions; // Flag to update boundary conditions
+    System *system;                  // Pointer to the libMesh System
 };
 
 #endif // NODE_BC_OBJECT_H

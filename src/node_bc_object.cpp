@@ -20,7 +20,7 @@ void NodeBCObject::constrain()
 
     std::string variable_label;
     const Node *node_ptr = nullptr;
-    for (const auto &bc_pair : *(active_bc_map))
+    for (const auto &bc_pair : *(data_map))
     {
         const auto &bc_values = bc_pair.second;
 
@@ -81,15 +81,15 @@ void NodeBCObject::constrain()
     }
 }
 
-void NodeBCObject::read_boundary_conditions(std::istream &file)
+void NodeBCObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
 
     std::vector<std::string> labels = {"A", "VOLT", "Az"};
     // Initialize the map if it is a nullptr
-    if (!active_bc_map)
+    if (!data_map)
     {
-        active_bc_map = std::make_shared<BoundaryConditionsMap>();
+        data_map = std::make_shared<BoundaryConditionsMap>();
     }
 
     // Read the number of boundary conditions
@@ -121,7 +121,7 @@ void NodeBCObject::read_boundary_conditions(std::istream &file)
         file.read(reinterpret_cast<char *>(&value), sizeof(value));
 
         // Populate the map
-        (*active_bc_map)[node][labels[label_number]] = std::make_pair(component_number, value);
+        (*data_map)[node][labels[label_number]] = std::make_pair(component_number, value);
     }
 
     // Do not close the file, as another function will continue reading
@@ -141,7 +141,7 @@ void NodeBCObject::check_boundary_conditions(std::shared_ptr<LoadStep> prev_load
         this->update_boundary_conditions = true;
     else
     {
-        if (*(prev_load_step->get_node_bc()->get_active_bc_map()) == *active_bc_map)
+        if (*(prev_load_step->get_node_bc()->get_data_map()) == *data_map)
             this->update_boundary_conditions = false;
         else
             this->update_boundary_conditions = true;

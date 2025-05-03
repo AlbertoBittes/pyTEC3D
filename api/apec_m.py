@@ -190,27 +190,50 @@ class APEC_M:
         self.materials = pd.DataFrame(
             columns=[
                 "ansys_material_type",
-                "murx",
-                "mury",
-                "murz",
-                "rsvx",
-                "rsvy",
-                "rsvz",
-                "perx",
-                "pery",
-                "perz",
+                "MURX",
+                "MURY",
+                "MURZ",
+                "RSVX",
+                "RSVY",
+                "RSVZ",
+                "PERX",
+                "PERY",
+                "PERZ",
+                "MGXX",
+                "MGYY",
+                "MGZZ",
+                "MURX_B-H",
+                "MURY_B-H",
+                "MURZ_B-H"
             ]
         )
-        # self.time_data = pd.DataFrame(
-        #     columns=[
-        #         "time_step_num",
-        #         "time",
-        #         "number_of_substeps",
-        #         "transient_effects",
-        #         "ramped_loads",
-        #         "write_substep_results",
-        #     ]
-        # )
+        self.real_constants = pd.DataFrame(
+            columns=[
+                "ansys_real_constant",
+                "CARE",
+                "TURN",
+                "LENG",
+                "DIRZ",
+                "FILL",
+                "SC",
+                "NC",
+                "RAD",
+                "TX",
+                "TY",
+                "TZ",
+                "R",
+                "SYM",
+                "VELOX",
+                "VELOY",
+                "VELOZ",
+                "OMEGAX",
+                "OMEGAY",
+                "OMEGAZ",
+                "XLOC",
+                "YLOC",
+                "ZLOC",
+            ]
+        )
         self.time_parameters = {
             "time_step_num": 1,
             "time": 0.0,
@@ -310,15 +333,14 @@ class APEC_M:
         expected_columns = [
             "ansys_etype",
             "element_type",
-            "keyopt1",
-            "keyopt2",
-            "keyopt3",
-            "keyopt4",
-            "keyopt5",
-            "keyopt6",
-            "keyopt7",
-            "keyopt8",
-            "keyopt9",
+            "KEYOPT1",
+            "KEYOPT2",
+            "KEYOPT3",
+            "KEYOPT4",
+            "KEYOPT5",
+            "KEYOPT6",
+            "KEYOPT7",
+            "KEYOPT8",
         ]
         if not all(column in df.columns for column in expected_columns):
             raise ValueError(
@@ -474,7 +496,6 @@ class APEC_M:
         Args:
             json_file_path (str): Path to the JSON file where the solver settings will be saved.
         """
-        import json
 
         with open(json_file_path, "w") as json_file:
             json.dump(self.solve_settings, json_file, indent=4)
@@ -513,90 +534,53 @@ class APEC_M:
                 else:
                     raise ValueError(f"Unsupported value type: {type(value)}")
 
-    def write_dataframe_to_binary(self, df, file_path):
+    def write_dataframe_to_binary(df, file_path):
         """
         Writes a pandas DataFrame to a binary file.
 
         The binary file format includes:
             - Number of rows (unsigned int)
             - Number of columns (unsigned int)
-            - Column names and types:
-                - Column name length (unsigned int)
-                - Column name (string)
-                - Column type (unsigned int: 0=int, 1=double, 2=string)
             - Data values (row by row):
-                - For each row, values are written in the order of columns.
+                - First column as unsigned int (ID)
+                - Remaining columns as double (real numbers)
 
         Parameters:
             df (pd.DataFrame): The DataFrame to write.
             file_path (str): The path to the binary file.
         """
+        # Ensure the first column is treated as an unsigned integer ID
+        if not pd.api.types.is_integer_dtype(df.iloc[:, 0]):
+            raise ValueError("The first column must contain integer IDs.")
+
         # Open the file in write mode
         with open(file_path, "wb") as binary_file:
             # Write the number of rows and columns
             num_rows = len(df)
             num_columns = len(df.columns)
-            binary_file.write(
-                struct.pack("I", num_rows)
-            )  # Number of rows (unsigned int)
-            binary_file.write(
-                struct.pack("I", num_columns)
-            )  # Number of columns (unsigned int)
-
-            # Write column metadata (name and type)
-            for column_name in df.columns:
-                # Write the column name length and name
-                binary_file.write(
-                    struct.pack("I", len(column_name))
-                )  # Column name length
-                binary_file.write(column_name.encode("utf-8"))  # Column name
-
-                # Determine the column type and write it
-                if pd.api.types.is_integer_dtype(df[column_name]):
-                    column_type = 0  # int
-                elif pd.api.types.is_float_dtype(df[column_name]):
-                    column_type = 1  # double
-                elif pd.api.types.is_string_dtype(df[column_name]):
-                    column_type = 2  # string
-                else:
-                    raise ValueError(
-                        f"Unsupported column type for column: {column_name}"
-                    )
-                binary_file.write(
-                    struct.pack("I", column_type)
-                )  # Column type (unsigned int)
+            binary_file.write(struct.pack("I", num_rows))  # Number of rows (unsigned int)
+            binary_file.write(struct.pack("I", num_columns))  # Number of columns (unsigned int)
 
             # Write the data row by row
             for _, row in df.iterrows():
-                for column_name in df.columns:
-                    value = row[column_name]
-                    column_type = pd.api.types.infer_dtype(df[column_name])
-                    if column_type == "integer":
-                        binary_file.write(struct.pack("i", int(value)))  # Write int
-                    elif column_type == "floating":
-                        binary_file.write(
-                            struct.pack("d", float(value))
-                        )  # Write double
-                    elif column_type == "string":
-                        binary_file.write(struct.pack("I", len(value)))  # String length
-                        binary_file.write(value.encode("utf-8"))  # Write string
-                    else:
-                        raise ValueError(
-                            f"Unsupported value type in column: {column_name}"
-                        )
+                # Write the first column as an unsigned integer (ID)
+                binary_file.write(struct.pack("I", int(row.iloc[0])))
+
+                # Write the remaining columns as double (real numbers)
+                for value in row.iloc[1:]:
+                    binary_file.write(struct.pack("d", float(value)))
 
     def write_loads_to_binary(self, output_file):
         """
         Writes a binary file for loads from a VTK cell data array.
-        Handles multi-component arrays by iterating over components and writing the component number.
-        Skips NaN values using NumPy masking for optimization.
-        If the file already exists, appends to it instead of overwriting.
+        Handles multi-component arrays by creating structured arrays for load numbers, components,
+        cell IDs, and values, and writes them efficiently.
 
         Writes:
             - Number of load rows (unsigned int)
             - For each load row:
                 - cell_id (unsigned int)
-                - load_number (unsigned int, from VARIABLES_LOADS_NUMBERS mapping)
+                - load_number (unsigned int)
                 - component (unsigned int)
                 - value (double)
         """
@@ -610,7 +594,15 @@ class APEC_M:
         mode = "ab" if os.path.exists(output_file) else "wb"
         with open(output_file, mode) as file:
             total_rows = 0  # To keep track of the total number of rows to write
-            filtered_data = []  # Temporary storage for filtered data
+            all_stacked_data = []  # Temporary storage for structured arrays
+
+            # Define the structured array data type
+            dtype = np.dtype([
+                ('cell_id', np.uint32),
+                ('load_number', np.uint32),
+                ('component', np.uint32),
+                ('value', np.float64)
+            ])
 
             # Iterate over each load label
             for load_label in loads_labels:
@@ -634,50 +626,41 @@ class APEC_M:
                     mask = ~np.isnan(component_values)
 
                     # Get the filtered cell IDs and values
-                    filtered_cell_ids = np.arange(num_cells)[mask]
+                    filtered_cell_ids = np.arange(num_cells, dtype=np.uint32)[mask]
                     filtered_values = component_values[mask]
 
-                    # Store the filtered data for later writing
-                    filtered_data.append(
-                        (load_label, component, filtered_cell_ids, filtered_values)
-                    )
+                    # Create arrays for load number and component
+                    load_number_array = np.full(len(filtered_cell_ids), VARIABLES_LOADS_NUMBERS[load_label], dtype=np.uint32)
+                    component_array = np.full(len(filtered_cell_ids), component, dtype=np.uint32)
+
+                    # Create a structured array for the current component
+                    structured_data = np.zeros(len(filtered_cell_ids), dtype=dtype)
+                    structured_data['cell_id'] = filtered_cell_ids
+                    structured_data['load_number'] = load_number_array
+                    structured_data['component'] = component_array
+                    structured_data['value'] = filtered_values
+
+                    # Append the structured array to the list
+                    all_stacked_data.append(structured_data)
 
                     # Update the total number of rows to write
-                    total_rows += np.size(filtered_cell_ids)
+                    total_rows += len(filtered_cell_ids)
 
-            # Write the total number of rows to the file
-            file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
+            # Concatenate all structured arrays into a single array
+            if all_stacked_data:
+                final_data = np.concatenate(all_stacked_data)
 
-            # Iterate over the stored filtered data to write the actual data
-            for (
-                load_label,
-                component,
-                filtered_cell_ids,
-                filtered_values,
-            ) in filtered_data:
-                # Get the load number from the VARIABLES_LOADS_NUMBERS mapping
-                load_number = VARIABLES_LOADS_NUMBERS[load_label]
+                # Write the total number of rows to the file
+                file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
 
-                # Write the data for this component
-                for cell_id, value in zip(filtered_cell_ids, filtered_values):
-                    # Write the cell ID
-                    file.write(struct.pack("I", cell_id))  # unsigned int
-
-                    # Write the load number
-                    file.write(struct.pack("I", load_number))  # unsigned int
-
-                    # Write the component number
-                    file.write(struct.pack("I", component))  # unsigned int
-
-                    # Write the load value
-                    file.write(struct.pack("d", value))  # double
+                # Write the final structured data to the file
+                file.write(final_data.tobytes())
 
     def write_boundary_conditions_to_binary(self, output_file):
         """
         Writes a binary file for boundary conditions from a VTK point data array.
-        Handles multi-component arrays by iterating over components and writing the component number.
-        Skips NaN values using NumPy masking for optimization.
-        If the file already exists, appends to it instead of overwriting.
+        Handles multi-component arrays by creating structured arrays for variable numbers, components,
+        point IDs, and values, and writes them efficiently.
 
         Writes:
             - Number of boundary condition rows (unsigned int)
@@ -697,7 +680,15 @@ class APEC_M:
         mode = "ab" if os.path.exists(output_file) else "wb"
         with open(output_file, mode) as file:
             total_rows = 0  # To keep track of the total number of rows to write
-            filtered_data = []  # Temporary storage for filtered data
+            all_stacked_data = []  # Temporary storage for structured arrays
+
+            # Define the structured array data type
+            dtype = np.dtype([
+                ('point_id', np.uint32),
+                ('variable_number', np.uint32),
+                ('component', np.uint32),
+                ('value', np.float64)
+            ])
 
             # Iterate over each variable label
             for variable_label in variable_labels:
@@ -721,43 +712,35 @@ class APEC_M:
                     mask = ~np.isnan(component_values)
 
                     # Get the filtered point IDs and values
-                    filtered_point_ids = np.arange(num_points)[mask]
+                    filtered_point_ids = np.arange(num_points, dtype=np.uint32)[mask]
                     filtered_values = component_values[mask]
 
-                    # Store the filtered data for later writing
-                    filtered_data.append(
-                        (variable_label, component, filtered_point_ids, filtered_values)
-                    )
+                    # Create arrays for variable number and component
+                    variable_number_array = np.full(len(filtered_point_ids), VARIABLES_GLOBAL_NUMBERS[variable_label], dtype=np.uint32)
+                    component_array = np.full(len(filtered_point_ids), component, dtype=np.uint32)
+
+                    # Create a structured array for the current component
+                    structured_data = np.zeros(len(filtered_point_ids), dtype=dtype)
+                    structured_data['point_id'] = filtered_point_ids
+                    structured_data['variable_number'] = variable_number_array
+                    structured_data['component'] = component_array
+                    structured_data['value'] = filtered_values
+
+                    # Append the structured array to the list
+                    all_stacked_data.append(structured_data)
 
                     # Update the total number of rows to write
-                    total_rows += np.size(filtered_point_ids)
+                    total_rows += len(filtered_point_ids)
 
-            # Write the total number of rows to the file
-            file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
+            # Concatenate all structured arrays into a single array
+            if all_stacked_data:
+                final_data = np.concatenate(all_stacked_data)
 
-            # Iterate over the stored filtered data to write the actual data
-            for (
-                variable_label,
-                component,
-                filtered_point_ids,
-                filtered_values,
-            ) in filtered_data:
-                # Get the variable number from the VARIABLES_GLOBAL_NUMBERS mapping
-                variable_number = VARIABLES_GLOBAL_NUMBERS[variable_label]
+                # Write the total number of rows to the file
+                file.write(struct.pack("I", total_rows))  # 'I' is for unsigned int
 
-                # Write the data for this component
-                for point_id, value in zip(filtered_point_ids, filtered_values):
-                    # Write the point ID
-                    file.write(struct.pack("I", point_id))  # unsigned int
-
-                    # Write the variable number
-                    file.write(struct.pack("I", variable_number))  # unsigned int
-
-                    # Write the component number
-                    file.write(struct.pack("I", component))  # unsigned int
-
-                    # Write the boundary condition value
-                    file.write(struct.pack("d", value))  # double
+                # Write the final structured data to the file
+                file.write(final_data.tobytes())
 
     def distribute_dofs(self):
         """

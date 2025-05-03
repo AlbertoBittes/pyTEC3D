@@ -184,8 +184,8 @@ void ElementBuilder::build_solid97_matrix()
     auto materials = load_step->get_materials();
 
     materials->compute_material_properties(elem->id(), element_type->is_conductive());
-    auto mu_matrix = materials->getMuMatrix();
-    auto rs_matrix = materials->getRsMatrix();
+    auto mu_matrix = materials->get_mu_matrix();
+    auto rs_matrix = materials->get_rs_matrix();
 
     if (element_type->is_conductive())
     {
@@ -276,8 +276,8 @@ void ElementBuilder::build_plane13_matrix()
     auto materials = load_step->get_materials();
 
     materials->compute_material_properties(elem->id(), element_type->is_conductive());
-    auto mu_matrix = materials->getMuMatrix();
-    auto rs_matrix = materials->getRsMatrix();
+    auto mu_matrix = materials->get_mu_matrix();
+    auto rs_matrix = materials->get_rs_matrix();
 
     if (element_type->is_conductive())
     {
@@ -381,7 +381,7 @@ void ElementBuilder::build_solid97_rhs()
 
     std::string js_label = "Js";
 
-    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
+    auto js_loads = (*load_step->get_loads()->get_data_map())[js_label];
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var * 3; dof_i++)
@@ -436,7 +436,7 @@ void ElementBuilder::build_plane13_rhs()
 
     std::string js_label = "Js";
 
-    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
+    auto js_loads = (*load_step->get_loads()->get_data_map())[js_label];
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -483,89 +483,3 @@ void ElementBuilder::build_element_rhs()
 //         libmesh_error_msg("Element type not supported: " + element_type->properties.element_type);
 //     }
 // }
-
-void ElementBuilder::ramp_load()
-{
-    auto etype = element_type->get_properties().element_type;
-
-    if (etype == "SOLID97")
-    {
-        this->apply_load_solid97();
-    }
-    else if (etype == "SOLID236")
-    {
-        this->apply_load_solid236();
-    }
-    else if (etype == "PLANE13")
-    {
-        this->apply_load_plane13();
-    }
-    else
-    {
-        libmesh_error_msg("Element type not supported: " + etype);
-    }
-}
-
-void ElementBuilder::ramp_load_solid97()
-{
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    if (element_type->is_conductive())
-        return;
-
-    std::string js_label = "Js";
-
-    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
-    auto old_js_loads = (*old_load_step->get_loads()->get_active_loads_vector())[js_label];
-
-    // Here you should point to the correct load
-    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
-
-    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-    {
-        for (unsigned int k = 0; k < 3; k++)
-        {
-            vectors[0](dof_i + k * n_dofs_var) *= js_loads[elem->id()][k] / old_js_loads[elem->id()][k];
-        }
-    }
-}
-// Temporary placeholder for apply_load_solid236
-void ElementBuilder::ramp_load_solid236()
-{
-    libmesh_error_msg("apply_load_solid236 is not implemented yet.");
-}
-
-void ElementBuilder::ramp_load_plane13()
-{
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    if (element_type->is_conductive())
-        return;
-
-    std::string js_label = "Js";
-
-    auto js_loads = (*load_step->get_loads()->get_active_loads_vector())[js_label];
-    auto old_js_loads = (*old_load_step->get_loads()->get_active_loads_vector())[js_label];
-
-    // Here you should point to the correct load
-    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
-
-    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-    {
-        vectors[0](dof_i) *= js_loads[elem->id()][2] / old_js_loads[elem->id()][2];
-    }
-}

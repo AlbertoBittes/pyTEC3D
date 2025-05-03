@@ -188,7 +188,6 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
                      << ", Write Results: " << substep.get_write_results()
                      << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
         // update time in element data object
-        equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->update_time_step(substep);
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
         system.solve();

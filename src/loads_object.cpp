@@ -1,13 +1,13 @@
 #include "../include/loads_object.h"
 
-void LoadsObject::read_loads_array(std::istream &file)
+void LoadsObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading loads data from an open file stream..." << std::endl;
 
-    // Initialize the activeLoadsVector if it is a nullptr
-    if (!activeLoadsVector)
+    // Initialize the data_map if it is a nullptr
+    if (!data_map)
     {
-        activeLoadsVector = std::make_shared<LoadArraysMap>();
+        data_map = std::make_shared<LoadArraysMap>();
     }
 
     // Read the number of load instances
@@ -52,7 +52,7 @@ void LoadsObject::read_loads_array(std::istream &file)
         load_label = loads_labels[load_label_number];
 
         // Access the ElementLoad map for the given load label
-        auto &element_load = (*activeLoadsVector)[load_label];
+        auto &element_load = (*data_map)[load_label];
 
         // Check if the element exists in the map
         auto element_it = element_load.find(element_number);
@@ -77,12 +77,12 @@ void LoadsObject::read_loads_array(std::istream &file)
 
 void LoadsObject::zero_loads_array()
 {
-    if (!activeLoadsVector)
+    if (!data_map)
     {
         return;
     }
     // Iterate over each load in the LoadArraysMap
-    for (auto &load_array_pair : *activeLoadsVector)
+    for (auto &load_array_pair : *data_map)
     {
         ElementLoad &element_load = load_array_pair.second; // Access the ElementLoad map
 
@@ -102,21 +102,21 @@ void LoadsObject::zero_loads_array()
 
 void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> &loads_labels)
 {
-    // Ensure activeLoadsVector is initialized
-    if (!activeLoadsVector)
+    // Ensure data_map is initialized
+    if (!data_map)
     {
-        activeLoadsVector = std::make_shared<LoadArraysMap>();
+        data_map = std::make_shared<LoadArraysMap>();
     }
 
     // Get the load quantity from the cell data
     for (const auto &label : loads_labels)
     {
         // If not, create a new load vector for this label
-        (*activeLoadsVector)[label] = ElementLoad();
+        (*data_map)[label] = ElementLoad();
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             // If not, create a new load for this element ID
-            (*activeLoadsVector)[label][elem->id()] = std::vector<Real>(3, 0.0);
+            (*data_map)[label][elem->id()] = std::vector<Real>(3, 0.0);
         }
     }
 
@@ -124,5 +124,5 @@ void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::st
     {
         oldLoadsVector = std::make_shared<LoadArraysMap>();
     }
-    *oldLoadsVector = *activeLoadsVector;
+    *oldLoadsVector = *data_map;
 }
