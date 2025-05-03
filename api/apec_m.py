@@ -398,6 +398,16 @@ class APEC_M:
         self.materials = self.read_dataframe_from_csv(csv_file_path)
         print(f"Materials loaded from '{csv_file_path}'.")
 
+    def read_real_constants(self, csv_file_path):
+        """
+        Read the real constants DataFrame from a CSV file.
+
+        Parameters:
+            csv_file_path (str): Path to the CSV file.
+        """
+        self.real_constants = self.read_dataframe_from_csv(csv_file_path)
+        print(f"Real constants loaded from '{csv_file_path}'.")
+
     def read_time_data(self, csv_file_path):
         """
         Read the time data DataFrame from a CSV file.
@@ -1267,6 +1277,7 @@ class APEC_M:
     def read_load_step(
         self,
         materials_csv="materials.csv",
+        real_constants_csv="real_constants.csv",
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
         solver_settings_json="solver_settings.json",
@@ -1277,6 +1288,7 @@ class APEC_M:
         Parameters:
             element_types_csv (str): Path to the CSV file containing element types (default: "element_types.csv").
             materials_csv (str): Path to the CSV file containing materials data (default: "materials.csv").
+            real_constants_csv (str): Path to the CSV file containing real constants data (default: "real_constants.csv").
             time_data_csv (str): Path to the CSV file containing time parameters (default: "time_data.csv").
             loads_csv (str): Path to the CSV file containing loads data (default: "loads.csv").
             bcs_csv (str): Path to the CSV file containing boundary conditions data (default: "bcs.csv").
@@ -1287,21 +1299,26 @@ class APEC_M:
         self.read_materials(materials_csv)
         print(f"Materials loaded from '{materials_csv}'.")
 
-        # Step 2: Read loads from CSV
+        # Step 2: Read real constants from CSV
+        self.read_real_constants(materials_csv)
+        print(f"Real constants loaded from '{materials_csv}'.")
+
+        # Step 3: Read loads from CSV
         self.read_csv_loads(loads_csv)
         print(f"Loads loaded from '{loads_csv}' and applied to the mesh.")
 
-        # Step 3: Read boundary conditions from CSV
+        # Step 4: Read boundary conditions from CSV
         self.read_csv_bcs(bcs_csv)
         print(f"Boundary conditions loaded from '{bcs_csv}' and applied to the mesh.")
 
-        # Step 4: Read solver settings from JSON
+        # Step 5: Read solver settings from JSON
         self.read_solver_settings_from_json(solver_settings_json)
         print(f"Solver settings loaded from '{solver_settings_json}'.")
 
     def write_multiple_load_steps(
         self,
         materials_csv="materials.csv",
+        real_constants_csv="real_constants.csv",
         time_data_csv="time_data.csv",
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
@@ -1314,6 +1331,7 @@ class APEC_M:
 
         Parameters:
             materials_csv (str): Path to the CSV file containing materials data (default: "materials.csv").
+            real_constants_csv (str): Path to the CSV file containing real constants data (default: "real_constants.csv").
             time_data_csv (str): Path to the CSV file containing time parameters (default: "time_data.csv").
             loads_csv (str): Path to the CSV file containing initial loads data (default: "loads_1.csv").
             bcs_csv (str): Path to the CSV file containing initial boundary conditions data (default: "bcs_1.csv").
@@ -1326,10 +1344,12 @@ class APEC_M:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-        # Step 1: Read materials
+        # Step 1: Read materials and real constants from CSV
         self.read_materials(materials_csv)
         print(f"Materials loaded from '{materials_csv}'.")
 
+        self.read_real_constants(real_constants_csv)
+        print(f"Real constants loaded from '{real_constants_csv}'.")
         # Step 2: Read time_data.csv
         if not os.path.exists(time_data_csv):
             raise FileNotFoundError(f"Time data file '{time_data_csv}' not found.")

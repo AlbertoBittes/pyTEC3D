@@ -16,6 +16,13 @@
 
 using namespace libMesh;
 
+std::vector<std::string> GLOBAL_VARIABLES_LABELS = {"A_x", "A_y", "A_z", "VOLT", "Az", "EMF", "CURR"};
+std::vector<std::string> API_VARIABLES_LABELS = {"A", "VOLT", "EMF", "CURR"};
+std::vector<unsigned int> API_VARIABLES_COMPONENTS = {3, 1, 1, 1};
+std::vector<std::string> GLOBAL_LOADS_LABELS = {"Js"};
+std::vector<std::string> API_LOADS_LABELS = {"Js"};
+std::vector<unsigned int> API_LOADS_COMPONENTS = {3};
+
 class ElementType;
 
 struct ElementTypeProperties
