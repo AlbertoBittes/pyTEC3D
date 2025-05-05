@@ -55,6 +55,8 @@
 #include "libmesh/boundary_mesh.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
+#include "../include/node_bc_object.h" // Include the base class
+
 #include "../include/solver_configuration.h"
 #include "../include/vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
 #include "libmesh/string_to_enum.h"
@@ -118,46 +120,43 @@ void init_equation_systems(EquationSystems &equation_systems)
     equation_systems.print_info();
 
     system.zero_out_matrix_and_rhs = false;
+    NodeBCObject *node_bc_object = new NodeBCObject();
+    system.attach_constraint_object(*node_bc_object);
     // system.solution->zero();
     // system.solution->close();
     system.current_local_solution->zero();
     system.current_local_solution->close();
-
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
-    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
-    // solver->set_solver_type(GMRES);
-    PetscSolverConfiguration solver_configuration(*solver);
-    solver_configuration.configure_solver();
-    solver->set_solver_configuration(solver_configuration);
 }
 
-Mesh *read_and_prepare_mesh(std::string mesh_filepath, libMesh::Parallel::Communicator &comm)
+void read_and_prepare_mesh(Mesh &mesh, std::string mesh_filepath)
 {
     libMesh::out << "Reading mesh..." << std::endl;
-    Mesh *mesh = new Mesh(comm);
     // mesh.clear();
-    if (mesh->comm().rank() == 0)
+    VTKIO_Updated vtkio(mesh);
+    if (mesh.comm().rank() == 0)
     {
-        VTKIO_Updated vtkio(*mesh);
         vtkio.read(mesh_filepath);
     }
-    MeshCommunication().broadcast(*mesh);
+    mesh.comm().broadcast(*(vtkio.get_element_types_map_csv()));
+    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*(vtkio.get_element_types_map_csv()));
+    MeshCommunication().broadcast(mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh->prepare_for_use();
-    MeshTools::Modification::orient_elements(*mesh);
+    mesh.prepare_for_use();
+    MeshTools::Modification::orient_elements(mesh);
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
-    mesh->print_info();
-    return mesh;
+    mesh.print_info();
 }
 
-void solve(EquationSystems &equation_systems, TimeStep &time_step)
+void solve(EquationSystems &equation_systems, LoadStep &load_step)
 {
-    libMesh::out << "Solving time step " << time_step.get_step() + 1 << std::endl;
+    auto time_step = load_step.get_time_step();
 
-    libMesh::out << "Time increment at the end of time step: " << time_step.get_delta_t() << std::endl;
+    libMesh::out << "Solving time step " << time_step->get_step() + 1 << std::endl;
 
-    libMesh::out << "Number of time substeps: " << time_step.get_n_substeps() << std::endl;
+    libMesh::out << "Time increment at the end of time step: " << time_step->get_delta_t() << std::endl;
+
+    libMesh::out << "Number of time substeps: " << time_step->get_n_substeps() << std::endl;
 
     libMesh::out << "Setting boundary conditions..." << std::endl;
 
@@ -165,23 +164,17 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
 
     auto session = equation_systems.parameters.get<Session *>("session");
     // read material properties
-    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->materials = std::make_shared<MaterialsMap>(*(readMaterialsProperties(equation_systems.parameters.get<Session>("session").config["Mesh Input Section"]["materials_filepath"].get<std::string>())));
 
     // Read loads
-    std::string loads_path = session->mesh_filename_without_extension + "_loads_" + std::to_string(time_step.get_step() + 1);
 
-    equation_systems.parameters.get<std::shared_ptr<LoadsObject>>("loads_object")->read_update_loads_vectors(loads_path);
     // Get the system
     TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
     // This will reinitialize the constraints for the system
     // Read boundary conditions
-    NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&system.get_constraint_object());
-    std::string bc_path = session->mesh_filename_without_extension + "_bc_" + std::to_string(time_step.get_step() + 1);
-    node_dof_constraints->read_update_boundary_conditions(bc_path, time_step);
 
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
-    for (auto &substep : time_step)
+    for (auto &substep : *time_step)
     {
         libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
                      << ", dt: " << substep.get_dt()
@@ -193,7 +186,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
         system.solve();
 
         system.get_linear_solver()->print_converged_reason();
-        if (substep.get_write_results() || substep.get_index() == time_step.get_n_substeps() - 1)
+        if (substep.get_write_results() || substep.get_index() == time_step->get_n_substeps() - 1)
         {
             libMesh::out << "Computing derived quantities..." << std::endl;
             // Call the function to compute the magnetic field
@@ -210,10 +203,10 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
             // VTKIO vtk_output(mesh);
             // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
             libMesh::out << "Writing time substep results..." << std::endl;
-            session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
+            // session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
             // // Write the results
             VTKIO_Updated vtk_output(equation_systems.get_mesh(), &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
-            vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
+            // vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
             // change the extension of filepath to .exo
             // std::string exo_output_path = session.final_output_path;
             // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
@@ -257,7 +250,7 @@ void solve(EquationSystems &equation_systems, TimeStep &time_step)
             // nem_output.write_element_data(equation_systems);
         }
 
-        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step.get_n_substeps() << " completed." << std::endl;
+        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step->get_n_substeps() << " completed." << std::endl;
     }
 }
 
@@ -269,23 +262,34 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     // Create a session with the mesh filename
     Session session(mesh_filename);
 
-    // Read and prepare the mesh
-    Mesh &mesh = *(read_and_prepare_mesh(session.get_input_mesh_filepath(), comm));
+    Mesh mesh(comm);
 
-    // Build and initialize equation systems
     EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
 
+    // Read and prepare the mesh
+    read_and_prepare_mesh(mesh, session.get_input_mesh_filepath());
+
+    // Build and initialize equation systems
     init_equation_systems(equation_systems);
 
+    std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>();
     // Solve the system for each time step
-    for (auto &step : *equation_systems.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper"))
+    for (unsigned int n = 0; n < session.get_n_load_steps(); n++)
+    {
+        // Create a new load step
+        LoadStep load_step(n, equation_systems, session);
+        load_step.populate_time_step();
+
+        // Solve the system for the current load step
+        solve(equation_systems, load_step);
+    }
     {
         solve(equation_systems, step);
     }
 
     // Clean up
-    delete &mesh;
-    delete &equation_systems;
+    // delete &mesh;
+    // delete &equation_systems;
 }
 
 // Main function

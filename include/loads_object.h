@@ -8,6 +8,7 @@
 #include "../include/element_types.h" // Include the header file for ElementTypesMap
 #include "../include/load_step.h"     // Include the definition of LoadStep
 #include "../include/fe_data_object.h"
+#include "../include/globals.h"
 
 class LoadStep;
 
@@ -25,17 +26,17 @@ public:
           oldLoadsVector(std::make_shared<LoadArraysMap>()) {}
 
     // Constructor with MeshBase and load labels
-    LoadsObject(const MeshBase &mesh, std::set<std::string> &loads_labels,
+    LoadsObject(const MeshBase &mesh,
                 std::shared_ptr<LoadStep> parent_load_step = nullptr,
                 std::shared_ptr<LoadArraysMap> map = nullptr)
         : FEDataObject(parent_load_step, map),
           oldLoadsVector(std::make_shared<LoadArraysMap>())
     {
-        build_load_data_vectors(mesh, loads_labels);
+        build_load_data_vectors(mesh);
     }
 
     // Build load data vectors
-    void build_load_data_vectors(const MeshBase &mesh, std::set<std::string> &loads_labels);
+    void build_load_data_vectors(const MeshBase &mesh);
 
     // Zero out the loads array
     void zero_loads_array();

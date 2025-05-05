@@ -16,16 +16,9 @@
 
 using namespace libMesh;
 
-std::vector<std::string> GLOBAL_VARIABLES_LABELS = {"A_x", "A_y", "A_z", "VOLT", "Az", "EMF", "CURR"};
-std::vector<std::string> API_VARIABLES_LABELS = {"A", "VOLT", "EMF", "CURR"};
-std::vector<unsigned int> API_VARIABLES_COMPONENTS = {3, 1, 1, 1};
-std::vector<std::string> GLOBAL_LOADS_LABELS = {"Js"};
-std::vector<std::string> API_LOADS_LABELS = {"Js"};
-std::vector<unsigned int> API_LOADS_COMPONENTS = {3};
-
 class ElementType;
 
-struct ElementTypeProperties
+struct ElementTypeKeyopts
 {
     std::string element_type;
     std::vector<int> keyopts;
@@ -46,32 +39,64 @@ struct VectorShapeFunctions
     const std::vector<std::vector<RealGradient>> &curl_phi_vec;
 };
 
-typedef std::unordered_map<unsigned int, ElementTypeProperties> ElementTypesMapCSV;
+typedef std::unordered_map<unsigned int, ElementTypeKeyopts> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::shared_ptr<ElementType>> ElementTypesMap;
 typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
+//                         label         is_active, physical components, is scalar, API label, API components, fe family, order
+typedef std::map<std::string, std::tuple<bool, unsigned int, bool, std::string, unsigned int, std::string, std::string>> VariableData;
+typedef std::unordered_map<std::string, VariableData> ElementTypeData;
 
 class ElementType
 {
 public:
     // Constructor
-    ElementType(const ElementTypeProperties &properties, const std::string &order = "default_order", const std::string &fe_family = "default_family", unsigned int quadrature_order = 0, unsigned int dimension = 0)
-        : properties(properties), order(order), fe_family(fe_family), quadrature_order(quadrature_order), dimension(dimension), az_dofs(0) {}
+    ElementType(const ElementTypeKeyopts &keyopts)
+        : keyopts(keyopts)
+    {
+        element_type_data["DOFVariables"] = VariableData();
+        element_type_data["NodalDerivedQuantitiesVariables"] = VariableData();
+        element_type_data["ElementDerivedQuantitiesVariables"] = VariableData();
+        element_type_data["LoadsVariables"] = VariableData();
+    }
 
     // Virtual methods to be implemented by derived classes
-    virtual std::vector<std::string> getActiveVariables(std::string variables_set) const = 0;
-    virtual std::vector<std::string> getVariables(std::string variables_set) const = 0;
-    virtual std::vector<std::string> getElementLoads() const = 0;
-    std::string ElementType::getVariableFEFamily(std::string variable);
-    std::string ElementType::getVariableOrder(std::string variable);
-    virtual bool is_conductive() const = 0;
+    std::vector<std::string> getActiveVariables(const std::string &var_type) const
+    {
+        std::vector<std::string> active_vars;
+        auto it = element_type_data.find(var_type);
+        if (it != element_type_data.end())
+        {
+            for (const auto &var : it->second)
+            {
+                if (std::get<0>(var.second)) // Check if the variable is active
+                {
+                    active_vars.push_back(var.first);
+                }
+            }
+        }
+        return active_vars;
+    }
+
+    bool is_conductive() const
+    {
+        // Check if "VOLT" exists in element_type_data["DOFVariables"]
+        auto it = element_type_data.find("DOFVariables");
+        if (it != element_type_data.end())
+        {
+            const auto &dof_variables = it->second;
+            return dof_variables.find("VOLT") != dof_variables.end();
+        }
+        return false; // "DOFVariables" or "VOLT" not found
+    }
 
     // Getters
-    const ElementTypeProperties &get_properties() const { return properties; }
-    const std::string &get_order() const { return order; }
-    const std::string &get_fe_family() const { return fe_family; }
-    unsigned int get_quadrature_order() const { return quadrature_order; }
-    unsigned int get_dimension() const { return dimension; }
-    unsigned int get_az_dofs() const { return az_dofs; }
+    const ElementTypeKeyopts &get_properties() const { return keyopts; }
+    // Getter for ElementTypeData
+    const ElementTypeData &get_element_type_data() const
+    {
+        return element_type_data;
+    }
+
     const FEBase *get_fe() const { return fe.get(); }
     const FEVectorBase *get_fe_vec() const { return fe_vec.get(); }
 
@@ -80,25 +105,12 @@ public:
     const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
 
     // Setters
-    void set_order(const std::string &new_order) { order = new_order; }
-    void set_fe_family(const std::string &new_fe_family) { fe_family = new_fe_family; }
-    void set_quadrature_order(unsigned int new_quadrature_order) { quadrature_order = new_quadrature_order; }
-    void set_dimension(unsigned int new_dimension) { dimension = new_dimension; }
-    void set_az_dofs(unsigned int new_az_dofs) { az_dofs = new_az_dofs; }
     void set_fe(std::unique_ptr<FEBase> new_fe) { fe = std::move(new_fe); }
-    // Shape functions
-    inline std::shared_ptr<ScalarShapeFunctions> &get_scalar_shape_functions() const
+    // Setter for ElementTypeData
+    void set_element_type_data(const ElementTypeData &data)
     {
-        std::shared_ptr<ScalarShapeFunctions> shape_functions = std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
-        return shape_functions;
+        element_type_data = data;
     }
-
-    inline std::shared_ptr<VectorShapeFunctions> &get_vector_shape_functions() const
-    {
-        std::shared_ptr<VectorShapeFunctions> shape_functions = std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
-        return shape_functions;
-    }
-
     // Virtual methods for populating maps
     virtual void populate_matrix_idx_size_map() = 0;
     virtual void populate_derived_matrix_idx_size_map() = 0;
@@ -115,110 +127,150 @@ public:
     {
         fe_vec->reinit(elem);
     }
+    // Shape functions
+    inline std::shared_ptr<ScalarShapeFunctions> &get_scalar_shape_functions() const
+    {
+        std::shared_ptr<ScalarShapeFunctions> shape_functions = std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
+        return shape_functions;
+    }
+
+    inline std::shared_ptr<VectorShapeFunctions> &get_vector_shape_functions() const
+    {
+        std::shared_ptr<VectorShapeFunctions> shape_functions = std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
+        return shape_functions;
+    }
 
 protected:
-    std::unique_ptr<FEBase> fe = nullptr;           // Finite element object
-    std::unique_ptr<FEVectorBase> fe_vec = nullptr; // Finite element vector object
-    ElementTypeProperties properties;               // Element type properties
-
-    std::string order;             // Order of the element
-    std::string fe_family;         // Finite element family
-    unsigned int quadrature_order; // Quadrature order
-    unsigned int dimension;        // Dimension of the element
-    unsigned int az_dofs;          // Number of DOFs
-
+    std::unique_ptr<FEBase> fe;           // Finite element object
+    std::unique_ptr<FEVectorBase> fe_vec; // Finite element vector object
+    ElementTypeKeyopts keyopts;           // Element type keyopts
+    ElementTypeData element_type_data;    // Element type data
     // Maps for matrix and vector sizes
     std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
     std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
     std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
 };
 
-class SOLID97Type : public ElementType
+class AVElementType : public ElementType
 {
 public:
-    SOLID97Type(const ElementTypeProperties &properties);
-
-    std::vector<std::string> getElementLoads() const override;
-
-    void populate_matrix_idx_size_map() override;
-
-    void populate_derived_matrix_idx_size_map() override;
-
-    void populate_vector_idx_size_map() override;
-
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
-
-    std::vector<std::string> getVariables(std::string variables_set) const override;
-
-    inline bool is_conductive() const override
+    // Constructor
+    AVElementType(const ElementTypeKeyopts &keyopts)
+        : ElementType(keyopts) // Call the parent class constructor
     {
-        return properties.keyopts[0] == 1;
+        // Additional initialization for AVElementType (if needed)
+        element_type_data["NodalDerivedQuantitiesVariables"]["B_x"] =
+            std::make_tuple(true, 3, false, "B", 0, "L2_LAGRANGE", "FIRST");
+        element_type_data["NodalDerivedQuantitiesVariables"]["B_y"] =
+            std::make_tuple(true, 3, false, "B", 1, "L2_LAGRANGE", "FIRST");
+        element_type_data["ElementDerivedQuantitiesVariables"]["J_z"] =
+            std::make_tuple(true, 3, false, "J", 2, "MONOMIAL", "CONSTANT");
+        element_type_data["LoadsVariables"]["Js"] =
+            std::make_tuple(true, 3, false, "Js", 3, "", "");
     }
 };
 
-class SOLID236Type : public ElementType
+class AV3DElementType : public AVElementType
 {
 public:
-    SOLID236Type(const ElementTypeProperties &properties);
-
-    std::vector<std::string> getElementLoads() const override;
-
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
-
-    std::vector<std::string> getVariables(std::string variables_set) const override;
-
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
-
-    inline bool is_conductive() const override
+    // Constructor
+    AV3DElementType(const ElementTypeKeyopts &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
-        return properties.keyopts[0] == 1;
+        // Additional initialization for AVElementType (if needed)
+        element_type_data["NodalDerivedQuantitiesVariables"]["B_z"] =
+            std::make_tuple(true, 3, false, "B", 2, "L2_LAGRANGE", "FIRST");
+        element_type_data["ElementDerivedQuantitiesVariables"]["J_x"] =
+            std::make_tuple(true, 3, false, "J", 0, "MONOMIAL", "CONSTANT");
+        element_type_data["ElementDerivedQuantitiesVariables"]["J_y"] =
+            std::make_tuple(true, 3, false, "J", 1, "MONOMIAL", "CONSTANT");
+        element_type_data["DOFVariables"]["VOLT"] =
+            std::make_tuple(false, 1, true, "VOLT", 0, "LAGRANGE", "FIRST");
+        element_type_data["DOFVariables"]["EMF"] =
+            std::make_tuple(false, 1, true, "EMF", 0, "LAGRANGE", "FIRST");
+
+        FEType fe_type(FIRST, LAGRANGE);
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(3, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(3, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
     }
 };
 
-class PLANE13Type : public ElementType
+class AV2DElementType : public AVElementType
 {
 public:
-    PLANE13Type(const ElementTypeProperties &properties);
-
-    std::vector<std::string> getElementLoads() const override;
-
-    void populate_matrix_idx_size_map() override;
-
-    void populate_derived_matrix_idx_size_map() override;
-
-    void populate_vector_idx_size_map() override;
-
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
-
-    std::vector<std::string> getVariables(std::string variables_set) const override;
-
-    inline bool is_conductive() const override
+    // Constructor
+    AV2DElementType(const ElementTypeKeyopts &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
-        return properties.keyopts[0] == 1;
+        element_type_data["DOFVariables"]["VOLT"] =
+            std::make_tuple(false, 1, true, "VOLT", 0, "LAGRANGE", "FIRST");
+        // Additional initialization for AVElementType (if needed)
+        FEType fe_type(FIRST, LAGRANGE);
+        // Build a Finite Element object of the specified type.  Since the
+        // FEBase::build() member dynamically creates memory we will
+        // store the object as a std::unique_ptr<FEBase>.  This can be thought
+        // of as a pointer that will clean up after itself.
+        fe = FEBase::build(2, fe_type);
+        // A 2nd order Gauss quadrature rule for numerical integration.
+        QGauss qrule(2, fe_type.default_quadrature_order());
+        // Tell the finite element object to use our quadrature rule.
+        fe->attach_quadrature_rule(&qrule);
     }
 };
 
-class PLANE233Type : public ElementType
+class SOLID97Type : public AV3DElementType
 {
 public:
-    PLANE233Type(const ElementTypeProperties &properties);
-
-    std::vector<std::string> getElementLoads() const override;
-
-    std::vector<std::string> getActiveVariables(std::string variables_set) const override;
-
-    std::vector<std::string> getVariables(std::string variables_set) const override;
+    SOLID97Type(const ElementTypeKeyopts &keyopts);
 
     void populate_matrix_idx_size_map() override;
     void populate_derived_matrix_idx_size_map() override;
     void populate_vector_idx_size_map() override;
+};
 
-    inline bool is_conductive() const override
-    {
-        return properties.keyopts[0] == 1;
-    }
+class SOLID236Type : public AV3DElementType
+{
+public:
+    SOLID236Type(const ElementTypeKeyopts &keyopts);
+
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
+};
+
+class PLANE13Type : public AV2DElementType
+{
+public:
+    PLANE13Type(const ElementTypeKeyopts &keyopts);
+
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
+};
+
+class PLANE13Type : public AV2DElementType
+{
+public:
+    PLANE13Type(const ElementTypeKeyopts &keyopts);
+
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
+};
+
+class PLANE233Type : public AV2DElementType
+{
+public:
+    PLANE233Type(const ElementTypeKeyopts &keyopts);
+
+    void populate_matrix_idx_size_map() override;
+    void populate_derived_matrix_idx_size_map() override;
+    void populate_vector_idx_size_map() override;
 };
 
 class ElementTypesCollector
@@ -229,12 +281,6 @@ public:
     ElementTypesCollector(ElementTypesMapCSV &elementTypesMapCSV)
     {
         collectElementTypes(elementTypesMapCSV);
-    }
-
-    ElementTypesCollector(std::string &filename)
-    {
-        ElementTypesMapCSV *elementTypesMapCSV = readElementTypes(filename);
-        collectElementTypes(*elementTypesMapCSV);
     }
 
     ElementTypesMap &getElementTypes()

@@ -36,6 +36,8 @@
 // C++ includes
 #include <cstddef>
 #include <map>
+#include "../include/element_types.h"
+#include "../include/globals.h"
 
 using namespace libMesh;
 // Forward declarations
@@ -65,6 +67,15 @@ public:
 
     vtkUnstructuredGrid *get_vtk_grid();
 
+    void populate_element_types_from_vtk();
+
+    ElementTypesMapCSV *get_element_types_map_csv()
+    {
+        return &_element_types_map_csv;
+    }
+
+    void add_integers_vtk(MeshBase &mesh);
+
 private:
     void nodes_to_vtk();
 
@@ -82,9 +93,6 @@ private:
     //                            vtkUnstructuredGrid * & grid);
 
     vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid;
-
-    std::vector<std::string> loads_labels = {"Js"};
-    std::vector<std::string> dof_labels = {"A", "Az", "VOLT"};
 
     bool _compress;
     ExplicitSystem *_sys;
@@ -119,6 +127,7 @@ private:
 
     static std::map<ElemMappingType, ElementMaps> build_element_maps();
 
+    ElementTypesMapCSV _element_types_map_csv;
 #endif
 };
 

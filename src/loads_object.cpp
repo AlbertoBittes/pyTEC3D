@@ -19,7 +19,6 @@ void LoadsObject::read_data(std::ifstream &file)
     }
 
     // Define the vector of load labels for mapping
-    std::vector<std::string> loads_labels = {"Js"}; // Example load labels
     std::string load_label;
 
     // Read the loads data
@@ -43,13 +42,13 @@ void LoadsObject::read_data(std::ifstream &file)
         file.read(reinterpret_cast<char *>(&load_value), sizeof(load_value));
 
         // Validate the load label number
-        if (load_label_number >= loads_labels.size())
+        if (load_label_number >= Globals::API_LOADS_LABELS.size())
         {
             libmesh_error_msg("Error: Invalid load label number " + std::to_string(load_label_number));
         }
 
         // Map the load label number to the corresponding string
-        load_label = loads_labels[load_label_number];
+        load_label = Globals::API_LOADS_LABELS[load_label_number];
 
         // Access the ElementLoad map for the given load label
         auto &element_load = (*data_map)[load_label];
@@ -100,7 +99,7 @@ void LoadsObject::zero_loads_array()
     }
 }
 
-void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::string> &loads_labels)
+void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
 {
     // Ensure data_map is initialized
     if (!data_map)
@@ -109,7 +108,7 @@ void LoadsObject::build_load_data_vectors(const MeshBase &mesh, std::set<std::st
     }
 
     // Get the load quantity from the cell data
-    for (const auto &label : loads_labels)
+    for (const auto &label : Globals::API_LOADS_LABELS)
     {
         // If not, create a new load vector for this label
         (*data_map)[label] = ElementLoad();

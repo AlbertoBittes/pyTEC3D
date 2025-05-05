@@ -336,11 +336,11 @@ class APEC_M:
             "KEYOPT1",
             "KEYOPT2",
             "KEYOPT3",
-            "KEYOPT4",
-            "KEYOPT5",
-            "KEYOPT6",
-            "KEYOPT7",
-            "KEYOPT8",
+            # "KEYOPT4",
+            # "KEYOPT5",
+            # "KEYOPT6",
+            # "KEYOPT7",
+            # "KEYOPT8",
         ]
         if not all(column in df.columns for column in expected_columns):
             raise ValueError(
@@ -461,7 +461,7 @@ class APEC_M:
         os.chdir(self.folderpath)
 
         # Create a folder named 'loads_bcs' in the current working directory
-        self.load_steps_folder = os.path.join(os.getcwd(), "loads_bcs")
+        self.load_steps_folder = os.path.join(os.getcwd(), "load_steps")
         if not os.path.exists(self.load_steps_folder):
             os.makedirs(self.load_steps_folder)
 
@@ -1266,6 +1266,10 @@ class APEC_M:
             self.write_dataframe_to_binary(self.materials, binary_file)
             print("Materials written.")
 
+            # Write real constants DataFrame
+            self.write_dataframe_to_binary(self.real_constants, binary_file)
+            print("Real constants written.")
+
             # Write loads to binary
             self.write_loads_to_binary(binary_file)
             print("Loads written.")
@@ -1276,23 +1280,22 @@ class APEC_M:
 
     def read_load_step(
         self,
+        solver_settings_json="solver_settings.json",
         materials_csv="materials.csv",
         real_constants_csv="real_constants.csv",
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
-        solver_settings_json="solver_settings.json",
     ):
         """
         Initializes the ApecM object by reading data from various files.
 
         Parameters:
-            element_types_csv (str): Path to the CSV file containing element types (default: "element_types.csv").
+            solver_settings_json (str): Path to the JSON file containing solver settings (default: "solver_settings.json").
             materials_csv (str): Path to the CSV file containing materials data (default: "materials.csv").
             real_constants_csv (str): Path to the CSV file containing real constants data (default: "real_constants.csv").
             time_data_csv (str): Path to the CSV file containing time parameters (default: "time_data.csv").
             loads_csv (str): Path to the CSV file containing loads data (default: "loads.csv").
             bcs_csv (str): Path to the CSV file containing boundary conditions data (default: "bcs.csv").
-            solver_settings_json (str): Path to the JSON file containing solver settings (default: "solver_settings.json").
         """
 
         # Step 1: Read materials from CSV
@@ -1300,8 +1303,8 @@ class APEC_M:
         print(f"Materials loaded from '{materials_csv}'.")
 
         # Step 2: Read real constants from CSV
-        self.read_real_constants(materials_csv)
-        print(f"Real constants loaded from '{materials_csv}'.")
+        self.read_real_constants(real_constants_csv)
+        print(f"Real constants loaded from '{real_constants_csv}'.")
 
         # Step 3: Read loads from CSV
         self.read_csv_loads(loads_csv)
@@ -1317,12 +1320,12 @@ class APEC_M:
 
     def write_multiple_load_steps(
         self,
+        time_data_csv="time_data.csv",
+        solver_settings_json="solver_settings.json",
         materials_csv="materials.csv",
         real_constants_csv="real_constants.csv",
-        time_data_csv="time_data.csv",
         loads_csv="loads_1.csv",
         bcs_csv="bcs_1.csv",
-        solver_settings_json="solver_settings.json",
         output_folder=None,
     ):
         """
@@ -1330,13 +1333,13 @@ class APEC_M:
         Dynamically reads loads_1.csv, loads_2.csv, etc., and bcs_1.csv, bcs_2.csv, etc.
 
         Parameters:
+            time_data_csv (str): Path to the CSV file containing time parameters (default: "time_data.csv").
+            solver_settings_json (str): Path to the JSON file containing solver settings (default: "solver_settings.json").
             materials_csv (str): Path to the CSV file containing materials data (default: "materials.csv").
             real_constants_csv (str): Path to the CSV file containing real constants data (default: "real_constants.csv").
-            time_data_csv (str): Path to the CSV file containing time parameters (default: "time_data.csv").
             loads_csv (str): Path to the CSV file containing initial loads data (default: "loads_1.csv").
             bcs_csv (str): Path to the CSV file containing initial boundary conditions data (default: "bcs_1.csv").
-            solver_settings_json (str): Path to the JSON file containing solver settings (default: "solver_settings.json").
-            output_folder (str): Path to the folder where load step binary files will be saved (default: "output_load_steps").
+            output_folder (str): Path to the folder where load step binary files will be saved (default: "load_steps").
         """
         # Ensure the output folder exists
         if output_folder is None:
@@ -1344,18 +1347,7 @@ class APEC_M:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-        # Step 1: Read materials and real constants from CSV
-        self.read_materials(materials_csv)
-        print(f"Materials loaded from '{materials_csv}'.")
-
-        self.read_real_constants(real_constants_csv)
-        print(f"Real constants loaded from '{real_constants_csv}'.")
-        # Step 2: Read time_data.csv
-        if not os.path.exists(time_data_csv):
-            raise FileNotFoundError(f"Time data file '{time_data_csv}' not found.")
-
         time_data = pd.read_csv(time_data_csv)
-
         # Ensure the required columns are present
         required_columns = self.time_parameters.keys()
         if not all(column in time_data.columns for column in required_columns):
@@ -1363,13 +1355,20 @@ class APEC_M:
                 f"Time data file must contain the following columns: {required_columns}"
             )
 
-        # Step 3: Read solver settings
+        # Step 1: Read solver settings
         self.read_solver_settings_from_json(solver_settings_json)
         print(f"Solver settings loaded from '{solver_settings_json}'.")
 
-        # Ensure the output folder exists
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
+        # Step 2: Read materials from CSV
+        self.read_materials(materials_csv)
+        print(f"Materials loaded from '{materials_csv}'.")
+
+        # Step 3: Read real constants from CSV
+        self.read_real_constants(real_constants_csv)
+        print(f"Real constants loaded from '{real_constants_csv}'.")
+        # Step 2: Read time_data.csv
+        if not os.path.exists(time_data_csv):
+            raise FileNotFoundError(f"Time data file '{time_data_csv}' not found.")
 
         # Step 4: Loop over each row in the time_data DataFrame
         for index, row in time_data.iterrows():
@@ -1387,7 +1386,7 @@ class APEC_M:
             # Check if the files exist
             if not os.path.exists(current_loads_csv):
                 raise FileNotFoundError(
-                    f"Load file '{current_loads_csv}' not found for step {index + 1}."
+                    f"Loads file '{current_loads_csv}' not found for step {index + 1}."
                 )
             if not os.path.exists(current_bcs_csv):
                 raise FileNotFoundError(

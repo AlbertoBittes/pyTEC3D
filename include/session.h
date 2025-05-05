@@ -54,6 +54,7 @@ public:
     void set_temp_folder_path(const std::filesystem::path &path) { temp_folderpath = path; }
     void set_load_steps_folderpath(const std::filesystem::path &path) { load_steps_folderpath = path; }
     void set_emat_folderpath(const std::filesystem::path &path) { emat_folderpath = path; }
+    void set_n_load_steps(unsigned int n) { n_load_steps = n; }
 
     // Getters
     bool get_batch_mode() const { return batch_mode; }
@@ -66,7 +67,7 @@ public:
     const std::filesystem::path &get_temp_folder_path() const { return temp_folderpath; }
     const std::filesystem::path &get_load_steps_folderpath() const { return load_steps_folderpath; }
     const std::filesystem::path &get_emat_folderpath() const { return emat_folderpath; }
-
+    unsigned int get_n_load_steps() const { return n_load_steps; }
     // Methods
     void set_output_filepath(unsigned int output_label);
     void create_temp_folder();
@@ -85,6 +86,7 @@ private:
     std::filesystem::path temp_folderpath;
     std::filesystem::path load_steps_folderpath;
     std::filesystem::path emat_folderpath;
+    unsigned int n_load_steps;
 };
 
 #endif // SESSION_H

@@ -53,6 +53,8 @@ public:
 
     bool check_update_matrix();
 
+    bool check_compute_matrix();
+
     void compute_derived_quantities();
 
     void update_rhs();

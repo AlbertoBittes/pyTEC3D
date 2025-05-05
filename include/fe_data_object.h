@@ -76,13 +76,13 @@ class CSVFEDataObject : public FEDataObject<MaterialsMap>
 public:
     // Constructor
     CSVFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
-                    std::shared_ptr<std::unordered_map<dof_id_type, std::vector<Real>>> map = nullptr)
+                    std::shared_ptr<MaterialsMap> map = nullptr)
         : FEDataObject(parent, map) {}
 
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
-        auto data_map = std::make_shared<std::unordered_map<dof_id_type, std::vector<Real>>>();
+        auto data_map = std::make_shared<MaterialsMap>();
 
         if (!file.is_open())
         {
@@ -132,7 +132,7 @@ public:
         auto it = data_map->find(key);
         if (it == data_map->end())
         {
-            throw std::runtime_error("Setting not found: " + key);
+            libmesh_error_msg("Setting not found: " + key);
         }
         return std::get<T>(it->second);
     }
@@ -145,6 +145,8 @@ public:
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
+        auto data_map = std::make_shared<SettingsMap>();
+
         if (!file.is_open())
         {
             libmesh_error_msg("Failed to open file stream.");

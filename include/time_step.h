@@ -8,155 +8,82 @@
 #include <vector>
 #include <libmesh/libmesh.h>
 #include "../include/load_step.h"
+#include "../include/fe_data_object.h"
 
 using namespace libMesh;
 
 class Substep;
 
-class TimeStep
+class TimeStep : public SettingsFEDataObject
 {
 public:
     // Constructor with binary file stream
-    TimeStep(std::istream &file, std::shared_ptr<LoadStep> load_step, std::shared_ptr<LoadStep> prev_load_step = nullptr)
-        : load_step(load_step)
+    TimeStep(std::shared_ptr<LoadStep> parent = nullptr,
+             std::shared_ptr<SettingsMap> map = nullptr)
+        : SettingsFEDataObject(parent, map)
     {
-        // Read step
-        file.read(reinterpret_cast<char *>(&step), sizeof(step));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read 'step' from the binary stream.");
-        }
-
-        // Read time
-        file.read(reinterpret_cast<char *>(&time), sizeof(time));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read 'time' from the binary stream.");
-        }
-
-        // Read write_results as unsigned int
-        unsigned int write_results_uint;
-        file.read(reinterpret_cast<char *>(&write_results_uint), sizeof(write_results_uint));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read 'write_results' from the binary stream.");
-        }
-        bool write_results = (write_results_uint != 0);
-
-        // Read transient_effect as unsigned int
-        unsigned int transient_effect_uint;
-        file.read(reinterpret_cast<char *>(&transient_effect_uint), sizeof(transient_effect_uint));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read 'transient_effect' from the binary stream.");
-        }
-        bool transient_effect = (transient_effect_uint != 0);
-
-        // Read ramped_load as unsigned int
-        unsigned int ramped_load_uint;
-        file.read(reinterpret_cast<char *>(&ramped_load_uint), sizeof(ramped_load_uint));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read 'ramped_load' from the binary stream.");
-        }
-        bool ramped_load = (ramped_load_uint != 0);
-
-        // Read the number of substeps
-        unsigned int num_substeps;
-        file.read(reinterpret_cast<char *>(&num_substeps), sizeof(num_substeps));
-        if (!file)
-        {
-            libmesh_error_msg("Error: Failed to read the number of substeps from the binary stream.");
-        }
-
-        *this = TimeStep(step, time, load_step, write_results, num_substeps,
-                         transient_effect, ramped_load, prev_load_step);
+        // *this = TimeStep(step, time, load_step, write_results, num_substeps,
+        //                  transient_effect, ramped_load, prev_load_step);
     }
 
-    TimeStep(unsigned int step, Real time, std::shared_ptr<LoadStep> load_step, unsigned int num_substeps = 1, bool write_results = true,
-             bool transient_effect = true, bool ramped_load = true, std::shared_ptr<LoadStep> prev_load_step = nullptr)
-        : step(step),
-          time(time),
-          write_results(write_results),
-          transient_effect(transient_effect),
-          ramped_load(ramped_load),
-          load_step(load_step) // Initialize time_stepper last
-    {
-        if (prev_load_step == nullptr)
-            time_beginning = 0.0;
-        else
-            time_beginning = prev_load_step->get_time_step()->get_time();
-
-        if (time <= 0)
-        {
-            libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
-        }
-
-        delta_t = time - time_beginning;
-
-        if (delta_t < 0)
-        {
-            libmesh_error_msg("Error: Time step " + std::to_string(delta_t) + " is not greater than the previous time step.");
-        }
-
-        this->set_substeps(num_substeps);
-    }
-
-    unsigned int get_step() const { return step; }
+    int get_step() const { return step; }
     Real get_time() const { return time; }
     Real get_time_beginning() const { return time_beginning; }
     Real get_delta_t() const { return delta_t; }
     unsigned int get_n_substeps() const { return substeps.size(); }
-    bool get_write_results() const { return write_results; }
-    bool get_transient_effect() const { return transient_effect; }
-    bool get_ramped_load() const { return ramped_load; }
+    int get_write_results() const { return write_results; }
+    int get_transient_effect() const { return transient_effect; }
+    int get_ramped_load() const { return ramped_load; }
     Substep *get_active_substep() { return active_substep; }
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
     const std::vector<Substep> &get_substeps() const { return substeps; }
     const LoadStep &get_load_step() const { return *load_step; }
 
-    void set_step(unsigned int s) { step = s; }
+    void set_step(int s) { step = s; }
     void set_time(Real t) { time = t; }
     void set_time_beginning(Real t) { time_beginning = t; }
     void set_delta_t(Real dt) { delta_t = dt; }
     // void set_n_substeps(unsigned int n) { n_substeps = n; }
-    void set_write_results(bool w) { write_results = w; }
-    void set_transient_effect(bool t) { transient_effect = t; }
-    void set_ramped_load(bool r) { ramped_load = r; }
+    void set_write_results(int w) { write_results = w; }
+    void set_transient_effect(int t) { transient_effect = t; }
+    void set_ramped_load(int r) { ramped_load = r; }
     void set_active_substep(Substep *substep) { active_substep = substep; }
     void set_previous_substep(Substep *substep) { previous_substep = substep; }
     void add_substep(const Substep &substep) { substeps.push_back(substep); }
-    void set_substeps(unsigned int);
+    void set_substeps(int);
     // Custom substep iterator for TimeStep
+
+    void populate_time_step(std::shared_ptr<LoadStep> prev_load_step);
 
     class Iterator;
     Iterator begin();
     Iterator end();
 
-    void set_beginning_time(std::shared_ptr<LoadStep> load_step)
+    void set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
     {
         if (load_step == nullptr)
             time_beginning = 0.0;
         else
-            time_beginning = load_step->get_time_step()->get_time();
+            time_beginning = prev_load_step->get_time_step()->get_time();
     }
-    void set_dt(std::shared_ptr<LoadStep> load_step)
+    void set_dt(std::shared_ptr<LoadStep> prev_load_step)
     {
-        if (load_step == nullptr)
-            delta_t = 0.0;
-        else
-            delta_t = load_step->get_time_step()->get_time() - time_beginning;
+        delta_t = prev_load_step->get_time_step()->get_time() - time_beginning;
+        if (time <= 0)
+        {
+            libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
+        }
     }
 
 private:
-    unsigned int step;
+    int step;
     Real time;
     Real time_beginning;
     Real delta_t;
-    bool write_results;
-    bool transient_effect;
-    bool ramped_load;
+    int write_results;
+    int transient_effect;
+    int ramped_load;
 
     std::vector<Substep> substeps;
     std::shared_ptr<LoadStep> load_step;

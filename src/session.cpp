@@ -68,5 +68,32 @@ void Session::check_load_steps_folder()
     else
     {
         libMesh::out << "Load steps folder already exists at " << load_steps_folderpath << std::endl;
+
+        // Count the number of load step files
+        unsigned int load_step_count = 0;
+        for (unsigned int i = 1;; ++i)
+        {
+            std::filesystem::path load_step_file = load_steps_folderpath / ("load_step_" + std::to_string(i) + ".bin");
+            if (std::filesystem::exists(load_step_file))
+            {
+                ++load_step_count;
+            }
+            else
+            {
+                // Stop counting if a file is missing in the sequence
+                break;
+            }
+        }
+
+        // Set the number of load steps
+        if (load_step_count > 0)
+        {
+            n_load_steps = load_step_count;
+            libMesh::out << "Number of load steps: " << n_load_steps << std::endl;
+        }
+        else
+        {
+            libmesh_error_msg("No valid load step files found in the load steps folder.");
+        }
     }
 }

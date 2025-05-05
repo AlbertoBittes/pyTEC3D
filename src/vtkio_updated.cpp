@@ -50,6 +50,7 @@
 #include "vtkPoints.h"
 #include "vtkSmartPointer.h"
 #include "vtkMergeVectorComponents.h"
+#include "vtkStringArray.h"
 
 #ifdef LIBMESH_HAVE_MPI
 #include "vtkMPI.h"
@@ -336,14 +337,31 @@ void VTKIO_Updated::read(const std::string &name)
         if (elems_of_dimension[i])
             mesh.set_mesh_dimension(i);
 
-    // Repeat for point data
+    this->add_integers_vtk(mesh);
+
+#if LIBMESH_DIM < 3
+    libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
+                         "Cannot open dimension "
+                             << mesh.mesh_dimension()
+                             << " mesh file when configured without "
+                             << mesh.mesh_dimension()
+                             << "D support.");
+#endif // LIBMESH_DIM < 3
+}
+
+// Add the integers from the VTK file to the mesh
+void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
+{
     std::vector<std::string> point_data_int_array_names;
     std::string array_name;
     vtkPointData *point_data = _vtk_grid->GetPointData();
     for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
     {
         array_name = point_data->GetArrayName(i);
-        if (std::find(dof_labels.begin(), dof_labels.end(), array_name) == dof_labels.end() && std::find(loads_labels.begin(), loads_labels.end(), array_name) == loads_labels.end())
+        if (std::find(Globals::API_VARIABLES_LABELS.begin(),
+                      Globals::API_VARIABLES_LABELS.end(), array_name) == Globals::API_VARIABLES_LABELS.end() &&
+            std::find(Globals::API_LOADS_LABELS.begin(),
+                      Globals::API_LOADS_LABELS.end(), array_name) == Globals::API_LOADS_LABELS.end())
         {
             point_data_int_array_names.push_back(array_name);
         }
@@ -355,7 +373,10 @@ void VTKIO_Updated::read(const std::string &name)
     for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
     {
         array_name = cell_data->GetArrayName(i);
-        if (std::find(dof_labels.begin(), dof_labels.end(), array_name) == dof_labels.end() && std::find(loads_labels.begin(), loads_labels.end(), array_name) == loads_labels.end())
+        if (std::find(Globals::API_VARIABLES_LABELS.begin(),
+                      Globals::API_VARIABLES_LABELS.end(), array_name) == Globals::API_VARIABLES_LABELS.end() &&
+            std::find(Globals::API_LOADS_LABELS.begin(),
+                      Globals::API_LOADS_LABELS.end(), array_name) == Globals::API_LOADS_LABELS.end())
         {
             cell_data_int_array_names.push_back(array_name);
         }
@@ -378,14 +399,65 @@ void VTKIO_Updated::read(const std::string &name)
             node->set_extra_integer(i, data_array->GetTuple1(node->id()));
         }
     }
-#if LIBMESH_DIM < 3
-    libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
-                         "Cannot open dimension "
-                             << mesh.mesh_dimension()
-                             << " mesh file when configured without "
-                             << mesh.mesh_dimension()
-                             << "D support.");
-#endif // LIBMESH_DIM < 3
+}
+void VTKIO_Updated::populate_element_types_from_vtk()
+{
+    // Get the vtkFieldData from the input grid
+    vtkFieldData *field_data = _vtk_grid->GetFieldData();
+    if (!field_data)
+    {
+        libmesh_error_msg("No vtkFieldData found in the input grid.");
+        return;
+    }
+
+    // Retrieve the arrays from vtkFieldData
+    vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_element_type_num"));
+    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetArray("element_type"));
+    vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt1"));
+    vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt2"));
+    vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt3"));
+
+    // Validate that all required arrays are present
+    if (!ansys_element_type_num || !element_type || !keyopt1 || !keyopt2 || !keyopt3)
+    {
+        libmesh_error_msg("Missing required vtkFieldData arrays: ansys_element_type_num, element_type, keyopt1, keyopt2, or keyopt3.");
+        return;
+    }
+
+    // Ensure all arrays have the same number of tuples
+    vtkIdType num_tuples = ansys_element_type_num->GetNumberOfTuples();
+    if (element_type->GetNumberOfTuples() != num_tuples ||
+        keyopt1->GetNumberOfTuples() != num_tuples ||
+        keyopt2->GetNumberOfTuples() != num_tuples ||
+        keyopt3->GetNumberOfTuples() != num_tuples)
+    {
+        libmesh_error_msg("Mismatch in the number of tuples between vtkFieldData arrays.");
+        return;
+    }
+
+    // Populate the ElementTypesMapCSV data structure
+    ElementTypesMapCSV element_types_map_csv;
+
+    for (vtkIdType i = 0; i < num_tuples; ++i)
+    {
+        // Extract data from vtkFieldData arrays
+        unsigned int ansys_type = static_cast<unsigned int>(ansys_element_type_num->GetValue(i));
+        std::string elem_type = element_type->GetValue(i);
+        int k1 = keyopt1->GetValue(i);
+        int k2 = keyopt2->GetValue(i);
+        int k3 = keyopt3->GetValue(i);
+
+        // Create an ElementTypeKeyopts object
+        ElementTypeKeyopts keyopts;
+        keyopts.element_type = elem_type;
+        keyopts.keyopts = {k1, k2, k3};
+
+        // Insert into the map
+        element_types_map_csv[ansys_type] = keyopts;
+    }
+
+    // Store the populated map in the class or use it as needed
+    _element_types_map_csv = std::move(element_types_map_csv);
 }
 
 void VTKIO_Updated::write_nodal_data(const std::string &fname,

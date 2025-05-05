@@ -9,66 +9,6 @@
 #include "../include/element_types.h"
 
 // Base ElementType class
-std::string ElementType::getVariableFEFamily(std::string variable)
-{
-    auto vars = this->getVariables("DOFVariables");
-    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-    {
-        if (variable == "VOLT")
-            return "LAGRANGE";
-        else
-            return fe_family;
-    }
-    else
-    {
-        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-        {
-            return "L2_LAGRANGE";
-        }
-        else
-        {
-            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-            {
-                return "MONOMIAL";
-            }
-            else
-            {
-                libmesh_error_msg("Invalid variable set: " + variable);
-            }
-        }
-    }
-}
-
-std::string ElementType::getVariableOrder(std::string variable)
-{
-    auto vars = this->getVariables("DOFVariables");
-    if (std::find(vars.begin(), vars.end(), variable) != vars.end())
-    {
-        return order;
-    }
-    else
-    {
-        auto nodal_deriv_vars = this->getVariables("NodalDerivedQuantitiesVariables");
-        if (std::find(nodal_deriv_vars.begin(), nodal_deriv_vars.end(), variable) != nodal_deriv_vars.end())
-        {
-            return "FIRST";
-        }
-        else
-        {
-            auto elem_deriv_vars = this->getVariables("ElementDerivedQuantitiesVariables");
-            if (std::find(elem_deriv_vars.begin(), elem_deriv_vars.end(), variable) != elem_deriv_vars.end())
-            {
-                return "CONSTANT";
-            }
-            else
-            {
-                libmesh_error_msg("Invalid variable set: " + variable);
-            }
-        }
-    }
-}
 // think if this can be don with n_dofs
 void ElementType::populate_all()
 {
@@ -79,45 +19,42 @@ void ElementType::populate_all()
 
 // SOLID97
 
-SOLID97Type::SOLID97Type(const ElementTypeProperties &properties)
-    : ElementType(properties, "FIRST", "LAGRANGE", 0, 3)
+SOLID97Type::SOLID97Type(const ElementTypeKeyopts &keyopts)
+    : AV3DElementType(keyopts)
 {
-    az_dofs = 3;
+    element_type_data["DOFVariables"]["A_x"] =
+        std::make_tuple(true, 3, false, "A", 0, "LAGRANGE", "FIRST");
+    element_type_data["DOFVariables"]["A_y"] =
+        std::make_tuple(true, 3, false, "A", 1, "LAGRANGE", "FIRST");
+    element_type_data["DOFVariables"]["A_z"] =
+        std::make_tuple(true, 3, false, "A", 2, "LAGRANGE", "FIRST");
+    element_type_data["DOFVariables"]["CURR"] =
+        std::make_tuple(false, 1, false, "CURR", 0, "LAGRANGE", "FIRST");
+    if (keyopts.keyopts[0] == 1 || keyopts.keyopts[0] == 4 || keyopts.keyopts[0] == 5 || keyopts.keyopts[0] == 6)
+        std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
+    if (keyopts.keyopts[0] == 2 || keyopts.keyopts[0] == 3)
+        std::get<0>(element_type_data["DOFVariables"]["CURR"]) = true; // Modify the first member
+    if (keyopts.keyopts[0] == 3)
+        std::get<0>(element_type_data["DOFVariables"]["EMF"]) = true; // Modify the first member
 
-    FEType fe_type(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
+    FEType fe_type_vec(FIRST, LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
-    fe = FEBase::build(dimension, fe_type);
+    fe_vec = FEVectorBase::build(3, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type.default_quadrature_order());
-    // Tell the finite element object to use our quadrature rule.
-    fe->attach_quadrature_rule(&qrule);
-
-    FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    fe_vec = FEVectorBase::build(dimension, fe_type_vec);
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule_vec(dimension, fe_type_vec.default_quadrature_order());
+    QGauss qrule_vec(3, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_vec->attach_quadrature_rule(&qrule_vec);
 }
 
-std::vector<std::string> SOLID97Type::getElementLoads() const
-{
-    std::vector<std::string> loads = {"Js"};
-    return loads;
-}
-
 void SOLID97Type::populate_matrix_idx_size_map()
 {
+    auto active_vars = this->getActiveVariables("DOFVariables");
     // Check this when you have periodic BCs
-    matrix_idx_size_map["Ke"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
-    matrix_idx_size_map["Ce"] = {1, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions(), this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
+    matrix_idx_size_map["Ke"] = {0, active_vars.size() * fe->n_shape_functions(), active_vars.size() * fe->n_shape_functions()};
+    matrix_idx_size_map["Ce"] = {1, active_vars.size() * fe->n_shape_functions(), active_vars.size() * fe->n_shape_functions()};
 }
 void SOLID97Type::populate_derived_matrix_idx_size_map()
 {
@@ -131,141 +68,30 @@ void SOLID97Type::populate_vector_idx_size_map()
 {
     vector_idx_size_map["Fe"] = {0, this->getActiveVariables("DOFVariables").size() * fe->n_shape_functions()};
 }
-std::vector<std::string> SOLID97Type::getActiveVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"A_x", "A_y", "A_z"};
-        if (properties.keyopts[0] == 1)
-        {
-            variables.push_back("VOLT");
-        }
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
-std::vector<std::string> SOLID97Type::getVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"A_x", "A_y", "A_z", "VOLT"};
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
 // SOLID 236
 
-SOLID236Type::SOLID236Type(const ElementTypeProperties &properties)
-    : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 3)
+SOLID236Type::SOLID236Type(const ElementTypeKeyopts &keyopts)
+    : AV3DElementType(keyopts)
 {
-    az_dofs = 1;
+    element_type_data["DOFVariables"]["A"] =
+        std::make_tuple(true, 3, false, "A", 2, "NEDELEC_ONE", "FIRST");
+    if (keyopts.keyopts[0] == 1 || keyopts.keyopts[0] == 2)
+        std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
+    if (keyopts.keyopts[0] == 2)
+        std::get<0>(element_type_data["DOFVariables"]["EMF"]) = true; // Modify the first member
 
-    FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
+    FEType fe_type_vec(FIRST, NEDELEC_ONE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
-    fe = FEBase::build(dimension, fe_type);
+    fe_vec = FEVectorBase::build(3, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type.default_quadrature_order());
-    // Tell the finite element object to use our quadrature rule.
-    fe->attach_quadrature_rule(&qrule);
-
-    FEType fe_type_vec(Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_family));
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    fe_vec = FEVectorBase::build(dimension, fe_type_vec);
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule_vec(dimension, fe_type_vec.default_quadrature_order());
+    QGauss qrule_vec(3, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_vec->attach_quadrature_rule(&qrule_vec);
 }
 
-std::vector<std::string> SOLID236Type::getElementLoads() const
-{
-    std::vector<std::string> loads = {"Js"};
-    return loads;
-}
-
-std::vector<std::string> SOLID236Type::getActiveVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"Az"};
-        if (properties.keyopts[0] == 1)
-        {
-            variables.push_back("VOLT");
-        }
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
-std::vector<std::string> SOLID236Type::getVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"Az", "VOLT"};
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y", "B_z"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_x", "J_y", "J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
 // Dummy implementations for SOLID236Type
 
 void SOLID236Type::populate_matrix_idx_size_map()
@@ -284,28 +110,15 @@ void SOLID236Type::populate_vector_idx_size_map()
 }
 // PLANE13
 
-PLANE13Type::PLANE13Type(const ElementTypeProperties &properties)
-    : ElementType(properties, "FIRST", "LAGRANGE", 0, 2)
+PLANE13Type::PLANE13Type(const ElementTypeKeyopts &keyopts)
+    : AV2DElementType(keyopts)
 {
-    az_dofs = 1;
+    element_type_data["DOFVariables"]["A_z"] =
+        std::make_tuple(true, 1, true, "A", 2, "LAGRANGE", "FIRST");
 
-    FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    fe = FEBase::build(dimension, fe_type);
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type.default_quadrature_order());
-    // Tell the finite element object to use our quadrature rule.
-    fe->attach_quadrature_rule(&qrule);
+    if (keyopts.keyopts[0] == 6)
+        std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
 } // Default dimension for PLANE13 is 2
-
-std::vector<std::string> PLANE13Type::getElementLoads() const
-{
-    std::vector<std::string> loads = {"Js"};
-    return loads;
-}
 
 void PLANE13Type::populate_matrix_idx_size_map()
 {
@@ -323,126 +136,12 @@ void PLANE13Type::populate_vector_idx_size_map()
     vector_idx_size_map["Fe"] = {0, fe->n_shape_functions()};
 }
 
-std::vector<std::string> PLANE13Type::getActiveVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"A_z"};
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
-std::vector<std::string> PLANE13Type::getVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"A_z", "VOLT"};
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
 // PLANE233
 
-PLANE233Type::PLANE233Type(const ElementTypeProperties &properties)
-    : ElementType(properties, "FIRST", "NEDELEC_ONE", 0, 2)
+PLANE233Type::PLANE233Type(const ElementTypeKeyopts &keyopts)
+    : AV2DElementType(keyopts)
 {
-    az_dofs = 1;
-
-    FEType fe_type(Utility::string_to_enum<Order>(order), LAGRANGE);
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    fe = FEBase::build(dimension, fe_type);
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss qrule(dimension, fe_type.default_quadrature_order());
-    // Tell the finite element object to use our quadrature rule.
-    fe->attach_quadrature_rule(&qrule);
 } // Default dimension for PLANE13 is 2
-
-std::vector<std::string> PLANE233Type::getElementLoads() const
-{
-    std::vector<std::string> loads = {"Js"};
-    return loads;
-}
-
-std::vector<std::string> PLANE233Type::getActiveVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"Az"};
-        if (properties.keyopts[0] == 1)
-        {
-            variables.push_back("VOLT");
-        }
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
-
-std::vector<std::string> PLANE233Type::getVariables(std::string variables_set) const
-{
-    if (variables_set == "DOFVariables")
-    {
-        std::vector<std::string> variables = {"Az", "VOLT"};
-        return variables;
-    }
-    else if (variables_set == "NodalDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"B_x", "B_y"};
-        return variables;
-    }
-    else if (variables_set == "ElementDerivedQuantitiesVariables")
-    {
-        std::vector<std::string> variables = {"J_z"};
-        return variables;
-    }
-    else
-    {
-        libmesh_error_msg("Invalid variables set: " + variables_set);
-    }
-}
 
 void PLANE233Type::populate_matrix_idx_size_map()
 {
@@ -459,74 +158,28 @@ void PLANE233Type::populate_vector_idx_size_map()
     libmesh_error_msg("PLANE233Type::populate_vector_idx_size_map is not implemented.");
 }
 
-// elementTpesCollector
-
-ElementTypesMapCSV *ElementTypesCollector::readElementTypes(const std::string &filename)
-{
-    ElementTypesMapCSV *elementTypesMap = new ElementTypesMapCSV();
-    std::ifstream file(filename);
-
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Could not open file: " + filename);
-    }
-
-    std::string line;
-    std::getline(file, line); // Skip the header line
-
-    while (std::getline(file, line))
-    {
-        std::istringstream iss(line);
-        std::string ansys_etype_str, element_type;
-        std::vector<int> keyopts(9, 0); // Initialize with 9 zeros
-        unsigned int ansys_etype;
-
-        if (!(std::getline(iss, ansys_etype_str, ',') && std::getline(iss, element_type, ',')))
-        {
-            throw std::runtime_error("Error parsing line: " + line);
-        }
-
-        ansys_etype = std::stoul(ansys_etype_str);
-
-        for (int i = 0; i < 9; ++i)
-        {
-            std::string keyopt_str;
-            if (std::getline(iss, keyopt_str, ',') && !keyopt_str.empty())
-            {
-                keyopts[i] = std::stoi(keyopt_str);
-            }
-        }
-
-        ElementTypeProperties properties = {element_type, keyopts};
-        (*elementTypesMap)[ansys_etype] = properties;
-    }
-
-    file.close();
-    return elementTypesMap;
-}
-
 void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV)
 {
     for (const auto &pair : elementTypesMapCSV)
     {
-        const auto &properties = pair.second;
+        const auto &keyopts = pair.second;
 
         // Create the appropriate ElementType object
-        if (properties.element_type == "SOLID97")
+        if (keyopts.element_type == "SOLID97")
         {
-            elementTypes[pair.first] = std::make_shared<SOLID97Type>(SOLID97Type(properties));
+            elementTypes[pair.first] = std::make_shared<SOLID97Type>(SOLID97Type(keyopts));
         }
-        else if (properties.element_type == "SOLID236")
+        else if (keyopts.element_type == "SOLID236")
         {
-            elementTypes[pair.first] = std::make_shared<SOLID236Type>(SOLID236Type(properties));
+            elementTypes[pair.first] = std::make_shared<SOLID236Type>(SOLID236Type(keyopts));
         }
-        else if (properties.element_type == "PLANE13")
+        else if (keyopts.element_type == "PLANE13")
         {
-            elementTypes[pair.first] = std::make_shared<PLANE13Type>(PLANE13Type(properties));
+            elementTypes[pair.first] = std::make_shared<PLANE13Type>(PLANE13Type(keyopts));
         }
-        else if (properties.element_type == "PLANE233")
+        else if (keyopts.element_type == "PLANE233")
         {
-            elementTypes[pair.first] = std::make_shared<PLANE233Type>(PLANE233Type(properties));
+            elementTypes[pair.first] = std::make_shared<PLANE233Type>(PLANE233Type(keyopts));
         }
         // Add more conditions for other ElementType subclasses as needed
     }
@@ -535,31 +188,17 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypes
 VariableToElementIdsMapType *ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
 {
     VariableToElementIdsMapType *variableToElementIds = new VariableToElementIdsMapType();
-
+    std::string sett = "DOFVariables";
     for (const auto &pair : elementTypes)
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
 
-        for (const auto &variable : elementType->getActiveVariables(variables_set))
+        auto active_vars = elementType->getActiveVariables(sett);
+        for (const auto &var : active_vars)
         {
-            (*variableToElementIds)[variable].insert(elementId);
+            (*variableToElementIds)[var].insert(elementId);
         }
     }
-
     return variableToElementIds;
-}
-
-std::set<std::string> ElementTypesCollector::getLoadsLabels() const
-{
-    std::set<std::string> loads_labels;
-    for (const auto &elem_type : elementTypes)
-    {
-        auto loads = elem_type.second->getElementLoads();
-        for (const auto &load : loads)
-        {
-            loads_labels.insert(load);
-        }
-    }
-    return loads_labels;
 }

@@ -464,7 +464,22 @@ bool AssemblerLinear::check_update_matrix()
 
     const Real relative_epsilon = 1e-9;
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver());
+    auto prev_load_step = load_step->get_load_stepper()->get_old_load_step();
+    auto time_step = load_step->get_time_step();
+    auto active_time_substep = time_step->get_active_substep();
+    auto old_time_substep = time_step->get_previous_substep();
 
+    if (old_time_substep == nullptr)
+    {
+        if (prev_load_step != nullptr)
+        {
+            old_time_substep = &(prev_load_step->get_time_step()->get_substeps().back());
+        }
+        else
+        {
+            old_time_substep = nullptr;
+        }
+    }
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
     if (old_time_substep == nullptr)
@@ -474,7 +489,8 @@ bool AssemblerLinear::check_update_matrix()
     }
     else
     {
-        if (time_substep->get_index() > 0)
+
+        if (active_time_substep->get_index() > 0)
         {
             update_matrix = false;
             solver->reuse_preconditioner(true);
@@ -482,10 +498,17 @@ bool AssemblerLinear::check_update_matrix()
         else
         {
             NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys.get_system(0).get_constraint_object());
-
-            if (std::abs(time_substep->get_dt() - old_time_substep->get_dt()) > relative_epsilon * std::max(std::abs(time_substep->get_dt()), std::abs(old_time_substep->get_dt())) ||
+            auto current_material_object = load_step->get_materials();
+            auto old_material_object = prev_load_step->get_materials();
+            auto current_real_constant_object = load_step->get_real_constants();
+            auto old_real_constant_object = prev_load_step->get_real_constants();
+            if (std::abs(active_time_substep->get_dt() - old_time_substep->get_dt()) >
+                    relative_epsilon * std::max(std::abs(active_time_substep->get_dt()),
+                                                std::abs(old_time_substep->get_dt())) ||
                 node_dof_constraints->get_update_boundary_conditions() ||
-                time_substep->get_transient_effect() != old_time_substep->get_transient_effect())
+                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
+                current_material_object->get_data_map() != old_material_object->get_data_map() ||
+                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);
@@ -500,6 +523,53 @@ bool AssemblerLinear::check_update_matrix()
     return update_matrix;
 }
 
+bool AssemblerLinear::check_compute_matrix()
+{
+    // bool compute_matrix = false;
+
+    auto prev_load_step = load_step->get_load_stepper()->get_old_load_step();
+
+    if (prev_load_step == nullptr)
+    {
+        return true;
+    }
+    // in a new time step we could have a different dt, different bcs, different time integration effects
+    // Here add the flag for ferromagnetic
+    else
+    {
+
+        if (active_time_substep->get_index() > 0)
+        {
+            update_matrix = false;
+            solver->reuse_preconditioner(true);
+        }
+        else
+        {
+            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys.get_system(0).get_constraint_object());
+            auto current_material_object = load_step->get_materials();
+            auto old_material_object = prev_load_step->get_materials();
+            auto current_real_constant_object = load_step->get_real_constants();
+            auto old_real_constant_object = prev_load_step->get_real_constants();
+            if (std::abs(active_time_substep->get_dt() - old_time_substep->get_dt()) >
+                    relative_epsilon * std::max(std::abs(active_time_substep->get_dt()),
+                                                std::abs(old_time_substep->get_dt())) ||
+                node_dof_constraints->get_update_boundary_conditions() ||
+                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
+                current_material_object->get_data_map() != old_material_object->get_data_map() ||
+                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+            {
+                update_matrix = true;
+                solver->reuse_preconditioner(false);
+            }
+            else
+            {
+                update_matrix = false;
+                solver->reuse_preconditioner(true);
+            }
+        }
+    }
+    return update_matrix;
+}
 // void AssemblerLinear::compute_derived_quantities()
 // {
 //     const MeshBase &mesh = eq_sys.get_mesh();
