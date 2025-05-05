@@ -1,13 +1,11 @@
 import pandas as pd
 from abc import ABC, abstractmethod
 import vtk
-import inspect
 import vtk.util.numpy_support as vtknp
 import numpy as np
 import struct
 import os
 import re
-import json
 import subprocess
 # import logging
 
@@ -30,7 +28,7 @@ DEFAULT_SETTINGS = {
     "quiet": 0,
     "max_nonlinear_it": 25,
     "min_steplength": 1e-6,
-    "realtive_step_toleranee": 1e-6,
+    "relative_step_tolerance": 1e-6,
     "require_residual_reduction": 0,
     "reduce_deltat_on_diffsolver_failure": 1,
     "continue_after_max_iterations": 0,
@@ -60,14 +58,12 @@ class APEC_M:
         """
         Initialize the APEC object without requiring a file path.
         """
-        # self.csv_file_path = None
-        self.element_types_collector = None
         self.mesh = vtk.vtkUnstructuredGrid()
 
         self.initialize_dataframes()
         self.jobname = None
         self.folderpath = None
-        self.solve_settings = DEFAULT_SETTINGS
+        self.solver_settings = DEFAULT_SETTINGS
 
         self.process = None
         self.num_processors = 1
@@ -235,7 +231,7 @@ class APEC_M:
             ]
         )
         self.time_parameters = {
-            "time_step_num": 1,
+            "time_step_number": 1,
             "time": 0.0,
             "number_of_substeps": 1,
             "transient_effects": 1,
@@ -481,35 +477,35 @@ class APEC_M:
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
 
-    def read_solver_settings_from_json(self, json_file_path):
-        """
-        Reads solver settings from a JSON file and updates the current settings.
+    # def read_solver_settings_from_json(self, json_file_path):
+    #     """
+    #     Reads solver settings from a JSON file and updates the current settings.
 
-        Args:
-            json_file_path (str): Path to the JSON file containing the solver settings.
+    #     Args:
+    #         json_file_path (str): Path to the JSON file containing the solver settings.
 
-        Raises:
-            FileNotFoundError: If the JSON file does not exist.
-        """
+    #     Raises:
+    #         FileNotFoundError: If the JSON file does not exist.
+    #     """
 
-        if not os.path.exists(json_file_path):
-            raise FileNotFoundError(f"JSON file '{json_file_path}' not found.")
+    #     if not os.path.exists(json_file_path):
+    #         raise FileNotFoundError(f"JSON file '{json_file_path}' not found.")
 
-        with open(json_file_path, "r") as json_file:
-            self.solve_settings = json.load(json_file)
-        print(f"Solver settings loaded from '{json_file_path}'.")
+    #     with open(json_file_path, "r") as json_file:
+    #         self.solver_settings = json.load(json_file)
+    #     print(f"Solver settings loaded from '{json_file_path}'.")
 
-    def write_solver_settings_to_json(self, json_file_path):
-        """
-        Writes the solver settings to a JSON file.
+    # def write_solver_settings_to_json(self, json_file_path):
+    #     """
+    #     Writes the solver settings to a JSON file.
 
-        Args:
-            json_file_path (str): Path to the JSON file where the solver settings will be saved.
-        """
+    #     Args:
+    #         json_file_path (str): Path to the JSON file where the solver settings will be saved.
+    #     """
 
-        with open(json_file_path, "w") as json_file:
-            json.dump(self.solve_settings, json_file, indent=4)
-        print(f"Solver settings written to '{json_file_path}'.")
+    #     with open(json_file_path, "w") as json_file:
+    #         json.dump(self.solver_settings, json_file, indent=4)
+    #     print(f"Solver settings written to '{json_file_path}'.")
 
     def write_settings_to_binary(self, settings, file_path):
         """
@@ -910,14 +906,14 @@ class APEC_M:
     def replace_ansys_with_vtk_ids(self, df, mapping_array):
         """
         Replaces the 'ansys_elem_num' column in the DataFrame with the corresponding VTK ID values
-        using the provided mapping array. The column is renamed to 'vtk_id'.
+        using the provided mapping array. The column is renamed to 'vtk_element_id'.
 
         Args:
             df (pd.DataFrame): The DataFrame containing the 'ansys_elem_num' column.
             mapping_array (np.ndarray): A 2D NumPy array where each row contains [VTK ID, ANSYS element number].
 
         Returns:
-            pd.DataFrame: A new DataFrame with the 'ansys_elem_num' column replaced by VTK IDs and renamed to 'vtk_id'.
+            pd.DataFrame: A new DataFrame with the 'ansys_elem_num' column replaced by VTK IDs and renamed to 'vtk_element_id'.
         """
         # Extract the 'ansys_elem_num' column as a NumPy array
         ansys_elem_nums = df["ansys_elem_num"].to_numpy()
@@ -928,8 +924,8 @@ class APEC_M:
         ]  # VTK IDs are in the first column of the mapping array
         vtk_id_array = vtk_ids[ansys_elem_nums]
 
-        # Replace the column in the DataFrame and rename it to 'vtk_id'
-        df.insert(0, "vtk_id", vtk_id_array)  # Insert 'vtk_id' as the first column
+        # Replace the column in the DataFrame and rename it to 'vtk_element_id'
+        df.insert(0, "vtk_element_id", vtk_id_array)  # Insert 'vtk_element_id' as the first column
         df = df.drop(columns=["ansys_elem_num"])
 
         return df
@@ -940,7 +936,7 @@ class APEC_M:
         The function assigns values to the appropriate components at the corresponding VTK IDs.
 
         Args:
-            df (pd.DataFrame): The DataFrame containing columns 'vtk_id', 'load_label', 'component', and 'value'.
+            df (pd.DataFrame): The DataFrame containing columns 'vtk_element_id', 'load_label', 'component', and 'value'.
         """
         # Get the distinct load labels
         load_labels = df["load_label"].unique()
@@ -961,7 +957,7 @@ class APEC_M:
             for component in load_df["component"].unique():
                 # Filter rows for the current component
                 component_mask = load_df["component"] == component
-                vtk_ids = load_df.loc[component_mask, "vtk_id"].to_numpy()
+                vtk_ids = load_df.loc[component_mask, "vtk_element_id"].to_numpy()
                 values = load_df.loc[component_mask, "value"].to_numpy()
 
                 # Assign values to the appropriate indices and component
@@ -974,7 +970,7 @@ class APEC_M:
         """
         Reads a CSV file containing load data and updates the VTK grid's cell data arrays.
         The CSV file must have the following columns in order:
-            - vtk_id: The VTK cell ID.
+            - vtk_element_id: The VTK cell ID.
             - load_label: The label associated with the load (e.g., "Js").
             - component: The component index (0, 1, 2).
             - value: The value of the load for the given component.
@@ -993,7 +989,7 @@ class APEC_M:
         df = pd.read_csv(csv_file_path)
 
         # Ensure the required columns are present
-        required_columns = ["vtk_id", "load_label", "component", "value"]
+        required_columns = ["vtk_element_id", "load_label", "component", "value"]
         if not all(column in df.columns for column in required_columns):
             raise ValueError(
                 f"CSV file must contain the following columns: {required_columns}"
@@ -1117,14 +1113,14 @@ class APEC_M:
     def replace_ansys_with_vtk_point_ids(self, df, mapping_array):
         """
         Replaces the 'ansys_node_num' column in the DataFrame with the corresponding VTK point ID values
-        using the provided mapping array. The column is renamed to 'vtk_id'.
+        using the provided mapping array. The column is renamed to 'vtk_node_id'.
 
         Args:
             df (pd.DataFrame): The DataFrame containing the 'ansys_node_num' column.
             mapping_array (np.ndarray): A 2D NumPy array where each row contains [VTK point ID, ANSYS node number].
 
         Returns:
-            pd.DataFrame: A new DataFrame with the 'ansys_node_num' column replaced by VTK point IDs and renamed to 'vtk_id'.
+            pd.DataFrame: A new DataFrame with the 'ansys_node_num' column replaced by VTK point IDs and renamed to 'vtk_node_id'.
         """
         # Extract the 'ansys_node_num' column as a NumPy array
         ansys_node_nums = df["ansys_node_num"].to_numpy()
@@ -1135,8 +1131,8 @@ class APEC_M:
         ]  # VTK point IDs are in the first column of the mapping array
         vtk_id_array = vtk_ids[np.searchsorted(mapping_array[:, 1], ansys_node_nums)]
 
-        # Replace the column in the DataFrame and rename it to 'vtk_id'
-        df.insert(0, "vtk_id", vtk_id_array)  # Insert 'vtk_id' as the first column
+        # Replace the column in the DataFrame and rename it to 'vtk_node_id'
+        df.insert(0, "vtk_node_id", vtk_id_array)  # Insert 'vtk_node_id' as the first column
         df = df.drop(columns=["ansys_node_num"])  # Drop the 'ansys_node_num' column
 
         return df
@@ -1145,7 +1141,7 @@ class APEC_M:
         """
         Reads a CSV file containing boundary condition data and updates the VTK grid's point data arrays.
         The CSV file must have the following columns in order:
-            - vtk_id: The VTK point ID.
+            - vtk_node_id: The VTK point ID.
             - variable_label: The label associated with the boundary condition (e.g., "A", "VOLT").
             - component: The component index (0, 1, 2 for vector variables, 0 for scalar variables).
             - value: The value of the boundary condition for the given component.
@@ -1165,7 +1161,7 @@ class APEC_M:
         df = pd.read_csv(csv_file_path)
 
         # Ensure the required columns are present
-        required_columns = ["vtk_id", "variable_label", "component", "value"]
+        required_columns = ["vtk_node_id", "variable_label", "component", "value"]
         if not all(column in df.columns for column in required_columns):
             raise ValueError(
                 f"CSV file must contain the following columns: {required_columns}"
@@ -1182,7 +1178,7 @@ class APEC_M:
         The function assigns values to the appropriate components at the corresponding VTK point IDs.
 
         Args:
-            df (pd.DataFrame): The DataFrame containing columns 'vtk_id', 'variable_label', 'component', and 'value'.
+            df (pd.DataFrame): The DataFrame containing columns 'vtk_node_id', 'variable_label', 'component', and 'value'.
         """
         # Get the distinct variable labels
         variable_labels = df["variable_label"].unique()
@@ -1203,7 +1199,7 @@ class APEC_M:
             for component in variable_df["component"].unique():
                 # Filter rows for the current component
                 component_mask = variable_df["component"] == component
-                vtk_ids = variable_df.loc[component_mask, "vtk_id"].to_numpy()
+                vtk_ids = variable_df.loc[component_mask, "vtk_node_id"].to_numpy()
                 values = variable_df.loc[component_mask, "value"].to_numpy()
 
                 # Assign values to the appropriate indices and component
@@ -1259,7 +1255,7 @@ class APEC_M:
             print("Time parameters written.")
 
             # Write solver settings
-            self.write_settings_to_binary(self.solve_settings, binary_file)
+            self.write_settings_to_binary(self.solver_settings, binary_file)
             print("Solver settings written.")
 
             # Write materials DataFrame
@@ -1404,121 +1400,6 @@ class APEC_M:
             self.write_load_step(output_file)
 
             print(f"Load step {index + 1} written to '{output_file}'.")
-
-
-class ElementType(ABC):
-    """
-    Abstract base class for all element types.
-    """
-
-    @abstractmethod
-    def getVariables(self):
-        pass
-
-    @abstractmethod
-    def getElementLoads(self):
-        pass
-
-
-class SOLID97Type(ElementType):
-    def getVariables(self):
-        return {"A": 3, "VOLT": 1}
-
-    def getElementLoads(self):
-        return {"Js": 3}
-
-
-class SOLID236Type(ElementType):
-    def getVariables(self):
-        return {"Az": 1, "VOLT": 1}
-
-    def getElementLoads(self):
-        return {"Js": 3}
-
-
-class PLANE13Type(ElementType):
-    def getVariables(self):
-        return {"A": 3}
-
-    def getElementLoads(self):
-        return {"Js": 3}
-
-
-class PLANE233Type(ElementType):
-    def getVariables(self):
-        return {"A": 3}
-
-    def getElementLoads(self):
-        return {"Js": 3}
-
-
-class ElementTypesCollector:
-    """
-    Class to collect and manage element types from a CSV file.
-    """
-
-    def __init__(self, apec_instance):
-        """
-        Initializes the instance with the given APEC instance.
-
-        Args:
-            apec_instance (APEC): The APEC instance to be associated with the collector.
-        """
-        if not isinstance(apec_instance, APEC_M):
-            raise TypeError("Expected an instance of APEC.")
-
-        self.apec = apec_instance
-        self.element_types_map = {}
-
-    def read_element_types(self):
-        for _, row in apec.element_types.iterrows():
-            element_type = row["element_type"]
-            ansys_etype = row["ansys_etype"]
-            self.element_types_map[ansys_etype] = self.build_element_types(element_type)
-
-    def build_element_types(self, element_type):
-        """
-        Maps a given element type to its corresponding ANSYS element type object and
-        stores it in the `element_types_map` dictionary.
-        Parameters:
-            element_type (str): The name of the element type to map.
-                                Supported values are "SOLID97", "SOLID236", "PLANE13", and "PLANE233".
-        Raises:
-            ValueError: If the provided `element_type` is not recognized.
-        """
-        element_type_string = element_type + "Type"
-
-        try:
-            return globals()[element_type_string]()
-        except KeyError:
-            raise ValueError(f"Unknown element type: {element_type}")
-
-    def collect_type_classes(self):
-        """
-        Collects all class names in the current script that match the pattern 'NAMEUPPERCASEnumberType',
-        are not abstract, and creates instances of those classes.
-
-        Returns:
-            dict: A dictionary where keys are class names (strings) and values are instances of those classes.
-        """
-        # Define the regex pattern for matching class names
-        pattern = re.compile(r"^[A-Z]+[0-9]+Type$")
-
-        class_instances_with_type = {
-            name: cls()
-            for name, cls in globals().items()
-            if isinstance(cls, type)
-            and pattern.match(name)  # Match the pattern 'NAMEUPPERCASEnumberType'
-            and not inspect.isabstract(cls)  # Exclude abstract classes
-        }
-        return class_instances_with_type
-
-    def get_all_loads(self):
-        all_loads = {}
-        for element_type in self.element_types_map.values():
-            all_loads.update(element_type.getElementLoads())
-        return all_loads
-
 
 # Only execute this block if the script is run directly
 if __name__ == "__main__":

@@ -49,20 +49,20 @@ def process_mesh(file_path):
     archive.grid.point_data["boundary_id"] = boundary_id
 
     # Check for arrays with "PERIODIC_BOUNDARY_" or "INFINITE_BOUNDARY_" in their names
-    for array_name in archive.grid.point_data.keys():
-        if array_name.startswith("PERIODIC_BOUNDARY_") or array_name.startswith(
-            "INFINITE_BOUNDARY_"
-        ):
-            # Extract the number after the last underscore
-            boundary_number = int(array_name.split("_")[-1])
-            periodic_boundary = archive.grid.point_data[array_name]
-            boundary_id = archive.grid.point_data["boundary_id"]
+    # for array_name in archive.grid.point_data.keys():
+    #     if array_name.startswith("PERIODIC_BOUNDARY_") or array_name.startswith(
+    #         "INFINITE_BOUNDARY_"
+    #     ):
+    #         # Extract the number after the last underscore
+    #         boundary_number = int(array_name.split("_")[-1])
+    #         periodic_boundary = archive.grid.point_data[array_name]
+    #         boundary_id = archive.grid.point_data["boundary_id"]
 
-            # Assign the boundary number to points where the array value is 1
-            boundary_id[periodic_boundary == 1] = boundary_number
+    #         # Assign the boundary number to points where the array value is 1
+    #         boundary_id[periodic_boundary == 1] = boundary_number
 
-            # Update the boundary_id in the point data
-            archive.grid.point_data["boundary_id"] = boundary_id
+    #         # Update the boundary_id in the point data
+    #         archive.grid.point_data["boundary_id"] = boundary_id
 
     # Save the modified grid to a .vtu file
     output_file = os.path.join(
