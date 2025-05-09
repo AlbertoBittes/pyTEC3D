@@ -249,12 +249,35 @@ LOADS_BCS_COLUMNS_TYPES = {
     "value": float,
 }
 
+TRANSIENT_ANALYSIS_COLUMNS = [
+    "time_step_number",
+    "time",
+    "number_of_substeps",
+    "transient_effects",
+    "ramped_loads",
+    "write_substep_results",
+    "load_step_input_file",
+]
+
+TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
+    "time_step_number": int,
+    "time": float,
+    "number_of_substeps": int,
+    "transient_effects": int,
+    "ramped_loads": int,
+    "write_substep_results": int,
+    "load_step_input_file": str,
+}
+
 DEFAULT_COLUMNS_ATTRIBUTES = {
     "element_types": ELEMENT_TYPES_COLUMNS,
     "materials": MATERIALS_COLUMNS,
     "real_constants": REAL_CONSTANTS_COLUMNS,
     "solver_settings": DEFAULT_SOLVER_SETTINGS,
     "time_parameters": DEFAULT_TIME_PARAMETERS,
+    "loads": LOADS_BCS_COLUMNS,
+    "boundary_conditions": LOADS_BCS_COLUMNS,
+    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS,
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
@@ -263,4 +286,28 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
+    "loads": LOADS_BCS_COLUMNS_TYPES,
+    "boundary_conditions": LOADS_BCS_COLUMNS_TYPES,
+    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
+}
+
+# Define the mapping of sheet names to processing methods
+SHEET_PROCESSING_MAP = {
+    "element_types": "read_excel_df",
+    "materials": "read_excel_df",
+    "real_constants": "read_excel_df",
+    "solver_settings": "read_excel_dict",
+    "time_parameters": "read_excel_dict",
+    "loads": ("update_vtk_grid_from_excel", "cell"),
+    "boundary_conditions": ("update_vtk_grid_from_excel", "point"),
+    "transient_analysis": "read_excel_df",
+}
+
+WRITING_FUNCTIONS_MAP = {
+    "time_parameters": "write_settings_to_binary",
+    "solver_settings": "write_settings_to_binary",
+    "materials": "write_dataframe_to_binary",
+    "real_constants": "write_dataframe_to_binary",
+    "loads": "write_numpy_array_to_binary",
+    "boundary_conditions": "write_numpy_array_to_binary",
 }

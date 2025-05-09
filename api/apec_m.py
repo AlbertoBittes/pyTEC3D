@@ -5,9 +5,23 @@ import vtk.util.numpy_support as vtknp
 import numpy as np
 import struct
 import os
+import sys
 import re
 import subprocess
 
+# Add the current directory to the Python path to ensure imports work
+current_dir = os.path.dirname(os.path.abspath(__file__))
+local_packages_path = os.path.join(current_dir, "local_packages")
+sys.path.append(local_packages_path)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+try:
+    import openpyxl
+
+    print("openpyxl imported successfully.")
+except ImportError:
+    print(
+        "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
+    )
 try:
     # Relative import for package execution
     from .constants import *
@@ -30,13 +44,12 @@ class APEC_M:
         self.jobname = None
         self.folderpath = None
 
-        self.element_types = {}
+        self.element_types = pd.DataFrame(columns=ELEMENT_TYPES_COLUMNS)
         self.materials = pd.DataFrame(columns=MATERIALS_COLUMNS)
         self.real_constants = pd.DataFrame(columns=REAL_CONSTANTS_COLUMNS)
         self.time_parameters = DEFAULT_TIME_PARAMETERS
         self.apec_parameters = {}
         self.solver_settings = DEFAULT_SOLVER_SETTINGS
-        self.element_types = {}
         self.transient_analysis = pd.DataFrame(columns=TRANSIENT_ANALYSIS_COLUMNS)
 
         self.process = None
@@ -215,116 +228,6 @@ class APEC_M:
             # Add the column as a field array
             field_data.AddArray(vtk_table.GetColumn(i))
 
-    def read_excel_df(self, excel_file, sheet_name):
-        """
-        Reads a specific sheet from an Excel file into a pandas DataFrame and assigns it to the corresponding attribute.
-        Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES.
-
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
-
-        Raises:
-            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES or if the columns do not match.
-            FileNotFoundError: If the Excel file does not exist.
-        """
-        # Check if the sheet name is valid
-        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
-            raise ValueError(
-                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
-            )
-
-        # Read the Excel file
-        if not os.path.exists(excel_file):
-            raise FileNotFoundError(f"Excel file '{excel_file}' not found.")
-
-        # Read the specified sheet into a DataFrame
-        df = pd.read_excel(excel_file, sheet_name=sheet_name)
-
-        # Get the expected columns for the sheet
-        expected_columns = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name]
-
-        # Check if the columns in the DataFrame match the expected columns
-        if not all(column in expected_columns for column in df.columns):
-            raise ValueError(
-                f"Columns in sheet '{sheet_name}' do not match the expected columns. "
-                f"Expected: {expected_columns}, Found: {list(df.columns)}"
-            )
-
-        # Assign the DataFrame to the corresponding attribute
-        setattr(self, sheet_name, df)
-
-        print(
-            f"Data from sheet '{sheet_name}' successfully loaded into attribute '{sheet_name}'."
-        )
-
-    def read_excel_dict(self, excel_file, sheet_name):
-        """
-        Reads a specific sheet from an Excel file into a dictionary attribute.
-        Ensures that the keys in the 'SETTING' column match the default keys defined in DEFAULT_COLUMNS_ATTRIBUTES_DICT.
-
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
-
-        Raises:
-            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_DICT or if the keys do not match.
-            FileNotFoundError: If the Excel file does not exist.
-        """
-        # Check if the sheet name is valid
-        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
-            raise ValueError(
-                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
-            )
-
-        # Read the Excel file
-        if not os.path.exists(excel_file):
-            raise FileNotFoundError(f"Excel file '{excel_file}' not found.")
-
-        # Read the specified sheet into a DataFrame
-        df = pd.read_excel(excel_file, sheet_name=sheet_name)
-
-        # Ensure the required columns are present
-        required_columns = ["SETTING", "VALUE"]
-        if not all(column in df.columns for column in required_columns):
-            raise ValueError(
-                f"Sheet '{sheet_name}' must contain the following columns: {required_columns}."
-            )
-
-        # Get the expected keys for the dictionary
-        expected_keys = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name].keys()
-
-        # Validate the keys in the 'SETTING' column
-        invalid_keys = [key for key in df["SETTING"] if key not in expected_keys]
-        if invalid_keys:
-            raise ValueError(
-                f"Invalid keys found in 'SETTING' column of sheet '{sheet_name}': {invalid_keys}. "
-                f"Expected keys: {list(expected_keys)}."
-            )
-
-        # Populate the dictionary
-        target_dict = getattr(self, sheet_name)
-        for _, row in df.iterrows():
-            setting = row["SETTING"]
-            value = row["VALUE"]
-
-            # Convert the value to the appropriate type based on the default dictionary
-            if isinstance(target_dict[setting], int):
-                value = int(value)
-            elif isinstance(target_dict[setting], float):
-                value = float(value)
-            elif isinstance(target_dict[setting], str):
-                value = str(value)
-            else:
-                raise ValueError(f"Unsupported value type for key '{setting}'.")
-
-            # Assign the value to the dictionary
-            target_dict[setting] = value
-
-        print(
-            f"Data from sheet '{sheet_name}' successfully loaded into dictionary '{sheet_name}'."
-        )
-
     def get_dataframe_from_field_data(self):
         """
         Extracts a pandas DataFrame from the field data of self.mesh.
@@ -397,35 +300,220 @@ class APEC_M:
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
 
-    # def read_solver_settings_from_json(self, json_file_path):
-    #     """
-    #     Reads solver settings from a JSON file and updates the current settings.
+    def validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
+        """
+        Validates that the first column of a DataFrame has unique values,
+        all values have a correspondence in the specified VTK data array,
+        and there are no undefined values in the VTK data array.
 
-    #     Args:
-    #         json_file_path (str): Path to the JSON file containing the solver settings.
+        Parameters:
+            vtk_data (vtk.vtkDataSetAttributes): The VTK cell or point data to validate against.
+            df (pd.DataFrame): The DataFrame to validate.
+            array_name (str): The name of the VTK data array to check.
 
-    #     Raises:
-    #         FileNotFoundError: If the JSON file does not exist.
-    #     """
+        Raises:
+            ValueError: If the DataFrame is empty, the first column is not unique,
+                        the VTK data array is missing, or the checks fail.
+        """
+        # Check if the DataFrame is empty
+        if df.empty:
+            raise ValueError("The DataFrame is empty.")
 
-    #     if not os.path.exists(json_file_path):
-    #         raise FileNotFoundError(f"JSON file '{json_file_path}' not found.")
+        # Validate that the first column has unique values
+        first_column = df.iloc[:, 0]
+        if not first_column.is_unique:
+            raise ValueError(
+                "The first column of the DataFrame must have unique values."
+            )
 
-    #     with open(json_file_path, "r") as json_file:
-    #         self.solver_settings = json.load(json_file)
-    #     print(f"Solver settings loaded from '{json_file_path}'.")
+        # Retrieve the VTK data array
+        vtk_array = vtk_data.GetArray(array_name)
+        if vtk_array is None:
+            raise ValueError(f"The '{array_name}' array is missing in the VTK data.")
 
-    # def write_solver_settings_to_json(self, json_file_path):
-    #     """
-    #     Writes the solver settings to a JSON file.
+        # Convert the VTK array to a NumPy array
+        vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
 
-    #     Args:
-    #         json_file_path (str): Path to the JSON file where the solver settings will be saved.
-    #     """
+        # Check if all values in the first column have a correspondence in the VTK array
+        if not set(first_column).issubset(set(vtk_array_np)):
+            raise ValueError(
+                f"Some values in the first column of the DataFrame do not have a correspondence in the '{array_name}' array."
+            )
 
-    #     with open(json_file_path, "w") as json_file:
-    #         json.dump(self.solver_settings, json_file, indent=4)
-    #     print(f"Solver settings written to '{json_file_path}'.")
+        # Check for undefined values in the VTK array
+        undefined_values = set(vtk_array_np) - set(first_column)
+        if undefined_values:
+            raise ValueError(
+                f"The VTK data contains undefined values: {undefined_values}."
+            )
+
+        print(f"Validation passed for '{array_name}' array and DataFrame.")
+
+    def save_mesh(self):
+        """
+        Saves the unstructured grid in self.mesh to a .vtu file named after self.jobname.
+        Before writing, attaches the element_types DataFrame as field data to the grid.
+        Validates that the first column of element_types has unique values, all values have a correspondence
+        in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
+
+        Raises:
+            ValueError: If self.jobname is not set, if the folder path is not set,
+                        or if the validation fails.
+        """
+        if not self.jobname:
+            raise ValueError(
+                "Job name is not set. Please set self.jobname before saving the mesh."
+            )
+
+        if not self.folderpath:
+            raise ValueError(
+                "Folder path is not set. Please set self.folderpath before saving the mesh."
+            )
+
+        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
+        cell_data = self.mesh.GetCellData()
+        self.validate_dataframe_with_vtk_data(
+            cell_data, self.element_types, "ansys_elem_num"
+        )
+
+        # Convert the element_types DataFrame to a vtkTable
+        vtk_table = self.dataframe_to_vtk_table(self.element_types)
+
+        # Attach the vtkTable as field data to the mesh
+        self.add_table_to_mesh(vtk_table)
+
+        # Define the output file name
+        output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
+
+        # Write the unstructured grid to the .vtu file
+        writer = vtk.vtkXMLUnstructuredGridWriter()
+        writer.SetFileName(output_file)
+        writer.SetInputData(self.mesh)
+        writer.Write()
+
+        print(f"Mesh saved to '{output_file}'.")
+
+    def read_excel_df(self, excel_file, sheet_name):
+        """
+        Reads a specific sheet from an Excel file into a pandas DataFrame and assigns it to the corresponding attribute.
+        Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES.
+
+        Parameters:
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to read.
+
+        Raises:
+            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES or if the columns do not match.
+            FileNotFoundError: If the Excel file does not exist.
+        """
+        # Check if the sheet name is valid
+        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
+            raise ValueError(
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
+            )
+
+        # Read the Excel file
+        if not os.path.exists(excel_file):
+            raise FileNotFoundError(f"Excel file '{excel_file}' not found.")
+
+        # Check if the sheet exists in the Excel file
+        try:
+            # Read the specified sheet into a DataFrame
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
+        except ValueError:
+            # Raise a warning if the sheet does not exist
+            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            return
+
+        # Get the expected columns for the sheet
+        expected_columns = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name]
+
+        # Check if the columns in the DataFrame match the expected columns
+        if not all(column in expected_columns for column in df.columns):
+            raise ValueError(
+                f"Columns in sheet '{sheet_name}' do not match the expected columns. "
+                f"Expected: {expected_columns}, Found: {list(df.columns)}"
+            )
+
+        # Assign the DataFrame to the corresponding attribute
+        setattr(self, sheet_name, df)
+
+        print(
+            f"Data from sheet '{sheet_name}' successfully loaded into attribute '{sheet_name}'."
+        )
+
+    def read_excel_dict(self, excel_file, sheet_name):
+        """
+        Reads a specific sheet from an Excel file into a dictionary attribute.
+        Ensures that the keys in the 'SETTING' column match the default keys defined in DEFAULT_COLUMNS_ATTRIBUTES_DICT.
+
+        Parameters:
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to read.
+
+        Raises:
+            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_DICT or if the keys do not match.
+            FileNotFoundError: If the Excel file does not exist.
+        """
+        # Check if the sheet name is valid
+        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
+            raise ValueError(
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
+            )
+
+        # Read the Excel file
+        if not os.path.exists(excel_file):
+            raise FileNotFoundError(f"Excel file '{excel_file}' not found.")
+
+        # Check if the sheet exists in the Excel file
+        try:
+            # Read the specified sheet into a DataFrame
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
+        except ValueError:
+            # Raise a warning if the sheet does not exist
+            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            return
+
+        # Ensure the required columns are present
+        required_columns = ["SETTING", "VALUE"]
+        if not all(column in df.columns for column in required_columns):
+            raise ValueError(
+                f"Sheet '{sheet_name}' must contain the following columns: {required_columns}."
+            )
+
+        # Get the expected keys for the dictionary
+        expected_keys = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name].keys()
+
+        # Validate the keys in the 'SETTING' column
+        invalid_keys = [key for key in df["SETTING"] if key not in expected_keys]
+        if invalid_keys:
+            raise ValueError(
+                f"Invalid keys found in 'SETTING' column of sheet '{sheet_name}': {invalid_keys}. "
+                f"Expected keys: {list(expected_keys)}."
+            )
+
+        # Populate the dictionary
+        target_dict = getattr(self, sheet_name)
+        for _, row in df.iterrows():
+            setting = row["SETTING"]
+            value = row["VALUE"]
+
+            # Convert the value to the appropriate type based on the default dictionary
+            if isinstance(target_dict[setting], int):
+                value = int(value)
+            elif isinstance(target_dict[setting], float):
+                value = float(value)
+            elif isinstance(target_dict[setting], str):
+                value = str(value)
+            else:
+                raise ValueError(f"Unsupported value type for key '{setting}'.")
+
+            # Assign the value to the dictionary
+            target_dict[setting] = value
+
+        print(
+            f"Data from sheet '{sheet_name}' successfully loaded into dictionary '{sheet_name}'."
+        )
 
     def write_settings_to_binary(self, settings, binary_file):
         """
@@ -483,6 +571,15 @@ class APEC_M:
         Raises:
             ValueError: If the key is invalid or if a column in the DataFrame does not have a predefined type.
         """
+        # Validate the DataFrame if it is self.materials or self.real_constants
+        if df is self.materials:
+            self.validate_dataframe_with_vtk_data(
+                self.mesh.GetCellData(), df, "ansys_material_num"
+            )
+        elif df is self.real_constants:
+            self.validate_dataframe_with_vtk_data(
+                self.mesh.GetCellData(), df, "ansys_real_constant"
+            )
         # Retrieve the column types dictionary
         if key not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
             raise ValueError(
@@ -857,6 +954,39 @@ class APEC_M:
             # Convert the NumPy array back to a VTK array
             vtk_array.Modified()
 
+    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type):
+        """
+        Reads a sheet from an Excel file and updates the VTK grid using the data.
+
+        Parameters:
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to read.
+            data_type (str): The type of VTK data to update ('cell' or 'point').
+
+        Raises:
+            ValueError: If the data_type is invalid or the sheet does not exist.
+        """
+        # Check if the sheet exists in the Excel file
+        try:
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
+        except ValueError:
+            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            return
+
+        # Determine the VTK data type to update
+        if data_type == "cell":
+            vtk_data = self.mesh.GetCellData()
+        elif data_type == "point":
+            vtk_data = self.mesh.GetPointData()
+        else:
+            raise ValueError(
+                f"Invalid data_type '{data_type}'. Must be 'cell' or 'point'."
+            )
+
+        # Update the VTK grid with the DataFrame
+        self.update_vtk_grid(vtk_data, df)
+        print(f"VTK grid updated with data from sheet '{sheet_name}'.")
+
     def read_bfelist(self, file_path):
         """
         Combines parsing element load data, mapping ANSYS element numbers to VTK IDs,
@@ -970,51 +1100,38 @@ class APEC_M:
         # Return the list of variable labels
         return df["label"].unique().tolist()
 
-    def write_load_step(self, output_file):
+    def read_excel_sheet(self, excel_file, sheet_name):
         """
-        Writes the current load step data to a single binary file.
-
-        This includes:
-            - Time parameters.
-            - Solver settings.
-            - Materials DataFrame.
-            - Loads.
-            - Boundary conditions.
+        Processes an Excel sheet by determining the appropriate method to call
+        (read_excel_df, read_excel_dict, or update_vtk_grid_from_excel) based on a global dictionary.
 
         Parameters:
-            output_file (str): The path to the output binary file.
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to process.
+
+        Raises:
+            ValueError: If the sheet name is not recognized.
         """
-        # Open the file in write mode to overwrite if it already exists
-        with open(output_file, "wb") as binary_file:
-            # Write time parameters
-            self.write_settings_to_binary(self.time_parameters, binary_file)
-            print("Time parameters written.")
 
-            # Write solver settings
-            self.write_settings_to_binary(self.solver_settings, binary_file)
-            print("Solver settings written.")
-
-            # Write materials DataFrame
-            self.write_dataframe_to_binary(self.materials, binary_file, "materials")
-            print("Materials written.")
-
-            # Write real constants DataFrame
-            self.write_dataframe_to_binary(
-                self.real_constants, binary_file, "real_constants"
+        # Check if the sheet name is valid
+        if sheet_name not in SHEET_PROCESSING_MAP:
+            raise ValueError(
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(SHEET_PROCESSING_MAP.keys())}."
             )
-            print("Real constants written.")
 
-            # Write loads to binary
-            self.write_numpy_array_to_binary(
-                binary_file, self.get_loads_numpy_for_binary()
-            )
-            print("Loads written.")
+        # Get the processing method or method with additional arguments
+        processing_info = SHEET_PROCESSING_MAP[sheet_name]
 
-            # Write boundary conditions to binary
-            self.write_numpy_array_to_binary(
-                binary_file, self.get_bcs_numpy_for_binary()
-            )
-            print("Boundary conditions written.")
+        # Call the appropriate method
+        if isinstance(processing_info, str):
+            # Call read_excel_df or read_excel_dict
+            getattr(self, processing_info)(excel_file, sheet_name)
+        elif isinstance(processing_info, tuple):
+            # Call update_vtk_grid_from_excel with additional arguments
+            method_name, data_type = processing_info
+            getattr(self, method_name)(excel_file, sheet_name, data_type)
+
+        print(f"Read sheet '{sheet_name}' from '{excel_file}'.")
 
     def read_excel(
         self,
@@ -1030,47 +1147,87 @@ class APEC_M:
         ],
     ):
         """
-        Initializes the ApecM object by reading data from various files.
+        Reads data from an Excel file and processes it based on the provided labels.
 
+        Parameters:
+            excel_file_path (str): The path to the Excel file.
+            data_to_read (list): A list of data types to read and process.
         """
-
         # Check if the Excel file exists
         if not os.path.exists(excel_file_path):
             raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
 
-        if "element_types" in data_to_read:
-            self.read_excel_df(excel_file_path, "element_types")
-            print(f"Element types loaded from '{excel_file_path}'.")
+        # Loop through the data_to_read labels and process each one
+        for label in data_to_read:
+            try:
+                self.read_excel_sheet(excel_file_path, label)
+            except ValueError as e:
+                print(f"Warning: {e}")
 
-        if "materials" in data_to_read:
-            self.read_excel_df(excel_file_path, "materials")
-            print(f"Materials loaded from '{excel_file_path}'.")
+    def write_load_step(self, output_file, labels_to_write=None):
+        """
+        Writes the current load step data to a single binary file based on the provided labels.
 
-        if "real_constants" in data_to_read:
-            self.read_excel_df(excel_file_path, "real_constants")
-            print(f"Real constants loaded from '{excel_file_path}'.")
+        Parameters:
+            output_file (str): The path to the output binary file.
+            labels_to_write (list): A list of labels specifying what to write. Defaults to all supported labels.
+        """
 
-        if "solver_settings" in data_to_read:
-            self.read_excel_dict(excel_file_path, "solver_settings")
-            print(f"Solver settings loaded from '{excel_file_path}'.")
+        # Default labels to write if none are provided
+        if labels_to_write is None:
+            labels_to_write = list(WRITING_FUNCTIONS_MAP.keys())
 
-        if "time_parameters" in data_to_read:
-            self.read_excel_dict(excel_file_path, "time_parameters")
-            print(f"Time parameters loaded from '{excel_file_path}'.")
+        # Open the file in write mode to overwrite if it already exists
+        with open(output_file, "wb") as binary_file:
+            for label in labels_to_write:
+                try:
+                    # Call the appropriate function based on the label
+                    self._write_label_to_binary(binary_file, label)
+                    print(f"{label.replace('_', ' ').capitalize()} written.")
+                except ValueError as e:
+                    print(f"Warning: {e}")
 
-        if "loads" in data_to_read:
-            self.update_vtk_grid(
-                self.mesh.GetCellData(),
-                pd.read_excel(excel_file_path, sheet_name="loads"),
-            )
-            print(f"Loads loaded from '{excel_file_path}'.")
+        print(f"Load step written to '{output_file}'.")
 
-        if "boundary_conditions" in data_to_read:
-            self.update_vtk_grid(
-                self.mesh.GetPointData(),
-                pd.read_excel(excel_file_path, sheet_name="boundary_conditions"),
-            )
-            print(f"Boundary conditions loaded from '{excel_file_path}'.")
+    def _write_label_to_binary(self, binary_file, label):
+        """
+        Writes a specific label to the binary file using the appropriate function.
+
+        Parameters:
+            binary_file (file object): An open binary file stream.
+            label (str): The label to write (e.g., 'time_parameters', 'materials').
+
+        Raises:
+            ValueError: If the label is not recognized or the corresponding data is missing.
+        """
+        if label not in WRITING_FUNCTIONS_MAP:
+            raise ValueError(f"Unrecognized label '{label}'.")
+
+        # Get the function name from the map
+        function_name = WRITING_FUNCTIONS_MAP[label]
+
+        # Call the appropriate function dynamically
+        if label in ["time_parameters", "solver_settings"]:
+            # Write settings dictionaries
+            data = getattr(self, label, None)
+            if data is None:
+                raise ValueError(f"Data for '{label}' is missing.")
+            getattr(self, function_name)(data, binary_file)
+        elif label in ["materials", "real_constants"]:
+            # Write DataFrames
+            data = getattr(self, label, None)
+            if data is None or data.empty:
+                raise ValueError(f"DataFrame for '{label}' is empty or missing.")
+            getattr(self, function_name)(data, binary_file, label)
+        elif label in ["loads", "boundary_conditions"]:
+            # Write NumPy arrays
+            if label == "loads":
+                data = self.get_loads_numpy_for_binary()
+            elif label == "boundary_conditions":
+                data = self.get_bcs_numpy_for_binary()
+            if data is None or len(data) == 0:
+                raise ValueError(f"NumPy array for '{label}' is empty or missing.")
+            getattr(self, function_name)(binary_file, data)
 
     def generate_transient_analysis(
         self,
@@ -1080,15 +1237,27 @@ class APEC_M:
         if not os.path.exists(excel_file_path):
             raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
 
-        self.read_excel_df(excel_file_path, "transient_analysis")
+        self.read_excel_sheet(excel_file_path, "transient_analysis")
         print(f"Transient analysis loaded from '{excel_file_path}'.")
 
         for idx, row in self.transient_analysis.iterrows():
+            # Step 1: Update self.time_parameters with the values from the current row
+            for column in TRANSIENT_ANALYSIS_COLUMNS:
+                if column in row:
+                    self.time_parameters[column] = row[column]
+
             # Check if the file exists before reading
             self.read_excel(
-                row["input_file"],
-                ["materials", "real_constants", "loads", "boundary_conditions"],
+                row["load_step_input_file"],
+                [
+                    "materials",
+                    "real_constants",
+                    "solver_settings",
+                    "loads",
+                    "boundary_conditions",
+                ],
             )
+
             self.write_load_step(
                 os.path.join(self.load_steps_folder, f"load_step_{idx}.bin")
             )

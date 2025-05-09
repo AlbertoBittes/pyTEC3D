@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+PlasmaArc.egg-info/PKG-INFO
+PlasmaArc.egg-info/SOURCES.txt
+PlasmaArc.egg-info/dependency_links.txt
+PlasmaArc.egg-info/requires.txt
+PlasmaArc.egg-info/top_level.txt

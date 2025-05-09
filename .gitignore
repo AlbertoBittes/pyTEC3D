@@ -61,3 +61,5 @@ bin/apec_m
 simulations
 utils/__pycache__
 debug
+
+api/local_packages/*
