@@ -551,7 +551,7 @@ class APEC_M:
             f"Data from sheet '{sheet_name}' successfully loaded into dictionary '{sheet_name}'."
         )
 
-    def write_excel_loads(self, output_excel_file, data_type="loads"):
+    def write_excel_loads_bcs(self, output_excel_file, data_type="loads"):
         """
         Writes the loads or boundary conditions to an Excel file.
 
@@ -588,9 +588,15 @@ class APEC_M:
         # Reorder columns to make "label" the second column and remove "load_bc_number"
         df = df[["vtk_id", "label", "component", "value"]]
 
-        # Save the DataFrame to an Excel file
-        with pd.ExcelWriter(output_excel_file, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name=data_type, index=False)
+        # Check if the Excel file already exists
+        if os.path.exists(output_excel_file):
+            # Open the existing Excel file and add a new sheet
+            with pd.ExcelWriter(output_excel_file, engine="openpyxl", mode="a") as writer:
+                df.to_excel(writer, sheet_name=data_type, index=False)
+        else:
+            # Create a new Excel file and write the DataFrame to it
+            with pd.ExcelWriter(output_excel_file, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name=data_type, index=False)
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
     def write_settings_to_binary(self, settings, binary_file):
@@ -1106,7 +1112,7 @@ class APEC_M:
         self.read_bfelist(bfelist_file)
 
         # Write the loads to the Excel file
-        self.write_excel_loads(output_excel_file, data_type="loads")
+        self.write_excel_loads_bcs(output_excel_file, data_type="loads")
 
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
@@ -1214,7 +1220,7 @@ class APEC_M:
         self.read_dlist(dlist_file)
 
         # Write the node data to the Excel file
-        self.write_excel_loads(output_excel_file, data_type="boundary_conditions")
+        self.write_excel_loads_bcs(output_excel_file, data_type="boundary_conditions")
 
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
