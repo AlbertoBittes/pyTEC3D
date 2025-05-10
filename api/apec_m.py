@@ -1410,9 +1410,9 @@ class APEC_M:
             )
 
             self.write_load_step(
-                os.path.join(self.load_steps_folder, f"load_step_{idx}.bin")
+                os.path.join(self.load_steps_folder, f"load_step_{idx + 1}.bin")
             )
-            print(f"Load step {idx} written to binary file.")
+            print(f"Load step {idx + 1} written to binary file.")
 
 
 # Only execute this block if the script is run directly
