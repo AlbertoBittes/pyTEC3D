@@ -592,7 +592,9 @@ class APEC_M:
         # Check if the Excel file already exists
         if os.path.exists(output_excel_file):
             # Open the existing Excel file and add a new sheet
-            with pd.ExcelWriter(output_excel_file, engine="openpyxl", mode="a") as writer:
+            with pd.ExcelWriter(
+                output_excel_file, engine="openpyxl", mode="a"
+            ) as writer:
                 df.to_excel(writer, sheet_name=data_type, index=False)
         else:
             # Create a new Excel file and write the DataFrame to it
@@ -1219,8 +1221,7 @@ class APEC_M:
         # Step 4: Update the VTK grid with the modified DataFrame
         self.update_vtk_grid(self.mesh.GetPointData(), df)
 
-        # Return the list of variable labels
-        return df["label"].unique().tolist()
+        print(f"Grid updated with node data from '{file_path}'.")
 
     def convert_dlist(self, dlist_file, output_excel_file):
         """
