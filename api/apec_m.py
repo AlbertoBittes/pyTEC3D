@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     import openpyxl
 
-    print("openpyxl imported successfully.")
+    # print("openpyxl imported successfully.")
 except ImportError:
     print(
         "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
@@ -286,6 +286,37 @@ class APEC_M:
         if not os.path.exists(self.load_steps_folder):
             os.makedirs(self.load_steps_folder)
 
+        # Check if the arrays already exist in the mesh
+        cell_data = self.mesh.GetCellData()
+        point_data = self.mesh.GetPointData()
+
+        # Add a cell data array "Js" with 3 components, filled with np.nan, if it doesn't exist
+        if cell_data.GetArray("Js") is None:
+            num_cells = self.mesh.GetNumberOfCells()
+            Js = np.full((num_cells, 3), np.nan)
+            cell_data.AddArray(
+                vtknp.numpy_to_vtk(Js, deep=True, array_type=vtk.VTK_DOUBLE)
+            )
+            cell_data.GetArray("Js").SetName("Js")
+
+        # Add a point data array "A" with 3 components, filled with np.nan, if it doesn't exist
+        if point_data.GetArray("A") is None:
+            num_points = self.mesh.GetNumberOfPoints()
+            A = np.full((num_points, 3), np.nan)
+            point_data.AddArray(
+                vtknp.numpy_to_vtk(A, deep=True, array_type=vtk.VTK_DOUBLE)
+            )
+            point_data.GetArray("A").SetName("A")
+
+        # Add a point data array "VOLT" with 1 component, filled with np.nan, if it doesn't exist
+        if point_data.GetArray("VOLT") is None:
+            num_points = self.mesh.GetNumberOfPoints()
+            VOLT = np.full(num_points, np.nan)
+            point_data.AddArray(
+                vtknp.numpy_to_vtk(VOLT, deep=True, array_type=vtk.VTK_DOUBLE)
+            )
+            point_data.GetArray("VOLT").SetName("VOLT")
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -373,7 +404,7 @@ class APEC_M:
         # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
         cell_data = self.mesh.GetCellData()
         self.validate_dataframe_with_vtk_data(
-            cell_data, self.element_types, "ansys_elem_num"
+            cell_data, self.element_types, "ansys_etype"
         )
 
         # Convert the element_types DataFrame to a vtkTable
@@ -515,6 +546,47 @@ class APEC_M:
             f"Data from sheet '{sheet_name}' successfully loaded into dictionary '{sheet_name}'."
         )
 
+    def write_excel_loads(self, output_excel_file, data_type="loads"):
+        """
+        Writes the loads or boundary conditions to an Excel file.
+
+        Parameters:
+            output_excel_file (str): The path to the output Excel file.
+            data_type (str): The type of data to write ("loads" or "boundary_conditions").
+                            Defaults to "loads".
+
+        Raises:
+            ValueError: If the data_type is invalid.
+        """
+        # Determine the VTK data and mapping based on the data_type
+        if data_type == "loads":
+            vtk_data = self.mesh.GetCellData()
+            mapping = VARIABLES_LOADS_NUMBERS
+        elif data_type == "boundary_conditions":
+            vtk_data = self.mesh.GetPointData()
+            mapping = VARIABLES_GLOBAL_NUMBERS
+        else:
+            raise ValueError(
+                "Invalid data_type. Must be 'loads' or 'boundary_conditions'."
+            )
+
+        # Retrieve the final_data NumPy array
+        final_data = self.create_numpy_array_for_binary(vtk_data, mapping)
+
+        # Convert the NumPy array to a pandas DataFrame
+        df = pd.DataFrame(final_data)
+
+        # Replace the "load_bc_number" column with the corresponding "label"
+        reverse_mapping = {v: k for k, v in mapping.items()}  # Reverse the mapping
+        df["label"] = df["load_bc_number"].map(reverse_mapping)  # Map numbers to labels
+
+        # Reorder columns to make "label" the second column and remove "load_bc_number"
+        df = df[["vtk_id", "label", "component", "value"]]
+
+        # Save the DataFrame to an Excel file
+        df.to_excel(output_excel_file, index=False, engine="openpyxl")
+        print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
+
     def write_settings_to_binary(self, settings, binary_file):
         """
         Writes a settings dictionary to an open binary file stream.
@@ -574,7 +646,7 @@ class APEC_M:
         # Validate the DataFrame if it is self.materials or self.real_constants
         if df is self.materials:
             self.validate_dataframe_with_vtk_data(
-                self.mesh.GetCellData(), df, "ansys_material_num"
+                self.mesh.GetCellData(), df, "ansys_material_type"
             )
         elif df is self.real_constants:
             self.validate_dataframe_with_vtk_data(
@@ -671,7 +743,7 @@ class APEC_M:
         # Define the structured array data type
         dtype = np.dtype(
             [
-                ("cell_point_id", np.uint32),
+                ("vtk_id", np.uint32),
                 ("load_bc_number", np.uint32),
                 ("component", np.uint32),
                 ("value", np.float64),
@@ -715,7 +787,7 @@ class APEC_M:
 
                 # Create a structured array for the current component
                 structured_data = np.zeros(len(filtered_cell_points_ids), dtype=dtype)
-                structured_data["cell_point_id"] = filtered_cell_points_ids
+                structured_data["vtk_id"] = filtered_cell_points_ids
                 structured_data["load_bc_number"] = load_bc_number_array
                 structured_data["component"] = component_array
                 structured_data["value"] = filtered_values
@@ -1012,6 +1084,26 @@ class APEC_M:
 
         print(f"Grid updated with element loads from '{file_path}'.")
 
+    def convert_bfelist(self, bfelist_file, output_excel_file):
+        """
+        Reads a BFELIST file, updates the VTK grid with the loads, and writes the loads to an Excel file.
+
+        Parameters:
+            bfelist_file (str): Path to the BFELIST file.
+            output_excel_file (str): Path to the output Excel file.
+        """
+        # Check if the BFELIST file exists
+        if not os.path.exists(bfelist_file):
+            raise FileNotFoundError(f"BFELIST file '{bfelist_file}' not found.")
+
+        # Read the BFELIST file and update the VTK grid
+        self.read_bfelist(bfelist_file)
+
+        # Write the loads to the Excel file
+        self.write_excel_loads(output_excel_file, data_type="loads")
+
+        print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
+
     def read_parse_dlist(self, file_path):
         """
         Parses node data from the given file and stores it in a pandas DataFrame.
@@ -1099,6 +1191,26 @@ class APEC_M:
 
         # Return the list of variable labels
         return df["label"].unique().tolist()
+
+    def convert_dlist(self, dlist_file, output_excel_file):
+        """
+        Reads a DLIST file, updates the VTK grid with the node data, and writes the data to an Excel file.
+
+        Parameters:
+            dlist_file (str): Path to the DLIST file.
+            output_excel_file (str): Path to the output Excel file.
+        """
+        # Check if the DLIST file exists
+        if not os.path.exists(dlist_file):
+            raise FileNotFoundError(f"DLIST file '{dlist_file}' not found.")
+
+        # Read the DLIST file and update the VTK grid
+        self.read_dlist(dlist_file)
+
+        # Write the node data to the Excel file
+        self.write_excel_loads(output_excel_file, data_type="boundary_conditions")
+
+        print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
     def read_excel_sheet(self, excel_file, sheet_name):
         """

@@ -218,7 +218,7 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
 }
 
 ELEMENT_TYPES_COLUMNS = [
-    "ansys_elem_num",
+    "ansys_etype",
     "element_type",
     "KEYOPT1",
     "KEYOPT2",
@@ -227,7 +227,7 @@ ELEMENT_TYPES_COLUMNS = [
 
 # Assign types to element types columns
 ELEMENT_TYPES_COLUMNS_TYPES = {
-    "ansys_elem_num": int,
+    "ansys_etype": int,
     "element_type": str,
     "KEYOPT1": int,
     "KEYOPT2": int,

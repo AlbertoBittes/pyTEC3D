@@ -48,6 +48,17 @@ def process_mesh(file_path):
     boundary_id = np.full(num_points, 0)
     archive.grid.point_data["boundary_id"] = boundary_id
 
+    # Add a cell data array "Js" with 3 components, filled with np.nan
+    Js = np.full((num_cells, 3), np.nan)
+    archive.grid.cell_data["Js"] = Js
+
+    # Add a point data array "A" with 3 components, filled with np.nan
+    A = np.full((num_points, 3), np.nan)
+    archive.grid.point_data["A"] = A
+
+    # Add a point data array "VOLT" with 1 component, filled with np.nan
+    VOLT = np.full(num_points, np.nan)
+    archive.grid.point_data["VOLT"] = VOLT
     # Check for arrays with "PERIODIC_BOUNDARY_" or "INFINITE_BOUNDARY_" in their names
     # for array_name in archive.grid.point_data.keys():
     #     if array_name.startswith("PERIODIC_BOUNDARY_") or array_name.startswith(
