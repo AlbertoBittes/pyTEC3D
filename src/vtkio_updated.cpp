@@ -187,7 +187,8 @@ void VTKIO_Updated::read(const std::string &name)
     elems_of_dimension.resize(4, false);
 
     // Use a typedef, because these names are just crazy
-    typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
+    // typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
+    typedef vtkSmartPointer<vtkXMLUnstructuredGridReader> MyReader;
     MyReader reader = MyReader::New();
 
     // Pass the filename along to the reader
@@ -411,16 +412,16 @@ void VTKIO_Updated::populate_element_types_from_vtk()
     }
 
     // Retrieve the arrays from vtkFieldData
-    vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_element_type_num"));
+    vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
     vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetArray("element_type"));
-    vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt1"));
-    vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt2"));
-    vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("keyopt3"));
+    vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT1"));
+    vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT2"));
+    vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT3"));
 
     // Validate that all required arrays are present
     if (!ansys_element_type_num || !element_type || !keyopt1 || !keyopt2 || !keyopt3)
     {
-        libmesh_error_msg("Missing required vtkFieldData arrays: ansys_element_type_num, element_type, keyopt1, keyopt2, or keyopt3.");
+        libmesh_error_msg("Missing required vtkFieldData arrays: ansys_etype, element_type, KEYOPT1, KEYOPT2, or KEYOPT3.");
         return;
     }
 

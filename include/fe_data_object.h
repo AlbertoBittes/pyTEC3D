@@ -12,9 +12,10 @@
 #include "libmesh/libmesh.h"
 #include "../include/load_step.h" // Include the definition of LoadStep
 
+typedef std::vector<std::vector<std::variant<int, Real, std::string>>> DataframeMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> RealConstantsMap;
-typedef std::unordered_map<std::string, std::variant<int, double, std::string>> SettingsMap;
+typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
 
 template <typename T>
 class FEDataObject
@@ -71,51 +72,154 @@ protected:
     std::shared_ptr<T> data_map;                // Stores the data map (type-specific)
 };
 
-class CSVFEDataObject : public FEDataObject<MaterialsMap>
+class DataframeFEDataObject : public FEDataObject<DataframeMap>
 {
 public:
     // Constructor
-    CSVFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
-                    std::shared_ptr<MaterialsMap> map = nullptr)
+    DataframeFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
+                          std::shared_ptr<DataframeMap> map = nullptr)
         : FEDataObject(parent, map) {}
 
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
-        auto data_map = std::make_shared<MaterialsMap>();
-
         if (!file.is_open())
         {
-            libmesh_error_msg("Failed to open file: ");
+            libmesh_error_msg("Failed to open file stream.");
         }
 
+        // Clear the existing data_map
+        data_map->clear();
+
         // Read the number of rows and columns
-        uint32_t num_rows = read_value<uint32_t>(file);
-        uint32_t num_columns = read_value<uint32_t>(file);
+        uint32_t num_rows, num_columns;
+        file.read(reinterpret_cast<char *>(&num_rows), sizeof(num_rows));
+        file.read(reinterpret_cast<char *>(&num_columns), sizeof(num_columns));
+
+        // Read column metadata (name and type)
+        std::vector<std::string> column_names(num_columns);
+        std::vector<int> column_types(num_columns); // 0=int, 1=double, 2=string
+
+        for (uint32_t i = 0; i < num_columns; ++i)
+        {
+            // Read the column name
+            uint32_t name_length;
+            file.read(reinterpret_cast<char *>(&name_length), sizeof(name_length));
+
+            std::string column_name(name_length, '\0');
+            file.read(&column_name[0], name_length);
+
+            // Read the column type
+            int column_type;
+            file.read(reinterpret_cast<char *>(&column_type), sizeof(column_type));
+
+            column_names[i] = column_name;
+            column_types[i] = column_type;
+        }
 
         // Read the data row by row
         for (uint32_t row = 0; row < num_rows; ++row)
         {
-            // Read the first column as the ID
-            uint32_t id = read_value<uint32_t>(file);
+            std::vector<std::variant<int, Real, std::string>> row_data;
 
-            // Cast the ID to dof_id_type
-            dof_id_type dof_id = static_cast<dof_id_type>(id);
-
-            // Read the remaining columns as Real values
-            std::vector<Real> values(num_columns - 1);
-            for (uint32_t col = 0; col < num_columns - 1; ++col)
+            for (uint32_t col = 0; col < num_columns; ++col)
             {
-                Real value = read_value<Real>(file);
-                values[col] = value;
+                switch (column_types[col])
+                {
+                case 0: // int
+                {
+                    int value;
+                    file.read(reinterpret_cast<char *>(&value), sizeof(value));
+                    row_data.push_back(value);
+                    break;
+                }
+                case 1: // double
+                {
+                    Real value;
+                    file.read(reinterpret_cast<char *>(&value), sizeof(value));
+                    row_data.push_back(value);
+                    break;
+                }
+                case 2: // string
+                {
+                    uint32_t string_length;
+                    file.read(reinterpret_cast<char *>(&string_length), sizeof(string_length));
+
+                    std::string value(string_length, '\0');
+                    file.read(&value[0], string_length);
+                    row_data.push_back(value);
+                    break;
+                }
+                default:
+                    libmesh_error_msg("Unsupported column type encountered in binary file.");
+                }
             }
 
-            // Store the values in the map
-            (*data_map)[dof_id] = std::move(values);
+            // Add the row to the data_map
+            data_map->push_back(std::move(row_data));
+        }
+    }
+};
+
+class DataframeMatLikeFEDataObject : public DataframeFEDataObject
+{
+public:
+    // Constructor
+    DataframeMatLikeFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
+                                 std::shared_ptr<DataframeMap> map = nullptr,
+                                 std::shared_ptr<MaterialsMap> mat_map = nullptr)
+        : DataframeFEDataObject(parent, map),
+          mat_like_map(mat_map ? mat_map : std::make_shared<MaterialsMap>()) {}
+
+    // Method to populate mat_like_map from data_map
+    void populate_mat_like_map()
+    {
+        // Clear the existing mat_like_map
+        mat_like_map->clear();
+
+        // Ensure the data_map is not empty
+        if (data_map->empty())
+        {
+            libmesh_error_msg("Data map is empty. Cannot populate mat_like_map.");
         }
 
-        file.close();
+        // Iterate over each row in the data_map
+        for (const auto &row : *data_map)
+        {
+            if (row.empty())
+            {
+                libmesh_error_msg("Encountered an empty row in the data map.");
+            }
+
+            // Extract the first column as the ID (cast to dof_id_type)
+            dof_id_type id = std::get<int>(row[0]);
+
+            // Extract the remaining columns as Real values
+            std::vector<Real> values;
+            for (size_t col = 1; col < row.size(); ++col)
+            {
+                values.push_back(std::get<Real>(row[col]));
+            }
+
+            // Populate the mat_like_map
+            (*mat_like_map)[id] = std::move(values);
+        }
     }
+
+    // Getter for mat_like_map
+    std::shared_ptr<MaterialsMap> get_mat_like_map() const
+    {
+        return mat_like_map;
+    }
+
+    // Setter for mat_like_map
+    void set_mat_like_map(std::shared_ptr<MaterialsMap> mat_map)
+    {
+        mat_like_map = std::move(mat_map);
+    }
+
+protected:
+    std::shared_ptr<MaterialsMap> mat_like_map; // Shared pointer to the map
 };
 
 class SettingsFEDataObject : public FEDataObject<SettingsMap>

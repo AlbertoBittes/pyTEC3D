@@ -10,18 +10,22 @@ import re
 import subprocess
 
 # Add the current directory to the Python path to ensure imports work
-current_dir = os.path.dirname(os.path.abspath(__file__))
-local_packages_path = os.path.join(current_dir, "local_packages")
-sys.path.append(local_packages_path)
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 try:
     import openpyxl
-
-    # print("openpyxl imported successfully.")
 except ImportError:
-    print(
-        "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
-    )
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    local_packages_path = os.path.join(current_dir, "local_packages")
+    sys.path.append(local_packages_path)
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import openpyxl
+        # print("openpyxl imported successfully.")
+    except ImportError:
+        print(
+            "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
+        )
+
 try:
     # Relative import for package execution
     from .constants import *
@@ -585,7 +589,8 @@ class APEC_M:
         df = df[["vtk_id", "label", "component", "value"]]
 
         # Save the DataFrame to an Excel file
-        df.to_excel(output_excel_file, index=False, engine="openpyxl")
+        with pd.ExcelWriter(output_excel_file, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name=data_type, index=False)
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
     def write_settings_to_binary(self, settings, binary_file):
