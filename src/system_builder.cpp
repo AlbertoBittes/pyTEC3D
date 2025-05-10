@@ -61,8 +61,13 @@ void SystemBuilder::initialize()
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;
         auto elem_type = element_types_collector->getElementTypes().at(*subdomain_ids.begin());
         // Add the variable to the system
-        fe_fam = elem_type->getVariableFEFamily(variable);
-        order = elem_type->getVariableOrder(variable);
+        const auto &element_data = elem_type->get_element_type_data();
+        const auto &dof_variables = element_data.at("DOFVariables");
+        auto dof_variable_data = dof_variables.at(variable);
+
+        // Retrieve the 6th value from the tuple
+        fe_fam = std::get<5>(dof_variable_data);
+        order = std::get<6>(dof_variable_data);
 
         system.add_variable(variable, Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_fam), &subdomain_ids);
     }

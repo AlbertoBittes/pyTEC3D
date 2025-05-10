@@ -2,8 +2,13 @@
 #define ASSEMBLER_H
 
 #include "libmesh/equation_systems.h"
+#include "../include/element_builder.h" // Include the ElementBuilder header file
+#include "../include/load_step.h"
+#include "../include/element_types.h" // Include the ElementTypesMap header file
 
 using namespace libMesh;
+
+class LoadStep;
 
 class AssemblerLinear : public System::Assembly
 {
@@ -12,7 +17,6 @@ public:
         : eq_sys(eq_sys),
           elem_builder(),
           load_step(nullptr),
-          old_load_step(nullptr),
           element_types_collector(eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector"))
     {
     }
@@ -29,10 +33,6 @@ public:
     std::shared_ptr<LoadStep> get_load_step() const
     {
         return load_step;
-    }
-    std::shared_ptr<LoadStep> get_old_load_step() const
-    {
-        return old_load_step;
     }
     ElementBuilder get_elem_builder() const
     {
@@ -63,7 +63,6 @@ private:
     EquationSystems &eq_sys;
     ElementBuilder elem_builder;
     std::shared_ptr<LoadStep> load_step;
-    std::shared_ptr<LoadStep> old_load_step;
     std::shared_ptr<ElementTypesCollector> element_types_collector;
 };
 

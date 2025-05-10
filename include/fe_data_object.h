@@ -10,7 +10,10 @@
 #include <sstream>
 #include <stdexcept>
 #include "libmesh/libmesh.h"
-#include "../include/load_step.h" // Include the definition of LoadStep
+
+using namespace libMesh;
+
+class LoadStep;
 
 typedef std::vector<std::vector<std::variant<int, Real, std::string>>> DataframeMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
@@ -28,15 +31,15 @@ public:
     virtual void read_data(std::ifstream &file) = 0;
 
     // Getter for the parent LoadStep
-    virtual std::shared_ptr<LoadStep> get_parent_load_step() const
+    virtual LoadStep *get_parent_load_step() const
     {
         return parent_load_step;
     }
 
     // Setter for the parent LoadStep
-    virtual void set_parent_load_step(std::shared_ptr<LoadStep> parent)
+    virtual void set_parent_load_step(LoadStep *parent)
     {
-        parent_load_step = std::move(parent);
+        parent_load_step = parent;
     }
 
     // Getter for the data map
@@ -51,32 +54,31 @@ public:
         data_map = std::move(map);
     }
 
-    template <typename T>
-    inline T read_value(std::ifstream &file)
+    template <typename U>
+    inline U read_value(std::ifstream &file)
     {
-        T value;
-        file.read(reinterpret_cast<char *>(&value), sizeof(T));
+        U value;
+        file.read(reinterpret_cast<char *>(&value), sizeof(U));
         return value;
     }
 
 protected:
     // Protected constructor to prevent direct instantiation
-    FEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
-                 std::shared_ptr<BinaryReader> reader = nullptr,
+    FEDataObject(LoadStep *parent = nullptr,
                  std::shared_ptr<T> map = nullptr)
-        : parent_load_step(std::move(parent)),
+        : parent_load_step(parent),
           data_map(map ? std::move(map) : std::make_shared<T>()) {}
 
     // Attributes
-    std::shared_ptr<LoadStep> parent_load_step; // Stores the parent LoadStep
-    std::shared_ptr<T> data_map;                // Stores the data map (type-specific)
+    LoadStep *parent_load_step;  // Stores the parent LoadStep
+    std::shared_ptr<T> data_map; // Stores the data map (type-specific)
 };
 
 class DataframeFEDataObject : public FEDataObject<DataframeMap>
 {
 public:
     // Constructor
-    DataframeFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
+    DataframeFEDataObject(LoadStep *parent = nullptr,
                           std::shared_ptr<DataframeMap> map = nullptr)
         : FEDataObject(parent, map) {}
 
@@ -165,7 +167,7 @@ class DataframeMatLikeFEDataObject : public DataframeFEDataObject
 {
 public:
     // Constructor
-    DataframeMatLikeFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
+    DataframeMatLikeFEDataObject(LoadStep *parent = nullptr,
                                  std::shared_ptr<DataframeMap> map = nullptr,
                                  std::shared_ptr<MaterialsMap> mat_map = nullptr)
         : DataframeFEDataObject(parent, map),
@@ -226,7 +228,7 @@ class SettingsFEDataObject : public FEDataObject<SettingsMap>
 {
 public:
     // Constructor
-    SettingsFEDataObject(std::shared_ptr<LoadStep> parent = nullptr,
+    SettingsFEDataObject(LoadStep *parent = nullptr,
                          std::shared_ptr<SettingsMap> map = nullptr)
         : FEDataObject(parent, map) {}
 

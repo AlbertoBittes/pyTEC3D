@@ -137,8 +137,9 @@ void read_and_prepare_mesh(Mesh &mesh, std::string mesh_filepath)
     {
         vtkio.read(mesh_filepath);
     }
-    mesh.comm().broadcast(*(vtkio.get_element_types_map_csv()));
-    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*(vtkio.get_element_types_map_csv()));
+    auto element_types_map = vtkio.get_element_types_map_csv();
+    mesh.comm().broadcast<ElementTypesMapCSV>(*element_types_map);
+    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*element_types_map);
     MeshCommunication().broadcast(mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
@@ -277,14 +278,12 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     for (unsigned int n = 0; n < session.get_n_load_steps(); n++)
     {
         // Create a new load step
-        LoadStep load_step(n, equation_systems, session);
-        load_step.populate_time_step();
+        LoadStep load_step = LoadStep();
+        std::string load_step_filename = "load_step_" + std::to_string(n) + ".bin";
+        load_step.read_from_file(session.get_load_steps_folderpath() / load_step_filename);
 
         // Solve the system for the current load step
         solve(equation_systems, load_step);
-    }
-    {
-        solve(equation_systems, step);
     }
 
     // Clean up

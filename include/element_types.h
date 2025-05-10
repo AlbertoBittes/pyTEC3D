@@ -18,17 +18,17 @@ using namespace libMesh;
 
 class ElementType;
 
-struct ElementTypeKeyopts
-{
-    std::string element_type;
-    std::vector<int> keyopts;
-};
-
 struct ScalarShapeFunctions
 {
     const std::vector<Real> &JxW;
     const std::vector<std::vector<Real>> &phi;
     const std::vector<std::vector<RealGradient>> &dphi;
+
+    // Constructor
+    ScalarShapeFunctions(const std::vector<Real> &JxW,
+                         const std::vector<std::vector<Real>> &phi,
+                         const std::vector<std::vector<RealGradient>> &dphi)
+        : JxW(JxW), phi(phi), dphi(dphi) {}
 };
 
 struct VectorShapeFunctions
@@ -37,9 +37,16 @@ struct VectorShapeFunctions
     const std::vector<std::vector<RealGradient>> &phi_vec;
     const std::vector<std::vector<RealTensor>> &dphi_vec;
     const std::vector<std::vector<RealGradient>> &curl_phi_vec;
+
+    // Constructor
+    VectorShapeFunctions(const std::vector<Real> &JxW,
+                         const std::vector<std::vector<RealGradient>> &phi_vec,
+                         const std::vector<std::vector<RealTensor>> &dphi_vec,
+                         const std::vector<std::vector<RealGradient>> &curl_phi_vec)
+        : JxW(JxW), phi_vec(phi_vec), dphi_vec(dphi_vec), curl_phi_vec(curl_phi_vec) {}
 };
 
-typedef std::unordered_map<unsigned int, ElementTypeKeyopts> ElementTypesMapCSV;
+typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::shared_ptr<ElementType>> ElementTypesMap;
 typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 //                         label         is_active, physical components, is scalar, API label, API components, fe family, order
@@ -50,7 +57,7 @@ class ElementType
 {
 public:
     // Constructor
-    ElementType(const ElementTypeKeyopts &keyopts)
+    ElementType(const std::vector<unsigned int> &keyopts)
         : keyopts(keyopts)
     {
         element_type_data["DOFVariables"] = VariableData();
@@ -90,7 +97,7 @@ public:
     }
 
     // Getters
-    const ElementTypeKeyopts &get_properties() const { return keyopts; }
+    const std::vector<unsigned int> &get_properties() const { return keyopts; }
     // Getter for ElementTypeData
     const ElementTypeData &get_element_type_data() const
     {
@@ -128,22 +135,20 @@ public:
         fe_vec->reinit(elem);
     }
     // Shape functions
-    inline std::shared_ptr<ScalarShapeFunctions> &get_scalar_shape_functions() const
+    inline std::shared_ptr<ScalarShapeFunctions> get_scalar_shape_functions() const
     {
-        std::shared_ptr<ScalarShapeFunctions> shape_functions = std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
-        return shape_functions;
+        return std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
     }
 
-    inline std::shared_ptr<VectorShapeFunctions> &get_vector_shape_functions() const
+    inline std::shared_ptr<VectorShapeFunctions> get_vector_shape_functions() const
     {
-        std::shared_ptr<VectorShapeFunctions> shape_functions = std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
-        return shape_functions;
+        return std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
     }
 
 protected:
     std::unique_ptr<FEBase> fe;           // Finite element object
     std::unique_ptr<FEVectorBase> fe_vec; // Finite element vector object
-    ElementTypeKeyopts keyopts;           // Element type keyopts
+    std::vector<unsigned int> keyopts;    // Element type keyopts
     ElementTypeData element_type_data;    // Element type data
     // Maps for matrix and vector sizes
     std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
@@ -155,7 +160,7 @@ class AVElementType : public ElementType
 {
 public:
     // Constructor
-    AVElementType(const ElementTypeKeyopts &keyopts)
+    AVElementType(const std::vector<unsigned int> &keyopts)
         : ElementType(keyopts) // Call the parent class constructor
     {
         // Additional initialization for AVElementType (if needed)
@@ -174,7 +179,7 @@ class AV3DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV3DElementType(const ElementTypeKeyopts &keyopts) : AVElementType(keyopts) // Call the parent class constructor
+    AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
         // Additional initialization for AVElementType (if needed)
         element_type_data["NodalDerivedQuantitiesVariables"]["B_z"] =
@@ -205,7 +210,7 @@ class AV2DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV2DElementType(const ElementTypeKeyopts &keyopts) : AVElementType(keyopts) // Call the parent class constructor
+    AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
         element_type_data["DOFVariables"]["VOLT"] =
             std::make_tuple(false, 1, true, "VOLT", 0, "LAGRANGE", "FIRST");
@@ -226,7 +231,7 @@ public:
 class SOLID97Type : public AV3DElementType
 {
 public:
-    SOLID97Type(const ElementTypeKeyopts &keyopts);
+    SOLID97Type(const std::vector<unsigned int> &keyopts);
 
     void populate_matrix_idx_size_map() override;
     void populate_derived_matrix_idx_size_map() override;
@@ -236,7 +241,7 @@ public:
 class SOLID236Type : public AV3DElementType
 {
 public:
-    SOLID236Type(const ElementTypeKeyopts &keyopts);
+    SOLID236Type(const std::vector<unsigned int> &keyopts);
 
     void populate_matrix_idx_size_map() override;
     void populate_derived_matrix_idx_size_map() override;
@@ -246,17 +251,7 @@ public:
 class PLANE13Type : public AV2DElementType
 {
 public:
-    PLANE13Type(const ElementTypeKeyopts &keyopts);
-
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
-};
-
-class PLANE13Type : public AV2DElementType
-{
-public:
-    PLANE13Type(const ElementTypeKeyopts &keyopts);
+    PLANE13Type(const std::vector<unsigned int> &keyopts);
 
     void populate_matrix_idx_size_map() override;
     void populate_derived_matrix_idx_size_map() override;
@@ -266,7 +261,7 @@ public:
 class PLANE233Type : public AV2DElementType
 {
 public:
-    PLANE233Type(const ElementTypeKeyopts &keyopts);
+    PLANE233Type(const std::vector<unsigned int> &keyopts);
 
     void populate_matrix_idx_size_map() override;
     void populate_derived_matrix_idx_size_map() override;

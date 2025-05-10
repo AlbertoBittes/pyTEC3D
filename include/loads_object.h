@@ -6,7 +6,6 @@
 #include <map>
 #include <fstream>                    // Include this header for std::ifstream
 #include "../include/element_types.h" // Include the header file for ElementTypesMap
-#include "../include/load_step.h"     // Include the definition of LoadStep
 #include "../include/fe_data_object.h"
 #include "../include/globals.h"
 
@@ -20,14 +19,14 @@ class LoadsObject : public FEDataObject<LoadArraysMap>
 {
 public:
     // Default constructor
-    LoadsObject(std::shared_ptr<LoadStep> parent_load_step = nullptr,
+    LoadsObject(LoadStep *parent_load_step = nullptr,
                 std::shared_ptr<LoadArraysMap> map = nullptr)
         : FEDataObject(parent_load_step, map),
           oldLoadsVector(std::make_shared<LoadArraysMap>()) {}
 
     // Constructor with MeshBase and load labels
     LoadsObject(const MeshBase &mesh,
-                std::shared_ptr<LoadStep> parent_load_step = nullptr,
+                LoadStep *parent_load_step = nullptr,
                 std::shared_ptr<LoadArraysMap> map = nullptr)
         : FEDataObject(parent_load_step, map),
           oldLoadsVector(std::make_shared<LoadArraysMap>())

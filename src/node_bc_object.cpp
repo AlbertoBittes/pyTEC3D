@@ -4,9 +4,9 @@
 #include "libmesh/mesh.h"
 #include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
 #include "../include/node_bc_object.h"
+#include "../include/load_step.h" // Include the full definition of LoadStep
 
 using namespace libMesh;
-// BCs are probably broken now
 
 void NodeBCObject::constrain()
 {
@@ -151,7 +151,6 @@ void NodeBCObject::check_boundary_conditions(std::shared_ptr<LoadStep> prev_load
 void NodeBCObject::set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step)
 {
     this->check_boundary_conditions(prev_load_step);
-
     if (this->update_boundary_conditions)
     {
         system->reinit_constraints();

@@ -1,5 +1,6 @@
 #include "../include/time_step.h"
 #include <fstream>
+#include "../include/load_step.h" // Include the header for LoadStep
 
 // Method to update the old solution
 // This should go before a solve, but in solve
@@ -7,7 +8,21 @@
 // {
 //     *system.old_local_solution = *system.current_local_solution;
 // }
-
+void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
+{
+    if (load_step == nullptr)
+        time_beginning = 0.0;
+    else
+        time_beginning = prev_load_step->get_time_step()->get_time();
+}
+void TimeStep::set_dt(std::shared_ptr<LoadStep> prev_load_step)
+{
+    delta_t = prev_load_step->get_time_step()->get_time() - time_beginning;
+    if (time <= 0)
+    {
+        libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
+    }
+}
 void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
 {
     // Populate attributes from the data_map

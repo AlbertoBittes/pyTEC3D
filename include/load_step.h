@@ -12,6 +12,9 @@
 #include "libmesh/equation_systems.h" // Include the header for EquationSystems
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
+#include "libmesh/mesh.h"
+
+class LoadStepper;
 
 class LoadStep
 {

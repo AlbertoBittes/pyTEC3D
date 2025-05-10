@@ -32,16 +32,24 @@ void LoadStep::read_from_file(const std::string &filename)
     real_constants = std::make_shared<RealConstantsObject>(this);
     real_constants->read_data(file);
 
-    auto mesh = equation_systems->get_mesh();
+    const MeshBase &mesh = equation_systems->get_mesh();
     loads = std::make_shared<LoadsObject>(mesh, this);
     loads->read_data(file);
 
     node_bc = std::make_shared<NodeBCObject>(this);
     node_bc->read_data(file);
-    auto old_object = system.get_constraint_object();
-    // Explicitly call the destructor on old_object
-    old_object.~Constraint();
-    libMesh::out << "Old constraint object destructor called." << std::endl;
+    NodeBCObject *old_object = dynamic_cast<NodeBCObject *>(&system.get_constraint_object());
+
+    if (old_object)
+    {
+        // Explicitly call the destructor on the old NodeBCObject
+        old_object->~NodeBCObject();
+        libMesh::out << "Old NodeBCObject destructor called." << std::endl;
+    }
+    else
+    {
+        libMesh::out << "Warning: Constraint object is not a NodeBCObject." << std::endl;
+    }
     system.attach_constraint_object(*(node_bc));
 
     file.close();
