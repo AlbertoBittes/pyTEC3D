@@ -20,6 +20,7 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     try:
         import openpyxl
+
         # print("openpyxl imported successfully.")
     except ImportError:
         print(
@@ -773,12 +774,17 @@ class APEC_M:
 
             # Get the number of components and cells
             num_components = load_bc_array.GetNumberOfComponents()
-            num_cells = self.mesh.GetNumberOfCells()
+            num_cells = cell_point_data.GetArray(0).GetNumberOfTuples()
 
             # Iterate over components to filter data
             for component in range(num_components):
                 # Extract the values for the current component
-                component_values = load_bc_array_np[:, component]
+                if load_bc_array_np.ndim == 1:
+                    # For 1D arrays, use the array directly
+                    component_values = load_bc_array_np
+                else:
+                    # For 2D arrays, access the specific component
+                    component_values = load_bc_array_np[:, component]
 
                 # Create a mask to filter out NaN values
                 mask = ~np.isnan(component_values)
@@ -1025,15 +1031,27 @@ class APEC_M:
             # Convert the VTK array to a NumPy array
             vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
 
-            # Iterate over distinct component values
-            for component in load_bc_df["component"].unique():
-                # Filter rows for the current component
-                component_mask = load_bc_df["component"] == component
-                vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
-                values = load_bc_df.loc[component_mask, "value"].to_numpy()
+            # Check if the NumPy array is 1D
+            if vtk_array_np.ndim == 1:
+                # Iterate over distinct component values
+                for component in load_bc_df["component"].unique():
+                    # Filter rows for the current component
+                    component_mask = load_bc_df["component"] == component
+                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
+                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
 
-                # Assign values to the appropriate indices and component
-                vtk_array_np[vtk_ids, component] = values
+                    # Assign values directly to the 1D array
+                    vtk_array_np[vtk_ids] = values
+            else:
+                # Iterate over distinct component values
+                for component in load_bc_df["component"].unique():
+                    # Filter rows for the current component
+                    component_mask = load_bc_df["component"] == component
+                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
+                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
+
+                    # Assign values to the appropriate indices and component
+                    vtk_array_np[vtk_ids, component] = values
 
             # Convert the NumPy array back to a VTK array
             vtk_array.Modified()
