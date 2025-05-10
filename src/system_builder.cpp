@@ -62,7 +62,7 @@ void SystemBuilder::initialize()
         auto elem_type = element_types_collector->getElementTypes().at(*subdomain_ids.begin());
         // Add the variable to the system
         const auto &element_data = elem_type->get_element_type_data();
-        const auto &dof_variables = element_data.at("DOFVariables");
+        const auto &dof_variables = element_data.at(vars_set);
         auto dof_variable_data = dof_variables.at(variable);
 
         // Retrieve the 6th value from the tuple

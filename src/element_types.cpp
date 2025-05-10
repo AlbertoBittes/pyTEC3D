@@ -188,13 +188,12 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypes
 VariableToElementIdsMapType *ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
 {
     VariableToElementIdsMapType *variableToElementIds = new VariableToElementIdsMapType();
-    std::string sett = "DOFVariables";
     for (const auto &pair : elementTypes)
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
 
-        auto active_vars = elementType->getActiveVariables(sett);
+        auto active_vars = elementType->getActiveVariables(variables_set);
         for (const auto &var : active_vars)
         {
             (*variableToElementIds)[var].insert(elementId);
