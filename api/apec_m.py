@@ -420,6 +420,7 @@ class APEC_M:
         writer = vtk.vtkXMLUnstructuredGridWriter()
         writer.SetFileName(output_file)
         writer.SetInputData(self.mesh)
+        writer.SetDataModeToBinary()  # Set the writer to binary mode
         writer.Write()
 
         print(f"Mesh saved to '{output_file}'.")
