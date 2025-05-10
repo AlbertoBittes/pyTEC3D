@@ -1033,6 +1033,14 @@ class APEC_M:
             # Convert the VTK array to a NumPy array
             vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
 
+            # Reset the array to NaN
+            if vtk_array_np.ndim == 1:
+                # For 1D arrays, reset all values to NaN
+                vtk_array_np[:] = np.nan
+            else:
+                # For multi-dimensional arrays, reset all components to NaN
+                vtk_array_np[:] = np.full(vtk_array_np.shape, np.nan)
+
             # Check if the NumPy array is 1D
             if vtk_array_np.ndim == 1:
                 # Iterate over distinct component values
