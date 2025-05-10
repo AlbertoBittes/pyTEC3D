@@ -341,6 +341,8 @@ void VTKIO_Updated::read(const std::string &name)
 
     this->add_integers_vtk(mesh);
 
+    this->populate_element_types_from_vtk();
+
 #if LIBMESH_DIM < 3
     libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
                          "Cannot open dimension "
@@ -414,7 +416,7 @@ void VTKIO_Updated::populate_element_types_from_vtk()
 
     // Retrieve the arrays from vtkFieldData
     vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
-    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetArray("element_type"));
+    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
     vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT1"));
     vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT2"));
     vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT3"));

@@ -116,7 +116,9 @@ void init_equation_systems(EquationSystems &equation_systems)
 
     // This will go in /solu
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
-    equation_systems.init();
+    system.init();
+    der_system.init();
+    der_elem_system.init();
     equation_systems.print_info();
 
     system.zero_out_matrix_and_rhs = false;
@@ -128,7 +130,7 @@ void init_equation_systems(EquationSystems &equation_systems)
     system.current_local_solution->close();
 }
 
-void read_and_prepare_mesh(Mesh &mesh, std::string mesh_filepath)
+void read_and_prepare_mesh(Mesh &mesh, const std::string &mesh_filepath, EquationSystems &equation_systems)
 {
     libMesh::out << "Reading mesh..." << std::endl;
     // mesh.clear();
@@ -140,6 +142,7 @@ void read_and_prepare_mesh(Mesh &mesh, std::string mesh_filepath)
     auto element_types_map = vtkio.get_element_types_map_csv();
     mesh.comm().broadcast<ElementTypesMapCSV>(*element_types_map);
     std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*element_types_map);
+    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = element_types_collector;
     MeshCommunication().broadcast(mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh.prepare_for_use();
@@ -268,7 +271,7 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
 
     // Read and prepare the mesh
-    read_and_prepare_mesh(mesh, session.get_input_mesh_filepath());
+    read_and_prepare_mesh(mesh, session.get_input_mesh_filepath(), equation_systems);
 
     // Build and initialize equation systems
     init_equation_systems(equation_systems);
@@ -279,7 +282,7 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     {
         // Create a new load step
         LoadStep load_step = LoadStep();
-        std::string load_step_filename = "load_step_" + std::to_string(n) + ".bin";
+        std::string load_step_filename = "load_step_" + std::to_string(n + 1) + ".bin";
         load_step.read_from_file(session.get_load_steps_folderpath() / load_step_filename);
 
         // Solve the system for the current load step
