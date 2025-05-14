@@ -20,18 +20,16 @@ class LoadStep
 {
 public:
     // Default constructor: initializes everything to nullptr
-    LoadStep()
-        : time_step(nullptr),
+    LoadStep(LoadStepper *load_stepper = nullptr, EquationSystems *equation_systems = nullptr)
+        : load_stepper(load_stepper),
+          time_step(nullptr),
           solver_config(nullptr),
           materials(nullptr),
           real_constants(nullptr),
           loads(nullptr),
-          node_bc(nullptr) {}
-
-    // Constructor that calls a reading function
-    LoadStep(const std::string &filename)
+          node_bc(nullptr),
+          equation_systems(equation_systems)
     {
-        read_from_file(filename);
     }
 
     void read_from_file(const std::string &filename);
@@ -84,13 +82,14 @@ public:
     void set_old_load_step(std::shared_ptr<LoadStep> load_step) { old_load_step = load_step; }
 
     // Switch pointers and read a new LoadStep
-    void read_new_load_step(const std::string &filename)
+    void read_new_load_step(LoadStepper *load_stepper, EquationSystems *equation_systems, const std::string &filename)
     {
         // Move the current active load step to the old load step
         old_load_step = active_load_step;
 
         // Create a new LoadStep and assign it to the active load step
-        active_load_step = std::make_shared<LoadStep>(filename);
+        active_load_step = std::make_shared<LoadStep>(load_stepper, equation_systems);
+        active_load_step->read_from_file(filename);
 
         // Update the load step index
         load_step_index++;

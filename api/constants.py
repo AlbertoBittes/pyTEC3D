@@ -190,33 +190,6 @@ REAL_CONSTANTS_COLUMNS_TYPES = {
     "ZLOC": float,
 }
 
-TRANSIENT_ANALYSIS_COLUMNS = [
-    "time_step_number",
-    "time",
-    "number_of_substeps",
-    "transient_effects",
-    "ramped_loads",
-    "write_substep_results",
-    "loads_file",
-    "boundary_conditions_file",
-    "materials_file",
-    "real_constants_file",
-]
-
-# Assign types to transient analysis columns
-TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
-    "time_step_number": int,
-    "time": float,
-    "number_of_substeps": int,
-    "transient_effects": int,
-    "ramped_loads": int,
-    "write_substep_results": int,
-    "loads_file": str,
-    "boundary_conditions_file": str,
-    "materials_file": str,
-    "real_constants_file": str,
-}
-
 ELEMENT_TYPES_COLUMNS = [
     "ansys_etype",
     "element_type",

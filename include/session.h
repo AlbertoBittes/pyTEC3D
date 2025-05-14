@@ -12,8 +12,9 @@ class Session
 public:
     // Default constructor
     Session()
-        : batch_mode(false),
+        : batch_mode(true),
           input_mesh_filepath(""),
+          input_directory(""),
           output_folderpath("output"),
           temp_folderpath("temp"),
           load_steps_folderpath("load_steps"),
@@ -21,31 +22,45 @@ public:
 
     // Constructor with mesh filename
     explicit Session(const std::string &mesh_filename)
-        : batch_mode(false),
+        : batch_mode(true),
           input_mesh_filepath(mesh_filename),
-          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string()),
-          output_folderpath("output"),
-          temp_folderpath("temp"),
-          load_steps_folderpath("load_steps"),
-          emat_folderpath("emat_files")
+          input_directory(""),
+          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string())
     {
+        initialize_folder_paths();
     }
 
     // Constructor with mesh filename and batch mode
     Session(const std::string &mesh_filename, bool batch_mode)
         : batch_mode(batch_mode),
           input_mesh_filepath(mesh_filename),
-          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string()),
-          output_folderpath("output"),
-          temp_folderpath("temp"),
-          load_steps_folderpath("load_steps"),
-          emat_folderpath("emat_files")
+          input_directory(""),
+          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string())
     {
+        initialize_folder_paths();
+    }
+
+    // Method to initialize folder paths based on input_mesh_filepath
+    void initialize_folder_paths()
+    {
+        // Convert input_mesh_filepath to a filesystem path and extract the directory
+        std::filesystem::path input_path = std::filesystem::path(input_mesh_filepath);
+        input_directory = input_path.parent_path(); // Store the directory as an attribute
+
+        // Prepend the extracted directory to the folder paths
+        output_folderpath = input_directory / "output";
+        temp_folderpath = input_directory / "temp";
+        load_steps_folderpath = input_directory / "load_steps";
+        emat_folderpath = input_directory / "emat_files";
     }
 
     // Setters
     void set_batch_mode(bool mode) { batch_mode = mode; }
-    void set_input_mesh_filepath(const std::string &filepath) { input_mesh_filepath = filepath; }
+    void set_input_mesh_filepath(const std::string &filepath)
+    {
+        input_mesh_filepath = filepath;
+        initialize_folder_paths(); // Reinitialize folder paths when input filepath changes
+    }
     void set_output_folderpath(const std::filesystem::path &path) { output_folderpath = path; }
     void set_output_path(const std::filesystem::path &path) { output_path = path; }
     void set_mesh_filename_without_extension(const std::string &filename) { mesh_filename_without_extension = filename; }
@@ -59,6 +74,7 @@ public:
     // Getters
     bool get_batch_mode() const { return batch_mode; }
     const std::string &get_input_mesh_filepath() const { return input_mesh_filepath; }
+    const std::filesystem::path &get_input_directory() const { return input_directory; }
     const std::filesystem::path &get_output_folderpath() const { return output_folderpath; }
     const std::filesystem::path &get_output_path() const { return output_path; }
     const std::string &get_mesh_filename_without_extension() const { return mesh_filename_without_extension; }
@@ -68,6 +84,7 @@ public:
     const std::filesystem::path &get_load_steps_folderpath() const { return load_steps_folderpath; }
     const std::filesystem::path &get_emat_folderpath() const { return emat_folderpath; }
     unsigned int get_n_load_steps() const { return n_load_steps; }
+
     // Methods
     void set_output_filepath(unsigned int output_label);
     void create_temp_folder();
@@ -78,6 +95,7 @@ public:
 private:
     bool batch_mode;
     std::string input_mesh_filepath;
+    std::filesystem::path input_directory; // New attribute to store the extracted directory
     std::filesystem::path output_folderpath;
     std::filesystem::path output_path;
     std::string mesh_filename_without_extension;

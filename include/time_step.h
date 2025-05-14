@@ -63,7 +63,7 @@ public:
 
     void set_beginning_time(std::shared_ptr<LoadStep> prev_load_step);
 
-    void set_dt(std::shared_ptr<LoadStep> prev_load_step);
+    void set_dt();
 
 private:
     int step;

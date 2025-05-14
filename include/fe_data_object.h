@@ -251,7 +251,7 @@ public:
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
-        auto data_map = std::make_shared<SettingsMap>();
+        this->data_map = std::make_shared<SettingsMap>();
 
         if (!file.is_open())
         {

@@ -15,9 +15,9 @@ void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
     else
         time_beginning = prev_load_step->get_time_step()->get_time();
 }
-void TimeStep::set_dt(std::shared_ptr<LoadStep> prev_load_step)
+void TimeStep::set_dt()
 {
-    delta_t = prev_load_step->get_time_step()->get_time() - time_beginning;
+    delta_t = time - time_beginning;
     if (time <= 0)
     {
         libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
@@ -28,16 +28,16 @@ void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
     // Populate attributes from the data_map
     int n_substep;
 
-    step = this->get_setting<int>("time_step_num");
+    step = this->get_setting<int>("time_step_number");
     time = this->get_setting<Real>("time");
     n_substep = this->get_setting<int>("number_of_substeps");
-    transient_effect = this->get_setting<int>("transient_effect");
-    ramped_load = this->get_setting<int>("ramped_load");
+    transient_effect = this->get_setting<int>("transient_effects");
+    ramped_load = this->get_setting<int>("ramped_loads");
     write_results = this->get_setting<int>("write_substep_results");
 
     this->set_beginning_time(prev_load_step);
     // Populate substeps if they exist in the data_map
-    this->set_dt(prev_load_step);
+    this->set_dt();
 
     this->set_substeps(n_substep);
 }
