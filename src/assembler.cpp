@@ -2,7 +2,6 @@
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
 #include "../include/session.h" // Include the header file for Session
-#include "../include/time_step.h"
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -38,9 +37,6 @@
 #include "libmesh/enum_solver_package.h"
 #include "vtkDataArray.h"
 #include "../include/assembler.h"
-#include "../include/element_builder.h" // Include the header file for ElementBuilder
-#include "../include/element_types.h"   // Include the header file for ElementTypesCollector
-#include "../include/loads_object.h"
 #include <map> // Include for std::map
 #include <cmath>
 #include <stdexcept>
@@ -528,7 +524,11 @@ bool AssemblerLinear::check_compute_matrix()
     // bool compute_matrix = false;
 
     auto prev_load_step = load_step->get_load_stepper()->get_old_load_step();
-
+    auto active_time_substep = load_step->get_time_step()->get_active_substep();
+    auto old_time_substep = load_step->get_time_step()->get_previous_substep();
+    bool update_matrix;
+    auto solver = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver();
+    Real relative_epsilon = 1e-8;
     if (prev_load_step == nullptr)
     {
         return true;

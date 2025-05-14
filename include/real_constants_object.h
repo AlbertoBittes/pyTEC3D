@@ -10,16 +10,14 @@
 
 using namespace libMesh;
 
-// Define RealConstantsMap as a type alias
-typedef std::unordered_map<dof_id_type, std::vector<Real>> RealConstantsMap;
-
 class RealConstantsObject : public DataframeMatLikeFEDataObject
 {
 public:
     // Default constructor
-    explicit RealConstantsObject(std::shared_ptr<LoadStep> parent = nullptr,
-                                 std::shared_ptr<RealConstantsMap> map = nullptr)
-        : DataframeMatLikeFEDataObject(parent, map) {}
+    explicit RealConstantsObject(LoadStep *parent = nullptr,
+                                 std::shared_ptr<DataframeMap> map = nullptr,
+                                 std::shared_ptr<RealConstantsMap> real_constants_map = nullptr)
+        : DataframeMatLikeFEDataObject(parent, map, real_constants_map) {}
 
     // Check if a constant exists in the map
     bool has_constant(dof_id_type constant_id) const { return mat_like_map->find(constant_id) != mat_like_map->end(); }
@@ -30,7 +28,7 @@ public:
         auto it = mat_like_map->find(constant_id);
         if (it == mat_like_map->end())
         {
-            throw std::runtime_error("Constant not found: " + std::to_string(constant_id));
+            libmesh_error_msg("Constant not found: " + std::to_string(constant_id));
         }
         return it->second;
     }

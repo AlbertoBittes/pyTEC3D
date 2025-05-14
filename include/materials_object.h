@@ -14,16 +14,14 @@ using namespace libMesh;
 // Forward declaration of LoadStep
 class LoadStep;
 
-// Define MaterialsMap as a type alias
-typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
-
 class MaterialsObject : public DataframeMatLikeFEDataObject
 {
 public:
     // Default constructor
-    explicit MaterialsObject(std::shared_ptr<LoadStep> parent = nullptr,
-                             std::shared_ptr<MaterialsMap> map = nullptr)
-        : DataframeMatLikeFEDataObject(parent, map),
+    explicit MaterialsObject(LoadStep *parent = nullptr,
+                             std::shared_ptr<DataframeMap> map = nullptr,
+                             std::shared_ptr<MaterialsMap> mat_map = nullptr)
+        : DataframeMatLikeFEDataObject(parent, map, mat_map),
           mu_matrix(3, 0.0),
           rs_matrix(3, 0.0) {}
 

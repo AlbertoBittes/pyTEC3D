@@ -14,17 +14,19 @@ using namespace libMesh;
 typedef std::unordered_map<std::string, std::pair<unsigned int, Real>> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 
+class LoadStep;
+
 class NodeBCObject : public FEDataObject<BoundaryConditionsMap>, public System::Constraint
 {
 public:
     // Default constructor
-    NodeBCObject(std::shared_ptr<LoadStep> parent = nullptr)
+    NodeBCObject(LoadStep *parent = nullptr)
         : FEDataObject(parent),
           system(nullptr),
           update_boundary_conditions(true) {}
 
     // Constructor with System pointer
-    NodeBCObject(System *sys, std::shared_ptr<LoadStep> parent = nullptr)
+    NodeBCObject(System *sys, LoadStep *parent = nullptr)
         : FEDataObject(parent),
           system(sys),
           update_boundary_conditions(true) {}

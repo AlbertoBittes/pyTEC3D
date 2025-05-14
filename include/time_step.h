@@ -7,10 +7,11 @@
 #include <string>
 #include <vector>
 #include <libmesh/libmesh.h>
-#include "../include/load_step.h"
 #include "../include/fe_data_object.h"
 
 using namespace libMesh;
+
+class LoadStep;
 
 class Substep;
 
@@ -18,7 +19,7 @@ class TimeStep : public SettingsFEDataObject
 {
 public:
     // Constructor with binary file stream
-    TimeStep(std::shared_ptr<LoadStep> parent = nullptr,
+    TimeStep(LoadStep *parent = nullptr,
              std::shared_ptr<SettingsMap> map = nullptr)
         : SettingsFEDataObject(parent, map)
     {
@@ -60,21 +61,9 @@ public:
     Iterator begin();
     Iterator end();
 
-    void set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
-    {
-        if (load_step == nullptr)
-            time_beginning = 0.0;
-        else
-            time_beginning = prev_load_step->get_time_step()->get_time();
-    }
-    void set_dt(std::shared_ptr<LoadStep> prev_load_step)
-    {
-        delta_t = prev_load_step->get_time_step()->get_time() - time_beginning;
-        if (time <= 0)
-        {
-            libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
-        }
-    }
+    void set_beginning_time(std::shared_ptr<LoadStep> prev_load_step);
+
+    void set_dt(std::shared_ptr<LoadStep> prev_load_step);
 
 private:
     int step;

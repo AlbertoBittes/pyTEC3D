@@ -62,6 +62,7 @@
 #include "../include/vtkio_updated.h"
 // C++ includes
 #include <fstream>
+#include <regex>
 
 using namespace libMesh;
 // A convenient macro for comparing VTK versions.  Returns 1 if the
@@ -340,6 +341,8 @@ void VTKIO_Updated::read(const std::string &name)
 
     this->add_integers_vtk(mesh);
 
+    this->populate_element_types_from_vtk();
+
 #if LIBMESH_DIM < 3
     libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
                          "Cannot open dimension "
@@ -413,7 +416,7 @@ void VTKIO_Updated::populate_element_types_from_vtk()
 
     // Retrieve the arrays from vtkFieldData
     vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
-    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetArray("element_type"));
+    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
     vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT1"));
     vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT2"));
     vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT3"));
@@ -448,10 +451,25 @@ void VTKIO_Updated::populate_element_types_from_vtk()
         int k2 = keyopt2->GetValue(i);
         int k3 = keyopt3->GetValue(i);
 
+        // Extract the integer number from elem_type (e.g., "SOLID97" → 97)
+        unsigned int elem_type_number = 0;
+        std::smatch match;
+        std::regex number_regex(R"(\d+)");
+        if (std::regex_search(elem_type, match, number_regex))
+        {
+            elem_type_number = std::stoi(match.str());
+        }
+        else
+        {
+            libmesh_warning("Failed to extract element type number from: " << elem_type);
+        }
+
         // Create an ElementTypeKeyopts object
-        ElementTypeKeyopts keyopts;
-        keyopts.element_type = elem_type;
-        keyopts.keyopts = {k1, k2, k3};
+        std::vector<unsigned int> keyopts;
+        keyopts.push_back(elem_type_number); // Add the extracted element type number
+        keyopts.push_back(static_cast<unsigned int>(k1));
+        keyopts.push_back(static_cast<unsigned int>(k2));
+        keyopts.push_back(static_cast<unsigned int>(k3));
 
         // Insert into the map
         element_types_map_csv[ansys_type] = keyopts;

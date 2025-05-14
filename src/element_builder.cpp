@@ -333,17 +333,17 @@ void ElementBuilder::build_plane13_matrix()
 
 void ElementBuilder::build_element_matrix()
 {
-    auto etype = element_type->get_properties().element_type;
+    auto etype = element_type->get_properties()[0];
 
-    if (etype == "SOLID97")
+    if (etype == 97)
     {
         this->build_solid97_matrix();
     }
-    else if (etype == "SOLID236")
+    else if (etype == 236)
     {
         this->build_solid236_matrix();
     }
-    else if (etype == "PLANE13")
+    else if (etype == 13)
     {
         this->build_plane13_matrix();
     }
@@ -445,17 +445,17 @@ void ElementBuilder::build_plane13_rhs()
 
 void ElementBuilder::build_element_rhs()
 {
-    auto etype = element_type->get_properties().element_type;
+    auto etype = element_type->get_properties()[0];
 
-    if (etype == "SOLID97")
+    if (etype == 97)
     {
         this->build_solid97_rhs();
     }
-    else if (etype == "SOLID236")
+    else if (etype == 236)
     {
         this->build_solid236_rhs();
     }
-    else if (etype == "PLANE13")
+    else if (etype == 13)
     {
         this->build_plane13_rhs();
     }

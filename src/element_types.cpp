@@ -19,7 +19,7 @@ void ElementType::populate_all()
 
 // SOLID97
 
-SOLID97Type::SOLID97Type(const ElementTypeKeyopts &keyopts)
+SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(keyopts)
 {
     element_type_data["DOFVariables"]["A_x"] =
@@ -30,11 +30,11 @@ SOLID97Type::SOLID97Type(const ElementTypeKeyopts &keyopts)
         std::make_tuple(true, 3, false, "A", 2, "LAGRANGE", "FIRST");
     element_type_data["DOFVariables"]["CURR"] =
         std::make_tuple(false, 1, false, "CURR", 0, "LAGRANGE", "FIRST");
-    if (keyopts.keyopts[0] == 1 || keyopts.keyopts[0] == 4 || keyopts.keyopts[0] == 5 || keyopts.keyopts[0] == 6)
+    if (keyopts[1] == 1 || keyopts[1] == 4 || keyopts[1] == 5 || keyopts[1] == 6)
         std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
-    if (keyopts.keyopts[0] == 2 || keyopts.keyopts[0] == 3)
+    if (keyopts[1] == 2 || keyopts[1] == 3)
         std::get<0>(element_type_data["DOFVariables"]["CURR"]) = true; // Modify the first member
-    if (keyopts.keyopts[0] == 3)
+    if (keyopts[1] == 3)
         std::get<0>(element_type_data["DOFVariables"]["EMF"]) = true; // Modify the first member
 
     FEType fe_type_vec(FIRST, LAGRANGE_VEC);
@@ -70,14 +70,14 @@ void SOLID97Type::populate_vector_idx_size_map()
 }
 // SOLID 236
 
-SOLID236Type::SOLID236Type(const ElementTypeKeyopts &keyopts)
+SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(keyopts)
 {
     element_type_data["DOFVariables"]["A"] =
         std::make_tuple(true, 3, false, "A", 2, "NEDELEC_ONE", "FIRST");
-    if (keyopts.keyopts[0] == 1 || keyopts.keyopts[0] == 2)
+    if (keyopts[1] == 1 || keyopts[1] == 2)
         std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
-    if (keyopts.keyopts[0] == 2)
+    if (keyopts[1] == 2)
         std::get<0>(element_type_data["DOFVariables"]["EMF"]) = true; // Modify the first member
 
     FEType fe_type_vec(FIRST, NEDELEC_ONE);
@@ -110,13 +110,13 @@ void SOLID236Type::populate_vector_idx_size_map()
 }
 // PLANE13
 
-PLANE13Type::PLANE13Type(const ElementTypeKeyopts &keyopts)
+PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(keyopts)
 {
     element_type_data["DOFVariables"]["A_z"] =
         std::make_tuple(true, 1, true, "A", 2, "LAGRANGE", "FIRST");
 
-    if (keyopts.keyopts[0] == 6)
+    if (keyopts[1] == 6)
         std::get<0>(element_type_data["DOFVariables"]["VOLT"]) = true; // Modify the first member
 } // Default dimension for PLANE13 is 2
 
@@ -138,7 +138,7 @@ void PLANE13Type::populate_vector_idx_size_map()
 
 // PLANE233
 
-PLANE233Type::PLANE233Type(const ElementTypeKeyopts &keyopts)
+PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(keyopts)
 {
 } // Default dimension for PLANE13 is 2
@@ -165,19 +165,19 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypes
         const auto &keyopts = pair.second;
 
         // Create the appropriate ElementType object
-        if (keyopts.element_type == "SOLID97")
+        if (keyopts[0] == 97)
         {
             elementTypes[pair.first] = std::make_shared<SOLID97Type>(SOLID97Type(keyopts));
         }
-        else if (keyopts.element_type == "SOLID236")
+        else if (keyopts[0] == 236)
         {
             elementTypes[pair.first] = std::make_shared<SOLID236Type>(SOLID236Type(keyopts));
         }
-        else if (keyopts.element_type == "PLANE13")
+        else if (keyopts[0] == 13)
         {
             elementTypes[pair.first] = std::make_shared<PLANE13Type>(PLANE13Type(keyopts));
         }
-        else if (keyopts.element_type == "PLANE233")
+        else if (keyopts[0] == 233)
         {
             elementTypes[pair.first] = std::make_shared<PLANE233Type>(PLANE233Type(keyopts));
         }
@@ -188,13 +188,12 @@ void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypes
 VariableToElementIdsMapType *ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
 {
     VariableToElementIdsMapType *variableToElementIds = new VariableToElementIdsMapType();
-    std::string sett = "DOFVariables";
     for (const auto &pair : elementTypes)
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
 
-        auto active_vars = elementType->getActiveVariables(sett);
+        auto active_vars = elementType->getActiveVariables(variables_set);
         for (const auto &var : active_vars)
         {
             (*variableToElementIds)[var].insert(elementId);

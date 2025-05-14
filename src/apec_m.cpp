@@ -67,10 +67,10 @@
 
 using namespace libMesh;
 
-EquationSystems *build_equation_systems(Mesh &mesh, Session &session)
+EquationSystems *build_equation_systems(Mesh *mesh, Session &session)
 {
     // libMesh::out << "Building equations systems..." << std::endl;
-    EquationSystems *equation_systems = new EquationSystems(mesh);
+    EquationSystems *equation_systems = new EquationSystems(*mesh);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
     equation_systems->parameters.set<Session *>("session") = &session;
 
@@ -96,8 +96,6 @@ void init_equation_systems(EquationSystems &equation_systems)
     // Add TransientLinearImplicitSystem as System and return its pointer
     libMesh::out << "Checking system options..." << std::endl;
 
-    equation_systems.clear();
-
     // read_parse_element_types(equation_systems.parameters.get<Session *>("session")->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
 
     equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
@@ -114,6 +112,9 @@ void init_equation_systems(EquationSystems &equation_systems)
     SystemBuilder system_builder_der_elem(equation_systems, der_elem_system_name);
     der_elem_system.attach_init_object(system_builder_der_elem);
 
+    system_builder.initialize();
+    system_builder_der.initialize();
+    system_builder_der_elem.initialize();
     // This will go in /solu
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     equation_systems.init();
@@ -128,24 +129,26 @@ void init_equation_systems(EquationSystems &equation_systems)
     system.current_local_solution->close();
 }
 
-void read_and_prepare_mesh(Mesh &mesh, std::string mesh_filepath)
+void read_and_prepare_mesh(Mesh *mesh, const std::string &mesh_filepath, EquationSystems *equation_systems)
 {
     libMesh::out << "Reading mesh..." << std::endl;
     // mesh.clear();
-    VTKIO_Updated vtkio(mesh);
-    if (mesh.comm().rank() == 0)
+    VTKIO_Updated vtkio(*mesh);
+    if (mesh->comm().rank() == 0)
     {
         vtkio.read(mesh_filepath);
     }
-    mesh.comm().broadcast(*(vtkio.get_element_types_map_csv()));
-    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*(vtkio.get_element_types_map_csv()));
-    MeshCommunication().broadcast(mesh);
+    auto element_types_map = vtkio.get_element_types_map_csv();
+    mesh->comm().broadcast<ElementTypesMapCSV>(*element_types_map);
+    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*element_types_map);
+    equation_systems->parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = element_types_collector;
+    MeshCommunication().broadcast(*mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh.prepare_for_use();
-    MeshTools::Modification::orient_elements(mesh);
+    mesh->prepare_for_use();
+    MeshTools::Modification::orient_elements(*mesh);
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
-    mesh.print_info();
+    mesh->print_info();
 }
 
 void solve(EquationSystems &equation_systems, LoadStep &load_step)
@@ -264,27 +267,28 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
 
     Mesh mesh(comm);
 
-    EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
-
+    // EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
+    // libMesh::out << "Building equations systems..." << std::endl;
+    EquationSystems *equation_systems = new EquationSystems(mesh);
+    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
+    equation_systems->parameters.set<Session *>("session") = &session;
     // Read and prepare the mesh
-    read_and_prepare_mesh(mesh, session.get_input_mesh_filepath());
+    read_and_prepare_mesh(&mesh, session.get_input_mesh_filepath(), equation_systems);
 
     // Build and initialize equation systems
-    init_equation_systems(equation_systems);
+    init_equation_systems(*equation_systems);
 
     std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>();
     // Solve the system for each time step
     for (unsigned int n = 0; n < session.get_n_load_steps(); n++)
     {
         // Create a new load step
-        LoadStep load_step(n, equation_systems, session);
-        load_step.populate_time_step();
+        LoadStep load_step = LoadStep();
+        std::string load_step_filename = "load_step_" + std::to_string(n + 1) + ".bin";
+        load_step.read_from_file(session.get_load_steps_folderpath() / load_step_filename);
 
         // Solve the system for the current load step
-        solve(equation_systems, load_step);
-    }
-    {
-        solve(equation_systems, step);
+        solve(*equation_systems, load_step);
     }
 
     // Clean up
