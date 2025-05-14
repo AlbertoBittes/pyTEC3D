@@ -52,6 +52,10 @@ public:
         temp_folderpath = input_directory / "temp";
         load_steps_folderpath = input_directory / "load_steps";
         emat_folderpath = input_directory / "emat_files";
+
+        this->create_temp_folder();
+        this->create_output_folder();
+        this->create_emat_folder();
     }
 
     // Setters

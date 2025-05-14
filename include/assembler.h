@@ -29,8 +29,12 @@ public:
     {
         this->element_types_collector = element_types_collector;
     }
+    void set_load_step(LoadStep *load_step)
+    {
+        this->load_step = load_step;
+    }
 
-    std::shared_ptr<LoadStep> get_load_step() const
+    LoadStep *get_load_step() const
     {
         return load_step;
     }
@@ -62,7 +66,7 @@ public:
 private:
     EquationSystems &eq_sys;
     ElementBuilder elem_builder;
-    std::shared_ptr<LoadStep> load_step;
+    LoadStep *load_step;
     std::shared_ptr<ElementTypesCollector> element_types_collector;
 };
 

@@ -72,6 +72,10 @@ void AssemblerLinear::assemble()
     auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
 
+    if (this->check_compute_matrix())
+    {
+        this->build_write_element_matrices();
+    }
     std::vector<dof_id_type> dof_indices;
     std::vector<Real> old_solution_values;
     auto time_substep = load_step->get_time_step()->get_active_substep();
@@ -294,12 +298,12 @@ void AssemblerLinear::build_write_element_matrices()
     std::string mtrx_vec_filename;
 
     unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_num");
+    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_type");
     unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
 
-    unsigned int etype_num;
-    unsigned int material_num;
-    unsigned int real_constant_num;
+    dof_id_type etype_num;
+    dof_id_type material_num;
+    dof_id_type real_constant_num;
 
     auto emat_folderpath = session->get_emat_folderpath();
 

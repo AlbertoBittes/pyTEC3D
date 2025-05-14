@@ -200,9 +200,9 @@ public:
         // of as a pointer that will clean up after itself.
         fe = FEBase::build(3, fe_type);
         // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(3, fe_type.default_quadrature_order());
+        QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
+        fe->attach_quadrature_rule(qrule);
     }
 };
 
@@ -222,9 +222,9 @@ public:
         // of as a pointer that will clean up after itself.
         fe = FEBase::build(2, fe_type);
         // A 2nd order Gauss quadrature rule for numerical integration.
-        QGauss qrule(2, fe_type.default_quadrature_order());
+        QGauss *qrule = new QGauss(2, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(&qrule);
+        fe->attach_quadrature_rule(qrule);
     }
 };
 
