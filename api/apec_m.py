@@ -353,7 +353,8 @@ class APEC_M:
         """
         # Check if the DataFrame is empty
         if df.empty:
-            raise ValueError("The DataFrame is empty.")
+            print("The DataFrame is empty.")
+            return
 
         # Validate that the first column has unique values
         first_column = df.iloc[:, 0]
@@ -472,6 +473,17 @@ class APEC_M:
                 f"Expected: {expected_columns}, Found: {list(df.columns)}"
             )
 
+        # Cast columns to the types specified in DEFAULT_COLUMNS_ATTRIBUTES_TYPES
+        if sheet_name in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
+            type_map = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name]
+            for col, typ in type_map.items():
+                if col in df.columns:
+                    if typ == int:
+                        df[col] = df[col].astype(int)  # Use pandas nullable integer
+                    elif typ == float:
+                        df[col] = df[col].astype(float)
+                    elif typ == str:
+                        df[col] = df[col].astype(str)
         # Assign the DataFrame to the corresponding attribute
         setattr(self, sheet_name, df)
 
@@ -529,21 +541,24 @@ class APEC_M:
                 f"Expected keys: {list(expected_keys)}."
             )
 
+        # Get the type map for this sheet, if available
+        type_map = DEFAULT_COLUMNS_ATTRIBUTES_TYPES.get(sheet_name, {})
+
         # Populate the dictionary
         target_dict = getattr(self, sheet_name)
         for _, row in df.iterrows():
             setting = row["SETTING"]
             value = row["VALUE"]
 
-            # Convert the value to the appropriate type based on the default dictionary
-            if isinstance(target_dict[setting], int):
-                value = int(value)
-            elif isinstance(target_dict[setting], float):
-                value = float(value)
-            elif isinstance(target_dict[setting], str):
-                value = str(value)
-            else:
-                raise ValueError(f"Unsupported value type for key '{setting}'.")
+            # Cast the value to the appropriate type if specified
+            if setting in type_map:
+                typ = type_map[setting]
+                if typ == int:
+                    value = int(value)
+                elif typ == float:
+                    value = float(value)
+                elif typ == str:
+                    value = str(value)
 
             # Assign the value to the dictionary
             target_dict[setting] = value
@@ -590,19 +605,21 @@ class APEC_M:
         df = df[["vtk_id", "label", "component", "value"]]
 
         # Check if the Excel file already exists
+        # Overwrite the sheet if it exists
         if os.path.exists(output_excel_file):
-            # Open the existing Excel file and add a new sheet
             with pd.ExcelWriter(
-                output_excel_file, engine="openpyxl", mode="a"
+                output_excel_file,
+                engine="openpyxl",
+                mode="a",
+                if_sheet_exists="replace",
             ) as writer:
                 df.to_excel(writer, sheet_name=data_type, index=False)
         else:
-            # Create a new Excel file and write the DataFrame to it
             with pd.ExcelWriter(output_excel_file, engine="openpyxl") as writer:
                 df.to_excel(writer, sheet_name=data_type, index=False)
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
-    def write_settings_to_binary(self, settings, binary_file):
+    def write_settings_to_binary(self, settings, binary_file, label):
         """
         Writes a settings dictionary to an open binary file stream.
 
@@ -613,6 +630,33 @@ class APEC_M:
         Raises:
             ValueError: If a value in the settings dictionary has an unsupported type.
         """
+        # Get the expected types for each key
+        if label not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
+            raise ValueError(
+                f"Invalid label '{label}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
+            )
+        expected_types = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[label]
+
+        # Check that all keys in settings have a type defined and match the expected type
+        for key, value in settings.items():
+            if key not in expected_types:
+                raise ValueError(
+                    f"Key '{key}' does not have a predefined type in DEFAULT_COLUMNS_ATTRIBUTES_TYPES['{label}']."
+                )
+            expected_type = expected_types[key]
+            if expected_type == int and not isinstance(value, int):
+                raise TypeError(
+                    f"Key '{key}' is expected to be of type int, but got {type(value).__name__}."
+                )
+            elif expected_type == float and not isinstance(value, float):
+                raise TypeError(
+                    f"Key '{key}' is expected to be of type float, but got {type(value).__name__}."
+                )
+            elif expected_type == str and not isinstance(value, str):
+                raise TypeError(
+                    f"Key '{key}' is expected to be of type str, but got {type(value).__name__}."
+                )
+
         # Write the number of settings
         binary_file.write(struct.pack("i", len(settings)))  # Number of settings (int)
 
@@ -679,6 +723,25 @@ class APEC_M:
             if column not in column_types:
                 raise ValueError(
                     f"Column '{column}' does not have a predefined type in column_types."
+                )
+            # Check if the column's dtype matches the expected type
+            expected_type = column_types[column]
+            # For int and float, use numpy dtype kind for robust checking
+            if expected_type == int and not np.issubdtype(df[column].dtype, np.integer):
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type int, but got {df[column].dtype}."
+                )
+            elif expected_type == float and not np.issubdtype(
+                df[column].dtype, np.floating
+            ):
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type float, but got {df[column].dtype}."
+                )
+            elif expected_type == str and not np.issubdtype(
+                df[column].dtype, np.object_
+            ):
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type str, but got {df[column].dtype}."
                 )
 
         # Write the number of rows and columns
@@ -1363,12 +1426,12 @@ class APEC_M:
             data = getattr(self, label, None)
             if data is None:
                 raise ValueError(f"Data for '{label}' is missing.")
-            getattr(self, function_name)(data, binary_file)
+            getattr(self, function_name)(data, binary_file, label)
         elif label in ["materials", "real_constants"]:
             # Write DataFrames
             data = getattr(self, label, None)
-            if data is None or data.empty:
-                raise ValueError(f"DataFrame for '{label}' is empty or missing.")
+            if data is None:
+                raise ValueError(f"DataFrame for '{label}' is missing.")
             getattr(self, function_name)(data, binary_file, label)
         elif label in ["loads", "boundary_conditions"]:
             # Write NumPy arrays
@@ -1376,8 +1439,8 @@ class APEC_M:
                 data = self.get_loads_numpy_for_binary()
             elif label == "boundary_conditions":
                 data = self.get_bcs_numpy_for_binary()
-            if data is None or len(data) == 0:
-                raise ValueError(f"NumPy array for '{label}' is empty or missing.")
+            if data is None:
+                raise ValueError(f"NumPy array for '{label}' is missing.")
             getattr(self, function_name)(binary_file, data)
 
     def generate_transient_analysis(
@@ -1393,7 +1456,7 @@ class APEC_M:
 
         for idx, row in self.transient_analysis.iterrows():
             # Step 1: Update self.time_parameters with the values from the current row
-            for column in TRANSIENT_ANALYSIS_COLUMNS:
+            for column in DEFAULT_TIME_PARAMETERS.keys():
                 if column in row:
                     self.time_parameters[column] = row[column]
 
