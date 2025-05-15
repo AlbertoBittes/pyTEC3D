@@ -38,9 +38,9 @@ void SystemBuilder::initialize()
     {
         vars_set = "DOFVariables";
 
-        AssemblerLinear assembler_linear(*equation_systems);
-        system.attach_assemble_object(assembler_linear);
-        equation_systems->parameters.set<AssemblerLinear *>("assembler") = &assembler_linear;
+        std::shared_ptr<AssemblerLinear> assembler_linear = std::make_shared<AssemblerLinear>(*equation_systems);
+        system.attach_assemble_object(*assembler_linear);
+        equation_systems->parameters.set<std::shared_ptr<AssemblerLinear>>("assembler") = assembler_linear;
 
         // libMesh::out << "Setting boundary conditions object..." << std::endl;
         // NodeBCObject node_dof_constraints(system);

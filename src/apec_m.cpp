@@ -67,17 +67,12 @@
 
 using namespace libMesh;
 
-// EquationSystems *build_equation_systems(Mesh &mesh, Session &session)
-// {
-//     // libMesh::out << "Building equations systems..." << std::endl;
-//     EquationSystems *equation_systems = new EquationSystems(*mesh);
-//     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-//     equation_systems->parameters.set<Session *>("session") = &session;
-
-//     // equation_systems->parameters.set<std::shared_ptr<TimeStepper>>("time_stepper") = std::make_shared<TimeStepper>();
-
-//     return equation_systems;
-// }
+std::unique_ptr<EquationSystems> build_equation_systems(Mesh &mesh, std::shared_ptr<Session> session)
+{
+    auto equation_systems = std::make_unique<EquationSystems>(mesh);
+    equation_systems->parameters.set<std::shared_ptr<Session>>("session") = session;
+    return equation_systems;
+}
 
 // void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
 // {
@@ -166,7 +161,7 @@ void solve(EquationSystems &equation_systems, LoadStep &load_step)
 
     libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
 
-    auto session = equation_systems.parameters.get<Session *>("session");
+    auto session = equation_systems.parameters.get<std::shared_ptr<Session>>("session");
     // read material properties
 
     // Read loads
@@ -264,31 +259,31 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     libMesh::out << "Running in batch mode with mesh file: " << mesh_filename << std::endl;
 
     // Create a session with the mesh filename
-    Session session(mesh_filename);
+    std::shared_ptr<Session> session = std::make_shared<Session>(mesh_filename);
 
     Mesh mesh(comm);
 
-    // EquationSystems &equation_systems = *(build_equation_systems(mesh, session));
-    // libMesh::out << "Building equations systems..." << std::endl;
-    EquationSystems equation_systems(mesh);
+    auto equation_systems = build_equation_systems(mesh, session);
     // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    equation_systems.parameters.set<Session *>("session") = &session;
     // Read and prepare the mesh
-    read_and_prepare_mesh(mesh, session.get_input_mesh_filepath(), equation_systems);
+    read_and_prepare_mesh(mesh, session->get_input_mesh_filepath(), *equation_systems);
+
+    libMesh::out << "Building equations systems..." << std::endl;
 
     // Build and initialize equation systems
-    init_equation_systems(equation_systems);
+    init_equation_systems(*equation_systems);
 
     std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>();
     // Solve the system for each time step
-    for (unsigned int n = 0; n < session.get_n_load_steps(); n++)
+    for (unsigned int n = 0; n < session->get_n_load_steps(); n++)
     {
         // Create a new load step
-        const std::string load_step_filename = session.get_load_steps_folderpath() / ("load_step_" + std::to_string(n + 1) + ".bin");
-        load_stepper->read_new_load_step(load_stepper.get(), &equation_systems, session.get_load_steps_folderpath() / load_step_filename);
-
+        const std::string load_step_filename = session->get_load_steps_folderpath() / ("load_step_" + std::to_string(n + 1) + ".bin");
+        load_stepper->read_new_load_step(load_stepper.get(), equation_systems.get(), session->get_load_steps_folderpath() / load_step_filename);
+        auto load_step = load_stepper->get_active_load_step();
+        equation_systems->parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->set_load_step(load_step.get());
         // Solve the system for the current load step
-        solve(equation_systems, *(load_stepper->get_active_load_step().get()));
+        solve(*equation_systems, *(load_step));
     }
 
     // Clean up
