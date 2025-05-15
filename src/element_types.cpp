@@ -47,6 +47,8 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_vec->attach_quadrature_rule(qrule_vec);
+
+    auto sf_vec = this->get_vector_shape_functions();
 }
 
 void SOLID97Type::populate_matrix_idx_size_map()
@@ -90,6 +92,8 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_vec->attach_quadrature_rule(qrule_vec);
+
+    auto sf_vec = this->get_vector_shape_functions();
 }
 
 // Dummy implementations for SOLID236Type

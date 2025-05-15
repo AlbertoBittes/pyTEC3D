@@ -10,24 +10,18 @@
 
 using namespace libMesh;
 
+class AssemblerLinear;
+
 class ElementBuilder
 {
 public:
     // Default constructor
-    ElementBuilder()
-        : load_step(nullptr) {}
-
-    // Constructor with LoadStep
-    ElementBuilder(std::shared_ptr<LoadStep> load_step)
-        : load_step(load_step) {}
-
-    // Constructor with LoadStep and old LoadStep
-    ElementBuilder(std::shared_ptr<LoadStep> load_step, std::shared_ptr<LoadStep> old_load_step)
-        : load_step(load_step), old_load_step(old_load_step) {}
+    ElementBuilder(AssemblerLinear *assembler) : assembler(assembler)
+    {
+    }
 
     // Setters
-    void set_load_step(std::shared_ptr<LoadStep> load_step) { this->load_step = load_step; }
-    void set_old_load_step(std::shared_ptr<LoadStep> old_load_step) { this->old_load_step = old_load_step; }
+
     void set_matrices(const std::vector<DenseMatrix<Number>> &matrices) { this->matrices = matrices; }
     void set_matrices_derived(const std::vector<DenseMatrix<Number>> &matrices_derived) { this->matrices_derived = matrices_derived; }
     void set_vectors(const std::vector<DenseVector<Number>> &vectors) { this->vectors = vectors; }
@@ -45,8 +39,7 @@ public:
         this->vector_shape_functions = std::move(vector_shape_functions);
     }
     // Getters
-    std::shared_ptr<LoadStep> get_load_step() const { return load_step; }
-    std::shared_ptr<LoadStep> get_old_load_step() const { return old_load_step; }
+    LoadStep *get_load_step() const;
     std::vector<DenseMatrix<Number>> &get_matrices() { return matrices; }
     std::vector<DenseMatrix<Number>> &get_matrices_derived() { return matrices_derived; }
     std::vector<DenseVector<Number>> &get_vectors() { return vectors; }
@@ -122,9 +115,7 @@ public:
     // void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
 
 private:
-    std::shared_ptr<LoadStep> load_step;     // Pointer to the associated LoadStep
-    std::shared_ptr<LoadStep> old_load_step; // Pointer to the previous LoadStep
-
+    AssemblerLinear *assembler;                        // Pointer to the AssemblerLinear object
     std::vector<DenseMatrix<Number>> matrices;         // Element matrices
     std::vector<DenseMatrix<Number>> matrices_derived; // Derived element matrices
     std::vector<DenseVector<Number>> vectors;          // Element vectors

@@ -10,8 +10,13 @@
 #include <cmath>
 #include "../include/element_types.h" // Include the header defining ElementType
 #include "../include/loads_object.h"
-
+#include "../include/assembler.h"
 #include "../include/element_data_io.h"
+
+inline LoadStep *ElementBuilder::get_load_step() const
+{
+    return assembler->get_load_step();
+}
 
 void ElementBuilder::buildVectors(const std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map,
                                   std::vector<DenseVector<Number>> &elem_vectors_vector)

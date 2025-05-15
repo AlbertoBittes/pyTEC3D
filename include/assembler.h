@@ -15,13 +15,13 @@ class AssemblerLinear : public System::Assembly
 public:
     AssemblerLinear(EquationSystems &eq_sys)
         : eq_sys(eq_sys),
-          elem_builder(),
+          elem_builder(new ElementBuilder(this)),
           load_step(nullptr),
           element_types_collector(eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector"))
     {
     }
 
-    void set_elem_builder(ElementBuilder elem_builder)
+    void set_elem_builder(ElementBuilder *elem_builder)
     {
         this->elem_builder = elem_builder;
     }
@@ -38,7 +38,7 @@ public:
     {
         return load_step;
     }
-    ElementBuilder get_elem_builder() const
+    ElementBuilder *get_elem_builder() const
     {
         return elem_builder;
     }
@@ -65,7 +65,7 @@ public:
 
 private:
     EquationSystems &eq_sys;
-    ElementBuilder elem_builder;
+    ElementBuilder *elem_builder;
     LoadStep *load_step;
     std::shared_ptr<ElementTypesCollector> element_types_collector;
 };

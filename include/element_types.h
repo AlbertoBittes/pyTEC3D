@@ -203,6 +203,8 @@ public:
         QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
         fe->attach_quadrature_rule(qrule);
+
+        auto sf = this->get_scalar_shape_functions();
     }
 };
 
@@ -225,6 +227,8 @@ public:
         QGauss *qrule = new QGauss(2, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
         fe->attach_quadrature_rule(qrule);
+
+        auto sf = this->get_scalar_shape_functions();
     }
 };
 

@@ -180,11 +180,11 @@ void AssemblerLinear::assemble()
         //     libMesh::out << "Computing new system matrix" << std::endl;
         // }
 
-        elem_builder.readElementMatrices(mtrx_input_file, elem_builder.get_matrices());
+        elem_builder->readElementMatrices(mtrx_input_file, elem_builder->get_matrices());
 
-        auto Ke = elem_builder.get_matrices()[0];
-        auto Ce = elem_builder.get_matrices()[1];
-        auto rhs = elem_builder.get_vectors()[0];
+        auto Ke = elem_builder->get_matrices()[0];
+        auto Ce = elem_builder->get_matrices()[1];
+        auto rhs = elem_builder->get_vectors()[0];
 
         Ce.scale(1 / time_substep->get_dt());
 
@@ -198,19 +198,19 @@ void AssemblerLinear::assemble()
             matrix.add_matrix(Ke, dof_indices);
         }
 
-        elem_builder.readElementVectors(rhs_input_file, elem_builder.get_vectors());
+        elem_builder->readElementVectors(rhs_input_file, elem_builder->get_vectors());
         if (time_substep->get_ramped_load())
         {
             if (old_rhs)
-                elem_builder.readElementVectors(rhs_prev_input_file, elem_builder.get_prev_vectors());
+                elem_builder->readElementVectors(rhs_prev_input_file, elem_builder->get_prev_vectors());
             else
             {
-                elem_builder.get_prev_vectors()[0].resize(rhs.size());
-                elem_builder.get_prev_vectors()[0].zero();
+                elem_builder->get_prev_vectors()[0].resize(rhs.size());
+                elem_builder->get_prev_vectors()[0].zero();
             }
-            elem_builder.ramp_vectors(time_substep);
+            elem_builder->ramp_vectors(time_substep);
         }
-        // elem_builder.apply_load();
+        // elem_builder->apply_load();
 
         // HERE YOU HAVE TO RAMP THE LOAD !!!
 
@@ -356,19 +356,19 @@ void AssemblerLinear::build_write_element_matrices()
 
         // Do this elsewhere, logically must no stay here
         // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-        elem_builder.set_element_data(elem, elem_type, material_num, real_constant_num);
+        elem_builder->set_element_data(elem, elem_type, material_num, real_constant_num);
 
-        elem_builder.prepare_element_matrix_building();
+        elem_builder->prepare_element_matrix_building();
 
-        elem_builder.build_element_matrix();
+        elem_builder->build_element_matrix();
 
-        elem_builder.build_element_rhs();
+        elem_builder->build_element_rhs();
         // Here the function to write the matrices and vectors down to file
-        elem_builder.writeElementMatrices(mtrx_output_file, elem_builder.get_matrices());
+        elem_builder->writeElementMatrices(mtrx_output_file, elem_builder->get_matrices());
 
-        elem_builder.writeElementMatrices(der_mtrx_output_file, elem_builder.get_matrices_derived());
+        elem_builder->writeElementMatrices(der_mtrx_output_file, elem_builder->get_matrices_derived());
 
-        elem_builder.writeElementVectors(rhs_output_file, elem_builder.get_vectors());
+        elem_builder->writeElementVectors(rhs_output_file, elem_builder->get_vectors());
     }
     mtrx_output_file.close();
     der_mtrx_output_file.close();
@@ -445,14 +445,14 @@ void AssemblerLinear::update_rhs()
 
         // Do this elsewhere, logically must no stay here
         // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-        elem_builder.set_element_type(elem_type);
+        elem_builder->set_element_type(elem_type);
 
-        elem_builder.prepare_element_rhs_building();
+        elem_builder->prepare_element_rhs_building();
 
-        elem_builder.build_element_rhs();
+        elem_builder->build_element_rhs();
         // Here the function to write the matrices and vectors down to file
 
-        elem_builder.writeElementVectors(rhs_output_file, elem_builder.get_vectors());
+        elem_builder->writeElementVectors(rhs_output_file, elem_builder->get_vectors());
     }
     rhs_output_file.close();
 }
