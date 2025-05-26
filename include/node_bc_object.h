@@ -16,7 +16,7 @@ typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditio
 
 class LoadStep;
 
-class NodeBCObject : public FEDataObject<BoundaryConditionsMap>, public System::Constraint
+class NodeBCObject : public FEDataObject<BoundaryConditionsMap, LoadStep>, public System::Constraint
 {
 public:
     // Default constructor

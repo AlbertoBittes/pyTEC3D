@@ -7,16 +7,22 @@
 #include <vector>
 #include "../include/element_types.h" // Include the header file for ElementTypesMap
 #include "../include/load_step.h"
+#include "../include/globals.h"
 
 using namespace libMesh;
 
 class AssemblerLinear;
 
-class ElementBuilder
+class ElementBuilder : public FEDataObject<Globals::DummyType, AssemblerLinear>
 {
 public:
     // Default constructor
-    ElementBuilder(AssemblerLinear *assembler) : assembler(assembler)
+    ElementBuilder(AssemblerLinear *parent = nullptr)
+        : FEDataObject<Globals::DummyType, AssemblerLinear>(parent),
+          elem(nullptr),
+          element_type(nullptr),
+          material_num(0),
+          real_constant_num(0)
     {
     }
 
@@ -39,7 +45,6 @@ public:
         this->vector_shape_functions = std::move(vector_shape_functions);
     }
     // Getters
-    LoadStep *get_load_step() const;
     std::vector<DenseMatrix<Number>> &get_matrices() { return matrices; }
     std::vector<DenseMatrix<Number>> &get_matrices_derived() { return matrices_derived; }
     std::vector<DenseVector<Number>> &get_vectors() { return vectors; }
@@ -72,6 +77,7 @@ public:
         this->element_type->populate_all();
         this->buildMatrices(element_type->get_matrix_idx_size_map(), matrices);
         this->buildVectors(element_type->get_vector_idx_size_map(), vectors);
+        this->buildVectors(element_type->get_vector_idx_size_map(), prev_vectors);
         this->buildMatrices(element_type->get_derived_matrix_idx_size_map(), matrices_derived);
     }
     void prepare_element_rhs_building()
@@ -80,6 +86,7 @@ public:
         this->element_type->reinit_fe(this->elem);
         this->element_type->populate_vector_idx_size_map();
         this->buildVectors(element_type->get_vector_idx_size_map(), vectors);
+        this->buildVectors(element_type->get_vector_idx_size_map(), prev_vectors);
     }
     void ramp_vectors(Substep *time_substep)
     {
@@ -90,7 +97,7 @@ public:
             y2 = vectors[0](i);
             y1 = prev_vectors[0](i);
 
-            vectors[0](i) = y1 + ((y2 - y1) / (time_substep->get_parent().get_delta_t())) * (time_substep->get_time() - time_substep->get_parent().get_time_beginning());
+            vectors[0](i) = y1 + ((y2 - y1) / (time_substep->get_parent_object()->get_delta_t())) * (time_substep->get_time() - time_substep->get_parent_object()->get_time_beginning());
         }
     }
     // Methods to build elements
@@ -115,7 +122,6 @@ public:
     // void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
 
 private:
-    AssemblerLinear *assembler;                        // Pointer to the AssemblerLinear object
     std::vector<DenseMatrix<Number>> matrices;         // Element matrices
     std::vector<DenseMatrix<Number>> matrices_derived; // Derived element matrices
     std::vector<DenseVector<Number>> vectors;          // Element vectors

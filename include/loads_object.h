@@ -15,20 +15,20 @@ class LoadStep;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> ElementLoad;
 typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
-class LoadsObject : public FEDataObject<LoadArraysMap>
+class LoadsObject : public FEDataObject<LoadArraysMap, LoadStep>
 {
 public:
     // Default constructor
-    LoadsObject(LoadStep *parent_load_step = nullptr,
+    LoadsObject(LoadStep *parent_object = nullptr,
                 std::shared_ptr<LoadArraysMap> map = nullptr)
-        : FEDataObject(parent_load_step, map),
+        : FEDataObject(parent_object, map),
           oldLoadsVector(std::make_shared<LoadArraysMap>()) {}
 
     // Constructor with MeshBase and load labels
     LoadsObject(const MeshBase &mesh,
-                LoadStep *parent_load_step = nullptr,
+                LoadStep *parent_object = nullptr,
                 std::shared_ptr<LoadArraysMap> map = nullptr)
-        : FEDataObject(parent_load_step, map),
+        : FEDataObject(parent_object, map),
           oldLoadsVector(std::make_shared<LoadArraysMap>())
     {
         build_load_data_vectors(mesh);

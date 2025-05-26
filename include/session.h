@@ -56,6 +56,7 @@ public:
         this->create_temp_folder();
         this->create_output_folder();
         this->create_emat_folder();
+        this->check_load_steps_folder();
     }
 
     // Setters

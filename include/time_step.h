@@ -8,6 +8,7 @@
 #include <vector>
 #include <libmesh/libmesh.h>
 #include "../include/fe_data_object.h"
+#include "../include/globals.h"
 
 using namespace libMesh;
 
@@ -39,7 +40,6 @@ public:
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
     const std::vector<Substep> &get_substeps() const { return substeps; }
-    const LoadStep &get_load_step() const { return *load_step; }
 
     void set_step(int s) { step = s; }
     void set_time(Real t) { time = t; }
@@ -75,16 +75,19 @@ private:
     int ramped_load;
 
     std::vector<Substep> substeps;
-    std::shared_ptr<LoadStep> load_step;
     Substep *active_substep = nullptr;
     Substep *previous_substep = nullptr;
 };
 
-class Substep
+class Substep : public FEDataObject<Globals::DummyType, TimeStep>
 {
 public:
     Substep(unsigned int index, Real dt, TimeStep *parent)
-        : index(index), dt(dt), parent(parent), solved(false)
+        : FEDataObject(parent),
+          index(index),
+          dt(dt),
+          time(0.0),
+          solved(false)
     {
         time = parent->get_time_beginning() + (index + 1) * dt;
     }
@@ -94,12 +97,9 @@ public:
     Real get_dt() const { return dt; }
     bool get_solved() const { return solved; }
 
-    bool get_write_results() const { return parent->get_write_results(); };
-    bool get_transient_effect() const { return parent->get_transient_effect(); };
-    bool get_ramped_load() const { return parent->get_ramped_load(); };
-
-    const TimeStep &get_parent() const { return *parent; }
-    TimeStep &get_parent() { return *parent; }
+    bool get_write_results() const { return this->get_parent_object()->get_write_results(); };
+    bool get_transient_effect() const { return this->get_parent_object()->get_transient_effect(); };
+    bool get_ramped_load() const { return this->get_parent_object()->get_ramped_load(); };
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }
@@ -110,7 +110,6 @@ private:
     unsigned int index;
     Real time;
     Real dt;
-    TimeStep *parent;
     bool solved;
 };
 

@@ -37,11 +37,12 @@
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
 #include "libmesh/perf_log.h"
+#include "libmesh/equation_systems.h"
+#include "libmesh/system.h"
 
 #include "../include/element_builder.h"
 #include "../include/assembler.h"
 #include "../include/session.h"
-#include "../include/system_builder.h"
 #include "../include/element_types.h" // Add this line to include the ElementTypesMap header
 #include "../include/loads_object.h"
 #include "../include/time_step.h" // Add this line to include the TimeStepper header
@@ -56,6 +57,7 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
 #include "../include/node_bc_object.h" // Include the base class
+#include "../include/system_builder.h" // Include the base class
 
 #include "../include/solver_configuration.h"
 #include "../include/vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
@@ -99,13 +101,13 @@ void init_equation_systems(EquationSystems &equation_systems)
     ExplicitSystem &der_system = equation_systems.add_system<ExplicitSystem>(der_system_name);
     ExplicitSystem &der_elem_system = equation_systems.add_system<ExplicitSystem>(der_elem_system_name);
 
-    SystemBuilder system_builder(equation_systems, system_name);
+    SystemBuilder system_builder(&equation_systems, system_name);
     system.attach_init_object(system_builder);
 
-    SystemBuilder system_builder_der(equation_systems, der_system_name);
+    SystemBuilder system_builder_der(&equation_systems, der_system_name);
     der_system.attach_init_object(system_builder_der);
 
-    SystemBuilder system_builder_der_elem(equation_systems, der_elem_system_name);
+    SystemBuilder system_builder_der_elem(&equation_systems, der_elem_system_name);
     der_elem_system.attach_init_object(system_builder_der_elem);
 
     system_builder.initialize();
@@ -273,15 +275,15 @@ void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communi
     // Build and initialize equation systems
     init_equation_systems(*equation_systems);
 
-    std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>();
+    std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>(equation_systems.get());
+    equation_systems->parameters.set<std::shared_ptr<LoadStepper>>("load_stepper") = load_stepper;
     // Solve the system for each time step
     for (unsigned int n = 0; n < session->get_n_load_steps(); n++)
     {
         // Create a new load step
         const std::string load_step_filename = session->get_load_steps_folderpath() / ("load_step_" + std::to_string(n + 1) + ".bin");
-        load_stepper->read_new_load_step(load_stepper.get(), equation_systems.get(), session->get_load_steps_folderpath() / load_step_filename);
+        load_stepper->read_new_load_step(session->get_load_steps_folderpath() / load_step_filename);
         auto load_step = load_stepper->get_active_load_step();
-        equation_systems->parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->set_load_step(load_step.get());
         // Solve the system for the current load step
         solve(*equation_systems, *(load_step));
     }

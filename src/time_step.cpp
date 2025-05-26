@@ -10,7 +10,7 @@
 // }
 void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
 {
-    if (load_step == nullptr)
+    if (prev_load_step == nullptr)
         time_beginning = 0.0;
     else
         time_beginning = prev_load_step->get_time_step()->get_time();
@@ -52,10 +52,7 @@ void TimeStep::set_substeps(int n)
             libmesh_error_msg("Error: Number of substeps " + std::to_string(i) + " is not positive.");
         }
         dt = this->get_delta_t() / n;
-        for (unsigned int j = 0; j < n; ++j)
-        {
-            this->add_substep(Substep(j, dt, this));
-        }
+        this->add_substep(Substep(i, dt, this));
     }
 }
 

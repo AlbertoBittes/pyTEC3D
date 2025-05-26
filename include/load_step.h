@@ -16,19 +16,18 @@
 
 class LoadStepper;
 
-class LoadStep
+class LoadStep : public FEDataObject<Globals::DummyType, LoadStepper>
 {
 public:
     // Default constructor: initializes everything to nullptr
-    LoadStep(LoadStepper *load_stepper = nullptr, EquationSystems *equation_systems = nullptr)
-        : load_stepper(load_stepper),
+    LoadStep(LoadStepper *load_stepper = nullptr)
+        : FEDataObject(load_stepper),
           time_step(nullptr),
           solver_config(nullptr),
           materials(nullptr),
           real_constants(nullptr),
           loads(nullptr),
-          node_bc(nullptr),
-          equation_systems(equation_systems)
+          node_bc(nullptr)
     {
     }
 
@@ -41,8 +40,6 @@ public:
     std::shared_ptr<RealConstantsObject> get_real_constants() const { return real_constants; }
     std::shared_ptr<LoadsObject> get_loads() const { return loads; }
     std::shared_ptr<NodeBCObject> get_node_bc() const { return node_bc; }
-    LoadStepper *get_load_stepper() const { return load_stepper; }
-    EquationSystems *get_equation_systems() const { return equation_systems; }
 
     // Setters
     void set_time_step(std::shared_ptr<TimeStep> time_step) { this->time_step = time_step; }
@@ -51,8 +48,6 @@ public:
     void set_real_constants(std::shared_ptr<RealConstantsObject> real_constants) { this->real_constants = real_constants; }
     void set_loads(std::shared_ptr<LoadsObject> loads) { this->loads = loads; }
     void set_node_bc(std::shared_ptr<NodeBCObject> node_bc) { this->node_bc = node_bc; }
-    void set_load_stepper(LoadStepper *load_stepper) { this->load_stepper = load_stepper; }
-    void set_equation_systems(EquationSystems *equation_systems) { this->equation_systems = equation_systems; }
 
 private:
     std::shared_ptr<TimeStep> time_step;                     // Pointer to the TimeStep
@@ -61,34 +56,36 @@ private:
     std::shared_ptr<RealConstantsObject> real_constants;     // Pointer to the RealConstantsObject
     std::shared_ptr<LoadsObject> loads;                      // Pointer to the LoadsObject
     std::shared_ptr<NodeBCObject> node_bc;                   // Pointer to the NodeBCObject
-
-    LoadStepper *load_stepper;         // Pointer to the LoadStepper (if needed for TimeStep initialization)
-    EquationSystems *equation_systems; // Pointer to the EquationSystems (if needed)
 };
 
-class LoadStepper
+class LoadStepper : public FEDataObject<Globals::DummyType, EquationSystems>
 {
 public:
     // Constructor
-    LoadStepper()
-        : active_load_step(nullptr), old_load_step(nullptr) {}
+    LoadStepper(EquationSystems *equation_systems = nullptr)
+        : FEDataObject(equation_systems),
+          active_load_step(nullptr),
+          old_load_step(nullptr),
+          load_step_index(0) {}
 
     // Getters
     std::shared_ptr<LoadStep> get_active_load_step() const { return active_load_step; }
     std::shared_ptr<LoadStep> get_old_load_step() const { return old_load_step; }
+    unsigned int get_load_step_index() const { return load_step_index; }
 
     // Setters
     void set_active_load_step(std::shared_ptr<LoadStep> load_step) { active_load_step = load_step; }
     void set_old_load_step(std::shared_ptr<LoadStep> load_step) { old_load_step = load_step; }
+    void set_load_step_index(unsigned int index) { load_step_index = index; }
 
     // Switch pointers and read a new LoadStep
-    void read_new_load_step(LoadStepper *load_stepper, EquationSystems *equation_systems, const std::string &filename)
+    void read_new_load_step(const std::string &filename)
     {
         // Move the current active load step to the old load step
-        old_load_step = active_load_step;
+        std::swap(old_load_step, active_load_step);
 
         // Create a new LoadStep and assign it to the active load step
-        active_load_step = std::make_shared<LoadStep>(load_stepper, equation_systems);
+        active_load_step = std::make_shared<LoadStep>(this);
         active_load_step->read_from_file(filename);
 
         // Update the load step index

@@ -20,7 +20,7 @@ typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> RealConstantsMap;
 typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
 
-template <typename T>
+template <typename T1, typename T2>
 class FEDataObject
 {
 public:
@@ -28,28 +28,27 @@ public:
     virtual ~FEDataObject() = default;
 
     // Pure virtual method to read data from a binary file stream
-    virtual void read_data(std::ifstream &file) = 0;
+    virtual void read_data(std::ifstream &file) {};
 
-    // Getter for the parent LoadStep
-    virtual LoadStep *get_parent_load_step() const
+    // Getter for the parent object
+    T2 *get_parent_object() const
     {
-        return parent_load_step;
+        return parent_object;
     }
-
-    // Setter for the parent LoadStep
-    virtual void set_parent_load_step(LoadStep *parent)
+    // Setter for the parent object
+    void set_parent_object(T2 *parent)
     {
-        parent_load_step = parent;
+        parent_object = parent;
     }
 
     // Getter for the data map
-    virtual std::shared_ptr<T> get_data_map() const
+    std::shared_ptr<T1> get_data_map() const
     {
         return data_map;
     }
 
     // Setter for the data map
-    virtual void set_data_map(std::shared_ptr<T> map)
+    void set_data_map(std::shared_ptr<T1> map)
     {
         data_map = std::move(map);
     }
@@ -64,17 +63,17 @@ public:
 
 protected:
     // Protected constructor to prevent direct instantiation
-    FEDataObject(LoadStep *parent = nullptr,
-                 std::shared_ptr<T> map = nullptr)
-        : parent_load_step(parent),
-          data_map(map ? std::move(map) : std::make_shared<T>()) {}
+    FEDataObject(T2 *parent = nullptr,
+                 std::shared_ptr<T1> map = nullptr)
+        : parent_object(parent),
+          data_map(map ? std::move(map) : std::make_shared<T1>()) {}
 
     // Attributes
-    LoadStep *parent_load_step;  // Stores the parent LoadStep
-    std::shared_ptr<T> data_map; // Stores the data map (type-specific)
+    T2 *parent_object;            // Stores the parent
+    std::shared_ptr<T1> data_map; // Stores the data map (type-specific)
 };
 
-class DataframeFEDataObject : public FEDataObject<DataframeMap>
+class DataframeFEDataObject : public FEDataObject<DataframeMap, LoadStep>
 {
 public:
     // Constructor
@@ -182,7 +181,8 @@ public:
         // Ensure the data_map is not empty
         if (data_map->empty())
         {
-            libmesh_error_msg("Data map is empty. Cannot populate mat_like_map.");
+            return;
+            // libmesh_error_msg("Data map is empty. Cannot populate mat_like_map.");
         }
 
         // Iterate over each row in the data_map
@@ -200,7 +200,10 @@ public:
             std::vector<Real> values;
             for (size_t col = 1; col < row.size(); ++col)
             {
-                values.push_back(std::get<Real>(row[col]));
+                if (std::holds_alternative<Real>(row[col]))
+                {
+                    values.push_back(std::get<Real>(row[col]));
+                }
             }
 
             // Populate the mat_like_map
@@ -224,7 +227,7 @@ protected:
     std::shared_ptr<MaterialsMap> mat_like_map; // Shared pointer to the map
 };
 
-class SettingsFEDataObject : public FEDataObject<SettingsMap>
+class SettingsFEDataObject : public FEDataObject<SettingsMap, LoadStep>
 {
 public:
     // Constructor

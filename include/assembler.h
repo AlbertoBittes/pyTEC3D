@@ -10,45 +10,25 @@ using namespace libMesh;
 
 class LoadStep;
 
-class AssemblerLinear : public System::Assembly
+class AssemblerLinear : public System::Assembly, public FEDataObject<ElementTypesCollector, EquationSystems>
 {
 public:
-    AssemblerLinear(EquationSystems &eq_sys)
-        : eq_sys(eq_sys),
-          elem_builder(new ElementBuilder(this)),
-          load_step(nullptr),
-          element_types_collector(eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector"))
+    AssemblerLinear(EquationSystems *parent = nullptr,
+                    std::shared_ptr<ElementTypesCollector> map = nullptr)
+        : System::Assembly(),
+          FEDataObject<ElementTypesCollector, EquationSystems>(parent, map), // Pass arguments to base
+          elem_builder(std::make_shared<ElementBuilder>(this))               // Initialize elem_builder
     {
     }
 
-    void set_elem_builder(ElementBuilder *elem_builder)
+    void set_elem_builder(ElementBuilder *builder)
     {
-        this->elem_builder = elem_builder;
-    }
-    void set_element_types_collector(std::shared_ptr<ElementTypesCollector> element_types_collector)
-    {
-        this->element_types_collector = element_types_collector;
-    }
-    void set_load_step(LoadStep *load_step)
-    {
-        this->load_step = load_step;
+        elem_builder.reset(builder);
     }
 
-    LoadStep *get_load_step() const
-    {
-        return load_step;
-    }
     ElementBuilder *get_elem_builder() const
     {
-        return elem_builder;
-    }
-    const EquationSystems &get_eq_sys() const
-    {
-        return eq_sys;
-    }
-    std::shared_ptr<ElementTypesCollector> get_element_types_collector() const
-    {
-        return element_types_collector;
+        return elem_builder.get();
     }
 
     void assemble() override;
@@ -64,10 +44,7 @@ public:
     void update_rhs();
 
 private:
-    EquationSystems &eq_sys;
-    ElementBuilder *elem_builder;
-    LoadStep *load_step;
-    std::shared_ptr<ElementTypesCollector> element_types_collector;
+    std::shared_ptr<ElementBuilder> elem_builder;
 };
 
 #endif // ASSEMBLER_H

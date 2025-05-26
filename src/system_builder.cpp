@@ -1,4 +1,3 @@
-#include "libmesh/equation_systems.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/nonlinear_implicit_system.h"
 #include "libmesh/transient_system.h"
@@ -27,6 +26,7 @@ void SystemBuilder::initialize()
 
     std::string vars_set;
 
+    auto equation_systems = this->get_parent_object();
     auto element_types_collector = equation_systems->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
@@ -38,7 +38,7 @@ void SystemBuilder::initialize()
     {
         vars_set = "DOFVariables";
 
-        std::shared_ptr<AssemblerLinear> assembler_linear = std::make_shared<AssemblerLinear>(*equation_systems);
+        std::shared_ptr<AssemblerLinear> assembler_linear = std::make_shared<AssemblerLinear>(equation_systems);
         system.attach_assemble_object(*assembler_linear);
         equation_systems->parameters.set<std::shared_ptr<AssemblerLinear>>("assembler") = assembler_linear;
 
@@ -48,14 +48,14 @@ void SystemBuilder::initialize()
     }
     else if (system.name() == "DerivedQuantitiesSystem")
     {
-        vars_set = "NodalDerivedQuantitiesVariables";
+        vars_set = "NodalSolutionVariables";
     }
     else if (system.name() == "DerivedQuantitiesSystemElem")
     {
-        vars_set = "ElementDerivedQuantitiesVariables";
+        vars_set = "ElementSolutionVariables";
     }
     auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds(vars_set);
-    for (const auto &pair : *vars_to_subdomain_ids)
+    for (const auto &pair : vars_to_subdomain_ids)
     {
         const std::string &variable = pair.first;
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;

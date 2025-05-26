@@ -11,12 +11,6 @@
 #include "../include/element_types.h" // Include the header defining ElementType
 #include "../include/loads_object.h"
 #include "../include/assembler.h"
-#include "../include/element_data_io.h"
-
-inline LoadStep *ElementBuilder::get_load_step() const
-{
-    return assembler->get_load_step();
-}
 
 void ElementBuilder::buildVectors(const std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map,
                                   std::vector<DenseVector<Number>> &elem_vectors_vector)
@@ -186,9 +180,12 @@ void ElementBuilder::build_solid97_matrix()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
+    auto eq_sys = this->get_parent_object()->get_parent_object();
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
+
     auto materials = load_step->get_materials();
 
-    materials->compute_material_properties(elem->id(), element_type->is_conductive());
+    materials->compute_material_properties(this->material_num, element_type->is_conductive());
     auto mu_matrix = materials->get_mu_matrix();
     auto rs_matrix = materials->get_rs_matrix();
 
@@ -200,10 +197,10 @@ void ElementBuilder::build_solid97_matrix()
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
-                matrices_derived[2](qp, dof_i) += scalar_shape_functions->phi[dof_i][qp];
+                // matrices_derived[2](qp, dof_i) += scalar_shape_functions->phi[dof_i][qp];
 
-                for (unsigned int k = 0; k < 3; k++)
-                    matrices_derived[3](qp + k * n_dofs_var, dof_i) += scalar_shape_functions->dphi[dof_i][qp](k);
+                // for (unsigned int k = 0; k < 3; k++)
+                // matrices_derived[3](qp + k * n_dofs_var, dof_i) += scalar_shape_functions->dphi[dof_i][qp](k);
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
@@ -216,8 +213,8 @@ void ElementBuilder::build_solid97_matrix()
                         for (unsigned int k = 0; k < 3; k++)
                         {
                             matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] / mu_matrix[k] * (scalar_shape_functions->dphi[dof_i][qp](k) * scalar_shape_functions->dphi[dof_j][qp](k));
-                            matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
-                            matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
+                            // matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
+                            // matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
                         }
                     }
             }
@@ -230,8 +227,8 @@ void ElementBuilder::build_solid97_matrix()
                         for (unsigned int k = 0; k < 3; k++)
                         {
                             matrices[0](dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] / mu_matrix[k] * (scalar_shape_functions->dphi[dof_i][qp](k) * scalar_shape_functions->dphi[dof_j][qp](k));
-                            matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
-                            matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
+                            // matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
+                            // matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
                         }
 }
 
@@ -278,9 +275,11 @@ void ElementBuilder::build_plane13_matrix()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
+    auto eq_sys = this->get_parent_object()->get_parent_object();
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
     auto materials = load_step->get_materials();
 
-    materials->compute_material_properties(elem->id(), element_type->is_conductive());
+    materials->compute_material_properties(this->material_num, element_type->is_conductive());
     auto mu_matrix = materials->get_mu_matrix();
     auto rs_matrix = materials->get_rs_matrix();
 
@@ -385,11 +384,12 @@ void ElementBuilder::build_solid97_rhs()
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
     std::string js_label = "Js";
-
+    auto eq_sys = this->get_parent_object()->get_parent_object();
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
     auto js_loads = (*load_step->get_loads()->get_data_map())[js_label];
 
     for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var * 3; dof_i++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int k = 0; k < 3; k++)
                 vectors[0](dof_i + k * n_dofs_var) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp] * js_loads[elem->id()][k];
 }
@@ -440,6 +440,8 @@ void ElementBuilder::build_plane13_rhs()
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
     std::string js_label = "Js";
+    auto eq_sys = this->get_parent_object()->get_parent_object();
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
 
     auto js_loads = (*load_step->get_loads()->get_data_map())[js_label];
 

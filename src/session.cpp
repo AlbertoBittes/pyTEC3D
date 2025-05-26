@@ -19,7 +19,6 @@ void Session::set_output_filepath(unsigned int output_label)
 
 void Session::create_temp_folder()
 {
-    temp_folderpath = std::filesystem::current_path() / "temp_files";
     if (!std::filesystem::exists(temp_folderpath))
     {
         std::filesystem::create_directory(temp_folderpath);
@@ -46,7 +45,6 @@ void Session::create_output_folder()
 
 void Session::create_emat_folder()
 {
-    emat_folderpath = output_folderpath / "emat_files";
     if (!std::filesystem::exists(emat_folderpath))
     {
         std::filesystem::create_directory(emat_folderpath);
@@ -54,13 +52,18 @@ void Session::create_emat_folder()
     }
     else
     {
-        libMesh::out << "Emat folder already exists at " << emat_folderpath << std::endl;
+        // Delete all files in the folder
+        for (const auto &entry : std::filesystem::directory_iterator(emat_folderpath))
+        {
+            if (entry.is_regular_file())
+                std::filesystem::remove(entry.path());
+        }
+        libMesh::out << "Emat folder already exists at " << emat_folderpath << ". All files deleted." << std::endl;
     }
 }
 
 void Session::check_load_steps_folder()
 {
-    load_steps_folderpath = output_folderpath / "load_steps";
     if (!std::filesystem::exists(load_steps_folderpath))
     {
         libmesh_error_msg("Load steps folder does not exist");

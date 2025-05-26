@@ -55,30 +55,37 @@ void AssemblerLinear::assemble()
     // application.
     PerfLog perf_log("Matrix Assembly");
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = eq_sys.get_mesh();
+    auto eq_sys = this->get_parent_object();
+    // Get a reference to the mesh object.
+    const MeshBase &mesh = eq_sys->get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
+    TransientLinearImplicitSystem &system = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
 
-    const auto &comm = eq_sys.comm();
+    const auto &comm = eq_sys->comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
     const DofMap &dof_map = system.get_dof_map();
 
-    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
+    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
 
-    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
+    auto time_substep = load_step->get_time_step()->get_active_substep();
 
     if (this->check_compute_matrix())
     {
         this->build_write_element_matrices();
     }
+    else if (time_substep->get_index() == 0)
+    {
+        this->update_rhs();
+    }
     std::vector<dof_id_type> dof_indices;
     std::vector<Real> old_solution_values;
-    auto time_substep = load_step->get_time_step()->get_active_substep();
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -120,7 +127,7 @@ void AssemblerLinear::assemble()
     }
 
     std::ifstream rhs_prev_input_file;
-    if (time_substep->get_index() == 0 && time_substep->get_parent().get_step() == 0)
+    if (time_substep->get_parent_object()->get_step() == 1)
     {
         old_rhs = false;
     }
@@ -184,7 +191,6 @@ void AssemblerLinear::assemble()
 
         auto Ke = elem_builder->get_matrices()[0];
         auto Ce = elem_builder->get_matrices()[1];
-        auto rhs = elem_builder->get_vectors()[0];
 
         Ce.scale(1 / time_substep->get_dt());
 
@@ -199,6 +205,8 @@ void AssemblerLinear::assemble()
         }
 
         elem_builder->readElementVectors(rhs_input_file, elem_builder->get_vectors());
+        auto rhs = elem_builder->get_vectors()[0];
+
         if (time_substep->get_ramped_load())
         {
             if (old_rhs)
@@ -210,6 +218,7 @@ void AssemblerLinear::assemble()
             }
             elem_builder->ramp_vectors(time_substep);
         }
+
         // elem_builder->apply_load();
 
         // HERE YOU HAVE TO RAMP THE LOAD !!!
@@ -271,19 +280,21 @@ void AssemblerLinear::build_write_element_matrices()
     // logging, since there may be many PerfLogs in an
     // application.
     PerfLog perf_log("Matrix Assembly");
+    auto eq_sys = this->get_parent_object();
+
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = eq_sys.get_mesh();
+    const MeshBase &mesh = eq_sys->get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = eq_sys.comm();
+    const auto &comm = eq_sys->comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
 
-    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
+    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
 
-    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
@@ -383,18 +394,20 @@ void AssemblerLinear::update_rhs()
     // application.
     PerfLog perf_log("Matrix Assembly");
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = eq_sys.get_mesh();
+    auto eq_sys = this->get_parent_object();
+
+    const MeshBase &mesh = eq_sys->get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = eq_sys.comm();
+    const auto &comm = eq_sys->comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
 
-    auto session = eq_sys.parameters.get<std::shared_ptr<Session>>("session");
+    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
 
-    auto element_types_collector = eq_sys.parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
+    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
     ElementTypesMap &element_types_map = element_types_collector->elementTypes;
 
     // Allocate memory for 3D nodal elements matrixes with transient effects
@@ -412,7 +425,6 @@ void AssemblerLinear::update_rhs()
 
     unsigned int etype_num;
 
-    auto temp_folder = session->get_temp_folder_path();
     auto emat_folderpath = session->get_emat_folderpath();
 
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
@@ -421,10 +433,10 @@ void AssemblerLinear::update_rhs()
     // e.g. new materials, new real constants, nonlinear elements.
 
     mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = temp_folder / mtrx_vec_filename;
+    filepath = emat_folderpath / mtrx_vec_filename;
     if (std::filesystem::exists(filepath))
     {
-        std::filesystem::path new_filepath = temp_folder / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
+        std::filesystem::path new_filepath = emat_folderpath / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
         std::filesystem::rename(filepath, new_filepath);
     }
     std::ofstream rhs_output_file(filepath);
@@ -463,8 +475,10 @@ bool AssemblerLinear::check_update_matrix()
     bool update_matrix = false;
 
     const Real relative_epsilon = 1e-9;
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver());
-    auto prev_load_step = load_step->get_load_stepper()->get_old_load_step();
+    auto eq_sys = this->get_parent_object();
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver());
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
+    auto prev_load_step = load_step->get_parent_object()->get_old_load_step();
     auto time_step = load_step->get_time_step();
     auto active_time_substep = time_step->get_active_substep();
     auto old_time_substep = time_step->get_previous_substep();
@@ -497,7 +511,7 @@ bool AssemblerLinear::check_update_matrix()
         }
         else
         {
-            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys.get_system(0).get_constraint_object());
+            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys->get_system(0).get_constraint_object());
             auto current_material_object = load_step->get_materials();
             auto old_material_object = prev_load_step->get_materials();
             auto current_real_constant_object = load_step->get_real_constants();
@@ -526,17 +540,34 @@ bool AssemblerLinear::check_update_matrix()
 bool AssemblerLinear::check_compute_matrix()
 {
     // bool compute_matrix = false;
-
-    auto prev_load_step = load_step->get_load_stepper()->get_old_load_step();
+    auto eq_sys = this->get_parent_object();
+    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
+    auto prev_load_step = load_step->get_parent_object()->get_old_load_step();
     auto active_time_substep = load_step->get_time_step()->get_active_substep();
     auto old_time_substep = load_step->get_time_step()->get_previous_substep();
     bool update_matrix;
-    auto solver = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver();
+    auto solver = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver();
     Real relative_epsilon = 1e-8;
-    if (prev_load_step == nullptr)
+    if (prev_load_step == nullptr && active_time_substep->get_index() == 0)
     {
-        return true;
+        // Here add the check for nonlinear elements
+        // This function must be called prior to a check for the need of recomputing the matrix:
+        // e.g. new materials, new real constants, nonlinear elements.
+        update_matrix = true;
+        solver->reuse_preconditioner(false);
     }
+    else if (old_time_substep == nullptr && prev_load_step != nullptr)
+    {
+        old_time_substep = &(prev_load_step->get_time_step()->get_substeps().back());
+    }
+    // else if (active_time_substep == nullptr && prev_load_step != nullptr)
+    // {
+    //     // Here add the check for nonlinear elements
+    //     // This function must be called prior to a check for the need of recomputing the matrix:
+    //     // e.g. new materials, new real constants, nonlinear elements.
+    //     update_matrix = true;
+    //     solver->reuse_preconditioner(false);
+    // }
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
     else
@@ -549,7 +580,7 @@ bool AssemblerLinear::check_compute_matrix()
         }
         else
         {
-            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys.get_system(0).get_constraint_object());
+            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys->get_system(0).get_constraint_object());
             auto current_material_object = load_step->get_materials();
             auto old_material_object = prev_load_step->get_materials();
             auto current_real_constant_object = load_step->get_real_constants();

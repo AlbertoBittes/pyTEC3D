@@ -18,40 +18,60 @@ using namespace libMesh;
 
 class ElementType;
 
-struct ScalarShapeFunctions
+enum ElementTypeEnum : unsigned int
 {
-    const std::vector<Real> &JxW;
-    const std::vector<std::vector<Real>> &phi;
-    const std::vector<std::vector<RealGradient>> &dphi;
-
-    // Constructor
-    ScalarShapeFunctions(const std::vector<Real> &JxW,
-                         const std::vector<std::vector<Real>> &phi,
-                         const std::vector<std::vector<RealGradient>> &dphi)
-        : JxW(JxW), phi(phi), dphi(dphi) {}
+    SOLID97 = 97,
+    SOLID236 = 236,
+    PLANE13 = 13,
+    PLANE233 = 233
 };
 
-struct VectorShapeFunctions
+enum VariableCategory
 {
-    const std::vector<Real> &JxW;
-    const std::vector<std::vector<RealGradient>> &phi_vec;
-    const std::vector<std::vector<RealTensor>> &dphi_vec;
-    const std::vector<std::vector<RealGradient>> &curl_phi_vec;
+    DOFVariables,
+    NodalSolutionVariables,
+    ElementSolutionVariables,
+    LoadsVariables
+};
 
-    // Constructor
-    VectorShapeFunctions(const std::vector<Real> &JxW,
-                         const std::vector<std::vector<RealGradient>> &phi_vec,
-                         const std::vector<std::vector<RealTensor>> &dphi_vec,
-                         const std::vector<std::vector<RealGradient>> &curl_phi_vec)
-        : JxW(JxW), phi_vec(phi_vec), dphi_vec(dphi_vec), curl_phi_vec(curl_phi_vec) {}
+enum DOFMatrixNames
+{
+    Ke,
+    Ce,
+    NUM_MATRICES
+};
+
+enum SolutionMatrixNames
+{
+    Me,
+    AAe,
+    JAe,
+    JVe,
+    NUM_SOLUTION_MATRICES
+};
+enum VectorNames
+{
+    Fe,
+    Js,
+    NUM_VECTORS
+};
+struct VariableData
+{
+    VariableCategory category;
+    bool is_active;
+    unsigned int physical_components;
+    bool is_scalar;
+    std::string api_label;
+    unsigned int api_components;
+    FEFamily fe_family;
+    Order order;
 };
 
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
-typedef std::unordered_map<unsigned int, std::shared_ptr<ElementType>> ElementTypesMap;
+typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
 typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 //                         label         is_active, physical components, is scalar, API label, API components, fe family, order
-typedef std::map<std::string, std::tuple<bool, unsigned int, bool, std::string, unsigned int, std::string, std::string>> VariableData;
-typedef std::unordered_map<std::string, VariableData> ElementTypeData;
+typedef std::map<std::string, VariableData> VariableInformation;
 
 class ElementType
 {
@@ -60,100 +80,83 @@ public:
     ElementType(const std::vector<unsigned int> &keyopts)
         : keyopts(keyopts)
     {
-        element_type_data["DOFVariables"] = VariableData();
-        element_type_data["NodalDerivedQuantitiesVariables"] = VariableData();
-        element_type_data["ElementDerivedQuantitiesVariables"] = VariableData();
-        element_type_data["LoadsVariables"] = VariableData();
     }
 
     // Virtual methods to be implemented by derived classes
-    std::vector<std::string> getActiveVariables(const std::string &var_type) const
+    std::vector<std::string> get_active_variables(VariableCategory variable_cat) const
     {
         std::vector<std::string> active_vars;
-        auto it = element_type_data.find(var_type);
-        if (it != element_type_data.end())
+        for (const auto &pair : variable_info)
         {
-            for (const auto &var : it->second)
+            const std::string &var_name = pair.first;
+            const VariableData &var_data = pair.second;
+
+            if (var_data.category == variable_cat && var_data.is_active)
             {
-                if (std::get<0>(var.second)) // Check if the variable is active
-                {
-                    active_vars.push_back(var.first);
-                }
+                active_vars.push_back(var_name);
             }
         }
         return active_vars;
     }
 
-    bool is_conductive() const
-    {
-        // Check if "VOLT" exists in element_type_data["DOFVariables"]
-        auto it = element_type_data.find("DOFVariables");
-        if (it != element_type_data.end())
-        {
-            const auto &dof_variables = it->second;
-            return dof_variables.find("VOLT") != dof_variables.end();
-        }
-        return false; // "DOFVariables" or "VOLT" not found
-    }
+    // inline bool is_conductive() const
+    // {
+    //     // Check if "VOLT" exists in element_type_data["DOFVariables"]
+    //     auto active_vars = this->getActiveVariables("DOFVariables");
+    //     for (const auto &var : active_vars)
+    //     {
+    //         if (var == "VOLT")
+    //         {
+    //             return true; // "VOLT" found, element is conductive
+    //         }
+    //     }
+    //     return false; // "DOFVariables" or "VOLT" not found
+    // }
 
     // Getters
-    const std::vector<unsigned int> &get_properties() const { return keyopts; }
+    const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
-    const ElementTypeData &get_element_type_data() const
+    const VariableInformation &get_variable_information() const
     {
-        return element_type_data;
+        return variable_info;
     }
-
-    const FEBase *get_fe() const { return fe.get(); }
-    const FEVectorBase *get_fe_vec() const { return fe_vec.get(); }
-
-    const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
-    const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
-    const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
-
-    // Setters
-    void set_fe(std::unique_ptr<FEBase> new_fe) { fe = std::move(new_fe); }
-    // Setter for ElementTypeData
-    void set_element_type_data(const ElementTypeData &data)
+    unsigned int get_active_dof_vars_size() const
     {
-        element_type_data = data;
+        return active_dof_vars_size;
     }
+    // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
+    // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
+    // const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
+
     // Virtual methods for populating maps
-    virtual void populate_matrix_idx_size_map() = 0;
-    virtual void populate_derived_matrix_idx_size_map() = 0;
-    virtual void populate_vector_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map()
+    {
+        // Check this when you have periodic BCs
+        unsigned int n_sf = fe_array[0]->n_shape_functions();
+        std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
+            std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+
+        (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+        (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+
+        return matrix_idx_size_map;
+    };
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
     // Populate all maps
     void populate_all();
 
-    void reinit_fe(Elem *elem)
-    {
-        fe->reinit(elem);
-    }
-    void reinit_fe_vec(Elem *elem)
-    {
-        fe_vec->reinit(elem);
-    }
-    // Shape functions
-    inline std::shared_ptr<ScalarShapeFunctions> get_scalar_shape_functions() const
-    {
-        return std::make_shared<ScalarShapeFunctions>(fe->get_JxW(), fe->get_phi(), fe->get_dphi());
-    }
-
-    inline std::shared_ptr<VectorShapeFunctions> get_vector_shape_functions() const
-    {
-        return std::make_shared<VectorShapeFunctions>(fe_vec->get_JxW(), fe_vec->get_phi(), fe_vec->get_dphi(), fe_vec->get_curl_phi());
-    }
+    std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
 
 protected:
-    std::unique_ptr<FEBase> fe;           // Finite element object
-    std::unique_ptr<FEVectorBase> fe_vec; // Finite element vector object
-    std::vector<unsigned int> keyopts;    // Element type keyopts
-    ElementTypeData element_type_data;    // Element type data
+    const std::vector<unsigned int> keyopts; // Element type keyopts
+    VariableInformation variable_info;
+    unsigned int active_dof_vars_size; // Number of active DOF variables
     // Maps for matrix and vector sizes
-    std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
-    std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
-    std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
+    // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
+    // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
+    // std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
 };
 
 class AVElementType : public ElementType
@@ -164,14 +167,10 @@ public:
         : ElementType(keyopts) // Call the parent class constructor
     {
         // Additional initialization for AVElementType (if needed)
-        element_type_data["NodalDerivedQuantitiesVariables"]["B_x"] =
-            std::make_tuple(true, 3, false, "B", 0, "L2_LAGRANGE", "FIRST");
-        element_type_data["NodalDerivedQuantitiesVariables"]["B_y"] =
-            std::make_tuple(true, 3, false, "B", 1, "L2_LAGRANGE", "FIRST");
-        element_type_data["ElementDerivedQuantitiesVariables"]["J_z"] =
-            std::make_tuple(true, 3, false, "J", 2, "MONOMIAL", "CONSTANT");
-        element_type_data["LoadsVariables"]["Js"] =
-            std::make_tuple(true, 3, false, "Js", 3, "", "");
+        variable_info["B_x"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 0, L2_LAGRANGE, FIRST};
+        variable_info["B_y"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 1, L2_LAGRANGE, FIRST};
+        variable_info["J_z"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 2, MONOMIAL, CONSTANT};
+        variable_info["Js"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 3, FEFamily::INVALID_FE, Order::INVALID_ORDER};
     }
 };
 
@@ -182,29 +181,22 @@ public:
     AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
         // Additional initialization for AVElementType (if needed)
-        element_type_data["NodalDerivedQuantitiesVariables"]["B_z"] =
-            std::make_tuple(true, 3, false, "B", 2, "L2_LAGRANGE", "FIRST");
-        element_type_data["ElementDerivedQuantitiesVariables"]["J_x"] =
-            std::make_tuple(true, 3, false, "J", 0, "MONOMIAL", "CONSTANT");
-        element_type_data["ElementDerivedQuantitiesVariables"]["J_y"] =
-            std::make_tuple(true, 3, false, "J", 1, "MONOMIAL", "CONSTANT");
-        element_type_data["DOFVariables"]["VOLT"] =
-            std::make_tuple(false, 1, true, "VOLT", 0, "LAGRANGE", "FIRST");
-        element_type_data["DOFVariables"]["EMF"] =
-            std::make_tuple(false, 1, true, "EMF", 0, "LAGRANGE", "FIRST");
+        variable_info["B_z"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 2, L2_LAGRANGE, FIRST};
+        variable_info["J_x"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 0, MONOMIAL, CONSTANT};
+        variable_info["J_y"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 1, MONOMIAL, CONSTANT};
+        variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
+        variable_info["EMF"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "EMF", 0, LAGRANGE, FIRST};
 
         FEType fe_type(FIRST, LAGRANGE);
         // Build a Finite Element object of the specified type.  Since the
         // FEBase::build() member dynamically creates memory we will
         // store the object as a std::unique_ptr<FEBase>.  This can be thought
         // of as a pointer that will clean up after itself.
-        fe = FEBase::build(3, fe_type);
+        fe_array.push_back(FEBase::build(3, fe_type));
         // A 2nd order Gauss quadrature rule for numerical integration.
         QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(qrule);
-
-        auto sf = this->get_scalar_shape_functions();
+        fe_array[0]->attach_quadrature_rule(qrule);
     }
 };
 
@@ -214,21 +206,18 @@ public:
     // Constructor
     AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
     {
-        element_type_data["DOFVariables"]["VOLT"] =
-            std::make_tuple(false, 1, true, "VOLT", 0, "LAGRANGE", "FIRST");
+        variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
         // Additional initialization for AVElementType (if needed)
         FEType fe_type(FIRST, LAGRANGE);
         // Build a Finite Element object of the specified type.  Since the
         // FEBase::build() member dynamically creates memory we will
         // store the object as a std::unique_ptr<FEBase>.  This can be thought
         // of as a pointer that will clean up after itself.
-        fe = FEBase::build(2, fe_type);
+        fe_array.push_back(FEBase::build(2, fe_type));
         // A 2nd order Gauss quadrature rule for numerical integration.
         QGauss *qrule = new QGauss(2, fe_type.default_quadrature_order());
         // Tell the finite element object to use our quadrature rule.
-        fe->attach_quadrature_rule(qrule);
-
-        auto sf = this->get_scalar_shape_functions();
+        fe_array[0]->attach_quadrature_rule(qrule);
     }
 };
 
@@ -237,9 +226,9 @@ class SOLID97Type : public AV3DElementType
 public:
     SOLID97Type(const std::vector<unsigned int> &keyopts);
 
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
 
 class SOLID236Type : public AV3DElementType
@@ -247,9 +236,9 @@ class SOLID236Type : public AV3DElementType
 public:
     SOLID236Type(const std::vector<unsigned int> &keyopts);
 
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
 
 class PLANE13Type : public AV2DElementType
@@ -257,9 +246,9 @@ class PLANE13Type : public AV2DElementType
 public:
     PLANE13Type(const std::vector<unsigned int> &keyopts);
 
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
 
 class PLANE233Type : public AV2DElementType
@@ -267,9 +256,9 @@ class PLANE233Type : public AV2DElementType
 public:
     PLANE233Type(const std::vector<unsigned int> &keyopts);
 
-    void populate_matrix_idx_size_map() override;
-    void populate_derived_matrix_idx_size_map() override;
-    void populate_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
 
 class ElementTypesCollector
@@ -289,12 +278,49 @@ public:
 
     ElementTypesMapCSV *readElementTypes(const std::string &filename);
 
-    VariableToElementIdsMapType *associateVariablesWithElementIds(std::string variables_set) const;
+    VariableToElementIdsMapType associateVariablesWithElementIds(std::string variables_set) const;
 
     void collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV);
 
     ElementTypesMap elementTypes;
 
     std::set<std::string> getLoadsLabels() const;
+};
+
+class ElementTypeFactory
+{
+public:
+    // Factory method to create an ElementType object
+    static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &keyopts)
+    {
+        // Convert the string type to ElementTypeEnum
+        switch (type)
+        {
+        case ElementTypeEnum::SOLID97:
+            return std::make_unique<SOLID97Type>(keyopts);
+        case ElementTypeEnum::SOLID236:
+            return std::make_unique<SOLID236Type>(keyopts);
+        case ElementTypeEnum::PLANE13:
+            return std::make_unique<PLANE13Type>(keyopts);
+        case ElementTypeEnum::PLANE233:
+            return std::make_unique<PLANE233Type>(keyopts);
+        default:
+            libmesh_error_msg("Unknown element type");
+        }
+    }
+    static ElementTypeEnum string_to_element_type_enum(const std::string &type)
+    {
+        // Convert the string type to ElementTypeEnum
+        if (type == "SOLID97")
+            return ElementTypeEnum::SOLID97;
+        else if (type == "SOLID236")
+            return ElementTypeEnum::SOLID236;
+        else if (type == "PLANE13")
+            return ElementTypeEnum::PLANE13;
+        else if (type == "PLANE233")
+            return ElementTypeEnum::PLANE233;
+        else
+            libmesh_error_msg("Unknown element type");
+    }
 };
 #endif // ELEMENT_TYPES_H

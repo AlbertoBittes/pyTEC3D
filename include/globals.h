@@ -13,6 +13,10 @@ namespace Globals
     extern const std::vector<std::string> API_LOADS_LABELS;
     extern const std::vector<unsigned int> API_LOADS_COMPONENTS;
     extern const std::vector<std::string> GLOBAL_NODAL_DERIVED_VARIABLES_LABELS;
+
+    struct DummyType
+    {
+    };
 }
 
 #endif // GLOBALS_H
