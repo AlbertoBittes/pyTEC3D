@@ -18,10 +18,8 @@ class MaterialsObject : public DataframeMatLikeFEDataObject
 {
 public:
     // Default constructor
-    explicit MaterialsObject(LoadStep *parent = nullptr,
-                             std::shared_ptr<DataframeMap> map = nullptr,
-                             std::shared_ptr<MaterialsMap> mat_map = nullptr)
-        : DataframeMatLikeFEDataObject(parent, map, mat_map),
+    explicit MaterialsObject(std::ifstream &file)
+        : DataframeMatLikeFEDataObject(file),
           mu_matrix(3, 0.0),
           rs_matrix(3, 0.0) {}
 

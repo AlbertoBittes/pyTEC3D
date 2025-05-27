@@ -1,23 +1,16 @@
 #ifndef REAL_CONSTANTS_OBJECT_H
 #define REAL_CONSTANTS_OBJECT_H
 
-#include "../include/fe_data_object.h" // Include the base class
+#include "fe_data_object.h" // Include the base class
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include <istream>
-#include <libmesh/libmesh.h>
-
-using namespace libMesh;
 
 class RealConstantsObject : public DataframeMatLikeFEDataObject
 {
 public:
     // Default constructor
-    explicit RealConstantsObject(LoadStep *parent = nullptr,
-                                 std::shared_ptr<DataframeMap> map = nullptr,
-                                 std::shared_ptr<RealConstantsMap> real_constants_map = nullptr)
-        : DataframeMatLikeFEDataObject(parent, map, real_constants_map) {}
+    using DataframeMatLikeFEDataObject::DataframeMatLikeFEDataObject;
 
     // Check if a constant exists in the map
     bool has_constant(dof_id_type constant_id) const { return mat_like_map->find(constant_id) != mat_like_map->end(); }
@@ -33,11 +26,11 @@ public:
         return it->second;
     }
 
-    // Set the values of a constant
-    void set_constant(dof_id_type constant_id, const std::vector<Real> &values)
-    {
-        (*mat_like_map)[constant_id] = values;
-    }
+    // // Set the values of a constant
+    // void set_constant(dof_id_type constant_id, const std::vector<Real> &values)
+    // {
+    //     (*mat_like_map)[constant_id] = values;
+    // }
 };
 
 #endif // REAL_CONSTANTS_OBJECT_H

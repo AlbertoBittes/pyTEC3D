@@ -1,59 +1,71 @@
-#include "../include/load_step.h"
+#include "load_step.h"
+#include "fe_data_object.h"
+#include "apec_m_linear_system.h"
 
 void LoadStep::read_from_file(const std::string &filename)
 {
-    // Placeholder for actual file reading logic
     std::cout << "Reading LoadStep data from file: " << filename << std::endl;
-    // Open the binary file
     std::ifstream file(filename, std::ios::binary);
     if (!file)
     {
         libmesh_error_msg("Failed to open file: " + filename);
     }
 
-    auto equation_systems = parent_object->get_parent_object();
-    TransientLinearImplicitSystem &system = equation_systems->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
+    auto *load_stepper = this->get_parent_object();
+    ApecMLinearSystem &sys = load_stepper->get_parent_object()->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    MeshBase &mesh = sys.get_mesh();
+    PetscLinearSolver<Number> *petsc_linear_solver =
+        cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
+    std::shared_ptr<LoadStep> prev_load_step = load_stepper->get_old_load_step();
 
-    time_step = std::make_shared<TimeStep>(this); // Example initialization
-    time_step->read_data(file);
-    time_step->populate_time_step(parent_object->get_old_load_step());
+    // Clear any existing data objects
+    data_objects.clear();
 
-    solver_config = std::make_shared<PetscSolverConfiguration>(this);
-    solver_config->read_data(file);
-    // PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
-    // // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
-    // // solver->set_solver_type(GMRES);
-    // PetscSolverConfiguration solver_configuration(*solver);
-    // solver_configuration.configure_solver();
-    // solver->set_solver_configuration(solver_configuration);
+    // Example: read the number of data objects
+    size_t num_objects = 0;
+    file.read(reinterpret_cast<char *>(&num_objects), sizeof(size_t));
 
-    materials = std::make_shared<MaterialsObject>(this);
-    materials->read_data(file);
-    materials->populate_mat_like_map();
+    // For each data object, read a type identifier and construct the appropriate object
+    for (size_t i = 0; i < num_objects; ++i)
+    {
+        // Example: read a type id (assume uint32_t)
+        uint32_t type_id = 0;
+        file.read(reinterpret_cast<char *>(&type_id), sizeof(uint32_t));
 
-    real_constants = std::make_shared<RealConstantsObject>(this);
-    real_constants->read_data(file);
-    real_constants->populate_mat_like_map();
+        // Based on type_id, create the correct FEDataObjectBase<LoadStepper> derived object
+        std::shared_ptr<FEDataObjectAbstract> obj;
 
-    const MeshBase &mesh = equation_systems->get_mesh();
-    loads = std::make_shared<LoadsObject>(mesh, this);
-    loads->read_data(file);
+        // Example switch (replace with your actual type ids and classes)
+        switch (type_id)
+        {
+        case 1:
+            obj = std::make_shared<TimeStep>(file, prev_load_step);
+            break;
+        case 2:
+            obj = std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver);
+            break;
+        case 3:
+            obj = std::make_shared<MaterialsObject>(file);
+            break;
+        case 4:
+            obj = std::make_shared<RealConstantsObject>(file);
+            break;
+        case 5:
+            obj = std::make_shared<LoadsObject>(file, mesh);
+            break;
+        case 6:
+            obj = std::make_shared<NodeBCObject>(file);
+            break;
+        default:
+            libmesh_error_msg("Invalid load step binary file");
+            continue;
+        }
 
-    node_bc = std::make_shared<NodeBCObject>(this);
-    node_bc->read_data(file);
-    // NodeBCObject *old_object = dynamic_cast<NodeBCObject *>(&system.get_constraint_object());
-
-    // if (old_object)
-    // {
-    //     // Explicitly call the destructor on the old NodeBCObject
-    //     old_object->~NodeBCObject();
-    //     libMesh::out << "Old NodeBCObject destructor called." << std::endl;
-    // }
-    // else
-    // {
-    //     libMesh::out << "Warning: Constraint object is not a NodeBCObject." << std::endl;
-    // }
-    system.attach_constraint_object(*(node_bc));
+        if (obj)
+        {
+            data_objects.push_back(obj);
+        }
+    }
 
     file.close();
 }

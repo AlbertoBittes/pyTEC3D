@@ -4,12 +4,6 @@ void LoadsObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading loads data from an open file stream..." << std::endl;
 
-    // Initialize the data_map if it is a nullptr
-    if (!data_map)
-    {
-        data_map = std::make_shared<LoadArraysMap>();
-    }
-
     // Read the number of load instances
     unsigned int num_loads;
     file.read(reinterpret_cast<char *>(&num_loads), sizeof(num_loads));
@@ -101,11 +95,6 @@ void LoadsObject::zero_loads_array()
 
 void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
 {
-    // Ensure data_map is initialized
-    if (!data_map)
-    {
-        data_map = std::make_shared<LoadArraysMap>();
-    }
 
     // Get the load quantity from the cell data
     for (const auto &label : Globals::API_LOADS_LABELS)
@@ -121,7 +110,7 @@ void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
 
     if (!oldLoadsVector)
     {
-        oldLoadsVector = std::make_shared<LoadArraysMap>();
+        oldLoadsVector = std::make_unique<LoadArraysMap>();
     }
     *oldLoadsVector = *data_map;
 }

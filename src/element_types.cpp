@@ -8,15 +8,93 @@
 #include <limits> // for std::numeric_limits
 #include "../include/element_types.h"
 
-// Base ElementType class
-// think if this can be don with n_dofs
-void ElementType::populate_all()
+AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
+    : ElementType(keyopts) // Call the parent class constructor
 {
-    this->populate_matrix_idx_size_map();
-    this->populate_derived_matrix_idx_size_map();
-    this->populate_vector_idx_size_map();
+    // Additional initialization for AVElementType (if needed)
+    variable_info["B_x"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 0, L2_LAGRANGE, FIRST};
+    variable_info["B_y"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 1, L2_LAGRANGE, FIRST};
+    variable_info["J_z"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 2, MONOMIAL, CONSTANT};
+    variable_info["Js"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 3, FEFamily::INVALID_FE, Order::INVALID_ORDER};
 }
 
+AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
+{
+    variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
+    // Additional initialization for AVElementType (if needed)
+    FEType fe_type(FIRST, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    fe_array.push_back(FEBase::build(2, fe_type));
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule = new QGauss(2, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe_array[0]->attach_quadrature_rule(qrule);
+}
+
+AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
+{
+    // Additional initialization for AVElementType (if needed)
+    variable_info["B_z"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 2, L2_LAGRANGE, FIRST};
+    variable_info["J_x"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 0, MONOMIAL, CONSTANT};
+    variable_info["J_y"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 1, MONOMIAL, CONSTANT};
+    variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
+    variable_info["EMF"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "EMF", 0, LAGRANGE, FIRST};
+
+    FEType fe_type(FIRST, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    fe_array.push_back(FEBase::build(3, fe_type));
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe_array[0]->attach_quadrature_rule(qrule);
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+
+    (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+
+    return matrix_idx_size_map;
+};
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_mat_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+
+    (*solution_matrix_idx_size_map)[0] = {0, n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[1] = {1, n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[2] = {2, n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[3] = {3, 3 * n_qp, n_sf_vec};
+
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vector_idx_size_map()
+{
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(2, 0));
+
+    (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
+
+    return vector_idx_size_map;
+}
 // SOLID97
 
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
@@ -48,45 +126,6 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
 
     fe_array.push_back(std::move(fe_vec));
 }
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_dof_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
-
-    (*matrix_idx_size_map)[0] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    (*matrix_idx_size_map)[1] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-
-    return matrix_idx_size_map;
-}
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_mat_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
-
-    (*solution_matrix_idx_size_map)[0] = {0, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[1] = {1, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[2] = {2, n_qp, n_sf_vec};
-    (*solution_matrix_idx_size_map)[3] = {3, 3 * n_qp, n_sf_vec};
-
-    return solution_matrix_idx_size_map;
-}
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(2, 0));
-
-    (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
-
-    return vector_idx_size_map;
-}
 // SOLID 236
 
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
@@ -116,20 +155,20 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
 
 // Dummy implementations for SOLID236Type
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_matrix_idx_size_map()
-{
-    libmesh_error_msg("SOLID236Type::populate_matrix_idx_size_map is not implemented.");
-}
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_matrix_idx_size_map()
+// {
+//     libmesh_error_msg("SOLID236Type::populate_matrix_idx_size_map is not implemented.");
+// }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_derived_matrix_idx_size_map()
-{
-    libmesh_error_msg("SOLID236Type::populate_derived_matrix_idx_size_map is not implemented.");
-}
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_derived_matrix_idx_size_map()
+// {
+//     libmesh_error_msg("SOLID236Type::populate_derived_matrix_idx_size_map is not implemented.");
+// }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_vector_idx_size_map()
-{
-    libmesh_error_msg("SOLID236Type::populate_vector_idx_size_map is not implemented.");
-}
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_vector_idx_size_map()
+// {
+//     libmesh_error_msg("SOLID236Type::populate_vector_idx_size_map is not implemented.");
+// }
 // PLANE13
 
 PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
@@ -141,107 +180,116 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
         variable_info["VOLT"].is_active = true; // Modify the first member
 } // Default dimension for PLANE13 is 2
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_dof_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_dof_matrix_idx_size_map()
+// {
+//     // Check this when you have periodic BCs
+//     unsigned int n_sf = fe_array[0]->n_shape_functions();
+//     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
+//         std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
 
-    (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+//     (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+//     (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
-    return matrix_idx_size_map;
-}
-std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_solution_mat_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(SolutionMatrixNames::NUM_SOLUTION_MATRICES, std::vector<unsigned int>(3, 0));
+//     return matrix_idx_size_map;
+// }
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_solution_mat_idx_size_map()
+// {
+//     // Check this when you have periodic BCs
+//     unsigned int n_sf = fe_array[0]->n_shape_functions();
+//     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+//     unsigned int n_qp = fe_array[0]->n_quadrature_points();
+//     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+//         std::make_unique<std::vector<std::vector<unsigned int>>>(SolutionMatrixNames::NUM_SOLUTION_MATRICES, std::vector<unsigned int>(3, 0));
 
-    (*solution_matrix_idx_size_map)[Me] = {0, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[AAe] = {1, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[JAe] = {2, n_qp, n_sf_vec};
-    (*solution_matrix_idx_size_map)[JVe] = {3, 3 * n_qp, n_sf_vec};
+//     (*solution_matrix_idx_size_map)[Me] = {0, n_sf_vec, n_sf_vec};
+//     (*solution_matrix_idx_size_map)[AAe] = {1, n_sf_vec, n_sf_vec};
+//     (*solution_matrix_idx_size_map)[JAe] = {2, n_qp, n_sf_vec};
+//     (*solution_matrix_idx_size_map)[JVe] = {3, 3 * n_qp, n_sf_vec};
 
-    return solution_matrix_idx_size_map;
-}
-std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(VectorNames::NUM_VECTORS, std::vector<unsigned int>(2, 0));
+//     return solution_matrix_idx_size_map;
+// }
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_vector_idx_size_map()
+// {
+//     unsigned int n_sf = fe_array[0]->n_shape_functions();
+//     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+//         std::make_unique<std::vector<std::vector<unsigned int>>>(VectorNames::NUM_VECTORS, std::vector<unsigned int>(2, 0));
 
-    (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
+//     (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
 
-    return vector_idx_size_map;
-}
+//     return vector_idx_size_map;
+// }
 
 // PLANE233
 
-PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
-    : AV2DElementType(keyopts)
-{
-} // Default dimension for PLANE13 is 2
+// PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
+//     : AV2DElementType(keyopts)
+// {
+// } // Default dimension for PLANE13 is 2
 
-void PLANE233Type::populate_matrix_idx_size_map()
-{
-    libmesh_error_msg("PLANE233Type::populate_matrix_idx_size_map is not implemented.");
-}
+// void PLANE233Type::populate_matrix_idx_size_map()
+// {
+//     libmesh_error_msg("PLANE233Type::populate_matrix_idx_size_map is not implemented.");
+// }
 
-void PLANE233Type::populate_derived_matrix_idx_size_map()
-{
-    libmesh_error_msg("PLANE233Type::populate_derived_matrix_idx_size_map is not implemented.");
-}
+// void PLANE233Type::populate_derived_matrix_idx_size_map()
+// {
+//     libmesh_error_msg("PLANE233Type::populate_derived_matrix_idx_size_map is not implemented.");
+// }
 
-void PLANE233Type::populate_vector_idx_size_map()
-{
-    libmesh_error_msg("PLANE233Type::populate_vector_idx_size_map is not implemented.");
-}
+// void PLANE233Type::populate_vector_idx_size_map()
+// {
+//     libmesh_error_msg("PLANE233Type::populate_vector_idx_size_map is not implemented.");
+// }
 
-void ElementTypesCollector::collectElementTypes(ElementTypesMapCSV &elementTypesMapCSV)
-{
-    for (const auto &pair : elementTypesMapCSV)
-    {
-        const auto &keyopts = pair.second;
-
-        // Create the appropriate ElementType object
-        if (keyopts[0] == 97)
-        {
-            elementTypes[pair.first] = std::make_shared<SOLID97Type>(SOLID97Type(keyopts));
-        }
-        else if (keyopts[0] == 236)
-        {
-            elementTypes[pair.first] = std::make_shared<SOLID236Type>(SOLID236Type(keyopts));
-        }
-        else if (keyopts[0] == 13)
-        {
-            elementTypes[pair.first] = std::make_shared<PLANE13Type>(PLANE13Type(keyopts));
-        }
-        else if (keyopts[0] == 233)
-        {
-            elementTypes[pair.first] = std::make_shared<PLANE233Type>(PLANE233Type(keyopts));
-        }
-        // Add more conditions for other ElementType subclasses as needed
-    }
-}
-
-VariableToElementIdsMapType ElementTypesCollector::associateVariablesWithElementIds(std::string variables_set) const
+VariableToElementIdsMapType ElementTypeFactory::associate_variables_with_element_IDs(VariableCategory variable_category) const
 {
     VariableToElementIdsMapType variableToElementIds;
-    for (const auto &pair : elementTypes)
+    for (const auto &pair : *data_map)
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
 
-        auto active_vars = elementType->get_active_variables(variables_set);
+        auto active_vars = elementType->get_active_variables(variable_category);
         for (const auto &var : active_vars)
         {
             (variableToElementIds)[var].insert(elementId);
         }
     }
     return variableToElementIds;
+}
+
+std::unique_ptr<ElementType> ElementTypeFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &keyopts)
+{
+    // Convert the string type to ElementTypeEnum
+    switch (type)
+    {
+    case ElementTypeEnum::SOLID97:
+        return std::make_unique<SOLID97Type>(keyopts);
+    case ElementTypeEnum::SOLID236:
+        return std::make_unique<SOLID236Type>(keyopts);
+    case ElementTypeEnum::PLANE13:
+        return std::make_unique<PLANE13Type>(keyopts);
+    case ElementTypeEnum::PLANE233:
+        return std::make_unique<PLANE233Type>(keyopts);
+    default:
+        libmesh_error_msg("Unknown element type");
+    }
+}
+
+void ElementTypeFactory::create_element_types(const ElementTypesMapCSV &csv_map)
+{
+    data_map->clear();
+    for (const auto &pair : csv_map)
+    {
+        unsigned int id = pair.first;
+        const std::vector<unsigned int> &keyopts = pair.second;
+        // You may need to determine the type from keyopts or another source.
+        // Here, we assume the first entry in keyopts is the type enum value.
+        if (keyopts.empty())
+            continue;
+        ElementTypeEnum type_enum = static_cast<ElementTypeEnum>(keyopts[0]);
+        (*data_map)[id] = create_element_type(type_enum, keyopts);
+        // Optionally, call set_conductive after construction:
+        (*data_map)[id]->set_conductive();
+    }
 }

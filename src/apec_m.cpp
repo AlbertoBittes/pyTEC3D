@@ -40,12 +40,12 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/system.h"
 
-#include "../include/element_builder.h"
-#include "../include/assembler.h"
-#include "../include/session.h"
-#include "../include/element_types.h" // Add this line to include the ElementTypesMap header
-#include "../include/loads_object.h"
-#include "../include/time_step.h" // Add this line to include the TimeStepper header
+#include "element_builder.h"
+#include "assembler.h"
+#include "session.h"
+#include "element_types.h" // Add this line to include the ElementTypesMap header
+#include "loads_object.h"
+#include "time_step.h" // Add this line to include the TimeStepper header
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/communicator.h"

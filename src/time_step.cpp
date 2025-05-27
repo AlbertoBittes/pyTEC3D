@@ -13,7 +13,11 @@ void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
     if (prev_load_step == nullptr)
         time_beginning = 0.0;
     else
-        time_beginning = prev_load_step->get_time_step()->get_time();
+    {
+        std::shared_ptr<FEDataObjectAbstract> base_ptr = prev_load_step->get_data_object(0);
+        std::shared_ptr<TimeStep> time_step_ptr = std::dynamic_pointer_cast<TimeStep>(base_ptr);
+        time_beginning = time_step_ptr->get_time();
+    }
 }
 void TimeStep::set_dt()
 {

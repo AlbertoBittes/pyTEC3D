@@ -3,12 +3,7 @@
 
 #include "libmesh/petsc_linear_solver.h"
 #include "libmesh/solver_configuration.h"
-#include "../include/fe_data_object.h"
-#include <string>
-#include <unordered_map>
-#include <variant>
-#include <memory>
-#include <stdexcept>
+#include "fe_data_object.h"
 
 using namespace libMesh;
 
@@ -18,17 +13,9 @@ class PetscSolverConfiguration : public SolverConfiguration, public SettingsFEDa
 {
 public:
   // Default constructor
-  PetscSolverConfiguration(LoadStep *parent = nullptr,
-                           std::shared_ptr<SettingsMap> map = nullptr)
-      : SettingsFEDataObject(parent, map),
-        _petsc_linear_solver(nullptr) {}
-
-  // Constructor with PetscLinearSolver
-  explicit PetscSolverConfiguration(PetscLinearSolver<Number> &petsc_linear_solver,
-                                    LoadStep *parent = nullptr,
-                                    std::shared_ptr<SettingsMap> map = nullptr)
-      : SettingsFEDataObject(parent, map),
-        _petsc_linear_solver(&petsc_linear_solver) {}
+  PetscSolverConfiguration(std::ifstream &file, PetscLinearSolver<Number> *petsc_linear_solver = nullptr)
+      : SettingsFEDataObject(file),
+        _petsc_linear_solver(petsc_linear_solver) {}
 
   // Getters and setters for solver settings
   void configure_solver() override;

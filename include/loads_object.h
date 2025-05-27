@@ -4,10 +4,10 @@
 #include <libmesh/elem.h>
 #include <libmesh/system.h>
 #include <map>
-#include <fstream>                    // Include this header for std::ifstream
-#include "../include/element_types.h" // Include the header file for ElementTypesMap
-#include "../include/fe_data_object.h"
-#include "../include/globals.h"
+#include <fstream>         // Include this header for std::ifstream
+#include "element_types.h" // Include the header file for ElementTypesMap
+#include "fe_data_object.h"
+#include "globals.h"
 
 class LoadStep;
 
@@ -15,23 +15,16 @@ class LoadStep;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> ElementLoad;
 typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
-class LoadsObject : public FEDataObject<LoadArraysMap, LoadStep>
+class LoadsObject : public FEDataObjectMap<LoadArraysMap>
 {
 public:
-    // Default constructor
-    LoadsObject(LoadStep *parent_object = nullptr,
-                std::shared_ptr<LoadArraysMap> map = nullptr)
-        : FEDataObject(parent_object, map),
-          oldLoadsVector(std::make_shared<LoadArraysMap>()) {}
-
     // Constructor with MeshBase and load labels
-    LoadsObject(const MeshBase &mesh,
-                LoadStep *parent_object = nullptr,
-                std::shared_ptr<LoadArraysMap> map = nullptr)
-        : FEDataObject(parent_object, map),
-          oldLoadsVector(std::make_shared<LoadArraysMap>())
+    LoadsObject(std::ifstream &file, const MeshBase &mesh)
+        : FEDataObjectMap<LoadArraysMap>(),
+          oldLoadsVector(std::make_unique<LoadArraysMap>())
     {
         build_load_data_vectors(mesh);
+        read_data(file);
     }
 
     // Build load data vectors
@@ -40,27 +33,23 @@ public:
     // Zero out the loads array
     void zero_loads_array();
 
-    // Set the load quantity
-    void set_load_quantity(std::string &load_name);
-
     // Read loads array from a binary file stream
     void read_data(std::ifstream &file) override;
 
     // Swap the active and old loads vectors
-    void swap_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector)
+    void swap_loads_vector(std::unique_ptr<LoadArraysMap> loads_vector)
     {
         *oldLoadsVector = *data_map;
         data_map = std::move(loads_vector);
     }
 
     // Getters for old loads vector
-    std::shared_ptr<LoadArraysMap> get_old_loads_vector() const { return oldLoadsVector; }
+    LoadArraysMap *get_old_loads_vector() const { return oldLoadsVector.get(); }
 
     // Setter for old loads vector
-    void set_old_loads_vector(std::shared_ptr<LoadArraysMap> loads_vector) { oldLoadsVector = std::move(loads_vector); }
 
 private:
-    std::shared_ptr<LoadArraysMap> oldLoadsVector; // Old loads vector
+    std::unique_ptr<LoadArraysMap> oldLoadsVector; // Old loads vector
 };
 
 #endif // LOADS_OBJECT_H

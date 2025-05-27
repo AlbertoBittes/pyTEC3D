@@ -16,42 +16,33 @@ typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditio
 
 class LoadStep;
 
-class NodeBCObject : public FEDataObject<BoundaryConditionsMap, LoadStep>, public System::Constraint
+class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
 {
 public:
     // Default constructor
-    NodeBCObject(LoadStep *parent = nullptr)
-        : FEDataObject(parent),
-          system(nullptr),
-          update_boundary_conditions(true) {}
-
-    // Constructor with System pointer
-    NodeBCObject(System *sys, LoadStep *parent = nullptr)
-        : FEDataObject(parent),
-          system(sys),
-          update_boundary_conditions(true) {}
+    using FEDataObjectMap<BoundaryConditionsMap>::FEDataObjectMap;
 
     // Destructor
     virtual ~NodeBCObject() {}
 
-    // Setters
-    void set_system(System *sys) { system = sys; }
-    void set_update_boundary_conditions(bool update) { update_boundary_conditions = update; }
+    // // Setters
+    // void set_system(System *sys) { system = sys; }
+    // void set_update_boundary_conditions(bool update) { update_boundary_conditions = update; }
 
-    // Getters
-    System *get_system() const { return system; }
-    bool get_update_boundary_conditions() const { return update_boundary_conditions; }
+    // // Getters
+    // System *get_system() const { return system; }
+    // bool get_update_boundary_conditions() const { return update_boundary_conditions; }
 
     void read_data(std::ifstream &file) override;
 
     // Methods
-    void constrain() override; // Override from System::Constraint
-    void check_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
-    void set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
+    // void constrain() override; // Override from System::Constraint
+    // void check_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
+    // void set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
 
 private:
-    bool update_boundary_conditions; // Flag to update boundary conditions
-    System *system;                  // Pointer to the libMesh System
+    // bool update_boundary_conditions; // Flag to update boundary conditions
+    // System *system;                  // Pointer to the libMesh System
 };
 
 #endif // NODE_BC_OBJECT_H

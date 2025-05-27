@@ -20,10 +20,10 @@ class TimeStep : public SettingsFEDataObject
 {
 public:
     // Constructor with binary file stream
-    TimeStep(LoadStep *parent = nullptr,
-             std::shared_ptr<SettingsMap> map = nullptr)
-        : SettingsFEDataObject(parent, map)
+    TimeStep(std::ifstream &file, std::shared_ptr<LoadStep> prev_load_step = nullptr)
+        : SettingsFEDataObject(file)
     {
+        this->populate_time_step(prev_load_step);
         // *this = TimeStep(step, time, load_step, write_results, num_substeps,
         //                  transient_effect, ramped_load, prev_load_step);
     }
@@ -79,11 +79,11 @@ private:
     Substep *previous_substep = nullptr;
 };
 
-class Substep : public FEDataObject<Globals::DummyType, TimeStep>
+class Substep : public FEDataObjectBase<TimeStep>
 {
 public:
     Substep(unsigned int index, Real dt, TimeStep *parent)
-        : FEDataObject(parent),
+        : FEDataObjectBase(parent),
           index(index),
           dt(dt),
           time(0.0),

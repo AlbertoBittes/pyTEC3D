@@ -292,15 +292,15 @@ void ElementBuilder::build_plane13_matrix()
                 for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
                 {
                     if (dof_j < n_dofs_var)
-                        matrices_derived[1](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * std::pow(-1, dof_i) * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->dphi[dof_j][qp](1 - (dof_i % 2)));
+                        matrices_solution[1](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * std::pow(-1, dof_i) * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->dphi[dof_j][qp](1 - (dof_i % 2)));
 
                     if ((dof_i + dof_j) % 2 == 0)
-                        matrices_derived[0](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->phi[dof_j / 2][qp]);
+                        matrices_solution[0](dof_i, dof_j) += scalar_shape_functions->JxW[qp] * (scalar_shape_functions->phi[dof_i / 2][qp] * scalar_shape_functions->phi[dof_j / 2][qp]);
                 }
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
                 // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
-                matrices_derived[2](qp, dof_i) -= scalar_shape_functions->phi[dof_i][qp];
+                matrices_solution[2](qp, dof_i) -= scalar_shape_functions->phi[dof_i][qp];
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                 {

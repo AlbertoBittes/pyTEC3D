@@ -20,67 +20,74 @@ typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> RealConstantsMap;
 typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
 
-template <typename T1, typename T2>
-class FEDataObject
+class FEDataObjectAbstract
 {
 public:
     // Virtual destructor for proper cleanup of derived classes
-    virtual ~FEDataObject() = default;
+    virtual ~FEDataObjectAbstract() = 0;
+};
 
-    // Pure virtual method to read data from a binary file stream
-    virtual void read_data(std::ifstream &file) {};
+inline FEDataObjectAbstract::~FEDataObjectAbstract() {}
+
+template <typename T1>
+class FEDataObjectBase : public FEDataObjectAbstract
+{
+public:
+    FEDataObjectBase(T1 *parent = nullptr)
+        : parent_object(parent) {}
+    // Virtual destructor for proper cleanup of derived classes
+    virtual ~FEDataObjectBase() = default;
 
     // Getter for the parent object
-    T2 *get_parent_object() const
+    T1 *get_parent_object() const
     {
         return parent_object;
     }
     // Setter for the parent object
-    void set_parent_object(T2 *parent)
+    void set_parent_object(T1 *parent)
     {
         parent_object = parent;
     }
 
+protected:
+    // Attributes
+    T1 *parent_object; // Stores the parent
+};
+
+template <typename T1>
+class FEDataObjectMap : public FEDataObjectAbstract
+{
+public:
+    // Virtual destructor for proper cleanup of derived classes
+    virtual ~FEDataObjectMap() = default;
+
+    // virtual method to read data from a binary file stream
+    virtual void read_data(std::ifstream &file) {};
+
     // Getter for the data map
-    std::shared_ptr<T1> get_data_map() const
+    T1 *get_data_map() const
     {
-        return data_map;
-    }
-
-    // Setter for the data map
-    void set_data_map(std::shared_ptr<T1> map)
-    {
-        data_map = std::move(map);
-    }
-
-    template <typename U>
-    inline U read_value(std::ifstream &file)
-    {
-        U value;
-        file.read(reinterpret_cast<char *>(&value), sizeof(U));
-        return value;
+        return data_map.get();
     }
 
 protected:
+    FEDataObjectMap() : data_map(std::make_unique<T1>())
+    {
+    }
     // Protected constructor to prevent direct instantiation
-    FEDataObject(T2 *parent = nullptr,
-                 std::shared_ptr<T1> map = nullptr)
-        : parent_object(parent),
-          data_map(map ? std::move(map) : std::make_shared<T1>()) {}
-
+    FEDataObjectMap(std::ifstream &file) : data_map(std::make_unique<T1>())
+    {
+        read_data(file);
+    }
     // Attributes
-    T2 *parent_object;            // Stores the parent
-    std::shared_ptr<T1> data_map; // Stores the data map (type-specific)
+    std::unique_ptr<T1> data_map; // Stores the data map (type-specific)
 };
 
-class DataframeFEDataObject : public FEDataObject<DataframeMap, LoadStep>
+class DataframeFEDataObject : public FEDataObjectMap<DataframeMap>
 {
 public:
     // Constructor
-    DataframeFEDataObject(LoadStep *parent = nullptr,
-                          std::shared_ptr<DataframeMap> map = nullptr)
-        : FEDataObject(parent, map) {}
-
+    using FEDataObjectMap<DataframeMap>::FEDataObjectMap;
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
@@ -166,11 +173,11 @@ class DataframeMatLikeFEDataObject : public DataframeFEDataObject
 {
 public:
     // Constructor
-    DataframeMatLikeFEDataObject(LoadStep *parent = nullptr,
-                                 std::shared_ptr<DataframeMap> map = nullptr,
-                                 std::shared_ptr<MaterialsMap> mat_map = nullptr)
-        : DataframeFEDataObject(parent, map),
-          mat_like_map(mat_map ? mat_map : std::make_shared<MaterialsMap>()) {}
+    DataframeMatLikeFEDataObject(std::ifstream &file)
+        : DataframeFEDataObject(file) // parent constructor
+    {
+        populate_mat_like_map();
+    }
 
     // Method to populate mat_like_map from data_map
     void populate_mat_like_map()
@@ -212,28 +219,20 @@ public:
     }
 
     // Getter for mat_like_map
-    std::shared_ptr<MaterialsMap> get_mat_like_map() const
+    MaterialsMap *get_mat_like_map() const
     {
-        return mat_like_map;
-    }
-
-    // Setter for mat_like_map
-    void set_mat_like_map(std::shared_ptr<MaterialsMap> mat_map)
-    {
-        mat_like_map = std::move(mat_map);
+        return mat_like_map.get();
     }
 
 protected:
-    std::shared_ptr<MaterialsMap> mat_like_map; // Shared pointer to the map
+    std::unique_ptr<MaterialsMap> mat_like_map; // Shared pointer to the map
 };
 
-class SettingsFEDataObject : public FEDataObject<SettingsMap, LoadStep>
+class SettingsFEDataObject : public FEDataObjectMap<SettingsMap>
 {
 public:
     // Constructor
-    SettingsFEDataObject(LoadStep *parent = nullptr,
-                         std::shared_ptr<SettingsMap> map = nullptr)
-        : FEDataObject(parent, map) {}
+    using FEDataObjectMap<SettingsMap>::FEDataObjectMap;
 
     template <typename T>
     T get_setting(const std::string &key) const
@@ -254,7 +253,7 @@ public:
     // Implement the read_data method
     void read_data(std::ifstream &file) override
     {
-        this->data_map = std::make_shared<SettingsMap>();
+        this->data_map->clear();
 
         if (!file.is_open())
         {
