@@ -1393,9 +1393,12 @@ class APEC_M:
 
         # Open the file in write mode to overwrite if it already exists
         with open(output_file, "wb") as binary_file:
-            for label in labels_to_write:
+            binary_file.write(struct.pack("I", len(labels_to_write)))
+
+            for k, label in enumerate(labels_to_write):
                 try:
                     # Call the appropriate function based on the label
+                    binary_file.write(struct.pack("I", k + 1))
                     self._write_label_to_binary(binary_file, label)
                     print(f"{label.replace('_', ' ').capitalize()} written.")
                 except ValueError as e:

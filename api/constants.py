@@ -10,7 +10,6 @@ DEFAULT_SOLVER_SETTINGS = {
     "max_linear_iterations": 100,
     "minimum_linear_tolerance": 1e-10,
     "linear_tolerance_multiplier": 1.0,
-    "theta": 0.5,
     "write_full_matrix": 0,
     "timesolver_tolerance": 1e-6,
     "analytic_jacobians": 0,
@@ -48,7 +47,6 @@ DEFAULT_SOLVER_SETTINGS_TYPES = {
     "max_linear_iterations": int,
     "minimum_linear_tolerance": float,
     "linear_tolerance_multiplier": float,
-    "theta": float,
     "write_full_matrix": int,
     "timesolver_tolerance": float,
     "analytic_jacobians": int,
@@ -84,6 +82,7 @@ DEFAULT_TIME_PARAMETERS = {
     "number_of_substeps": 1,
     "transient_effects": 1,
     "ramped_loads": 1,
+    "theta": 1,
     "write_substep_results": 0,
 }
 
@@ -229,6 +228,7 @@ TRANSIENT_ANALYSIS_COLUMNS = [
     "transient_effects",
     "ramped_loads",
     "write_substep_results",
+    "theta",
     "load_step_input_file",
 ]
 
@@ -239,6 +239,7 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "transient_effects": int,
     "ramped_loads": int,
     "write_substep_results": int,
+    "theta": float,
     "load_step_input_file": str,
 }
 
