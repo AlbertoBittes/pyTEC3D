@@ -67,13 +67,17 @@ protected:
     std::vector<std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
 
+class ElemPhysicsContext : public FEMDataContext
+{
+public:
+    // Materials
+    void set_element_types(std::shared_ptr<ElementTypesMap> obj) { set_object(obj); }
+    std::shared_ptr<ElementTypesMap> get_element_types() const { return get_object<ElementTypesMap>(); }
+};
+
 class SystemBuilderContext : public FEMDataContext
 {
 public:
-    // Solver configuration
-    void set_solver_config(std::shared_ptr<PetscSolverConfiguration> obj) { set_object(obj); }
-    std::shared_ptr<PetscSolverConfiguration> get_solver_config() const { return get_object<PetscSolverConfiguration>(); }
-
     // Materials
     void set_materials(std::shared_ptr<MaterialsObject> obj) { set_object(obj); }
     std::shared_ptr<MaterialsObject> get_materials() const { return get_object<MaterialsObject>(); }
@@ -102,4 +106,16 @@ public:
     std::shared_ptr<LoadsObject> get_loads() const { return get_object<LoadsObject>(); }
 };
 
+class AssemblerContext : public FEMDataContext
+{
+public:
+    void set_time_step(std::shared_ptr<TimeStep> obj) { set_object(obj); }
+    std::shared_ptr<TimeStep> get_time_step() const { return get_object<TimeStep>(); }
+
+    void set_session(std::shared_ptr<Session> obj) { set_object(obj); }
+    std::shared_ptr<Session> get_session() const
+    {
+        return get_object<Session>();
+    }
+};
 #endif // FEM_DATA_CONTEXT_H

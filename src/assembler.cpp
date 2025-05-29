@@ -1,8 +1,10 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
-#include "../include/session.h" // Include the header file for Session
+#include "session.h" // Include the header file for Session
+#include "apec_m_linear_system.h"
 #include "libmesh/string_to_enum.h"
+#include "fem_data_context.h"
 // C++ include files that we need
 #include <iostream>
 #include <algorithm>
@@ -35,8 +37,7 @@
 #include "libmesh/elem.h"
 
 #include "libmesh/enum_solver_package.h"
-#include "vtkDataArray.h"
-#include "../include/assembler.h"
+#include "assembler.h"
 #include <map> // Include for std::map
 #include <cmath>
 #include <stdexcept>
@@ -55,26 +56,27 @@ void AssemblerLinear::assemble()
     // application.
     PerfLog perf_log("Matrix Assembly");
     // Get a constant reference to the mesh object.
-    auto eq_sys = this->get_parent_object();
     // Get a reference to the mesh object.
-    const MeshBase &mesh = eq_sys->get_mesh();
+    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
+
+    const MeshBase &mesh = system->get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    TransientLinearImplicitSystem &system = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
 
-    const auto &comm = eq_sys->comm();
+    const auto &comm = system->comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
-    const DofMap &dof_map = system.get_dof_map();
+    const DofMap &dof_map = parent_object->get_dof_map();
 
-    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
+    auto context = std::dynamic_pointer_cast<AssemblerContext>(this->get_context());
 
-    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
-    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
-    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
-    auto time_substep = load_step->get_time_step()->get_active_substep();
+    auto session = context->get_session();
+
+    ElementBuilder *elem_builder = system->get_element_builder();
+
+    auto time_substep = context->get_time_step()->get_active_substep();
 
     if (this->check_compute_matrix())
     {
@@ -95,15 +97,12 @@ void AssemblerLinear::assemble()
     // the element degrees of freedom get mapped.
 
     // The global system matrix
-    SparseMatrix<Number> &matrix = system.get_system_matrix();
+    SparseMatrix<Number> &matrix = system->get_system_matrix();
     bool update_matrix = check_update_matrix();
     unsigned int n_dofs;
-    bool conductive;
 
     std::filesystem::path filepath;
     std::string mtrx_vec_filename;
-
-    unsigned int etype_num_integer = mesh.get_elem_integer_index("ansys_etype");
 
     auto emat_folderpath = session->get_emat_folderpath();
     bool old_rhs = true;
@@ -165,11 +164,11 @@ void AssemblerLinear::assemble()
     // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(etype_num_integer)];
-        // Start logging the shape function initialization.
-        // This is done through a simple function call with
-        // the name of the event to log.
-        conductive = elem_type->is_conductive();
+        // std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(etype_num_integer)];
+        // // Start logging the shape function initialization.
+        // // This is done through a simple function call with
+        // // the name of the event to log.
+        // conductive = elem_type->is_conductive();
 
         // this can be done at the beginning only
         dof_map.dof_indices(elem, dof_indices);
@@ -187,34 +186,33 @@ void AssemblerLinear::assemble()
         //     libMesh::out << "Computing new system matrix" << std::endl;
         // }
 
-        elem_builder->readElementMatrices(mtrx_input_file, elem_builder->get_matrices());
+        elem_builder->read_element_matrices(mtrx_input_file, 0);
 
-        auto Ke = elem_builder->get_matrices()[0];
-        auto Ce = elem_builder->get_matrices()[1];
+        auto Ke = elem_builder->get_matrices()[0][0];
+        auto Ce = elem_builder->get_matrices()[0][1];
 
         Ce.scale(1 / time_substep->get_dt());
 
         if (update_matrix)
         {
-            if (conductive)
-                if (time_substep->get_transient_effect())
-                    Ke += Ce;
+            if (time_substep->get_transient_effect())
+                Ke += Ce;
 
             dof_map.constrain_element_matrix(Ke, dof_indices);
             matrix.add_matrix(Ke, dof_indices);
         }
 
-        elem_builder->readElementVectors(rhs_input_file, elem_builder->get_vectors());
-        auto rhs = elem_builder->get_vectors()[0];
+        elem_builder->read_element_vectors(rhs_input_file, 0);
+        auto rhs = elem_builder->get_vectors()[0][0];
 
         if (time_substep->get_ramped_load())
         {
             if (old_rhs)
-                elem_builder->readElementVectors(rhs_prev_input_file, elem_builder->get_prev_vectors());
+                elem_builder->read_element_vectors(rhs_prev_input_file, 1);
             else
             {
-                elem_builder->get_prev_vectors()[0].resize(rhs.size());
-                elem_builder->get_prev_vectors()[0].zero();
+                elem_builder->get_vectors()[0][1].resize(rhs.size());
+                elem_builder->get_vectors()[0][1].zero();
             }
             elem_builder->ramp_vectors(time_substep);
         }
@@ -227,9 +225,9 @@ void AssemblerLinear::assemble()
         // system.rhs->add_vector(FFe, dof_indices);
         // here I constrain but I modify later, wrong
         // }
-        if (conductive && time_substep->get_transient_effect())
+        if (time_substep->get_transient_effect())
         {
-            system.old_local_solution->get(dof_indices, old_solution_values);
+            system->old_local_solution->get(dof_indices, old_solution_values);
 
             Ce.vector_mult_add(rhs, 1, old_solution_values);
             // if (elem_id == 969)
@@ -243,7 +241,7 @@ void AssemblerLinear::assemble()
         }
 
         dof_map.constrain_element_vector(rhs, dof_indices);
-        system.rhs->add_vector(rhs, dof_indices);
+        system->rhs->add_vector(rhs, dof_indices);
     }
     mtrx_input_file.close();
     rhs_input_file.close();
@@ -280,7 +278,6 @@ void AssemblerLinear::build_write_element_matrices()
     // logging, since there may be many PerfLogs in an
     // application.
     PerfLog perf_log("Matrix Assembly");
-    auto eq_sys = this->get_parent_object();
 
     // Get a constant reference to the mesh object.
     const MeshBase &mesh = eq_sys->get_mesh();
@@ -470,7 +467,7 @@ void AssemblerLinear::update_rhs()
 }
 // in a new time step we could have a different dt, different bcs, different time integration effects
 // Here add the flag for ferromagnetic
-bool AssemblerLinear::check_update_matrix()
+bool AssemblerLinear::check_update_matrix(TimeSubstep *old_time_substep)
 {
     bool update_matrix = false;
 
@@ -511,18 +508,11 @@ bool AssemblerLinear::check_update_matrix()
         }
         else
         {
-            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys->get_system(0).get_constraint_object());
-            auto current_material_object = load_step->get_materials();
-            auto old_material_object = prev_load_step->get_materials();
-            auto current_real_constant_object = load_step->get_real_constants();
-            auto old_real_constant_object = prev_load_step->get_real_constants();
-            if (std::abs(active_time_substep->get_dt() - old_time_substep->get_dt()) >
-                    relative_epsilon * std::max(std::abs(active_time_substep->get_dt()),
-                                                std::abs(old_time_substep->get_dt())) ||
+            Real diff_dt = std::abs(active_time_substep->get_dt() - old_time_substep->get_dt());
+            Real max_old_new_dt = std::max(std::abs(active_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
+            if (diff_dt > rel_eps * max_old_new_dt ||
                 node_dof_constraints->get_update_boundary_conditions() ||
-                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
-                current_material_object->get_data_map() != old_material_object->get_data_map() ||
-                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect())
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);
@@ -589,9 +579,9 @@ bool AssemblerLinear::check_compute_matrix()
                     relative_epsilon * std::max(std::abs(active_time_substep->get_dt()),
                                                 std::abs(old_time_substep->get_dt())) ||
                 node_dof_constraints->get_update_boundary_conditions() ||
-                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
+                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() /*||
                 current_material_object->get_data_map() != old_material_object->get_data_map() ||
-                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())*/
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);

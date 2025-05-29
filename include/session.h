@@ -4,10 +4,11 @@
 #include <filesystem>
 #include <string>
 #include <libmesh/libmesh.h>
+#include "simulation_controller.h"
 
 using namespace libMesh;
 
-class Session
+class Session : public FEDataObjectBase<SimulationController>
 {
 public:
     // Default constructor

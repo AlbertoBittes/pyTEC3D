@@ -50,22 +50,17 @@
 #include "libmesh/mesh_communication.h"
 #include "libmesh/communicator.h"
 #include "libmesh/numeric_vector.h"
-#include "libmesh/petsc_linear_solver.h"
-#include "libmesh/sparse_matrix.h"
 #include "libmesh/mesh_modification.h"
 #include "libmesh/boundary_mesh.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/solver_configuration.h"
-#include "../include/node_bc_object.h" // Include the base class
-#include "../include/system_builder.h" // Include the base class
+#include "system_builder.h" // Include the base class
 
-#include "../include/solver_configuration.h"
-#include "../include/vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
+#include "vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
 #include "libmesh/string_to_enum.h"
 #include "libmesh/enum_solver_type.h"
 #include "libmesh/enum_solver_package.h"
 #include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
-#include "../include/azimuthal_periodic_boundary.h"
 
 using namespace libMesh;
 
