@@ -13,7 +13,7 @@
 // Define Gauss quadrature rules.
 #include "libmesh/quadrature_gauss.h"
 #include "libmesh/string_to_enum.h"
-#include "../include/fe_data_object.h"
+#include "fe_data_object.h"
 
 using namespace libMesh;
 

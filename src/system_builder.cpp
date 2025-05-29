@@ -1,10 +1,8 @@
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/nonlinear_implicit_system.h"
 #include "libmesh/transient_system.h"
-#include "../include/system_builder.h"
-#include "../include/assembler.h"
-#include "../include/session.h"
-#include "../include/element_types.h"
+#include "system_builder.h"
+#include "element_types.h"
 #include "libmesh/string_to_enum.h"
 // C++ include files that we need
 #include <iostream>
@@ -15,7 +13,6 @@
 // Basic include file needed for the mesh functionality.
 #include "libmesh/libmesh.h"
 // The definition of a geometric element
-#include "vtkDataArray.h"
 
 using namespace libMesh;
 

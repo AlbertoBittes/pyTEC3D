@@ -1,4 +1,4 @@
-#include "../include/element_builder.h"
+#include "element_builder.h"
 #include "libmesh/equation_systems.h"
 #include "libmesh/string_to_enum.h"
 // Define the Finite Element object.
@@ -6,49 +6,49 @@
 
 // Define Gauss quadrature rules.
 #include "libmesh/quadrature_gauss.h"
-#include "../include/session.h" // Ensure the Session class is included
+#include "session.h" // Ensure the Session class is included
 #include <cmath>
-#include "../include/element_types.h" // Include the header defining ElementType
-#include "../include/loads_object.h"
-#include "../include/assembler.h"
+#include "element_types.h" // Include the header defining ElementType
+#include "loads_object.h"
+#include "assembler.h"
 
-void ElementBuilder::buildVectors(const std::map<std::string, std::tuple<unsigned int, unsigned int>> &sizes_map,
-                                  std::vector<DenseVector<Number>> &elem_vectors_vector)
+void ElementBuilder::build_vectors(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int vectors_set)
 {
-    elem_vectors_vector.resize(sizes_map.size());
-    for (const auto &[key, value] : sizes_map)
+    this->vectors[vectors_set].resize(sizes_map->size());
+    for (unsigned int i = 0; i < sizes_map->size(); ++i)
     {
-        unsigned int index = std::distance(sizes_map.begin(), sizes_map.find(key));
-        elem_vectors_vector[index] = DenseVector<Number>(std::get<1>(value));
+        const auto &size_pair = (*sizes_map)[i];
+        unsigned int rows = size_pair[0];
+        this->vectors[vectors_set][i].resize(rows);
     }
 }
 
-void ElementBuilder::buildMatrices(const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &sizes_map,
-                                   std::vector<DenseMatrix<Number>> &elem_matrices_vector)
+void ElementBuilder::build_matrices(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int matrices_set)
 {
-    elem_matrices_vector.resize(sizes_map.size());
-    for (const auto &[key, value] : sizes_map)
+    this->matrices[matrices_set].resize(sizes_map->size());
+    for (unsigned int i = 0; i < sizes_map->size(); ++i)
     {
-        unsigned int index = std::distance(sizes_map.begin(), sizes_map.find(key));
-        elem_matrices_vector[index] = DenseMatrix<Number>(std::get<1>(value), std::get<2>(value));
+        const auto &size_pair = (*sizes_map)[i];
+        unsigned int rows = size_pair[0];
+        unsigned int cols = size_pair[1];
+        this->matrices[matrices_set][i].resize(rows, cols);
     }
 }
 
-void ElementBuilder::writeElementMatrices(std::ofstream &outFile,
-                                          std::vector<DenseMatrix<Number>> &elem_matrices_vector)
+void ElementBuilder::write_element_matrices(std::ofstream &outFile, unsigned int matrices_set)
 {
+    std::vector<DenseMatrix<Number>> &elem_matrices_vector = this->matrices[matrices_set];
+
+    unsigned int elem_id = this->elem_data.elem->id();
+    // Write the element ID as an unsigned int
+    outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
     // Write the number of containers as an unsigned int
     unsigned int numContainers = static_cast<unsigned int>(elem_matrices_vector.size());
     outFile.write(reinterpret_cast<const char *>(&numContainers), sizeof(numContainers));
 
     for (const auto &elem_matrix : elem_matrices_vector)
     {
-        unsigned int elem_id = this->elem->id();
-        // Write the element ID as an unsigned int
-        outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
-
         const auto &values = elem_matrix.get_values();
-
         // Write the size of the values vector as an unsigned int
         // unsigned int valuesSize = static_cast<unsigned int>(values.size());
         unsigned int rows = elem_matrix.m();
@@ -63,8 +63,13 @@ void ElementBuilder::writeElementMatrices(std::ofstream &outFile,
     }
 }
 
-void ElementBuilder::readElementMatrices(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector)
+void ElementBuilder::read_element_matrices(std::ifstream &inFile, unsigned int matrices_set)
 {
+    std::vector<DenseMatrix<Number>> &elem_matrices_vector = this->matrices[matrices_set];
+
+    // Read the element ID as an unsigned int
+    unsigned int elem_id;
+    inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
     // Read the number of containers as an unsigned int
     unsigned int numContainers;
     inFile.read(reinterpret_cast<char *>(&numContainers), sizeof(numContainers));
@@ -74,9 +79,6 @@ void ElementBuilder::readElementMatrices(std::ifstream &inFile, std::vector<Dens
 
     for (auto &elem_matrix : elem_matrices_vector)
     {
-        // Read the element ID as an unsigned int
-        unsigned int elem_id;
-        inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
         // Read the size of the values vector as an unsigned int
         unsigned int rows, cols;
         inFile.read(reinterpret_cast<char *>(&rows), sizeof(rows));
@@ -105,31 +107,34 @@ void ElementBuilder::readElementMatrices(std::ifstream &inFile, std::vector<Dens
 //     writeElementVectors(outFile, elem_vectors_vector);
 // }
 
-void ElementBuilder::writeElementVectors(std::ofstream &outFile, std::vector<DenseVector<Number>> &elem_vectors_vector)
+void ElementBuilder::write_element_vectors(std::ofstream &outFile, unsigned int vectors_set)
 {
     // Write the number of containers as an unsigned int
+    std::vector<DenseVector<Number>> &elem_vectors_vector = this->vectors[vectors_set];
+    unsigned int elem_id = this->elem_data.elem->id();
+    // Write the element ID as an unsigned int
+    outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
     unsigned int numContainers = static_cast<unsigned int>(elem_vectors_vector.size());
     outFile.write(reinterpret_cast<const char *>(&numContainers), sizeof(numContainers));
 
     for (const auto &elem_vector : elem_vectors_vector)
     {
         const auto &values = elem_vector.get_values();
-
-        unsigned int elem_id = this->elem->id();
-        // Write the element ID as an unsigned int
-        outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
         // Write the size of the values vector as an unsigned int
         unsigned int valuesSize = elem_vector.size();
         outFile.write(reinterpret_cast<const char *>(&valuesSize), sizeof(valuesSize));
-
         // Write the actual values
         outFile.write(reinterpret_cast<const char *>(values.data()), values.size() * sizeof(Number));
     }
 }
 
-void ElementBuilder::readElementVectors(std::ifstream &inFile, std::vector<DenseVector<Number>> &elem_vectors_vector)
+void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int vectors_set)
 {
+    std::vector<DenseVector<Number>> &elem_vectors_vector = this->vectors[vectors_set];
     // Read the number of containers as an unsigned int
+    // Read the element ID as an unsigned int
+    unsigned int elem_id;
+    inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
     unsigned int numContainers;
     inFile.read(reinterpret_cast<char *>(&numContainers), sizeof(numContainers));
 
@@ -138,9 +143,6 @@ void ElementBuilder::readElementVectors(std::ifstream &inFile, std::vector<Dense
 
     for (auto &elem_vector : elem_vectors_vector)
     {
-        // Read the element ID as an unsigned int
-        unsigned int elem_id;
-        inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
         // Read the size of the values vector as an unsigned int
         unsigned int valuesSize;
         inFile.read(reinterpret_cast<char *>(&valuesSize), sizeof(valuesSize));
@@ -337,7 +339,7 @@ void ElementBuilder::build_plane13_matrix()
 
 void ElementBuilder::build_element_matrix()
 {
-    auto etype = element_type->get_properties()[0];
+    auto etype = elem_data.element_type->get_keyopts()[0];
 
     if (etype == 97)
     {

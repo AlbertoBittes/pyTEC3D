@@ -38,6 +38,7 @@
 
 #include "libmesh/enum_solver_package.h"
 #include "assembler.h"
+#include "boundary_conditions_object.h"
 #include <map> // Include for std::map
 #include <cmath>
 #include <stdexcept>
@@ -78,14 +79,14 @@ void AssemblerLinear::assemble()
 
     auto time_substep = context->get_time_step()->get_active_substep();
 
-    if (this->check_compute_matrix())
-    {
-        this->build_write_element_matrices();
-    }
-    else if (time_substep->get_index() == 0)
-    {
-        this->update_rhs();
-    }
+    // if (this->check_compute_matrix())
+    // {
+    //     this->build_write_element_matrices();
+    // }
+    // else if (time_substep->get_index() == 0)
+    // {
+    //     this->update_rhs();
+    // }
     std::vector<dof_id_type> dof_indices;
     std::vector<Real> old_solution_values;
     // Allocate memory for 3D nodal elements matrixes with transient effects
@@ -98,7 +99,7 @@ void AssemblerLinear::assemble()
 
     // The global system matrix
     SparseMatrix<Number> &matrix = system->get_system_matrix();
-    bool update_matrix = check_update_matrix();
+    bool update_matrix = check_update_matrix(time_substep);
     unsigned int n_dofs;
 
     std::filesystem::path filepath;
@@ -245,6 +246,8 @@ void AssemblerLinear::assemble()
     }
     mtrx_input_file.close();
     rhs_input_file.close();
+    this->prev_substep = time_substep;
+
     // Matrix changes when we have nonlinearities or different dt
 
     // Zero the element matrix and right-hand side before
@@ -372,11 +375,11 @@ void AssemblerLinear::build_write_element_matrices()
 
         elem_builder->build_element_rhs();
         // Here the function to write the matrices and vectors down to file
-        elem_builder->writeElementMatrices(mtrx_output_file, elem_builder->get_matrices());
+        elem_builder->write_element_matrices(mtrx_output_file, 0);
 
-        elem_builder->writeElementMatrices(der_mtrx_output_file, elem_builder->get_matrices_derived());
+        elem_builder->write_element_matrices(der_mtrx_output_file, 1);
 
-        elem_builder->writeElementVectors(rhs_output_file, elem_builder->get_vectors());
+        elem_builder->write_element_vectors(rhs_output_file, 0);
     }
     mtrx_output_file.close();
     der_mtrx_output_file.close();
@@ -467,52 +470,39 @@ void AssemblerLinear::update_rhs()
 }
 // in a new time step we could have a different dt, different bcs, different time integration effects
 // Here add the flag for ferromagnetic
-bool AssemblerLinear::check_update_matrix(TimeSubstep *old_time_substep)
+bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 {
     bool update_matrix = false;
 
-    const Real relative_epsilon = 1e-9;
-    auto eq_sys = this->get_parent_object();
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver());
-    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
-    auto prev_load_step = load_step->get_parent_object()->get_old_load_step();
-    auto time_step = load_step->get_time_step();
-    auto active_time_substep = time_step->get_active_substep();
-    auto old_time_substep = time_step->get_previous_substep();
+    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
 
-    if (old_time_substep == nullptr)
-    {
-        if (prev_load_step != nullptr)
-        {
-            old_time_substep = &(prev_load_step->get_time_step()->get_substeps().back());
-        }
-        else
-        {
-            old_time_substep = nullptr;
-        }
-    }
-    // in a new time step we could have a different dt, different bcs, different time integration effects
-    // Here add the flag for ferromagnetic
-    if (old_time_substep == nullptr)
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
+
+    BoundaryConditionsObject *bc_object = dynamic_cast<BoundaryConditionsObject *>(&system->get_constraint_object());
+    const Real rel_eps = 1e-9;
+
+    if (prev_substep == nullptr)
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
     }
+    // in a new time step we could have a different dt, different bcs, different time integration effects
+    // Or if element matrices have changed
     else
     {
 
-        if (active_time_substep->get_index() > 0)
+        if (time_substep->get_index() > 0)
         {
             update_matrix = false;
             solver->reuse_preconditioner(true);
         }
         else
         {
-            Real diff_dt = std::abs(active_time_substep->get_dt() - old_time_substep->get_dt());
-            Real max_old_new_dt = std::max(std::abs(active_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
+            Real diff_dt = std::abs(time_substep->get_dt() - prev_substep->get_dt());
+            Real max_old_new_dt = std::max(std::abs(time_substep->get_dt()), std::abs(prev_substep->get_dt()));
             if (diff_dt > rel_eps * max_old_new_dt ||
-                node_dof_constraints->get_update_boundary_conditions() ||
-                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect())
+                bc_object->get_update_boundary_conditions() ||
+                time_substep->get_transient_effect() != prev_substep->get_transient_effect())
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);

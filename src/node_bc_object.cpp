@@ -3,8 +3,8 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/mesh.h"
 #include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
-#include "../include/node_bc_object.h"
-#include "../include/load_step.h" // Include the full definition of LoadStep
+#include "node_bc_object.h"
+#include "load_step.h" // Include the full definition of LoadStep
 
 using namespace libMesh;
 

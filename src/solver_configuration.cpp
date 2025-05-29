@@ -1,4 +1,4 @@
-#include "../include/solver_configuration.h"
+#include "solver_configuration.h"
 
 using namespace libMesh;
 

@@ -5,6 +5,7 @@
 #include "element_types.h" // Include the ElementTypesMap header file
 #include "fem_service_abstract.h"
 #include "fe_data_object.h" // Include the FEDataObjectBase header file
+#include "time_step.h"
 
 using namespace libMesh;
 
@@ -17,7 +18,7 @@ public:
 
     // void build_write_element_matrices();
 
-    // bool check_update_matrix();
+    bool check_update_matrix(Substep *time_substep);
 
     // bool check_compute_matrix();
 
@@ -25,8 +26,8 @@ public:
 
     // void update_rhs();
 
-    // private:
-    //     std::shared_ptr<ElementBuilder> elem_builder;
+private:
+    Substep *prev_substep = nullptr; // Pointer to the previous substep
 };
 
 #endif // ASSEMBLER_H
