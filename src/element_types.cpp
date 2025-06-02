@@ -60,7 +60,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(3, 0));
 
     (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
     (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
@@ -68,14 +68,14 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     return matrix_idx_size_map;
 };
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_mat_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(4, std::vector<unsigned int>(3, 0));
 
     (*solution_matrix_idx_size_map)[0] = {0, n_sf_vec, n_sf_vec};
     (*solution_matrix_idx_size_map)[1] = {1, n_sf_vec, n_sf_vec};
@@ -89,7 +89,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vec
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
 
     (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
 
@@ -192,7 +192,7 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 
 //     return matrix_idx_size_map;
 // }
-// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_solution_mat_idx_size_map()
+// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_solution_matrix_idx_size_map()
 // {
 //     // Check this when you have periodic BCs
 //     unsigned int n_sf = fe_array[0]->n_shape_functions();

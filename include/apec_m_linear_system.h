@@ -13,6 +13,12 @@ class ApecMLinearSystem : public FEMServiceAbstract, public TransientSystem<Line
 {
 public:
     using TransientSystem<LinearImplicitSystem>::TransientSystem;
+};
+
+class ApecMEquationSystems : public FEMServiceAbstract, public EquationSystems
+{
+public:
+    using EquationSystems::EquationSystems;
 
     void reinit_element_builder(ElementBuilderContext *ctx)
     {
@@ -29,5 +35,4 @@ public:
 private:
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
 };
-
 #endif // APEC_M_LINEAR_SYSTEM_H

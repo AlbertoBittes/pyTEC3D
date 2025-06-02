@@ -6,6 +6,66 @@
 #include <filesystem>
 #include <libmesh/libmesh.h>
 
+std::unique_ptr<std::ios> Session::open_file_stream(const std::filesystem::path &folder,
+                                                    const std::string &filename,
+                                                    FileMode mode)
+{
+    std::filesystem::path filepath = folder / filename;
+    std::unique_ptr<std::ios> stream;
+
+    if (mode == FileMode::Read)
+    {
+        auto ifs = std::make_unique<std::ifstream>(filepath, std::ios::binary);
+        if (!ifs->is_open())
+            libmesh_error_msg("Failed to open file for reading: " + filepath.string());
+        stream = std::move(ifs);
+    }
+    else // FileMode::Write
+    {
+        auto ofs = std::make_unique<std::ofstream>(filepath, std::ios::binary);
+        if (!ofs->is_open())
+            libmesh_error_msg("Failed to open file for writing: " + filepath.string());
+        stream = std::move(ofs);
+    }
+    return stream;
+}
+
+std::vector<std::unique_ptr<std::ios>> Session::open_file_streams(
+    const std::filesystem::path &folder,
+    const std::vector<std::string> &filenames,
+    FileMode mode)
+{
+    std::vector<std::unique_ptr<std::ios>> streams;
+    streams.reserve(filenames.size());
+    for (const auto &fname : filenames)
+    {
+        streams.push_back(open_file_stream(folder, fname, mode));
+    }
+    return streams;
+}
+
+void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams)
+{
+    for (auto &stream : streams)
+    {
+        if (stream)
+        {
+            // Try to cast to ifstream
+            if (auto *ifs = dynamic_cast<std::ifstream *>(stream.get()))
+            {
+                if (ifs->is_open())
+                    ifs->close();
+            }
+            // Try to cast to ofstream
+            else if (auto *ofs = dynamic_cast<std::ofstream *>(stream.get()))
+            {
+                if (ofs->is_open())
+                    ofs->close();
+            }
+        }
+    }
+}
+
 void Session::set_output_filepath(unsigned int output_label)
 {
     output_filename = mesh_filename_without_extension + "_out_" + std::to_string(output_label) + ".pvtu";

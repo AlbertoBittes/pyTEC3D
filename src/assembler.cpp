@@ -58,7 +58,9 @@ void AssemblerLinear::assemble()
     PerfLog perf_log("Matrix Assembly");
     // Get a constant reference to the mesh object.
     // Get a reference to the mesh object.
-    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
+    TransientSystem<LinearImplicitSystem> *system = dynamic_cast<TransientSystem<LinearImplicitSystem> *>(this->get_parent_object());
+
+    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
 
     const MeshBase &mesh = system->get_mesh();
 
@@ -75,7 +77,7 @@ void AssemblerLinear::assemble()
 
     auto session = context->get_session();
 
-    ElementBuilder *elem_builder = system->get_element_builder();
+    ElementBuilder *elem_builder = eq_sys->get_element_builder();
 
     auto time_substep = context->get_time_step()->get_active_substep();
 
@@ -110,37 +112,20 @@ void AssemblerLinear::assemble()
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
 
-    mtrx_vec_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    std::ifstream mtrx_input_file(filepath);
-    if (!mtrx_input_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for reading.");
-    }
+    const auto rank_str = std::to_string(comm.rank());
 
-    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    std::ifstream rhs_input_file(filepath);
-    if (!rhs_input_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for reading.");
-    }
+    std::vector<std::string> filenames = {
+        "mtrx_" + rank_str + ".temp",
+        "rhs_" + rank_str + ".temp",
+        "rhs_" + std::to_string(comm.rank()) + "_prev.temp"};
 
-    std::ifstream rhs_prev_input_file;
-    if (time_substep->get_parent_object()->get_step() == 1)
-    {
-        old_rhs = false;
-    }
-    else
-    {
-        mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + "_prev.temp";
-        filepath = emat_folderpath / mtrx_vec_filename;
-        rhs_prev_input_file.open(filepath);
-        if (!rhs_prev_input_file.is_open())
-        {
-            libmesh_error_msg("Failed to open element data file for reading.");
-        }
-    }
+    // Open the main files
+    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
+
+    // Downcast to use as ifstream
+    std::ifstream *mtrx_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
+    std::ifstream *rhs_input_file = dynamic_cast<std::ifstream *>(streams[1].get());
+    std::ifstream *rhs_prev_input_file = dynamic_cast<std::ifstream *>(streams[2].get());
 
     // Matrix changes when we have nonlinearities or different dt
 
@@ -187,7 +172,7 @@ void AssemblerLinear::assemble()
         //     libMesh::out << "Computing new system matrix" << std::endl;
         // }
 
-        elem_builder->read_element_matrices(mtrx_input_file, 0);
+        elem_builder->read_element_matrices(*mtrx_input_file, 0);
 
         auto Ke = elem_builder->get_matrices()[0][0];
         auto Ce = elem_builder->get_matrices()[0][1];
@@ -203,19 +188,13 @@ void AssemblerLinear::assemble()
             matrix.add_matrix(Ke, dof_indices);
         }
 
-        elem_builder->read_element_vectors(rhs_input_file, 0);
+        elem_builder->read_element_vectors(*rhs_input_file, 0);
         auto rhs = elem_builder->get_vectors()[0][0];
 
         if (time_substep->get_ramped_load())
         {
-            if (old_rhs)
-                elem_builder->read_element_vectors(rhs_prev_input_file, 1);
-            else
-            {
-                elem_builder->get_vectors()[0][1].resize(rhs.size());
-                elem_builder->get_vectors()[0][1].zero();
-            }
-            elem_builder->ramp_vectors(time_substep);
+            elem_builder->read_element_vectors(*rhs_prev_input_file, 1);
+            elem_builder->ramp_vectors(time_substep, 0, 0, 0, 1);
         }
 
         // elem_builder->apply_load();
@@ -244,8 +223,7 @@ void AssemblerLinear::assemble()
         dof_map.constrain_element_vector(rhs, dof_indices);
         system->rhs->add_vector(rhs, dof_indices);
     }
-    mtrx_input_file.close();
-    rhs_input_file.close();
+    session->close_file_streams(streams);
     this->prev_substep = time_substep;
 
     // Matrix changes when we have nonlinearities or different dt
@@ -274,211 +252,20 @@ void AssemblerLinear::assemble()
 // PerfLog.  When it goes out of scope (at this function return)
 // it will print its log to the screen. Pretty easy, huh?
 
-void AssemblerLinear::build_write_element_matrices()
-{
-    // Declare a performance log.  Give it a descriptive
-    // string to identify what part of the code we are
-    // logging, since there may be many PerfLogs in an
-    // application.
-    PerfLog perf_log("Matrix Assembly");
-
-    // Get a constant reference to the mesh object.
-    const MeshBase &mesh = eq_sys->get_mesh();
-
-    // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = eq_sys->comm();
-    // A reference to the DofMap object for this system.  The DofMap
-    // object handles the index translation from node and element numbers
-    // to degree of freedom numbers.  We will talk more about the DofMap
-    // in future examples.
-
-    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
-
-    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
-    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
-
-    // Allocate memory for 3D nodal elements matrixes with transient effects
-    // I can have up to 4 variables per node/edge
-    // References to momentum equation right hand sides
-
-    // This vector will hold the degree of freedom indices for
-    // the element.  These define where in the global system
-    // the element degrees of freedom get mapped.
-
-    std::filesystem::path filepath;
-    std::string mtrx_vec_filename;
-
-    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_type");
-    unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
-
-    dof_id_type etype_num;
-    dof_id_type material_num;
-    dof_id_type real_constant_num;
-
-    auto emat_folderpath = session->get_emat_folderpath();
-
-    // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
-    // {
-    // This function must be called prior to a check for the need of recomputing the matrix:
-    // e.g. new materials, new real constants, nonlinear elements.
-
-    mtrx_vec_filename = "mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    std::ofstream mtrx_output_file(filepath);
-    if (!mtrx_output_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for writing.");
-    }
-
-    mtrx_vec_filename = "der_mtrx_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    std::ofstream der_mtrx_output_file(filepath);
-
-    if (!der_mtrx_output_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for writing.");
-    }
-
-    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    if (std::filesystem::exists(filepath))
-    {
-        std::filesystem::path new_filepath = emat_folderpath / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
-        std::filesystem::rename(filepath, new_filepath);
-    }
-    std::ofstream rhs_output_file(filepath);
-    if (!rhs_output_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for writing.");
-    }
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        // Start logging the shape function initialization.
-        // This is done through a simple function call with
-        // the name of the event to log.
-
-        etype_num = elem->get_extra_integer(etype_num_index);
-        material_num = elem->get_extra_integer(mat_num_index);
-        real_constant_num = elem->get_extra_integer(real_constants_num_index);
-
-        std::shared_ptr<ElementType> elem_type = element_types_map[etype_num];
-
-        // Do this elsewhere, logically must no stay here
-        // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-        elem_builder->set_element_data(elem, elem_type, material_num, real_constant_num);
-
-        elem_builder->prepare_element_matrix_building();
-
-        elem_builder->build_element_matrix();
-
-        elem_builder->build_element_rhs();
-        // Here the function to write the matrices and vectors down to file
-        elem_builder->write_element_matrices(mtrx_output_file, 0);
-
-        elem_builder->write_element_matrices(der_mtrx_output_file, 1);
-
-        elem_builder->write_element_vectors(rhs_output_file, 0);
-    }
-    mtrx_output_file.close();
-    der_mtrx_output_file.close();
-    rhs_output_file.close();
-}
-
-void AssemblerLinear::update_rhs()
-{
-    // Declare a performance log.  Give it a descriptive
-    // string to identify what part of the code we are
-    // logging, since there may be many PerfLogs in an
-    // application.
-    PerfLog perf_log("Matrix Assembly");
-    // Get a constant reference to the mesh object.
-    auto eq_sys = this->get_parent_object();
-
-    const MeshBase &mesh = eq_sys->get_mesh();
-
-    // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = eq_sys->comm();
-    // A reference to the DofMap object for this system.  The DofMap
-    // object handles the index translation from node and element numbers
-    // to degree of freedom numbers.  We will talk more about the DofMap
-    // in future examples.
-
-    auto session = eq_sys->parameters.get<std::shared_ptr<Session>>("session");
-
-    auto element_types_collector = eq_sys->parameters.get<std::shared_ptr<ElementTypesCollector>>("element_types_collector");
-    ElementTypesMap &element_types_map = element_types_collector->elementTypes;
-
-    // Allocate memory for 3D nodal elements matrixes with transient effects
-    // I can have up to 4 variables per node/edge
-    // References to momentum equation right hand sides
-
-    // This vector will hold the degree of freedom indices for
-    // the element.  These define where in the global system
-    // the element degrees of freedom get mapped.
-
-    std::filesystem::path filepath;
-    std::string mtrx_vec_filename;
-
-    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-
-    unsigned int etype_num;
-
-    auto emat_folderpath = session->get_emat_folderpath();
-
-    // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
-    // {
-    // This function must be called prior to a check for the need of recomputing the matrix:
-    // e.g. new materials, new real constants, nonlinear elements.
-
-    mtrx_vec_filename = "rhs_" + std::to_string(comm.rank()) + ".temp";
-    filepath = emat_folderpath / mtrx_vec_filename;
-    if (std::filesystem::exists(filepath))
-    {
-        std::filesystem::path new_filepath = emat_folderpath / ("rhs_" + std::to_string(comm.rank()) + "_prev.temp");
-        std::filesystem::rename(filepath, new_filepath);
-    }
-    std::ofstream rhs_output_file(filepath);
-    if (!rhs_output_file.is_open())
-    {
-        libmesh_error_msg("Failed to open element data file for writing.");
-    }
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        // Start logging the shape function initialization.
-        // This is done through a simple function call with
-        // the name of the event to log.
-
-        etype_num = elem->get_extra_integer(etype_num_index);
-
-        std::shared_ptr<ElementType> elem_type = element_types_map[etype_num];
-
-        // Do this elsewhere, logically must no stay here
-        // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-        elem_builder->set_element_type(elem_type);
-
-        elem_builder->prepare_element_rhs_building();
-
-        elem_builder->build_element_rhs();
-        // Here the function to write the matrices and vectors down to file
-
-        elem_builder->writeElementVectors(rhs_output_file, elem_builder->get_vectors());
-    }
-    rhs_output_file.close();
-}
 // in a new time step we could have a different dt, different bcs, different time integration effects
 // Here add the flag for ferromagnetic
 bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 {
     bool update_matrix = false;
 
-    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
+    TransientLinearImplicitSystem *system = dynamic_cast<TransientLinearImplicitSystem *>(this->get_parent_object());
+
+    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
 
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
 
     BoundaryConditionsObject *bc_object = dynamic_cast<BoundaryConditionsObject *>(&system->get_constraint_object());
+
     const Real rel_eps = 1e-9;
 
     if (prev_substep == nullptr)
@@ -517,74 +304,6 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
     return update_matrix;
 }
 
-bool AssemblerLinear::check_compute_matrix()
-{
-    // bool compute_matrix = false;
-    auto eq_sys = this->get_parent_object();
-    auto load_step = eq_sys->parameters.get<std::shared_ptr<LoadStepper>>("load_stepper")->get_active_load_step();
-    auto prev_load_step = load_step->get_parent_object()->get_old_load_step();
-    auto active_time_substep = load_step->get_time_step()->get_active_substep();
-    auto old_time_substep = load_step->get_time_step()->get_previous_substep();
-    bool update_matrix;
-    auto solver = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem").get_linear_solver();
-    Real relative_epsilon = 1e-8;
-    if (prev_load_step == nullptr && active_time_substep->get_index() == 0)
-    {
-        // Here add the check for nonlinear elements
-        // This function must be called prior to a check for the need of recomputing the matrix:
-        // e.g. new materials, new real constants, nonlinear elements.
-        update_matrix = true;
-        solver->reuse_preconditioner(false);
-    }
-    else if (old_time_substep == nullptr && prev_load_step != nullptr)
-    {
-        old_time_substep = &(prev_load_step->get_time_step()->get_substeps().back());
-    }
-    // else if (active_time_substep == nullptr && prev_load_step != nullptr)
-    // {
-    //     // Here add the check for nonlinear elements
-    //     // This function must be called prior to a check for the need of recomputing the matrix:
-    //     // e.g. new materials, new real constants, nonlinear elements.
-    //     update_matrix = true;
-    //     solver->reuse_preconditioner(false);
-    // }
-    // in a new time step we could have a different dt, different bcs, different time integration effects
-    // Here add the flag for ferromagnetic
-    else
-    {
-
-        if (active_time_substep->get_index() > 0)
-        {
-            update_matrix = false;
-            solver->reuse_preconditioner(true);
-        }
-        else
-        {
-            NodeBCObject *node_dof_constraints = dynamic_cast<NodeBCObject *>(&eq_sys->get_system(0).get_constraint_object());
-            auto current_material_object = load_step->get_materials();
-            auto old_material_object = prev_load_step->get_materials();
-            auto current_real_constant_object = load_step->get_real_constants();
-            auto old_real_constant_object = prev_load_step->get_real_constants();
-            if (std::abs(active_time_substep->get_dt() - old_time_substep->get_dt()) >
-                    relative_epsilon * std::max(std::abs(active_time_substep->get_dt()),
-                                                std::abs(old_time_substep->get_dt())) ||
-                node_dof_constraints->get_update_boundary_conditions() ||
-                active_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() /*||
-                current_material_object->get_data_map() != old_material_object->get_data_map() ||
-                current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())*/
-            {
-                update_matrix = true;
-                solver->reuse_preconditioner(false);
-            }
-            else
-            {
-                update_matrix = false;
-                solver->reuse_preconditioner(true);
-            }
-        }
-    }
-    return update_matrix;
-}
 // void AssemblerLinear::compute_derived_quantities()
 // {
 //     const MeshBase &mesh = eq_sys.get_mesh();

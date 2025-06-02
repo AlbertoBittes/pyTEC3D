@@ -42,7 +42,7 @@ private:
     std::shared_ptr<Session> session;
     // std::shared_ptr<ElementBuilder> element_builder;
     // std::shared_ptr<SystemBuilder> system_builder;
-    std::shared_ptr<ApecMLinearSystem> apec_m_linear_system;
+    std::shared_ptr<TransientSystem<LinearImplicitSystem>> apec_m_linear_system;
     std::shared_ptr<LoadStepper> load_stepper;
     // Add other services as members
 };

@@ -8,6 +8,12 @@
 
 using namespace libMesh;
 
+enum FileMode
+{
+    Read,
+    Write
+};
+
 class Session : public FEDataObjectBase<SimulationController>
 {
 public:
@@ -97,6 +103,17 @@ public:
     void create_output_folder();
     void create_emat_folder();
     void check_load_steps_folder();
+
+    std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &folder,
+                                               const std::string &filename,
+                                               FileMode mode);
+
+    std::vector<std::unique_ptr<std::ios>> open_file_streams(
+        const std::filesystem::path &folder,
+        const std::vector<std::string> &filenames,
+        FileMode mode);
+
+    void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
 private:
     bool batch_mode;

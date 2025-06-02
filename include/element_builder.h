@@ -20,7 +20,7 @@ struct ElemData
     unsigned int real_constant_num = 0;  // Real constant number
 };
 
-class ElementBuilder : public FEMServiceAbstract // , public FEDataObjectBase<ApecMLinearSystem>
+class ElementBuilder : public FEMServiceAbstract, public FEDataObjectBase<EquationSystems>
 {
 public:
     // Default constructor
@@ -32,28 +32,20 @@ public:
 
     void prepare_element_matrix_building()
     {
-        this->scalar_shape_functions = element_type->get_scalar_shape_functions();
-        this->element_type->reinit_fe(this->elem);
-        if (element_type->get_fe_vec() != nullptr)
-        {
-            this->vector_shape_functions = element_type->get_vector_shape_functions();
-            this->element_type->reinit_fe_vec(this->elem);
-        }
-        this->element_type->populate_all();
-        this->build_matrices(element_type->get_matrix_idx_size_map(), matrices);
-        this->build_vectors(element_type->get_vector_idx_size_map(), vectors);
-        this->build_vectors(element_type->get_vector_idx_size_map(), prev_vectors);
-        this->build_matrices(element_type->get_derived_matrix_idx_size_map(), matrices_solution);
+        // reinit to be done inside each element
+        // as well as the reception of shape functions
+        // this->elem_data.element_type->reinit_fe(this->elem);
+
+        this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
+        this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map().get(), 1);
+
+        auto vector_idx_size_map = elem_data.element_type->get_vector_idx_size_map();
+
+        this->build_vectors(vector_idx_size_map.get(), 0);
+        this->build_vectors(vector_idx_size_map.get(), 1);
     }
-    void prepare_element_rhs_building()
-    {
-        this->scalar_shape_functions = element_type->get_scalar_shape_functions();
-        this->element_type->reinit_fe(this->elem);
-        this->element_type->populate_vector_idx_size_map();
-        this->build_vectors(element_type->get_vector_idx_size_map(), 0);
-        this->build_vectors(element_type->get_vector_idx_size_map(), 1);
-    }
-    inline void ramp_vectors(Substep *time_substep)
+
+    inline void ramp_vectors(Substep *time_substep, unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
     {
         Real y1;
         Real y2;
@@ -64,17 +56,18 @@ public:
 
         for (unsigned int i = 0; i < vectors[0].size(); i++)
         {
-            y2 = vectors[0][0](i);
-            y1 = vectors[0][1](i);
+            y2 = vectors[set_vector_1][idx_vector_1](i);
+            y1 = vectors[set_vector_2][idx_vector_2](i);
 
-            vectors[0][0](i) = y1 + (y2 - y1) / dt * deltim_subst;
+            vectors[set_vector_1][idx_vector_1](i) = y1 + (y2 - y1) / dt * deltim_subst;
         }
     }
+
     // Methods to build elements
-    void build_element_matrix();
-    void build_solid97_matrix();
-    void build_solid236_matrix();
-    void build_plane13_matrix();
+    void build_element();
+    void build_solid97();
+    void build_solid236();
+    void build_plane13();
 
     // Methods to build elements
     void build_element_rhs();
@@ -82,8 +75,8 @@ public:
     void build_solid236_rhs();
     void build_plane13_rhs();
 
-    void build_vectors(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int vectors_set);
-    void build_matrices(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int matrices_set);
+    void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
+    void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
     void write_element_matrices(std::ofstream &outFile, unsigned int matrices_set);
     void read_element_matrices(std::ifstream &inFile, unsigned int matrices_set);
     void write_element_vectors(std::ofstream &outFile, unsigned int vectors_set);
@@ -101,6 +94,10 @@ public:
         elem_data.material_num = material_num;
         elem_data.real_constant_num = real_constant_num;
     }
+
+    void build_write_element_matrices_rhs(bool recompute_matrix = true);
+
+    bool check_compute_matrix(std::shared_ptr<FEMDataContext> old_context = nullptr);
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices

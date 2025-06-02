@@ -68,6 +68,10 @@ void SystemBuilder::initialize()
 
         system.add_variable(variable, Utility::string_to_enum<Order>(order), Utility::string_to_enum<FEFamily>(fe_fam), &subdomain_ids);
     }
+    if (system.name() == "ApecMLinearSystem")
+    {
+        system.add_vector("base_rhs");
+    }
     // }
     // Add more conditions as needed for other combinations
 }

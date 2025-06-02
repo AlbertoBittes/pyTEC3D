@@ -39,7 +39,6 @@ enum DOFMatrixNames
 {
     Ke,
     Ce,
-    NUM_MATRICES
 };
 
 enum SolutionMatrixNames
@@ -48,13 +47,11 @@ enum SolutionMatrixNames
     AAe,
     JAe,
     JVe,
-    NUM_SOLUTION_MATRICES
 };
 enum VectorNames
 {
     Fe,
     Js,
-    NUM_VECTORS
 };
 struct VariableData
 {
@@ -126,7 +123,7 @@ public:
     // Virtual methods for populating maps
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() = 0;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
@@ -158,7 +155,7 @@ public:
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
@@ -174,9 +171,9 @@ public:
         libmesh_error_msg("get_dof_matrix_idx_size_map() is not implemented for AV2DElementType");
     };
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_mat_idx_size_map()
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map()
     {
-        libmesh_error_msg("get_solution_mat_idx_size_map() is not implemented for AV2DElementType");
+        libmesh_error_msg("get_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
     }
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map()
@@ -232,7 +229,7 @@ public:
 
     VariableToElementIdsMapType associate_variables_with_element_IDs(VariableCategory variable_category) const;
 
-    inline const ElementType *get_element_type(subdomain_id_type element_id) const
+    inline ElementType *get_element_type(subdomain_id_type element_id)
     {
         auto it = data_map->find(element_id);
         if (it != data_map->end())

@@ -1,5 +1,7 @@
 #include "element_builder.h"
 #include "libmesh/equation_systems.h"
+#include "libmesh/dof_map.h"
+#include "libmesh/numeric_vector.h"
 #include "libmesh/string_to_enum.h"
 // Define the Finite Element object.
 #include "libmesh/fe.h"
@@ -12,7 +14,7 @@
 #include "loads_object.h"
 #include "assembler.h"
 
-void ElementBuilder::build_vectors(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int vectors_set)
+void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
     this->vectors[vectors_set].resize(sizes_map->size());
     for (unsigned int i = 0; i < sizes_map->size(); ++i)
@@ -23,7 +25,7 @@ void ElementBuilder::build_vectors(std::unique_ptr<std::vector<std::vector<unsig
     }
 }
 
-void ElementBuilder::build_matrices(std::unique_ptr<std::vector<std::vector<unsigned int>>> sizes_map, unsigned int matrices_set)
+void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int matrices_set)
 {
     this->matrices[matrices_set].resize(sizes_map->size());
     for (unsigned int i = 0; i < sizes_map->size(); ++i)
@@ -156,8 +158,193 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
     }
 }
 
+void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = true)
+{
+    // Declare a performance log.  Give it a descriptive
+    // string to identify what part of the code we are
+    // logging, since there may be many PerfLogs in an
+    // application.
+    // PerfLog perf_log("Matrix Assembly");
+
+    auto equation_systems = this->get_parent_object();
+
+    System &system = equation_systems->get_system<System>(0);
+    // Get a constant reference to the mesh object.
+    const MeshBase &mesh = system.get_mesh();
+
+    const DofMap &dof_map = system.get_dof_map();
+    // Get a reference to the LinearImplicitSystem we are solving
+    const auto &comm = system.comm();
+    // A reference to the DofMap object for this system.  The DofMap
+    // object handles the index translation from node and element numbers
+    // to degree of freedom numbers.  We will talk more about the DofMap
+    // in future examples.
+
+    // Allocate memory for 3D nodal elements matrixes with transient effects
+    // I can have up to 4 variables per node/edge
+    // References to momentum equation right hand sides
+
+    // This vector will hold the degree of freedom indices for
+    // the element.  These define where in the global system
+    // the element degrees of freedom get mapped.
+
+    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
+    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_type");
+    unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
+
+    dof_id_type etype_num;
+    dof_id_type material_num;
+    dof_id_type real_constant_num;
+
+    auto context = std::dynamic_pointer_cast<ElementBuilderContext>(this->get_context());
+
+    auto session = context->get_session();
+
+    // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
+    // {
+    // This function must be called prior to a check for the need of recomputing the matrix:
+    // e.g. new materials, new real constants, nonlinear elements.
+
+    const auto rank_str = std::to_string(comm.rank());
+    std::vector<std::string> filenames = {
+        "mtrx_" + rank_str + ".temp",
+        "der_mtrx_" + rank_str + ".temp",
+        "rhs_" + rank_str + ".temp"};
+
+    auto element_types = context->get_element_types();
+    std::filesystem::path emat_folderpath = session->get_emat_folderpath();
+    // Handle renaming of rhs file if it exists
+    std::filesystem::path rhs_path = emat_folderpath / ("rhs_" + rank_str + ".temp");
+    if (std::filesystem::exists(rhs_path))
+    {
+        std::filesystem::path new_rhs_path = emat_folderpath / ("rhs_" + rank_str + "_prev.temp");
+        std::filesystem::rename(rhs_path, new_rhs_path);
+    }
+
+    // Open all files using the session method
+    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Write);
+
+    // Downcast to use as ofstream
+    std::ofstream *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
+    std::ofstream *der_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
+    std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+
+    std::vector<dof_id_type> dof_indices;
+
+    NumericVector<Number> &base_rhs = system.get_vector("base_rhs");
+
+    if (recompute_matrix)
+        for (const auto &elem : mesh.active_local_element_ptr_range())
+        {
+            dof_map.dof_indices(elem, dof_indices);
+            // Start logging the shape function initialization.
+            // This is done through a simple function call with
+            // the name of the event to log.
+
+            etype_num = elem->get_extra_integer(etype_num_index);
+            material_num = elem->get_extra_integer(mat_num_index);
+            real_constant_num = elem->get_extra_integer(real_constants_num_index);
+
+            ElementType *elem_type = element_types->get_element_type(etype_num);
+
+            // Do this elsewhere, logically must no stay here
+            // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
+            this->set_element_data(elem, elem_type, material_num, real_constant_num);
+
+            this->build_element();
+
+            base_rhs.add_vector(vectors[0][0], dof_indices);
+
+            // this->update_rhs();
+            // Here the function to write the matrices and vectors down to file
+            this->write_element_matrices(*mtrx_output_file, 0);
+
+            this->write_element_matrices(*der_mtrx_output_file, 1);
+
+            // this->write_element_vectors(*rhs_output_file, 0);
+        }
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        // Start logging the shape function initialization.
+        // This is done through a simple function call with
+        // the name of the event to log.
+        if (!recompute_matrix)
+        {
+            dof_map.dof_indices(elem, dof_indices);
+
+            etype_num = elem->get_extra_integer(etype_num_index);
+            material_num = elem->get_extra_integer(mat_num_index);
+            real_constant_num = elem->get_extra_integer(real_constants_num_index);
+
+            ElementType *elem_type = element_types->get_element_type(etype_num);
+            this->set_element_data(elem, elem_type, material_num, real_constant_num);
+        }
+
+        base_rhs.get(dof_indices, vectors[0][0].get_values());
+
+        this->build_element_rhs();
+
+        this->write_element_vectors(*rhs_output_file, 0);
+    }
+    session->close_file_streams(streams);
+}
+
+bool ElementBuilder::check_compute_matrix(std::shared_ptr<FEMDataContext> old_context = nullptr)
+{
+    // bool compute_matrix = false;
+    auto eq_sys = this->get_parent_object();
+
+    bool update_matrix;
+
+    TransientLinearImplicitSystem &system = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
+
+    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
+
+    std::shared_ptr<ElementBuilderContext> current_ctx = std::dynamic_pointer_cast<ElementBuilderContext>(this->get_context());
+    std::shared_ptr<ElementBuilderContext> old_ctx = std::dynamic_pointer_cast<ElementBuilderContext>(old_context);
+
+    if (old_context == nullptr)
+    {
+        // Here add the check for nonlinear elements
+        // This function must be called prior to a check for the need of recomputing the matrix:
+        // e.g. new materials, new real constants, nonlinear elements.
+        update_matrix = true;
+        solver->reuse_preconditioner(false);
+    }
+    // else if (active_time_substep == nullptr && prev_load_step != nullptr)
+    // {
+    //     // Here add the check for nonlinear elements
+    //     // This function must be called prior to a check for the need of recomputing the matrix:
+    //     // e.g. new materials, new real constants, nonlinear elements.
+    //     update_matrix = true;
+    //     solver->reuse_preconditioner(false);
+    // }
+    // in a new time step we could have a different dt, different bcs, different time integration effects
+    // Here add the flag for ferromagnetic
+    else
+    {
+        auto current_material_object = current_ctx->get_materials();
+        auto old_material_object = old_ctx->get_materials();
+        auto current_real_constant_object = current_ctx->get_real_constants();
+        auto old_real_constant_object = old_ctx->get_real_constants();
+        if (
+            current_material_object->get_data_map() != old_material_object->get_data_map() ||
+            current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+        {
+            update_matrix = true;
+            solver->reuse_preconditioner(false);
+        }
+        else
+        {
+            update_matrix = false;
+            solver->reuse_preconditioner(true);
+        }
+    }
+    return update_matrix;
+}
 // {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
-void ElementBuilder::build_solid97_matrix()
+void ElementBuilder::build_solid97()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -178,7 +365,7 @@ void ElementBuilder::build_solid97_matrix()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
+    FEBase unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
@@ -232,16 +419,20 @@ void ElementBuilder::build_solid97_matrix()
                             // matrices_derived[1](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->curl_phi_vec[dof_j * 3 + l][qp]);
                             // matrices_derived[0](dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += scalar_shape_functions->JxW[qp] * (vector_shape_functions->phi_vec[dof_i * 3 + k][qp] * vector_shape_functions->phi_vec[dof_j * 3 + l][qp]);
                         }
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int k = 0; k < 3; k++)
+                vectors[0](dof_i + k * n_dofs_var) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp]; //* js_loads[elem->id()][k];
 }
 
 // Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236_matrix()
+void ElementBuilder::build_solid236()
 {
     libmesh_error_msg("build_solid236 is not implemented yet.");
 }
 
 // Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13_matrix()
+void ElementBuilder::build_plane13()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -337,25 +528,43 @@ void ElementBuilder::build_plane13_matrix()
             vectors[0](dof_i) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp]; // * js_loads[elem->id()][2];
 }
 
-void ElementBuilder::build_element_matrix()
+void ElementBuilder::build_element()
 {
-    auto etype = elem_data.element_type->get_keyopts()[0];
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
 
-    if (etype == 97)
+    switch (etype)
     {
-        this->build_solid97_matrix();
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
-    else if (etype == 236)
+}
+
+void ElementBuilder::build_element_rhs()
+{
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
     {
-        this->build_solid236_matrix();
-    }
-    else if (etype == 13)
-    {
-        this->build_plane13_matrix();
-    }
-    else
-    {
-        libmesh_error_msg("Element type not supported: " + etype);
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_rhs();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_rhs();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13_rhs();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
@@ -381,7 +590,7 @@ void ElementBuilder::build_solid97_rhs()
     //
     // Now start logging the element matrix computation
 
-    unsigned int n_dofs_var = element_type->get_fe()->n_shape_functions();
+    unsigned int n_dofs_var = elem_data.element_type->fe_array->n_shape_functions();
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = element_type->get_fe()->n_quadrature_points();
 
@@ -451,44 +660,3 @@ void ElementBuilder::build_plane13_rhs()
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             vectors[0](dof_i) += scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[dof_i][qp] * js_loads[elem->id()][2];
 }
-
-void ElementBuilder::build_element_rhs()
-{
-    auto etype = element_type->get_properties()[0];
-
-    if (etype == 97)
-    {
-        this->build_solid97_rhs();
-    }
-    else if (etype == 236)
-    {
-        this->build_solid236_rhs();
-    }
-    else if (etype == 13)
-    {
-        this->build_plane13_rhs();
-    }
-    else
-    {
-        libmesh_error_msg("Element type not supported: " + etype);
-    }
-}
-// void ElementBuilder::apply_material_properties()
-// {
-//     if (element_type->properties.element_type == "SOLID97")
-//     {
-//         this->apply_material_properties_solid97();
-//     }
-//     else if (element_type->properties.element_type == "SOLID236")
-//     {
-//         this->apply_material_properties_solid236();
-//     }
-//     else if (element_type->properties.element_type == "PLANE13")
-//     {
-//         this->apply_material_properties_plane13();
-//     }
-//     else
-//     {
-//         libmesh_error_msg("Element type not supported: " + element_type->properties.element_type);
-//     }
-// }
