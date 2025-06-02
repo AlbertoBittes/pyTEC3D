@@ -37,16 +37,16 @@ set(LIBS
 )
 
 # Add executable
-add_executable(plasma_arc ${SOURCES})
+add_executable(apec_m ${SOURCES})
 
 # Set the output directory for the executable
-set_target_properties(plasma_arc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../bin)
+set_target_properties(apec_m PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../bin)
 
 # Link libraries
-target_link_libraries(plasma_arc ${LIBS})
+target_link_libraries(apec_m ${LIBS})
 
 # Set RPATH
-set_target_properties(plasma_arc PROPERTIES
+set_target_properties(apec_m PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN/../lib"
 )
@@ -54,5 +54,5 @@ set_target_properties(plasma_arc PROPERTIES
 # Add a custom target for cleaning up build files
 add_custom_target(clean
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/../bin/plasma_arc
+    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/../bin/apec_m
 )

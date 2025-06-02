@@ -1,7 +1,7 @@
-#include "../include/time_step.h"
+#include "time_step.h"
 #include <fstream>
-#include "../include/load_step.h" // Include the header for LoadStep
-
+#include "load_step.h" // Include the header for LoadStep
+#include "fem_data_context.h"
 // Method to update the old solution
 // This should go before a solve, but in solve
 // void LoadStepper::update_old_solution(TransientLinearImplicitSystem &system)
@@ -14,8 +14,7 @@ void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
         time_beginning = 0.0;
     else
     {
-        std::shared_ptr<FEDataObjectAbstract> base_ptr = prev_load_step->get_data_object(0);
-        std::shared_ptr<TimeStep> time_step_ptr = std::dynamic_pointer_cast<TimeStep>(base_ptr);
+        std::shared_ptr<TimeStep> time_step_ptr = prev_load_step->get_object<TimeStep>();
         time_beginning = time_step_ptr->get_time();
     }
 }

@@ -71,16 +71,27 @@ public:
     }
 
 protected:
-    FEDataObjectMap() : data_map(std::make_unique<T1>())
+    FEDataObjectMap() : data_map(std::make_shared<T1>())
     {
     }
     // Protected constructor to prevent direct instantiation
-    FEDataObjectMap(std::ifstream &file) : data_map(std::make_unique<T1>())
+    FEDataObjectMap(std::ifstream &file) : data_map(std::make_shared<T1>())
     {
         read_data(file);
     }
+
+    FEDataObjectMap(std::shared_ptr<T1> external_map)
+        : data_map(external_map) {}
+
+    // NEW: Constructor that receives an external map and a file, sets the map and calls read_data
+    FEDataObjectMap(std::shared_ptr<T1> external_map, std::ifstream &file)
+        : data_map(external_map)
+    {
+        read_data(file);
+    }
+
     // Attributes
-    std::unique_ptr<T1> data_map; // Stores the data map (type-specific)
+    std::shared_ptr<T1> data_map; // Stores the data map (type-specific)
 };
 
 class DataframeFEDataObject : public FEDataObjectMap<DataframeMap>

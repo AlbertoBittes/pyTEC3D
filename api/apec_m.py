@@ -1398,7 +1398,7 @@ class APEC_M:
             for k, label in enumerate(labels_to_write):
                 try:
                     # Call the appropriate function based on the label
-                    binary_file.write(struct.pack("I", k + 1))
+                    binary_file.write(struct.pack("I", k))
                     self._write_label_to_binary(binary_file, label)
                     print(f"{label.replace('_', ' ').capitalize()} written.")
                 except ValueError as e:

@@ -149,14 +149,14 @@ void Session::check_load_steps_folder()
         }
 
         // Set the number of load steps
-        if (load_step_count > 0)
-        {
-            n_load_steps = load_step_count;
-            libMesh::out << "Number of load steps: " << n_load_steps << std::endl;
-        }
-        else
-        {
-            libmesh_error_msg("No valid load step files found in the load steps folder.");
-        }
+        // if (load_step_count > 0)
+        // {
+        n_load_steps = load_step_count;
+        libMesh::out << "Number of load steps: " << n_load_steps << std::endl;
+        // }
+        // else
+        // {
+        //     libmesh_error_msg("No valid load step files found in the load steps folder.");
+        // }
     }
 }

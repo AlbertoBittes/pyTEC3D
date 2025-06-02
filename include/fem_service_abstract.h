@@ -22,7 +22,7 @@ public:
 
 protected:
     FEMServiceAbstract(std::shared_ptr<FEMDataContext> context = nullptr)
-        : ctx(std::move(context)) {}
+        : ctx(context) {}
 
     std::shared_ptr<FEMDataContext> ctx;
 };

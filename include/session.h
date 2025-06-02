@@ -19,32 +19,13 @@ class Session : public FEDataObjectBase<SimulationController>
 public:
     // Default constructor
     Session()
-        : batch_mode(true),
-          input_mesh_filepath(""),
+        : input_mesh_filepath(""),
           input_directory(""),
           output_folderpath("output"),
           temp_folderpath("temp"),
           load_steps_folderpath("load_steps"),
-          emat_folderpath("emat_files") {}
-
-    // Constructor with mesh filename
-    explicit Session(const std::string &mesh_filename)
-        : batch_mode(true),
-          input_mesh_filepath(mesh_filename),
-          input_directory(""),
-          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string())
+          emat_folderpath("emat_files")
     {
-        initialize_folder_paths();
-    }
-
-    // Constructor with mesh filename and batch mode
-    Session(const std::string &mesh_filename, bool batch_mode)
-        : batch_mode(batch_mode),
-          input_mesh_filepath(mesh_filename),
-          input_directory(""),
-          mesh_filename_without_extension(std::filesystem::path(mesh_filename).stem().string())
-    {
-        initialize_folder_paths();
     }
 
     // Method to initialize folder paths based on input_mesh_filepath
@@ -63,11 +44,11 @@ public:
         this->create_temp_folder();
         this->create_output_folder();
         this->create_emat_folder();
+
         this->check_load_steps_folder();
     }
 
     // Setters
-    void set_batch_mode(bool mode) { batch_mode = mode; }
     void set_input_mesh_filepath(const std::string &filepath)
     {
         input_mesh_filepath = filepath;
@@ -84,7 +65,6 @@ public:
     void set_n_load_steps(unsigned int n) { n_load_steps = n; }
 
     // Getters
-    bool get_batch_mode() const { return batch_mode; }
     const std::string &get_input_mesh_filepath() const { return input_mesh_filepath; }
     const std::filesystem::path &get_input_directory() const { return input_directory; }
     const std::filesystem::path &get_output_folderpath() const { return output_folderpath; }
@@ -116,7 +96,6 @@ public:
     void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
 private:
-    bool batch_mode;
     std::string input_mesh_filepath;
     std::filesystem::path input_directory; // New attribute to store the extracted directory
     std::filesystem::path output_folderpath;

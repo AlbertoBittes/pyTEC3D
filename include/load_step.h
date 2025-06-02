@@ -16,7 +16,17 @@
 
 class LoadStepper;
 
-class LoadStep : public FEDataObjectBase<LoadStepper>
+enum LoadStepObjectType : uint32_t
+{
+    TIME_STEP = 0,
+    PETSC_SOLVER_CONFIG,
+    MATERIALS_OBJECT,
+    REAL_CONSTANTS_OBJECT,
+    LOADS_OBJECT,
+    NODE_BC_OBJECT
+};
+
+class LoadStep : public FEDataObjectBase<LoadStepper>, public FEMDataContext
 {
 public:
     // Default constructor
@@ -31,23 +41,6 @@ public:
     // {
     //     data_objects.push_back(obj);
     // }
-
-    // Get the array of FEDataObject shared pointers
-    const std::vector<std::shared_ptr<FEDataObjectAbstract>> &get_data_objects() const
-    {
-        return data_objects;
-    }
-
-    // Optionally, get a specific data object by index
-    std::shared_ptr<FEDataObjectAbstract> get_data_object(size_t idx) const
-    {
-        if (idx < data_objects.size())
-            return data_objects[idx];
-        return nullptr;
-    }
-
-private:
-    std::vector<std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
 
 class LoadStepper : public FEDataObjectBase<EquationSystems>

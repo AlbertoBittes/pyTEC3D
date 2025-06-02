@@ -64,229 +64,13 @@
 
 using namespace libMesh;
 
-std::unique_ptr<EquationSystems> build_equation_systems(Mesh &mesh, std::shared_ptr<Session> session)
-{
-    auto equation_systems = std::make_unique<EquationSystems>(mesh);
-    equation_systems->parameters.set<std::shared_ptr<Session>>("session") = session;
-    return equation_systems;
-}
-
 // void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
 // {
 //     libMesh::out << "Reading element types..." << std::endl;
 //     equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(element_types_filepath);
 // }
 
-void init_equation_systems(EquationSystems &equation_systems)
-{
-    // Declare the system and its variables
-    libMesh::out << "Building system of equations..." << std::endl;
-
-    std::string system_name = "ApecMLinearSystem";
-    std::string der_system_name = "DerivedQuantitiesSystem";
-    std::string der_elem_system_name = "DerivedQuantitiesSystemElem";
-    // Add TransientLinearImplicitSystem as System and return its pointer
-    libMesh::out << "Checking system options..." << std::endl;
-
-    // read_parse_element_types(equation_systems.parameters.get<Session *>("session")->config["Mesh Input Section"]["element_types_filepath"].get<std::string>(), equation_systems);
-    const MeshBase &mesh = equation_systems.get_mesh();
-    mesh.print_info();
-    equation_systems.add_system<TransientLinearImplicitSystem>(system_name);
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>(system_name);
-    ExplicitSystem &der_system = equation_systems.add_system<ExplicitSystem>(der_system_name);
-    ExplicitSystem &der_elem_system = equation_systems.add_system<ExplicitSystem>(der_elem_system_name);
-
-    SystemBuilder system_builder(&equation_systems, system_name);
-    system.attach_init_object(system_builder);
-
-    SystemBuilder system_builder_der(&equation_systems, der_system_name);
-    der_system.attach_init_object(system_builder_der);
-
-    SystemBuilder system_builder_der_elem(&equation_systems, der_elem_system_name);
-    der_elem_system.attach_init_object(system_builder_der_elem);
-
-    system_builder.initialize();
-    system_builder_der.initialize();
-    system_builder_der_elem.initialize();
-    // This will go in /solu
-    libMesh::out << "Distributing degrees of freedom..." << std::endl;
-    equation_systems.init();
-    equation_systems.print_info();
-
-    system.zero_out_matrix_and_rhs = false;
-    NodeBCObject *node_bc_object = new NodeBCObject();
-    system.attach_constraint_object(*node_bc_object);
-    // system.solution->zero();
-    // system.solution->close();
-    system.current_local_solution->zero();
-    system.current_local_solution->close();
-}
-
-void read_and_prepare_mesh(Mesh &mesh, const std::string &mesh_filepath, EquationSystems &equation_systems)
-{
-    libMesh::out << "Reading mesh..." << std::endl;
-    // mesh.clear();
-    VTKIO_Updated vtkio(mesh);
-    if (mesh.comm().rank() == 0)
-    {
-        vtkio.read(mesh_filepath);
-    }
-    auto element_types_map = vtkio.get_element_types_map_csv();
-    mesh.comm().broadcast<ElementTypesMapCSV>(*element_types_map);
-    std::shared_ptr<ElementTypesCollector> element_types_collector = std::make_shared<ElementTypesCollector>(*element_types_map);
-    equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = element_types_collector;
-    MeshCommunication().broadcast(mesh);
-    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh.prepare_for_use();
-    MeshTools::Modification::orient_elements(mesh);
-    // Print information about the mesh to the screen.
-    std::cout << "Mesh Information: " << std::endl;
-    mesh.print_info();
-}
-
-void solve(EquationSystems &equation_systems, LoadStep &load_step)
-{
-    auto time_step = load_step.get_time_step();
-
-    libMesh::out << "Solving time step " << time_step->get_step() + 1 << std::endl;
-
-    libMesh::out << "Time increment at the end of time step: " << time_step->get_delta_t() << std::endl;
-
-    libMesh::out << "Number of time substeps: " << time_step->get_n_substeps() << std::endl;
-
-    libMesh::out << "Setting boundary conditions..." << std::endl;
-
-    libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
-
-    auto session = equation_systems.parameters.get<std::shared_ptr<Session>>("session");
-    // read material properties
-
-    // Read loads
-
-    // Get the system
-    TransientLinearImplicitSystem &system = equation_systems.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
-    // This will reinitialize the constraints for the system
-    // Read boundary conditions
-
-    // system.get_dof_map().print_dof_constraints();
-    // Iterate through the substeps of the current time step
-    for (auto &substep : *time_step)
-    {
-        libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()
-                     << ", dt: " << substep.get_dt()
-                     << ", Write Results: " << substep.get_write_results()
-                     << ", Transient Effect: " << substep.get_transient_effect() << std::endl;
-        // update time in element data object
-        // Assemble & solve the linear system
-        libMesh::out << "Building matrix and solving system..." << std::endl;
-        system.solve();
-
-        system.get_linear_solver()->print_converged_reason();
-        if (substep.get_write_results() || substep.get_index() == time_step->get_n_substeps() - 1)
-        {
-            libMesh::out << "Computing derived quantities..." << std::endl;
-            // Call the function to compute the magnetic field
-
-            // equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
-            // init.comm().barrier();
-            // equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem").solution->print(std::cout);
-            // libMesh::out << "Writing time substep results..." << std::endl;
-            // output_filename = mesh_filename_without_extension + "_out_" + std::to_string(timeStepper->get_cumulative_substep());
-            // output_filename = output_filename + ".pvtu";
-            // final_output_path = output_path / output_filename;
-            std::set<std::string> system_names = {"ApecMLinearSystem", "DerivedQuantitiesSystem"};
-            // // Write the results
-            // VTKIO vtk_output(mesh);
-            // exo_output.write_equation_systems(final_output_path, equation_systems, &system_names);
-            libMesh::out << "Writing time substep results..." << std::endl;
-            // session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
-            // // Write the results
-            VTKIO_Updated vtk_output(equation_systems.get_mesh(), &equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem"));
-            // vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
-            // change the extension of filepath to .exo
-            // std::string exo_output_path = session.final_output_path;
-            // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");
-            // ExodusII_IO exo_output(mesh);
-            // exo_output.write_timestep(exo_output_path, equation_systems, 1, substep.get_time(), &system_names);
-            // exo_output.write_element_data(equation_systems);
-
-            // Print to a file the rhs
-            // std::ofstream rhs_file("../simulations/two_wires_3D/matrix/RHS_full_" + std::to_string(step.get_step()) + ".txt");
-            // system.rhs->print_global(rhs_file);
-            // system.rhs->zero();
-            // system.rhs->close();
-            // output_filename = mesh_filename_without_extension + "_out";
-            // final_output_path = output_path / output_filename;
-            // std::ostringstream file_name;
-            // // // We write the file in the ExodusII format.
-            // file_name << final_output_path.string() << "_"
-            //           << std::setw(3)
-            //           << std::setfill('0')
-            //           << std::right
-            //           << timeStepper->get_cumulative_substep();
-
-            // // // Write the results
-            // Nemesis_IO nem_output(mesh);
-            // std::vector<std::string> var_names;
-            // unsigned int var_num = system.n_vars();
-            // for (unsigned int i = 0; i < var_num; ++i)
-            // {
-            //     var_names.push_back(system.variable_name(i));
-            // }
-            // ExplicitSystem &derived_system = equation_systems.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
-            // var_num = derived_system.n_vars();
-            // for (unsigned int i = 0; i < var_num; ++i)
-            // {
-            //     var_names.push_back(derived_system.variable_name(i));
-            // }
-            // nem_output.set_output_variables(var_names);
-
-            // nem_output.write_timestep(file_name.str(), equation_systems, 1, substep.get_time());
-            // // Empty var_names
-            // nem_output.write_element_data(equation_systems);
-        }
-
-        libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step->get_n_substeps() << " completed." << std::endl;
-    }
-}
-
 // Function to execute the batch mode logic
-void run_batch_mode(const std::string &mesh_filename, libMesh::Parallel::Communicator &comm)
-{
-    libMesh::out << "Running in batch mode with mesh file: " << mesh_filename << std::endl;
-
-    // Create a session with the mesh filename
-    std::shared_ptr<Session> session = std::make_shared<Session>(mesh_filename);
-
-    Mesh mesh(comm);
-
-    auto equation_systems = build_equation_systems(mesh, session);
-    // equation_systems.parameters.set<std::set<subdomain_id_type> *>("conductive_subdomain") = &conductive_subdomain;
-    // Read and prepare the mesh
-    read_and_prepare_mesh(mesh, session->get_input_mesh_filepath(), *equation_systems);
-
-    libMesh::out << "Building equations systems..." << std::endl;
-
-    // Build and initialize equation systems
-    init_equation_systems(*equation_systems);
-
-    std::shared_ptr<LoadStepper> load_stepper = std::make_shared<LoadStepper>(equation_systems.get());
-    equation_systems->parameters.set<std::shared_ptr<LoadStepper>>("load_stepper") = load_stepper;
-    // Solve the system for each time step
-    for (unsigned int n = 0; n < session->get_n_load_steps(); n++)
-    {
-        // Create a new load step
-        const std::string load_step_filename = session->get_load_steps_folderpath() / ("load_step_" + std::to_string(n + 1) + ".bin");
-        load_stepper->read_new_load_step(session->get_load_steps_folderpath() / load_step_filename);
-        auto load_step = load_stepper->get_active_load_step();
-        // Solve the system for the current load step
-        solve(*equation_systems, *(load_step));
-    }
-
-    // Clean up
-    // delete &mesh;
-    // delete &equation_systems;
-}
 
 // Main function
 int main(int argc, char **argv)
@@ -315,15 +99,18 @@ int main(int argc, char **argv)
         // Get the mesh filename
         std::string mesh_filename = argv[2];
 
-        // Run batch mode
-        run_batch_mode(mesh_filename, init.comm());
+        // Construct the SimulationController in batch mode
+        SimulationController controller(init.comm(), true);
+        controller.session->set_input_mesh_filepath(mesh_filename);
+        controller.run_batch_mode();
     }
     else if (mode == "-i")
     {
         libMesh::out << "Running in interactive mode..." << std::endl;
 
-        // Interactive mode logic
-        libMesh::out << "Interactive mode is not yet implemented." << std::endl;
+        // Construct the SimulationController in interactive mode
+        SimulationController controller(init.comm(), false);
+        controller.run_cli(init.comm());
     }
     else
     {

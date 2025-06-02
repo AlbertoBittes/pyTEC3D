@@ -32,7 +32,8 @@ enum VariableCategory
     DOFVariables,
     NodalSolutionVariables,
     ElementSolutionVariables,
-    LoadsVariables
+    LoadsVariables,
+    NodalBCsVariables,
 };
 
 enum DOFMatrixNames
@@ -67,7 +68,7 @@ struct VariableData
 
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
-typedef std::unordered_map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
+typedef std::map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 //                         label         is_active, physical components, is scalar, API label, API components, fe family, order
 typedef std::map<std::string, VariableData> VariableInformation;
 

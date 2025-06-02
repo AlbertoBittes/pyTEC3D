@@ -14,6 +14,7 @@
 #include "real_constants_object.h"
 #include "loads_object.h"
 #include "session.h"
+
 class FEMDataContext
 {
 public:
@@ -67,32 +68,37 @@ protected:
     std::vector<std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
 
-class SystemBuilderContext : public FEMDataContext
+class ElementPhysicsContext : public FEMDataContext
 {
 public:
-    // Materials
-    void set_materials(std::shared_ptr<MaterialsObject> obj) { set_object(obj); }
-    std::shared_ptr<MaterialsObject> get_materials() const { return get_object<MaterialsObject>(); }
-};
-
-class SystemContext : public FEMDataContext
-{
-public:
-    void set_node_bc(std::shared_ptr<NodeBCObject> obj) { set_object(obj); }
-    std::shared_ptr<NodeBCObject> get_node_bc() const { return get_object<NodeBCObject>(); }
-
-    void set_time_step(std::shared_ptr<TimeStep> obj) { set_object(obj); }
-    std::shared_ptr<TimeStep> get_time_step() const { return get_object<TimeStep>(); }
-};
-
-class ElementBuilderContext : public FEMDataContext
-{
-public:
+    ElementPhysicsContext(std::shared_ptr<ElementTypeFactory> element_types)
+    {
+        set_element_types(element_types);
+    }
     void set_element_types(std::shared_ptr<ElementTypeFactory> obj) { set_object(obj); }
     std::shared_ptr<ElementTypeFactory> get_element_types() const
     {
         return get_object<ElementTypeFactory>();
     }
+};
+
+class ElementBuilderContext : public ElementPhysicsContext
+{
+public:
+    ElementBuilderContext(
+        std::shared_ptr<ElementTypeFactory> element_types,
+        std::shared_ptr<MaterialsObject> materials,
+        std::shared_ptr<RealConstantsObject> real_constants,
+        std::shared_ptr<LoadsObject> loads,
+        std::shared_ptr<Session> session)
+        : ElementPhysicsContext(element_types)
+    {
+        set_materials(materials);
+        set_real_constants(real_constants);
+        set_loads(loads);
+        set_session(session);
+    }
+
     void set_materials(std::shared_ptr<MaterialsObject> obj) { set_object(obj); }
     std::shared_ptr<MaterialsObject> get_materials() const { return get_object<MaterialsObject>(); }
 
@@ -112,6 +118,12 @@ public:
 class AssemblerContext : public FEMDataContext
 {
 public:
+    AssemblerContext(std::shared_ptr<TimeStep> time_step, std::shared_ptr<Session> session)
+    {
+        set_time_step(time_step);
+        set_session(session);
+    }
+
     void set_time_step(std::shared_ptr<TimeStep> obj) { set_object(obj); }
     std::shared_ptr<TimeStep> get_time_step() const { return get_object<TimeStep>(); }
 

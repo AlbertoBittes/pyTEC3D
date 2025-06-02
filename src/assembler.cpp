@@ -309,8 +309,8 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 //     const MeshBase &mesh = eq_sys.get_mesh();
 //     const unsigned int dim = mesh.mesh_dimension();
 
-//     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystem");
-//     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("DerivedQuantitiesSystemElem");
+//     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("NodalSolutionSystem");
+//     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("ElementSolutionSystem");
 //     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
 
 //     const DofMap &dof_map = system.get_dof_map();

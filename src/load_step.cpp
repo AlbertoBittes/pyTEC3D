@@ -38,22 +38,22 @@ void LoadStep::read_from_file(const std::string &filename)
         // Example switch (replace with your actual type ids and classes)
         switch (type_id)
         {
-        case 1:
+        case TIME_STEP:
             obj = std::make_shared<TimeStep>(file, prev_load_step);
             break;
-        case 2:
+        case PETSC_SOLVER_CONFIG:
             obj = std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver);
             break;
-        case 3:
+        case MATERIALS_OBJECT:
             obj = std::make_shared<MaterialsObject>(file);
             break;
-        case 4:
+        case REAL_CONSTANTS_OBJECT:
             obj = std::make_shared<RealConstantsObject>(file);
             break;
-        case 5:
+        case LOADS_OBJECT:
             obj = std::make_shared<LoadsObject>(file, mesh);
             break;
-        case 6:
+        case NODE_BC_OBJECT:
             obj = std::make_shared<NodeBCObject>(file);
             break;
         default:
