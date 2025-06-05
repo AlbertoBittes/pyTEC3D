@@ -3,28 +3,29 @@
 
 #include <memory>
 #include <vector>
-#include "fem_data_context.h"
 
 // Forward declarations (add more as needed)
-class FEMDataContext;
 
+template <typename ContextType>
 class FEMServiceAbstract
 {
+    static_assert(std::is_base_of<FEMDataContext, ContextType>::value, "ContextType must derive from FEMDataContext");
+
 public:
     virtual ~FEMServiceAbstract() = 0;
 
     // Example: set/get context
-    void set_context(std::shared_ptr<FEMDataContext> context) { ctx = context; }
-    std::shared_ptr<FEMDataContext> get_context() const { return ctx; }
+    void set_context(std::shared_ptr<ContextType> context) { ctx = context; }
+    std::shared_ptr<ContextType> get_context() const { return ctx; }
 
     // Add your service interface methods here
     // virtual void run() = 0;
 
 protected:
-    FEMServiceAbstract(std::shared_ptr<FEMDataContext> context = nullptr)
+    FEMServiceAbstract(std::shared_ptr<ContextType> context = nullptr)
         : ctx(context) {}
 
-    std::shared_ptr<FEMDataContext> ctx;
+    std::shared_ptr<ContextType> ctx;
 };
 
 #endif // FEM_SERVICE_ABSTRACT_H

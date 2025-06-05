@@ -15,7 +15,7 @@ enum SystemType
     NODAL_EXPLICIT,
     ELEMENT_EXPLICIT,
     ELEMENT_LOADS,
-    NODAL_BCS,
+    // NODAL_BCS,
     NUM_SYSTEMS
 };
 
@@ -32,8 +32,8 @@ inline const char *get_system_name(SystemType type)
         return "ElementSolutionSystem";
     case ELEMENT_LOADS:
         return "ElementLoadsSystem";
-    case NODAL_BCS:
-        return "NodalBCsSystem";
+    // case NODAL_BCS:
+    //     return "NodalBCsSystem";
     default:
         return "";
     }
@@ -52,8 +52,8 @@ inline VariableCategory get_variable_category(SystemType type)
         return ElementSolutionVariables;
     case ELEMENT_LOADS:
         return LoadsVariables;
-    case NODAL_BCS:
-        return NodalBCsVariables;
+    // case NODAL_BCS:
+    //     return NodalBCsVariables;
     default:
         return DOFVariables; // fallback
     }
@@ -72,8 +72,8 @@ inline SystemType get_system_type_from_category(VariableCategory cat)
         return ELEMENT_EXPLICIT;
     case LoadsVariables:
         return ELEMENT_LOADS;
-    case NodalBCsVariables:
-        return NODAL_BCS;
+    // case NodalBCsVariables:
+    //     return NODAL_BCS;
     default:
         return NUM_SYSTEMS;
     }
@@ -90,8 +90,8 @@ inline SystemType get_system_type_from_name(const std::string &name)
         return ELEMENT_EXPLICIT;
     if (name == "ElementLoadsSystem")
         return ELEMENT_LOADS;
-    if (name == "NodalBCsSystem")
-        return NODAL_BCS;
+    // if (name == "NodalBCsSystem")
+    //     return NODAL_BCS;
     return NUM_SYSTEMS;
 }
 

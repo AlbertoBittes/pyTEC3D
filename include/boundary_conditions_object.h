@@ -7,7 +7,7 @@
 
 using namespace libMesh;
 
-class BoundaryConditionsObject : public System::Constraint, public FEMServiceAbstract
+class BoundaryConditionsObject : public System::Constraint, public FEMServiceAbstract<ElementPhysicsContext>, public FEDataObjectBase<System>
 {
 public:
     // Default constructor

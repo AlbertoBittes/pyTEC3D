@@ -22,8 +22,8 @@ void LoadStep::read_from_file(const std::string &filename)
     data_objects.clear();
 
     // Example: read the number of data objects
-    size_t num_objects = 0;
-    file.read(reinterpret_cast<char *>(&num_objects), sizeof(size_t));
+    uint32_t num_objects = 0;
+    file.read(reinterpret_cast<char *>(&num_objects), sizeof(uint32_t));
 
     // For each data object, read a type identifier and construct the appropriate object
     for (size_t i = 0; i < num_objects; ++i)
@@ -32,28 +32,30 @@ void LoadStep::read_from_file(const std::string &filename)
         uint32_t type_id = 0;
         file.read(reinterpret_cast<char *>(&type_id), sizeof(uint32_t));
 
+        auto obj_type = static_cast<LoadStepObjectType>(type_id);
+
         // Based on type_id, create the correct FEDataObjectBase<LoadStepper> derived object
         std::shared_ptr<FEDataObjectAbstract> obj;
 
         // Example switch (replace with your actual type ids and classes)
-        switch (type_id)
+        switch (obj_type)
         {
-        case TIME_STEP:
+        case LoadStepObjectType::TIME_STEP:
             obj = std::make_shared<TimeStep>(file, prev_load_step);
             break;
-        case PETSC_SOLVER_CONFIG:
+        case LoadStepObjectType::PETSC_SOLVER_CONFIG:
             obj = std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver);
             break;
-        case MATERIALS_OBJECT:
+        case LoadStepObjectType::MATERIALS_OBJECT:
             obj = std::make_shared<MaterialsObject>(file);
             break;
-        case REAL_CONSTANTS_OBJECT:
+        case LoadStepObjectType::REAL_CONSTANTS_OBJECT:
             obj = std::make_shared<RealConstantsObject>(file);
             break;
-        case LOADS_OBJECT:
+        case LoadStepObjectType::LOADS_OBJECT:
             obj = std::make_shared<LoadsObject>(file, mesh);
             break;
-        case NODE_BC_OBJECT:
+        case LoadStepObjectType::NODE_BC_OBJECT:
             obj = std::make_shared<NodeBCObject>(file);
             break;
         default:

@@ -10,6 +10,8 @@
 #include "load_step.h"
 // Add other service headers as needed
 
+using namespace libMesh;
+
 class SimulationController
 {
 public:
@@ -95,7 +97,7 @@ public:
                 exit();
                 return;
             default:
-                std::cout << "Unknown command.\n";
+                libMesh::out << "Unknown command.\n";
             }
         }
     }

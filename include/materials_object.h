@@ -1,7 +1,8 @@
 #ifndef MATERIALS_OBJECT_H
 #define MATERIALS_OBJECT_H
 
-#include "../include/fe_data_object.h" // Include the base class
+#include "fe_data_object.h" // Include the base class
+#include "globals.h"
 #include <unordered_map>
 #include <string>
 #include <memory>
@@ -37,9 +38,9 @@ public:
     {
         const std::vector<Real> &mat_properties = mat_like_map->at(mat_id);
 
-        mu_matrix[0] = 4 * libMesh::pi * 1e-7 * mat_properties[0];
-        mu_matrix[1] = 4 * libMesh::pi * 1e-7 * mat_properties[1];
-        mu_matrix[2] = 4 * libMesh::pi * 1e-7 * mat_properties[2];
+        mu_matrix[0] = Globals::MU_0 * mat_properties[0];
+        mu_matrix[1] = Globals::MU_0 * mat_properties[1];
+        mu_matrix[2] = Globals::MU_0 * mat_properties[2];
     }
 
     // Fill the rs_matrix for a given material ID

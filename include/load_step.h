@@ -16,19 +16,18 @@
 
 class LoadStepper;
 
-enum LoadStepObjectType : uint32_t
-{
-    TIME_STEP = 0,
-    PETSC_SOLVER_CONFIG,
-    MATERIALS_OBJECT,
-    REAL_CONSTANTS_OBJECT,
-    LOADS_OBJECT,
-    NODE_BC_OBJECT
-};
-
 class LoadStep : public FEDataObjectBase<LoadStepper>, public FEMDataContext
 {
 public:
+    enum class LoadStepObjectType : uint32_t
+    {
+        TIME_STEP = 0,
+        PETSC_SOLVER_CONFIG,
+        MATERIALS_OBJECT,
+        REAL_CONSTANTS_OBJECT,
+        LOADS_OBJECT,
+        NODE_BC_OBJECT
+    };
     // Default constructor
     LoadStep(LoadStepper *load_stepper = nullptr)
         : FEDataObjectBase<LoadStepper>(load_stepper)

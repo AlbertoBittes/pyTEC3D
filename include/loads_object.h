@@ -18,13 +18,11 @@ typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 class LoadsObject : public FEDataObjectMap<ExplicitSystem>
 {
 public:
-    // Constructor with MeshBase and load labels
-    LoadsObject(std::ifstream &file, ExplicitSystem &sys)
-        : FEDataObjectMap<ExplicitSystem>(),
-          oldLoadsVector(std::make_unique<LoadArraysMap>())
+    // Constructor that calls the exact FEDataObjectMap constructor you specified
+    LoadsObject(std::ifstream &file, std::shared_ptr<ExplicitSystem> external_map)
+        : FEDataObjectMap<ExplicitSystem>(file, external_map)
     {
-        build_load_data_vectors(mesh);
-        read_data(file);
+        // No additional initialization
     }
 
     // // Build load data vectors
@@ -48,8 +46,8 @@ public:
 
     // Setter for old loads vector
 
-// private:
-//     std::unique_ptr<LoadArraysMap> oldLoadsVector; // Old loads vector
+    // private:
+    //     std::unique_ptr<LoadArraysMap> oldLoadsVector; // Old loads vector
 };
 
 #endif // LOADS_OBJECT_H

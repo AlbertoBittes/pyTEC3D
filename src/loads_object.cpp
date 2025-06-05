@@ -1,4 +1,6 @@
-#include "../include/loads_object.h"
+#include "loads_object.h"
+#include <libmesh/numeric_vector.h>
+#include <libmesh/dof_map.h>
 
 void LoadsObject::read_data(std::ifstream &file)
 {
@@ -13,8 +15,12 @@ void LoadsObject::read_data(std::ifstream &file)
     }
 
     // Define the vector of load labels for mapping
-    std::string load_label;
-
+    std::string load_label_api;
+    std::string load_label_global;
+    unsigned int sys_number = data_map->number();
+    const DofMap &dof_map = data_map->get_dof_map();
+    const MeshBase &mesh = data_map->get_mesh();
+    dof_id_type dof_id;
     // Read the loads data
     for (unsigned int i = 0; i < num_loads; ++i)
     {
@@ -42,75 +48,89 @@ void LoadsObject::read_data(std::ifstream &file)
         }
 
         // Map the load label number to the corresponding string
-        load_label = Globals::API_LOADS_LABELS[load_label_number];
+        load_label_api = Globals::API_LOADS_LABELS[load_label_number];
 
+        load_label_global = Globals::API_TO_GLOBAL_LOAD_MAP.at(load_label_api)[component_number];
+
+        const Elem *elem_ptr = mesh.query_elem_ptr(element_number);
+
+        if (!elem_ptr)
+        {
+            continue;
+        }
+        else
+        {
+            // Get the dof indices for the element and load label
+            dof_id = elem_ptr->dof_number(sys_number, load_label_number, component_number);
+            data_map->solution->set(dof_id, load_value);
+        }
         // Access the ElementLoad map for the given load label
-        auto &element_load = (*data_map)[load_label];
+        // auto &element_load = (*data_map)[load_label_api];
 
-        // Check if the element exists in the map
-        auto element_it = element_load.find(element_number);
-        if (element_it != element_load.end())
-        {
-            // Ensure the component number is valid
-            if (component_number < element_it->second.size())
-            {
-                // Update the specific component with the load value
-                element_it->second[component_number] = load_value;
-            }
-            else
-            {
-                libmesh_error_msg("Warning: Invalid component number " +
-                                  std::to_string(component_number) + " for element " +
-                                  std::to_string(element_number) + " in load label " +
-                                  load_label);
-            }
-        }
+        // // Check if the element exists in the map
+        // auto element_it = element_load.find(element_number);
+        // if (element_it != element_load.end())
+        // {
+        //     // Ensure the component number is valid
+        //     if (component_number < element_it->second.size())
+        //     {
+        //         // Update the specific component with the load value
+        //         element_it->second[component_number] = load_value;
+        //     }
+        //     else
+        //     {
+        //         libmesh_error_msg("Warning: Invalid component number " +
+        //                           std::to_string(component_number) + " for element " +
+        //                           std::to_string(element_number) + " in load label " +
+        //                           load_label_api);
+        //     }
+        // }
     }
 }
 
-void LoadsObject::zero_loads_array()
-{
-    if (!data_map)
-    {
-        return;
-    }
-    // Iterate over each load in the LoadArraysMap
-    for (auto &load_array_pair : *data_map)
-    {
-        ElementLoad &element_load = load_array_pair.second; // Access the ElementLoad map
+// void LoadsObject::zero_loads_array()
+// {
+//     if (!data_map)
+//     {
+//         return;
+//     }
+//     // Iterate over each load in the LoadArraysMap
+//     for (auto &load_array_pair : *data_map)
+//     {
+//         ElementLoad &element_load = load_array_pair.second; // Access the ElementLoad map
 
-        // Iterate over each element in the ElementLoad map
-        for (auto &element_pair : element_load)
-        {
-            std::vector<Real> &values = element_pair.second; // Access the vector of Real values
+//         // Iterate over each element in the ElementLoad map
+//         for (auto &element_pair : element_load)
+//         {
+//             std::vector<Real> &values = element_pair.second; // Access the vector of Real values
 
-            // Zero out the vector using std::fill for efficiency
-            if (!values.empty())
-            {
-                std::fill(values.begin(), values.end(), 0.0);
-            }
-        }
-    }
-}
+//             // Zero out the vector using std::fill for efficiency
+//             if (!values.empty())
+//             {
+//                 std::fill(values.begin(), values.end(), 0.0);
+//             }
+//         }
+//     }
+// }
 
-void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
-{
+// void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
+// {
 
-    // Get the load quantity from the cell data
-    for (const auto &label : Globals::API_LOADS_LABELS)
-    {
-        // If not, create a new load vector for this label
-        (*data_map)[label] = ElementLoad();
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            // If not, create a new load for this element ID
-            (*data_map)[label][elem->id()] = std::vector<Real>(3, 0.0);
-        }
-    }
+//     // Get the load quantity from the cell data
+//     for (const auto &label : Globals::API_LOADS_LABELS)
+//     {
+//         // If not, create a new load vector for this label
+//         (*data_map)[label] = ElementLoad();
+//         for (const auto &elem : mesh.active_local_element_ptr_range())
+//         {
+//             // If not, create a new load for this element ID
+//             (*data_map)[label][elem->id()] = std::vector<Real>(3, 0.0);
+//         }
+//     }
 
-    if (!oldLoadsVector)
-    {
-        oldLoadsVector = std::make_unique<LoadArraysMap>();
-    }
-    *oldLoadsVector = *data_map;
-}
+//     if (!oldLoadsVector)
+//     {
+//         oldLoadsVector = std::make_unique<LoadArraysMap>();
+//     }
+//     *oldLoadsVector = *data_map;
+// }

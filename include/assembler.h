@@ -9,7 +9,7 @@
 
 using namespace libMesh;
 
-class AssemblerLinear : public System::Assembly, public FEMServiceAbstract, public FEDataObjectBase<System>
+class AssemblerLinear : public System::Assembly, public FEMServiceAbstract<AssemblerContext>, public FEDataObjectBase<System>
 {
 public:
     using FEDataObjectBase<System>::FEDataObjectBase;

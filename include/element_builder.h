@@ -20,13 +20,17 @@ struct ElemData
     unsigned int real_constant_num = 0;  // Real constant number
 };
 
-class ElementBuilder : public FEMServiceAbstract, public FEDataObjectBase<EquationSystems>
+class ElementBuilder : public FEMServiceAbstract<ElementBuilderContext>, public FEDataObjectBase<EquationSystems>
 {
 public:
     // Default constructor
-    using FEMServiceAbstract::FEMServiceAbstract;
+    ElementBuilder::ElementBuilder(std::shared_ptr<ElementBuilderContext> context = nullptr)
+        : FEMServiceAbstract<ElementBuilderContext>(context), // Call base class constructor
+          matrices(3),                                        // Initialize matrices with outer size 3
+          vectors(2)                                          // Initialize vectors with outer size 2
+    {
+    }
 
-    // Getters
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
 
@@ -37,12 +41,14 @@ public:
         // this->elem_data.element_type->reinit_fe(this->elem);
 
         this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
-        this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map().get(), 1);
 
-        auto vector_idx_size_map = elem_data.element_type->get_vector_idx_size_map();
+        auto solution_matrix_idx_size_map = elem_data.element_type->get_solution_matrix_idx_size_map().get();
+        this->build_matrices(solution_matrix_idx_size_map, 1);
+        this->build_matrices(solution_matrix_idx_size_map, 2);
 
-        this->build_vectors(vector_idx_size_map.get(), 0);
-        this->build_vectors(vector_idx_size_map.get(), 1);
+        auto vector_idx_size_map = elem_data.element_type->get_vector_idx_size_map().get();
+        this->build_vectors(vector_idx_size_map, 0);
+        // this->build_vectors(vector_idx_size_map, 1);
     }
 
     inline void ramp_vectors(Substep *time_substep, unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)

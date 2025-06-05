@@ -15,7 +15,7 @@ AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
     variable_info["B_x"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 0, L2_LAGRANGE, FIRST};
     variable_info["B_y"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 1, L2_LAGRANGE, FIRST};
     variable_info["J_z"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 2, MONOMIAL, CONSTANT};
-    variable_info["Js"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 3, FEFamily::INVALID_FE, Order::INVALID_ORDER};
+    variable_info["Js_z"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 2, MONOMIAL, CONSTANT};
 }
 
 AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
@@ -42,6 +42,8 @@ AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVE
     variable_info["J_y"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 1, MONOMIAL, CONSTANT};
     variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
     variable_info["EMF"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "EMF", 0, LAGRANGE, FIRST};
+    variable_info["Js_x"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 0, MONOMIAL, CONSTANT};
+    variable_info["Js_y"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 1, MONOMIAL, CONSTANT};
 
     FEType fe_type(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the

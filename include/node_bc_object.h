@@ -1,7 +1,7 @@
 #ifndef NODE_BC_OBJECT_H
 #define NODE_BC_OBJECT_H
 
-#include "../include/fe_data_object.h" // Include the base class
+#include "fe_data_object.h" // Include the base class
 #include <libmesh/system.h>
 #include <string>
 #include <fstream>

@@ -20,6 +20,7 @@ void SimulationController::read_mesh()
     auto element_types_map = vtkio.get_element_types_map_csv();
     mesh->comm().broadcast<ElementTypesMapCSV>(*element_types_map);
     element_types = std::make_shared<ElementTypeFactory>(*element_types_map);
+    element_types->create_element_types(*element_types_map);
 
     MeshCommunication().broadcast(*mesh);
 
@@ -59,12 +60,6 @@ void SimulationController::physics()
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     equation_systems->init();
     equation_systems->print_info();
-
-    // Additional setup for the main system
-    auto *main_system = dynamic_cast<ApecMLinearSystem *>(systems[MAIN]);
-    if (main_system)
-    {
-    }
 }
 
 void SimulationController::solve()
@@ -100,6 +95,8 @@ void SimulationController::solve()
         // update time in element data object
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
+        // Update the old solution of the system
+
         system.solve();
 
         system.get_linear_solver()->print_converged_reason();

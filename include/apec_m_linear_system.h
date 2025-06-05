@@ -9,13 +9,13 @@
 #include "element_builder.h"
 // Add other necessary includes here
 
-class ApecMLinearSystem : public FEMServiceAbstract, public TransientSystem<LinearImplicitSystem>
+class ApecMLinearSystem : public FEMServiceAbstract<ElementPhysicsContext>, public TransientSystem<LinearImplicitSystem>
 {
 public:
     using TransientSystem<LinearImplicitSystem>::TransientSystem;
 };
 
-class ApecMEquationSystems : public FEMServiceAbstract, public EquationSystems
+class ApecMEquationSystems : public FEMServiceAbstract<ElementPhysicsContext>, public EquationSystems
 {
 public:
     using EquationSystems::EquationSystems;

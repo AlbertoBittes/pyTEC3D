@@ -32,8 +32,8 @@ enum VariableCategory
     DOFVariables,
     NodalSolutionVariables,
     ElementSolutionVariables,
-    LoadsVariables,
-    NodalBCsVariables,
+    LoadsVariables
+    // NodalBCsVariables,
 };
 
 enum DOFMatrixNames
@@ -42,10 +42,13 @@ enum DOFMatrixNames
     Ce,
 };
 
-enum SolutionMatrixNames
+enum NodalSolutionMatrixNames
 {
     Me,
     AAe,
+};
+enum ElementSolutionMatrixNames
+{
     JAe,
     JVe,
 };
@@ -213,20 +216,6 @@ public:
     // Factory method to create an ElementType object
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
                                                             const std::vector<unsigned int> &keyopts);
-    // static ElementTypeEnum string_to_element_type_enum(const std::string &type)
-    // {
-    //     // Convert the string type to ElementTypeEnum
-    //     if (type == "SOLID97")
-    //         return ElementTypeEnum::SOLID97;
-    //     else if (type == "SOLID236")
-    //         return ElementTypeEnum::SOLID236;
-    //     else if (type == "PLANE13")
-    //         return ElementTypeEnum::PLANE13;
-    //     else if (type == "PLANE233")
-    //         return ElementTypeEnum::PLANE233;
-    //     else
-    //         libmesh_error_msg("Unknown element type");
-    // }
 
     VariableToElementIdsMapType associate_variables_with_element_IDs(VariableCategory variable_category) const;
 

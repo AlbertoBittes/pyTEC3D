@@ -73,13 +73,11 @@ void AssemblerLinear::assemble()
     // in future examples.
     const DofMap &dof_map = parent_object->get_dof_map();
 
-    auto context = std::dynamic_pointer_cast<AssemblerContext>(this->get_context());
-
-    auto session = context->get_session();
+    auto session = ctx->get_session();
 
     ElementBuilder *elem_builder = eq_sys->get_element_builder();
 
-    auto time_substep = context->get_time_step()->get_active_substep();
+    auto time_substep = ctx->get_time_step()->get_active_substep();
 
     // if (this->check_compute_matrix())
     // {
@@ -174,8 +172,8 @@ void AssemblerLinear::assemble()
 
         elem_builder->read_element_matrices(*mtrx_input_file, 0);
 
-        auto Ke = elem_builder->get_matrices()[0][0];
-        auto Ce = elem_builder->get_matrices()[0][1];
+        auto &Ke = elem_builder->get_matrices()[0][0];
+        auto &Ce = elem_builder->get_matrices()[0][1];
 
         Ce.scale(1 / time_substep->get_dt());
 
@@ -189,7 +187,7 @@ void AssemblerLinear::assemble()
         }
 
         elem_builder->read_element_vectors(*rhs_input_file, 0);
-        auto rhs = elem_builder->get_vectors()[0][0];
+        auto &rhs = elem_builder->get_vectors()[0][0];
 
         if (time_substep->get_ramped_load())
         {
