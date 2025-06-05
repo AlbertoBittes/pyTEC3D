@@ -582,23 +582,21 @@ class APEC_M:
         # Determine the VTK data and mapping based on the data_type
         if data_type == "loads":
             vtk_data = self.mesh.GetCellData()
-            mapping = VARIABLES_LOADS_NUMBERS
         elif data_type == "boundary_conditions":
             vtk_data = self.mesh.GetPointData()
-            mapping = VARIABLES_GLOBAL_NUMBERS
         else:
             raise ValueError(
                 "Invalid data_type. Must be 'loads' or 'boundary_conditions'."
             )
 
         # Retrieve the final_data NumPy array
-        final_data = self.create_numpy_array_for_binary(vtk_data, mapping)
+        final_data = self.create_numpy_array_for_binary(vtk_data)
 
         # Convert the NumPy array to a pandas DataFrame
         df = pd.DataFrame(final_data)
 
         # Replace the "load_bc_number" column with the corresponding "label"
-        reverse_mapping = {v: k for k, v in mapping.items()}  # Reverse the mapping
+        reverse_mapping = {v: k for k, v in VARIABLES_GLOBAL_NUMBERS.items()}  # Reverse the mapping
         df["label"] = df["load_bc_number"].map(reverse_mapping)  # Map numbers to labels
 
         # Reorder columns to make "label" the second column and remove "load_bc_number"
@@ -801,7 +799,7 @@ class APEC_M:
                         f"Unsupported column type '{column_type}' for column '{column}'."
                     )
 
-    def create_numpy_array_for_binary(self, cell_point_data, loads_bc_labels):
+    def create_numpy_array_for_binary(self, cell_point_data):
         """
         Creates a NumPy structured array for loads from a VTK cell data array.
 
@@ -829,7 +827,7 @@ class APEC_M:
         )
 
         # Iterate over each load label
-        for load_bc_label in loads_bc_labels.keys():
+        for load_bc_label in VARIABLES_GLOBAL_NUMBERS.keys():
             load_bc_array = cell_point_data.GetArray(load_bc_label)
             if load_bc_array is None:
                 continue  # Skip if the array does not exist in the VTK file
@@ -861,7 +859,7 @@ class APEC_M:
                 # Create arrays for load number and component
                 load_bc_number_array = np.full(
                     len(filtered_cell_points_ids),
-                    loads_bc_labels[load_bc_label],
+                    VARIABLES_GLOBAL_NUMBERS[load_bc_label],
                     dtype=np.uint32,
                 )
                 component_array = np.full(
@@ -900,7 +898,7 @@ class APEC_M:
         cell_data = self.mesh.GetCellData()
 
         # Call create_numpy_array_for_binary to generate the structured array
-        return self.create_numpy_array_for_binary(cell_data, VARIABLES_LOADS_NUMBERS)
+        return self.create_numpy_array_for_binary(cell_data)
 
     def get_bcs_numpy_for_binary(self):
         """
@@ -913,7 +911,7 @@ class APEC_M:
         point_data = self.mesh.GetPointData()
 
         # Call create_numpy_array_for_binary to generate the structured array
-        return self.create_numpy_array_for_binary(point_data, VARIABLES_GLOBAL_NUMBERS)
+        return self.create_numpy_array_for_binary(point_data)
 
     def write_numpy_array_to_binary(self, binary_file, numpy_array):
         """

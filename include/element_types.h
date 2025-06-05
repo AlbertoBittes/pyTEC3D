@@ -14,8 +14,10 @@
 #include "libmesh/quadrature_gauss.h"
 #include "libmesh/string_to_enum.h"
 #include "fe_data_object.h"
+#include "globals.h" // Include the header for global constants
 
-using namespace libMesh;
+// using namespace libMesh;
+using namespace Globals;
 
 class ElementType;
 
@@ -25,15 +27,6 @@ enum ElementTypeEnum : unsigned int
     SOLID236 = 236,
     PLANE13 = 13,
     PLANE233 = 233
-};
-
-enum VariableCategory
-{
-    DOFVariables,
-    NodalSolutionVariables,
-    ElementSolutionVariables,
-    LoadsVariables
-    // NodalBCsVariables,
 };
 
 enum DOFMatrixNames
@@ -61,19 +54,16 @@ struct VariableData
 {
     VariableCategory category;
     bool is_active;
-    unsigned int physical_components;
-    bool is_scalar;
-    std::string api_label;
-    unsigned int api_components;
+    APIVariableName api_label;
     FEFamily fe_family;
     Order order;
 };
 
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
-typedef std::map<std::string, std::set<subdomain_id_type>> VariableToElementIdsMapType;
+typedef std::map<GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 //                         label         is_active, physical components, is scalar, API label, API components, fe family, order
-typedef std::map<std::string, VariableData> VariableInformation;
+typedef std::map<GlobalVariableName, VariableData> VariableInformation;
 
 class ElementType
 {
@@ -85,12 +75,12 @@ public:
     }
 
     // Virtual methods to be implemented by derived classes
-    inline std::vector<std::string> get_active_variables(VariableCategory variable_cat) const
+    inline std::vector<GlobalVariableName> get_active_variables(VariableCategory variable_cat) const
     {
-        std::vector<std::string> active_vars;
+        std::vector<GlobalVariableName> active_vars;
         for (const auto &pair : variable_info)
         {
-            const std::string &var_name = pair.first;
+            const GlobalVariableName &var_name = pair.first;
             const VariableData &var_data = pair.second;
 
             if (var_data.category == variable_cat && var_data.is_active)
@@ -103,7 +93,7 @@ public:
 
     inline void set_conductive()
     {
-        auto it = variable_info.find("VOLT");
+        auto it = variable_info.find(GlobalVariableName::VOLT);
         is_conductive_ = (it != variable_info.end()) && it->second.is_active;
     }
 
@@ -127,7 +117,9 @@ public:
     // Virtual methods for populating maps
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() = 0;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() = 0;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
@@ -159,7 +151,9 @@ public:
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
@@ -174,12 +168,14 @@ public:
     {
         libmesh_error_msg("get_dof_matrix_idx_size_map() is not implemented for AV2DElementType");
     };
-
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map()
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get__nodalsolution_matrix_idx_size_map()
     {
-        libmesh_error_msg("get_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
+        libmesh_error_msg("get_nodal_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
     }
-
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map()
+    {
+        libmesh_error_msg("get_element_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
+    }
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map()
     {
         libmesh_error_msg("get_vector_idx_size_map() is not implemented for AV2DElementType");

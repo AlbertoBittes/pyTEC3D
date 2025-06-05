@@ -45,17 +45,17 @@ inline VariableCategory get_variable_category(SystemType type)
     switch (type)
     {
     case MAIN:
-        return DOFVariables;
+        return VariableCategory::DOFVariables;
     case NODAL_EXPLICIT:
-        return NodalSolutionVariables;
+        return VariableCategory::NodalSolutionVariables;
     case ELEMENT_EXPLICIT:
-        return ElementSolutionVariables;
+        return VariableCategory::ElementSolutionVariables;
     case ELEMENT_LOADS:
-        return LoadsVariables;
+        return VariableCategory::LoadsVariables;
     // case NODAL_BCS:
     //     return NodalBCsVariables;
     default:
-        return DOFVariables; // fallback
+        return VariableCategory::DOFVariables; // fallback
     }
 }
 
@@ -64,13 +64,13 @@ inline SystemType get_system_type_from_category(VariableCategory cat)
 {
     switch (cat)
     {
-    case DOFVariables:
+    case VariableCategory::DOFVariables:
         return MAIN;
-    case NodalSolutionVariables:
+    case VariableCategory::NodalSolutionVariables:
         return NODAL_EXPLICIT;
-    case ElementSolutionVariables:
+    case VariableCategory::ElementSolutionVariables:
         return ELEMENT_EXPLICIT;
-    case LoadsVariables:
+    case VariableCategory::LoadsVariables:
         return ELEMENT_LOADS;
     // case NodalBCsVariables:
     //     return NODAL_BCS;
@@ -101,12 +101,12 @@ inline VariableCategory get_variable_category_from_name(const std::string &name)
     return get_variable_category(get_system_type_from_name(name));
 }
 
-class SystemBuilder : public System::Initialization, public FEDataObjectBase<System>, public FEMServiceAbstract
+class SystemBuilder : public System::Initialization, public FEDataObjectBase<System>, public FEMServiceAbstract<ElementPhysicsContext>
 {
 public:
     // Constructor: pass context to FEMServiceAbstract
-    SystemBuilder(System *sys, std::shared_ptr<FEMDataContext> context = nullptr)
-        : FEDataObjectBase<System>(sys), FEMServiceAbstract(context) {}
+    SystemBuilder(System *sys, std::shared_ptr<ElementPhysicsContext> context = nullptr)
+        : FEDataObjectBase<System>(sys), FEMServiceAbstract<ElementPhysicsContext>(context) {}
 
     // Override the initialize method
     void initialize() override;

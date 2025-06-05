@@ -42,9 +42,10 @@ public:
 
         this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
 
-        auto solution_matrix_idx_size_map = elem_data.element_type->get_solution_matrix_idx_size_map().get();
-        this->build_matrices(solution_matrix_idx_size_map, 1);
-        this->build_matrices(solution_matrix_idx_size_map, 2);
+        auto nodal_solution_matrix_idx_size_map = elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get();
+        auto elem_solution_matrix_idx_size_map = elem_data.element_type->get_element_solution_matrix_idx_size_map().get();
+        this->build_matrices(nodal_solution_matrix_idx_size_map, 1);
+        this->build_matrices(elem_solution_matrix_idx_size_map, 2);
 
         auto vector_idx_size_map = elem_data.element_type->get_vector_idx_size_map().get();
         this->build_vectors(vector_idx_size_map, 0);

@@ -8,19 +8,20 @@
 #include <limits> // for std::numeric_limits
 #include "../include/element_types.h"
 
+using namespace Globals;
 AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
     : ElementType(keyopts) // Call the parent class constructor
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info["B_x"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 0, L2_LAGRANGE, FIRST};
-    variable_info["B_y"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 1, L2_LAGRANGE, FIRST};
-    variable_info["J_z"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 2, MONOMIAL, CONSTANT};
-    variable_info["Js_z"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 2, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::B_x] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::B_y] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::J_z] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::Js_z] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
 }
 
 AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
 {
-    variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
     // Additional initialization for AVElementType (if needed)
     FEType fe_type(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
@@ -37,13 +38,13 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
 AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info["B_z"] = VariableData{VariableCategory::NodalSolutionVariables, true, 3, false, "B", 2, L2_LAGRANGE, FIRST};
-    variable_info["J_x"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 0, MONOMIAL, CONSTANT};
-    variable_info["J_y"] = VariableData{VariableCategory::ElementSolutionVariables, true, 3, false, "J", 1, MONOMIAL, CONSTANT};
-    variable_info["VOLT"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "VOLT", 0, LAGRANGE, FIRST};
-    variable_info["EMF"] = VariableData{VariableCategory::DOFVariables, false, 1, true, "EMF", 0, LAGRANGE, FIRST};
-    variable_info["Js_x"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 0, MONOMIAL, CONSTANT};
-    variable_info["Js_y"] = VariableData{VariableCategory::LoadsVariables, true, 3, false, "Js", 1, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::B_z] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::J_x] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::J_y] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::EMF] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::EMF, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::Js_x] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::Js_y] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
 
     FEType fe_type(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
@@ -70,7 +71,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     return matrix_idx_size_map;
 };
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_matrix_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nodal_solution_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
@@ -81,8 +82,21 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_sol
 
     (*solution_matrix_idx_size_map)[0] = {0, n_sf_vec, n_sf_vec};
     (*solution_matrix_idx_size_map)[1] = {1, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[2] = {2, n_qp, n_sf_vec};
-    (*solution_matrix_idx_size_map)[3] = {3, 3 * n_qp, n_sf_vec};
+
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_element_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(4, std::vector<unsigned int>(3, 0));
+
+    (*solution_matrix_idx_size_map)[0] = {0, n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[1] = {1, 3 * n_qp, n_sf_vec};
 
     return solution_matrix_idx_size_map;
 }
@@ -103,17 +117,17 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(keyopts)
 {
 
-    variable_info["A_x"] = VariableData{VariableCategory::DOFVariables, true, 3, false, "A", 0, LAGRANGE, FIRST};
-    variable_info["A_y"] = VariableData{VariableCategory::DOFVariables, true, 3, false, "A", 1, LAGRANGE, FIRST};
-    variable_info["A_z"] = VariableData{VariableCategory::DOFVariables, true, 3, false, "A", 2, LAGRANGE, FIRST};
-    variable_info["CURR"] = VariableData{VariableCategory::DOFVariables, false, 1, false, "CURR", 0, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_x] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_y] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::CURR] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::CURR, LAGRANGE, FIRST};
 
     if (keyopts[1] == 1 || keyopts[1] == 4 || keyopts[1] == 5 || keyopts[1] == 6)
-        variable_info["VOLT"].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
     if (keyopts[1] == 2 || keyopts[1] == 3)
-        variable_info["CURR"].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::CURR].is_active = true; // Modify the first member
     if (keyopts[1] == 3)
-        variable_info["EMF"].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
 
     FEType fe_type_vec(FIRST, LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
@@ -176,10 +190,10 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
 PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(keyopts)
 {
-    variable_info["A_z"] = {VariableCategory::DOFVariables, true, 1, true, "A", 2, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
 
     if (keyopts[1] == 6)
-        variable_info["VOLT"].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
 } // Default dimension for PLANE13 is 2
 
 // std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_dof_matrix_idx_size_map()

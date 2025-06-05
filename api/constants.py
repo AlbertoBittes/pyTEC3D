@@ -1,7 +1,13 @@
 # Global variable mappings
-VARIABLES_GLOBAL_NUMBERS = {"A": 0, "VOLT": 1, "Az": 2}
-VARIABLES_LOADS_NUMBERS = {"Js": 0}
-
+VARIABLES_GLOBAL_NUMBERS = {
+    "A":0,
+    "VOLT":1,
+    "EMF":2,
+    "CURR":3,
+    "Js":4,
+    "B":5,
+    "J":6,
+}
 # Default solver settings
 DEFAULT_SOLVER_SETTINGS = {
     "ksp_type": "kspreonly",

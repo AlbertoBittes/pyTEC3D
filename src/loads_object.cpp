@@ -41,16 +41,12 @@ void LoadsObject::read_data(std::ifstream &file)
         // Read load value
         file.read(reinterpret_cast<char *>(&load_value), sizeof(load_value));
 
-        // Validate the load label number
-        if (load_label_number >= Globals::API_LOADS_LABELS.size())
-        {
-            libmesh_error_msg("Error: Invalid load label number " + std::to_string(load_label_number));
-        }
+        // Map the load label number to the corresponding API enum
+        Globals::APIVariableName api_var_enum = static_cast<Globals::APIVariableName>(load_label_number);
 
-        // Map the load label number to the corresponding string
-        load_label_api = Globals::API_LOADS_LABELS[load_label_number];
-
-        load_label_global = Globals::API_TO_GLOBAL_LOAD_MAP.at(load_label_api)[component_number];
+        // Use the map to get the global variable string
+        const auto &global_vars = Globals::API_TO_GLOBAL_VARIABLE_MAP.at(api_var_enum);
+        load_label_global = global_vars[component_number];
 
         const Elem *elem_ptr = mesh.query_elem_ptr(element_number);
 
