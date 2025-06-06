@@ -63,8 +63,11 @@ namespace Globals
     extern const double MU_0;
 
     // Utility functions
-    GlobalVariableName string_to_global_variable_name(const std::string &name);
-    std::string global_variable_name_to_string(GlobalVariableName name);
+    template <typename EnumType>
+    inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value);
+    template <typename EnumType>
+    inline std::string enum_to_string(EnumType value, const std::unordered_map<EnumType, std::string> &enum_to_str_map);
+
 }
 
 #endif // GLOBALS_H

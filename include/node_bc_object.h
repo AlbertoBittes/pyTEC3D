@@ -2,6 +2,7 @@
 #define NODE_BC_OBJECT_H
 
 #include "fe_data_object.h" // Include the base class
+#include "globals.h"        // Include the base class
 #include <libmesh/system.h>
 #include <string>
 #include <fstream>
@@ -11,10 +12,8 @@
 using namespace libMesh;
 
 // Type aliases for boundary conditions
-typedef std::unordered_map<std::string, std::pair<unsigned int, Real>> NodeBoundaryConditions;
+typedef std::unordered_map<Globals::GlobalVariableName, Real> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
-
-class LoadStep;
 
 class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
 {

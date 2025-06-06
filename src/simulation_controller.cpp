@@ -4,6 +4,7 @@
 #include "system_builder.h"
 #include "libmesh/mesh_communication.h"
 #include "libmesh/mesh_modification.h"
+#include "libmesh/numeric_vector.h"
 
 void SimulationController::read_mesh()
 {
@@ -64,7 +65,11 @@ void SimulationController::physics()
 
 void SimulationController::solve()
 {
-    auto time_step = load_stepper->get_active_load_step()->get_object<TimeStep>();
+    auto load_step = load_stepper->get_active_load_step();
+
+    auto prev_load_step = load_stepper->get_old_load_step();
+
+    auto time_step = load_step->get_object<TimeStep>();
 
     libMesh::out << "Solving time step " << time_step->get_step() + 1 << std::endl;
 
@@ -80,9 +85,29 @@ void SimulationController::solve()
     // Read loads
     // Here you have to prepare the various contexts for the systems
     // Get the system
-    TransientLinearImplicitSystem &system = equation_systems->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
-    // This will reinitialize the constraints for the system
+    ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     // Read boundary conditions
+    // 1. prepare the context for element builder
+    std::shared_ptr<ElementBuilderContext> element_builder_context =
+        std::make_shared<ElementBuilderContext>(element_types,
+                                                load_step->get_object<MaterialsObject>(),
+                                                load_step->get_object<RealConstantsObject>(),
+                                                load_step->get_object<LoadsObject>(),
+                                                session);
+    auto element_builder = equation_systems->get_element_builder();
+    element_builder->set_context(element_builder_context);
+
+    // 2. prepare context for assembler
+    std::shared_ptr<AssemblerContext> assembler_context = std::make_shared<AssemblerContext>(time_step, session);
+    auto assembler = system.get_assembler();
+    assembler->set_context(assembler_context);
+
+    // 3. Prepare context for boundary conditions object and reinit constraints
+    std::shared_ptr<BoundaryConditionsContext> boundary_conditions_context = std::make_shared<BoundaryConditionsContext>(load_step->get_object<NodeBCObject>(),
+                                                                                                                         time_step);
+    auto boundary_conditions_object = system.get_boundary_conditions_object();
+    boundary_conditions_object->set_context(boundary_conditions_context);
+    boundary_conditions_object->set_boundary_conditions(prev_load_step->get_object<NodeBCObject>());
 
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
@@ -98,6 +123,9 @@ void SimulationController::solve()
         // Update the old solution of the system
 
         system.solve();
+
+        // Update solution
+        *system.old_local_solution = *system.current_local_solution;
 
         system.get_linear_solver()->print_converged_reason();
         if (substep.get_write_results() || substep.get_index() == time_step->get_n_substeps() - 1)
@@ -119,7 +147,7 @@ void SimulationController::solve()
             libMesh::out << "Writing time substep results..." << std::endl;
             // session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
             // // Write the results
-            VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ExplicitSystem>("ElementSolutionSystem"));
+            // VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ExplicitSystem>("ElementSolutionSystem"));
             // vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
             // change the extension of filepath to .exo
             // std::string exo_output_path = session.final_output_path;

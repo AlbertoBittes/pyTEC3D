@@ -27,6 +27,7 @@ public:
         session = std::make_shared<Session>();
         mesh = std::make_shared<Mesh>(comm);
         equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
+        equation_systems->init_element_builder();
         load_stepper = std::make_shared<LoadStepper>();
     }
 

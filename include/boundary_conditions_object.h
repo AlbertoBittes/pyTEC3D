@@ -7,7 +7,7 @@
 
 using namespace libMesh;
 
-class BoundaryConditionsObject : public System::Constraint, public FEMServiceAbstract<ElementPhysicsContext>, public FEDataObjectBase<System>
+class BoundaryConditionsObject : public System::Constraint, public FEMServiceAbstract<BoundaryConditionsContext>, public FEDataObjectBase<System>
 {
 public:
     // Default constructor
@@ -24,6 +24,9 @@ public:
         // This method should return whether the boundary conditions need to be updated
         return update_boundary_conditions;
     }
+    void check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
+
+    void set_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
 
 private:
     bool update_boundary_conditions = false; // Flag to indicate if boundary conditions need updating

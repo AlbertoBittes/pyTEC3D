@@ -4,6 +4,8 @@
 #include "system_builder.h"
 #include "element_types.h"
 #include "assembler.h"
+#include "fem_data_context.h"
+#include "apec_m_linear_system.h"
 #include "libmesh/string_to_enum.h"
 #include "boundary_conditions_object.h"
 #include "libmesh/numeric_vector.h"
@@ -41,13 +43,14 @@ void SystemBuilder::initialize()
 
     for (const auto &pair : vars_to_subdomain_ids)
     {
-        const std::string &variable = pair.first;
+        const std::string &variable_string =
+            Globals::enum_to_string(pair.first, Globals::ENUM_TO_STRING);
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;
         auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
 
         // Get variable info for this variable
         const auto &var_info = elem_type->get_variable_information();
-        auto it = var_info.find(variable);
+        auto it = var_info.find(pair.first);
         if (it == var_info.end())
             continue; // Skip if variable info not found
 
@@ -57,7 +60,7 @@ void SystemBuilder::initialize()
 
         // Add the variable to the system, specifying subdomains
         system->add_variable(
-            variable,
+            variable_string,
             data.order,
             data.fe_family,
             &subdomain_ids);
@@ -76,6 +79,7 @@ void SystemBuilder::initialize()
 
         std::shared_ptr<BoundaryConditionsObject> node_bc_object = std::make_shared<BoundaryConditionsObject>();
         main_system->attach_constraint_object(*node_bc_object);
+        main_system->set_boundary_conditions_object(node_bc_object);
 
         main_system->current_local_solution->zero();
         main_system->current_local_solution->close();

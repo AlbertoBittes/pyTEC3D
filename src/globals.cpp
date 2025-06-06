@@ -103,26 +103,23 @@ namespace Globals
         {GlobalVariableName::J_y, VariableCategory::ElementSolutionVariables},
         {GlobalVariableName::J_z, VariableCategory::ElementSolutionVariables},
     };
-    // Convert string to GlobalVariableName
-    inline GlobalVariableName string_to_global_variable_name(const std::string &name)
+    template <typename EnumType>
+    inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value)
     {
-        auto it = STRING_TO_ENUM.find(name);
-        if (it != STRING_TO_ENUM.end())
-        {
+        auto it = str_to_enum_map.find(name);
+        if (it != str_to_enum_map.end())
             return it->second;
-        }
-        return GlobalVariableName::UNKNOWN; // Fallback for invalid strings
+        return unknown_value;
     }
 
-    // Convert GlobalVariableName to string
-    inline std::string global_variable_name_to_string(GlobalVariableName name)
+    // Generic enum-to-string conversion
+    template <typename EnumType>
+    inline std::string enum_to_string(EnumType value, const std::unordered_map<EnumType, std::string> &enum_to_str_map)
     {
-        auto it = ENUM_TO_STRING.find(name);
-        if (it != ENUM_TO_STRING.end())
-        {
+        auto it = enum_to_str_map.find(value);
+        if (it != enum_to_str_map.end())
             return it->second;
-        }
-        return "UNKNOWN"; // Fallback for invalid enum values
+        return "UNKNOWN";
     }
 
     const double MU_0 = 3.14159265358979323846 * 4.0 * 1e-7; // 4 * pi constant

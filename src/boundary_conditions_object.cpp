@@ -1,0 +1,96 @@
+#include "boundary_conditions_object.h"
+#include "node_bc_object.h"
+#include "globals.h"
+#include "fem_data_context.h"
+#include "fe_data_object.h"
+#include <libmesh/dof_map.h>
+
+void BoundaryConditionsObject::constrain()
+{
+    // Example implementation
+    // This function should implement the logic to apply constraints to the nodes of the system
+    // identified by system_name within the provided equation_systems object.
+    // The actual implementation would depend on the specific constraints to be applied.
+    // Retrieve the system by name
+    MeshBase &mesh = this->parent_object->get_mesh();
+    DofMap &dof_map = this->parent_object->get_dof_map();
+
+    auto data_map = ctx->get_node_bc_object()->get_data_map();
+
+    Globals::GlobalVariableName variable_label;
+
+    std::string string_variable_label;
+    for (const auto &bc_pair : *(data_map))
+    {
+        const auto &bc_values = bc_pair.second;
+
+        // This will not work for edge elements
+        // Access the node pointer using the node_id, you will have to replace this with something taht can apply bcs for edge elements
+        const Node *node_ptr = mesh.node_ptr(bc_pair.first);
+
+        if (node_ptr)
+        {
+            for (const auto &bc_value : bc_values)
+            {
+                string_variable_label = Globals::enum_to_string(bc_value.first, Globals::ENUM_TO_STRING);
+                if (parent_object->has_variable(string_variable_label))
+                {
+                    unsigned int variable_number = parent_object->variable_number(string_variable_label);
+                    dof_id_type dof_id = node_ptr->dof_number(parent_object->number(), variable_number, 0);
+                    DofConstraintRow constraint_row;
+                    dof_map.add_constraint_row(dof_id, constraint_row, bc_value.second, true);
+                }
+                else
+                    libmesh_error_msg("Variable " + string_variable_label + " not found");
+            }
+        }
+        else
+        {
+            libmesh_error_msg("Node " + std::to_string(bc_pair.first) + " not found in mesh.");
+        }
+    }
+
+    // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
+    if (!this->ctx->get_time_step()->get_transient_effect() && parent_object->has_variable("VOLT"))
+    {
+        // Apply the constraint for the time derivative of the magnetic vector potential
+        std::vector<dof_id_type> dof_indices;
+        dof_map.local_variable_indices(dof_indices, mesh, parent_object->variable_number("VOLT"));
+        for (const auto &dof : dof_indices)
+        {
+            // Apply the constraint
+            DofConstraintRow constraint_row;
+            dof_map.add_constraint_row(dof, constraint_row, true);
+        }
+    }
+}
+
+void BoundaryConditionsObject::check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object)
+{
+    // Example implementation
+    // This function should implement the logic to check the boundary conditions applied to the nodes of the system
+    // identified by system_name within the provided equation_systems object.
+    // The actual implementation would depend on the specific constraints to be checked.
+
+    // Retrieve the system by name
+    this->update_boundary_conditions = false;
+
+    if (prev_node_bc_object == nullptr)
+        this->update_boundary_conditions = true;
+    else
+    {
+        if (*(prev_node_bc_object->get_data_map()) == *ctx->get_node_bc_object()->get_data_map())
+            this->update_boundary_conditions = false;
+        else
+            this->update_boundary_conditions = true;
+    }
+}
+
+void BoundaryConditionsObject::set_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object)
+{
+    this->check_update_boundary_conditions(prev_node_bc_object);
+    if (this->update_boundary_conditions)
+    {
+        parent_object->reinit_constraints();
+    }
+}

@@ -2,7 +2,7 @@
 CXX=mpicxx
 
 # Include path for libMesh
-INCLUDES=-I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.1
+INCLUDES=-I../include -I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.1
 
 # Compiler flags
 CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp
