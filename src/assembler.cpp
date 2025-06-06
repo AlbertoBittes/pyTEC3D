@@ -4,7 +4,7 @@
 #include "session.h" // Include the header file for Session
 #include "apec_m_linear_system.h"
 #include "libmesh/string_to_enum.h"
-#include "fem_data_context.h"
+#include "fem_data_repository.h"
 // C++ include files that we need
 #include <iostream>
 #include <algorithm>
@@ -73,11 +73,11 @@ void AssemblerLinear::assemble()
     // in future examples.
     const DofMap &dof_map = parent_object->get_dof_map();
 
-    auto session = ctx->get_session();
+    auto session = this->context<Session>();
 
-    ElementBuilder *elem_builder = eq_sys->get_element_builder();
+    std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
 
-    auto time_substep = ctx->get_time_step()->get_active_substep();
+    auto time_substep = this->context<TimeStep>()->get_active_substep();
 
     // if (this->check_compute_matrix())
     // {

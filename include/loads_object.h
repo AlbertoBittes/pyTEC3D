@@ -3,11 +3,14 @@
 
 #include <libmesh/elem.h>
 #include <libmesh/system.h>
+#include <libmesh/explicit_system.h>
 #include <map>
 #include <fstream>         // Include this header for std::ifstream
 #include "element_types.h" // Include the header file for ElementTypesMap
 #include "fe_data_object.h"
 #include "globals.h"
+
+using namespace libMesh;
 
 class LoadStep;
 

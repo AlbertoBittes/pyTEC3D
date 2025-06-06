@@ -196,9 +196,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = tr
     dof_id_type material_num;
     dof_id_type real_constant_num;
 
-    auto context = std::dynamic_pointer_cast<ElementBuilderContext>(this->get_context());
-
-    auto session = context->get_session();
+    auto session = this->context<Session>();
 
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     // {
@@ -211,7 +209,8 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = tr
         "der_mtrx_" + rank_str + ".temp",
         "rhs_" + rank_str + ".temp"};
 
-    auto element_types = context->get_element_types();
+    auto element_types = this->context<ElementTypeFactory>();
+
     std::filesystem::path emat_folderpath = session->get_emat_folderpath();
     // Handle renaming of rhs file if it exists
     std::filesystem::path rhs_path = emat_folderpath / ("rhs_" + rank_str + ".temp");
@@ -290,56 +289,41 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = tr
     session->close_file_streams(streams);
 }
 
-bool ElementBuilder::check_compute_matrix(std::shared_ptr<FEMDataContext> old_context = nullptr)
+bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view = nullptr)
 {
-    // bool compute_matrix = false;
     auto eq_sys = this->get_parent_object();
-
     bool update_matrix;
 
     TransientLinearImplicitSystem &system = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
-
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
 
-    std::shared_ptr<ElementBuilderContext> current_ctx = std::dynamic_pointer_cast<ElementBuilderContext>(this->get_context());
-    std::shared_ptr<ElementBuilderContext> old_ctx = std::dynamic_pointer_cast<ElementBuilderContext>(old_context);
+    // Get current and old materials/real constants from the views
+    auto current_material_object = this->context<MaterialsObject>();
+    auto old_material_object = old_view ? old_view->template get<MaterialsObject>() : nullptr;
+    auto current_real_constant_object = this->context<RealConstantsObject>();
+    auto old_real_constant_object = old_view ? old_view->template get<RealConstantsObject>() : nullptr;
 
-    if (old_context == nullptr)
+    if (!old_view)
     {
-        // Here add the check for nonlinear elements
-        // This function must be called prior to a check for the need of recomputing the matrix:
-        // e.g. new materials, new real constants, nonlinear elements.
         update_matrix = true;
         solver->reuse_preconditioner(false);
     }
-    // else if (active_time_substep == nullptr && prev_load_step != nullptr)
-    // {
-    //     // Here add the check for nonlinear elements
-    //     // This function must be called prior to a check for the need of recomputing the matrix:
-    //     // e.g. new materials, new real constants, nonlinear elements.
-    //     update_matrix = true;
-    //     solver->reuse_preconditioner(false);
-    // }
-    // in a new time step we could have a different dt, different bcs, different time integration effects
-    // Here add the flag for ferromagnetic
+    else if (!old_material_object || !old_real_constant_object)
+    {
+        update_matrix = true;
+        solver->reuse_preconditioner(false);
+    }
+    else if (
+        current_material_object->get_data_map() != old_material_object->get_data_map() ||
+        current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+    {
+        update_matrix = true;
+        solver->reuse_preconditioner(false);
+    }
     else
     {
-        auto current_material_object = current_ctx->get_materials();
-        auto old_material_object = old_ctx->get_materials();
-        auto current_real_constant_object = current_ctx->get_real_constants();
-        auto old_real_constant_object = old_ctx->get_real_constants();
-        if (
-            current_material_object->get_data_map() != old_material_object->get_data_map() ||
-            current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
-        {
-            update_matrix = true;
-            solver->reuse_preconditioner(false);
-        }
-        else
-        {
-            update_matrix = false;
-            solver->reuse_preconditioner(true);
-        }
+        update_matrix = false;
+        solver->reuse_preconditioner(true);
     }
     return update_matrix;
 }
@@ -393,7 +377,7 @@ void ElementBuilder::build_solid97()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials = this->ctx->get_materials().get();
+    auto materials = this->context<MaterialsObject>();
 
     materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
     auto &mu_matrix = materials->get_mu_matrix();
@@ -513,7 +497,7 @@ void ElementBuilder::build_plane13()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials = this->ctx->get_materials().get();
+    auto materials = this->context<MaterialsObject>();
 
     materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
     auto &mu_matrix = materials->get_mu_matrix();
@@ -643,7 +627,7 @@ void ElementBuilder::build_solid97_rhs()
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    auto loads_object = this->ctx->get_loads();
+    auto loads_object = this->context<LoadsObject>();
 
     auto loads_map = loads_object->get_data_map();
 
@@ -711,7 +695,7 @@ void ElementBuilder::build_plane13_rhs()
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    auto loads_object = this->ctx->get_loads();
+    auto loads_object = this->context<LoadsObject>();
 
     auto loads_map = loads_object->get_data_map();
 

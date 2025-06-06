@@ -1,7 +1,7 @@
 #include "boundary_conditions_object.h"
 #include "node_bc_object.h"
 #include "globals.h"
-#include "fem_data_context.h"
+#include "fem_data_repository.h"
 #include "fe_data_object.h"
 #include <libmesh/dof_map.h>
 
@@ -15,7 +15,7 @@ void BoundaryConditionsObject::constrain()
     MeshBase &mesh = this->parent_object->get_mesh();
     DofMap &dof_map = this->parent_object->get_dof_map();
 
-    auto data_map = ctx->get_node_bc_object()->get_data_map();
+    auto data_map = this->context<NodeBCObject>()->get_data_map();
 
     Globals::GlobalVariableName variable_label;
 
@@ -51,7 +51,7 @@ void BoundaryConditionsObject::constrain()
     }
 
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (!this->ctx->get_time_step()->get_transient_effect() && parent_object->has_variable("VOLT"))
+    if (!this->context<TimeStep>()->get_transient_effect() && parent_object->has_variable("VOLT"))
     {
         // Apply the constraint for the time derivative of the magnetic vector potential
         std::vector<dof_id_type> dof_indices;
@@ -79,7 +79,7 @@ void BoundaryConditionsObject::check_update_boundary_conditions(std::shared_ptr<
         this->update_boundary_conditions = true;
     else
     {
-        if (*(prev_node_bc_object->get_data_map()) == *ctx->get_node_bc_object()->get_data_map())
+        if (*(prev_node_bc_object->get_data_map()) == *this->context<NodeBCObject>()->get_data_map())
             this->update_boundary_conditions = false;
         else
             this->update_boundary_conditions = true;

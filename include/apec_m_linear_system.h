@@ -5,15 +5,24 @@
 #include "libmesh/transient_system.h"
 #include "libmesh/linear_implicit_system.h"
 #include "fem_service_abstract.h"
-#include "fem_data_context.h"
+#include "fem_data_repository.h"
 #include "element_builder.h"
 #include "assembler.h"
-// Add other necessary includes here
+#include "boundary_conditions_object.h"
 
-class ApecMLinearSystem : public FEMServiceAbstract<ElementPhysicsContext>, public TransientSystem<LinearImplicitSystem>
+class ApecMLinearSystem
+    : public FEMServiceAbstract<ElementTypeFactory>,
+      public TransientSystem<LinearImplicitSystem>
 {
 public:
+    using ContextView = TypedContextView<ElementTypeFactory>;
     using TransientSystem<LinearImplicitSystem>::TransientSystem;
+
+    // Constructor accepting a shared_ptr to a context view
+    // ApecMLinearSystem(std::shared_ptr<ContextView> ctx_view = nullptr)
+    //     : FEMServiceAbstract<ElementTypeFactory>(ctx_view)
+    // {
+    // }
 
     void set_boundary_conditions_object(std::shared_ptr<BoundaryConditionsObject> obj)
     {
@@ -33,15 +42,30 @@ public:
         return assembler;
     }
 
+    // Example usage of context:
+    std::shared_ptr<ElementTypeFactory> element_type_factory()
+    {
+        return context<ElementTypeFactory>();
+    }
+
 private:
-    std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object = nullptr; // Pointer to boundary conditions object
-    std::shared_ptr<AssemblerLinear> assembler = nullptr;                           // Pointer to assembler object
+    std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object = nullptr;
+    std::shared_ptr<AssemblerLinear> assembler = nullptr;
 };
 
-class ApecMEquationSystems : public FEMServiceAbstract<ElementPhysicsContext>, public EquationSystems
+class ApecMEquationSystems
+    : public FEMServiceAbstract<ElementTypeFactory>,
+      public EquationSystems
 {
 public:
+    using ContextView = TypedContextView<ElementTypeFactory>;
     using EquationSystems::EquationSystems;
+
+    // Constructor accepting a shared_ptr to a context view
+    // ApecMEquationSystems(std::shared_ptr<ContextView> ctx_view = nullptr)
+    //     : FEMServiceAbstract<ElementTypeFactory>(ctx_view)
+    // {
+    // }
 
     void init_element_builder()
     {
@@ -52,7 +76,14 @@ public:
         return element_builder;
     }
 
+    // Example usage of context:
+    std::shared_ptr<ElementTypeFactory> element_type_factory()
+    {
+        return context<ElementTypeFactory>();
+    }
+
 private:
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
 };
+
 #endif // APEC_M_LINEAR_SYSTEM_H

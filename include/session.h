@@ -93,7 +93,7 @@ public:
         const std::vector<std::string> &filenames,
         FileMode mode);
 
-    void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
+    void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
 private:
     std::string input_mesh_filepath;

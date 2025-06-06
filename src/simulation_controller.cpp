@@ -6,6 +6,60 @@
 #include "libmesh/mesh_modification.h"
 #include "libmesh/numeric_vector.h"
 
+SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode)
+    : comm(comm), batch_mode(batch_mode)
+{
+    session = std::make_shared<Session>();
+    mesh = std::make_shared<Mesh>(comm);
+    equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
+    equation_systems->init_element_builder();
+    load_stepper = std::make_shared<LoadStepper>();
+    // Initialize other services as needed
+}
+
+void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
+{
+    std::string input;
+    while (true)
+    {
+        std::cout << "Enter command: ";
+        std::getline(std::cin, input);
+
+        Command cmd = parse_command(input);
+        switch (cmd)
+        {
+        case Command::READ_MESH:
+        {
+            std::string filepath = extract_argument(input);
+            session->set_input_mesh_filepath(filepath);
+            read_mesh();
+            break;
+        }
+        case Command::CLEAR:
+            clear();
+            break;
+        case Command::PHYSICS:
+            physics();
+            break;
+        case Command::SOLVE:
+        {
+            std::string step = extract_argument(input);
+            load_stepper->read_new_load_step(step);
+            solve();
+            break;
+        }
+        case Command::FINISH:
+            finish();
+            break;
+        case Command::EXIT:
+            exit();
+            return;
+        default:
+            libMesh::out << "Unknown command.\n";
+        }
+    }
+}
+
 void SimulationController::read_mesh()
 {
 
@@ -20,6 +74,11 @@ void SimulationController::read_mesh()
 
     auto element_types_map = vtkio.get_element_types_map_csv();
     mesh->comm().broadcast<ElementTypesMapCSV>(*element_types_map);
+    std::shared_ptr<ElementTypeFactory> element_types = std::make_shared<ElementTypeFactory>(*element_types_map);
+    element_types->create_element_types(*element_types_map);
+
+    // Add element_types to mesh_data_input repository
+    mesh_input_data->set_object(element_types);
     element_types = std::make_shared<ElementTypeFactory>(*element_types_map);
     element_types->create_element_types(*element_types_map);
 
@@ -42,8 +101,10 @@ void SimulationController::physics()
 
     libMesh::out << "Checking system options..." << std::endl;
 
-    auto elem_context = std::make_shared<ElementPhysicsContext>(element_types);
-
+    auto system_builder_view = std::make_shared<
+        TypedContextView<ElementTypeFactory>>(
+        TypedContextView<ElementTypeFactory>::from(
+            mesh_input_data));
     for (int i = 0; i < NUM_SYSTEMS; ++i)
     {
         SystemType type = static_cast<SystemType>(i);
@@ -54,7 +115,7 @@ void SimulationController::physics()
         else
             systems[i] = &equation_systems->add_system<ExplicitSystem>(sys_name);
 
-        SystemBuilder builder(systems[i], elem_context);
+        SystemBuilder builder(systems[i], system_builder_view);
         systems[i]->attach_init_object(builder);
     }
 

@@ -1,30 +1,38 @@
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 
-#include "libmesh/equation_systems.h"
-#include "element_types.h" // Include the ElementTypesMap header file
 #include "fem_service_abstract.h"
-#include "fe_data_object.h" // Include the FEDataObjectBase header file
+#include "fe_data_object.h"
+#include "fem_data_repository.h"
 #include "time_step.h"
+#include "session.h"
+#include "libmesh/system.h"
 
 using namespace libMesh;
 
-class AssemblerLinear : public System::Assembly, public FEMServiceAbstract<AssemblerContext>, public FEDataObjectBase<System>
+// The assembler expects a context view with TimeStep and Session (shared_ptr-based)
+class AssemblerLinear
+    : public System::Assembly,
+      public FEMServiceAbstract<TimeStep, Session>,
+      public FEDataObjectBase<System>
 {
 public:
+    using ContextView = TypedContextView<TimeStep, Session>;
     using FEDataObjectBase<System>::FEDataObjectBase;
+
+    // Constructor accepting a shared_ptr to a context view
+    AssemblerLinear(std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEMServiceAbstract<TimeStep, Session>(ctx_view)
+    {
+    }
 
     void assemble() override;
 
-    // void build_write_element_matrices();
-
     bool check_update_matrix(Substep *time_substep);
 
-    // bool check_compute_matrix();
-
-    // void compute_derived_quantities();
-
-    // void update_rhs();
+    // Example: access context objects as shared_ptrs
+    std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
+    std::shared_ptr<Session> session() { return this->context<Session>(); }
 
 private:
     Substep *prev_substep = nullptr; // Pointer to the previous substep

@@ -5,10 +5,16 @@
 #include <libmesh/dense_matrix.h>
 #include <libmesh/dense_vector.h>
 #include <vector>
-#include "element_types.h" // Include the header file for ElementTypesMap
-#include "load_step.h"
-#include "globals.h"
 #include "fem_service_abstract.h"
+#include "fe_data_object.h"
+#include "fem_data_repository.h"
+#include "libmesh/equation_systems.h"
+#include "element_types.h"
+#include "materials_object.h"
+#include "real_constants_object.h"
+#include "loads_object.h"
+#include "session.h"
+#include "globals.h"
 
 using namespace libMesh;
 
@@ -20,14 +26,18 @@ struct ElemData
     unsigned int real_constant_num = 0;  // Real constant number
 };
 
-class ElementBuilder : public FEMServiceAbstract<ElementBuilderContext>, public FEDataObjectBase<EquationSystems>
+class ElementBuilder
+    : public FEMServiceAbstract<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>,
+      public FEDataObjectBase<EquationSystems>
 {
 public:
-    // Default constructor
-    ElementBuilder::ElementBuilder(std::shared_ptr<ElementBuilderContext> context = nullptr)
-        : FEMServiceAbstract<ElementBuilderContext>(context), // Call base class constructor
-          matrices(3),                                        // Initialize matrices with outer size 3
-          vectors(2)                                          // Initialize vectors with outer size 2
+    using ContextView = TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>;
+    using FEDataObjectBase<EquationSystems>::FEDataObjectBase;
+
+    ElementBuilder(std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEMServiceAbstract<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>(ctx_view),
+          matrices(3),
+          vectors(2)
     {
     }
 
@@ -104,7 +114,7 @@ public:
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
-    bool check_compute_matrix(std::shared_ptr<FEMDataContext> old_context = nullptr);
+    bool check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view = nullptr);
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices

@@ -3,11 +3,9 @@
 
 #include <memory>
 #include <string>
-#include "session.h"
-#include "element_builder.h"
-#include "system_builder.h"
 #include "apec_m_linear_system.h"
 #include "load_step.h"
+// #include "apec_m_linear_system.h"
 // Add other service headers as needed
 
 using namespace libMesh;
@@ -15,27 +13,13 @@ using namespace libMesh;
 class SimulationController
 {
 public:
-    explicit SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true)
-        : comm(comm), batch_mode(batch_mode)
-    {
-        // Initialize and collect all main services here
-        // Example:
-        // element_builder = std::make_shared<ElementBuilder>();
-        // system_builder = std::make_shared<SystemBuilder>();
-        // apec_m_linear_system = std::make_shared<ApecMLinearSystem>();
-        // load_stepper = std::make_shared<LoadStepper>();
-        session = std::make_shared<Session>();
-        mesh = std::make_shared<Mesh>(comm);
-        equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
-        equation_systems->init_element_builder();
-        load_stepper = std::make_shared<LoadStepper>();
-    }
+    explicit SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true);
 
     // CLI command methods
-    void read_mesh(const std::string &filepath);
+    void read_mesh();
     void clear();
     void physics();
-    void solve(int load_step);
+    void solve();
     void finish();
     void exit();
 
@@ -50,61 +34,13 @@ public:
         INVALID
     };
 
-    void run_batch_mode()
-    {
-        // Place your batch mode logic here, using the collected services
-        // For example:
-        // 1. Build mesh
-        // 2. Build equation systems
-        // 3. Loop over load steps and solve
-    }
+    void run_batch_mode();
 
     // Main CLI loop
-    void run_cli(libMesh::Parallel::Communicator &comm)
-    {
-        std::string input;
-        while (true)
-        {
-            std::cout << "Enter command: ";
-            std::getline(std::cin, input);
-
-            Command cmd = parse_command(input);
-            switch (cmd)
-            {
-            case Command::READ_MESH:
-            {
-                std::string filepath = extract_argument(input);
-                session->set_input_mesh_filepath(filepath);
-                read_mesh();
-                break;
-            }
-            case Command::CLEAR:
-                clear();
-                break;
-            case Command::PHYSICS:
-                physics();
-                break;
-            case Command::SOLVE:
-            {
-                std::string step = extract_argument(input);
-                load_stepper->read_new_load_step(step);
-                solve();
-                break;
-            }
-            case Command::FINISH:
-                finish();
-                break;
-            case Command::EXIT:
-                exit();
-                return;
-            default:
-                libMesh::out << "Unknown command.\n";
-            }
-        }
-    }
+    void run_cli(libMesh::Parallel::Communicator &comm);
     // Add other simulation control methods as needed
     // Helper to parse command from input string
-    Command parse_command(const std::string &input) const
+    inline Command parse_command(const std::string &input) const
     {
         if (input.find("-read_mesh") == 0)
             return Command::READ_MESH;
@@ -122,7 +58,7 @@ public:
     }
 
     // Helper to extract argument after command (e.g., filepath)
-    std::string extract_argument(const std::string &input) const
+    inline std::string extract_argument(const std::string &input) const
     {
         auto pos = input.find(' ');
         if (pos != std::string::npos)
@@ -130,11 +66,6 @@ public:
         return "";
     }
 
-    void read_mesh();
-
-    void physics();
-
-    void solve();
     // Service getters (optional)
     // std::shared_ptr<ElementBuilder> get_element_builder() { return element_builder; }
     // ...
@@ -144,7 +75,7 @@ public:
     std::shared_ptr<LoadStepper> load_stepper;
 
     std::shared_ptr<Mesh> mesh;
-    std::shared_ptr<ElementTypeFactory> element_types;
+    std::shared_ptr<FEMDataRepository> mesh_input_data;
 
     std::shared_ptr<ApecMEquationSystems> equation_systems;
     bool batch_mode;

@@ -2,30 +2,32 @@
 #define FEM_SERVICE_ABSTRACT_H
 
 #include <memory>
-#include <vector>
+#include <tuple>
+#include "fem_data_repository.h"
 
-// Forward declarations (add more as needed)
+// Forward declare TypedContextView
+template <typename... Types>
+struct TypedContextView;
 
-template <typename ContextType>
+template <typename... ContextTypes>
 class FEMServiceAbstract
 {
-    static_assert(std::is_base_of<FEMDataContext, ContextType>::value, "ContextType must derive from FEMDataContext");
-
 public:
-    virtual ~FEMServiceAbstract() = 0;
+    using ContextView = TypedContextView<ContextTypes...>;
 
-    // Example: set/get context
-    void set_context(std::shared_ptr<ContextType> context) { ctx = context; }
-    std::shared_ptr<ContextType> get_context() const { return ctx; }
+    virtual ~FEMServiceAbstract() = default;
 
-    // Add your service interface methods here
-    // virtual void run() = 0;
+    void set_context_view(std::shared_ptr<ContextView> view) { ctx_view = view; }
+    std::shared_ptr<ContextView> get_context_view() const { return ctx_view; }
+
+    // Convenience: get a specific context by type
+    template <typename T>
+    std::shared_ptr<T> context() { return ctx_view->template get<T>(); }
 
 protected:
-    FEMServiceAbstract(std::shared_ptr<ContextType> context = nullptr)
-        : ctx(context) {}
+    FEMServiceAbstract(std::shared_ptr<ContextView> view = nullptr) : ctx_view(view) {}
 
-    std::shared_ptr<ContextType> ctx;
+    std::shared_ptr<ContextView> ctx_view;
 };
 
 #endif // FEM_SERVICE_ABSTRACT_H

@@ -95,21 +95,24 @@ inline SystemType get_system_type_from_name(const std::string &name)
     return NUM_SYSTEMS;
 }
 
-// Map system name to VariableCategory
-inline VariableCategory get_variable_category_from_name(const std::string &name)
-{
-    return get_variable_category(get_system_type_from_name(name));
-}
-
-class SystemBuilder : public System::Initialization, public FEDataObjectBase<System>, public FEMServiceAbstract<ElementPhysicsContext>
+// SystemBuilder as a service using shared_ptr to a TypedContextView of ElementTypeFactory
+class SystemBuilder
+    : public System::Initialization,
+      public FEDataObjectBase<System>,
+      public FEMServiceAbstract<ElementTypeFactory>
 {
 public:
-    // Constructor: pass context to FEMServiceAbstract
-    SystemBuilder(System *sys, std::shared_ptr<ElementPhysicsContext> context = nullptr)
-        : FEDataObjectBase<System>(sys), FEMServiceAbstract<ElementPhysicsContext>(context) {}
+    using ContextView = TypedContextView<ElementTypeFactory>;
+
+    // Constructor: pass context view as shared_ptr to FEMServiceAbstract
+    SystemBuilder(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEDataObjectBase<System>(sys), FEMServiceAbstract<ElementTypeFactory>(ctx_view) {}
 
     // Override the initialize method
     void initialize() override;
+
+    // Example: access the ElementTypeFactory from the context view
+    std::shared_ptr<ElementTypeFactory> element_type_factory() { return this->context<ElementTypeFactory>(); }
 };
 
 #endif // SYSTEM_BUILDER_H

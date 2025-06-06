@@ -13,10 +13,13 @@
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/transient_system.h"
 #include "libmesh/mesh.h"
+#include "libmesh/explicit_system.h"
 
 class LoadStepper;
 
-class LoadStep : public FEDataObjectBase<LoadStepper>, public FEMDataContext
+using namespace libMesh;
+
+class LoadStep : public FEDataObjectBase<LoadStepper>, public FEMDataRepository
 {
 public:
     enum class LoadStepObjectType : uint32_t

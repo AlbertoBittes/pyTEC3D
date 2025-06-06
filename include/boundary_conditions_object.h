@@ -4,32 +4,46 @@
 #include <libmesh/system.h>
 #include <libmesh/equation_systems.h>
 #include "fem_service_abstract.h"
+#include "node_bc_object.h"
+#include "time_step.h"
 
 using namespace libMesh;
 
-class BoundaryConditionsObject : public System::Constraint, public FEMServiceAbstract<BoundaryConditionsContext>, public FEDataObjectBase<System>
+// Now expects a context view with NodeBCObject and TimeStep (shared_ptr-based)
+class BoundaryConditionsObject
+    : public System::Constraint,
+      public FEMServiceAbstract<NodeBCObject, TimeStep>,
+      public FEDataObjectBase<System>
 {
 public:
-    // Default constructor
-    BoundaryConditionsObject() = default;
+    using ContextView = TypedContextView<NodeBCObject, TimeStep>;
+    using FEDataObjectBase<System>::FEDataObjectBase;
 
-    // Destructor
+    BoundaryConditionsObject(std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEMServiceAbstract<NodeBCObject, TimeStep>(ctx_view)
+    {
+    }
+
     virtual ~BoundaryConditionsObject() = default;
 
-    // Other methods related to boundary conditions can be added here
     void constrain() override;
 
     bool get_update_boundary_conditions() const
     {
-        // This method should return whether the boundary conditions need to be updated
         return update_boundary_conditions;
     }
+
     void check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
 
     void set_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
 
+    // Example: access context objects as shared_ptrs
+    std::shared_ptr<NodeBCObject> node_bc_object() { return this->context<NodeBCObject>(); }
+    std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
+
 private:
-    bool update_boundary_conditions = false; // Flag to indicate if boundary conditions need updating
+    bool update_boundary_conditions = false;
     // Other private members related to boundary conditions can be added here
 };
+
 #endif // BOUNDARY_CONDITIONS_OBJECT_H

@@ -1,7 +1,9 @@
 #include "load_step.h"
 #include "fe_data_object.h"
 #include "apec_m_linear_system.h"
+#include "libmesh/explicit_system.h"
 
+using namespace libMesh;
 void LoadStep::read_from_file(const std::string &filename)
 {
     std::cout << "Reading LoadStep data from file: " << filename << std::endl;
@@ -41,31 +43,26 @@ void LoadStep::read_from_file(const std::string &filename)
         switch (obj_type)
         {
         case LoadStepObjectType::TIME_STEP:
-            obj = std::make_shared<TimeStep>(file, prev_load_step);
+            set_object(std::make_shared<TimeStep>(file, prev_load_step));
             break;
         case LoadStepObjectType::PETSC_SOLVER_CONFIG:
-            obj = std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver);
+            set_object(std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver));
             break;
         case LoadStepObjectType::MATERIALS_OBJECT:
-            obj = std::make_shared<MaterialsObject>(file);
+            set_object(std::make_shared<MaterialsObject>(file));
             break;
         case LoadStepObjectType::REAL_CONSTANTS_OBJECT:
-            obj = std::make_shared<RealConstantsObject>(file);
+            set_object(std::make_shared<RealConstantsObject>(file));
             break;
         case LoadStepObjectType::LOADS_OBJECT:
-            obj = std::make_shared<LoadsObject>(file, mesh);
+            set_object(std::make_shared<LoadsObject>(file, mesh));
             break;
         case LoadStepObjectType::NODE_BC_OBJECT:
-            obj = std::make_shared<NodeBCObject>(file);
+            set_object(std::make_shared<NodeBCObject>(file));
             break;
         default:
             libmesh_error_msg("Invalid load step binary file: unknown type_id " + std::to_string(type_id));
             continue;
-        }
-
-        if (obj)
-        {
-            data_objects.push_back(obj);
         }
     }
 
