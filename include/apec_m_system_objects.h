@@ -1,5 +1,5 @@
-#ifndef APEC_M_LINEAR_SYSTEM_H
-#define APEC_M_LINEAR_SYSTEM_H
+#ifndef APEC_M_MODEL_OBJECTS_H
+#define APEC_M_MODEL_OBJECTS_H
 
 #include <memory>
 #include "libmesh/transient_system.h"
@@ -16,36 +16,25 @@ class ApecMLinearSystem
 {
 public:
     using ContextView = TypedContextView<ElementTypeFactory>;
-    using TransientSystem<LinearImplicitSystem>::TransientSystem;
 
-    // Constructor accepting a shared_ptr to a context view
-    // ApecMLinearSystem(std::shared_ptr<ContextView> ctx_view = nullptr)
-    //     : FEMServiceAbstract<ElementTypeFactory>(ctx_view)
-    // {
-    // }
-
-    void set_boundary_conditions_object(std::shared_ptr<BoundaryConditionsObject> obj)
+    // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
+    template <typename... Args>
+    ApecMLinearSystem(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
+        : TransientSystem<LinearImplicitSystem>(std::forward<Args>(args)...),
+          FEMServiceAbstract<ElementTypeFactory>(ctx_view)
     {
-        boundary_conditions_object = obj;
+        assembler = std::make_shared<AssemblerLinear>();
+        boundary_conditions_object = std::make_shared<BoundaryConditionsObject>();
     }
+
     std::shared_ptr<BoundaryConditionsObject> get_boundary_conditions_object() const
     {
         return boundary_conditions_object;
     }
 
-    void set_assembler(std::shared_ptr<AssemblerLinear> assembler_obj)
-    {
-        assembler = assembler_obj;
-    }
     std::shared_ptr<AssemblerLinear> get_assembler() const
     {
         return assembler;
-    }
-
-    // Example usage of context:
-    std::shared_ptr<ElementTypeFactory> element_type_factory()
-    {
-        return context<ElementTypeFactory>();
     }
 
 private:
@@ -59,31 +48,22 @@ class ApecMEquationSystems
 {
 public:
     using ContextView = TypedContextView<ElementTypeFactory>;
-    using EquationSystems::EquationSystems;
 
-    // Constructor accepting a shared_ptr to a context view
-    // ApecMEquationSystems(std::shared_ptr<ContextView> ctx_view = nullptr)
-    //     : FEMServiceAbstract<ElementTypeFactory>(ctx_view)
-    // {
-    // }
-
-    void init_element_builder()
+    // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
+    template <typename... Args>
+    ApecMEquationSystems(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
+        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(ctx_view)
     {
         element_builder = std::make_shared<ElementBuilder>();
     }
+
     std::shared_ptr<ElementBuilder> get_element_builder() const
     {
         return element_builder;
-    }
-
-    // Example usage of context:
-    std::shared_ptr<ElementTypeFactory> element_type_factory()
-    {
-        return context<ElementTypeFactory>();
     }
 
 private:
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
 };
 
-#endif // APEC_M_LINEAR_SYSTEM_H
+#endif // APEC_M_MODEL_OBJECTS_H

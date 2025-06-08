@@ -292,10 +292,10 @@ std::unique_ptr<ElementType> ElementTypeFactory::create_element_type(ElementType
     }
 }
 
-void ElementTypeFactory::create_element_types(const ElementTypesMapCSV &csv_map)
+void ElementTypeFactory::create_element_types(ElementTypesMapCSV *csv_map)
 {
     data_map->clear();
-    for (const auto &pair : csv_map)
+    for (const auto &pair : *csv_map)
     {
         unsigned int id = pair.first;
         const std::vector<unsigned int> &keyopts = pair.second;

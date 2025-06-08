@@ -101,7 +101,6 @@ int main(int argc, char **argv)
 
         // Construct the SimulationController in batch mode
         SimulationController controller(init.comm(), true);
-        controller.session->set_input_mesh_filepath(mesh_filename);
         controller.run_batch_mode();
     }
     else if (mode == "-i")

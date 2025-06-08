@@ -2,7 +2,7 @@
 #define ASSEMBLER_H
 
 #include "fem_service_abstract.h"
-#include "fe_data_object.h"
+#include "fe_parent_object.h"
 #include "fem_data_repository.h"
 #include "time_step.h"
 #include "session.h"
@@ -14,11 +14,11 @@ using namespace libMesh;
 class AssemblerLinear
     : public System::Assembly,
       public FEMServiceAbstract<TimeStep, Session>,
-      public FEDataObjectBase<System>
+      public FEParentObjectBase<System>
 {
 public:
     using ContextView = TypedContextView<TimeStep, Session>;
-    using FEDataObjectBase<System>::FEDataObjectBase;
+    using FEParentObjectBase<System>::FEParentObjectBase;
 
     // Constructor accepting a shared_ptr to a context view
     AssemblerLinear(std::shared_ptr<ContextView> ctx_view = nullptr)

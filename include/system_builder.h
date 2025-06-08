@@ -98,15 +98,15 @@ inline SystemType get_system_type_from_name(const std::string &name)
 // SystemBuilder as a service using shared_ptr to a TypedContextView of ElementTypeFactory
 class SystemBuilder
     : public System::Initialization,
-      public FEDataObjectBase<System>,
-      public FEMServiceAbstract<ElementTypeFactory>
+      public FEMServiceAbstract<ElementTypeFactory>,
+      public FEParentObjectBase<System>
 {
 public:
     using ContextView = TypedContextView<ElementTypeFactory>;
 
     // Constructor: pass context view as shared_ptr to FEMServiceAbstract
     SystemBuilder(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
-        : FEDataObjectBase<System>(sys), FEMServiceAbstract<ElementTypeFactory>(ctx_view) {}
+        : FEParentObjectBase<System>(sys), FEMServiceAbstract<ElementTypeFactory>(ctx_view) {}
 
     // Override the initialize method
     void initialize() override;

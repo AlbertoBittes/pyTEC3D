@@ -30,6 +30,16 @@ namespace Globals
         {"J_z", GlobalVariableName::J_z},
     };
 
+    const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM = {
+        {"A", APIVariableName::A},
+        {"VOLT", APIVariableName::VOLT},
+        {"EMF", APIVariableName::EMF},
+        {"CURR", APIVariableName::CURR},
+        {"Js", APIVariableName::Js},
+        {"B", APIVariableName::B},
+        {"J", APIVariableName::J},
+    };
+
     // Enum-to-string mapping
     const std::unordered_map<GlobalVariableName, std::string> ENUM_TO_STRING = {
         {GlobalVariableName::A_x, "A_x"},
@@ -48,6 +58,16 @@ namespace Globals
         {GlobalVariableName::J_x, "J_x"},
         {GlobalVariableName::J_y, "J_y"},
         {GlobalVariableName::J_z, "J_z"},
+    };
+    // Enum-to-string mapping for API variables
+    const std::unordered_map<APIVariableName, std::string> API_ENUM_TO_STRING = {
+        {APIVariableName::A, "A"},
+        {APIVariableName::VOLT, "VOLT"},
+        {APIVariableName::EMF, "EMF"},
+        {APIVariableName::CURR, "CURR"},
+        {APIVariableName::Js, "Js"},
+        {APIVariableName::B, "B"},
+        {APIVariableName::J, "J"},
     };
     // Use unordered_map for fast lookup
     const std::unordered_map<GlobalVariableName, std::pair<std::string, unsigned int>> GLOBAL_TO_API_VARIABLE_MAP = {

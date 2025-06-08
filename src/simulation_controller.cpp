@@ -6,15 +6,19 @@
 #include "libmesh/mesh_modification.h"
 #include "libmesh/numeric_vector.h"
 
-SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode)
-    : comm(comm), batch_mode(batch_mode)
+explicit SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true, const std::string &mesh_filename = "")
+    : load_stepper(std::make_shared<LoadStepper>()),
+      apec_m_model_data(std::make_shared<FEMDataRepository>()),
+      equation_systems(std::make_shared<ApecMEquationSystems>(comm)),
+      batch_mode(batch_mode), comm(comm)
 {
-    session = std::make_shared<Session>();
-    mesh = std::make_shared<Mesh>(comm);
-    equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
-    equation_systems->init_element_builder();
-    load_stepper = std::make_shared<LoadStepper>();
-    // Initialize other services as needed
+    // Initialize the session and mesh
+    apec_m_model_data->set_object<Session>(std::make_shared<Session>());
+    apec_m_model_data->set_object<Mesh>(std::make_shared<Mesh>(comm));
+    if (!mesh_filename.empty())
+    {
+        this->apec_m_model_data->get_object<Session>()->set_input_mesh_filepath(mesh_filename);
+    }
 }
 
 void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
@@ -31,7 +35,7 @@ void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
         case Command::READ_MESH:
         {
             std::string filepath = extract_argument(input);
-            session->set_input_mesh_filepath(filepath);
+            apec_m_model_data->get_object<Session>()->set_input_mesh_filepath(filepath);
             read_mesh();
             break;
         }
@@ -64,23 +68,15 @@ void SimulationController::read_mesh()
 {
 
     libMesh::out << "Reading mesh..." << std::endl;
-    std::string mesh_filepath = session->get_input_mesh_filepath();
+    const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
     // mesh.clear();
-    VTKIO_Updated vtkio(*mesh);
-    if (mesh->comm().rank() == 0)
-    {
-        vtkio.read(mesh_filepath);
-    }
+    auto mesh = apec_m_model_data->get_object<Mesh>();
 
-    auto element_types_map = vtkio.get_element_types_map_csv();
-    mesh->comm().broadcast<ElementTypesMapCSV>(*element_types_map);
-    std::shared_ptr<ElementTypeFactory> element_types = std::make_shared<ElementTypeFactory>(*element_types_map);
-    element_types->create_element_types(*element_types_map);
+    auto mesh_base = static_cast<MeshBase *>(mesh.get());
 
-    // Add element_types to mesh_data_input repository
-    mesh_input_data->set_object(element_types);
-    element_types = std::make_shared<ElementTypeFactory>(*element_types_map);
-    element_types->create_element_types(*element_types_map);
+    VTKIO_Updated vtkio(*mesh, mesh_filepath);
+
+    apec_m_model_data->set_object<ElementTypeFactory>(std::make_shared<ElementTypeFactory>(vtkio.get_element_types_map_csv()));
 
     MeshCommunication().broadcast(*mesh);
 

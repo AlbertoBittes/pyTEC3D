@@ -3,6 +3,8 @@
 
 #include <memory>
 #include "fe_data_object.h"
+#include "fe_parent_object.h"
+#include "fem_data_repository.h"
 #include "materials_object.h"
 #include "loads_object.h"
 #include "real_constants_object.h"
@@ -19,7 +21,7 @@ class LoadStepper;
 
 using namespace libMesh;
 
-class LoadStep : public FEDataObjectBase<LoadStepper>, public FEMDataRepository
+class LoadStep : public FEParentObjectBase<LoadStepper>, public FEMDataRepository
 {
 public:
     enum class LoadStepObjectType : uint32_t
@@ -33,25 +35,24 @@ public:
     };
     // Default constructor
     LoadStep(LoadStepper *load_stepper = nullptr)
-        : FEDataObjectBase<LoadStepper>(load_stepper)
+        : FEParentObjectBase<LoadStepper>(load_stepper)
     {
     }
 
     void read_from_file(const std::string &filename);
     // // Add a FEDataObject to the array
-    // void add_data_object(const std::shared_ptr<FEDataObjectBase<LoadStepper>> &obj)
+    // void add_data_object(const std::shared_ptr<FEParentObjectBase<LoadStepper>> &obj)
     // {
     //     data_objects.push_back(obj);
     // }
 };
 
-class LoadStepper : public FEDataObjectBase<EquationSystems>
+class LoadStepper
 {
 public:
     // Constructor
-    LoadStepper(EquationSystems *equation_systems = nullptr)
-        : FEDataObjectBase(equation_systems),
-          active_load_step(nullptr),
+    LoadStepper()
+        : active_load_step(nullptr),
           old_load_step(nullptr),
           load_step_index(0) {}
 

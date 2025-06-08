@@ -209,6 +209,13 @@ public:
 class ElementTypeFactory : public FEDataObjectMap<ElementTypesMap>
 {
 public:
+    // Constructor: if csv_map_ptr is not null, call create_element_types
+    ElementTypeFactory(ElementTypesMapCSV *csv_map_ptr = nullptr)
+    {
+        if (csv_map_ptr)
+            create_element_types(*csv_map_ptr);
+    }
+
     // Factory method to create an ElementType object
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
                                                             const std::vector<unsigned int> &keyopts);
@@ -228,6 +235,6 @@ public:
         }
     }
 
-    void create_element_types(const ElementTypesMapCSV &csv_map);
+    void create_element_types(ElementTypesMapCSV *csv_map);
 };
 #endif // ELEMENT_TYPES_H

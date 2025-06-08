@@ -36,7 +36,7 @@ void LoadStep::read_from_file(const std::string &filename)
 
         auto obj_type = static_cast<LoadStepObjectType>(type_id);
 
-        // Based on type_id, create the correct FEDataObjectBase<LoadStepper> derived object
+        // Based on type_id, create the correct FEParentObjectBase<LoadStepper> derived object
         std::shared_ptr<FEDataObjectAbstract> obj;
 
         // Example switch (replace with your actual type ids and classes)

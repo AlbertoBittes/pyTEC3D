@@ -3,7 +3,7 @@
 
 #include <memory>
 #include <string>
-#include "apec_m_linear_system.h"
+#include "apec_m_system_objects.h"
 #include "load_step.h"
 // #include "apec_m_linear_system.h"
 // Add other service headers as needed
@@ -13,7 +13,7 @@ using namespace libMesh;
 class SimulationController
 {
 public:
-    explicit SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true);
+    explicit SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true, const std::string &mesh_filename = "");
 
     // CLI command methods
     void read_mesh();
@@ -70,16 +70,13 @@ public:
     // std::shared_ptr<ElementBuilder> get_element_builder() { return element_builder; }
     // ...
     libMesh::Parallel::Communicator &comm;
+    bool batch_mode;
 
-    std::shared_ptr<Session> session;
-    std::shared_ptr<LoadStepper> load_stepper;
-
-    std::shared_ptr<Mesh> mesh;
-    std::shared_ptr<FEMDataRepository> mesh_input_data;
+    std::shared_ptr<FEMDataRepository> apec_m_model_data;
 
     std::shared_ptr<ApecMEquationSystems> equation_systems;
-    bool batch_mode;
-    // Add other services as members
+
+    std::shared_ptr<LoadStepper> load_stepper;
 };
 
 #endif // SIMULATION_CONTROLLER_H

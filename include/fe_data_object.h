@@ -29,29 +29,14 @@ public:
 
 inline FEDataObjectAbstract::~FEDataObjectAbstract() {}
 
-template <typename T1>
-class FEDataObjectBase : public FEDataObjectAbstract
+class ApecMMesh : public Mesh, public FEDataObjectAbstract
 {
 public:
-    FEDataObjectBase(T1 *parent = nullptr)
-        : parent_object(parent) {}
+    // Default constructor
+    using Mesh::Mesh;
+
     // Virtual destructor for proper cleanup of derived classes
-    virtual ~FEDataObjectBase() = default;
-
-    // Getter for the parent object
-    T1 *get_parent_object() const
-    {
-        return parent_object;
-    }
-    // Setter for the parent object
-    void set_parent_object(T1 *parent)
-    {
-        parent_object = parent;
-    }
-
-protected:
-    // Attributes
-    T1 *parent_object; // Stores the parent
+    virtual ~ApecMMesh() = default;
 };
 
 template <typename T1>

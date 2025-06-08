@@ -28,14 +28,16 @@ struct ElemData
 
 class ElementBuilder
     : public FEMServiceAbstract<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>,
-      public FEDataObjectBase<EquationSystems>
+      public FEParentObjectBase<EquationSystems>
 {
 public:
     using ContextView = TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>;
-    using FEDataObjectBase<EquationSystems>::FEDataObjectBase;
+    using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
-    ElementBuilder(std::shared_ptr<ContextView> ctx_view = nullptr)
+    ElementBuilder(std::shared_ptr<ContextView> ctx_view = nullptr,
+                   EquationSystems *equation_systems = nullptr)
         : FEMServiceAbstract<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>(ctx_view),
+          FEParentObjectBase<EquationSystems>(equation_systems),
           matrices(3),
           vectors(2)
     {
@@ -114,7 +116,7 @@ public:
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
-    bool check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view = nullptr);
+    bool check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view);
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices

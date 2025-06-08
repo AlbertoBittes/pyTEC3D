@@ -13,11 +13,11 @@ using namespace libMesh;
 class BoundaryConditionsObject
     : public System::Constraint,
       public FEMServiceAbstract<NodeBCObject, TimeStep>,
-      public FEDataObjectBase<System>
+      public FEParentObjectBase<System>
 {
 public:
     using ContextView = TypedContextView<NodeBCObject, TimeStep>;
-    using FEDataObjectBase<System>::FEDataObjectBase;
+    using FEParentObjectBase<System>::FEParentObjectBase;
 
     BoundaryConditionsObject(std::shared_ptr<ContextView> ctx_view = nullptr)
         : FEMServiceAbstract<NodeBCObject, TimeStep>(ctx_view)

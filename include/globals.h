@@ -53,7 +53,9 @@ namespace Globals
     };
     // Declare mappings
     extern const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM;
+    extern const std::unordered_map<std::string, APIVariableName> API_STRING_TO_ENUM;
     extern const std::unordered_map<GlobalVariableName, std::string> ENUM_TO_STRING;
+    extern const std::unordered_map<APIVariableName, std::string> API_ENUM_TO_STRING;
     extern const std::unordered_map<GlobalVariableName, std::pair<std::string, unsigned int>> GLOBAL_TO_API_VARIABLE_MAP;
     extern const std::unordered_map<APIVariableName, std::vector<std::string>> API_TO_GLOBAL_VARIABLE_MAP;
     extern const std::unordered_map<VariableCategory, std::vector<GlobalVariableName>> CATEGORY_TO_GLOBAL_VARIABLES_MAP;

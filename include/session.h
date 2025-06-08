@@ -3,10 +3,13 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <libmesh/libmesh.h>
 #include "simulation_controller.h"
 
 using namespace libMesh;
+
+typedef std::unordered_map<std::string, std::filesystem::path> PathMap;
 
 enum FileMode
 {
@@ -14,67 +17,58 @@ enum FileMode
     Write
 };
 
-class Session : public FEDataObjectBase<SimulationController>
+class Session : public FEDataObjectMap<PathMap>
 {
 public:
-    // Default constructor
     Session()
         : input_mesh_filepath(""),
-          input_directory(""),
-          output_folderpath("output"),
-          temp_folderpath("temp"),
-          load_steps_folderpath("load_steps"),
-          emat_folderpath("emat_files")
+          mesh_filename_without_extension(""),
+          output_filename(""),
+          n_load_steps(0)
     {
+        auto paths_map = *this->get_data_map();
+        // Initialize default paths in the map
+        paths_map["output_folderpath"] = "output";
+        paths_map["temp_folderpath"] = "temp";
+        paths_map["load_steps_folderpath"] = "load_steps";
+        paths_map["emat_folderpath"] = "emat_files";
     }
 
-    // Method to initialize folder paths based on input_mesh_filepath
     void initialize_folder_paths()
     {
-        // Convert input_mesh_filepath to a filesystem path and extract the directory
+        auto paths_map = *this->get_data_map();
+
         std::filesystem::path input_path = std::filesystem::path(input_mesh_filepath);
-        input_directory = input_path.parent_path(); // Store the directory as an attribute
+        paths_map["input_directory"] = input_path.parent_path();
 
         // Prepend the extracted directory to the folder paths
-        output_folderpath = input_directory / "output";
-        temp_folderpath = input_directory / "temp";
-        load_steps_folderpath = input_directory / "load_steps";
-        emat_folderpath = input_directory / "emat_files";
+        paths_map["output_folderpath"] = paths_map["input_directory"] / "output";
+        paths_map["temp_folderpath"] = paths_map["input_directory"] / "temp";
+        paths_map["load_steps_folderpath"] = paths_map["input_directory"] / "load_steps";
+        paths_map["emat_folderpath"] = paths_map["input_directory"] / "emat_files";
 
-        this->create_temp_folder();
-        this->create_output_folder();
-        this->create_emat_folder();
-
-        this->check_load_steps_folder();
+        create_temp_folder();
+        create_output_folder();
+        create_emat_folder();
+        check_load_steps_folder();
     }
 
     // Setters
     void set_input_mesh_filepath(const std::string &filepath)
     {
         input_mesh_filepath = filepath;
-        initialize_folder_paths(); // Reinitialize folder paths when input filepath changes
+        initialize_folder_paths();
     }
-    void set_output_folderpath(const std::filesystem::path &path) { output_folderpath = path; }
-    void set_output_path(const std::filesystem::path &path) { output_path = path; }
+    void set_path(const std::string &key, const std::filesystem::path &path) { paths[key] = path; }
     void set_mesh_filename_without_extension(const std::string &filename) { mesh_filename_without_extension = filename; }
     void set_output_filename(const std::string &filename) { output_filename = filename; }
-    void set_final_output_path(const std::filesystem::path &path) { final_output_path = path; }
-    void set_temp_folder_path(const std::filesystem::path &path) { temp_folderpath = path; }
-    void set_load_steps_folderpath(const std::filesystem::path &path) { load_steps_folderpath = path; }
-    void set_emat_folderpath(const std::filesystem::path &path) { emat_folderpath = path; }
     void set_n_load_steps(unsigned int n) { n_load_steps = n; }
 
     // Getters
     const std::string &get_input_mesh_filepath() const { return input_mesh_filepath; }
-    const std::filesystem::path &get_input_directory() const { return input_directory; }
-    const std::filesystem::path &get_output_folderpath() const { return output_folderpath; }
-    const std::filesystem::path &get_output_path() const { return output_path; }
+    const std::filesystem::path &get_path(const std::string &key) const { return paths.at(key); }
     const std::string &get_mesh_filename_without_extension() const { return mesh_filename_without_extension; }
     const std::string &get_output_filename() const { return output_filename; }
-    const std::filesystem::path &get_final_output_path() const { return final_output_path; }
-    const std::filesystem::path &get_temp_folder_path() const { return temp_folderpath; }
-    const std::filesystem::path &get_load_steps_folderpath() const { return load_steps_folderpath; }
-    const std::filesystem::path &get_emat_folderpath() const { return emat_folderpath; }
     unsigned int get_n_load_steps() const { return n_load_steps; }
 
     // Methods
@@ -97,16 +91,10 @@ public:
 
 private:
     std::string input_mesh_filepath;
-    std::filesystem::path input_directory; // New attribute to store the extracted directory
-    std::filesystem::path output_folderpath;
-    std::filesystem::path output_path;
     std::string mesh_filename_without_extension;
     std::string output_filename;
-    std::filesystem::path final_output_path;
-    std::filesystem::path temp_folderpath;
-    std::filesystem::path load_steps_folderpath;
-    std::filesystem::path emat_folderpath;
     unsigned int n_load_steps;
+    std::unordered_map<std::string, std::filesystem::path> paths;
 };
 
 #endif // SESSION_H

@@ -9,13 +9,6 @@
 #include <stdexcept>
 #include <unordered_map>
 #include "fe_data_object.h"
-#include "solver_configuration.h"
-#include "node_bc_object.h"
-#include "time_step.h"
-#include "materials_object.h"
-#include "real_constants_object.h"
-#include "loads_object.h"
-#include "session.h"
 
 class FEMDataRepository
 {

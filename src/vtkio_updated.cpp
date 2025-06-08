@@ -362,10 +362,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
     for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
     {
         array_name = point_data->GetArrayName(i);
-        if (std::find(Globals::API_VARIABLES_LABELS.begin(),
-                      Globals::API_VARIABLES_LABELS.end(), array_name) == Globals::API_VARIABLES_LABELS.end() &&
-            std::find(Globals::API_LOADS_LABELS.begin(),
-                      Globals::API_LOADS_LABELS.end(), array_name) == Globals::API_LOADS_LABELS.end())
+        if (Globals::string_to_enum(array_name, Globals::API_STRING_TO_ENUM, APIVariableName::UNKNOWN) == APIVariableName::UNKNOWN)
         {
             point_data_int_array_names.push_back(array_name);
         }
@@ -377,10 +374,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
     for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
     {
         array_name = cell_data->GetArrayName(i);
-        if (std::find(Globals::API_VARIABLES_LABELS.begin(),
-                      Globals::API_VARIABLES_LABELS.end(), array_name) == Globals::API_VARIABLES_LABELS.end() &&
-            std::find(Globals::API_LOADS_LABELS.begin(),
-                      Globals::API_LOADS_LABELS.end(), array_name) == Globals::API_LOADS_LABELS.end())
+        if (Globals::string_to_enum(array_name, Globals::API_STRING_TO_ENUM, APIVariableName::UNKNOWN) == APIVariableName::UNKNOWN)
         {
             cell_data_int_array_names.push_back(array_name);
         }
@@ -856,6 +850,18 @@ void VTKIO_Updated::node_values_to_vtk(const std::string &name,
     }
 
     _vtk_grid->GetPointData()->AddArray(data);
+}
+
+void VTKIO_Updated::read_apec_m_model(const std::string &mesh_filepath)
+{
+    MeshBase &mesh = MeshInput<MeshBase>::mesh();
+
+    if (mesh.comm().rank() == 0)
+    {
+        this->read(mesh_filepath);
+    }
+    auto element_types_map = this->get_element_types_map_csv();
+    mesh.comm().broadcast<ElementTypesMapCSV>(*element_types_map);
 }
 
 void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,

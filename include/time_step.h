@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 #include <libmesh/libmesh.h>
-#include "../include/fe_data_object.h"
-#include "../include/globals.h"
+#include "fe_data_object.h"
+#include "globals.h"
 
 using namespace libMesh;
 
@@ -79,11 +79,11 @@ private:
     Substep *previous_substep = nullptr;
 };
 
-class Substep : public FEDataObjectBase<TimeStep>
+class Substep : public FEParentObjectBase<TimeStep>
 {
 public:
     Substep(unsigned int index, Real dt, TimeStep *parent)
-        : FEDataObjectBase(parent),
+        : FEParentObjectBase(parent),
           index(index),
           dt(dt),
           time(0.0),

@@ -51,6 +51,13 @@ public:
 
     explicit VTKIO_Updated(const MeshBase &mesh, ExplicitSystem *sys);
 
+    // New constructor: calls base constructor and then read_apec_m_model
+    VTKIO_Updated(MeshBase &mesh, const std::string &mesh_filepath)
+        : VTKIO_Updated(mesh)
+    {
+        read_apec_m_model(mesh_filepath);
+    }
+
     using MeshOutput<MeshBase>::write_nodal_data;
 
     virtual void write_nodal_data(const std::string &,
@@ -73,6 +80,8 @@ public:
     {
         return &_element_types_map_csv;
     }
+
+    void read_apec_m_model(const std::string &mesh_filepath);
 
     void add_integers_vtk(MeshBase &mesh);
 
