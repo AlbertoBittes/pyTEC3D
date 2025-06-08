@@ -5,10 +5,11 @@
 #include "libmesh/transient_system.h"
 #include "libmesh/linear_implicit_system.h"
 #include "fem_service_abstract.h"
-#include "fem_data_repository.h"
 #include "element_builder.h"
 #include "assembler.h"
 #include "boundary_conditions_object.h"
+
+using namespace libMesh;
 
 class ApecMLinearSystem
     : public FEMServiceAbstract<ElementTypeFactory>,

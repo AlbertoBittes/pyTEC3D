@@ -1,18 +1,11 @@
-#include "libmesh/equation_systems.h"
-#include "libmesh/node.h"
-#include "libmesh/dof_map.h"
-#include "libmesh/mesh.h"
-#include "libmesh/linear_implicit_system.h" // Include the header file for LinearImplicitSystem
 #include "node_bc_object.h"
-#include "load_step.h" // Include the full definition of LoadStep
+#include "globals.h"
 
 using namespace libMesh;
 
 void NodeBCObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
-
-    std::vector<std::string> labels = {"A", "VOLT", "Az"};
 
     // Read the number of boundary conditions
     unsigned int num_bcs;
@@ -28,7 +21,7 @@ void NodeBCObject::read_data(std::ifstream &file)
         dof_id_type node;
         unsigned int label_number;
         unsigned int component_number;
-        Real value;
+        libMesh::Real value;
 
         // Read node number
         file.read(reinterpret_cast<char *>(&node), sizeof(node));

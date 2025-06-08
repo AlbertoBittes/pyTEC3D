@@ -26,39 +26,13 @@
 // and to impose the periodic boundary condition.
 
 // C++ include files that we need
-#include <iostream>
-#include <algorithm>
-#include <math.h>
 
 // libMesh includes
-#include "libmesh/libmesh_config.h"
-#include "libmesh/libmesh.h"
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/equation_systems.h"
-#include "libmesh/quadrature_gauss.h"
-#include "libmesh/dof_map.h"
-#include "libmesh/sparse_matrix.h"
-#include "libmesh/numeric_vector.h"
-#include "libmesh/dense_matrix.h"
-#include "libmesh/dense_submatrix.h"
-#include "libmesh/dense_vector.h"
-#include "libmesh/dense_subvector.h"
-#include "libmesh/perf_log.h"
-#include "libmesh/elem.h"
-#include "libmesh/boundary_info.h"
-#include "libmesh/zero_function.h"
-#include "libmesh/dirichlet_boundaries.h"
-#include "libmesh/string_to_enum.h"
-#include "libmesh/getpot.h"
-#include "libmesh/mesh_refinement.h"
-#include "libmesh/solver_configuration.h"
-#include "libmesh/petsc_linear_solver.h"
-#include "libmesh/petsc_macro.h"
+#include <libmesh/libmesh.h>
+
 #include "libmesh/periodic_boundaries.h"
 #include "libmesh/periodic_boundary.h"
-#include "libmesh/enum_solver_package.h"
 #include "libmesh/tensor_value.h"
-#include "libmesh/vector_value.h"
 
 #ifndef AZIMUTHAL_PERIODIC_BOUNDARY_H
 #define AZIMUTHAL_PERIODIC_BOUNDARY_H

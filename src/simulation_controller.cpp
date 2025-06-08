@@ -100,7 +100,7 @@ void SimulationController::physics()
     auto system_builder_view = std::make_shared<
         TypedContextView<ElementTypeFactory>>(
         TypedContextView<ElementTypeFactory>::from(
-            mesh_input_data));
+            apec_m_model_data));
     for (int i = 0; i < NUM_SYSTEMS; ++i)
     {
         SystemType type = static_cast<SystemType>(i);
@@ -143,29 +143,32 @@ void SimulationController::solve()
     // Here you have to prepare the various contexts for the systems
     // Get the system
     ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    // Read boundary conditions
-    // 1. prepare the context for element builder
-    std::shared_ptr<ElementBuilderContext> element_builder_context =
-        std::make_shared<ElementBuilderContext>(element_types,
-                                                load_step->get_object<MaterialsObject>(),
-                                                load_step->get_object<RealConstantsObject>(),
-                                                load_step->get_object<LoadsObject>(),
-                                                session);
+    // 1. Prepare context view for element builder
+    auto element_builder_view = std::make_shared<
+        TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
+        TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+            apec_m_model_data,
+            load_step));
     auto element_builder = equation_systems->get_element_builder();
-    element_builder->set_context(element_builder_context);
+    element_builder->set_context_view(element_builder_view);
 
-    // 2. prepare context for assembler
-    std::shared_ptr<AssemblerContext> assembler_context = std::make_shared<AssemblerContext>(time_step, session);
+    // 2. Prepare context view for assembler
+    auto assembler_view = std::make_shared<
+        TypedContextView<TimeStep, Session>>(
+        TypedContextView<TimeStep, Session>::from(
+            apec_m_model_data,
+            load_step));
     auto assembler = system.get_assembler();
-    assembler->set_context(assembler_context);
+    assembler->set_context_view(assembler_view);
 
-    // 3. Prepare context for boundary conditions object and reinit constraints
-    std::shared_ptr<BoundaryConditionsContext> boundary_conditions_context = std::make_shared<BoundaryConditionsContext>(load_step->get_object<NodeBCObject>(),
-                                                                                                                         time_step);
+    // 3. Prepare context view for boundary conditions object and reinit constraints
+    auto bc_view = std::make_shared<
+        TypedContextView<NodeBCObject, TimeStep>>(
+        TypedContextView<NodeBCObject, TimeStep>::from(
+            *load_step));
     auto boundary_conditions_object = system.get_boundary_conditions_object();
-    boundary_conditions_object->set_context(boundary_conditions_context);
+    boundary_conditions_object->set_context_view(bc_view);
     boundary_conditions_object->set_boundary_conditions(prev_load_step->get_object<NodeBCObject>());
-
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
     for (auto &substep : *time_step)
@@ -267,11 +270,12 @@ void SimulationController::run_batch_mode()
     physics();
 
     // Solve the system for each time step
+    auto session = apec_m_model_data->get_object<Session>();
     for (unsigned int n = 0; n < session->get_n_load_steps(); n++)
     {
         // Create a new load step
-        const std::string load_step_filename = session->get_load_steps_folderpath() / ("load_step_" + std::to_string(n + 1) + ".bin");
-        load_stepper->read_new_load_step(session->get_load_steps_folderpath() / load_step_filename);
+        const std::string load_step_filename = session->get_path("load_steps_folderpath") / ("load_step_" + std::to_string(n + 1) + ".bin");
+        load_stepper->read_new_load_step(load_step_filename);
         // Solve the system for the current load step
         solve();
     }

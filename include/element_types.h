@@ -7,17 +7,16 @@
 #include <memory>
 #include <vector>
 #include <libmesh/libmesh.h> // Include the libMesh header
-// Define the Finite Element object.
-#include "libmesh/fe.h"
-
+#include <libmesh/quadrature_gauss.h>
+#include <libmesh/string_to_enum.h>
+#include <libmesh/fe.h>
 // Define Gauss quadrature rules.
-#include "libmesh/quadrature_gauss.h"
-#include "libmesh/string_to_enum.h"
+
 #include "fe_data_object.h"
 #include "globals.h" // Include the header for global constants
 
-// using namespace libMesh;
-using namespace Globals;
+using namespace libMesh;
+// using namespace Globals;
 
 class ElementType;
 
@@ -52,18 +51,18 @@ enum VectorNames
 };
 struct VariableData
 {
-    VariableCategory category;
+    Globals::VariableCategory category;
     bool is_active;
-    APIVariableName api_label;
+    Globals::APIVariableName api_label;
     FEFamily fe_family;
     Order order;
 };
 
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
-typedef std::map<GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
+typedef std::map<Globals::GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 //                         label         is_active, physical components, is scalar, API label, API components, fe family, order
-typedef std::map<GlobalVariableName, VariableData> VariableInformation;
+typedef std::map<Globals::GlobalVariableName, VariableData> VariableInformation;
 
 class ElementType
 {
@@ -75,12 +74,12 @@ public:
     }
 
     // Virtual methods to be implemented by derived classes
-    inline std::vector<GlobalVariableName> get_active_variables(VariableCategory variable_cat) const
+    inline std::vector<Globals::GlobalVariableName> get_active_variables(Globals::VariableCategory variable_cat) const
     {
-        std::vector<GlobalVariableName> active_vars;
+        std::vector<Globals::GlobalVariableName> active_vars;
         for (const auto &pair : variable_info)
         {
-            const GlobalVariableName &var_name = pair.first;
+            const Globals::GlobalVariableName &var_name = pair.first;
             const VariableData &var_data = pair.second;
 
             if (var_data.category == variable_cat && var_data.is_active)
@@ -93,7 +92,7 @@ public:
 
     inline void set_conductive()
     {
-        auto it = variable_info.find(GlobalVariableName::VOLT);
+        auto it = variable_info.find(Globals::GlobalVariableName::VOLT);
         is_conductive_ = (it != variable_info.end()) && it->second.is_active;
     }
 
@@ -168,7 +167,7 @@ public:
     {
         libmesh_error_msg("get_dof_matrix_idx_size_map() is not implemented for AV2DElementType");
     };
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get__nodalsolution_matrix_idx_size_map()
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map()
     {
         libmesh_error_msg("get_nodal_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
     }
@@ -213,14 +212,14 @@ public:
     ElementTypeFactory(ElementTypesMapCSV *csv_map_ptr = nullptr)
     {
         if (csv_map_ptr)
-            create_element_types(*csv_map_ptr);
+            create_element_types(csv_map_ptr);
     }
 
     // Factory method to create an ElementType object
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
                                                             const std::vector<unsigned int> &keyopts);
 
-    VariableToElementIdsMapType associate_variables_with_element_IDs(VariableCategory variable_category) const;
+    VariableToElementIdsMapType associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const;
 
     inline ElementType *get_element_type(subdomain_id_type element_id)
     {

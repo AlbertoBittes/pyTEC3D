@@ -1,8 +1,8 @@
 #ifndef SOLVER_CONFIGURATION_H
 #define SOLVER_CONFIGURATION_H
 
-#include "libmesh/petsc_linear_solver.h"
-#include "libmesh/solver_configuration.h"
+#include <libmesh/petsc_linear_solver.h>
+#include <libmesh/solver_configuration.h>
 #include "fe_data_object.h"
 
 using namespace libMesh;

@@ -4,10 +4,9 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
-#include <libmesh/libmesh.h>
-#include "simulation_controller.h"
 
-using namespace libMesh;
+#include "fe_data_object.h" // or wherever FEDataObjectMap is defined
+#include "globals.h"        // or wherever PathMap is defined
 
 typedef std::unordered_map<std::string, std::filesystem::path> PathMap;
 

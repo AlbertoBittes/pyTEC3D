@@ -40,37 +40,37 @@ inline const char *get_system_name(SystemType type)
 }
 
 // Map SystemType to VariableCategory
-inline VariableCategory get_variable_category(SystemType type)
+inline Globals::VariableCategory get_variable_category(SystemType type)
 {
     switch (type)
     {
     case MAIN:
-        return VariableCategory::DOFVariables;
+        return Globals::VariableCategory::DOFVariables;
     case NODAL_EXPLICIT:
-        return VariableCategory::NodalSolutionVariables;
+        return Globals::VariableCategory::NodalSolutionVariables;
     case ELEMENT_EXPLICIT:
-        return VariableCategory::ElementSolutionVariables;
+        return Globals::VariableCategory::ElementSolutionVariables;
     case ELEMENT_LOADS:
-        return VariableCategory::LoadsVariables;
+        return Globals::VariableCategory::LoadsVariables;
     // case NODAL_BCS:
     //     return NodalBCsVariables;
     default:
-        return VariableCategory::DOFVariables; // fallback
+        return Globals::VariableCategory::DOFVariables; // fallback
     }
 }
 
 // Map VariableCategory to SystemType (if needed)
-inline SystemType get_system_type_from_category(VariableCategory cat)
+inline SystemType get_system_type_from_category(Globals::VariableCategory cat)
 {
     switch (cat)
     {
-    case VariableCategory::DOFVariables:
+    case Globals::VariableCategory::DOFVariables:
         return MAIN;
-    case VariableCategory::NodalSolutionVariables:
+    case Globals::VariableCategory::NodalSolutionVariables:
         return NODAL_EXPLICIT;
-    case VariableCategory::ElementSolutionVariables:
+    case Globals::VariableCategory::ElementSolutionVariables:
         return ELEMENT_EXPLICIT;
-    case VariableCategory::LoadsVariables:
+    case Globals::VariableCategory::LoadsVariables:
         return ELEMENT_LOADS;
     // case NodalBCsVariables:
     //     return NODAL_BCS;

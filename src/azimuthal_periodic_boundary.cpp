@@ -1,4 +1,4 @@
-#include "../include/azimuthal_periodic_boundary.h"
+#include "azimuthal_periodic_boundary.h"
 
 void AzimuthalPeriodicBoundary::set_up_rotation_matrix()
 {

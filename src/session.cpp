@@ -68,6 +68,9 @@ void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams
 
 void Session::set_output_filepath(unsigned int output_label)
 {
+    auto paths_map = *this->get_data_map();
+    auto &output_folderpath = paths_map["output_folderpath"];
+    auto &final_output_path = paths_map["final_output_path"];
     output_filename = mesh_filename_without_extension + "_out_" + std::to_string(output_label) + ".pvtu";
     final_output_path = output_folderpath / output_filename;
     // std::filesystem::path output_path(output_folderpath);
@@ -79,6 +82,8 @@ void Session::set_output_filepath(unsigned int output_label)
 
 void Session::create_temp_folder()
 {
+    auto paths_map = *this->get_data_map();
+    auto &temp_folderpath = paths_map["temp_folderpath"];
     if (!std::filesystem::exists(temp_folderpath))
     {
         std::filesystem::create_directory(temp_folderpath);
@@ -92,19 +97,23 @@ void Session::create_temp_folder()
 
 void Session::create_output_folder()
 {
+    auto paths_map = *this->get_data_map();
+    auto &output_folderpath = paths_map["output_folderpath"];
     if (!std::filesystem::exists(output_folderpath))
     {
         std::filesystem::create_directory(output_folderpath);
-        libMesh::out << "Output folder created at " << output_path << std::endl;
+        libMesh::out << "Output folder created at " << output_folderpath << std::endl;
     }
     else
     {
-        libMesh::out << "Output folder already exists at " << output_path << std::endl;
+        libMesh::out << "Output folder already exists at " << output_folderpath << std::endl;
     }
 }
 
 void Session::create_emat_folder()
 {
+    auto paths_map = *this->get_data_map();
+    auto &emat_folderpath = paths_map["emat_folderpath"];
     if (!std::filesystem::exists(emat_folderpath))
     {
         std::filesystem::create_directory(emat_folderpath);
@@ -124,6 +133,8 @@ void Session::create_emat_folder()
 
 void Session::check_load_steps_folder()
 {
+    auto paths_map = *this->get_data_map();
+    auto &load_steps_folderpath = paths_map["load_steps_folderpath"];
     if (!std::filesystem::exists(load_steps_folderpath))
     {
         libmesh_error_msg("Load steps folder does not exist");

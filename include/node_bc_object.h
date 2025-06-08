@@ -2,14 +2,8 @@
 #define NODE_BC_OBJECT_H
 
 #include "fe_data_object.h" // Include the base class
-#include "globals.h"        // Include the base class
-#include <libmesh/system.h>
-#include <string>
-#include <fstream>
-#include <memory>
-#include <unordered_map>
-
-using namespace libMesh;
+#include "globals.h"        // Include the globals header for GlobalVariableName
+// using namespace libMesh;
 
 // Type aliases for boundary conditions
 typedef std::unordered_map<Globals::GlobalVariableName, Real> NodeBoundaryConditions;

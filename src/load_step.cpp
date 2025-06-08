@@ -1,7 +1,8 @@
+#include <libmesh/explicit_system.h>
+
 #include "load_step.h"
 #include "fe_data_object.h"
-#include "apec_m_linear_system.h"
-#include "libmesh/explicit_system.h"
+#include "apec_m_system_objects.h"
 
 using namespace libMesh;
 void LoadStep::read_from_file(const std::string &filename)
@@ -14,8 +15,9 @@ void LoadStep::read_from_file(const std::string &filename)
     }
 
     auto *load_stepper = this->get_parent_object();
-    ApecMLinearSystem &sys = load_stepper->get_parent_object()->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    MeshBase &mesh = sys.get_mesh();
+    auto eq_sys = load_stepper->get_parent_object();
+    ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    ExplicitSystem &loads_sys = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
     std::shared_ptr<LoadStep> prev_load_step = load_stepper->get_old_load_step();
@@ -55,7 +57,7 @@ void LoadStep::read_from_file(const std::string &filename)
             set_object(std::make_shared<RealConstantsObject>(file));
             break;
         case LoadStepObjectType::LOADS_OBJECT:
-            set_object(std::make_shared<LoadsObject>(file, mesh));
+            set_object(std::make_shared<LoadsObject>(file, loads_sys));
             break;
         case LoadStepObjectType::NODE_BC_OBJECT:
             set_object(std::make_shared<NodeBCObject>(file));

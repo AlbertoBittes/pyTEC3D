@@ -1,47 +1,24 @@
-#include "libmesh/equation_systems.h"
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/transient_system.h"
-#include "session.h" // Include the header file for Session
-#include "apec_m_linear_system.h"
-#include "libmesh/string_to_enum.h"
-#include "fem_data_repository.h"
-// C++ include files that we need
-#include <iostream>
-#include <algorithm>
-#include <math.h>
-#include <set>
-
 // Basic include file needed for the mesh functionality.
-#include "libmesh/libmesh.h"
-#include "libmesh/mesh.h"
-
-#include "libmesh/petsc_linear_solver.h"
-
-// Define the DofMap, which handles degree of freedom
-// indexing.
-#include "libmesh/dof_map.h"
-
-// Define useful datatypes for finite element
-// matrix and vector components.
-#include "libmesh/sparse_matrix.h"
-#include "libmesh/numeric_vector.h"
-#include "libmesh/dense_matrix.h"
-#include "libmesh/dense_vector.h"
+#include <libmesh/libmesh.h>
+#include <libmesh/mesh.h>
+#include <libmesh/equation_systems.h>
+#include <libmesh/linear_implicit_system.h>
+#include <libmesh/transient_system.h>
+#include <libmesh/petsc_linear_solver.h>
+#include <libmesh/dof_map.h>
+#include <libmesh/sparse_matrix.h>
+#include <libmesh/numeric_vector.h>
+#include <libmesh/dense_matrix.h>
+#include <libmesh/dense_vector.h>
+#include <libmesh/perf_log.h>
 
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
-#include "libmesh/perf_log.h"
 
 // The definition of a geometric element
-#include "libmesh/elem.h"
-
-#include "libmesh/enum_solver_package.h"
 #include "assembler.h"
-#include "boundary_conditions_object.h"
-#include <map> // Include for std::map
-#include <cmath>
-#include <stdexcept>
+#include "apec_m_system_objects.h"
 
 using namespace libMesh;
 
@@ -105,7 +82,7 @@ void AssemblerLinear::assemble()
     std::filesystem::path filepath;
     std::string mtrx_vec_filename;
 
-    auto emat_folderpath = session->get_emat_folderpath();
+    auto emat_folderpath = session->get_path("emat_folderpath");
     bool old_rhs = true;
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic

@@ -1,9 +1,11 @@
+#include "fe_parent_object.h"
 #include "boundary_conditions_object.h"
 #include "node_bc_object.h"
 #include "globals.h"
 #include "fem_data_repository.h"
 #include "fe_data_object.h"
 #include <libmesh/dof_map.h>
+#include <libmesh/node.h>
 
 void BoundaryConditionsObject::constrain()
 {
@@ -32,7 +34,7 @@ void BoundaryConditionsObject::constrain()
         {
             for (const auto &bc_value : bc_values)
             {
-                string_variable_label = Globals::enum_to_string(bc_value.first, Globals::ENUM_TO_STRING);
+                string_variable_label = Globals::enum_to_string<Globals::GlobalVariableName>(bc_value.first, Globals::ENUM_TO_STRING);
                 if (parent_object->has_variable(string_variable_label))
                 {
                     unsigned int variable_number = parent_object->variable_number(string_variable_label);

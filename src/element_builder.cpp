@@ -1,18 +1,17 @@
 #include "element_builder.h"
-#include "libmesh/equation_systems.h"
-#include "libmesh/dof_map.h"
-#include "libmesh/numeric_vector.h"
-#include "libmesh/string_to_enum.h"
+// #include <libmesh/equation_systems.h>
+#include <libmesh/dof_map.h>
+#include <libmesh/numeric_vector.h>
+// #include <libmesh/string_to_enum.h>
 // Define the Finite Element object.
-#include "libmesh/fe.h"
+#include <libmesh/fe.h>
+#include <libmesh/petsc_linear_solver.h>
 
 // Define Gauss quadrature rules.
-#include "libmesh/quadrature_gauss.h"
-#include "session.h" // Ensure the Session class is included
-#include <cmath>
+#include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
 #include "loads_object.h"
-#include "assembler.h"
+#include "apec_m_system_objects.h"
 
 void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
@@ -158,7 +157,7 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
     }
 }
 
-void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = true)
+void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 {
     // Declare a performance log.  Give it a descriptive
     // string to identify what part of the code we are
@@ -211,7 +210,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix = tr
 
     auto element_types = this->context<ElementTypeFactory>();
 
-    std::filesystem::path emat_folderpath = session->get_emat_folderpath();
+    std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
     // Handle renaming of rhs file if it exists
     std::filesystem::path rhs_path = emat_folderpath / ("rhs_" + rank_str + ".temp");
     if (std::filesystem::exists(rhs_path))
@@ -294,7 +293,7 @@ bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Eleme
     auto eq_sys = this->get_parent_object();
     bool update_matrix;
 
-    TransientLinearImplicitSystem &system = eq_sys->get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
+    ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
 
     // Get current and old materials/real constants from the views

@@ -1,22 +1,18 @@
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/nonlinear_implicit_system.h"
-#include "libmesh/transient_system.h"
-#include "system_builder.h"
-#include "element_types.h"
-#include "assembler.h"
-#include "fem_data_repository.h"
-#include "apec_m_linear_system.h"
-#include "libmesh/string_to_enum.h"
-#include "boundary_conditions_object.h"
-#include "libmesh/numeric_vector.h"
 // C++ include files that we need
 #include <iostream>
-#include <algorithm>
-#include <math.h>
 #include <set>
 
-// Basic include file needed for the mesh functionality.
-#include "libmesh/libmesh.h"
+#include <libmesh/linear_implicit_system.h>
+#include <libmesh/nonlinear_implicit_system.h>
+#include <libmesh/transient_system.h>
+#include <libmesh/string_to_enum.h>
+#include <libmesh/numeric_vector.h>
+
+#include "system_builder.h"
+#include "assembler.h"
+#include "fem_data_repository.h"
+#include "apec_m_system_objects.h"
+#include "boundary_conditions_object.h"
 // The definition of a geometric element
 
 using namespace libMesh;
@@ -29,8 +25,7 @@ void SystemBuilder::initialize()
     std::string vars_set;
 
     System *system = this->get_parent_object();
-    auto context = std::dynamic_pointer_cast<ElementPhysicsContext>(this->get_context());
-    auto element_types_collector = context->get_element_types();
+    auto element_types_collector = context<ElementTypeFactory>();
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
     // Do not do the loop here, attacht the initialization object to the other systems too
@@ -38,7 +33,7 @@ void SystemBuilder::initialize()
     // {
     // Map system name to SystemType
     SystemType type = get_system_type_from_name(system->name());
-    VariableCategory category = get_variable_category(type);
+    Globals::VariableCategory category = get_variable_category(type);
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(category);
 
     for (const auto &pair : vars_to_subdomain_ids)
@@ -77,9 +72,7 @@ void SystemBuilder::initialize()
 
         main_system->zero_out_matrix_and_rhs = false;
 
-        std::shared_ptr<BoundaryConditionsObject> node_bc_object = std::make_shared<BoundaryConditionsObject>();
-        main_system->attach_constraint_object(*node_bc_object);
-        main_system->set_boundary_conditions_object(node_bc_object);
+        main_system->attach_constraint_object(*main_system->get_boundary_conditions_object());
 
         main_system->current_local_solution->zero();
         main_system->current_local_solution->close();

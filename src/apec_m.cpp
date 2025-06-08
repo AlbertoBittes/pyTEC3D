@@ -19,48 +19,12 @@
 // \author Benjamin S. Kirk
 // \date 2003
 
-// C++ include files that we need
-#include <algorithm>
-#include <iostream>
-#include <math.h>
-#include <set>
-#include <filesystem>
 // Basic include file needed for the mesh functionality.
-#include "libmesh/equation_systems.h"
 #include "libmesh/libmesh.h"
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/mesh.h"
-// #include "libmesh/mesh_generation.h"
-#include "libmesh/boundary_info.h" // Add this line to include the BoundaryInfo header
-
 // Define the PerfLog, a performance logging utility.
 // It is useful for timing events in a code and giving
 // you an idea where bottlenecks lie.
-#include "libmesh/perf_log.h"
-#include "libmesh/equation_systems.h"
-#include "libmesh/system.h"
-
-#include "element_builder.h"
-#include "assembler.h"
-#include "session.h"
-#include "element_types.h" // Add this line to include the ElementTypesMap header
-#include "loads_object.h"
-#include "time_step.h" // Add this line to include the TimeStepper header
-#include "libmesh/transient_system.h"
-#include "libmesh/mesh_communication.h"
-#include "libmesh/communicator.h"
-#include "libmesh/numeric_vector.h"
-#include "libmesh/mesh_modification.h"
-#include "libmesh/boundary_mesh.h"
-#include "libmesh/dof_map.h"
-#include "libmesh/solver_configuration.h"
-#include "system_builder.h" // Include the base class
-
-#include "vtkio_updated.h" // Ensure this header file defines VTKIOUpdated
-#include "libmesh/string_to_enum.h"
-#include "libmesh/enum_solver_type.h"
-#include "libmesh/enum_solver_package.h"
-#include "libmesh/periodic_boundary.h" // Add this line to include the PeriodicBoundary header
+#include "simulation_controller.h"
 
 using namespace libMesh;
 
@@ -100,7 +64,7 @@ int main(int argc, char **argv)
         std::string mesh_filename = argv[2];
 
         // Construct the SimulationController in batch mode
-        SimulationController controller(init.comm(), true);
+        SimulationController controller(init.comm(), true, mesh_filename);
         controller.run_batch_mode();
     }
     else if (mode == "-i")

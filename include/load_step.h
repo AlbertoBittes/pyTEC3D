@@ -11,11 +11,6 @@
 #include "node_bc_object.h"
 #include "time_step.h"
 #include "solver_configuration.h"
-#include "libmesh/equation_systems.h" // Include the header for EquationSystems
-#include "libmesh/linear_implicit_system.h"
-#include "libmesh/transient_system.h"
-#include "libmesh/mesh.h"
-#include "libmesh/explicit_system.h"
 
 class LoadStepper;
 
@@ -47,7 +42,7 @@ public:
     // }
 };
 
-class LoadStepper
+class LoadStepper : public FEParentObjectBase<EquationSystems>
 {
 public:
     // Constructor

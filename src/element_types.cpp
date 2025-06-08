@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 #include <limits> // for std::numeric_limits
-#include "../include/element_types.h"
+#include "element_types.h"
 
 using namespace Globals;
 AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)

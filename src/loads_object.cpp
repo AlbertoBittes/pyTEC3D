@@ -1,4 +1,5 @@
 #include "loads_object.h"
+#include "globals.h"
 #include <libmesh/numeric_vector.h>
 #include <libmesh/dof_map.h>
 
@@ -18,7 +19,6 @@ void LoadsObject::read_data(std::ifstream &file)
     std::string load_label_api;
     std::string load_label_global;
     unsigned int sys_number = data_map->number();
-    const DofMap &dof_map = data_map->get_dof_map();
     const MeshBase &mesh = data_map->get_mesh();
     dof_id_type dof_id;
     // Read the loads data

@@ -30,7 +30,7 @@ namespace Globals
         {"J_z", GlobalVariableName::J_z},
     };
 
-    const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM = {
+    const std::unordered_map<std::string, APIVariableName> API_STRING_TO_ENUM = {
         {"A", APIVariableName::A},
         {"VOLT", APIVariableName::VOLT},
         {"EMF", APIVariableName::EMF},

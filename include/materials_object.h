@@ -1,14 +1,9 @@
 #ifndef MATERIALS_OBJECT_H
 #define MATERIALS_OBJECT_H
 
+#include <libmesh/libmesh.h>
 #include "fe_data_object.h" // Include the base class
 #include "globals.h"
-#include <unordered_map>
-#include <string>
-#include <memory>
-#include <vector>
-#include <istream>
-#include <libmesh/libmesh.h>
 
 using namespace libMesh;
 

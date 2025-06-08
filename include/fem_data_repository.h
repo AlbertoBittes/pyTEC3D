@@ -70,7 +70,7 @@ struct TypedContextView
 private:
     // Overload for reference
     template <typename T, typename Repo>
-    static std::shared_ptr<T> try_get(Repo &repo)
+    static std::shared_ptr<T> try_get(const Repo &repo)
     {
         return repo.template get_object<T>();
     }

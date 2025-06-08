@@ -59,7 +59,8 @@
 #endif
 
 #include "libmesh/restore_warnings.h"
-#include "../include/vtkio_updated.h"
+#include "vtkio_updated.h"
+#include "globals.h"
 // C++ includes
 #include <fstream>
 #include <regex>
@@ -362,7 +363,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
     for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
     {
         array_name = point_data->GetArrayName(i);
-        if (Globals::string_to_enum(array_name, Globals::API_STRING_TO_ENUM, APIVariableName::UNKNOWN) == APIVariableName::UNKNOWN)
+        if (Globals::string_to_enum<Globals::APIVariableName>(array_name, Globals::API_STRING_TO_ENUM, Globals::APIVariableName::UNKNOWN) == Globals::APIVariableName::UNKNOWN)
         {
             point_data_int_array_names.push_back(array_name);
         }
@@ -374,7 +375,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
     for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
     {
         array_name = cell_data->GetArrayName(i);
-        if (Globals::string_to_enum(array_name, Globals::API_STRING_TO_ENUM, APIVariableName::UNKNOWN) == APIVariableName::UNKNOWN)
+        if (Globals::string_to_enum<Globals::APIVariableName>(array_name, Globals::API_STRING_TO_ENUM, Globals::APIVariableName::UNKNOWN) == Globals::APIVariableName::UNKNOWN)
         {
             cell_data_int_array_names.push_back(array_name);
         }
