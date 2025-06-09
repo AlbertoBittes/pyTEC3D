@@ -46,8 +46,9 @@ class LoadStepper : public FEParentObjectBase<EquationSystems>
 {
 public:
     // Constructor
-    LoadStepper()
-        : active_load_step(nullptr),
+    LoadStepper(EquationSystems *eq_sys = nullptr)
+        : FEParentObjectBase<EquationSystems>(eq_sys),
+          active_load_step(nullptr),
           old_load_step(nullptr),
           load_step_index(0) {}
 

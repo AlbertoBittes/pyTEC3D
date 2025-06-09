@@ -4,6 +4,8 @@
 #include <string>
 #include "fe_data_object.h"
 #include "fem_service_abstract.h"
+#include "fe_parent_object.h"
+#include <libmesh/system.h>
 #include "globals.h"
 #include "element_types.h" // for VariableCategory
 

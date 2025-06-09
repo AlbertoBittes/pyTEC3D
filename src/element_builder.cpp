@@ -476,7 +476,6 @@ void ElementBuilder::build_plane13()
     // computation separately.
     //
     FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
 
@@ -493,7 +492,6 @@ void ElementBuilder::build_plane13()
 
     // Get the scalar shape functions and vector shape functions
     unsigned int n_dofs_var = fe->n_shape_functions();
-    unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
     auto materials = this->context<MaterialsObject>();
@@ -507,7 +505,6 @@ void ElementBuilder::build_plane13()
     auto &Me = this->matrices[1][0];
     auto &AAe = this->matrices[1][1];
     auto &JAe = this->matrices[2][0];
-    auto &JVe = this->matrices[2][1];
     auto &Fe = this->vectors[0][0];
 
     if (elem_data.element_type->is_conductive())

@@ -6,15 +6,16 @@
 #include "libmesh/mesh_modification.h"
 #include "libmesh/numeric_vector.h"
 
-explicit SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode = true, const std::string &mesh_filename = "")
-    : load_stepper(std::make_shared<LoadStepper>()),
-      apec_m_model_data(std::make_shared<FEMDataRepository>()),
-      equation_systems(std::make_shared<ApecMEquationSystems>(comm)),
+SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode, const std::string &mesh_filename)
+    : apec_m_model_data(std::make_shared<FEMDataRepository>()),
       batch_mode(batch_mode), comm(comm)
 {
     // Initialize the session and mesh
     apec_m_model_data->set_object<Session>(std::make_shared<Session>());
-    apec_m_model_data->set_object<Mesh>(std::make_shared<Mesh>(comm));
+    apec_m_model_data->set_object<ApecMMesh>(std::make_shared<ApecMMesh>(comm));
+    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+    equation_systems = std::make_shared<ApecMEquationSystems>(*mesh);
+    load_stepper = std::make_shared<LoadStepper>(equation_systems.get());
     if (!mesh_filename.empty())
     {
         this->apec_m_model_data->get_object<Session>()->set_input_mesh_filepath(mesh_filename);
@@ -70,7 +71,7 @@ void SimulationController::read_mesh()
     libMesh::out << "Reading mesh..." << std::endl;
     const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
     // mesh.clear();
-    auto mesh = apec_m_model_data->get_object<Mesh>();
+    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
 
     auto mesh_base = static_cast<MeshBase *>(mesh.get());
 
@@ -279,4 +280,19 @@ void SimulationController::run_batch_mode()
         // Solve the system for the current load step
         solve();
     }
+}
+
+void SimulationController::clear()
+{
+    libMesh::out << "Dummy clear() called." << std::endl;
+}
+
+void SimulationController::finish()
+{
+    libMesh::out << "Dummy finish() called." << std::endl;
+}
+
+void SimulationController::exit()
+{
+    libMesh::out << "Dummy exit() called." << std::endl;
 }

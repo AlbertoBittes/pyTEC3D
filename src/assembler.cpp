@@ -235,8 +235,6 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 
     TransientLinearImplicitSystem *system = dynamic_cast<TransientLinearImplicitSystem *>(this->get_parent_object());
 
-    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
-
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
 
     BoundaryConditionsObject *bc_object = dynamic_cast<BoundaryConditionsObject *>(&system->get_constraint_object());

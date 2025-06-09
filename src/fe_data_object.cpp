@@ -7,29 +7,28 @@ void DataframeFEDataObject::read_data(std::ifstream &file)
         libmesh_error_msg("Failed to open file stream.");
     }
 
-    // Clear the existing data_map
     data_map->clear();
 
     // Read the number of rows and columns
-    uint32_t num_rows, num_columns;
+    dof_id_type num_rows, num_columns;
     file.read(reinterpret_cast<char *>(&num_rows), sizeof(num_rows));
     file.read(reinterpret_cast<char *>(&num_columns), sizeof(num_columns));
 
     // Read column metadata (name and type)
     std::vector<std::string> column_names(num_columns);
-    std::vector<int> column_types(num_columns); // 0=int, 1=double, 2=string
+    std::vector<int32_t> column_types(num_columns); // Use int32_t for type indicator
 
-    for (uint32_t i = 0; i < num_columns; ++i)
+    for (dof_id_type i = 0; i < num_columns; ++i)
     {
         // Read the column name
-        uint32_t name_length;
+        dof_id_type name_length;
         file.read(reinterpret_cast<char *>(&name_length), sizeof(name_length));
 
         std::string column_name(name_length, '\0');
         file.read(&column_name[0], name_length);
 
         // Read the column type
-        int column_type;
+        int32_t column_type;
         file.read(reinterpret_cast<char *>(&column_type), sizeof(column_type));
 
         column_names[i] = column_name;
@@ -37,19 +36,19 @@ void DataframeFEDataObject::read_data(std::ifstream &file)
     }
 
     // Read the data row by row
-    for (uint32_t row = 0; row < num_rows; ++row)
+    for (dof_id_type row = 0; row < num_rows; ++row)
     {
         std::vector<std::variant<int, Real, std::string>> row_data;
 
-        for (uint32_t col = 0; col < num_columns; ++col)
+        for (dof_id_type col = 0; col < num_columns; ++col)
         {
-            switch (column_types[col])
+            switch (static_cast<int>(column_types[col]))
             {
             case 0: // int
             {
-                int value;
+                int32_t value;
                 file.read(reinterpret_cast<char *>(&value), sizeof(value));
-                row_data.push_back(value);
+                row_data.push_back(static_cast<int>(value)); // If your variant expects int
                 break;
             }
             case 1: // double
@@ -61,7 +60,7 @@ void DataframeFEDataObject::read_data(std::ifstream &file)
             }
             case 2: // string
             {
-                uint32_t string_length;
+                dof_id_type string_length;
                 file.read(reinterpret_cast<char *>(&string_length), sizeof(string_length));
 
                 std::string value(string_length, '\0');
@@ -74,7 +73,6 @@ void DataframeFEDataObject::read_data(std::ifstream &file)
             }
         }
 
-        // Add the row to the data_map
         data_map->push_back(std::move(row_data));
     }
 }
@@ -127,14 +125,14 @@ void SettingsFEDataObject::read_data(std::ifstream &file)
     }
 
     // Read the number of settings
-    int32_t num_settings;
+    dof_id_type num_settings;
     file.read(reinterpret_cast<char *>(&num_settings), sizeof(num_settings));
 
     // Read each setting
-    for (int32_t i = 0; i < num_settings; ++i)
+    for (dof_id_type i = 0; i < num_settings; ++i)
     {
         // Read the size of the key (string label)
-        int32_t key_size;
+        dof_id_type key_size;
         file.read(reinterpret_cast<char *>(&key_size), sizeof(key_size));
 
         // Read the key (string label)
@@ -160,7 +158,7 @@ void SettingsFEDataObject::read_data(std::ifstream &file)
         }
         else if (value_type == 2)
         { // string
-            int32_t string_size;
+            dof_id_type string_size;
             file.read(reinterpret_cast<char *>(&string_size), sizeof(string_size));
             std::string string_value(string_size, '\0');
             file.read(&string_value[0], string_size);

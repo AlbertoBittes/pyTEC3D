@@ -656,11 +656,11 @@ class APEC_M:
                 )
 
         # Write the number of settings
-        binary_file.write(struct.pack("i", len(settings)))  # Number of settings (int)
+        binary_file.write(struct.pack("I", len(settings)))  # Number of settings (int)
 
         for key, value in settings.items():
             # Write the size of the string label and the label itself
-            binary_file.write(struct.pack("i", len(key)))  # Length of the key (int)
+            binary_file.write(struct.pack("I", len(key)))  # Length of the key (int)
             binary_file.write(key.encode("utf-8"))  # Key as a UTF-8 encoded string
 
             # Determine the type of the value and write it
@@ -672,7 +672,7 @@ class APEC_M:
                 binary_file.write(struct.pack("d", value))  # Value as double
             elif isinstance(value, str):
                 binary_file.write(struct.pack("i", 2))  # Type: string (2)
-                binary_file.write(struct.pack("i", len(value)))  # Length of the string
+                binary_file.write(struct.pack("I", len(value)))  # Length of the string
                 binary_file.write(
                     value.encode("utf-8")
                 )  # Value as UTF-8 encoded string

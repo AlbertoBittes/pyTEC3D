@@ -68,7 +68,7 @@ void Session::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams
 
 void Session::set_output_filepath(unsigned int output_label)
 {
-    auto paths_map = *this->get_data_map();
+    auto &paths_map = *this->get_data_map();
     auto &output_folderpath = paths_map["output_folderpath"];
     auto &final_output_path = paths_map["final_output_path"];
     output_filename = mesh_filename_without_extension + "_out_" + std::to_string(output_label) + ".pvtu";
@@ -82,7 +82,7 @@ void Session::set_output_filepath(unsigned int output_label)
 
 void Session::create_temp_folder()
 {
-    auto paths_map = *this->get_data_map();
+    auto &paths_map = *this->get_data_map();
     auto &temp_folderpath = paths_map["temp_folderpath"];
     if (!std::filesystem::exists(temp_folderpath))
     {
@@ -97,7 +97,7 @@ void Session::create_temp_folder()
 
 void Session::create_output_folder()
 {
-    auto paths_map = *this->get_data_map();
+    auto &paths_map = *this->get_data_map();
     auto &output_folderpath = paths_map["output_folderpath"];
     if (!std::filesystem::exists(output_folderpath))
     {
@@ -112,7 +112,7 @@ void Session::create_output_folder()
 
 void Session::create_emat_folder()
 {
-    auto paths_map = *this->get_data_map();
+    auto &paths_map = *this->get_data_map();
     auto &emat_folderpath = paths_map["emat_folderpath"];
     if (!std::filesystem::exists(emat_folderpath))
     {
@@ -133,7 +133,7 @@ void Session::create_emat_folder()
 
 void Session::check_load_steps_folder()
 {
-    auto paths_map = *this->get_data_map();
+    auto &paths_map = *this->get_data_map();
     auto &load_steps_folderpath = paths_map["load_steps_folderpath"];
     if (!std::filesystem::exists(load_steps_folderpath))
     {

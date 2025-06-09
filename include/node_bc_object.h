@@ -13,7 +13,8 @@ class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
 {
 public:
     // Default constructor
-    using FEDataObjectMap<BoundaryConditionsMap>::FEDataObjectMap;
+    NodeBCObject(std::ifstream &file)
+        : FEDataObjectMap<BoundaryConditionsMap>(file) {}
 
     // Destructor
     virtual ~NodeBCObject() {}

@@ -61,7 +61,7 @@ struct TypedContextView
     template <typename... Repos>
     static TypedContextView from(Repos &&...repos)
     {
-        return TypedContextView{get_from_repos<Types>(std::forward<Repos>(repos)...)...};
+        return TypedContextView{std::make_tuple(get_from_repos<Types>(std::forward<Repos>(repos)...)...)};
     }
 
     template <typename T>

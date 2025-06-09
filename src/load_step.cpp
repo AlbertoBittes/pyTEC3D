@@ -18,6 +18,7 @@ void LoadStep::read_from_file(const std::string &filename)
     auto eq_sys = load_stepper->get_parent_object();
     ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     ExplicitSystem &loads_sys = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
+    auto shared_loads_sys = std::shared_ptr<ExplicitSystem>(&loads_sys, [](ExplicitSystem *) {});
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
     std::shared_ptr<LoadStep> prev_load_step = load_stepper->get_old_load_step();
@@ -26,15 +27,15 @@ void LoadStep::read_from_file(const std::string &filename)
     data_objects.clear();
 
     // Example: read the number of data objects
-    uint32_t num_objects = 0;
-    file.read(reinterpret_cast<char *>(&num_objects), sizeof(uint32_t));
+    dof_id_type num_objects = 0;
+    file.read(reinterpret_cast<char *>(&num_objects), sizeof(num_objects));
 
     // For each data object, read a type identifier and construct the appropriate object
     for (size_t i = 0; i < num_objects; ++i)
     {
         // Example: read a type id (assume uint32_t)
-        uint32_t type_id = 0;
-        file.read(reinterpret_cast<char *>(&type_id), sizeof(uint32_t));
+        dof_id_type type_id = 0;
+        file.read(reinterpret_cast<char *>(&type_id), sizeof(type_id));
 
         auto obj_type = static_cast<LoadStepObjectType>(type_id);
 
@@ -57,7 +58,7 @@ void LoadStep::read_from_file(const std::string &filename)
             set_object(std::make_shared<RealConstantsObject>(file));
             break;
         case LoadStepObjectType::LOADS_OBJECT:
-            set_object(std::make_shared<LoadsObject>(file, loads_sys));
+            set_object(std::make_shared<LoadsObject>(file, shared_loads_sys));
             break;
         case LoadStepObjectType::NODE_BC_OBJECT:
             set_object(std::make_shared<NodeBCObject>(file));

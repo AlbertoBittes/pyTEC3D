@@ -7,48 +7,40 @@ void LoadsObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading loads data from an open file stream..." << std::endl;
 
-    // Read the number of load instances
-    unsigned int num_loads;
-    file.read(reinterpret_cast<char *>(&num_loads), sizeof(num_loads));
+    // Use dof_id_type (uint32_t) for binary I/O
+    dof_id_type num_loads = 0;
+    file.read(reinterpret_cast<char *>(&num_loads), sizeof(dof_id_type));
     if (!file)
     {
         libmesh_error_msg("Error: Failed to read the number of loads from the binary stream.");
     }
 
-    // Define the vector of load labels for mapping
     std::string load_label_api;
     std::string load_label_global;
     unsigned int sys_number = data_map->number();
     const MeshBase &mesh = data_map->get_mesh();
     dof_id_type dof_id;
-    // Read the loads data
-    for (unsigned int i = 0; i < num_loads; ++i)
+
+    for (dof_id_type i = 0; i < num_loads; ++i)
     {
-        dof_id_type element_number;
-        unsigned int load_label_number;
-        unsigned int component_number;
-        Real load_value;
+        dof_id_type element_number = 0;
+        dof_id_type load_label_number = 0;
+        dof_id_type component_number = 0;
+        Real load_value = 0.0;
 
-        // Read element number
-        file.read(reinterpret_cast<char *>(&element_number), sizeof(element_number));
-
-        // Read load label number
-        file.read(reinterpret_cast<char *>(&load_label_number), sizeof(load_label_number));
-
-        // Read component number
-        file.read(reinterpret_cast<char *>(&component_number), sizeof(component_number));
-
-        // Read load value
-        file.read(reinterpret_cast<char *>(&load_value), sizeof(load_value));
+        file.read(reinterpret_cast<char *>(&element_number), sizeof(dof_id_type));
+        file.read(reinterpret_cast<char *>(&load_label_number), sizeof(dof_id_type));
+        file.read(reinterpret_cast<char *>(&component_number), sizeof(dof_id_type));
+        file.read(reinterpret_cast<char *>(&load_value), sizeof(Real));
 
         // Map the load label number to the corresponding API enum
-        Globals::APIVariableName api_var_enum = static_cast<Globals::APIVariableName>(load_label_number);
+        Globals::APIVariableName api_var_enum = static_cast<Globals::APIVariableName>(static_cast<unsigned int>(load_label_number));
 
         // Use the map to get the global variable string
         const auto &global_vars = Globals::API_TO_GLOBAL_VARIABLE_MAP.at(api_var_enum);
-        load_label_global = global_vars[component_number];
+        load_label_global = global_vars[static_cast<unsigned int>(component_number)];
 
-        const Elem *elem_ptr = mesh.query_elem_ptr(element_number);
+        const Elem *elem_ptr = mesh.query_elem_ptr(static_cast<unsigned int>(element_number));
 
         if (!elem_ptr)
         {
@@ -56,31 +48,11 @@ void LoadsObject::read_data(std::ifstream &file)
         }
         else
         {
-            // Get the dof indices for the element and load label
-            dof_id = elem_ptr->dof_number(sys_number, load_label_number, component_number);
+            dof_id = elem_ptr->dof_number(sys_number,
+                                          static_cast<unsigned int>(load_label_number),
+                                          static_cast<unsigned int>(component_number));
             data_map->solution->set(dof_id, load_value);
         }
-        // Access the ElementLoad map for the given load label
-        // auto &element_load = (*data_map)[load_label_api];
-
-        // // Check if the element exists in the map
-        // auto element_it = element_load.find(element_number);
-        // if (element_it != element_load.end())
-        // {
-        //     // Ensure the component number is valid
-        //     if (component_number < element_it->second.size())
-        //     {
-        //         // Update the specific component with the load value
-        //         element_it->second[component_number] = load_value;
-        //     }
-        //     else
-        //     {
-        //         libmesh_error_msg("Warning: Invalid component number " +
-        //                           std::to_string(component_number) + " for element " +
-        //                           std::to_string(element_number) + " in load label " +
-        //                           load_label_api);
-        //     }
-        // }
     }
 }
 

@@ -25,7 +25,7 @@ public:
           output_filename(""),
           n_load_steps(0)
     {
-        auto paths_map = *this->get_data_map();
+        auto &paths_map = *this->get_data_map();
         // Initialize default paths in the map
         paths_map["output_folderpath"] = "output";
         paths_map["temp_folderpath"] = "temp";
@@ -35,7 +35,7 @@ public:
 
     void initialize_folder_paths()
     {
-        auto paths_map = *this->get_data_map();
+        auto &paths_map = *this->get_data_map();
 
         std::filesystem::path input_path = std::filesystem::path(input_mesh_filepath);
         paths_map["input_directory"] = input_path.parent_path();
@@ -58,14 +58,14 @@ public:
         input_mesh_filepath = filepath;
         initialize_folder_paths();
     }
-    void set_path(const std::string &key, const std::filesystem::path &path) { paths[key] = path; }
+    void set_path(const std::string &key, const std::filesystem::path &path) { (*data_map)[key] = path; }
     void set_mesh_filename_without_extension(const std::string &filename) { mesh_filename_without_extension = filename; }
     void set_output_filename(const std::string &filename) { output_filename = filename; }
     void set_n_load_steps(unsigned int n) { n_load_steps = n; }
 
     // Getters
     const std::string &get_input_mesh_filepath() const { return input_mesh_filepath; }
-    const std::filesystem::path &get_path(const std::string &key) const { return paths.at(key); }
+    const std::filesystem::path &get_path(const std::string &key) const { return data_map->at(key); }
     const std::string &get_mesh_filename_without_extension() const { return mesh_filename_without_extension; }
     const std::string &get_output_filename() const { return output_filename; }
     unsigned int get_n_load_steps() const { return n_load_steps; }
@@ -93,7 +93,6 @@ private:
     std::string mesh_filename_without_extension;
     std::string output_filename;
     unsigned int n_load_steps;
-    std::unordered_map<std::string, std::filesystem::path> paths;
 };
 
 #endif // SESSION_H

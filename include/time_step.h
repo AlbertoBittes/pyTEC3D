@@ -8,13 +8,40 @@
 #include <vector>
 #include <libmesh/libmesh.h>
 #include "fe_data_object.h"
+#include "fe_parent_object.h"
 #include "globals.h"
 
 using namespace libMesh;
 
 class LoadStep;
 
-class Substep;
+class TimeStep; // Forward declaration
+
+class Substep : public FEParentObjectBase<TimeStep>
+{
+public:
+    Substep(unsigned int index, Real dt, TimeStep *parent);
+
+    unsigned int get_index() const { return index; }
+    Real get_time() const { return time; }
+    Real get_dt() const { return dt; }
+    bool get_solved() const { return solved; }
+
+    bool get_write_results() const;
+    bool get_transient_effect() const;
+    bool get_ramped_load() const;
+
+    void set_index(unsigned int i) { index = i; }
+    void set_time(Real t) { time = t; }
+    void set_dt(Real d) { dt = d; }
+    void set_solved(bool s) { solved = s; }
+
+private:
+    unsigned int index;
+    Real time;
+    Real dt;
+    bool solved;
+};
 
 class TimeStep : public SettingsFEDataObject
 {
@@ -77,40 +104,6 @@ private:
     std::vector<Substep> substeps;
     Substep *active_substep = nullptr;
     Substep *previous_substep = nullptr;
-};
-
-class Substep : public FEParentObjectBase<TimeStep>
-{
-public:
-    Substep(unsigned int index, Real dt, TimeStep *parent)
-        : FEParentObjectBase(parent),
-          index(index),
-          dt(dt),
-          time(0.0),
-          solved(false)
-    {
-        time = parent->get_time_beginning() + (index + 1) * dt;
-    }
-
-    unsigned int get_index() const { return index; }
-    Real get_time() const { return time; }
-    Real get_dt() const { return dt; }
-    bool get_solved() const { return solved; }
-
-    bool get_write_results() const { return this->get_parent_object()->get_write_results(); };
-    bool get_transient_effect() const { return this->get_parent_object()->get_transient_effect(); };
-    bool get_ramped_load() const { return this->get_parent_object()->get_ramped_load(); };
-
-    void set_index(unsigned int i) { index = i; }
-    void set_time(Real t) { time = t; }
-    void set_dt(Real d) { dt = d; }
-    void set_solved(bool s) { solved = s; }
-
-private:
-    unsigned int index;
-    Real time;
-    Real dt;
-    bool solved;
 };
 
 class TimeStep::Iterator

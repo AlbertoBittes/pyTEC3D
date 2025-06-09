@@ -19,8 +19,6 @@ void BoundaryConditionsObject::constrain()
 
     auto data_map = this->context<NodeBCObject>()->get_data_map();
 
-    Globals::GlobalVariableName variable_label;
-
     std::string string_variable_label;
     for (const auto &bc_pair : *(data_map))
     {

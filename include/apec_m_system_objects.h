@@ -20,9 +20,9 @@ public:
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
-    ApecMLinearSystem(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
+    ApecMLinearSystem(Args &&...args)
         : TransientSystem<LinearImplicitSystem>(std::forward<Args>(args)...),
-          FEMServiceAbstract<ElementTypeFactory>(ctx_view)
+          FEMServiceAbstract<ElementTypeFactory>(nullptr) // or whatever default you want
     {
         assembler = std::make_shared<AssemblerLinear>();
         boundary_conditions_object = std::make_shared<BoundaryConditionsObject>();
@@ -39,8 +39,8 @@ public:
     }
 
 private:
-    std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object = nullptr;
-    std::shared_ptr<AssemblerLinear> assembler = nullptr;
+    std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object;
+    std::shared_ptr<AssemblerLinear> assembler;
 };
 
 class ApecMEquationSystems
@@ -52,8 +52,8 @@ public:
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>
-    ApecMEquationSystems(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
-        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(ctx_view)
+    ApecMEquationSystems(Args &&...args)
+        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(nullptr)
     {
         element_builder = std::make_shared<ElementBuilder>();
     }

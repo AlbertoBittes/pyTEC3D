@@ -66,10 +66,23 @@ namespace Globals
 
     // Utility functions
     template <typename EnumType>
-    inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value);
-    template <typename EnumType>
-    inline std::string enum_to_string(EnumType value, const std::unordered_map<EnumType, std::string> &enum_to_str_map);
+    inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value)
+    {
+        auto it = str_to_enum_map.find(name);
+        if (it != str_to_enum_map.end())
+            return it->second;
+        return unknown_value;
+    }
 
+    // Generic enum-to-string conversion
+    template <typename EnumType>
+    inline std::string enum_to_string(EnumType value, const std::unordered_map<EnumType, std::string> &enum_to_str_map)
+    {
+        auto it = enum_to_str_map.find(value);
+        if (it != enum_to_str_map.end())
+            return it->second;
+        return "UNKNOWN";
+    }
 }
 
 #endif // GLOBALS_H

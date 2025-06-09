@@ -2,12 +2,27 @@
 #include "time_step.h"
 #include "load_step.h" // Include the header for LoadStep
 #include "fem_data_repository.h"
+#include "fe_parent_object.h"
 // Method to update the old solution
 // This should go before a solve, but in solve
 // void LoadStepper::update_old_solution(TransientLinearImplicitSystem &system)
 // {
 //     *system.old_local_solution = *system.current_local_solution;
 // }
+Substep::Substep(unsigned int index, Real dt, TimeStep *parent)
+    : FEParentObjectBase<TimeStep>(parent),
+      index(index),
+      time(0.0),
+      dt(dt),
+      solved(false)
+{
+    time = parent->get_time_beginning() + (index + 1) * dt;
+}
+
+bool Substep::get_write_results() const { return this->get_parent_object()->get_write_results(); };
+bool Substep::get_transient_effect() const { return this->get_parent_object()->get_transient_effect(); };
+bool Substep::get_ramped_load() const { return this->get_parent_object()->get_ramped_load(); };
+
 void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
 {
     if (prev_load_step == nullptr)

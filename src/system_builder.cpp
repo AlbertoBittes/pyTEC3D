@@ -9,6 +9,7 @@
 #include <libmesh/numeric_vector.h>
 
 #include "system_builder.h"
+#include "fe_parent_object.h"
 #include "assembler.h"
 #include "fem_data_repository.h"
 #include "apec_m_system_objects.h"

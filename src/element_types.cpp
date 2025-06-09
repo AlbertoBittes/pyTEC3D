@@ -134,7 +134,7 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
-    std::unique_ptr<FEBase> fe_vec = FEBase::build(3, fe_type_vec);
+    std::unique_ptr<FEVectorBase> fe_vec = FEVectorBase::build(3, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
     QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
@@ -169,6 +169,11 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     // auto sf_vec = this->get_vector_shape_functions();
 }
 
+PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
+    : AV2DElementType(keyopts)
+{
+    // TODO: Add initialization if needed
+}
 // Dummy implementations for SOLID236Type
 
 // std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::populate_matrix_idx_size_map()
