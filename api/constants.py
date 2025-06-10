@@ -99,6 +99,7 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
     "number_of_substeps": int,
     "transient_effects": int,
     "ramped_loads": int,
+    "theta": float,
     "write_substep_results": int,
 }
 
