@@ -31,7 +31,7 @@ public:
         static_assert(std::is_base_of<FEDataObjectAbstract, T>::value, "T must derive from FEDataObjectAbstract");
         auto it = data_objects.find(typeid(T));
         if (it == data_objects.end())
-            libmesh_error_msg("Requested object not found in FEMDataRepository");
+            return nullptr; // <--- Return nullptr instead of error
         return std::dynamic_pointer_cast<T>(it->second);
     }
 

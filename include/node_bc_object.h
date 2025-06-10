@@ -14,7 +14,10 @@ class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
 public:
     // Default constructor
     NodeBCObject(std::ifstream &file)
-        : FEDataObjectMap<BoundaryConditionsMap>(file) {}
+        : FEDataObjectMap<BoundaryConditionsMap>()
+    {
+        this->read_data(file); // Call read_data to initialize the data map
+    }
 
     // Destructor
     virtual ~NodeBCObject() {}

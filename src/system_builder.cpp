@@ -20,6 +20,28 @@ using namespace libMesh;
 
 void SystemBuilder::initialize()
 {
+    System *system = this->get_parent_object();
+
+    if (system->name() == "ApecMLinearSystem")
+    {
+        std::shared_ptr<AssemblerLinear> assembler_linear = std::make_shared<AssemblerLinear>(system);
+        system->attach_assemble_object(*assembler_linear);
+
+        auto main_system = dynamic_cast<ApecMLinearSystem *>(system);
+
+        main_system->add_vector("base_rhs");
+
+        main_system->zero_out_matrix_and_rhs = false;
+
+        main_system->attach_constraint_object(*main_system->get_boundary_conditions_object());
+
+        main_system->current_local_solution->zero();
+        main_system->current_local_solution->close();
+    }
+};
+
+void SystemBuilder::init_variables()
+{
     std::string fe_fam;
     std::string order;
 
@@ -62,22 +84,6 @@ void SystemBuilder::initialize()
             &subdomain_ids);
     }
 
-    if (system->name() == "ApecMLinearSystem")
-    {
-        std::shared_ptr<AssemblerLinear> assembler_linear = std::make_shared<AssemblerLinear>(system);
-        system->attach_assemble_object(*assembler_linear);
-
-        auto main_system = dynamic_cast<ApecMLinearSystem *>(system);
-
-        main_system->add_vector("base_rhs");
-
-        main_system->zero_out_matrix_and_rhs = false;
-
-        main_system->attach_constraint_object(*main_system->get_boundary_conditions_object());
-
-        main_system->current_local_solution->zero();
-        main_system->current_local_solution->close();
-    }
     // }
     // Add more conditions as needed for other combinations
 }

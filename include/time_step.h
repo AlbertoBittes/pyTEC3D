@@ -63,6 +63,7 @@ public:
     int get_write_results() const { return write_results; }
     int get_transient_effect() const { return transient_effect; }
     int get_ramped_load() const { return ramped_load; }
+    Real get_theta() const { return theta; } // Not used in this context, but kept for compatibility
     Substep *get_active_substep() { return active_substep; }
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
@@ -76,6 +77,7 @@ public:
     void set_write_results(int w) { write_results = w; }
     void set_transient_effect(int t) { transient_effect = t; }
     void set_ramped_load(int r) { ramped_load = r; }
+    void set_theta(Real th) { theta = th; } // Not used in this context, but kept for compatibility
     void set_active_substep(Substep *substep) { active_substep = substep; }
     void set_previous_substep(Substep *substep) { previous_substep = substep; }
     void add_substep(const Substep &substep) { substeps.push_back(substep); }
@@ -100,6 +102,7 @@ private:
     int write_results;
     int transient_effect;
     int ramped_load;
+    Real theta; // Not used in this context, but kept for compatibility
 
     std::vector<Substep> substeps;
     Substep *active_substep = nullptr;

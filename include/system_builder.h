@@ -113,6 +113,7 @@ public:
     // Override the initialize method
     void initialize() override;
 
+    void init_variables();
     // Example: access the ElementTypeFactory from the context view
     std::shared_ptr<ElementTypeFactory> element_type_factory() { return this->context<ElementTypeFactory>(); }
 };

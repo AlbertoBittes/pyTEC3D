@@ -57,11 +57,12 @@ public:
 protected:
     FEDataObjectMap() : data_map(std::make_shared<T1>())
     {
+        int a = 1;
     }
     // Protected constructor to prevent direct instantiation
     FEDataObjectMap(std::ifstream &file) : data_map(std::make_shared<T1>())
     {
-        read_data(file);
+        this->read_data(file);
     }
 
     FEDataObjectMap(std::shared_ptr<T1> external_map)
@@ -71,7 +72,7 @@ protected:
     FEDataObjectMap(std::ifstream &file, std::shared_ptr<T1> external_map)
         : data_map(external_map)
     {
-        read_data(file);
+        this->read_data(file);
     }
 
     // Attributes
@@ -82,7 +83,15 @@ class DataframeFEDataObject : public FEDataObjectMap<DataframeMap>
 {
 public:
     // Constructor
-    using FEDataObjectMap<DataframeMap>::FEDataObjectMap;
+    DataframeFEDataObject()
+        : FEDataObjectMap<DataframeMap>() // Call base default constructor (does NOT read data)
+    {
+    }
+    DataframeFEDataObject(std::ifstream &file)
+        : FEDataObjectMap<DataframeMap>() // Call base default constructor (does NOT read data)
+    {
+        this->read_data(file); // Now call the child’s read_data
+    }
     // Implement the read_data method
     void read_data(std::ifstream &file);
 };
@@ -92,7 +101,8 @@ class DataframeMatLikeFEDataObject : public DataframeFEDataObject
 public:
     // Constructor
     DataframeMatLikeFEDataObject(std::ifstream &file)
-        : DataframeFEDataObject(file) // parent constructor
+        : DataframeFEDataObject(file), // parent constructor
+          mat_like_map(std::make_shared<MaterialsMap>())
     {
         populate_mat_like_map();
     }
@@ -114,7 +124,11 @@ class SettingsFEDataObject : public FEDataObjectMap<SettingsMap>
 {
 public:
     // Constructor
-    using FEDataObjectMap<SettingsMap>::FEDataObjectMap;
+    SettingsFEDataObject(std::ifstream &file)
+        : FEDataObjectMap<SettingsMap>() // Call base default constructor (does NOT read data)
+    {
+        this->read_data(file); // Now call the child’s read_data
+    };
 
     template <typename T>
     T get_setting(const std::string &key) const

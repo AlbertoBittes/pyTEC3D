@@ -51,6 +51,7 @@ void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
     n_substep = this->get_setting<int>("number_of_substeps");
     transient_effect = this->get_setting<int>("transient_effects");
     ramped_load = this->get_setting<int>("ramped_loads");
+    theta = this->get_setting<Real>("theta");
     write_results = this->get_setting<int>("write_substep_results");
 
     this->set_beginning_time(prev_load_step);

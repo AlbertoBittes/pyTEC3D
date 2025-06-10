@@ -39,7 +39,7 @@ void LoadsObject::read_data(std::ifstream &file)
         // Use the map to get the global variable string
         const auto &global_vars = Globals::API_TO_GLOBAL_VARIABLE_MAP.at(api_var_enum);
         load_label_global = global_vars[static_cast<unsigned int>(component_number)];
-
+        unsigned int var_num_sys = data_map->variable_number(load_label_global);
         const Elem *elem_ptr = mesh.query_elem_ptr(static_cast<unsigned int>(element_number));
 
         if (!elem_ptr)
@@ -48,9 +48,7 @@ void LoadsObject::read_data(std::ifstream &file)
         }
         else
         {
-            dof_id = elem_ptr->dof_number(sys_number,
-                                          static_cast<unsigned int>(load_label_number),
-                                          static_cast<unsigned int>(component_number));
+            dof_id = elem_ptr->dof_number(sys_number, var_num_sys, 0);
             data_map->solution->set(dof_id, load_value);
         }
     }

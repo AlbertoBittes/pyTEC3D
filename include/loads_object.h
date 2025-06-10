@@ -21,8 +21,9 @@ class LoadsObject : public FEDataObjectMap<ExplicitSystem>
 public:
     // Constructor that calls the exact FEDataObjectMap constructor you specified
     LoadsObject(std::ifstream &file, std::shared_ptr<ExplicitSystem> external_map)
-        : FEDataObjectMap<ExplicitSystem>(file, external_map)
+        : FEDataObjectMap<ExplicitSystem>(external_map)
     {
+        this->read_data(file); // Call read_data to initialize the data map
         // No additional initialization
     }
 

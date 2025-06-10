@@ -112,8 +112,9 @@ void SimulationController::physics()
         else
             systems[i] = &equation_systems->add_system<ExplicitSystem>(sys_name);
 
-        SystemBuilder builder(systems[i], system_builder_view);
-        systems[i]->attach_init_object(builder);
+        SystemBuilder *builder = new SystemBuilder(systems[i], system_builder_view);
+        builder->init_variables();
+        systems[i]->attach_init_object(*builder);
     }
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
@@ -169,7 +170,16 @@ void SimulationController::solve()
             *load_step));
     auto boundary_conditions_object = system.get_boundary_conditions_object();
     boundary_conditions_object->set_context_view(bc_view);
-    boundary_conditions_object->set_boundary_conditions(prev_load_step->get_object<NodeBCObject>());
+    if (prev_load_step != nullptr)
+    {
+        // Check if we need to update the boundary conditions
+        boundary_conditions_object->set_boundary_conditions(prev_load_step->get_object<NodeBCObject>());
+    }
+    else
+    {
+        // If there is no previous load step, we assume we are at the beginning
+        boundary_conditions_object->set_boundary_conditions(nullptr);
+    }
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
     for (auto &substep : *time_step)
