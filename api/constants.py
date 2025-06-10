@@ -174,20 +174,20 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "number_of_substeps": int,
     "transient_effects": int,
     "ramped_loads": int,
-    "write_substep_results": int,
     "theta": float,
+    "write_substep_results": int,
     "load_step_input_file": str,
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES = {
-    "element_types": list(ELEMENT_TYPES_COLUMNS_TYPES.keys()),
-    "materials": list(MATERIALS_COLUMNS_TYPES.keys()),
-    "real_constants": list(REAL_CONSTANTS_COLUMNS_TYPES.keys()),
+    "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
+    "materials": MATERIALS_COLUMNS_TYPES,
+    "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS,
     "time_parameters": DEFAULT_TIME_PARAMETERS,
-    "loads": list(LOADS_BCS_COLUMNS_TYPES.keys()),
-    "boundary_conditions": list(LOADS_BCS_COLUMNS_TYPES.keys()),
-    "transient_analysis": list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys()),
+    "loads": LOADS_BCS_COLUMNS_TYPES,
+    "boundary_conditions": LOADS_BCS_COLUMNS_TYPES,
+    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
