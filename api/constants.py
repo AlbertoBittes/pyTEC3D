@@ -103,26 +103,6 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
     "write_substep_results": int,
 }
 
-# Column definitions for materials, real constants, etc.
-MATERIALS_COLUMNS = [
-    "ansys_material_type",
-    "MURX",
-    "MURY",
-    "MURZ",
-    "RSVX",
-    "RSVY",
-    "RSVZ",
-    "PERX",
-    "PERY",
-    "PERZ",
-    "MGXX",
-    "MGYY",
-    "MGZZ",
-    "MURX_B-H",
-    "MURY_B-H",
-    "MURZ_B-H",
-]
-
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
     "ansys_material_type": int,
@@ -142,32 +122,6 @@ MATERIALS_COLUMNS_TYPES = {
     "MURY_B-H": int,
     "MURZ_B-H": int,
 }
-
-REAL_CONSTANTS_COLUMNS = [
-    "ansys_real_constant",
-    "CARE",
-    "TURN",
-    "LENG",
-    "DIRZ",
-    "FILL",
-    "SC",
-    "NC",
-    "RAD",
-    "TX",
-    "TY",
-    "TZ",
-    "R",
-    "SYM",
-    "VELOX",
-    "VELOY",
-    "VELOZ",
-    "OMEGAX",
-    "OMEGAY",
-    "OMEGAZ",
-    "XLOC",
-    "YLOC",
-    "ZLOC",
-]
 
 # Assign types to real constants columns
 REAL_CONSTANTS_COLUMNS_TYPES = {
@@ -196,14 +150,6 @@ REAL_CONSTANTS_COLUMNS_TYPES = {
     "ZLOC": float,
 }
 
-ELEMENT_TYPES_COLUMNS = [
-    "ansys_etype",
-    "element_type",
-    "KEYOPT1",
-    "KEYOPT2",
-    "KEYOPT3",
-]
-
 # Assign types to element types columns
 ELEMENT_TYPES_COLUMNS_TYPES = {
     "ansys_etype": int,
@@ -213,12 +159,6 @@ ELEMENT_TYPES_COLUMNS_TYPES = {
     "KEYOPT3": int,
 }
 
-LOADS_BCS_COLUMNS = [
-    "vtk_id",
-    "label",
-    "component",
-    "value",
-]
 
 # Assign types to loads and boundary conditions columns
 LOADS_BCS_COLUMNS_TYPES = {
@@ -227,17 +167,6 @@ LOADS_BCS_COLUMNS_TYPES = {
     "component": int,
     "value": float,
 }
-
-TRANSIENT_ANALYSIS_COLUMNS = [
-    "time_step_number",
-    "time",
-    "number_of_substeps",
-    "transient_effects",
-    "ramped_loads",
-    "write_substep_results",
-    "theta",
-    "load_step_input_file",
-]
 
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "time_step_number": int,
@@ -251,14 +180,14 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES = {
-    "element_types": ELEMENT_TYPES_COLUMNS,
-    "materials": MATERIALS_COLUMNS,
-    "real_constants": REAL_CONSTANTS_COLUMNS,
+    "element_types": list(ELEMENT_TYPES_COLUMNS_TYPES.keys()),
+    "materials": list(MATERIALS_COLUMNS_TYPES.keys()),
+    "real_constants": list(REAL_CONSTANTS_COLUMNS_TYPES.keys()),
     "solver_settings": DEFAULT_SOLVER_SETTINGS,
     "time_parameters": DEFAULT_TIME_PARAMETERS,
-    "loads": LOADS_BCS_COLUMNS,
-    "boundary_conditions": LOADS_BCS_COLUMNS,
-    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS,
+    "loads": list(LOADS_BCS_COLUMNS_TYPES.keys()),
+    "boundary_conditions": list(LOADS_BCS_COLUMNS_TYPES.keys()),
+    "transient_analysis": list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys()),
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {

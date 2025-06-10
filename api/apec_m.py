@@ -49,13 +49,13 @@ class APEC_M:
         self.jobname = None
         self.folderpath = None
 
-        self.element_types = pd.DataFrame(columns=ELEMENT_TYPES_COLUMNS)
-        self.materials = pd.DataFrame(columns=MATERIALS_COLUMNS)
-        self.real_constants = pd.DataFrame(columns=REAL_CONSTANTS_COLUMNS)
+        self.element_types = pd.DataFrame(columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys()))
+        self.materials = pd.DataFrame(columns=list(MATERIALS_COLUMNS_TYPES.keys()))
+        self.real_constants = pd.DataFrame(columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys()))
         self.time_parameters = DEFAULT_TIME_PARAMETERS
         self.apec_parameters = {}
         self.solver_settings = DEFAULT_SOLVER_SETTINGS
-        self.transient_analysis = pd.DataFrame(columns=TRANSIENT_ANALYSIS_COLUMNS)
+        self.transient_analysis = pd.DataFrame(columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys()))
 
         self.process = None
         self.num_processors = 1
