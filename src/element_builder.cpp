@@ -26,6 +26,8 @@ void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes
 
 void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int matrices_set)
 {
+
+    unsigned int num_matrices = static_cast<unsigned int>(sizes_map->size());
     this->matrices[matrices_set].resize(sizes_map->size());
     for (unsigned int i = 0; i < sizes_map->size(); ++i)
     {
@@ -167,7 +169,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     auto equation_systems = this->get_parent_object();
 
-    System &system = equation_systems->get_system<System>(0);
+    ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     // Get a constant reference to the mesh object.
     const MeshBase &mesh = system.get_mesh();
 
@@ -267,17 +269,14 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        if (!recompute_matrix)
-        {
-            dof_map.dof_indices(elem, dof_indices);
+        dof_map.dof_indices(elem, dof_indices);
 
-            etype_num = elem->get_extra_integer(etype_num_index);
-            material_num = elem->get_extra_integer(mat_num_index);
-            real_constant_num = elem->get_extra_integer(real_constants_num_index);
+        etype_num = elem->get_extra_integer(etype_num_index);
+        material_num = elem->get_extra_integer(mat_num_index);
+        real_constant_num = elem->get_extra_integer(real_constants_num_index);
 
-            ElementType *elem_type = element_types->get_element_type(etype_num);
-            this->set_element_data(elem, elem_type, material_num, real_constant_num);
-        }
+        ElementType *elem_type = element_types->get_element_type(etype_num);
+        this->set_element_data(elem, elem_type, material_num, real_constant_num);
 
         base_rhs.get(dof_indices, vectors[0][0].get_values());
 
@@ -288,7 +287,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     session->close_file_streams(streams);
 }
 
-bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view = nullptr)
+bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view)
 {
     auto eq_sys = this->get_parent_object();
     bool update_matrix;
@@ -302,7 +301,7 @@ bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Eleme
     auto current_real_constant_object = this->context<RealConstantsObject>();
     auto old_real_constant_object = old_view ? old_view->template get<RealConstantsObject>() : nullptr;
 
-    if (!old_view)
+    if (old_view == nullptr)
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
@@ -627,19 +626,21 @@ void ElementBuilder::build_solid97_rhs()
 
     auto loads_map = loads_object->get_data_map();
 
+    unsigned int system_num = loads_map->number();
+
     Real js[3];
 
     unsigned int jsx_var_num = loads_map->variable_number("Js_x");
     unsigned int jsy_var_num = loads_map->variable_number("Js_y");
     unsigned int jsz_var_num = loads_map->variable_number("Js_z");
 
-    dof_id_type dof_jx = elem_data.elem->dof_number(0, jsx_var_num, 0);
-    dof_id_type dof_jy = elem_data.elem->dof_number(0, jsy_var_num, 0);
-    dof_id_type dof_jz = elem_data.elem->dof_number(0, jsz_var_num, 0);
+    dof_id_type dof_jx = elem_data.elem->dof_number(system_num, jsx_var_num, 0);
+    dof_id_type dof_jy = elem_data.elem->dof_number(system_num, jsy_var_num, 0);
+    dof_id_type dof_jz = elem_data.elem->dof_number(system_num, jsz_var_num, 0);
 
-    js[0] = loads_map->solution->el(dof_jx);
-    js[1] = loads_map->solution->el(dof_jy);
-    js[2] = loads_map->solution->el(dof_jz);
+    js[0] = loads_map->current_local_solution->el(dof_jx);
+    js[1] = loads_map->current_local_solution->el(dof_jy);
+    js[2] = loads_map->current_local_solution->el(dof_jz);
 
     auto &Fe = this->vectors[0][0];
 

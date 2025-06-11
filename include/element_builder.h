@@ -58,13 +58,10 @@ public:
 
         this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
 
-        auto nodal_solution_matrix_idx_size_map = elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get();
-        auto elem_solution_matrix_idx_size_map = elem_data.element_type->get_element_solution_matrix_idx_size_map().get();
-        this->build_matrices(nodal_solution_matrix_idx_size_map, 1);
-        this->build_matrices(elem_solution_matrix_idx_size_map, 2);
+        this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
+        this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
 
-        auto vector_idx_size_map = elem_data.element_type->get_vector_idx_size_map().get();
-        this->build_vectors(vector_idx_size_map, 0);
+        this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
         // this->build_vectors(vector_idx_size_map, 1);
     }
 
@@ -120,7 +117,7 @@ public:
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
-    bool check_compute_matrix(std::shared_ptr<TypedContextView<ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject, Session>> old_view);
+    bool check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view = nullptr);
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices

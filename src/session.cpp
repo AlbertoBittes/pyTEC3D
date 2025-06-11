@@ -17,14 +17,14 @@ std::unique_ptr<std::ios> Session::open_file_stream(const std::filesystem::path 
     {
         auto ifs = std::make_unique<std::ifstream>(filepath, std::ios::binary);
         if (!ifs->is_open())
-            libmesh_error_msg("Failed to open file for reading: " + filepath.string());
+            return nullptr;
         stream = std::move(ifs);
     }
     else // FileMode::Write
     {
         auto ofs = std::make_unique<std::ofstream>(filepath, std::ios::binary);
         if (!ofs->is_open())
-            libmesh_error_msg("Failed to open file for writing: " + filepath.string());
+            return nullptr;
         stream = std::move(ofs);
     }
     return stream;

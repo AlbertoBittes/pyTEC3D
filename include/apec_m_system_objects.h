@@ -24,8 +24,10 @@ public:
         : TransientSystem<LinearImplicitSystem>(std::forward<Args>(args)...),
           FEMServiceAbstract<ElementTypeFactory>(nullptr) // or whatever default you want
     {
-        assembler = std::make_shared<AssemblerLinear>();
-        boundary_conditions_object = std::make_shared<BoundaryConditionsObject>();
+        assembler = std::make_shared<AssemblerLinear>(this);
+        this->attach_assemble_object(*assembler);
+        boundary_conditions_object = std::make_shared<BoundaryConditionsObject>(this);
+        this->attach_constraint_object(*boundary_conditions_object);
     }
 
     std::shared_ptr<BoundaryConditionsObject> get_boundary_conditions_object() const
@@ -55,7 +57,7 @@ public:
     ApecMEquationSystems(Args &&...args)
         : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(nullptr)
     {
-        element_builder = std::make_shared<ElementBuilder>();
+        element_builder = std::make_shared<ElementBuilder>(nullptr, this);
     }
 
     std::shared_ptr<ElementBuilder> get_element_builder() const

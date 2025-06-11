@@ -168,8 +168,18 @@ void AssemblerLinear::assemble()
 
         if (time_substep->get_ramped_load())
         {
-            elem_builder->read_element_vectors(*rhs_prev_input_file, 1);
-            elem_builder->ramp_vectors(time_substep, 0, 0, 0, 1);
+            if (rhs_prev_input_file == nullptr)
+            {
+                auto &vecs = elem_builder->get_vectors()[1];
+                vecs.resize(1);
+                auto &dummy_prev_rhs = vecs[0];
+                dummy_prev_rhs.resize(n_dofs);
+            }
+            else
+            {
+                elem_builder->read_element_vectors(*rhs_prev_input_file, 1);
+            }
+            elem_builder->ramp_vectors(time_substep, 0, 1, 0, 0);
         }
 
         // elem_builder->apply_load();

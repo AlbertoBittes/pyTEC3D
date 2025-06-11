@@ -130,7 +130,7 @@ void SimulationController::solve()
 
     auto time_step = load_step->get_object<TimeStep>();
 
-    libMesh::out << "Solving time step " << time_step->get_step() + 1 << std::endl;
+    libMesh::out << "Solving time step " << time_step->get_step() << std::endl;
 
     libMesh::out << "Time increment at the end of time step: " << time_step->get_delta_t() << std::endl;
 
@@ -192,6 +192,25 @@ void SimulationController::solve()
         // Assemble & solve the linear system
         libMesh::out << "Building matrix and solving system..." << std::endl;
         // Update the old solution of the system
+        if (substep.get_index() == 0)
+        {
+            if (prev_load_step == nullptr)
+            {
+                // If there is a previous load step, we update the old solution
+                element_builder->build_write_element_matrices_rhs(true);
+            }
+            else
+            {
+                // If there is no previous load step, we initialize the old solution to zero
+                auto prev_element_builder_view = std::make_shared<
+                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
+                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+                        apec_m_model_data,
+                        prev_load_step));
+                element_builder->set_context_view(prev_element_builder_view);
+                element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix(prev_element_builder_view));
+            }
+        }
 
         system.solve();
 

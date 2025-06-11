@@ -49,7 +49,7 @@ void LoadsObject::read_data(std::ifstream &file)
         else
         {
             dof_id = elem_ptr->dof_number(sys_number, var_num_sys, 0);
-            data_map->solution->set(dof_id, load_value);
+            data_map->current_local_solution->set(dof_id, load_value);
         }
     }
 }

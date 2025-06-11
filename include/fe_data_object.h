@@ -57,7 +57,6 @@ public:
 protected:
     FEDataObjectMap() : data_map(std::make_shared<T1>())
     {
-        int a = 1;
     }
     // Protected constructor to prevent direct instantiation
     FEDataObjectMap(std::ifstream &file) : data_map(std::make_shared<T1>())

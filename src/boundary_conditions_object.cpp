@@ -16,9 +16,16 @@ void BoundaryConditionsObject::constrain()
     // Retrieve the system by name
     MeshBase &mesh = this->parent_object->get_mesh();
     DofMap &dof_map = this->parent_object->get_dof_map();
-
-    auto data_map = this->context<NodeBCObject>()->get_data_map();
-
+    if (!this->ctx_view)
+    {
+        return;
+    }
+    auto node_bc_object = this->context<NodeBCObject>();
+    if (!node_bc_object)
+    {
+        return;
+    }
+    auto data_map = node_bc_object->get_data_map();
     std::string string_variable_label;
     for (const auto &bc_pair : *(data_map))
     {
@@ -33,6 +40,10 @@ void BoundaryConditionsObject::constrain()
             for (const auto &bc_value : bc_values)
             {
                 string_variable_label = Globals::enum_to_string<Globals::GlobalVariableName>(bc_value.first, Globals::ENUM_TO_STRING);
+                if (string_variable_label == "VOLT" && !this->context<TimeStep>()->get_transient_effect())
+                {
+                    continue; // Skip this variable
+                }
                 if (parent_object->has_variable(string_variable_label))
                 {
                     unsigned int variable_number = parent_object->variable_number(string_variable_label);

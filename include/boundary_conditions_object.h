@@ -19,8 +19,9 @@ public:
     using ContextView = TypedContextView<NodeBCObject, TimeStep>;
     using FEParentObjectBase<System>::FEParentObjectBase;
 
-    BoundaryConditionsObject(std::shared_ptr<ContextView> ctx_view = nullptr)
-        : FEMServiceAbstract<NodeBCObject, TimeStep>(ctx_view)
+    BoundaryConditionsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEParentObjectBase<System>(sys), // Set the parent System
+          FEMServiceAbstract<NodeBCObject, TimeStep>(ctx_view)
     {
     }
 

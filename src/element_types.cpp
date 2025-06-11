@@ -63,10 +63,10 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(3, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[Ke] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[Ce] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
     return matrix_idx_size_map;
 };
@@ -78,10 +78,10 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nod
     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(4, std::vector<unsigned int>(3, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*solution_matrix_idx_size_map)[0] = {0, n_sf_vec, n_sf_vec};
-    (*solution_matrix_idx_size_map)[1] = {1, n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_vec};
 
     return solution_matrix_idx_size_map;
 }
@@ -93,10 +93,10 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_ele
     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(4, std::vector<unsigned int>(3, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*solution_matrix_idx_size_map)[0] = {0, n_qp, n_sf_vec};
-    (*solution_matrix_idx_size_map)[1] = {1, 3 * n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf_vec};
 
     return solution_matrix_idx_size_map;
 }
@@ -105,9 +105,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vec
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
 
-    (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
+    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
 
     return vector_idx_size_map;
 }
@@ -141,6 +141,14 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     fe_vec->attach_quadrature_rule(qrule_vec);
 
     fe_array.push_back(std::move(fe_vec));
+
+    active_dof_vars_size = 0;
+    for (const auto &pair : variable_info)
+    {
+        const auto &var_data = pair.second;
+        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
+            ++active_dof_vars_size;
+    }
 }
 // SOLID 236
 
@@ -199,6 +207,14 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 
     if (keyopts[1] == 6)
         variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
+
+    active_dof_vars_size = 0;
+    for (const auto &pair : variable_info)
+    {
+        const auto &var_data = pair.second;
+        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
+            ++active_dof_vars_size;
+    }
 } // Default dimension for PLANE13 is 2
 
 // std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_dof_matrix_idx_size_map()
