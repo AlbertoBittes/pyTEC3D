@@ -83,7 +83,6 @@ void AssemblerLinear::assemble()
     std::string mtrx_vec_filename;
 
     auto emat_folderpath = session->get_path("emat_folderpath");
-    bool old_rhs = true;
     // in a new time step we could have a different dt, different bcs, different time integration effects
     // Here add the flag for ferromagnetic
 
