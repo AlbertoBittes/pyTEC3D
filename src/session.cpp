@@ -18,6 +18,8 @@ std::unique_ptr<std::ios> Session::open_file_stream(const std::filesystem::path 
         auto ifs = std::make_unique<std::ifstream>(filepath, std::ios::binary);
         if (!ifs->is_open())
             return nullptr;
+        // ifs->clear();                 // Clear any error flags
+        // ifs->seekg(0, std::ios::beg); // Ensure pointer is at the beginning
         stream = std::move(ifs);
     }
     else // FileMode::Write

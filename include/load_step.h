@@ -56,7 +56,7 @@ public:
     std::shared_ptr<LoadStep> get_active_load_step() const { return active_load_step; }
     std::shared_ptr<LoadStep> get_old_load_step() const { return old_load_step; }
     unsigned int get_load_step_index() const { return load_step_index; }
-
+    unsigned int get_cumulative_substep_index() const { return cumulative_substep_index; }
     // // Setters
     // void set_active_load_step(std::shared_ptr<LoadStep> load_step) { active_load_step = load_step; }
     // void set_old_load_step(std::shared_ptr<LoadStep> load_step) { old_load_step = load_step; }
@@ -75,7 +75,10 @@ public:
         // Update the load step index
         load_step_index++;
     }
-
+    void update_cumulative_substep_index()
+    {
+        cumulative_substep_index++;
+    }
     // Method to update the old solution (if needed)
     // void update_old_solution(TransientLinearImplicitSystem &system)
     // {
@@ -90,6 +93,7 @@ private:
     std::shared_ptr<LoadStep> active_load_step;
     std::shared_ptr<LoadStep> old_load_step;
     unsigned int load_step_index = 0;
+    unsigned int cumulative_substep_index = 0;
 };
 
 #endif // LOAD_STEP_H

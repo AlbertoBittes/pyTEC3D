@@ -154,6 +154,7 @@ void SimulationController::solve()
     auto element_builder = equation_systems->get_element_builder();
     element_builder->set_context_view(element_builder_view);
 
+    auto session = element_builder_view->get<Session>();
     // 2. Prepare context view for assembler
     auto assembler_view = std::make_shared<
         TypedContextView<TimeStep, Session>>(
@@ -237,8 +238,10 @@ void SimulationController::solve()
             libMesh::out << "Writing time substep results..." << std::endl;
             // session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
             // // Write the results
-            // VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ExplicitSystem>("ElementSolutionSystem"));
-            // vtk_output.write_equation_systems(session->final_output_path, equation_systems, &system_names);
+            session->set_output_filepath(load_stepper->get_cumulative_substep_index());
+            VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ExplicitSystem>("ElementSolutionSystem"));
+            vtk_output.write_equation_systems(session->get_path("final_output_path"), *equation_systems, &system_names);
+            load_stepper->update_cumulative_substep_index();
             // change the extension of filepath to .exo
             // std::string exo_output_path = session.final_output_path;
             // exo_output_path.replace(exo_output_path.end() - 4, exo_output_path.end(), ".exo");

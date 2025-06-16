@@ -26,10 +26,6 @@ void SystemBuilder::initialize()
     {
         auto main_system = dynamic_cast<ApecMLinearSystem *>(system);
 
-        main_system->add_vector("base_rhs");
-
-        main_system->get_vector("base_rhs").zero();
-        main_system->get_vector("base_rhs").close();
         main_system->zero_out_matrix_and_rhs = false;
 
         main_system->current_local_solution->zero();

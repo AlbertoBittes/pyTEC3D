@@ -205,10 +205,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     // e.g. new materials, new real constants, nonlinear elements.
 
     const auto rank_str = std::to_string(comm.rank());
-    std::vector<std::string> filenames = {
-        "mtrx_" + rank_str + ".temp",
-        "der_mtrx_" + rank_str + ".temp",
-        "rhs_" + rank_str + ".temp"};
 
     auto element_types = this->context<ElementTypeFactory>();
 
@@ -221,19 +217,23 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         std::filesystem::rename(rhs_path, new_rhs_path);
     }
 
-    // Open all files using the session method
-    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Write);
-
-    // Downcast to use as ofstream
-    std::ofstream *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
-    std::ofstream *der_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
-    std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
-
     std::vector<dof_id_type> dof_indices;
 
-    NumericVector<Number> &base_rhs = system.get_vector("base_rhs");
-
     if (recompute_matrix)
+    {
+        std::vector<std::string> filenames = {
+            "mtrx_" + rank_str + ".temp",
+            "der_mtrx_" + rank_str + ".temp",
+            "base_rhs_" + rank_str + ".temp"};
+
+        // Open all files using the session method
+        auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Write);
+
+        // Downcast to use as ofstream
+        std::ofstream *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
+        std::ofstream *der_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
+        std::ofstream *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             dof_map.dof_indices(elem, dof_indices);
@@ -253,16 +253,28 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
             this->build_element();
 
-            base_rhs.add_vector(vectors[0][0], dof_indices);
-
             // this->update_rhs();
             // Here the function to write the matrices and vectors down to file
             this->write_element_matrices(*mtrx_output_file, 0);
 
             this->write_element_matrices(*der_mtrx_output_file, 1);
 
-            // this->write_element_vectors(*rhs_output_file, 0);
+            this->write_element_vectors(*base_rhs_output_file, 0);
         }
+
+        session->close_file_streams(streams);
+    }
+    std::vector<std::string> inp_filenames = {
+        "base_rhs_" + rank_str + ".temp"};
+    std::vector<std::string> out_filenames = {
+        "rhs_" + rank_str + ".temp",
+    };
+
+    auto streams_in = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+    auto streams_out = session->open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
+    // Downcast to use as ifstream
+    std::ifstream *base_rhs_input_file = dynamic_cast<std::ifstream *>(streams_in[0].get());
+    std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -276,15 +288,17 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         real_constant_num = elem->get_extra_integer(real_constants_num_index);
 
         ElementType *elem_type = element_types->get_element_type(etype_num);
+
         this->set_element_data(elem, elem_type, material_num, real_constant_num);
 
-        base_rhs.get(dof_indices, vectors[0][0].get_values());
+        this->read_element_vectors(*base_rhs_input_file, 0);
 
         this->build_element_rhs();
 
         this->write_element_vectors(*rhs_output_file, 0);
     }
-    session->close_file_streams(streams);
+    session->close_file_streams(streams_in);
+    session->close_file_streams(streams_out);
 }
 
 bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view)

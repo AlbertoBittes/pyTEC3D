@@ -56,6 +56,8 @@ public:
     void set_input_mesh_filepath(const std::string &filepath)
     {
         input_mesh_filepath = filepath;
+        std::filesystem::path input_path = std::filesystem::path(filepath);
+        mesh_filename_without_extension = input_path.stem().string();
         initialize_folder_paths();
     }
     void set_path(const std::string &key, const std::filesystem::path &path) { (*data_map)[key] = path; }
