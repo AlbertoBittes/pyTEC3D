@@ -4,8 +4,8 @@ CXX=mpicxx
 # Include path for libMesh
 INCLUDES=-I../include -I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.1
 
-# Compiler flags
-CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp
+# Compiler flags (add -MMD -MP for dependency generation)
+CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp -MMD -MP
 
 # Linker flags, add your project-specific libraries not related to MPI
 LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -lpetsc -pthread -fopenmp \
@@ -23,6 +23,9 @@ SOURCES=$(wildcard *.cpp)
 # Object files
 OBJECTS=$(SOURCES:.cpp=.o)
 
+# Dependency files
+DEPS=$(SOURCES:.cpp=.d)
+
 # Rule to make the object files
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -31,5 +34,8 @@ OBJECTS=$(SOURCES:.cpp=.o)
 $(TARGET): $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
+# Include dependency files if they exist
+-include $(DEPS)
+
 clean:
-	rm -f *.o ../apec_m
+	rm -f *.o *.d ../apec_m

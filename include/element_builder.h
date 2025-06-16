@@ -72,9 +72,9 @@ public:
         Real dt = time_substep->get_parent_object()->get_delta_t();
         Real time = time_substep->get_time();
         Real time_beginning = time_substep->get_parent_object()->get_time_beginning();
-        Real deltim_subst = time - time_beginning;
-
-        for (unsigned int i = 0; i < vectors[0].size(); i++)
+        Real deltim_subst = time_substep->get_dt();
+        unsigned int vec_size = vectors[set_vector_1][idx_vector_1].size();
+        for (unsigned int i = 0; i < vec_size; i++)
         {
             y2 = vectors[set_vector_1][idx_vector_1](i);
             y1 = vectors[set_vector_2][idx_vector_2](i);
