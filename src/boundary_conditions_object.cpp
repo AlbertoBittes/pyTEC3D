@@ -29,14 +29,14 @@ void BoundaryConditionsObject::constrain()
     std::string string_variable_label;
     for (const auto &bc_pair : *(data_map))
     {
-        const auto &bc_values = bc_pair.second;
-
         // This will not work for edge elements
         // Access the node pointer using the node_id, you will have to replace this with something taht can apply bcs for edge elements
-        const Node *node_ptr = mesh.node_ptr(bc_pair.first);
+        const Node *node_ptr = mesh.query_node_ptr(bc_pair.first);
 
         if (node_ptr)
         {
+            const auto &bc_values = bc_pair.second;
+
             for (const auto &bc_value : bc_values)
             {
                 string_variable_label = Globals::enum_to_string<Globals::GlobalVariableName>(bc_value.first, Globals::ENUM_TO_STRING);
@@ -57,7 +57,7 @@ void BoundaryConditionsObject::constrain()
         }
         else
         {
-            libmesh_error_msg("Node " + std::to_string(bc_pair.first) + " not found in mesh.");
+            continue;
         }
     }
 
