@@ -2,9 +2,10 @@
 #include "vtkio_updated.h"
 #include "element_types.h"
 #include "system_builder.h"
-#include "libmesh/mesh_communication.h"
-#include "libmesh/mesh_modification.h"
-#include "libmesh/numeric_vector.h"
+#include <libmesh/mesh_communication.h>
+#include <libmesh/mesh_modification.h>
+#include <libmesh/numeric_vector.h>
+#include <libmesh/sparse_matrix.h>
 
 SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode, const std::string &mesh_filename)
     : apec_m_model_data(std::make_shared<FEMDataRepository>()),
@@ -183,6 +184,8 @@ void SimulationController::solve()
     }
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
+    system.get_system_matrix().zero();
+
     for (auto &substep : *time_step)
     {
         libMesh::out << "Substep: " << substep.get_index() + 1 << ", Time: " << substep.get_time()

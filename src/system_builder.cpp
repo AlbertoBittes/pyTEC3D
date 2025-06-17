@@ -31,8 +31,6 @@ void SystemBuilder::initialize()
 
         main_system->current_local_solution->zero();
         main_system->current_local_solution->close();
-
-        main_system->get_system_matrix().zero();
     }
 };
 
