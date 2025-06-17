@@ -7,6 +7,7 @@
 #include <libmesh/transient_system.h>
 #include <libmesh/string_to_enum.h>
 #include <libmesh/numeric_vector.h>
+#include <libmesh/sparse_matrix.h>
 
 #include "system_builder.h"
 #include "fe_parent_object.h"
@@ -30,6 +31,8 @@ void SystemBuilder::initialize()
 
         main_system->current_local_solution->zero();
         main_system->current_local_solution->close();
+
+        main_system->get_system_matrix().zero();
     }
 };
 

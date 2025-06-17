@@ -218,6 +218,8 @@ void SimulationController::solve()
         // Update solution
         *system.old_local_solution = *system.current_local_solution;
 
+        system.rhs->zero();
+
         system.get_linear_solver()->print_converged_reason();
         if (substep.get_write_results() || substep.get_index() == time_step->get_n_substeps() - 1)
         {
