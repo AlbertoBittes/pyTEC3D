@@ -143,6 +143,14 @@ void SimulationController::solve()
     // Here you have to prepare the various contexts for the systems
     // Get the system
     ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
+    libMesh::out << "Setting solver..." << std::endl;
+
+    auto solver_conf = load_step->get_object<PetscSolverConfiguration>();
+    solver_conf->configure_solver();
+    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
+    // solver->set_solver_type(GMRES);
+    // solver_configuration.configure_solver();
     // 1. Prepare context view for element builder
     libMesh::out << "Setting load step data..." << std::endl;
 

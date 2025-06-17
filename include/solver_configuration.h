@@ -15,7 +15,15 @@ public:
   // Default constructor
   PetscSolverConfiguration(std::ifstream &file, PetscLinearSolver<Number> *petsc_linear_solver = nullptr)
       : SettingsFEDataObject(file),
-        _petsc_linear_solver(petsc_linear_solver) {}
+        _petsc_linear_solver(petsc_linear_solver)
+  {
+    // PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
+    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
+    // solver->set_solver_type(GMRES);
+    // PetscSolverConfiguration solver_configuration(*solver);
+    // solver_configuration.configure_solver();
+    petsc_linear_solver->set_solver_configuration(*this);
+  }
 
   // Getters and setters for solver settings
   void configure_solver() override;
