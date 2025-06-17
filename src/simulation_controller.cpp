@@ -137,9 +137,6 @@ void SimulationController::solve()
 
     libMesh::out << "Number of time substeps: " << time_step->get_n_substeps() << std::endl;
 
-    libMesh::out << "Setting boundary conditions..." << std::endl;
-
-    libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
     // read material properties
 
     // Read loads
@@ -147,6 +144,8 @@ void SimulationController::solve()
     // Get the system
     ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     // 1. Prepare context view for element builder
+    libMesh::out << "Setting load step data..." << std::endl;
+
     auto element_builder_view = std::make_shared<
         TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
         TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
@@ -172,6 +171,8 @@ void SimulationController::solve()
             *load_step));
     auto boundary_conditions_object = system.get_boundary_conditions_object();
     boundary_conditions_object->set_context_view(bc_view);
+    libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
+
     if (prev_load_step != nullptr)
     {
         // Check if we need to update the boundary conditions
