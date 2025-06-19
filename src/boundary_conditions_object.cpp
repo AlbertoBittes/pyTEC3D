@@ -40,10 +40,10 @@ void BoundaryConditionsObject::constrain()
             for (const auto &bc_value : bc_values)
             {
                 string_variable_label = Globals::enum_to_string<Globals::GlobalVariableName>(bc_value.first, Globals::ENUM_TO_STRING);
-                if (string_variable_label == "VOLT" && !this->context<TimeStep>()->get_transient_effect())
-                {
-                    continue; // Skip this variable
-                }
+                // if (string_variable_label == "VOLT" && !this->context<TimeStep>()->get_transient_effect())
+                // {
+                //     continue; // Skip this variable
+                // }
                 if (parent_object->has_variable(string_variable_label))
                 {
                     unsigned int variable_number = parent_object->variable_number(string_variable_label);
@@ -62,18 +62,18 @@ void BoundaryConditionsObject::constrain()
     }
 
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (!this->context<TimeStep>()->get_transient_effect() && parent_object->has_variable("VOLT"))
-    {
-        // Apply the constraint for the time derivative of the magnetic vector potential
-        std::vector<dof_id_type> dof_indices;
-        dof_map.local_variable_indices(dof_indices, mesh, parent_object->variable_number("VOLT"));
-        for (const auto &dof : dof_indices)
-        {
-            // Apply the constraint
-            DofConstraintRow constraint_row;
-            dof_map.add_constraint_row(dof, constraint_row, true);
-        }
-    }
+    // if (!this->context<TimeStep>()->get_transient_effect() && parent_object->has_variable("VOLT"))
+    // {
+    //     // Apply the constraint for the time derivative of the magnetic vector potential
+    //     std::vector<dof_id_type> dof_indices;
+    //     dof_map.local_variable_indices(dof_indices, mesh, parent_object->variable_number("VOLT"));
+    //     for (const auto &dof : dof_indices)
+    //     {
+    //         // Apply the constraint
+    //         DofConstraintRow constraint_row;
+    //         dof_map.add_constraint_row(dof, constraint_row, true);
+    //     }
+    // }
 }
 
 void BoundaryConditionsObject::check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object)

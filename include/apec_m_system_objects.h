@@ -40,6 +40,15 @@ public:
         return assembler;
     }
 
+    void release_subset_solve()
+    {
+        if (this->_subset != nullptr)
+        {
+            delete this->_subset;
+            this->_subset = nullptr;
+        }
+    }
+
 private:
     std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object;
     std::shared_ptr<AssemblerLinear> assembler;
