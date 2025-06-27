@@ -84,7 +84,7 @@ void SimulationController::read_mesh()
     MeshCommunication().broadcast(*mesh);
 
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh->prepare_for_use();
+    mesh->prepare_for_use(true);
     MeshTools::Modification::orient_elements(*mesh);
 
     // Print information about the mesh to the screen.
