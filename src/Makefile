@@ -5,7 +5,7 @@ CXX=mpicxx
 INCLUDES=-I../include -I/$(LIBMESH_DIR)/include -I/$(PETSC_DIR)/include -I/usr/include/vtk-9.1
 
 # Compiler flags (add -MMD -MP for dependency generation)
-CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -g -fopenmp -MMD -MP
+CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -O0 -g -fopenmp -MMD -MP
 
 # Linker flags, add your project-specific libraries not related to MPI
 LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -lpetsc -pthread -fopenmp \
