@@ -19,6 +19,7 @@
 // The definition of a geometric element
 #include "assembler.h"
 #include "apec_m_system_objects.h"
+#include "system_builder.h"
 
 using namespace libMesh;
 
@@ -242,7 +243,7 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 {
     bool update_matrix = false;
 
-    TransientLinearImplicitSystem *system = dynamic_cast<TransientLinearImplicitSystem *>(this->get_parent_object());
+    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
 
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
 
@@ -286,222 +287,250 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
     return update_matrix;
 }
 
-// void AssemblerLinear::compute_derived_quantities()
-// {
-//     const MeshBase &mesh = eq_sys.get_mesh();
-//     const unsigned int dim = mesh.mesh_dimension();
+void AssemblerSolution::compute_derived_quantities()
+{
+    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-//     ExplicitSystem &derived_quantities_system = eq_sys.get_system<ExplicitSystem>("NodalSolutionSystem");
-//     ExplicitSystem &derived_quantities_system_elem = eq_sys.get_system<ExplicitSystem>("ElementSolutionSystem");
-//     TransientLinearImplicitSystem &system = eq_sys.get_system<TransientLinearImplicitSystem>("ApecMLinearSystem");
+    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&solution_system->get_equation_systems());
 
-//     const DofMap &dof_map = system.get_dof_map();
-//     const DofMap &derived_quantities_system_dof_map = derived_quantities_system.get_dof_map();
-//     const DofMap &derived_quantities_system_elem_dof_map = derived_quantities_system_elem.get_dof_map();
+    std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
+    // ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
-//     std::vector<unsigned int> A_num_var;
-//     std::vector<unsigned int> B_num_var;
-//     std::vector<unsigned int> J_num_var;
-//     unsigned int v_var;
+    const MeshBase &mesh = solution_system->get_mesh();
 
-//     A_num_var.push_back(system.variable_number("A_z"));
-//     B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
-//     B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
-//     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
+    // Get a reference to the LinearImplicitSystem we are solving
+    const auto &comm = solution_system->comm();
 
-//     if (dim == 3)
-//     {
-//         A_num_var.push_back(system.variable_number("A_x"));
-//         A_num_var.push_back(system.variable_number("A_y"));
-//         v_var = system.variable_number("V");
+    // A reference to the DofMap object for this system.  The DofMap
+    // object handles the index translation from node and element numbers
+    // to degree of freedom numbers.  We will talk more about the DofMap
+    // in future examples.
+    // const DofMap &dof_map = system.get_dof_map();
+    const DofMap &solution_dof_map = solution_system->get_dof_map();
 
-//         B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
-//         J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
-//         J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
-//     }
+    auto session = this->context<Session>();
 
-//     std::shared_ptr<TimeStepper> timeStepper = eq_sys.parameters.get<std::shared_ptr<TimeStepper>>("time_stepper");
-//     Real dt = timeStepper->get_time_substep_dt();
-//     bool trans_effects = timeStepper->get_time_steps()[timeStepper->get_current_time_step()].get_transient_effect();
+    // std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
 
-//     // Storage for the stress dof indices on each element
-//     std::vector<std::vector<dof_id_type>> A_dof_indices_var;
-//     std::vector<std::vector<dof_id_type>> B_dof_indices_var;
-//     std::vector<std::vector<dof_id_type>> J_dof_indices_var;
-//     std::vector<dof_id_type> A_scalar_dof_indices_var;
-//     std::vector<dof_id_type> B_scalar_dof_indices_var;
-//     std::vector<dof_id_type> J_scalar_dof_indices_var;
-//     std::vector<dof_id_type> V_indices_var;
+    auto sys_name = solution_system->name();
 
-//     std::shared_ptr<LoadsObject> loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
+    const auto rank_str = std::to_string(comm.rank());
 
-//     DenseVector<Number> Ae;
-//     DenseVector<Number> Ae_dt;
-//     DenseVector<Number> Ve;
-//     DenseVector<Number> Ve_dt;
-//     DenseVector<Number> Be;
-//     // DenseVector<Number> Fe;
-//     DenseVector<Number> Be_q;
-//     DenseVector<Number> J_elem;
-//     DenseVector<Number> J_elem_A;
-//     DenseVector<Number> J_elem_V;
-//     // DenseVector<Number> B_elem;
-//     // DenseVector<Number> F_elem;
-//     char n_J_dofs;
-//     if (dim == 2)
-//     {
-//         n_J_dofs = 1;
-//         J_elem.resize(n_J_dofs);
-//         // B_elem.resize(2);
-//         // F_elem.resize(2);
-//     }
-//     else
-//     {
-//         n_J_dofs = 3;
-//         J_elem.resize(n_J_dofs);
-//         B_elem.resize(n_J_dofs);
-//         F_elem.resize(n_J_dofs);
-//     }
-//     char n_A_dofs;
-//     char n_V_dofs;
-//     char n_B_dofs;
-//     bool conductive;
-//     // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
-//     unsigned int local_elem_idx = 0;
-//     for (const auto &elem : mesh.active_local_element_ptr_range())
-//     {
-//         loads_object->local_elem_id = local_elem_idx;
+    std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
 
-//         if (elem->subdomain_id() == 1)
-//             conductive = true;
-//         else
-//             conductive = false;
+    std::vector<std::string> filenames = {};
 
-//         if (!trans_effects)
-//             conductive = false;
+    unsigned int matrices_set = 0;
+    if (sys_name == "NodalSolutionSystem")
+    {
+        filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
+    }
+    else if (sys_name == "ElementSolutionSystem")
+    {
+        filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
+    }
+    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
+    std::ifstream *solution_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
+    // std::vector<unsigned int> A_num_var;
+    // std::vector<unsigned int> B_num_var;
+    // std::vector<unsigned int> J_num_var;
+    // unsigned int v_var;
 
-//         loads_object->compute_material_properties(conductive);
+    // A_num_var.push_back(system.variable_number("A_z"));
+    // B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
+    // B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
+    // J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
 
-//         for (unsigned int var = 0; var < A_num_var.size(); var++)
-//         {
-//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-//         }
-//         for (unsigned int var = 0; var < B_num_var.size(); var++)
-//         {
-//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-//         }
-//         for (unsigned int var = 0; var < A_num_var.size(); var++)
-//         {
-//             dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-//             A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-//         }
-//         dof_map.dof_indices(elem, A_indices_var, a_var);
-//         n_A_dofs = std::size(A_indices_var);
-//         Ae.resize(n_A_dofs);
-//         Ae_dt.resize(n_A_dofs);
+    // if (dim == 3)
+    // {
+    //     A_num_var.push_back(system.variable_number("A_x"));
+    //     A_num_var.push_back(system.variable_number("A_y"));
+    //     v_var = system.variable_number("V");
 
-//         derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
-//         n_B_dofs = std::size(B_indices_var);
-//         Be_q.resize(n_B_dofs);
-//         Be.resize(n_B_dofs);
+    //     B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
+    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
+    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
+    // }
 
-//         derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
-//         B_elem.zero();
-//         F_elem.zero();
-//         if (conductive)
-//         {
-//             J_elem.zero();
-//             if (dim == 3)
-//             {
-//                 dof_map.dof_indices(elem, V_indices_var, v_var);
-//                 n_V_dofs = std::size(V_indices_var);
-//                 Ve.resize(n_V_dofs);
-//                 Ve_dt.resize(n_V_dofs);
-//                 J_elem_A.zero();
-//                 J_elem_V.zero();
-//             }
-//         }
+    // auto assembler = system.get_assembler();
+    // auto time_substep = this->context<TimeStep>()->get_active_substep();
+    // auto transient_effect = time_substep->get_transient_effect();
+    // Storage for the stress dof indices on each element
+    // std::vector<std::vector<dof_id_type>>
+    //     A_dof_indices_var;
+    // std::vector<std::vector<dof_id_type>> B_dof_indices_var;
+    // std::vector<std::vector<dof_id_type>> J_dof_indices_var;
+    // std::vector<dof_id_type> A_scalar_dof_indices_var;
+    // std::vector<dof_id_type> B_scalar_dof_indices_var;
+    // std::vector<dof_id_type> J_scalar_dof_indices_var;
+    // std::vector<dof_id_type> V_indices_var;
 
-//         for (std::size_t j = 0; j < n_A_dofs; j++)
-//         {
-//             Ae(j) = system.current_solution(A_indices_var[j]);
-//             if (conductive)
-//             {
-//                 Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+    // std::shared_ptr<LoadsObject> loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
 
-//                 if (dim == 3)
-//                 {
-//                     if (j < n_V_dofs)
-//                     {
-//                         Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
-//                     }
-//                 }
-//             }
-//         }
+    // DenseVector<Number> Ae;
+    // DenseVector<Number> Ae_dt;
+    // DenseVector<Number> Ve;
+    // DenseVector<Number> Ve_dt;
+    // DenseVector<Number> Be;
+    // // DenseVector<Number> Fe;
+    // DenseVector<Number> Be_q;
+    // DenseVector<Number> J_elem;
+    // DenseVector<Number> J_elem_A;
+    // DenseVector<Number> J_elem_V;
+    // // DenseVector<Number> B_elem;
+    // // DenseVector<Number> F_elem;
+    // char n_J_dofs;
+    // if (dim == 2)
+    // {
+    //     n_J_dofs = 1;
+    //     J_elem.resize(n_J_dofs);
+    //     // B_elem.resize(2);
+    //     // F_elem.resize(2);
+    // }
+    // else
+    // {
+    //     n_J_dofs = 3;
+    //     J_elem.resize(n_J_dofs);
+    //     B_elem.resize(n_J_dofs);
+    //     F_elem.resize(n_J_dofs);
+    // }
+    // char n_A_dofs;
+    // char n_V_dofs;
+    // char n_B_dofs;
+    // bool conductive;
+    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+    std::vector<dof_id_type> dof_indices;
 
-//         loads_object->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        solution_dof_map.dof_indices(elem, dof_indices);
+        // // Start logging the shape function initialization.
+        // // This is done through a simple function call with
+        // // the name of the event to log.
 
-//         // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
-//         // Note that this gives a discontinuous stress plot on element boundaries, which is
-//         // appropriate. We then also get the von Mises stress from the projected stress tensor.
-//         loads_object->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
+        // loads_object->local_elem_id = local_elem_idx;
 
-//         unsigned int j_qp_size;
-//         if (conductive)
-//         {
-//             if (dim == 2)
-//             {
-//                 j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
-//                 J_elem_A.resize(j_qp_size);
-//                 loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
-//                 for (char k = 0; k < n_J_dofs; k++)
-//                     for (char qp = 0; qp < j_qp_size; qp++)
-//                         J_elem(k) -= J_elem_A(qp + k) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
-//             }
-//             else
-//             {
-//                 j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
-//                 J_elem_A.resize(j_qp_size);
-//                 J_elem_V.resize(j_qp_size);
-//                 loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
-//                 loads_object->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
-//                 for (unsigned int k = 0; k < n_J_dofs; k++)
-//                     for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-//                         J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
-//             }
-//         }
-//         else
-//         {
-//             for (unsigned int k = 0; k < n_J_dofs; k++)
-//             {
-//                 J_elem(k) = loads_object->compute_js(k);
-//             }
-//         }
+        // if (elem->subdomain_id() == 1)
+        //     conductive = true;
+        // else
+        //     conductive = false;
 
-//         dof_id_type dof_index;
-//         // Loop over B_indices_var_values
-//         for (unsigned int i = 0; i < n_B_dofs; i++)
-//         {
-//             dof_index = B_indices_var[i];
-//             if ((derived_quantities_system.solution->first_local_index() <= dof_index) &&
-//                 (dof_index < derived_quantities_system.solution->last_local_index()))
-//                 derived_quantities_system.solution->set(dof_index, Be(i));
-//         }
+        // if (!trans_effects)
+        //     conductive = false;
 
-//         for (unsigned int i = 0; i < n_J_dofs; i++)
-//         {
-//             dof_index = J_indices_var[i];
-//             if ((derived_quantities_system_elem.solution->first_local_index() <= dof_index) &&
-//                 (dof_index < derived_quantities_system_elem.solution->last_local_index()))
-//                 derived_quantities_system_elem.solution->set(dof_index, J_elem(i));
-//         }
-//         // Should call close and update when we set vector entries directly
-//         local_elem_idx++;
-//     }
-//     derived_quantities_system.solution->close();
-//     derived_quantities_system.update();
-//     derived_quantities_system_elem.solution->close();
-//     derived_quantities_system_elem.update();
-// }
+        // loads_object->compute_material_properties(conductive);
+
+        // for (unsigned int var = 0; var < A_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // for (unsigned int var = 0; var < B_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // for (unsigned int var = 0; var < A_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // dof_map.dof_indices(elem, A_indices_var, a_var);
+        // n_A_dofs = std::size(A_indices_var);
+        // Ae.resize(n_A_dofs);
+        // Ae_dt.resize(n_A_dofs);
+
+        // derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
+        // n_B_dofs = std::size(B_indices_var);
+        // Be_q.resize(n_B_dofs);
+        // Be.resize(n_B_dofs);
+
+        // derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
+        // B_elem.zero();
+        // F_elem.zero();
+        // if (conductive)
+        // {
+        //     J_elem.zero();
+        //     if (dim == 3)
+        //     {
+        //         dof_map.dof_indices(elem, V_indices_var, v_var);
+        //         n_V_dofs = std::size(V_indices_var);
+        //         Ve.resize(n_V_dofs);
+        //         Ve_dt.resize(n_V_dofs);
+        //         J_elem_A.zero();
+        //         J_elem_V.zero();
+        //     }
+        // }
+
+        // for (std::size_t j = 0; j < n_A_dofs; j++)
+        // {
+        //     Ae(j) = system.current_solution(A_indices_var[j]);
+        //     if (conductive)
+        //     {
+        //         Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+
+        //         if (dim == 3)
+        //         {
+        //             if (j < n_V_dofs)
+        //             {
+        //                 Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
+        //             }
+        //         }
+        //     }
+        // }
+
+        // loads_object->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
+
+        // // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
+        // // Note that this gives a discontinuous stress plot on element boundaries, which is
+        // // appropriate. We then also get the von Mises stress from the projected stress tensor.
+        // loads_object->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
+
+        // unsigned int j_qp_size;
+        // if (conductive)
+        // {
+        //     if (dim == 2)
+        //     {
+        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
+        //         J_elem_A.resize(j_qp_size);
+        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
+        //         for (char k = 0; k < n_J_dofs; k++)
+        //             for (char qp = 0; qp < j_qp_size; qp++)
+        //                 J_elem(k) -= J_elem_A(qp + k) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
+        //     }
+        //     else
+        //     {
+        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
+        //         J_elem_A.resize(j_qp_size);
+        //         J_elem_V.resize(j_qp_size);
+        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
+        //         loads_object->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
+        //         for (unsigned int k = 0; k < n_J_dofs; k++)
+        //             for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
+        //                 J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
+        //     }
+        // }
+        // else
+        // {
+        //     for (unsigned int k = 0; k < n_J_dofs; k++)
+        //     {
+        //         J_elem(k) = loads_object->compute_js(k);
+        //     }
+        // }
+
+        // Loop over B_indices_var_values
+
+        elem_builder->read_element_vectors(*solution_input_file, matrices_set);
+        auto &solution_vector = elem_builder->get_vectors()[matrices_set][0];
+
+        for (unsigned int i = 0; i < dof_indices.size(); i++)
+        {
+            dof_id_type dof_index = dof_indices[i];
+            if ((solution_system->solution->first_local_index() <= dof_index) &&
+                (dof_index < solution_system->solution->last_local_index()))
+                solution_system->solution->set(dof_index, solution_vector(i));
+        }
+    }
+    solution_system->solution->close();
+    solution_system->update();
+}

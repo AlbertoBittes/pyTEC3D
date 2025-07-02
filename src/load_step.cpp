@@ -17,8 +17,8 @@ void LoadStep::read_from_file(const std::string &filename)
     auto *load_stepper = this->get_parent_object();
     auto eq_sys = load_stepper->get_parent_object();
     ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    ExplicitSystem &loads_sys = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
-    auto shared_loads_sys = std::shared_ptr<ExplicitSystem>(&loads_sys, [](ExplicitSystem *) {});
+    ApecMSolutionSystem &loads_sys = eq_sys->get_system<ApecMSolutionSystem>("ElementLoadsSystem");
+    auto shared_loads_sys = std::shared_ptr<ApecMSolutionSystem>(&loads_sys, [](ApecMSolutionSystem *) {});
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
     std::shared_ptr<LoadStep> prev_load_step = load_stepper->get_old_load_step();

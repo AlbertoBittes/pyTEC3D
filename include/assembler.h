@@ -29,12 +29,26 @@ public:
 
     bool check_update_matrix(Substep *time_substep);
 
-    // Example: access context objects as shared_ptrs
-    std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
-    std::shared_ptr<Session> session() { return this->context<Session>(); }
-
 private:
     Substep *prev_substep = nullptr; // Pointer to the previous substep
+};
+
+class AssemblerSolution
+    : public System::Assembly,
+      public FEMServiceAbstract<ElementTypeFactory, TimeStep, Session>,
+      public FEParentObjectBase<System>
+{
+public:
+    using ContextView = TypedContextView<ElementTypeFactory, TimeStep, Session>;
+    using FEParentObjectBase<System>::FEParentObjectBase;
+
+    // Constructor accepting a shared_ptr to a context view
+    AssemblerSolution(std::shared_ptr<ContextView> ctx_view = nullptr)
+        : FEMServiceAbstract<ElementTypeFactory, TimeStep, Session>(ctx_view)
+    {
+    }
+
+    void compute_derived_quantities();
 };
 
 #endif // ASSEMBLER_H

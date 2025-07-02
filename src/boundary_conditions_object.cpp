@@ -49,11 +49,11 @@ void BoundaryConditionsObject::constrain()
                     // if (mesh.comm().rank() != 0)
                     // {
                     unsigned int variable_number = parent_object->variable_number(string_variable_label);
-                    std::cout << "Applying boundary condition for variable: " << string_variable_label
-                              << " on node: " << node_ptr->id() << std::endl;
-                    std::cout << "Value: " << bc_value.second << std::endl;
-                    // Apply the constraint for the variable
-                    std::cout << "Variable number: " << variable_number << std::endl;
+                    // std::cout << "Applying boundary condition for variable: " << string_variable_label
+                    //           << " on node: " << node_ptr->id() << std::endl;
+                    // std::cout << "Value: " << bc_value.second << std::endl;
+                    // // Apply the constraint for the variable
+                    // std::cout << "Variable number: " << variable_number << std::endl;
 
                     dof_id_type dof_id = node_ptr->dof_number(parent_object->number(), variable_number, 0);
                     DofConstraintRow constraint_row;

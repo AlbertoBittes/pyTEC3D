@@ -36,6 +36,16 @@ public:
     void set_dt(Real d) { dt = d; }
     void set_solved(bool s) { solved = s; }
 
+    void print_solve_msg() const
+    {
+        libMesh::out << "Substep: " << get_index() + 1
+                     << ", Time: " << get_time()
+                     << ", dt: " << get_dt()
+                     << ", Write Results: " << get_write_results()
+                     << ", Transient Effect: " << get_transient_effect()
+                     << std::endl;
+    }
+
 private:
     unsigned int index;
     Real time;
@@ -86,6 +96,12 @@ public:
 
     void populate_time_step(std::shared_ptr<LoadStep> prev_load_step);
 
+    void print_solve_msg() const
+    {
+        libMesh::out << "Solving time step " << get_step() << std::endl;
+        libMesh::out << "Time increment at the end of time step: " << get_delta_t() << std::endl;
+        libMesh::out << "Number of time substeps: " << get_n_substeps() << std::endl;
+    }
     class Iterator;
     Iterator begin();
     Iterator end();

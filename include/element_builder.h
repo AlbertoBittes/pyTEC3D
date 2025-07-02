@@ -19,6 +19,7 @@
 #include "time_step.h"
 #include "session.h"
 #include "globals.h"
+#include "apec_m_system_objects.h"
 
 using namespace libMesh;
 
@@ -28,6 +29,13 @@ struct ElemData
     ElementType *element_type = nullptr; // Pointer to the element type
     unsigned int material_num = 0;       // Material number
     unsigned int real_constant_num = 0;  // Real constant number
+};
+
+struct MeshDataIndex
+{
+    unsigned int etype_num_index = 0;          // Element type number index
+    unsigned int material_num_index = 0;       // Material number index
+    unsigned int real_constants_num_index = 0; // Real constants number index
 };
 
 class ElementBuilder
@@ -43,8 +51,12 @@ public:
         : FEMServiceAbstract<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view),
           FEParentObjectBase<EquationSystems>(equation_systems),
           matrices(3),
-          vectors(2)
+          vectors(4)
     {
+        MeshBase &mesh = equation_systems->get_mesh();
+        mesh_data_index.etype_num_index = mesh.get_elem_integer_index("ansys_etype");
+        mesh_data_index.material_num_index = mesh.get_elem_integer_index("ansys_material_type");
+        mesh_data_index.real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
     }
 
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
@@ -107,22 +119,41 @@ public:
     {
         return elem_data;
     }
-    void set_element_data(Elem *elem, ElementType *element_type, unsigned int material_num, unsigned int real_constant_num)
+    void set_element_data(Elem *elem)
     {
+        auto element_types = this->context<ElementTypeFactory>();
+
+        elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(mesh_data_index.etype_num_index));
+        elem_data.material_num = elem->get_extra_integer(mesh_data_index.material_num_index);
+        elem_data.real_constant_num = elem->get_extra_integer(mesh_data_index.real_constants_num_index);
+
         elem_data.elem = elem;
-        elem_data.element_type = element_type;
-        elem_data.material_num = material_num;
-        elem_data.real_constant_num = real_constant_num;
     }
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
     bool check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view = nullptr);
 
+    void build_write_solution_vectors(SystemType sys_type);
+
+    void build_solution_vector(SystemType sys_type);
+
+    void build_nodal_solution_vector();
+
+    void build_element_solution_vector();
+
+    void build_solid97_nodal_solution_vector();
+    void build_solid236_nodal_solution_vector();
+    void build_plane13_nodal_solution_vector();
+    void build_solid97_element_solution_vector();
+    void build_solid236_element_solution_vector();
+    void build_plane13_element_solution_vector();
+
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices
     std::vector<std::vector<DenseVector<Number>>> vectors;  // Element vectors
     ElemData elem_data;                                     // Element data structure
+    MeshDataIndex mesh_data_index;                          // Mesh data structure
 };
 
 #endif // ELEMENT_BUILDER_H

@@ -49,7 +49,7 @@ class VTKIO_Updated : public MeshInput<MeshBase>,
 public:
     explicit VTKIO_Updated(MeshBase &mesh);
 
-    explicit VTKIO_Updated(const MeshBase &mesh, ExplicitSystem *sys);
+    explicit VTKIO_Updated(const MeshBase &mesh, ApecMSolutionSystem *sys);
 
     // New constructor: calls base constructor and then read_apec_m_model
     VTKIO_Updated(MeshBase &mesh, const std::string &mesh_filepath)
@@ -104,7 +104,7 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid;
 
     bool _compress;
-    ExplicitSystem *_sys;
+    ApecMSolutionSystem *_sys;
     std::map<dof_id_type, dof_id_type> _local_node_map;
 
     struct ElementMaps

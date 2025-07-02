@@ -189,14 +189,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
 
-    unsigned int etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-    unsigned int mat_num_index = mesh.get_elem_integer_index("ansys_material_type");
-    unsigned int real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
-
-    dof_id_type etype_num;
-    dof_id_type material_num;
-    dof_id_type real_constant_num;
-
     auto session = this->context<Session>();
 
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
@@ -205,8 +197,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     // e.g. new materials, new real constants, nonlinear elements.
 
     const auto rank_str = std::to_string(comm.rank());
-
-    auto element_types = this->context<ElementTypeFactory>();
 
     std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
     // Handle renaming of rhs file if it exists
@@ -223,7 +213,8 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     {
         std::vector<std::string> filenames = {
             "mtrx_" + rank_str + ".temp",
-            "der_mtrx_" + rank_str + ".temp",
+            "nodal_sol_mtrx_" + rank_str + ".temp",
+            "elem_sol_mtrx_" + rank_str + ".temp",
             "base_rhs_" + rank_str + ".temp"};
 
         // Open all files using the session method
@@ -231,8 +222,9 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
         // Downcast to use as ofstream
         std::ofstream *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
-        std::ofstream *der_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
-        std::ofstream *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+        std::ofstream *nodal_sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
+        std::ofstream *elem_sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+        std::ofstream *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[3].get());
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
@@ -240,16 +232,9 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
             // Start logging the shape function initialization.
             // This is done through a simple function call with
             // the name of the event to log.
-
-            etype_num = elem->get_extra_integer(etype_num_index);
-            material_num = elem->get_extra_integer(mat_num_index);
-            real_constant_num = elem->get_extra_integer(real_constants_num_index);
-
-            ElementType *elem_type = element_types->get_element_type(etype_num);
-
             // Do this elsewhere, logically must no stay here
             // load_step->get_materials()->compute_material_properties(elem->id(), conductive);
-            this->set_element_data(elem, elem_type, material_num, real_constant_num);
+            this->set_element_data(elem);
 
             this->build_element();
 
@@ -257,7 +242,9 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
             // Here the function to write the matrices and vectors down to file
             this->write_element_matrices(*mtrx_output_file, 0);
 
-            this->write_element_matrices(*der_mtrx_output_file, 1);
+            this->write_element_matrices(*nodal_sol_mtrx_output_file, 1);
+
+            this->write_element_matrices(*elem_sol_mtrx_output_file, 2);
 
             this->write_element_vectors(*base_rhs_output_file, 0);
         }
@@ -283,13 +270,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         // the name of the event to log.
         dof_map.dof_indices(elem, dof_indices);
 
-        etype_num = elem->get_extra_integer(etype_num_index);
-        material_num = elem->get_extra_integer(mat_num_index);
-        real_constant_num = elem->get_extra_integer(real_constants_num_index);
-
-        ElementType *elem_type = element_types->get_element_type(etype_num);
-
-        this->set_element_data(elem, elem_type, material_num, real_constant_num);
+        this->set_element_data(elem);
 
         this->read_element_vectors(*base_rhs_input_file, 0);
 
@@ -722,4 +703,314 @@ void ElementBuilder::build_plane13_rhs()
 
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
         Fe(dof_i) *= js;
+}
+
+void ElementBuilder::build_nodal_solution_vector()
+{
+    // Build the nodal solution vector
+    // This is a placeholder for the actual implementation
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13_nodal_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::build_solid97_nodal_solution_vector()
+{
+    auto equation_systems = this->get_parent_object();
+
+    ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    // Get a constant reference to the mesh object.
+
+    const DofMap &dof_map = system.get_dof_map();
+
+    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+}
+
+void ElementBuilder::build_element_solution_vector()
+{
+    // Build the element solution vector
+    // This is a placeholder for the actual implementation
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_element_solution_vector();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_element_solution_vector();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13_element_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::build_solution_vector(SystemType sys_type)
+{
+    switch (sys_type)
+    {
+    case SystemType::NODAL_EXPLICIT:
+        build_nodal_solution_vector();
+        break;
+    case SystemType::ELEMENT_EXPLICIT:
+        build_element_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("System type not supported: " + std::to_string(static_cast<unsigned int>(sys_type)));
+    }
+}
+
+void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
+{
+    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+
+    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&solution_system->get_equation_systems());
+
+    ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
+    const MeshBase &mesh = system.get_mesh();
+
+    // Get a reference to the LinearImplicitSystem we are solving
+    const auto &comm = system.comm();
+
+    // A reference to the DofMap object for this system.  The DofMap
+    // object handles the index translation from node and element numbers
+    // to degree of freedom numbers.  We will talk more about the DofMap
+    // in future examples.
+    const DofMap &dof_map = system.get_dof_map();
+    const DofMap &solution_dof_map = solution_system->get_dof_map();
+
+    auto session = this->context<Session>();
+
+    auto time_substep = this->context<TimeStep>()->get_active_substep();
+
+    auto sys_name = system.name();
+
+    const auto rank_str = std::to_string(comm.rank());
+
+    std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+
+    std::vector<std::string> filenames = {};
+
+    unsigned int matrices_set = 0;
+    if (sys_name == "NodalSolutionSystem")
+    {
+        filenames.push_back("nodal_sol_mtrx_" + rank_str + ".temp");
+        matrices_set = 1;
+    }
+    else if (sys_name == "ElementSolutionSystem")
+    {
+        filenames.push_back("elem_sol_mtrx_" + rank_str + ".temp");
+        matrices_set = 2;
+    }
+    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
+
+    auto element_types = this->context<ElementTypeFactory>();
+
+    // std::vector<unsigned int> A_num_var;
+    // std::vector<unsigned int> B_num_var;
+    // std::vector<unsigned int> J_num_var;
+    // unsigned int v_var;
+
+    // A_num_var.push_back(system.variable_number("A_z"));
+    // B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
+    // B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
+    // J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
+
+    // if (dim == 3)
+    // {
+    //     A_num_var.push_back(system.variable_number("A_x"));
+    //     A_num_var.push_back(system.variable_number("A_y"));
+    //     v_var = system.variable_number("V");
+
+    //     B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
+    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
+    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
+    // }
+
+    // auto assembler = system.get_assembler();
+    // auto time_substep = this->context<TimeStep>()->get_active_substep();
+    // auto transient_effect = time_substep->get_transient_effect();
+    // Storage for the stress dof indices on each element
+    // std::vector<std::vector<dof_id_type>>
+    //     A_dof_indices_var;
+    // std::vector<std::vector<dof_id_type>> B_dof_indices_var;
+    // std::vector<std::vector<dof_id_type>> J_dof_indices_var;
+    // std::vector<dof_id_type> A_scalar_dof_indices_var;
+    // std::vector<dof_id_type> B_scalar_dof_indices_var;
+    // std::vector<dof_id_type> J_scalar_dof_indices_var;
+    // std::vector<dof_id_type> V_indices_var;
+
+    // std::shared_ptr<LoadsObject> loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
+
+    // DenseVector<Number> Ae;
+    // DenseVector<Number> Ae_dt;
+    // DenseVector<Number> Ve;
+    // DenseVector<Number> Ve_dt;
+    // DenseVector<Number> Be;
+    // // DenseVector<Number> Fe;
+    // DenseVector<Number> Be_q;
+    // DenseVector<Number> J_elem;
+    // DenseVector<Number> J_elem_A;
+    // DenseVector<Number> J_elem_V;
+    // // DenseVector<Number> B_elem;
+    // // DenseVector<Number> F_elem;
+    // char n_J_dofs;
+    // if (dim == 2)
+    // {
+    //     n_J_dofs = 1;
+    //     J_elem.resize(n_J_dofs);
+    //     // B_elem.resize(2);
+    //     // F_elem.resize(2);
+    // }
+    // else
+    // {
+    //     n_J_dofs = 3;
+    //     J_elem.resize(n_J_dofs);
+    //     B_elem.resize(n_J_dofs);
+    //     F_elem.resize(n_J_dofs);
+    // }
+    // char n_A_dofs;
+    // char n_V_dofs;
+    // char n_B_dofs;
+    // bool conductive;
+    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
+    std::vector<dof_id_type> dof_indices;
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        dof_map.dof_indices(elem, dof_indices);
+        // Start logging the shape function initialization.
+        // This is done through a simple function call with
+        // the name of the event to log.
+
+        this->set_element_data(elem);
+
+        this->build_solution_vector(sys_type);
+        // loads_object->local_elem_id = local_elem_idx;
+
+        // if (elem->subdomain_id() == 1)
+        //     conductive = true;
+        // else
+        //     conductive = false;
+
+        // if (!trans_effects)
+        //     conductive = false;
+
+        // loads_object->compute_material_properties(conductive);
+
+        // for (unsigned int var = 0; var < A_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // for (unsigned int var = 0; var < B_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // for (unsigned int var = 0; var < A_num_var.size(); var++)
+        // {
+        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
+        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
+        // }
+        // dof_map.dof_indices(elem, A_indices_var, a_var);
+        // n_A_dofs = std::size(A_indices_var);
+        // Ae.resize(n_A_dofs);
+        // Ae_dt.resize(n_A_dofs);
+
+        // derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
+        // n_B_dofs = std::size(B_indices_var);
+        // Be_q.resize(n_B_dofs);
+        // Be.resize(n_B_dofs);
+
+        // derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
+        // B_elem.zero();
+        // F_elem.zero();
+        // if (conductive)
+        // {
+        //     J_elem.zero();
+        //     if (dim == 3)
+        //     {
+        //         dof_map.dof_indices(elem, V_indices_var, v_var);
+        //         n_V_dofs = std::size(V_indices_var);
+        //         Ve.resize(n_V_dofs);
+        //         Ve_dt.resize(n_V_dofs);
+        //         J_elem_A.zero();
+        //         J_elem_V.zero();
+        //     }
+        // }
+
+        // for (std::size_t j = 0; j < n_A_dofs; j++)
+        // {
+        //     Ae(j) = system.current_solution(A_indices_var[j]);
+        //     if (conductive)
+        //     {
+        //         Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
+
+        //         if (dim == 3)
+        //         {
+        //             if (j < n_V_dofs)
+        //             {
+        //                 Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
+        //             }
+        //         }
+        //     }
+        // }
+
+        // loads_object->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
+
+        // // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
+        // // Note that this gives a discontinuous stress plot on element boundaries, which is
+        // // appropriate. We then also get the von Mises stress from the projected stress tensor.
+        // loads_object->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
+
+        // unsigned int j_qp_size;
+        // if (conductive)
+        // {
+        //     if (dim == 2)
+        //     {
+        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
+        //         J_elem_A.resize(j_qp_size);
+        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
+        //         for (char k = 0; k < n_J_dofs; k++)
+        //             for (char qp = 0; qp < j_qp_size; qp++)
+        //                 J_elem(k) -= J_elem_A(qp + k) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
+        //     }
+        //     else
+        //     {
+        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
+        //         J_elem_A.resize(j_qp_size);
+        //         J_elem_V.resize(j_qp_size);
+        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
+        //         loads_object->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
+        //         for (unsigned int k = 0; k < n_J_dofs; k++)
+        //             for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
+        //                 J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
+        //     }
+        // }
+        // else
+        // {
+        //     for (unsigned int k = 0; k < n_J_dofs; k++)
+        //     {
+        //         J_elem(k) = loads_object->compute_js(k);
+        //     }
+        // }
+    }
 }
