@@ -726,10 +726,6 @@ void ElementBuilder::build_nodal_solution_vector()
 void ElementBuilder::build_solid97_nodal_solution_vector()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-    auto time_step = this->context<TimeStep>();
-    bool conductive = this->elem_data.element_type->is_conductive();
-
     fill_solution_vector_support(main_sys->current_local_solution.get());
 
     // Get Ae
