@@ -62,17 +62,17 @@ void SystemBuilder::init_variables()
         auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
 
         // Get variable info for this variable
-        const auto &var_info = elem_type->get_variable_information();
+        auto &var_info = elem_type->get_variable_information();
         auto it = var_info.find(pair.first);
         if (it == var_info.end())
             continue; // Skip if variable info not found
 
-        const VariableData &data = it->second;
+        VariableData &data = it->second;
         if (!data.is_active)
             continue; // Skip inactive variables
 
         // Add the variable to the system, specifying subdomains
-        system->add_variable(
+        data.system_var_num = system->add_variable(
             variable_string,
             data.order,
             data.fe_family,

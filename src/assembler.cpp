@@ -320,14 +320,16 @@ void AssemblerSolution::compute_derived_quantities()
 
     std::vector<std::string> filenames = {};
 
-    unsigned int matrices_set = 0;
+    unsigned int vec_set = 0;
     if (sys_name == "NodalSolutionSystem")
     {
         filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
+        vec_set = 2;
     }
     else if (sys_name == "ElementSolutionSystem")
     {
         filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
+        vec_set = 3;
     }
     auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
     std::ifstream *solution_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
@@ -520,8 +522,8 @@ void AssemblerSolution::compute_derived_quantities()
 
         // Loop over B_indices_var_values
 
-        elem_builder->read_element_vectors(*solution_input_file, matrices_set);
-        auto &solution_vector = elem_builder->get_vectors()[matrices_set][0];
+        elem_builder->read_element_vectors(*solution_input_file, vec_set);
+        auto &solution_vector = elem_builder->get_vectors()[vec_set][0];
 
         for (unsigned int i = 0; i < dof_indices.size(); i++)
         {

@@ -168,14 +168,10 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     // PerfLog perf_log("Matrix Assembly");
 
     auto equation_systems = this->get_parent_object();
-
-    ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     // Get a constant reference to the mesh object.
-    const MeshBase &mesh = system.get_mesh();
-
-    const DofMap &dof_map = system.get_dof_map();
+    const MeshBase &mesh = equation_systems->get_mesh();
     // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = system.comm();
+    const auto &comm = equation_systems->comm();
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
@@ -228,7 +224,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            dof_map.dof_indices(elem, dof_indices);
+            main_dof_map->dof_indices(elem, dof_indices);
             // Start logging the shape function initialization.
             // This is done through a simple function call with
             // the name of the event to log.
@@ -268,7 +264,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
-        dof_map.dof_indices(elem, dof_indices);
+        main_dof_map->dof_indices(elem, dof_indices);
 
         this->set_element_data(elem);
 
@@ -729,14 +725,35 @@ void ElementBuilder::build_nodal_solution_vector()
 
 void ElementBuilder::build_solid97_nodal_solution_vector()
 {
-    auto equation_systems = this->get_parent_object();
+    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-    ApecMLinearSystem &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    // Get a constant reference to the mesh object.
+    auto time_step = this->context<TimeStep>();
+    bool conductive = this->elem_data.element_type->is_conductive();
 
-    const DofMap &dof_map = system.get_dof_map();
+    fill_solution_vector_support(main_sys->current_local_solution.get());
 
-    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    // Get Ae
+    DenseVector<Number> Ae;
+    for (unsigned int k = 0; k < 3; k++)
+    {
+        Ae.append(solution_vector_support.sol_vectors[k]);
+    }
+    auto &AAe = this->matrices[1][0];
+    DenseVector<Number> Be_q(AAe.m());
+    AAe.vector_mult(Be_q, Ae);
+    auto &Me = this->matrices[1][1];
+    auto &Be = this->vectors[2][0];
+    Me.cholesky_solve(Be_q, Be);
+    // fill_solution_vector_support(main_sys->old_local_solution);
+
+    // // Get Ae
+    // DenseVector<Number> Ae_old;
+    // for (unsigned int k = 0; k < 3; k++)
+    // {
+    //     Ae_old.append(solution_vector_support.sol_vectors[k]);
+    // }
+    // Ae_dt.add(-1.0, Ae_old);
+    // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
 }
 
 void ElementBuilder::build_element_solution_vector()
@@ -806,20 +823,32 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
 
     std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
 
-    std::vector<std::string> filenames = {};
+    std::vector<std::string> inp_filenames = {};
+    std::vector<std::string> out_filenames = {};
 
     unsigned int matrices_set = 0;
+    unsigned int vec_set = 0;
     if (sys_name == "NodalSolutionSystem")
     {
-        filenames.push_back("nodal_sol_mtrx_" + rank_str + ".temp");
+        inp_filenames.push_back("nodal_sol_mtrx_" + rank_str + ".temp");
+        out_filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
         matrices_set = 1;
+        vec_set = 2;
     }
     else if (sys_name == "ElementSolutionSystem")
     {
-        filenames.push_back("elem_sol_mtrx_" + rank_str + ".temp");
+        inp_filenames.push_back("elem_sol_mtrx_" + rank_str + ".temp");
+        out_filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
         matrices_set = 2;
+        vec_set = 3;
     }
-    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
+    auto inp_streams = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+
+    std::ifstream *solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
+
+    auto out_streams = session->open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
+
+    std::ofstream *solution_vec_output_file = dynamic_cast<std::ofstream *>(out_streams[0].get());
 
     auto element_types = this->context<ElementTypeFactory>();
 
@@ -895,14 +924,17 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        dof_map.dof_indices(elem, dof_indices);
         // Start logging the shape function initialization.
         // This is done through a simple function call with
         // the name of the event to log.
 
         this->set_element_data(elem);
 
+        this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
+
         this->build_solution_vector(sys_type);
+
+        this->write_element_vectors(*solution_vec_output_file, vec_set);
         // loads_object->local_elem_id = local_elem_idx;
 
         // if (elem->subdomain_id() == 1)
@@ -1013,4 +1045,7 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
         //     }
         // }
     }
+    // Close file streams
+    solution_mtrx_input_file->close();
+    solution_vec_output_file->close();
 }

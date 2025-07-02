@@ -56,6 +56,7 @@ struct VariableData
     Globals::APIVariableName api_label;
     FEFamily fe_family;
     Order order;
+    unsigned int system_var_num = 0;
 };
 
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
@@ -102,6 +103,10 @@ public:
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
     inline const VariableInformation &get_variable_information() const
+    {
+        return variable_info;
+    }
+    inline VariableInformation &get_variable_information()
     {
         return variable_info;
     }
