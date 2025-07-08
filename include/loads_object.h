@@ -10,18 +10,16 @@
 
 using namespace libMesh;
 
-class LoadStep;
-
 // Type aliases for loads
 typedef std::unordered_map<dof_id_type, std::vector<Real>> ElementLoad;
 typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
-class LoadsObject : public FEDataObjectMap<ApecMSolutionSystem>
+class LoadsObject : public FEDataObjectMap<ExplicitSystem>
 {
 public:
     // Constructor that calls the exact FEDataObjectMap constructor you specified
-    LoadsObject(std::ifstream &file, std::shared_ptr<ApecMSolutionSystem> external_map)
-        : FEDataObjectMap<ApecMSolutionSystem>(external_map)
+    LoadsObject(std::ifstream &file, std::shared_ptr<ExplicitSystem> external_map)
+        : FEDataObjectMap<ExplicitSystem>(external_map)
     {
         this->read_data(file); // Call read_data to initialize the data map
         // No additional initialization

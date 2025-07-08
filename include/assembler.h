@@ -2,10 +2,12 @@
 #define ASSEMBLER_H
 
 #include "fem_service_abstract.h"
+#include "fem_data_repository.h"
 #include "fe_parent_object.h"
 #include "time_step.h"
 #include "session.h"
-#include "libmesh/system.h"
+#include "element_types.h"
+#include <libmesh/system.h>
 
 using namespace libMesh;
 
@@ -48,6 +50,7 @@ public:
     {
     }
 
+    void assemble() override {};
     void compute_derived_quantities();
 };
 

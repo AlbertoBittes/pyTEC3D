@@ -1,6 +1,7 @@
 #include "simulation_controller.h"
 #include "vtkio_updated.h"
 #include "element_types.h"
+#include "element_builder.h"
 #include "system_builder.h"
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
@@ -94,8 +95,8 @@ void SimulationController::set_load_step_data(ApecMLinearSystem &system)
     libMesh::out << "Setting load step data..." << std::endl;
 
     auto element_builder_view = std::make_shared<
-        TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
-        TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+        TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>>(
+        TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>::from(
             apec_m_model_data,
             load_step));
     auto element_builder = equation_systems->get_element_builder();

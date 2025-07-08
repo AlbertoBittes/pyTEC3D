@@ -13,6 +13,20 @@
 #include "loads_object.h"
 #include "apec_m_system_objects.h"
 
+ElementBuilder::ElementBuilder(std::shared_ptr<ContextView> ctx_view, EquationSystems *equation_systems)
+    : FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view),
+      FEParentObjectBase<EquationSystems>(equation_systems),
+      matrices(3),
+      vectors(4)
+{
+    MeshBase &mesh = equation_systems->get_mesh();
+    mesh_data_index.etype_num_index = mesh.get_elem_integer_index("ansys_etype");
+    mesh_data_index.material_num_index = mesh.get_elem_integer_index("ansys_material_type");
+    mesh_data_index.real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
+    main_sys = &equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    main_dof_map = &main_sys->get_dof_map();
+}
+
 void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
     this->vectors[vectors_set].resize(sizes_map->size());
@@ -28,8 +42,8 @@ void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *size
 {
 
     unsigned int num_matrices = static_cast<unsigned int>(sizes_map->size());
-    this->matrices[matrices_set].resize(sizes_map->size());
-    for (unsigned int i = 0; i < sizes_map->size(); ++i)
+    this->matrices[matrices_set].resize(num_matrices);
+    for (unsigned int i = 0; i < num_matrices; ++i)
     {
         const auto &size_pair = (*sizes_map)[i];
         unsigned int rows = size_pair[0];
@@ -156,6 +170,29 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
 
         // Read the actual values into the container's values vector
         inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(Number));
+    }
+}
+
+void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution)
+{
+    solution_vector_support.clear();
+
+    auto active_vars = elem_data.element_type->get_active_variables(Globals::VariableCategory::DOFVariables);
+    for (const auto &var_enum : active_vars)
+    {
+        unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
+        solution_vector_support.var_nums.push_back(system_var_num);
+
+        std::vector<dof_id_type> dof_indices;
+        main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
+        solution_vector_support.dof_indices_var.push_back(dof_indices);
+
+        DenseVector<Number> local_sol(dof_indices.size());
+        for (unsigned int i = 0; i < dof_indices.size(); ++i)
+        {
+            local_sol(i) = solution->el(dof_indices[i]);
+        }
+        solution_vector_support.sol_vectors.push_back(local_sol);
     }
 }
 
@@ -734,6 +771,7 @@ void ElementBuilder::build_solid97_nodal_solution_vector()
     {
         Ae.append(solution_vector_support.sol_vectors[k]);
     }
+
     auto &AAe = this->matrices[1][0];
     DenseVector<Number> Be_q(AAe.m());
     AAe.vector_mult(Be_q, Ae);
@@ -750,6 +788,103 @@ void ElementBuilder::build_solid97_nodal_solution_vector()
     // }
     // Ae_dt.add(-1.0, Ae_old);
     // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
+}
+
+void ElementBuilder::build_solid236_nodal_solution_vector()
+{
+    libmesh_error_msg("build_solid236_nodal_solution_vector is not implemented yet.");
+}
+
+void ElementBuilder::build_plane13_nodal_solution_vector()
+{
+    libmesh_error_msg("build_plane13_nodal_solution_vector is not implemented yet.");
+}
+
+void ElementBuilder::build_solid97_element_solution_vector()
+{
+    // Materials could be retrieved in another point
+    auto materials = this->context<MaterialsObject>();
+
+    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
+
+    auto &rs_matrix = materials->get_rs_matrix();
+
+    unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+
+    auto &Ve = solution_vector_support.sol_vectors[volt_var_num];
+
+    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    fill_solution_vector_support(main_sys->current_local_solution.get());
+
+    // Get Ae
+    DenseVector<Number> Ae;
+    for (unsigned int k = 0; k < 3; k++)
+    {
+        Ae.append(solution_vector_support.sol_vectors[k]);
+    }
+
+    fill_solution_vector_support(main_sys->old_local_solution);
+
+    // Get Ae
+    DenseVector<Number> Ae_old;
+    for (unsigned int k = 0; k < 3; k++)
+    {
+        Ae_old.append(solution_vector_support.sol_vectors[k]);
+    }
+    auto &Ve_old = solution_vector_support.sol_vectors[volt_var_num];
+
+    DenseVector<Number> Ae_dt(Ae.size());
+
+    for (unsigned int k = 0; k < Ae.size(); k++)
+    {
+        Ae_dt(k) = (Ae(k) - Ae_old(k)) / solution_vector_support.dt;
+    }
+
+    DenseVector<Number> Ve_dt(Ve.size());
+    for (unsigned int k = 0; k < Ve.size(); k++)
+    {
+        Ve_dt(k) = (Ve(k) - Ve_old(k)) / solution_vector_support.dt;
+    }
+
+    auto &JAe = this->matrices[2][0];
+    auto &JVe = this->matrices[2][1];
+
+    unsigned int j_qp_size = JAe.m();
+
+    DenseVector<Number> J_elem_A(j_qp_size);
+    JAe.vector_mult(J_elem_A, Ae_dt);
+
+    DenseVector<Number> J_elem_V(j_qp_size);
+    JVe.vector_mult(J_elem_V, Ve_dt);
+
+    auto &J_elem = this->vectors[3][0];
+
+    unsigned int n_qp = j_qp_size / 3;
+
+    for (unsigned int k = 0; k < 3; k++)
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / rs_matrix[k] / n_qp;
+    // fill_solution_vector_support(main_sys->old_local_solution);
+
+    // // Get Ae
+    // DenseVector<Number> Ae_old;
+    // for (unsigned int k = 0; k < 3; k++)
+    // {
+    //     Ae_old.append(solution_vector_support.sol_vectors[k]);
+    // }
+    // Ae_dt.add(-1.0, Ae_old);
+    // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
+}
+
+void ElementBuilder::build_solid236_element_solution_vector()
+{
+    // This is a placeholder for the actual implementation
+    libmesh_error_msg("build_solid236_element_solution_vector is not implemented yet.");
+}
+void ElementBuilder::build_plane13_element_solution_vector()
+{
+    // This is a placeholder for the actual implementation
+    libmesh_error_msg("build_plane13_element_solution_vector is not implemented yet.");
 }
 
 void ElementBuilder::build_element_solution_vector()
@@ -806,12 +941,12 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
     // in future examples.
-    const DofMap &dof_map = system.get_dof_map();
-    const DofMap &solution_dof_map = solution_system->get_dof_map();
+    // const DofMap &dof_map = system.get_dof_map();
+    // const DofMap &solution_dof_map = solution_system->get_dof_map();
 
     auto session = this->context<Session>();
 
-    auto time_substep = this->context<TimeStep>()->get_active_substep();
+    // auto time_substep = this->context<TimeStep>()->get_active_substep();
 
     auto sys_name = system.name();
 
@@ -848,74 +983,6 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
 
     auto element_types = this->context<ElementTypeFactory>();
 
-    // std::vector<unsigned int> A_num_var;
-    // std::vector<unsigned int> B_num_var;
-    // std::vector<unsigned int> J_num_var;
-    // unsigned int v_var;
-
-    // A_num_var.push_back(system.variable_number("A_z"));
-    // B_num_var.push_back(derived_quantities_system.variable_number("B_x"));
-    // B_num_var.push_back(derived_quantities_system.variable_number("B_y"));
-    // J_num_var.push_back(derived_quantities_system.variable_number("J_elem_z"));
-
-    // if (dim == 3)
-    // {
-    //     A_num_var.push_back(system.variable_number("A_x"));
-    //     A_num_var.push_back(system.variable_number("A_y"));
-    //     v_var = system.variable_number("V");
-
-    //     B_num_var.push_back(derived_quantities_system.variable_number("B_z"));
-    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_x"));
-    //     J_num_var.push_back(derived_quantities_system.variable_number("J_elem_y"));
-    // }
-
-    // auto assembler = system.get_assembler();
-    // auto time_substep = this->context<TimeStep>()->get_active_substep();
-    // auto transient_effect = time_substep->get_transient_effect();
-    // Storage for the stress dof indices on each element
-    // std::vector<std::vector<dof_id_type>>
-    //     A_dof_indices_var;
-    // std::vector<std::vector<dof_id_type>> B_dof_indices_var;
-    // std::vector<std::vector<dof_id_type>> J_dof_indices_var;
-    // std::vector<dof_id_type> A_scalar_dof_indices_var;
-    // std::vector<dof_id_type> B_scalar_dof_indices_var;
-    // std::vector<dof_id_type> J_scalar_dof_indices_var;
-    // std::vector<dof_id_type> V_indices_var;
-
-    // std::shared_ptr<LoadsObject> loads_object = eq_sys.parameters.get<std::shared_ptr<LoadsObject>>("loads_object");
-
-    // DenseVector<Number> Ae;
-    // DenseVector<Number> Ae_dt;
-    // DenseVector<Number> Ve;
-    // DenseVector<Number> Ve_dt;
-    // DenseVector<Number> Be;
-    // // DenseVector<Number> Fe;
-    // DenseVector<Number> Be_q;
-    // DenseVector<Number> J_elem;
-    // DenseVector<Number> J_elem_A;
-    // DenseVector<Number> J_elem_V;
-    // // DenseVector<Number> B_elem;
-    // // DenseVector<Number> F_elem;
-    // char n_J_dofs;
-    // if (dim == 2)
-    // {
-    //     n_J_dofs = 1;
-    //     J_elem.resize(n_J_dofs);
-    //     // B_elem.resize(2);
-    //     // F_elem.resize(2);
-    // }
-    // else
-    // {
-    //     n_J_dofs = 3;
-    //     J_elem.resize(n_J_dofs);
-    //     B_elem.resize(n_J_dofs);
-    //     F_elem.resize(n_J_dofs);
-    // }
-    // char n_A_dofs;
-    // char n_V_dofs;
-    // char n_B_dofs;
-    // bool conductive;
-    // std::set<subdomain_id_type> *conductive_subdomain = eq_sys.parameters.get<std::set<subdomain_id_type> *>("conductive_subdomain");
     std::vector<dof_id_type> dof_indices;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
@@ -924,122 +991,13 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
         // This is done through a simple function call with
         // the name of the event to log.
 
-        this->set_element_data(elem);
+        this->set_element_data_dt(elem);
 
         this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
 
         this->build_solution_vector(sys_type);
 
         this->write_element_vectors(*solution_vec_output_file, vec_set);
-        // loads_object->local_elem_id = local_elem_idx;
-
-        // if (elem->subdomain_id() == 1)
-        //     conductive = true;
-        // else
-        //     conductive = false;
-
-        // if (!trans_effects)
-        //     conductive = false;
-
-        // loads_object->compute_material_properties(conductive);
-
-        // for (unsigned int var = 0; var < A_num_var.size(); var++)
-        // {
-        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        // }
-        // for (unsigned int var = 0; var < B_num_var.size(); var++)
-        // {
-        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        // }
-        // for (unsigned int var = 0; var < A_num_var.size(); var++)
-        // {
-        //     dof_map.dof_indices(elem, A_scalar_dof_indices_var, A_num_var[var]);
-        //     A_dof_indices_var.push_back(A_scalar_dof_indices_var);
-        // }
-        // dof_map.dof_indices(elem, A_indices_var, a_var);
-        // n_A_dofs = std::size(A_indices_var);
-        // Ae.resize(n_A_dofs);
-        // Ae_dt.resize(n_A_dofs);
-
-        // derived_quantities_system_dof_map.dof_indices(elem, B_indices_var, b_n_var);
-        // n_B_dofs = std::size(B_indices_var);
-        // Be_q.resize(n_B_dofs);
-        // Be.resize(n_B_dofs);
-
-        // derived_quantities_system_elem_dof_map.dof_indices(elem, J_indices_var, j_elem_var);
-        // B_elem.zero();
-        // F_elem.zero();
-        // if (conductive)
-        // {
-        //     J_elem.zero();
-        //     if (dim == 3)
-        //     {
-        //         dof_map.dof_indices(elem, V_indices_var, v_var);
-        //         n_V_dofs = std::size(V_indices_var);
-        //         Ve.resize(n_V_dofs);
-        //         Ve_dt.resize(n_V_dofs);
-        //         J_elem_A.zero();
-        //         J_elem_V.zero();
-        //     }
-        // }
-
-        // for (std::size_t j = 0; j < n_A_dofs; j++)
-        // {
-        //     Ae(j) = system.current_solution(A_indices_var[j]);
-        //     if (conductive)
-        //     {
-        //         Ae_dt(j) = (Ae(j) - system.old_solution(A_indices_var[j])) / dt;
-
-        //         if (dim == 3)
-        //         {
-        //             if (j < n_V_dofs)
-        //             {
-        //                 Ve_dt(j) = (system.current_solution(V_indices_var[j]) - system.old_solution(V_indices_var[j])) / dt;
-        //             }
-        //         }
-        //     }
-        // }
-
-        // loads_object->aae_matrix_derived_map[local_elem_idx].vector_mult(Be_q, Ae);
-
-        // // Below we project each component of the stress tensor onto a L2_LAGRANGE discretization.
-        // // Note that this gives a discontinuous stress plot on element boundaries, which is
-        // // appropriate. We then also get the von Mises stress from the projected stress tensor.
-        // loads_object->me_matrix_derived_map[local_elem_idx].cholesky_solve(Be_q, Be);
-
-        // unsigned int j_qp_size;
-        // if (conductive)
-        // {
-        //     if (dim == 2)
-        //     {
-        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
-        //         J_elem_A.resize(j_qp_size);
-        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae);
-        //         for (char k = 0; k < n_J_dofs; k++)
-        //             for (char qp = 0; qp < j_qp_size; qp++)
-        //                 J_elem(k) -= J_elem_A(qp + k) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
-        //     }
-        //     else
-        //     {
-        //         j_qp_size = loads_object->jae_matrix_derived_map[local_elem_idx].m();
-        //         J_elem_A.resize(j_qp_size);
-        //         J_elem_V.resize(j_qp_size);
-        //         loads_object->jae_matrix_derived_map[local_elem_idx].vector_mult(J_elem_A, Ae_dt);
-        //         loads_object->jve_matrix_derived_map[local_elem_idx].vector_mult(J_elem_V, Ve_dt);
-        //         for (unsigned int k = 0; k < n_J_dofs; k++)
-        //             for (unsigned int qp = 0; qp < j_qp_size / n_J_dofs; qp++)
-        //                 J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / loads_object->rs_matrix[k] / (j_qp_size / n_J_dofs);
-        //     }
-        // }
-        // else
-        // {
-        //     for (unsigned int k = 0; k < n_J_dofs; k++)
-        //     {
-        //         J_elem(k) = loads_object->compute_js(k);
-        //     }
-        // }
     }
     // Close file streams
     solution_mtrx_input_file->close();

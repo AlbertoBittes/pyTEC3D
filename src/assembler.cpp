@@ -19,6 +19,8 @@
 // The definition of a geometric element
 #include "assembler.h"
 #include "apec_m_system_objects.h"
+#include "element_builder.h"
+#include "element_types.h"
 #include "system_builder.h"
 
 using namespace libMesh;

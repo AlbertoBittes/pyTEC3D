@@ -94,10 +94,10 @@ VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_pa
 }
 
 // Constructor for writing
-VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, ApecMSolutionSystem *sys) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
+VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, ExplicitSystem *sys) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
-                                                                               ,
-                                                                               _compress(false), _sys(sys)
+                                                                          ,
+                                                                          _compress(false), _sys(sys)
 #endif
 {
 }

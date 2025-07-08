@@ -6,7 +6,9 @@
 #include <libmesh/elem.h>
 #include <libmesh/dense_matrix.h>
 #include <libmesh/dense_vector.h>
+#include <libmesh/numeric_vector.h>
 #include <libmesh/equation_systems.h>
+#include <libmesh/dof_map.h>
 
 #include "fe_parent_object.h"
 #include "fem_service_abstract.h"
@@ -19,9 +21,11 @@
 #include "time_step.h"
 #include "session.h"
 #include "globals.h"
-#include "apec_m_system_objects.h"
+#include "system_type.h"
 
 using namespace libMesh;
+
+class ApecMLinearSystem;
 
 struct ElemData
 {
@@ -45,6 +49,7 @@ struct SolutionVectorSupport
     std::vector<DenseVector<Number>> var_vectors;
     std::vector<DenseVector<Number>> sol_vectors;
     std::vector<dof_id_type> dof_indices;
+    Real dt;
 
     void clear()
     {
@@ -53,30 +58,19 @@ struct SolutionVectorSupport
         var_vectors.clear();
         sol_vectors.clear();
         dof_indices.clear();
+        dt = 0.0;
     }
 };
 class ElementBuilder
-    : public FEMServiceAbstract<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>,
+    : public FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    using ContextView = TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>;
+    using ContextView = TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
     ElementBuilder(std::shared_ptr<ContextView> ctx_view = nullptr,
-                   EquationSystems *equation_systems = nullptr)
-        : FEMServiceAbstract<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view),
-          FEParentObjectBase<EquationSystems>(equation_systems),
-          matrices(3),
-          vectors(4)
-    {
-        MeshBase &mesh = equation_systems->get_mesh();
-        mesh_data_index.etype_num_index = mesh.get_elem_integer_index("ansys_etype");
-        mesh_data_index.material_num_index = mesh.get_elem_integer_index("ansys_material_type");
-        mesh_data_index.real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
-        main_sys = &equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-        main_dof_map = &main_sys->get_dof_map();
-    }
+                   EquationSystems *equation_systems = nullptr);
 
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
@@ -138,7 +132,7 @@ public:
     {
         return elem_data;
     }
-    void set_element_data(Elem *elem)
+    inline void set_element_data(Elem *elem)
     {
         auto element_types = this->context<ElementTypeFactory>();
 
@@ -147,6 +141,12 @@ public:
         elem_data.real_constant_num = elem->get_extra_integer(mesh_data_index.real_constants_num_index);
 
         elem_data.elem = elem;
+    }
+
+    inline void set_element_data_dt(Elem *elem)
+    {
+        set_element_data(elem);
+        solution_vector_support.dt = this->context<TimeStep>()->get_active_substep()->get_dt();
     }
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
@@ -168,28 +168,8 @@ public:
     void build_solid236_element_solution_vector();
     void build_plane13_element_solution_vector();
 
-    void fill_solution_vector_support(const NumericVector<Number> *solution)
-    {
-        solution_vector_support.clear();
-
-        auto active_vars = elem_data.element_type->get_active_variables(Globals::VariableCategory::DOFVariables);
-        for (const auto &var_enum : active_vars)
-        {
-            unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
-            solution_vector_support.var_nums.push_back(system_var_num);
-
-            std::vector<dof_id_type> dof_indices;
-            main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
-            solution_vector_support.dof_indices_var.push_back(dof_indices);
-
-            DenseVector<Number> local_sol(dof_indices.size());
-            for (unsigned int i = 0; i < dof_indices.size(); ++i)
-            {
-                local_sol(i) = solution->el(dof_indices[i]);
-            }
-            solution_vector_support.sol_vectors.push_back(local_sol);
-        }
-    }
+    // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
+    void fill_solution_vector_support(const NumericVector<Number> *solution);
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices
