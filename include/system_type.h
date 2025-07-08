@@ -39,10 +39,44 @@ inline const char *get_system_name(SystemType type)
 }
 
 // Map SystemType to VariableCategory
-inline Globals::VariableCategory get_variable_category(SystemType type);
+inline Globals::VariableCategory get_variable_category(SystemType type)
+{
+    switch (type)
+    {
+    case MAIN:
+        return Globals::VariableCategory::DOFVariables;
+    case NODAL_EXPLICIT:
+        return Globals::VariableCategory::NodalSolutionVariables;
+    case ELEMENT_EXPLICIT:
+        return Globals::VariableCategory::ElementSolutionVariables;
+    case ELEMENT_LOADS:
+        return Globals::VariableCategory::LoadsVariables;
+    // case NODAL_BCS:
+    //     return NodalBCsVariables;
+    default:
+        return Globals::VariableCategory::DOFVariables; // fallback
+    }
+}
 
 // Map VariableCategory to SystemType (if needed)
-inline SystemType get_system_type_from_category(Globals::VariableCategory cat);
+inline SystemType get_system_type_from_category(Globals::VariableCategory cat)
+{
+    switch (cat)
+    {
+    case Globals::VariableCategory::DOFVariables:
+        return MAIN;
+    case Globals::VariableCategory::NodalSolutionVariables:
+        return NODAL_EXPLICIT;
+    case Globals::VariableCategory::ElementSolutionVariables:
+        return ELEMENT_EXPLICIT;
+    case Globals::VariableCategory::LoadsVariables:
+        return ELEMENT_LOADS;
+    // case NodalBCsVariables:
+    //     return NODAL_BCS;
+    default:
+        return NUM_SYSTEMS;
+    }
+}
 
 // Map system name to SystemType
 inline SystemType get_system_type_from_name(const std::string &name)
