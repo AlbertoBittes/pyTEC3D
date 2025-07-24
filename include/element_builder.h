@@ -90,6 +90,20 @@ public:
         // this->build_vectors(vector_idx_size_map, 1);
     }
 
+    void prepare_solution_vectors()
+    {
+        // reinit to be done inside each element
+        // as well as the reception of shape functions
+        // this->elem_data.element_type->reinit_fe(this->elem);
+
+        this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
+
+        this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
+        this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
+
+        this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
+        // this->build_vectors(vector_idx_size_map, 1);
+    }
     inline void ramp_vectors(Substep *time_substep, unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
     {
         Real y1;
@@ -153,7 +167,7 @@ public:
 
     bool check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view = nullptr);
 
-    void build_write_solution_vectors(SystemType sys_type);
+    void build_write_solution_vectors(const std::string sys_name);
 
     void build_solution_vector(SystemType sys_type);
 
@@ -170,6 +184,8 @@ public:
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
     void fill_solution_vector_support(const NumericVector<Number> *solution);
+
+    void init();
 
 private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices

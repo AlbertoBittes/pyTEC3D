@@ -25,7 +25,7 @@ public:
 
     void set_transient_effects(ApecMLinearSystem &system);
     void reinitialize_constrained_dofs(ApecMLinearSystem &system);
-    void set_load_step_data(ApecMLinearSystem &system);
+    void set_load_step_data();
     void set_solver_settings();
 
     enum class Command

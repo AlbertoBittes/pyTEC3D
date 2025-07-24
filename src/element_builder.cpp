@@ -19,14 +19,17 @@ ElementBuilder::ElementBuilder(std::shared_ptr<ContextView> ctx_view, EquationSy
       matrices(3),
       vectors(4)
 {
-    MeshBase &mesh = equation_systems->get_mesh();
+}
+
+void ElementBuilder::init()
+{
+    MeshBase &mesh = this->get_parent_object()->get_mesh();
     mesh_data_index.etype_num_index = mesh.get_elem_integer_index("ansys_etype");
     mesh_data_index.material_num_index = mesh.get_elem_integer_index("ansys_material_type");
     mesh_data_index.real_constants_num_index = mesh.get_elem_integer_index("ansys_real_constant");
-    main_sys = &equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    main_sys = &this->get_parent_object()->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     main_dof_map = &main_sys->get_dof_map();
 }
-
 void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
     this->vectors[vectors_set].resize(sizes_map->size());
@@ -765,6 +768,8 @@ void ElementBuilder::build_solid97_nodal_solution_vector()
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
     fill_solution_vector_support(main_sys->current_local_solution.get());
 
+    // this->matrices[1].resize(2);
+    this->vectors[2].resize(1);
     // Get Ae
     DenseVector<Number> Ae;
     for (unsigned int k = 0; k < 3; k++)
@@ -772,11 +777,12 @@ void ElementBuilder::build_solid97_nodal_solution_vector()
         Ae.append(solution_vector_support.sol_vectors[k]);
     }
 
-    auto &AAe = this->matrices[1][0];
+    auto &AAe = this->matrices[1][1];
     DenseVector<Number> Be_q(AAe.m());
     AAe.vector_mult(Be_q, Ae);
-    auto &Me = this->matrices[1][1];
+    auto &Me = this->matrices[1][0];
     auto &Be = this->vectors[2][0];
+    Be.resize(Me.m());
     Me.cholesky_solve(Be_q, Be);
     // fill_solution_vector_support(main_sys->old_local_solution);
 
@@ -813,6 +819,7 @@ void ElementBuilder::build_solid97_element_solution_vector()
 
     auto &Ve = solution_vector_support.sol_vectors[volt_var_num];
 
+    this->vectors[3].resize(1);
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
     fill_solution_vector_support(main_sys->current_local_solution.get());
 
@@ -859,6 +866,7 @@ void ElementBuilder::build_solid97_element_solution_vector()
 
     auto &J_elem = this->vectors[3][0];
 
+    J_elem.resize(3);
     unsigned int n_qp = j_qp_size / 3;
 
     for (unsigned int k = 0; k < 3; k++)
@@ -924,12 +932,12 @@ void ElementBuilder::build_solution_vector(SystemType sys_type)
     }
 }
 
-void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
+void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 {
-    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&solution_system->get_equation_systems());
+    auto eq_sys = this->get_parent_object();
 
+    ApecMSolutionSystem &solution_system = eq_sys->get_system<ApecMSolutionSystem>(sys_name);
     ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
     const MeshBase &mesh = system.get_mesh();
@@ -947,8 +955,6 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
     auto session = this->context<Session>();
 
     // auto time_substep = this->context<TimeStep>()->get_active_substep();
-
-    auto sys_name = system.name();
 
     const auto rank_str = std::to_string(comm.rank());
 
@@ -973,6 +979,8 @@ void ElementBuilder::build_write_solution_vectors(SystemType sys_type)
         matrices_set = 2;
         vec_set = 3;
     }
+    auto sys_type = get_system_type_from_name(sys_name);
+
     auto inp_streams = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
     std::ifstream *solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());

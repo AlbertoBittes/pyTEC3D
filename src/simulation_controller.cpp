@@ -88,8 +88,11 @@ void SimulationController::reinitialize_constrained_dofs(ApecMLinearSystem &syst
     }
 }
 
-void SimulationController::set_load_step_data(ApecMLinearSystem &system)
+void SimulationController::set_load_step_data()
 {
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto &nodal_solution_system = equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
+    auto &element_solution_system = equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem");
     auto load_step = load_stepper->get_active_load_step();
 
     libMesh::out << "Setting load step data..." << std::endl;
@@ -110,6 +113,15 @@ void SimulationController::set_load_step_data(ApecMLinearSystem &system)
             load_step));
     auto assembler = system.get_assembler();
     assembler->set_context_view(assembler_view);
+    auto solution_assembler_view = std::make_shared<
+        TypedContextView<ElementTypeFactory, TimeStep, Session>>(
+        TypedContextView<ElementTypeFactory, TimeStep, Session>::from(
+            apec_m_model_data,
+            load_step));
+    auto assembler_solution = nodal_solution_system.get_assembler();
+    assembler_solution->set_context_view(solution_assembler_view);
+    auto assembler_element_solution = element_solution_system.get_assembler();
+    assembler_element_solution->set_context_view(solution_assembler_view);
 
     auto prev_load_step = load_stepper->get_old_load_step();
 
@@ -239,6 +251,7 @@ void SimulationController::physics()
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     equation_systems->init();
     equation_systems->print_info();
+    equation_systems->get_element_builder()->init();
 }
 
 void SimulationController::solve()
@@ -260,7 +273,7 @@ void SimulationController::solve()
 
     this->set_solver_settings();
 
-    this->set_load_step_data(system);
+    this->set_load_step_data();
 
     this->set_transient_effects(system);
 
@@ -289,7 +302,12 @@ void SimulationController::solve()
         {
             libMesh::out << "Computing derived quantities..." << std::endl;
             // Call the function to compute the magnetic field
-
+            equation_systems->get_element_builder()->build_write_solution_vectors("NodalSolutionSystem");
+            equation_systems->get_element_builder()->build_write_solution_vectors("ElementSolutionSystem");
+            auto nodal_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
+            auto element_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem");
+            nodal_solution_system->get_assembler()->compute_derived_quantities();
+            element_solution_system->get_assembler()->compute_derived_quantities();
             // equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
             std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
             // // Write the results
