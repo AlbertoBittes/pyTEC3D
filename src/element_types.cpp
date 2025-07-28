@@ -217,44 +217,56 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
     }
 } // Default dimension for PLANE13 is 2
 
-// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_dof_matrix_idx_size_map()
-// {
-//     // Check this when you have periodic BCs
-//     unsigned int n_sf = fe_array[0]->n_shape_functions();
-//     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-//         std::make_unique<std::vector<std::vector<unsigned int>>>(DOFMatrixNames::NUM_MATRICES, std::vector<unsigned int>(3, 0));
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-//     (*matrix_idx_size_map)[Ke] = {0, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-//     (*matrix_idx_size_map)[Ce] = {1, active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[Ke] = {n_sf, n_sf};
+    (*matrix_idx_size_map)[Ce] = {n_sf, n_sf};
 
-//     return matrix_idx_size_map;
-// }
-// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_solution_matrix_idx_size_map()
-// {
-//     // Check this when you have periodic BCs
-//     unsigned int n_sf = fe_array[0]->n_shape_functions();
-//     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
-//     unsigned int n_qp = fe_array[0]->n_quadrature_points();
-//     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-//         std::make_unique<std::vector<std::vector<unsigned int>>>(SolutionMatrixNames::NUM_SOLUTION_MATRICES, std::vector<unsigned int>(3, 0));
+    return matrix_idx_size_map;
+}
 
-//     (*solution_matrix_idx_size_map)[Me] = {0, n_sf_vec, n_sf_vec};
-//     (*solution_matrix_idx_size_map)[AAe] = {1, n_sf_vec, n_sf_vec};
-//     (*solution_matrix_idx_size_map)[JAe] = {2, n_qp, n_sf_vec};
-//     (*solution_matrix_idx_size_map)[JVe] = {3, 3 * n_qp, n_sf_vec};
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nodal_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-//     return solution_matrix_idx_size_map;
-// }
-// std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE13Type::get_vector_idx_size_map()
-// {
-//     unsigned int n_sf = fe_array[0]->n_shape_functions();
-//     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-//         std::make_unique<std::vector<std::vector<unsigned int>>>(VectorNames::NUM_VECTORS, std::vector<unsigned int>(2, 0));
+    (*solution_matrix_idx_size_map)[Me] = {2 * n_sf, 2 * n_sf};
+    (*solution_matrix_idx_size_map)[AAe] = {2 * n_sf, n_sf};
 
-//     (*vector_idx_size_map)[0] = {0, active_dof_vars_size * n_sf};
+    return solution_matrix_idx_size_map;
+}
 
-//     return vector_idx_size_map;
-// }
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_element_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
+
+    (*solution_matrix_idx_size_map)[JAe] = {n_qp, n_sf};
+
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vector_idx_size_map()
+{
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
+
+    return vector_idx_size_map;
+}
 
 // PLANE233
 

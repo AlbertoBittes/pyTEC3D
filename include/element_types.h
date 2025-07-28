@@ -168,22 +168,10 @@ public:
     // Constructor
     AV2DElementType(const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map()
-    {
-        libmesh_error_msg("get_dof_matrix_idx_size_map() is not implemented for AV2DElementType");
-    };
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map()
-    {
-        libmesh_error_msg("get_nodal_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
-    }
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map()
-    {
-        libmesh_error_msg("get_element_solution_matrix_idx_size_map() is not implemented for AV2DElementType");
-    }
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map()
-    {
-        libmesh_error_msg("get_vector_idx_size_map() is not implemented for AV2DElementType");
-    }
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 };
 
 class SOLID97Type : public AV3DElementType

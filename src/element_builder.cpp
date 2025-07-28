@@ -729,9 +729,11 @@ void ElementBuilder::build_plane13_rhs()
 
     Real js;
 
+    unsigned int system_num = loads_map->number();
+
     unsigned int jsz_var_num = loads_map->variable_number("Js_z");
 
-    dof_id_type dof_jz = elem_data.elem->dof_number(0, jsz_var_num, 0);
+    dof_id_type dof_jz = elem_data.elem->dof_number(system_num, jsz_var_num, 0);
 
     js = loads_map->solution->el(dof_jz);
 
@@ -803,7 +805,19 @@ void ElementBuilder::build_solid236_nodal_solution_vector()
 
 void ElementBuilder::build_plane13_nodal_solution_vector()
 {
-    libmesh_error_msg("build_plane13_nodal_solution_vector is not implemented yet.");
+    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    fill_solution_vector_support(main_sys->current_local_solution.get());
+
+    // this->matrices[1].resize(2);
+    this->vectors[2].resize(1);
+
+    auto &AAe = this->matrices[1][1];
+    DenseVector<Number> Be_q(AAe.m());
+    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0]);
+    auto &Me = this->matrices[1][0];
+    auto &Be = this->vectors[2][0];
+    Be.resize(Me.m());
+    Me.cholesky_solve(Be_q, Be);
 }
 
 void ElementBuilder::build_solid97_element_solution_vector()
@@ -889,10 +903,57 @@ void ElementBuilder::build_solid236_element_solution_vector()
     // This is a placeholder for the actual implementation
     libmesh_error_msg("build_solid236_element_solution_vector is not implemented yet.");
 }
+
 void ElementBuilder::build_plane13_element_solution_vector()
 {
-    // This is a placeholder for the actual implementation
-    libmesh_error_msg("build_plane13_element_solution_vector is not implemented yet.");
+    // Materials could be retrieved in another point
+    auto materials = this->context<MaterialsObject>();
+
+    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
+
+    auto &rs_matrix = materials->get_rs_matrix();
+
+    this->vectors[3].resize(1);
+    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    fill_solution_vector_support(main_sys->current_local_solution.get());
+
+    // Get Ae
+    DenseVector<Number> Ae;
+    for (unsigned int k = 0; k < 1; k++)
+    {
+        Ae.append(solution_vector_support.sol_vectors[k]);
+    }
+
+    fill_solution_vector_support(main_sys->old_local_solution);
+
+    // Get Ae
+    DenseVector<Number> Ae_old;
+    for (unsigned int k = 0; k < 1; k++)
+    {
+        Ae_old.append(solution_vector_support.sol_vectors[k]);
+    }
+
+    DenseVector<Number> Ae_dt(Ae.size());
+
+    for (unsigned int k = 0; k < Ae.size(); k++)
+    {
+        Ae_dt(k) = (Ae(k) - Ae_old(k)) / solution_vector_support.dt;
+    }
+
+    auto &JAe = this->matrices[2][0];
+
+    unsigned int j_qp_size = JAe.m();
+
+    DenseVector<Number> J_elem_A(j_qp_size);
+    JAe.vector_mult(J_elem_A, Ae_dt);
+
+    auto &J_elem = this->vectors[3][0];
+
+    J_elem.resize(1);
+    unsigned int n_qp = j_qp_size / 3;
+
+    for (unsigned int qp = 0; qp < n_qp; qp++)
+        J_elem(0) += (-J_elem_A(qp * 3)) / rs_matrix[0] / n_qp;
 }
 
 void ElementBuilder::build_element_solution_vector()
