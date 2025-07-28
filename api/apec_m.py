@@ -994,14 +994,15 @@ class APEC_M:
                     if density_match:
                         for component in range(3):  # Components 0, 1, 2
                             value = float(density_match.group(component + 1))
-                            data.append(
-                                {
-                                    "ansys_elem_num": current_element,
-                                    "label": load_label,
-                                    "component": component,
-                                    "value": value,
-                                }
-                            )
+                            if value != 0.0:
+                                data.append(
+                                    {
+                                        "ansys_elem_num": current_element,
+                                        "label": load_label,
+                                        "component": component,
+                                        "value": value,
+                                    }
+                                )
                         current_element = None  # Reset current element after processing
 
         # Convert the data to a pandas DataFrame

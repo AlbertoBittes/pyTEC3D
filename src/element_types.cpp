@@ -95,7 +95,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_ele
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[0] = {3 * n_qp, n_sf_vec};
     (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf};
 
     return solution_matrix_idx_size_map;
