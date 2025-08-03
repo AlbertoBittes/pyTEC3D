@@ -548,14 +548,13 @@ void ElementBuilder::build_plane13()
 
     for (unsigned int qp = 0; qp < nq; qp++)
     {
-        for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
-                if (dof_j < n_dofs_var)
-                    AAe(dof_i, dof_j) += JxW[qp] * std::pow(-1, dof_i) * (phi[dof_i / 2][qp] * dphi[dof_j][qp](1 - (dof_i % 2)));
-
-                if ((dof_i + dof_j) % 2 == 0)
-                    Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i / 2][qp] * phi[dof_j / 2][qp]);
+                AAe(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](1));
+                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](0));
+                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
             }
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
