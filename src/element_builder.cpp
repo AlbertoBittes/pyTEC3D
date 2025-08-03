@@ -30,6 +30,7 @@ void ElementBuilder::init()
     main_sys = &this->get_parent_object()->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     main_dof_map = &main_sys->get_dof_map();
 }
+
 void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
     this->vectors[vectors_set].resize(sizes_map->size());
@@ -176,7 +177,7 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
     }
 }
 
-void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution)
+void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set)
 {
     solution_vector_support.clear();
 
@@ -195,7 +196,7 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
         {
             local_sol(i) = solution->el(dof_indices[i]);
         }
-        solution_vector_support.sol_vectors.push_back(local_sol);
+        solution_vector_support.sol_vectors[vectors_set].push_back(local_sol);
     }
 }
 
@@ -227,6 +228,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     auto session = this->context<Session>();
 
+    this->set_elem_builder_misc_data();
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     // {
     // This function must be called prior to a check for the need of recomputing the matrix:
@@ -406,11 +408,8 @@ void ElementBuilder::build_solid97()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials = this->context<MaterialsObject>();
-
-    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
-    auto &mu_matrix = materials->get_mu_matrix();
-    auto &rs_matrix = materials->get_rs_matrix();
+    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
 
     auto &Ke = this->matrices[0][0];
     auto &Ce = this->matrices[0][1];
@@ -420,10 +419,34 @@ void ElementBuilder::build_solid97()
     auto &JVe = this->matrices[2][1];
     auto &Fe = this->vectors[0][0];
 
-    if (this->elem_data.element_type->is_conductive())
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                for (unsigned int l = 0; l < 3; l++)
+                    for (unsigned int k = 0; k < 3; k++)
+                    {
+                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
+                        AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
+                        Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
+                    }
+
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int k = 0; k < 3; k++)
+                    Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         Real CAV_value;
-
+        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
@@ -440,30 +463,19 @@ void ElementBuilder::build_solid97()
                         Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
                         Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
                         Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) / rs_matrix[l] * dphi[dof_j][qp](l);
-                        for (unsigned int k = 0; k < 3; k++)
-                        {
-                            Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
-                            AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
-                            Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
-                        }
                     }
             }
+
+        // Here when you will implement loads with F
+        // for (unsigned int qp = 0; qp < nq; qp++)
+        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //         for (unsigned int k = 0; k < 3; k++)
+        //             Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+        break;
     }
-    else
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        for (unsigned int k = 0; k < 3; k++)
-                        {
-                            Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
-                            AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
-                            Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
-                        }
-    for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int k = 0; k < 3; k++)
-                Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 // Temporary placeholder for build_solid236
@@ -524,11 +536,8 @@ void ElementBuilder::build_plane13()
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials = this->context<MaterialsObject>();
-
-    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
-    auto &mu_matrix = materials->get_mu_matrix();
-    auto &rs_matrix = materials->get_rs_matrix();
+    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
 
     auto &Ke = this->matrices[0][0];
     auto &Ce = this->matrices[0][1];
@@ -537,56 +546,58 @@ void ElementBuilder::build_plane13()
     auto &JAe = this->matrices[2][0];
     auto &Fe = this->vectors[0][0];
 
-    if (elem_data.element_type->is_conductive())
+    for (unsigned int qp = 0; qp < nq; qp++)
     {
-        // Now start logging the element matrix computation
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
-                {
-                    if (dof_j < n_dofs_var)
-                        AAe(dof_i, dof_j) += JxW[qp] * std::pow(-1, dof_i) * (phi[dof_i / 2][qp] * dphi[dof_j][qp](1 - (dof_i % 2)));
+        for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
+            {
+                if (dof_j < n_dofs_var)
+                    AAe(dof_i, dof_j) += JxW[qp] * std::pow(-1, dof_i) * (phi[dof_i / 2][qp] * dphi[dof_j][qp](1 - (dof_i % 2)));
 
-                    if ((dof_i + dof_j) % 2 == 0)
-                        Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i / 2][qp] * phi[dof_j / 2][qp]);
-                }
+                if ((dof_i + dof_j) % 2 == 0)
+                    Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i / 2][qp] * phi[dof_j / 2][qp]);
+            }
+
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0];
+    }
+
+    PhysicalRegionEnum physical_region = elem_data.element_type->get_physical_region();
+
+    switch (physical_region)
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+        for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
                 // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
                 JAe(qp, dof_i) -= phi[dof_i][qp];
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                {
-                    Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0];
                     Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                }
             }
-        }
+        break;
+        // Here when you will implement loads with F
+        // for (unsigned int qp = 0; qp < nq; qp++)
+        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //         Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
     }
-    else
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            for (unsigned int dof_i = 0; dof_i < 2 * n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < 2 * n_dofs_var; dof_j++)
-                {
-                    if (dof_j < n_dofs_var)
-                        AAe(dof_i, dof_j) += JxW[qp] * std::pow(-1, dof_i) * (phi[dof_i / 2][qp] * dphi[dof_j][qp](1 - (dof_i % 2)));
-
-                    if ((dof_i + dof_j) % 2 == 0)
-                        Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i / 2][qp] * phi[dof_j / 2][qp]);
-                }
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        for (unsigned int k = 0; k < 3; k++)
-                            Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0];
-        }
-
-    for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 void ElementBuilder::build_element()
@@ -651,33 +662,39 @@ void ElementBuilder::build_solid97_rhs()
     //
     // Now start logging the element matrix computation
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        auto &Fe = this->vectors[0][0];
 
-    auto loads_object = this->context<LoadsObject>();
+        unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    auto loads_map = loads_object->get_data_map();
+        Real js[3];
 
-    unsigned int system_num = loads_map->number();
+        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
+        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
+        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-    Real js[3];
+        js[0] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
+        js[1] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
+        js[2] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
 
-    unsigned int jsx_var_num = loads_map->variable_number("Js_x");
-    unsigned int jsy_var_num = loads_map->variable_number("Js_y");
-    unsigned int jsz_var_num = loads_map->variable_number("Js_z");
-
-    dof_id_type dof_jx = elem_data.elem->dof_number(system_num, jsx_var_num, 0);
-    dof_id_type dof_jy = elem_data.elem->dof_number(system_num, jsy_var_num, 0);
-    dof_id_type dof_jz = elem_data.elem->dof_number(system_num, jsz_var_num, 0);
-
-    js[0] = loads_map->current_local_solution->el(dof_jx);
-    js[1] = loads_map->current_local_solution->el(dof_jy);
-    js[2] = loads_map->current_local_solution->el(dof_jz);
-
-    auto &Fe = this->vectors[0][0];
-
-    for (unsigned int k = 0; k < 3; k++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i + k * n_dofs_var) *= js[k];
+        for (unsigned int k = 0; k < 3; k++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i + k * n_dofs_var) *= js[k];
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        // Here you will need to implement loads with F
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 // Temporary placeholder for build_solid236
@@ -721,26 +738,34 @@ void ElementBuilder::build_plane13_rhs()
     //
     // Now start logging the element matrix computation
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        auto &Fe = this->vectors[0][0];
 
-    auto loads_object = this->context<LoadsObject>();
+        unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    auto loads_map = loads_object->get_data_map();
+        Real js;
 
-    Real js;
+        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-    unsigned int system_num = loads_map->number();
+        js = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
 
-    unsigned int jsz_var_num = loads_map->variable_number("Js_z");
-
-    dof_id_type dof_jz = elem_data.elem->dof_number(system_num, jsz_var_num, 0);
-
-    js = loads_map->solution->el(dof_jz);
-
-    auto &Fe = this->vectors[0][0];
-
-    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        Fe(dof_i) *= js;
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Fe(dof_i) *= js;
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        // Here you will need to implement loads with F
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 void ElementBuilder::build_nodal_solution_vector()
@@ -768,7 +793,7 @@ void ElementBuilder::build_nodal_solution_vector()
 void ElementBuilder::build_solid97_nodal_solution_vector()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get());
+    fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
     // this->matrices[1].resize(2);
     this->vectors[2].resize(1);
@@ -776,7 +801,7 @@ void ElementBuilder::build_solid97_nodal_solution_vector()
     DenseVector<Number> Ae;
     for (unsigned int k = 0; k < 3; k++)
     {
-        Ae.append(solution_vector_support.sol_vectors[k]);
+        Ae.append(solution_vector_support.sol_vectors[0][k]);
     }
 
     auto &AAe = this->matrices[1][1];
@@ -806,14 +831,14 @@ void ElementBuilder::build_solid236_nodal_solution_vector()
 void ElementBuilder::build_plane13_nodal_solution_vector()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get());
+    fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
     // this->matrices[1].resize(2);
     this->vectors[2].resize(1);
 
     auto &AAe = this->matrices[1][1];
     DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0]);
+    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0][0]);
     auto &Me = this->matrices[1][0];
     auto &Be = this->vectors[2][0];
     Be.resize(Me.m());
@@ -823,79 +848,76 @@ void ElementBuilder::build_plane13_nodal_solution_vector()
 void ElementBuilder::build_solid97_element_solution_vector()
 {
     // Materials could be retrieved in another point
-    auto materials = this->context<MaterialsObject>();
-
-    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
-
-    auto &rs_matrix = materials->get_rs_matrix();
-
-    unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-
-    auto &Ve = solution_vector_support.sol_vectors[volt_var_num];
-
-    this->vectors[3].resize(1);
-    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get());
-
-    // Get Ae
-    DenseVector<Number> Ae;
-    for (unsigned int k = 0; k < 3; k++)
-    {
-        Ae.append(solution_vector_support.sol_vectors[k]);
-    }
-
-    fill_solution_vector_support(main_sys->old_local_solution);
-
-    // Get Ae
-    DenseVector<Number> Ae_old;
-    for (unsigned int k = 0; k < 3; k++)
-    {
-        Ae_old.append(solution_vector_support.sol_vectors[k]);
-    }
-    auto &Ve_old = solution_vector_support.sol_vectors[volt_var_num];
-
-    DenseVector<Number> Ae_dt(Ae.size());
-
-    for (unsigned int k = 0; k < Ae.size(); k++)
-    {
-        Ae_dt(k) = (Ae(k) - Ae_old(k)) / solution_vector_support.dt;
-    }
-
-    DenseVector<Number> Ve_dt(Ve.size());
-    for (unsigned int k = 0; k < Ve.size(); k++)
-    {
-        Ve_dt(k) = (Ve(k) - Ve_old(k)) / solution_vector_support.dt;
-    }
-
-    auto &JAe = this->matrices[2][0];
-    auto &JVe = this->matrices[2][1];
-
-    unsigned int j_qp_size = JAe.m();
-
-    DenseVector<Number> J_elem_A(j_qp_size);
-    JAe.vector_mult(J_elem_A, Ae_dt);
-
-    DenseVector<Number> J_elem_V(j_qp_size);
-    JVe.vector_mult(J_elem_V, Ve_dt);
 
     auto &J_elem = this->vectors[3][0];
 
     J_elem.resize(3);
-    unsigned int n_qp = j_qp_size / 3;
 
-    for (unsigned int k = 0; k < 3; k++)
-        for (unsigned int qp = 0; qp < n_qp; qp++)
-            J_elem(k) += (-J_elem_A(qp * 3 + k) - J_elem_V(qp * 3 + k)) / rs_matrix[k] / n_qp;
-    // fill_solution_vector_support(main_sys->old_local_solution);
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
+        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
+        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-    // // Get Ae
-    // DenseVector<Number> Ae_old;
-    // for (unsigned int k = 0; k < 3; k++)
-    // {
-    //     Ae_old.append(solution_vector_support.sol_vectors[k]);
-    // }
-    // Ae_dt.add(-1.0, Ae_old);
-    // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
+        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
+        J_elem(1) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
+        J_elem(2) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+
+        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+
+        this->vectors[3].resize(1);
+
+        unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
+
+        // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+        fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
+
+        fill_solution_vector_support(main_sys->old_local_solution, 1);
+
+        for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+        {
+            solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
+            solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+        }
+
+        DenseVector<Number> Ae_dt;
+        for (unsigned int k = 0; k < 3; k++)
+        {
+            Ae_dt.append(solution_vector_support.sol_vectors[0][k]);
+        }
+
+        auto &JAe = this->matrices[2][0];
+        unsigned int j_qp_size = JAe.m();
+        DenseVector<Number> J_elem_A(j_qp_size);
+        JAe.vector_mult(J_elem_A, Ae_dt);
+
+        DenseVector<Number> J_elem_V(j_qp_size);
+
+        auto &JVe = this->matrices[2][1];
+        unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+        auto &Ve_dt = solution_vector_support.sol_vectors[0][volt_var_num];
+        JVe.vector_mult(J_elem_V, Ve_dt);
+        JAe += JVe;
+
+        unsigned int n_qp = j_qp_size / 3;
+
+        for (unsigned int k = 0; k < 3; k++)
+            for (unsigned int qp = 0; qp < n_qp; qp++)
+                J_elem(k) += (-J_elem_A(qp * 3 + k)) / rs_matrix[k] / n_qp;
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 void ElementBuilder::build_solid236_element_solution_vector()
@@ -907,53 +929,55 @@ void ElementBuilder::build_solid236_element_solution_vector()
 void ElementBuilder::build_plane13_element_solution_vector()
 {
     // Materials could be retrieved in another point
-    auto materials = this->context<MaterialsObject>();
-
-    materials->compute_material_properties(this->elem_data.material_num, this->elem_data.element_type->is_conductive());
-
-    auto &rs_matrix = materials->get_rs_matrix();
 
     this->vectors[3].resize(1);
-    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get());
-
-    // Get Ae
-    DenseVector<Number> Ae;
-    for (unsigned int k = 0; k < 1; k++)
-    {
-        Ae.append(solution_vector_support.sol_vectors[k]);
-    }
-
-    fill_solution_vector_support(main_sys->old_local_solution);
-
-    // Get Ae
-    DenseVector<Number> Ae_old;
-    for (unsigned int k = 0; k < 1; k++)
-    {
-        Ae_old.append(solution_vector_support.sol_vectors[k]);
-    }
-
-    DenseVector<Number> Ae_dt(Ae.size());
-
-    for (unsigned int k = 0; k < Ae.size(); k++)
-    {
-        Ae_dt(k) = (Ae(k) - Ae_old(k)) / solution_vector_support.dt;
-    }
-
-    auto &JAe = this->matrices[2][0];
-
-    unsigned int j_qp_size = JAe.m();
-
-    DenseVector<Number> J_elem_A(j_qp_size);
-    JAe.vector_mult(J_elem_A, Ae_dt);
 
     auto &J_elem = this->vectors[3][0];
 
     J_elem.resize(1);
-    unsigned int n_qp = j_qp_size / 3;
 
-    for (unsigned int qp = 0; qp < n_qp; qp++)
-        J_elem(0) += (-J_elem_A(qp * 3)) / rs_matrix[0] / n_qp;
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
+        this->vectors[3][0](0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+
+        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+        // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+        fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
+
+        fill_solution_vector_support(main_sys->old_local_solution, 1);
+
+        for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+        {
+            solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
+            solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+        }
+
+        auto &JAe = this->matrices[2][0];
+
+        unsigned int j_qp_size = JAe.m();
+
+        DenseVector<Number> J_elem_A(j_qp_size);
+        JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
+
+        unsigned int n_qp = j_qp_size / 3;
+
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            J_elem(0) += (-J_elem_A(qp * 3)) / rs_matrix[0] / n_qp;
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
 }
 
 void ElementBuilder::build_element_solution_vector()
@@ -1060,7 +1084,7 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         // This is done through a simple function call with
         // the name of the event to log.
 
-        this->set_element_data_dt(elem);
+        this->set_element_data(elem);
 
         this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
 

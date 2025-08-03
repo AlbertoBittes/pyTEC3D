@@ -51,21 +51,8 @@ public:
         return assembler;
     }
 
-    // Setter for system_type
-    void set_system_type(SystemType type)
-    {
-        system_type = type;
-    }
-
-    // Getter for system_type
-    SystemType get_system_type() const
-    {
-        return system_type;
-    }
-
 private:
     std::shared_ptr<AssemblerLike> assembler;
-    SystemType system_type;
 };
 
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>, AssemblerLinear>

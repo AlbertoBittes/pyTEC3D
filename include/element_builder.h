@@ -42,23 +42,32 @@ struct MeshDataIndex
     unsigned int real_constants_num_index = 0; // Real constants number index
 };
 
+struct MiscData
+{
+    Real dt = 0.0;
+    std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
+    std::shared_ptr<LoadsObject> loads_object = nullptr;         // Pointer to LoadsObject
+    ExplicitSystem *loads_map = nullptr;                         // Pointer to ExplicitSystem
+    unsigned int loads_sys_number = 0;                           // System number for loads
+    unsigned int jsx_var_num = 0;
+    unsigned int jsy_var_num = 0;
+    unsigned int jsz_var_num = 0;
+};
+
 struct SolutionVectorSupport
 {
     std::vector<unsigned int> var_nums;
     std::vector<std::vector<dof_id_type>> dof_indices_var;
-    std::vector<DenseVector<Number>> var_vectors;
-    std::vector<DenseVector<Number>> sol_vectors;
+    std::vector<DenseVector<Number>> sol_vectors[2];
     std::vector<dof_id_type> dof_indices;
-    Real dt;
 
     void clear()
     {
         var_nums.clear();
         dof_indices_var.clear();
-        var_vectors.clear();
-        sol_vectors.clear();
+        sol_vectors[0].clear();
+        sol_vectors[1].clear();
         dof_indices.clear();
-        dt = 0.0;
     }
 };
 class ElementBuilder
@@ -157,11 +166,26 @@ public:
         elem_data.elem = elem;
     }
 
-    inline void set_element_data_dt(Elem *elem)
+    inline void set_elem_builder_misc_data()
     {
-        set_element_data(elem);
-        solution_vector_support.dt = this->context<TimeStep>()->get_active_substep()->get_dt();
-    }
+        elem_builder_misc_data.dt = this->context<TimeStep>()->get_substeps()[0].get_dt();
+        elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
+        elem_builder_misc_data.loads_object = this->context<LoadsObject>();
+        elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object->get_data_map();
+        elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
+        if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+        {
+            elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
+        }
+        if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
+        {
+            elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
+        }
+        if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
+        {
+            elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
+        }
+    };
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
@@ -183,7 +207,7 @@ public:
     void build_plane13_element_solution_vector();
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
-    void fill_solution_vector_support(const NumericVector<Number> *solution);
+    void fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set);
 
     void init();
 
@@ -195,6 +219,7 @@ private:
     SolutionVectorSupport solution_vector_support;
     const DofMap *main_dof_map = nullptr;
     ApecMLinearSystem *main_sys = nullptr; // Main system and dof map pointers
+    MiscData elem_builder_misc_data;
 };
 
 #endif // ELEMENT_BUILDER_H

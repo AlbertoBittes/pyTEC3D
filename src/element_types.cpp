@@ -111,6 +111,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vec
 
     return vector_idx_size_map;
 }
+
 // SOLID97
 
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
@@ -122,11 +123,11 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
     variable_info[GlobalVariableName::CURR] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::CURR, LAGRANGE, FIRST};
 
-    if (keyopts[1] == 1 || keyopts[1] == 4 || keyopts[1] == 5 || keyopts[1] == 6)
+    if (physical_region == SOLID_CONDUCTOR || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
-    if (keyopts[1] == 2 || keyopts[1] == 3)
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED)
         variable_info[GlobalVariableName::CURR].is_active = true; // Modify the first member
-    if (keyopts[1] == 3)
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
 
     FEType fe_type_vec(FIRST, LAGRANGE_VEC);
@@ -157,9 +158,9 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
 {
     // variable_info["DOFVariables"]["A"] =
     //     std::make_tuple(true, 3, false, "A", 2, "NEDELEC_ONE", "FIRST");
-    // if (keyopts[1] == 1 || keyopts[1] == 2)
+    // if (physical_region == 1 || physical_region == 2)
     //     std::get<0>(variable_info["DOFVariables"]["VOLT"]) = true; // Modify the first member
-    // if (keyopts[1] == 2)
+    // if (physical_region == 2)
     //     std::get<0>(variable_info["DOFVariables"]["EMF"]) = true; // Modify the first member
 
     libmesh_error_msg("SOLID236Type::SOLID236Type is not implemented.");
@@ -205,8 +206,12 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 {
     variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
 
-    if (keyopts[1] == 6)
+    if (physical_region == STRANDED_COIL)
         variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
+    if (physical_region == STRANDED_COIL || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
+        variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
+        variable_info[GlobalVariableName::CURR].is_active = true;
 
     active_dof_vars_size = 0;
     for (const auto &pair : variable_info)
@@ -339,6 +344,5 @@ void ElementTypeFactory::create_element_types(ElementTypesMapCSV *csv_map)
         ElementTypeEnum type_enum = static_cast<ElementTypeEnum>(keyopts[0]);
         (*data_map)[id] = create_element_type(type_enum, keyopts);
         // Optionally, call set_conductive after construction:
-        (*data_map)[id]->set_conductive();
     }
 }

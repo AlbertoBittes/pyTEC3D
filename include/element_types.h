@@ -28,6 +28,20 @@ enum ElementTypeEnum : unsigned int
     PLANE233 = 233
 };
 
+enum PhysicalRegionEnum : unsigned int
+{
+    NON_MAGNETIC,
+    SOFT_MAGNETIC,
+    HARD_MAGNETIC,
+    STRANDED_CONDUCTOR,
+    SOLID_CONDUCTOR,
+    SOLID_CONDUCTOR_CIRCUIT_COUPLED,
+    STRANDED_COIL,
+    STRANDED_COIL_VOLTAGE_FED,
+    STRANDED_COIL_CIRCUIT_COUPLED,
+    UNKNOWN
+};
+
 enum DOFMatrixNames
 {
     Ke,
@@ -49,6 +63,7 @@ enum VectorNames
     Fe,
     Js,
 };
+
 struct VariableData
 {
     Globals::VariableCategory category;
@@ -72,6 +87,7 @@ public:
     ElementType(const std::vector<unsigned int> &keyopts)
         : keyopts(keyopts)
     {
+        physical_region = keyopts.empty() ? PhysicalRegionEnum::UNKNOWN : static_cast<PhysicalRegionEnum>(keyopts[1]);
     }
 
     // Virtual methods to be implemented by derived classes
@@ -91,14 +107,6 @@ public:
         return active_vars;
     }
 
-    inline void set_conductive()
-    {
-        auto it = variable_info.find(Globals::GlobalVariableName::VOLT);
-        is_conductive_ = (it != variable_info.end()) && it->second.is_active;
-    }
-
-    inline bool is_conductive() const { return is_conductive_; }
-
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
@@ -113,6 +121,10 @@ public:
     inline unsigned int get_active_dof_vars_size() const
     {
         return active_dof_vars_size;
+    }
+    inline PhysicalRegionEnum get_physical_region() const
+    {
+        return physical_region;
     }
     // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
     // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
@@ -132,8 +144,8 @@ public:
 protected:
     const std::vector<unsigned int> keyopts; // Element type keyopts
     VariableInformation variable_info;
-    unsigned int active_dof_vars_size; // Number of active DOF variables
-    bool is_conductive_;               // Flag to indicate if the element type is conductive
+    unsigned int active_dof_vars_size;  // Number of active DOF variables
+    PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
     // Maps for matrix and vector sizes
     // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
     // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
