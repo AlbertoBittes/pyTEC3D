@@ -185,11 +185,11 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     for (const auto &var_enum : active_vars)
     {
         unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
-        solution_vector_support.var_nums.push_back(system_var_num);
+        // solution_vector_support.var_nums.push_back(system_var_num);
 
         std::vector<dof_id_type> dof_indices;
         main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
-        solution_vector_support.dof_indices_var.push_back(dof_indices);
+        // solution_vector_support.dof_indices_var.push_back(dof_indices);
 
         DenseVector<Number> local_sol(dof_indices.size());
         for (unsigned int i = 0; i < dof_indices.size(); ++i)
@@ -874,51 +874,54 @@ void ElementBuilder::build_solid97_element_solution_vector()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        auto &J_elem = this->vectors[3][0];
-
-        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
-        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-
-        unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
-
-        // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-        fill_solution_vector_support(main_sys->old_local_solution, 1);
-
-        for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+        if (elem_builder_misc_data.transient_effect)
         {
-            solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
-            solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+            auto &J_elem = this->vectors[3][0];
+
+            elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+
+            auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+
+            unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
+
+            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+
+            fill_solution_vector_support(main_sys->old_local_solution, 1);
+
+            for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+            {
+                solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
+                solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+            }
+
+            DenseVector<Number> Ae_dt;
+            for (unsigned int k = 0; k < 3; k++)
+            {
+                Ae_dt.append(solution_vector_support.sol_vectors[0][k]);
+            }
+
+            auto &JAe = this->matrices[2][0];
+            unsigned int j_qp_size = JAe.m();
+            DenseVector<Number> J_elem_A(j_qp_size);
+            JAe.vector_mult(J_elem_A, Ae_dt);
+
+            DenseVector<Number> J_elem_V(j_qp_size);
+
+            auto &JVe = this->matrices[2][1];
+            unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+            auto &Ve_dt = solution_vector_support.sol_vectors[0][volt_var_num];
+            JVe.vector_mult(J_elem_V, Ve_dt);
+            JAe += JVe;
+
+            unsigned int n_qp = j_qp_size / 3;
+
+            for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int qp = 0; qp < n_qp; qp++)
+                    J_elem(k) -= J_elem_A(qp * 3 + k);
+            J_elem(0) = J_elem(0) / rs_matrix[0] / n_qp;
+            J_elem(1) = J_elem(1) / rs_matrix[1] / n_qp;
+            J_elem(2) = J_elem(2) / rs_matrix[2] / n_qp;
         }
-
-        DenseVector<Number> Ae_dt;
-        for (unsigned int k = 0; k < 3; k++)
-        {
-            Ae_dt.append(solution_vector_support.sol_vectors[0][k]);
-        }
-
-        auto &JAe = this->matrices[2][0];
-        unsigned int j_qp_size = JAe.m();
-        DenseVector<Number> J_elem_A(j_qp_size);
-        JAe.vector_mult(J_elem_A, Ae_dt);
-
-        DenseVector<Number> J_elem_V(j_qp_size);
-
-        auto &JVe = this->matrices[2][1];
-        unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-        auto &Ve_dt = solution_vector_support.sol_vectors[0][volt_var_num];
-        JVe.vector_mult(J_elem_V, Ve_dt);
-        JAe += JVe;
-
-        unsigned int n_qp = j_qp_size / 3;
-
-        for (unsigned int k = 0; k < 3; k++)
-            for (unsigned int qp = 0; qp < n_qp; qp++)
-                J_elem(k) -= J_elem_A(qp * 3 + k);
-        J_elem(0) = J_elem(0) / rs_matrix[0] / n_qp;
-        J_elem(1) = J_elem(1) / rs_matrix[1] / n_qp;
-        J_elem(2) = J_elem(2) / rs_matrix[2] / n_qp;
         break;
     }
     default:
@@ -942,23 +945,26 @@ void ElementBuilder::build_plane13_element_solution_vector()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &J_elem = this->vectors[3][0];
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
+        if (elem_builder_misc_data.transient_effect)
+        {
+            auto &J_elem = this->vectors[3][0];
+            dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-        if (!this->elem_builder_misc_data.ramped)
-        {
-            break;
-        }
-        else
-        {
-            if (this->elem_builder_misc_data.old_loads_map != nullptr)
+            J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+            if (!this->elem_builder_misc_data.ramped)
             {
-                auto &J_elem_old = this->vectors[4][0];
-                // Apply ramping to the current load
-                J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+                break;
             }
-            this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
+            else
+            {
+                if (this->elem_builder_misc_data.old_loads_map != nullptr)
+                {
+                    auto &J_elem_old = this->vectors[4][0];
+                    // Apply ramping to the current load
+                    J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+                }
+                this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
+            }
         }
         break;
     }

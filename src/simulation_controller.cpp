@@ -298,9 +298,6 @@ void SimulationController::solve()
 
         system.solve();
 
-        // Update solution
-        *system.old_local_solution = *system.current_local_solution;
-
         system.rhs->zero();
 
         // system.get_linear_solver()->print_converged_reason();
@@ -328,6 +325,8 @@ void SimulationController::solve()
             vtk_output.write_equation_systems(session->get_path("final_output_path"), *equation_systems, &system_names);
             load_stepper->update_cumulative_substep_index();
         }
+        // Update solution
+        *system.old_local_solution = *system.current_local_solution;
 
         libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step->get_n_substeps() << " completed." << std::endl;
     }
