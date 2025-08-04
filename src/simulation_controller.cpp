@@ -123,25 +123,6 @@ void SimulationController::set_load_step_data()
     assembler_solution->set_context_view(solution_assembler_view);
     auto assembler_element_solution = element_solution_system.get_assembler();
     assembler_element_solution->set_context_view(solution_assembler_view);
-
-    auto prev_load_step = load_stepper->get_old_load_step();
-
-    if (prev_load_step == nullptr)
-    {
-        // If there is a previous load step, we update the old solution
-        element_builder->build_write_element_matrices_rhs(true);
-    }
-    else
-    {
-        // If there is no previous load step, we initialize the old solution to zero
-        auto prev_element_builder_view = std::make_shared<
-            TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
-            TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
-                apec_m_model_data,
-                prev_load_step));
-        // element_builder->set_context_view(prev_element_builder_view);
-        element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix(prev_element_builder_view));
-    }
 }
 
 void SimulationController::set_solver_settings()
@@ -265,6 +246,7 @@ void SimulationController::solve()
 
     time_step->print_solve_msg();
 
+    auto element_builder = equation_systems->get_element_builder();
     // read material properties
 
     // Read loads
@@ -285,6 +267,29 @@ void SimulationController::solve()
 
     for (auto &substep : *time_step)
     {
+        equation_systems->get_element_builder()->set_elem_builder_misc_data();
+
+        if (substep.get_index() == 0)
+        {
+            auto prev_load_step = load_stepper->get_old_load_step();
+
+            if (prev_load_step == nullptr)
+            {
+                // If there is a previous load step, we update the old solution
+                element_builder->build_write_element_matrices_rhs(true);
+            }
+            else
+            {
+                // If there is no previous load step, we initialize the old solution to zero
+                auto prev_element_builder_view = std::make_shared<
+                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
+                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+                        apec_m_model_data,
+                        prev_load_step));
+                // element_builder->set_context_view(prev_element_builder_view);
+                element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix(prev_element_builder_view));
+            }
+        }
         substep.print_solve_msg();
         // update time in element data object
         // Assemble & solve the linear system
@@ -303,7 +308,7 @@ void SimulationController::solve()
         {
             libMesh::out << "Computing derived quantities..." << std::endl;
             // Call the function to compute the magnetic field
-            equation_systems->get_element_builder()->set_elem_builder_misc_data();
+
             equation_systems->get_element_builder()->build_write_solution_vectors("NodalSolutionSystem");
             equation_systems->get_element_builder()->build_write_solution_vectors("ElementSolutionSystem");
             auto nodal_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
