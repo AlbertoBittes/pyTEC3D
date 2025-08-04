@@ -45,9 +45,13 @@ struct MeshDataIndex
 struct MiscData
 {
     Real dt = 0.0;
+    Substep *time_substep = nullptr; // Pointer to the current time substep
+    bool ramped = true;
     std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
     std::shared_ptr<LoadsObject> loads_object = nullptr;         // Pointer to LoadsObject
+    std::shared_ptr<LoadsObject> old_loads_object = nullptr;     // Pointer to LoadsObject
     ExplicitSystem *loads_map = nullptr;                         // Pointer to ExplicitSystem
+    ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
     unsigned int loads_sys_number = 0;                           // System number for loads
     unsigned int jsx_var_num = 0;
     unsigned int jsy_var_num = 0;
@@ -61,12 +65,11 @@ struct SolutionVectorSupport
     std::vector<DenseVector<Number>> sol_vectors[2];
     std::vector<dof_id_type> dof_indices;
 
-    void clear()
+    void clear(unsigned int idx = 0)
     {
         var_nums.clear();
         dof_indices_var.clear();
-        sol_vectors[0].clear();
-        sol_vectors[1].clear();
+        sol_vectors[idx].clear();
         dof_indices.clear();
     }
 };
@@ -104,13 +107,10 @@ public:
         // reinit to be done inside each element
         // as well as the reception of shape functions
         // this->elem_data.element_type->reinit_fe(this->elem);
-
-        this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
-
-        this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
-        this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
-
-        this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
+        this->build_vectors(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 2);
+        this->build_vectors(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 3);
+        this->build_vectors(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 4);
+        // this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
         // this->build_vectors(vector_idx_size_map, 1);
     }
     inline void ramp_vectors(Substep *time_substep, unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
@@ -168,22 +168,31 @@ public:
 
     inline void set_elem_builder_misc_data()
     {
-        elem_builder_misc_data.dt = this->context<TimeStep>()->get_substeps()[0].get_dt();
-        elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
-        elem_builder_misc_data.loads_object = this->context<LoadsObject>();
-        elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object->get_data_map();
-        elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
-        if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+        elem_builder_misc_data.time_substep = this->context<TimeStep>()->get_active_substep();
+        elem_builder_misc_data.dt = elem_builder_misc_data.time_substep->get_dt();
+        elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep->get_ramped_load();
+        if (elem_builder_misc_data.time_substep->get_index() == 0)
         {
-            elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
-        }
-        if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
-        {
-            elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
-        }
-        if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
-        {
-            elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
+            elem_builder_misc_data.old_loads_object = elem_builder_misc_data.loads_object;
+            elem_builder_misc_data.old_loads_map = elem_builder_misc_data.loads_map;
+            elem_builder_misc_data.loads_object = this->context<LoadsObject>();
+            elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object->get_data_map();
+
+            elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
+
+            elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
+            if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+            {
+                elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
+            }
+            if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
+            {
+                elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
+            }
+            if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
+            {
+                elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
+            }
         }
     };
 

@@ -17,7 +17,7 @@ ElementBuilder::ElementBuilder(std::shared_ptr<ContextView> ctx_view, EquationSy
     : FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
       matrices(3),
-      vectors(4)
+      vectors(5)
 {
 }
 
@@ -179,7 +179,7 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
 
 void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set)
 {
-    solution_vector_support.clear();
+    solution_vector_support.clear(vectors_set);
 
     auto active_vars = elem_data.element_type->get_active_variables(Globals::VariableCategory::DOFVariables);
     for (const auto &var_enum : active_vars)
@@ -228,7 +228,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     auto session = this->context<Session>();
 
-    this->set_elem_builder_misc_data();
     // if (old_time_substep == nullptr) // Here add the check for nonlinear elements
     // {
     // This function must be called prior to a check for the need of recomputing the matrix:
@@ -792,10 +791,7 @@ void ElementBuilder::build_nodal_solution_vector()
 void ElementBuilder::build_solid97_nodal_solution_vector()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
-    // this->matrices[1].resize(2);
-    this->vectors[2].resize(1);
     // Get Ae
     DenseVector<Number> Ae;
     for (unsigned int k = 0; k < 3; k++)
@@ -830,10 +826,6 @@ void ElementBuilder::build_solid236_nodal_solution_vector()
 void ElementBuilder::build_plane13_nodal_solution_vector()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
-
-    // this->matrices[1].resize(2);
-    this->vectors[2].resize(1);
 
     auto &AAe = this->matrices[1][1];
     DenseVector<Number> Be_q(AAe.m());
@@ -848,16 +840,13 @@ void ElementBuilder::build_solid97_element_solution_vector()
 {
     // Materials could be retrieved in another point
 
-    auto &J_elem = this->vectors[3][0];
-
-    J_elem.resize(3);
-
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
+        auto &J_elem = this->vectors[3][0];
         dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
         dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
         dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
@@ -865,20 +854,35 @@ void ElementBuilder::build_solid97_element_solution_vector()
         J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
         J_elem(1) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
         J_elem(2) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        if (!this->elem_builder_misc_data.ramped)
+        {
+            break;
+        }
+        else
+        {
+            if (this->elem_builder_misc_data.old_loads_map != nullptr)
+            {
+                auto &J_elem_old = this->vectors[4][0];
+                // Apply ramping to the current load
+                J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jx);
+                J_elem_old(1) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jy);
+                J_elem_old(2) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+            }
+            this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
+        auto &J_elem = this->vectors[3][0];
+
         elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
 
         auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
 
-        this->vectors[3].resize(1);
-
         unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
 
         // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-        fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
         fill_solution_vector_support(main_sys->old_local_solution, 1);
 
@@ -911,7 +915,10 @@ void ElementBuilder::build_solid97_element_solution_vector()
 
         for (unsigned int k = 0; k < 3; k++)
             for (unsigned int qp = 0; qp < n_qp; qp++)
-                J_elem(k) += (-J_elem_A(qp * 3 + k)) / rs_matrix[k] / n_qp;
+                J_elem(k) -= J_elem_A(qp * 3 + k);
+        J_elem(0) = J_elem(0) / rs_matrix[0] / n_qp;
+        J_elem(1) = J_elem(1) / rs_matrix[1] / n_qp;
+        J_elem(2) = J_elem(2) / rs_matrix[2] / n_qp;
         break;
     }
     default:
@@ -929,29 +936,40 @@ void ElementBuilder::build_plane13_element_solution_vector()
 {
     // Materials could be retrieved in another point
 
-    this->vectors[3].resize(1);
-
-    auto &J_elem = this->vectors[3][0];
-
-    J_elem.resize(1);
-
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
+        auto &J_elem = this->vectors[3][0];
         dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-        this->vectors[3][0](0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+
+        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        if (!this->elem_builder_misc_data.ramped)
+        {
+            break;
+        }
+        else
+        {
+            if (this->elem_builder_misc_data.old_loads_map != nullptr)
+            {
+                auto &J_elem_old = this->vectors[4][0];
+                // Apply ramping to the current load
+                J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+            }
+            this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
+        auto &J_elem = this->vectors[3][0];
+
         elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
 
         auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
         // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-        fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
         fill_solution_vector_support(main_sys->old_local_solution, 1);
 
@@ -968,10 +986,10 @@ void ElementBuilder::build_plane13_element_solution_vector()
         DenseVector<Number> J_elem_A(j_qp_size);
         JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
 
-        unsigned int n_qp = j_qp_size / 3;
+        for (unsigned int qp = 0; qp < j_qp_size; qp++)
+            J_elem(0) -= J_elem_A(qp);
 
-        for (unsigned int qp = 0; qp < n_qp; qp++)
-            J_elem(0) += (-J_elem_A(qp * 3)) / rs_matrix[0] / n_qp;
+        J_elem(0) = J_elem(0) / rs_matrix[0] / j_qp_size;
         break;
     }
     default:
@@ -1086,6 +1104,10 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         this->set_element_data(elem);
 
         this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
+
+        this->prepare_solution_vectors();
+
+        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
         this->build_solution_vector(sys_type);
 

@@ -139,6 +139,10 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() = 0;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() = 0;
+
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
 
 protected:
@@ -172,6 +176,10 @@ public:
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
 
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
+
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 };
 
 class AV2DElementType : public AVElementType
@@ -184,6 +192,8 @@ public:
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
     std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 };
 
 class SOLID97Type : public AV3DElementType

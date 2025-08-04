@@ -112,6 +112,7 @@ void SimulationController::set_load_step_data()
             apec_m_model_data,
             load_step));
     auto assembler = system.get_assembler();
+
     assembler->set_context_view(assembler_view);
     auto solution_assembler_view = std::make_shared<
         TypedContextView<ElementTypeFactory, TimeStep, Session>>(
@@ -302,6 +303,7 @@ void SimulationController::solve()
         {
             libMesh::out << "Computing derived quantities..." << std::endl;
             // Call the function to compute the magnetic field
+            equation_systems->get_element_builder()->set_elem_builder_misc_data();
             equation_systems->get_element_builder()->build_write_solution_vectors("NodalSolutionSystem");
             equation_systems->get_element_builder()->build_write_solution_vectors("ElementSolutionSystem");
             auto nodal_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");

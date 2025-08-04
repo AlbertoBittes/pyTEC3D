@@ -35,6 +35,27 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
     fe_array[0]->attach_quadrature_rule(qrule);
 }
 
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nodal_solution_vector_idx_size_map()
+{
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {2 * n_sf};
+
+    return vector_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_element_solution_vector_idx_size_map()
+{
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {1};
+
+    return vector_idx_size_map;
+}
+
 AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
 {
     // Additional initialization for AVElementType (if needed)
@@ -112,6 +133,26 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vec
     return vector_idx_size_map;
 }
 
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nodal_solution_vector_idx_size_map()
+{
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {3 * n_sf};
+
+    return vector_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_element_solution_vector_idx_size_map()
+{
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {3};
+
+    return vector_idx_size_map;
+}
 // SOLID97
 
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)

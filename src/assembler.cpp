@@ -117,7 +117,9 @@ void AssemblerLinear::assemble()
     // we would have to apply any hanging node constraint equations
     // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
     // to impose a inhomogeneous Dirichlet boundary conditions.
-
+    auto &vecs = elem_builder->get_vectors()[1];
+    vecs.resize(1);
+    auto &dummy_prev_rhs = vecs[0];
     // The element matrix and right-hand-side are now built
     // for this element.  Add them to the global matrix and
     // right-hand-side vector.  The SparseMatrix::add_matrix()
@@ -172,9 +174,6 @@ void AssemblerLinear::assemble()
         {
             if (rhs_prev_input_file == nullptr)
             {
-                auto &vecs = elem_builder->get_vectors()[1];
-                vecs.resize(1);
-                auto &dummy_prev_rhs = vecs[0];
                 dummy_prev_rhs.resize(n_dofs);
             }
             else
@@ -289,6 +288,7 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
     return update_matrix;
 }
 
+// This you will need to improve it by making it a method of equations systems to save time on the resizing and retrieving of solution
 void AssemblerSolution::compute_derived_quantities()
 {
     ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
