@@ -97,7 +97,7 @@ private:
                                std::size_t variable,
                                const std::vector<Number> &soln,
                                const std::vector<std::string> &names);
-
+    void merge_vector_components(bool is_point_data);
     // void system_vectors_to_vtk(const EquationSystems & es,
     //                            vtkUnstructuredGrid * & grid);
 

@@ -554,45 +554,8 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
 #endif
         }
     }
-    unsigned int sys_num = _sys->get_equation_systems().n_systems();
-    for (unsigned int k = 0; k < sys_num; k++)
-    {
-        std::string sys_name = _sys->get_equation_systems().get_system(k).name();
-        unsigned int sys_n_vars = _sys->get_equation_systems().get_system(k).n_vars();
-        for (unsigned int var_num = 0; var_num < sys_n_vars; var_num++)
-        {
-            FEFamily var_family = _sys->get_equation_systems().get_system(k).variable(var_num).type().family;
-            std::string var_name = _sys->get_equation_systems().get_system(k).variable_name(var_num);
-
-            if (FEInterface::field_type(var_family) == TYPE_VECTOR)
-                n_comps = dim;
-            else
-                n_comps = 1;
-            if (n_comps > 1)
-            {
-                std::string var_name = _sys->get_equation_systems().get_system(k).variable_name(var_num);
-                vtkSmartPointer<vtkMergeVectorComponents> merger = vtkSmartPointer<vtkMergeVectorComponents>::New();
-                if (var_family == MONOMIAL || var_family == MONOMIAL_VEC)
-                {
-                    merger->SetAttributeTypeToCellData();
-                }
-                else
-                {
-                    merger->SetAttributeTypeToPointData();
-                }
-                merger->SetOutputVectorName(var_name.c_str());
-                merger->SetXArrayName((var_name + "_x").c_str());
-                merger->SetYArrayName((var_name + "_y").c_str());
-                merger->SetZArrayName((var_name + "_z").c_str());
-                merger->SetInputData(_vtk_grid);
-                merger->Update();
-                _vtk_grid = vtkUnstructuredGrid::SafeDownCast(merger->GetOutput());
-                _vtk_grid->GetPointData()->RemoveArray((var_name + "_x").c_str());
-                _vtk_grid->GetPointData()->RemoveArray((var_name + "_y").c_str());
-                _vtk_grid->GetPointData()->RemoveArray((var_name + "_z").c_str());
-            }
-        }
-    }
+    merge_vector_components(true);
+    merge_vector_components(false);
     // Tell the writer how many partitions exist and on which processor
     // we are currently
     writer->SetNumberOfPieces(mesh.n_processors());
@@ -941,6 +904,72 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
 //         }
 //     }
 // }
+void VTKIO_Updated::merge_vector_components(bool is_point_data)
+{
+    vtkDataSetAttributes *data = is_point_data ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())
+                                               : static_cast<vtkDataSetAttributes *>(_vtk_grid->GetCellData());
+    std::set<std::string> bases_to_merge;
+    int num_arrays = data->GetNumberOfArrays();
+
+    auto ends_with = [](const std::string &str, const std::string &suffix)
+    {
+        return str.size() >= suffix.size() &&
+               str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    // First pass: collect base names to merge
+    for (int i = 0; i < num_arrays; ++i)
+    {
+        const char *arr_name_cstr = data->GetArrayName(i);
+        if (!arr_name_cstr)
+            continue;
+        std::string arr_name(arr_name_cstr);
+
+        std::string base_name;
+        if (ends_with(arr_name, "_x"))
+            base_name = arr_name.substr(0, arr_name.size() - 2);
+        else if (ends_with(arr_name, "_y"))
+            base_name = arr_name.substr(0, arr_name.size() - 2);
+        else if (ends_with(arr_name, "_z"))
+            base_name = arr_name.substr(0, arr_name.size() - 2);
+
+        if (!base_name.empty() && bases_to_merge.find(base_name) == bases_to_merge.end())
+        {
+            bool has_x = data->HasArray((base_name + "_x").c_str());
+            bool has_y = data->HasArray((base_name + "_y").c_str());
+            bool has_z = data->HasArray((base_name + "_z").c_str());
+            if (has_x && has_y && has_z)
+                bases_to_merge.insert(base_name);
+        }
+    }
+
+    // Second pass: merge and then remove arrays
+    for (const auto &base_name : bases_to_merge)
+    {
+        vtkSmartPointer<vtkMergeVectorComponents> merger = vtkSmartPointer<vtkMergeVectorComponents>::New();
+        merger->SetOutputVectorName(base_name.c_str());
+        merger->SetXArrayName((base_name + "_x").c_str());
+        merger->SetYArrayName((base_name + "_y").c_str());
+        merger->SetZArrayName((base_name + "_z").c_str());
+        if (is_point_data)
+            merger->SetAttributeTypeToPointData();
+        else
+            merger->SetAttributeTypeToCellData();
+        merger->SetInputData(_vtk_grid);
+        merger->Update();
+        _vtk_grid = vtkUnstructuredGrid::SafeDownCast(merger->GetOutput());
+    }
+    for (const auto &base_name : bases_to_merge)
+    {
+        vtkDataSetAttributes *new_data = is_point_data
+                                             ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())
+                                             : static_cast<vtkDataSetAttributes *>(_vtk_grid->GetCellData());
+
+        new_data->RemoveArray((base_name + "_x").c_str());
+        new_data->RemoveArray((base_name + "_y").c_str());
+        new_data->RemoveArray((base_name + "_z").c_str());
+    }
+}
 
 #else // !LIBMESH_HAVE_VTK
 
