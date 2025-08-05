@@ -64,3 +64,4 @@ utils/__pycache__
 debug
 
 api/local_packages/*
+bin/plasma_arc
