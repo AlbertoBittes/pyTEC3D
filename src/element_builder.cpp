@@ -918,11 +918,11 @@ void ElementBuilder::build_solid97_element_solution_vector()
             unsigned int n_qp = j_qp_size / 3;
 
             for (unsigned int k = 0; k < 3; k++)
+            {
                 for (unsigned int qp = 0; qp < n_qp; qp++)
                     J_elem(k) -= J_elem_A(qp + k * n_qp);
-            J_elem(0) = J_elem(0) / rs_matrix[0] / n_qp;
-            J_elem(1) = J_elem(1) / rs_matrix[1] / n_qp;
-            J_elem(2) = J_elem(2) / rs_matrix[2] / n_qp;
+                J_elem(k) = J_elem(k) / rs_matrix[k] / n_qp;
+            }
         }
         break;
     }
