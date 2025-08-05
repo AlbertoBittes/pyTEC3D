@@ -64,14 +64,12 @@ struct SolutionVectorSupport
     // std::vector<unsigned int> var_nums;
     // std::vector<std::vector<dof_id_type>> dof_indices_var;
     std::vector<DenseVector<Number>> sol_vectors[2];
-    std::vector<dof_id_type> dof_indices;
 
     void clear(unsigned int idx = 0)
     {
         // var_nums.clear();
         // dof_indices_var.clear();
         sol_vectors[idx].clear();
-        dof_indices.clear();
     }
 };
 class ElementBuilder

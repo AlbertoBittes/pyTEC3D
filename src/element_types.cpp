@@ -336,9 +336,10 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vec
 //     libmesh_error_msg("PLANE233Type::populate_vector_idx_size_map is not implemented.");
 // }
 
-VariableToElementIdsMapType ElementTypeFactory::associate_variables_with_element_IDs(VariableCategory variable_category) const
+std::unique_ptr<VariableToElementIdsMapType>
+ElementTypeFactory::associate_variables_with_element_IDs(VariableCategory variable_category) const
 {
-    VariableToElementIdsMapType variableToElementIds;
+    auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
     for (const auto &pair : *data_map)
     {
         subdomain_id_type elementId = pair.first;
@@ -347,7 +348,7 @@ VariableToElementIdsMapType ElementTypeFactory::associate_variables_with_element
         auto active_vars = elementType->get_active_variables(variable_category);
         for (const auto &var : active_vars)
         {
-            (variableToElementIds)[var].insert(elementId);
+            (*variableToElementIds)[var].insert(elementId);
         }
     }
     return variableToElementIds;

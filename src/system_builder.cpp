@@ -55,7 +55,7 @@ void SystemBuilder::init_variables()
     Globals::VariableCategory category = get_variable_category(type);
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(category);
 
-    for (const auto &pair : vars_to_subdomain_ids)
+    for (const auto &pair : *vars_to_subdomain_ids)
     {
         const std::string &variable_string =
             Globals::enum_to_string(pair.first, Globals::ENUM_TO_STRING);
@@ -73,13 +73,37 @@ void SystemBuilder::init_variables()
             continue; // Skip inactive variables
 
         // Add the variable to the system, specifying subdomains
-        data.system_var_num = system->add_variable(
+        system->add_variable(
             variable_string,
             data.order,
             data.fe_family,
             &subdomain_ids);
     }
 
-    // }
+    std::vector<unsigned int> all_variable_numbers;
+    system->get_all_variable_numbers(all_variable_numbers);
+    for (unsigned int var_num : all_variable_numbers)
+    {
+        // Get the variable name from the system
+        const std::string &var_name = system->variable_name(var_num);
+
+        // Loop over all elements in the collector
+        for (const auto &elem_pair : *(element_types_collector->get_data_map()))
+        {
+            const auto &elem_type = elem_pair.second;
+            auto &var_info = elem_type->get_variable_information();
+
+            // Find the variable enum corresponding to var_name
+            for (auto &info_pair : var_info)
+            {
+                const std::string &enum_name = Globals::enum_to_string(info_pair.first, Globals::ENUM_TO_STRING);
+                if (enum_name == var_name)
+                {
+                    info_pair.second.system_var_num = var_num;
+                    break;
+                }
+            }
+        }
+    }
     // Add more conditions as needed for other combinations
 }

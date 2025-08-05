@@ -234,7 +234,7 @@ public:
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
                                                             const std::vector<unsigned int> &keyopts);
 
-    VariableToElementIdsMapType associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const;
+    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const;
 
     inline ElementType *get_element_type(subdomain_id_type element_id)
     {

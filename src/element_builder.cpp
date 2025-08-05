@@ -972,32 +972,35 @@ void ElementBuilder::build_plane13_element_solution_vector()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        auto &J_elem = this->vectors[3][0];
-
-        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
-        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-        // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-        fill_solution_vector_support(main_sys->old_local_solution, 1);
-
-        for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+        if (elem_builder_misc_data.transient_effect)
         {
-            solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
-            solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+            auto &J_elem = this->vectors[3][0];
+
+            elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
+
+            auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+
+            fill_solution_vector_support(main_sys->old_local_solution, 1);
+
+            for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
+            {
+                solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
+                solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
+            }
+
+            auto &JAe = this->matrices[2][0];
+
+            unsigned int j_qp_size = JAe.m();
+
+            DenseVector<Number> J_elem_A(j_qp_size);
+            JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
+
+            for (unsigned int qp = 0; qp < j_qp_size; qp++)
+                J_elem(0) -= J_elem_A(qp);
+
+            J_elem(0) = J_elem(0) / rs_matrix[0] / j_qp_size;
         }
-
-        auto &JAe = this->matrices[2][0];
-
-        unsigned int j_qp_size = JAe.m();
-
-        DenseVector<Number> J_elem_A(j_qp_size);
-        JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
-
-        for (unsigned int qp = 0; qp < j_qp_size; qp++)
-            J_elem(0) -= J_elem_A(qp);
-
-        J_elem(0) = J_elem(0) / rs_matrix[0] / j_qp_size;
         break;
     }
     default:
