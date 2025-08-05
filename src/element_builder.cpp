@@ -584,7 +584,7 @@ void ElementBuilder::build_plane13()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
                 // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
-                JAe(qp, dof_i) -= phi[dof_i][qp];
+                JAe(qp, dof_i) += phi[dof_i][qp];
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
@@ -866,9 +866,9 @@ void ElementBuilder::build_solid97_element_solution_vector()
             {
                 auto &J_elem_old = this->vectors[4][0];
                 // Apply ramping to the current load
-                J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jx);
-                J_elem_old(1) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jy);
-                J_elem_old(2) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+                J_elem_old(0) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jx);
+                J_elem_old(1) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jy);
+                J_elem_old(2) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
             }
             this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
         }
@@ -963,7 +963,7 @@ void ElementBuilder::build_plane13_element_solution_vector()
                 {
                     auto &J_elem_old = this->vectors[4][0];
                     // Apply ramping to the current load
-                    J_elem_old(0) *= this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+                    J_elem_old(0) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
                 }
                 this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
             }
