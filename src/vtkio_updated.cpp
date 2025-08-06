@@ -710,19 +710,17 @@ void VTKIO_Updated::cells_to_vtk()
     vtkSmartPointer<vtkIntArray> elem_proc_id = vtkSmartPointer<vtkIntArray>::New();
     elem_proc_id->SetName("processor_id");
     elem_proc_id->SetNumberOfComponents(1);
+
     unsigned int num_elem_data_vars = _sys->n_vars();
     std::vector<vtkSmartPointer<vtkDoubleArray>> elem_data_vars;
-    unsigned int dim = mesh.mesh_dimension();
+
     for (unsigned int i = 0; i < num_elem_data_vars; ++i)
     {
         elem_data_vars.push_back(vtkSmartPointer<vtkDoubleArray>::New());
         elem_data_vars[i]->SetName(_sys->variable_name(i).c_str());
-        FEFamily fe_family = _sys->variable(i).type().family;
-        if (FEInterface::field_type(fe_family) == TYPE_VECTOR)
-            elem_data_vars[i]->SetNumberOfComponents(dim);
-        else
-            elem_data_vars[i]->SetNumberOfComponents(1);
+        elem_data_vars[i]->SetNumberOfComponents(1);
     }
+
     std::vector<dof_id_type> dof_indices;
     DofMap &dof_map = _sys->get_dof_map();
     std::vector<Number> tuple_values;
