@@ -298,6 +298,8 @@ void SimulationController::solve()
 
         system.solve();
 
+        system.compute_solution_time_derivative(substep);
+
         system.rhs->zero();
 
         // system.get_linear_solver()->print_converged_reason();
@@ -327,6 +329,9 @@ void SimulationController::solve()
         }
         // Update solution
         *system.old_local_solution = *system.current_local_solution;
+        auto &old_time_derivative = system.get_vector("solution_derivative_old");
+        auto &current_time_derivative = system.get_vector("solution_derivative");
+        old_time_derivative.swap(current_time_derivative);
 
         libMesh::out << "Time substep " << substep.get_index() + 1 << " of " << time_step->get_n_substeps() << " completed." << std::endl;
     }

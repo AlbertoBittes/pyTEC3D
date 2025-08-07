@@ -22,6 +22,7 @@ Substep::Substep(unsigned int index, Real dt, TimeStep *parent)
 bool Substep::get_write_results() const { return this->get_parent_object()->get_write_results(); };
 bool Substep::get_transient_effect() const { return this->get_parent_object()->get_transient_effect(); };
 bool Substep::get_ramped_load() const { return this->get_parent_object()->get_ramped_load(); };
+Real Substep::get_theta() const { return this->get_parent_object()->get_theta(); };
 
 void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
 {

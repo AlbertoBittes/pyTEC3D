@@ -36,6 +36,7 @@ public:
     bool get_write_results() const;
     bool get_transient_effect() const;
     bool get_ramped_load() const;
+    Real get_theta() const; // Not used in this context, but kept for compatibility
 
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }

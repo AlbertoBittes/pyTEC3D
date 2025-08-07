@@ -49,6 +49,8 @@ void AssemblerLinear::assemble()
 
     auto time_substep = this->context<TimeStep>()->get_active_substep();
 
+    Real dt = time_substep->get_dt();
+    Real theta = time_substep->get_theta();
     // if (this->check_compute_matrix())
     // {
     //     this->build_write_element_matrices();
@@ -59,6 +61,9 @@ void AssemblerLinear::assemble()
     // }
     std::vector<dof_id_type> dof_indices;
     std::vector<Real> old_solution_values;
+    std::vector<Real> old_time_derivative_values;
+
+    auto &old_time_derivative = system->get_vector("solution_derivative_old");
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -117,6 +122,7 @@ void AssemblerLinear::assemble()
     // Start logging the insertion of the local (element)
     // matrix and vector into the global matrix and vector
     // LOG_SCOPE_WITH("matrix insertion", "", perf_log);
+    libMesh::out << "Building system global matrix and RHS" << std::endl;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // std::shared_ptr<ElementType> elem_type = element_types_map[elem->get_extra_integer(etype_num_integer)];
@@ -186,6 +192,12 @@ void AssemblerLinear::assemble()
             system->old_local_solution->get(dof_indices, old_solution_values);
 
             Ce.vector_mult_add(rhs, 1, old_solution_values);
+
+            if (theta != 1.0)
+            {
+                old_time_derivative.get(dof_indices, old_time_derivative_values);
+                Ce.vector_mult_add(rhs, dt * (1 - theta), old_time_derivative_values);
+            }
             // if (elem_id == 969)
             // {
             //     std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
@@ -275,6 +287,10 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
             }
         }
     }
+    if (update_matrix)
+        libMesh::out << "Updating system matrix for current time step" << std::endl;
+    else
+        libMesh::out << "Reusing system matrix from previous time step" << std::endl;
     return update_matrix;
 }
 
@@ -317,11 +333,13 @@ void AssemblerSolution::compute_derived_quantities()
     {
         filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
         vec_set = 2;
+        libMesh::out << "Computing nodal solutions" << std::endl;
     }
     else if (sys_name == "ElementSolutionSystem")
     {
         filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
         vec_set = 3;
+        libMesh::out << "Computing element solutions" << std::endl;
     }
     auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
     std::ifstream *solution_input_file = dynamic_cast<std::ifstream *>(streams[0].get());

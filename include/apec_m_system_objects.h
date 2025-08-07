@@ -76,14 +76,9 @@ public:
         return boundary_conditions_object;
     }
 
-    void release_subset_solve()
-    {
-        if (this->_subset != nullptr)
-        {
-            delete this->_subset;
-            this->_subset = nullptr;
-        }
-    }
+    void release_subset_solve();
+
+    void compute_solution_time_derivative(const Substep &time_substep);
 
 private:
     std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object;

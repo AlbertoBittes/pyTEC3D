@@ -355,6 +355,10 @@ bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Sessi
         update_matrix = false;
         solver->reuse_preconditioner(true);
     }
+    if (update_matrix)
+        libMesh::out << "Element matrices will be recomputed for current time step" << std::endl;
+    else
+        libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
     return update_matrix;
 }
 // {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
@@ -888,13 +892,7 @@ void ElementBuilder::build_solid97_element_solution_vector()
 
             // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-            fill_solution_vector_support(main_sys->old_local_solution, 1);
-
-            for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
-            {
-                solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
-                solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
-            }
+            fill_solution_vector_support(main_sys->request_vector(0), 0); // solution_derivative
 
             DenseVector<Number> Ae_dt;
             for (unsigned int k = 0; k < 3; k++)
@@ -981,13 +979,7 @@ void ElementBuilder::build_plane13_element_solution_vector()
             auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
             // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-            fill_solution_vector_support(main_sys->old_local_solution, 1);
-
-            for (unsigned int k = 0; k < solution_vector_support.sol_vectors[0].size(); k++)
-            {
-                solution_vector_support.sol_vectors[0][k] -= solution_vector_support.sol_vectors[1][k];
-                solution_vector_support.sol_vectors[0][k].scale(1.0 / elem_builder_misc_data.dt);
-            }
+            fill_solution_vector_support(main_sys->request_vector(0), 0); // solution_derivative
 
             auto &JAe = this->matrices[2][0];
 
@@ -1035,8 +1027,11 @@ void ElementBuilder::build_solution_vector(SystemType sys_type)
     switch (sys_type)
     {
     case SystemType::NODAL_EXPLICIT:
+    {
+        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
         build_nodal_solution_vector();
         break;
+    }
     case SystemType::ELEMENT_EXPLICIT:
         build_element_solution_vector();
         break;
@@ -1106,6 +1101,7 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     std::vector<dof_id_type> dof_indices;
 
+    libMesh::out << "Building elements' matrices" << std::endl;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -1117,8 +1113,6 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
 
         this->prepare_solution_vectors();
-
-        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
 
         this->build_solution_vector(sys_type);
 
