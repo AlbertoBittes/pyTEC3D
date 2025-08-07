@@ -34,8 +34,8 @@ void SystemBuilder::initialize()
         main_system->current_local_solution->zero();
         main_system->current_local_solution->close();
 
-        main_system->add_vector("solution_derivative");
-        main_system->add_vector("solution_derivative_old");
+        // main_system->add_vector("solution_derivative");
+        // main_system->add_vector("solution_derivative_old");
     }
 };
 

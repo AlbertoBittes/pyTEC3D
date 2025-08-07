@@ -63,7 +63,6 @@ void AssemblerLinear::assemble()
     std::vector<Real> old_solution_values;
     std::vector<Real> old_time_derivative_values;
 
-    auto &old_time_derivative = system->get_vector("solution_derivative_old");
     // Allocate memory for 3D nodal elements matrixes with transient effects
     // I can have up to 4 variables per node/edge
     // References to momentum equation right hand sides
@@ -152,7 +151,7 @@ void AssemblerLinear::assemble()
         auto &Ke = elem_builder->get_matrices()[0][0];
         auto &Ce = elem_builder->get_matrices()[0][1];
 
-        Ce.scale(1 / time_substep->get_dt());
+        Ce.scale(1 / (time_substep->get_dt() * theta));
 
         if (update_matrix)
         {
@@ -195,7 +194,7 @@ void AssemblerLinear::assemble()
 
             if (theta != 1.0)
             {
-                old_time_derivative.get(dof_indices, old_time_derivative_values);
+                system->older_local_solution->get(dof_indices, old_time_derivative_values);
                 Ce.vector_mult_add(rhs, dt * (1 - theta), old_time_derivative_values);
             }
             // if (elem_id == 969)
@@ -213,7 +212,8 @@ void AssemblerLinear::assemble()
     }
     session->close_file_streams(streams);
     this->prev_substep = time_substep;
-
+    libMesh::out << "Finished building system global matrix and RHS" << std::endl;
+    libMesh::out << "Solving linear system..." << std::endl;
     // Matrix changes when we have nonlinearities or different dt
 
     // Zero the element matrix and right-hand side before

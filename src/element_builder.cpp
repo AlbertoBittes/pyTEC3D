@@ -894,7 +894,7 @@ void ElementBuilder::build_solid97_element_solution_vector()
 
             // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-            fill_solution_vector_support(main_sys->request_vector(0), 0); // solution_derivative
+            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
 
             DenseVector<Number> Ae_dt;
             for (unsigned int k = 0; k < 3; k++)
