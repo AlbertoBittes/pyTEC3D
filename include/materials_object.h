@@ -10,6 +10,8 @@ using namespace libMesh;
 // Forward declaration of LoadStep
 class LoadStep;
 
+// Materials holds the materials numbers and their properties (mu, resistivity, etc.) (MP in APDL)
+// And evaluates the
 class MaterialsObject : public DataframeMatLikeFEDataObject
 {
 public:

@@ -10,6 +10,11 @@
 
 using namespace libMesh;
 
+// The simulation controller object does the following:
+// Reads input model/mesh
+// Distributes degrees of freedom based on model information and setups the FEM systems
+// Solves the system
+// given user input model and load steps, it manages in a logical order all steps of a EMAG simulation.
 class SimulationController
 {
 public:
@@ -28,6 +33,7 @@ public:
     void set_load_step_data();
     void set_solver_settings();
 
+    // Available CLI commands
     enum class Command
     {
         READ_MESH,
@@ -39,11 +45,13 @@ public:
         INVALID
     };
 
+    // Execute in batch mode
     void run_batch_mode();
 
     // Main CLI loop
     void run_cli(libMesh::Parallel::Communicator &comm);
-    // Add other simulation control methods as needed
+
+    // Other simulation control methods as needed
     // Helper to parse command from input string
     inline Command parse_command(const std::string &input) const
     {
@@ -71,9 +79,10 @@ public:
         return "";
     }
 
-    // Service getters (optional)
-    // std::shared_ptr<ElementBuilder> get_element_builder() { return element_builder; }
-    // ...
+    // The main attributes of the Simulation contrller, which represent all user input:
+    // Mesh/Element Types/etc. in apec_m_model_data
+    // The equation systems enerated from the input model
+    // The load steps of the simulation to be executed
     libMesh::Parallel::Communicator &comm;
     bool batch_mode;
 

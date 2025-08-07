@@ -9,6 +9,8 @@
 typedef std::unordered_map<Globals::GlobalVariableName, Real> NodeBoundaryConditions;
 typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditionsMap;
 
+// The NodeBCObject holds the nodal DOF imposed by the user (D in APDL), they will be used by the boundary
+// conditions object to set the constraints in the system matrix
 class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
 {
 public:
@@ -22,24 +24,7 @@ public:
     // Destructor
     virtual ~NodeBCObject() {}
 
-    // // Setters
-    // void set_system(System *sys) { system = sys; }
-    // void set_update_boundary_conditions(bool update) { update_boundary_conditions = update; }
-
-    // // Getters
-    // System *get_system() const { return system; }
-    // bool get_update_boundary_conditions() const { return update_boundary_conditions; }
-
     void read_data(std::ifstream &file) override;
-
-    // Methods
-    // void constrain() override; // Override from System::Constraint
-    // void check_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
-    // void set_boundary_conditions(std::shared_ptr<LoadStep> prev_load_step);
-
-private:
-    // bool update_boundary_conditions; // Flag to update boundary conditions
-    // System *system;                  // Pointer to the libMesh System
 };
 
 #endif // NODE_BC_OBJECT_H

@@ -13,6 +13,12 @@
 
 using namespace libMesh;
 
+// The TimeStep object collects all information regarding the transient settings of the analysis:
+// Time step size
+// Time substeps
+// Integration scheme parameter theta
+// Ramping of loads, to be used together with time substeps
+// Transient effects: when OFF, a static analysis load step is made
 class LoadStep;
 
 class TimeStep; // Forward declaration
@@ -125,6 +131,7 @@ private:
     Substep *previous_substep = nullptr;
 };
 
+// The iterator takes care of solving the time substeps sequentially
 class TimeStep::Iterator
 {
 public:

@@ -9,6 +9,8 @@ using namespace libMesh;
 
 class LoadStep;
 
+// This repository stores all data relate to mathematical solver settings, non-linear options (not iplemented yet),
+// The user can choose the solver type (direct, iterative), the solver tolerances, and other similar parameters.
 class PetscSolverConfiguration : public SolverConfiguration, public SettingsFEDataObject
 {
 public:

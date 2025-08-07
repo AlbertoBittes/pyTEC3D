@@ -7,7 +7,20 @@ namespace Globals
 {
     enum class VariableCategory;
 }
+// Here some useful enums and helper functions for the systems of equations
 
+// The main system is represented by the magnetic vector potential DOFs (A_x, A_y, etc.). It is
+// the system which matrix and rhs are built by Assembler and ElementBuilder classes.
+
+// It is solved to get the nodal degrees of freedom
+
+// The NodalSolutionSystem will hold those quantities derived from magnetic vector potential and other
+// DOF variables, associated to mesh nodes, of the main system. Equivalent in APDL: Nodal Solutions in POST1 (B, etc.)
+
+// The ElementSolutionSystem system will hold those quantities derived from magnetic vector potential and other
+// DOF variables, associated to mesh elements, of the main system. Equivalent in APDL: Element Solutions in POST1 (J, etc.)
+
+// The ElementLoadsSystem holds the body loads (Js in APDL)
 enum SystemType
 {
     MAIN = 0,

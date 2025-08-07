@@ -11,7 +11,8 @@
 
 using namespace libMesh;
 
-// SystemBuilder as a service using shared_ptr to a TypedContextView of ElementTypeFactory
+// SystemBuilder takes care of assigning the proper variables to the systems, depending on the element formulation
+// chosen by the user. It also sets proper initial settings
 class SystemBuilder
     : public System::Initialization,
       public FEMServiceAbstract<ElementTypeFactory>,

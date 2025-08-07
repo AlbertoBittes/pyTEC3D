@@ -6,6 +6,8 @@
 #include <memory>
 #include "fe_data_object.h" // Include the base class
 
+// Holds the RealConstants numbers (REAL in APDL) and their values to be used by ElementBuilder during
+// element matrices' construction
 class RealConstantsObject : public DataframeMatLikeFEDataObject
 {
 public:

@@ -9,6 +9,9 @@
 template <typename... Types>
 struct TypedContextView;
 
+// A FEMService uses the data contained in a TypedContextView and performs its tasks.
+// E.g. The ElementBuilder, given the Loads, Materials, RealConstants, ElementTypes,
+// Builds the element matrices to be added to the global stiffness matrix
 template <typename... ContextTypes>
 class FEMServiceAbstract
 {

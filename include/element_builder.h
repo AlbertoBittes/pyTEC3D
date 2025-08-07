@@ -72,6 +72,11 @@ struct SolutionVectorSupport
         sol_vectors[idx].clear();
     }
 };
+
+// This is probably the most important class of the program. Given the MAterials, the Loads, etc. it builds the
+// Elements' matrices and RHS, or solution vectors (B, J, etc.), and writes the m down to files, which will then be
+// Assembled by the assembler.
+
 class ElementBuilder
     : public FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
       public FEParentObjectBase<EquationSystems>
@@ -221,10 +226,19 @@ public:
     void init();
 
 private:
+    // Matrices' sets
+    // Idx 0: element stiffness/capacitance matrices: Ke, Ce, etc.)
+    // Idx 1: Nodal solution matrices (e.g. AAe, Me used to compute B from A)
+    // Idx 2: Element solution matrices (e.g. JAe, JVe used to compute J from dA/dt and dV/dt)
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices
-    std::vector<std::vector<DenseVector<Number>>> vectors;  // Element vectors
-    ElemData elem_data;                                     // Element data structure
-    MeshDataIndex mesh_data_index;                          // Mesh data structure
+    // Idx 0: elements' RHS (Fe)
+    // Idx 1: elements' old RHS at previous LoadStep (used for ramping loads)
+    // Idx 2: Nodal solution vectors (B, ...)
+    // Idx 3: Element solution vectors (J, ...)
+    // Idx 4: Other support vectors
+    std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
+    ElemData elem_data;                                    // Element data structure
+    MeshDataIndex mesh_data_index;                         // Mesh data structure
     SolutionVectorSupport solution_vector_support;
     const DofMap *main_dof_map = nullptr;
     ApecMLinearSystem *main_sys = nullptr; // Main system and dof map pointers

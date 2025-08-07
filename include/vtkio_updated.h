@@ -43,6 +43,8 @@ using namespace libMesh;
 // Forward declarations
 class vtkUnstructuredGrid;
 
+// Extended VTK I/O class from libMesh (see libMesh documentation), it allows to read also
+// other data of the model (ElementTypes, Couplings, infinite boundaries, ...)
 class VTKIO_Updated : public MeshInput<MeshBase>,
                       public MeshOutput<MeshBase>
 {

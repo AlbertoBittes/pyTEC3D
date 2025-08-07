@@ -16,6 +16,8 @@ class LoadStepper;
 
 using namespace libMesh;
 
+// LoadStep is a repository that holds all information regarding the LoadStep to be solved.
+// The various services (e.g. ElementBuilder, Assembler) will use this data to perform their tasks
 class LoadStep : public FEParentObjectBase<LoadStepper>, public FEMDataRepository
 {
 public:

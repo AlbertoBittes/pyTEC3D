@@ -49,13 +49,19 @@ class APEC_M:
         self.jobname = None
         self.folderpath = None
 
-        self.element_types = pd.DataFrame(columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys()))
+        self.element_types = pd.DataFrame(
+            columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
+        )
         self.materials = pd.DataFrame(columns=list(MATERIALS_COLUMNS_TYPES.keys()))
-        self.real_constants = pd.DataFrame(columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys()))
+        self.real_constants = pd.DataFrame(
+            columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
+        )
         self.time_parameters = DEFAULT_TIME_PARAMETERS
         self.apec_parameters = {}
         self.solver_settings = DEFAULT_SOLVER_SETTINGS
-        self.transient_analysis = pd.DataFrame(columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys()))
+        self.transient_analysis = pd.DataFrame(
+            columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
+        )
 
         self.process = None
         self.num_processors = 1
@@ -596,7 +602,9 @@ class APEC_M:
         df = pd.DataFrame(final_data)
 
         # Replace the "load_bc_number" column with the corresponding "label"
-        reverse_mapping = {v: k for k, v in VARIABLES_GLOBAL_NUMBERS.items()}  # Reverse the mapping
+        reverse_mapping = {
+            v: k for k, v in VARIABLES_GLOBAL_NUMBERS.items()
+        }  # Reverse the mapping
         df["label"] = df["load_bc_number"].map(reverse_mapping)  # Map numbers to labels
 
         # Reorder columns to make "label" the second column and remove "load_bc_number"
@@ -637,10 +645,6 @@ class APEC_M:
 
         # Check that all keys in settings have a type defined and match the expected type
         for key, value in settings.items():
-            if key not in expected_types:
-                raise ValueError(
-                    f"Key '{key}' does not have a predefined type in DEFAULT_COLUMNS_ATTRIBUTES_TYPES['{label}']."
-                )
             expected_type = expected_types[key]
             if expected_type == int and not isinstance(value, int):
                 raise TypeError(
@@ -660,7 +664,9 @@ class APEC_M:
 
         for key, value in settings.items():
             # Write the size of the string label and the label itself
-            binary_file.write(struct.pack("I", len(key)))  # Length of the key (int)
+            binary_file.write(
+                struct.pack("I", len(key))
+            )  # Length of the key (unsigned int)
             binary_file.write(key.encode("utf-8"))  # Key as a UTF-8 encoded string
 
             # Determine the type of the value and write it
@@ -801,7 +807,7 @@ class APEC_M:
 
     def create_numpy_array_for_binary(self, cell_point_data):
         """
-        Creates a NumPy structured array for loads from a VTK cell data array.
+        Creates a NumPy structured array for loads/nodal DOFs from a VTK cell data array.
 
         The structured array contains:
             - cell_id (unsigned int)
@@ -1449,7 +1455,6 @@ class APEC_M:
         self,
         excel_file_path,
     ):
-
         if not os.path.exists(excel_file_path):
             raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
 

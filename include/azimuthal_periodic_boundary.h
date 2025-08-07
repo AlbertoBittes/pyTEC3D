@@ -1,33 +1,3 @@
-// The libMesh Finite Element Library.
-// Copyright (C) 2002-2024 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
-
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-
-// <h1> Systems Example 9 - Linear elasticity problem with periodic constraints </h1>
-//
-// In this example we illustrate periodic constraints with a linear elasticity example.
-// We consider a sector of a circular domain, and hence we must impose an "azimuthal"
-// periodic condition, which entails a dof-transformation between the two periodic
-// boundaries to account for the rotation of the coordinate system.
-//
-// The baseline code is from systems_of_equations_ex6, and we edit to use a different mesh
-// and to impose the periodic boundary condition.
-
-// C++ include files that we need
-
-// libMesh includes
 #include <libmesh/libmesh.h>
 
 #include "libmesh/periodic_boundaries.h"

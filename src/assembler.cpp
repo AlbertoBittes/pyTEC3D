@@ -1,4 +1,3 @@
-// Basic include file needed for the mesh functionality.
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 #include <libmesh/equation_systems.h>
@@ -12,11 +11,6 @@
 #include <libmesh/dense_vector.h>
 #include <libmesh/perf_log.h>
 
-// Define the PerfLog, a performance logging utility.
-// It is useful for timing events in a code and giving
-// you an idea where bottlenecks lie.
-
-// The definition of a geometric element
 #include "assembler.h"
 #include "apec_m_system_objects.h"
 #include "element_builder.h"
@@ -25,10 +19,6 @@
 
 using namespace libMesh;
 
-// // We now define the matrix assembly function for the
-// // Poisson system.  We need to first compute element
-// // matrices and right-hand sides, and then take into
-// // account the boundary conditions.
 void AssemblerLinear::assemble()
 {
     // Declare a performance log.  Give it a descriptive

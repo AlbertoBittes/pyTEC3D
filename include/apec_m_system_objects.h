@@ -17,6 +17,7 @@ using namespace libMesh;
 
 class ElementBuilder;
 
+// The basic libMesh class (System, EquationSystems, see libMesh guide) are extendend to meet APEC-M code structure requirements
 template <typename SysLike, typename AssemblerLike>
 class ApecMSystem
     : public SysLike,

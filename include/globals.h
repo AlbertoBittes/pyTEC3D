@@ -6,6 +6,7 @@
 #include <vector>
 #include <utility>
 
+// Some useful global variables
 namespace Globals
 {
     // Enum for global variable names

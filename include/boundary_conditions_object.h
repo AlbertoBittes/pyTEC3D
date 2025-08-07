@@ -9,7 +9,10 @@
 
 using namespace libMesh;
 
-// Now expects a context view with NodeBCObject and TimeStep (shared_ptr-based)
+// The boundary conditions object:
+// Checks if it is necessary to update the nodal degrees of freedom imposed by the user
+// updates the constraints if necessary. The assembler will then constrian element matrices before putting
+// Them in the global system matrix
 class BoundaryConditionsObject
     : public System::Constraint,
       public FEMServiceAbstract<NodeBCObject, TimeStep>,

@@ -19,6 +19,11 @@ typedef std::unordered_map<dof_id_type, std::vector<Real>> MaterialsMap;
 typedef std::unordered_map<dof_id_type, std::vector<Real>> RealConstantsMap;
 typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
 
+// FE data object classes are the basic data repositories of the program.
+// They store information into a map (dict) that can be later retrieved when needed
+// Each type of data e.g. Materials, Real Constants, Solver Settings, Time Steps, etc. is stored into a unordered map.
+// The basic classes can be enriched by peculiar methods (e.g. the LoadsObject has methods to interface with the
+// ElementBuilder class that builds the RHS of the elements)
 class FEDataObjectAbstract
 {
 public:

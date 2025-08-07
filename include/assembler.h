@@ -11,7 +11,10 @@
 
 using namespace libMesh;
 
-// The assembler expects a context view with TimeStep and Session (shared_ptr-based)
+// The AssemblerLinear:
+// Reads the element matrices/vectors written to file by an element builder
+// Builds the main system (DOFS: Ax, Ay, etc.) matrix and rhs according to the chosen time integration scheme/ramping/etc.
+// Once the system matrix is built, the libMesh solver will take care of solving it
 class AssemblerLinear
     : public System::Assembly,
       public FEMServiceAbstract<TimeStep, Session>,
@@ -35,6 +38,9 @@ private:
     Substep *prev_substep = nullptr; // Pointer to the previous substep
 };
 
+// Similarly to AssemblerLinear, but this object is associated to derived quantities systems (B, J, H, etc.).
+// It reads the quantities computed by the element builder and puts them into the solution vectors that will
+// be written in output
 class AssemblerSolution
     : public System::Assembly,
       public FEMServiceAbstract<ElementTypeFactory, TimeStep, Session>,

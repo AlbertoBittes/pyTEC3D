@@ -1,6 +1,8 @@
 #ifndef FEM_PARENT_OBJECT_H
 #define FEM_PARENT_OBJECT_H
 
+// This basic class simply identifies the parent object of a class. it is meant to be specialized and is
+// used to connect classesby adding dependencies, with a father-daughter relationship.
 template <typename T1>
 class FEParentObjectBase
 {

@@ -10,13 +10,11 @@
 #include <libmesh/quadrature_gauss.h>
 #include <libmesh/string_to_enum.h>
 #include <libmesh/fe.h>
-// Define Gauss quadrature rules.
 
 #include "fe_data_object.h"
 #include "globals.h" // Include the header for global constants
 
 using namespace libMesh;
-// using namespace Globals;
 
 class ElementType;
 
@@ -42,28 +40,6 @@ enum PhysicalRegionEnum : unsigned int
     UNKNOWN
 };
 
-enum DOFMatrixNames
-{
-    Ke,
-    Ce,
-};
-
-enum NodalSolutionMatrixNames
-{
-    Me,
-    AAe,
-};
-enum ElementSolutionMatrixNames
-{
-    JAe,
-    JVe,
-};
-enum VectorNames
-{
-    Fe,
-    Js,
-};
-
 struct VariableData
 {
     Globals::VariableCategory category;
@@ -77,9 +53,18 @@ struct VariableData
 typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
 typedef std::map<Globals::GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
-//                         label         is_active, physical components, is scalar, API label, API components, fe family, order
 typedef std::map<Globals::GlobalVariableName, VariableData> VariableInformation;
 
+// This is probably one of the most important classes of the program (ETYPE in APDL).
+// It holds the ElementTypes ID numbers (formulations) and all the information relevant for the formulation of the problem:
+// The physical region represented by the element (KEYOPT1)
+//
+// Axisymmetric options (KEYOPT3)
+// Last, it contains an array of libMesh FE objects, which hold all the shape functions, quadrature points, etc.
+// These infomration will be used to build by the ElementBuilder e.g. to build the element matrices
+// Also, each element has associated DOF variables (e.g. SOLI97, see APDL, can have A_x, A_y, A_z, VOLT...)
+// given a mesh containing the element type IDs for each element, the SystemBuilder will distribute properly the variables
+// in the proper subdomains of the mesh. The ElementType contains info about name, number of variables, if they are active, etc.
 class ElementType
 {
 public:
@@ -126,9 +111,6 @@ public:
     {
         return physical_region;
     }
-    // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_matrix_idx_size_map() const { return matrix_idx_size_map; }
-    // const std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> &get_derived_matrix_idx_size_map() const { return derived_matrix_idx_size_map; }
-    // const std::map<std::string, std::tuple<unsigned int, unsigned int>> &get_vector_idx_size_map() const { return vector_idx_size_map; }
 
     // Virtual methods for populating maps
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() = 0;
@@ -150,10 +132,6 @@ protected:
     VariableInformation variable_info;
     unsigned int active_dof_vars_size;  // Number of active DOF variables
     PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
-    // Maps for matrix and vector sizes
-    // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> matrix_idx_size_map;
-    // std::map<std::string, std::tuple<unsigned int, unsigned int, unsigned int>> derived_matrix_idx_size_map;
-    // std::map<std::string, std::tuple<unsigned int, unsigned int>> vector_idx_size_map;
 };
 
 class AVElementType : public ElementType
@@ -220,6 +198,7 @@ public:
     PLANE233Type(const std::vector<unsigned int> &keyopts);
 };
 
+// ElementTypeFactory holds all ElementTypes
 class ElementTypeFactory : public FEDataObjectMap<ElementTypesMap>
 {
 public:

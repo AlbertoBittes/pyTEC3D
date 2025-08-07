@@ -15,28 +15,19 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-// <h1>Introduction Example 1 - Creation of a Mesh Object</h1>
-// \author Benjamin S. Kirk
-// \date 2003
-
 // Basic include file needed for the mesh functionality.
 #include "libmesh/libmesh.h"
-// Define the PerfLog, a performance logging utility.
-// It is useful for timing events in a code and giving
-// you an idea where bottlenecks lie.
 #include "simulation_controller.h"
 
 using namespace libMesh;
 
-// void read_parse_element_types(std::string element_types_filepath, EquationSystems &equation_systems)
-// {
-//     libMesh::out << "Reading element types..." << std::endl;
-//     equation_systems.parameters.set<std::shared_ptr<ElementTypesCollector>>("element_types_collector") = std::make_shared<ElementTypesCollector>(element_types_filepath);
-// }
-
-// Function to execute the batch mode logic
-
 // Main function
+// Here the code will understand if batch mode or interactive mode was chosen
+// The simulation controller will take care of managing both modes, by taking as input
+// The command line arguments
+
+// To understand the code, you can follow the order of the functions called by the batch mode,
+// to follow step by step how a simulation works
 int main(int argc, char **argv)
 {
     // Initialize libMesh and any dependent libraries
@@ -49,6 +40,7 @@ int main(int argc, char **argv)
     //             sleep(1);
     //     }
     // }
+
     // Check for proper calling arguments
     if (argc < 2)
     {
@@ -61,6 +53,7 @@ int main(int argc, char **argv)
     std::string mode = argv[1];
     if (mode == "-b")
     {
+        // If you selected batch mode, you need to provide a model file (see documentation)
         if (argc < 3)
         {
             libmesh_error_msg("Error: Missing mesh filename. Usage:\n"
@@ -72,6 +65,7 @@ int main(int argc, char **argv)
 
         // Construct the SimulationController in batch mode
         SimulationController controller(init.comm(), true, mesh_filename);
+        // Execute the batch mode
         controller.run_batch_mode();
     }
     else if (mode == "-i")
@@ -80,9 +74,10 @@ int main(int argc, char **argv)
 
         // Construct the SimulationController in interactive mode
         SimulationController controller(init.comm(), false);
+        // Execute the interactive mode
         controller.run_cli(init.comm());
     }
-    else
+    else // raise error
     {
         libmesh_error_msg("Error: Invalid mode. Usage:\n"
                           << "\t" << argv[0] << " -b mesh_filename\n"

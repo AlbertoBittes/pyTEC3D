@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include "fe_data_object.h"
 
+// A FEM data repository holds many FEDataObjects. E.g. a LoadStep carries information about the Loads, the
+// Materials, the SolverSettings for that time step...
 class FEMDataRepository
 {
 public:
@@ -52,6 +54,11 @@ protected:
     std::unordered_map<std::type_index, std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
 
+// The typed context views are the main way of interfacing data between classes in APEC-M
+// E.g. the Assembler only needs details about the TimeStep integration scheme, it doesnt need
+// the Loads, the Materials, etc.
+// The user can create "slices" of data from the repositories, to be assignet to the services that
+// can properly use the data
 // Example of a "view" context for typed access
 template <typename... Types>
 struct TypedContextView
