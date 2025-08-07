@@ -86,8 +86,8 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*matrix_idx_size_map)[Ke] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    (*matrix_idx_size_map)[Ce] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[0] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[1] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
     return matrix_idx_size_map;
 };
@@ -270,8 +270,8 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*matrix_idx_size_map)[Ke] = {n_sf, n_sf};
-    (*matrix_idx_size_map)[Ce] = {n_sf, n_sf};
+    (*matrix_idx_size_map)[0] = {n_sf, n_sf};
+    (*matrix_idx_size_map)[1] = {n_sf, n_sf};
 
     return matrix_idx_size_map;
 }
@@ -284,8 +284,8 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nod
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
-    (*solution_matrix_idx_size_map)[Me] = {2 * n_sf, 2 * n_sf};
-    (*solution_matrix_idx_size_map)[AAe] = {2 * n_sf, n_sf};
+    (*solution_matrix_idx_size_map)[0] = {2 * n_sf, 2 * n_sf};
+    (*solution_matrix_idx_size_map)[1] = {2 * n_sf, n_sf};
 
     return solution_matrix_idx_size_map;
 }
@@ -298,7 +298,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_ele
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
 
-    (*solution_matrix_idx_size_map)[JAe] = {n_qp, n_sf};
+    (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf};
 
     return solution_matrix_idx_size_map;
 }

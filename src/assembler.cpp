@@ -333,13 +333,13 @@ void AssemblerSolution::compute_derived_quantities()
     {
         filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
         vec_set = 2;
-        libMesh::out << "Computing nodal solutions" << std::endl;
+        libMesh::out << "Setting nodal solution results " << std::endl;
     }
     else if (sys_name == "ElementSolutionSystem")
     {
         filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
         vec_set = 3;
-        libMesh::out << "Computing element solutions" << std::endl;
+        libMesh::out << "Setting element solution results " << std::endl;
     }
     auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
     std::ifstream *solution_input_file = dynamic_cast<std::ifstream *>(streams[0].get());

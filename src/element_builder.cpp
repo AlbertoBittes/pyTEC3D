@@ -248,6 +248,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     if (recompute_matrix)
     {
+        libMesh::out << "Recomputing element matrices and vectors for current time step" << std::endl;
         std::vector<std::string> filenames = {
             "mtrx_" + rank_str + ".temp",
             "nodal_sol_mtrx_" + rank_str + ".temp",
@@ -300,6 +301,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     std::ifstream *base_rhs_input_file = dynamic_cast<std::ifstream *>(streams_in[0].get());
     std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
 
+    libMesh::out << "Applying loads to RHS" << std::endl;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -344,8 +346,8 @@ bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Sessi
         solver->reuse_preconditioner(false);
     }
     else if (
-        current_material_object->get_data_map() != old_material_object->get_data_map() ||
-        current_real_constant_object->get_data_map() != old_real_constant_object->get_data_map())
+        *(current_material_object->get_mat_like_map()) != *(old_material_object->get_mat_like_map()) ||
+        *(current_real_constant_object->get_mat_like_map()) != *(old_real_constant_object->get_mat_like_map()))
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
@@ -1079,6 +1081,7 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         out_filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
         matrices_set = 1;
         vec_set = 2;
+        libMesh::out << "Computing nodal solutions" << std::endl;
     }
     else if (sys_name == "ElementSolutionSystem")
     {
@@ -1086,6 +1089,7 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         out_filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
         matrices_set = 2;
         vec_set = 3;
+        libMesh::out << "Computing element solutions" << std::endl;
     }
     auto sys_type = get_system_type_from_name(sys_name);
 
@@ -1101,7 +1105,6 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     std::vector<dof_id_type> dof_indices;
 
-    libMesh::out << "Building elements' matrices" << std::endl;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.

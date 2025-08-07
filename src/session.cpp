@@ -143,7 +143,7 @@ void Session::check_load_steps_folder()
     }
     else
     {
-        libMesh::out << "Load steps folder already exists at " << load_steps_folderpath << std::endl;
+        // libMesh::out << "Load steps folder already exists at " << load_steps_folderpath << std::endl;
 
         // Count the number of load step files
         unsigned int load_step_count = 0;

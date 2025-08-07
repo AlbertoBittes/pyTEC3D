@@ -293,7 +293,7 @@ void SimulationController::solve()
         substep.print_solve_msg();
         // update time in element data object
         // Assemble & solve the linear system
-        libMesh::out << "Building matrix and solving system..." << std::endl;
+        libMesh::out << "Solve begins..." << std::endl;
         // Update the old solution of the system
 
         system.solve();
