@@ -18,7 +18,7 @@ using namespace libMesh;
 
 // LoadStep is a repository that holds all information regarding the LoadStep to be solved.
 // The various services (e.g. ElementBuilder, Assembler) will use this data to perform their tasks
-class LoadStep : public FEParentObjectBase<LoadStepper>, public FEMDataRepository
+class LoadStep : public FEParentObjectBase<LoadStepper>, public FEMDataRepository, public FEDataObjectAbstract
 {
 public:
     enum class LoadStepObjectType : uint32_t
@@ -36,66 +36,15 @@ public:
     {
     }
 
+    // Implement abstract destructor
+    virtual ~LoadStep() override = default;
+
     void read_from_file(const std::string &filename);
     // // Add a FEDataObject to the array
     // void add_data_object(const std::shared_ptr<FEParentObjectBase<LoadStepper>> &obj)
     // {
     //     data_objects.push_back(obj);
     // }
-};
-
-class LoadStepper : public FEParentObjectBase<EquationSystems>
-{
-public:
-    // Constructor
-    LoadStepper(EquationSystems *eq_sys = nullptr)
-        : FEParentObjectBase<EquationSystems>(eq_sys),
-          active_load_step(nullptr),
-          old_load_step(nullptr),
-          load_step_index(0) {}
-
-    // Getters
-    std::shared_ptr<LoadStep> get_active_load_step() const { return active_load_step; }
-    std::shared_ptr<LoadStep> get_old_load_step() const { return old_load_step; }
-    unsigned int get_load_step_index() const { return load_step_index; }
-    unsigned int get_cumulative_substep_index() const { return cumulative_substep_index; }
-    // // Setters
-    // void set_active_load_step(std::shared_ptr<LoadStep> load_step) { active_load_step = load_step; }
-    // void set_old_load_step(std::shared_ptr<LoadStep> load_step) { old_load_step = load_step; }
-    // void set_load_step_index(unsigned int index) { load_step_index = index; }
-
-    // Switch pointers and read a new LoadStep
-    void read_new_load_step(const std::string &filename)
-    {
-        // Move the current active load step to the old load step
-        std::swap(old_load_step, active_load_step);
-
-        // Create a new LoadStep and assign it to the active load step
-        active_load_step = std::make_shared<LoadStep>(this);
-        active_load_step->read_from_file(filename);
-
-        // Update the load step index
-        load_step_index++;
-    }
-    void update_cumulative_substep_index()
-    {
-        cumulative_substep_index++;
-    }
-    // Method to update the old solution (if needed)
-    // void update_old_solution(TransientLinearImplicitSystem &system)
-    // {
-    //     if (old_load_step)
-    //     {
-    //         // Placeholder for logic to update the old solution
-    //         std::cout << "Updating old solution for the system." << std::endl;
-    //     }
-    // }
-
-private:
-    std::shared_ptr<LoadStep> active_load_step;
-    std::shared_ptr<LoadStep> old_load_step;
-    unsigned int load_step_index = 0;
-    unsigned int cumulative_substep_index = 0;
 };
 
 #endif // LOAD_STEP_H

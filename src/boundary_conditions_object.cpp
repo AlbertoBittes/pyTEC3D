@@ -85,30 +85,27 @@ void BoundaryConditionsObject::constrain()
     // }
 }
 
-void BoundaryConditionsObject::check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object)
+void BoundaryConditionsObject::check_update_boundary_conditions()
 {
-    // Example implementation
-    // This function should implement the logic to check the boundary conditions applied to the nodes of the system
-    // identified by system_name within the provided equation_systems object.
-    // The actual implementation would depend on the specific constraints to be checked.
-
-    // Retrieve the system by name
     this->update_boundary_conditions = false;
+    auto prev_node_bc_object = this->old_context<NodeBCObject>();
+    auto curr_node_bc_object = this->context<NodeBCObject>();
 
-    if (prev_node_bc_object == nullptr)
-        this->update_boundary_conditions = true;
-    else
+    if (!prev_node_bc_object || !curr_node_bc_object)
     {
-        if (*(prev_node_bc_object->get_data_map()) == *this->context<NodeBCObject>()->get_data_map())
-            this->update_boundary_conditions = false;
-        else
-            this->update_boundary_conditions = true;
+        this->update_boundary_conditions = true;
+        return;
     }
+
+    if (*(prev_node_bc_object->get_data_map()) == *(curr_node_bc_object->get_data_map()))
+        this->update_boundary_conditions = false;
+    else
+        this->update_boundary_conditions = true;
 }
 
-void BoundaryConditionsObject::set_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object)
+void BoundaryConditionsObject::set_boundary_conditions()
 {
-    this->check_update_boundary_conditions(prev_node_bc_object);
+    this->check_update_boundary_conditions();
     if (this->update_boundary_conditions)
     {
         parent_object->reinit_constraints();

@@ -3,6 +3,8 @@
 #include "element_types.h"
 #include "element_builder.h"
 #include "system_builder.h"
+#include "load_stepper.h"
+
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
 #include <libmesh/numeric_vector.h>
@@ -25,9 +27,10 @@ SimulationController::SimulationController(libMesh::Parallel::Communicator &comm
     }
 }
 
-void SimulationController::set_transient_effects(ApecMLinearSystem &system)
+void SimulationController::set_transient_effects()
 {
-    auto time_step = load_stepper->get_active_load_step()->get_object<TimeStep>();
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto time_step = load_stepper->context<LoadStep>()->get_object<TimeStep>();
     auto element_type_factory = apec_m_model_data->get_object<ElementTypeFactory>();
     // Later, this will be a method of system, which will be a viewed object, I still have to think about it
     libMesh::out << "Setting transient effects..." << std::endl;
@@ -62,30 +65,13 @@ void SimulationController::set_transient_effects(ApecMLinearSystem &system)
     }
 }
 
-void SimulationController::reinitialize_constrained_dofs(ApecMLinearSystem &system)
+void SimulationController::reinitialize_constrained_dofs()
 {
-    auto load_step = load_stepper->get_active_load_step();
-
-    auto prev_load_step = load_stepper->get_old_load_step();
-
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto boundary_conditions_object = system.get_boundary_conditions_object();
     libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
     // 3. Prepare context view for boundary conditions object and reinit constraints
-    auto bc_view = std::make_shared<
-        TypedContextView<NodeBCObject, TimeStep>>(
-        TypedContextView<NodeBCObject, TimeStep>::from(
-            load_step));
-    auto boundary_conditions_object = system.get_boundary_conditions_object();
-    boundary_conditions_object->set_context_view(bc_view);
-    if (prev_load_step != nullptr)
-    {
-        // Check if we need to update the boundary conditions
-        boundary_conditions_object->set_boundary_conditions(prev_load_step->get_object<NodeBCObject>());
-    }
-    else
-    {
-        // If there is no previous load step, we assume we are at the beginning
-        boundary_conditions_object->set_boundary_conditions(nullptr);
-    }
+    boundary_conditions_object->set_boundary_conditions();
 }
 
 void SimulationController::set_load_step_data()
@@ -93,7 +79,7 @@ void SimulationController::set_load_step_data()
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto &nodal_solution_system = equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
     auto &element_solution_system = equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem");
-    auto load_step = load_stepper->get_active_load_step();
+    auto load_step = load_stepper->context<LoadStep>();
 
     libMesh::out << "Setting load step data..." << std::endl;
 
@@ -103,7 +89,14 @@ void SimulationController::set_load_step_data()
             apec_m_model_data,
             load_step));
     auto element_builder = equation_systems->get_element_builder();
-    element_builder->set_context_view(element_builder_view);
+    element_builder->update_context_views(element_builder_view);
+
+    auto bc_view = std::make_shared<
+        TypedContextView<NodeBCObject, TimeStep>>(
+        TypedContextView<NodeBCObject, TimeStep>::from(
+            load_step));
+    auto boundary_conditions_object = system.get_boundary_conditions_object();
+    boundary_conditions_object->update_context_views(bc_view);
 
     // 2. Prepare context view for assembler
     auto assembler_view = std::make_shared<
@@ -112,8 +105,8 @@ void SimulationController::set_load_step_data()
             apec_m_model_data,
             load_step));
     auto assembler = system.get_assembler();
-
     assembler->set_context_view(assembler_view);
+
     auto solution_assembler_view = std::make_shared<
         TypedContextView<ElementTypeFactory, TimeStep, Session>>(
         TypedContextView<ElementTypeFactory, TimeStep, Session>::from(
@@ -127,7 +120,7 @@ void SimulationController::set_load_step_data()
 
 void SimulationController::set_solver_settings()
 {
-    auto load_step = load_stepper->get_active_load_step();
+    auto load_step = load_stepper->context<LoadStep>();
 
     libMesh::out << "Setting solver..." << std::endl;
 
@@ -222,6 +215,8 @@ void SimulationController::physics()
 
         if (type == MAIN)
             systems[i] = &equation_systems->add_system<ApecMLinearSystem>(sys_name);
+        else if (type == ELEMENT_LOADS)
+            systems[i] = &equation_systems->add_system<ApecMLoadsSystem>(sys_name);
         else
             systems[i] = &equation_systems->add_system<ApecMSolutionSystem>(sys_name);
 
@@ -238,7 +233,7 @@ void SimulationController::physics()
 
 void SimulationController::solve()
 {
-    auto load_step = load_stepper->get_active_load_step();
+    auto load_step = load_stepper->context<LoadStep>();
 
     auto time_step = load_step->get_object<TimeStep>();
 
@@ -258,9 +253,9 @@ void SimulationController::solve()
 
     this->set_load_step_data();
 
-    this->set_transient_effects(system);
+    this->set_transient_effects();
 
-    this->reinitialize_constrained_dofs(system);
+    this->reinitialize_constrained_dofs();
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
     system.get_system_matrix().zero();
@@ -271,24 +266,7 @@ void SimulationController::solve()
 
         if (substep.get_index() == 0)
         {
-            auto prev_load_step = load_stepper->get_old_load_step();
-
-            if (prev_load_step == nullptr)
-            {
-                // If there is a previous load step, we update the old solution
-                element_builder->build_write_element_matrices_rhs(true);
-            }
-            else
-            {
-                // If there is no previous load step, we initialize the old solution to zero
-                auto prev_element_builder_view = std::make_shared<
-                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>>(
-                    TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>::from(
-                        apec_m_model_data,
-                        prev_load_step));
-                // element_builder->set_context_view(prev_element_builder_view);
-                element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix(prev_element_builder_view));
-            }
+            element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix());
         }
         substep.print_solve_msg();
         // update time in element data object

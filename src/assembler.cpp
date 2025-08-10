@@ -175,7 +175,7 @@ void AssemblerLinear::assemble()
             {
                 elem_builder->read_element_vectors(*rhs_prev_input_file, 1);
             }
-            elem_builder->ramp_vectors(time_substep, 0, 1, 0, 0);
+            elem_builder->ramp_vectors(0, 1, 0, 0);
         }
 
         // elem_builder->apply_load();

@@ -51,9 +51,9 @@ struct MiscData
     std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
     std::shared_ptr<LoadsObject> loads_object = nullptr;         // Pointer to LoadsObject
     std::shared_ptr<LoadsObject> old_loads_object = nullptr;     // Pointer to LoadsObject
-    ExplicitSystem *loads_map = nullptr;                         // Pointer to ExplicitSystem
-    ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
-    unsigned int loads_sys_number = 0;                           // System number for loads
+    ApecMLoadsSystem *loads_map = nullptr;                       // Pointer to ApecMLoadsSystem
+    // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
+    unsigned int loads_sys_number = 0; // System number for loads
     unsigned int jsx_var_num = 0;
     unsigned int jsy_var_num = 0;
     unsigned int jsz_var_num = 0;
@@ -78,15 +78,16 @@ struct SolutionVectorSupport
 // Assembled by the assembler.
 
 class ElementBuilder
-    : public FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
+    : public FEMServiceWithOldContext<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
     using ContextView = TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
-    ElementBuilder(std::shared_ptr<ContextView> ctx_view = nullptr,
-                   EquationSystems *equation_systems = nullptr);
+    ElementBuilder(EquationSystems *equation_systems = nullptr,
+                   std::shared_ptr<ContextView> ctx_view = nullptr,
+                   std::shared_ptr<ContextView> old_ctx_view = nullptr);
 
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
@@ -117,13 +118,13 @@ public:
         // this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
         // this->build_vectors(vector_idx_size_map, 1);
     }
-    inline void ramp_vectors(Substep *time_substep, unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
+    inline void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
     {
         Real y1;
         Real y2;
-        Real dt = time_substep->get_parent_object()->get_delta_t();
-        Real time = time_substep->get_time();
-        Real time_beginning = time_substep->get_parent_object()->get_time_beginning();
+        Real dt = elem_builder_misc_data.time_substep->get_parent_object()->get_delta_t();
+        Real time = elem_builder_misc_data.time_substep->get_time();
+        Real time_beginning = elem_builder_misc_data.time_substep->get_parent_object()->get_time_beginning();
         Real deltim_subst = time - time_beginning;
         unsigned int vec_size = vectors[set_vector_1][idx_vector_1].size();
         for (unsigned int i = 0; i < vec_size; i++)
@@ -172,38 +173,39 @@ public:
 
     inline void set_elem_builder_misc_data()
     {
-        elem_builder_misc_data.time_substep = this->context<TimeStep>()->get_active_substep();
-        elem_builder_misc_data.dt = elem_builder_misc_data.time_substep->get_dt();
-        elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep->get_ramped_load();
-        elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep->get_transient_effect();
+        auto curr_time_step = this->context<TimeStep>();
+        auto old_time_step = this->old_context<TimeStep>();
+        elem_builder_misc_data.time_substep = curr_time_step ? curr_time_step->get_active_substep() : nullptr;
+        elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
+        elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
+        elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
+
+        // Use old and current LoadsObject for ramping, etc.
         if (elem_builder_misc_data.time_substep->get_index() == 0)
         {
-            elem_builder_misc_data.old_loads_object = elem_builder_misc_data.loads_object;
-            elem_builder_misc_data.old_loads_map = elem_builder_misc_data.loads_map;
+            elem_builder_misc_data.old_loads_object = this->old_context<LoadsObject>();
+            // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_loads_object ? elem_builder_misc_data.old_loads_object->get_data_map() : nullptr;
             elem_builder_misc_data.loads_object = this->context<LoadsObject>();
-            elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object->get_data_map();
+            elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object ? elem_builder_misc_data.loads_object->get_data_map() : nullptr;
 
             elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
 
-            elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
-            if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+            if (elem_builder_misc_data.loads_map)
             {
-                elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
-            }
-            if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
-            {
-                elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
-            }
-            if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
-            {
-                elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
+                elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
+                if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+                    elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
+                if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
+                    elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
+                if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
+                    elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
             }
         }
-    };
+    }
 
     void build_write_element_matrices_rhs(bool recompute_matrix = true);
 
-    bool check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view = nullptr);
+    bool check_compute_matrix();
 
     void build_write_solution_vectors(const std::string sys_name);
 

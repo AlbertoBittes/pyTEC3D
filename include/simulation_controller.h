@@ -28,8 +28,8 @@ public:
     void finish();
     void exit();
 
-    void set_transient_effects(ApecMLinearSystem &system);
-    void reinitialize_constrained_dofs(ApecMLinearSystem &system);
+    void set_transient_effects();
+    void reinitialize_constrained_dofs();
     void set_load_step_data();
     void set_solver_settings();
 

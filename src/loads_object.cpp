@@ -6,7 +6,9 @@
 void LoadsObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading loads data from an open file stream..." << std::endl;
-
+    data_map->old_local_solution->close();
+    data_map->current_local_solution->close();
+    *data_map->old_local_solution = *data_map->current_local_solution;
     // Use dof_id_type (uint32_t) for binary I/O
     dof_id_type num_loads = 0;
     file.read(reinterpret_cast<char *>(&num_loads), sizeof(dof_id_type));

@@ -13,8 +13,10 @@
 #include "loads_object.h"
 #include "apec_m_system_objects.h"
 
-ElementBuilder::ElementBuilder(std::shared_ptr<ContextView> ctx_view, EquationSystems *equation_systems)
-    : FEMServiceAbstract<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view),
+ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
+                               std::shared_ptr<ContextView> ctx_view,
+                               std::shared_ptr<ContextView> old_ctx_view)
+    : FEMServiceWithOldContext<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view, old_ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
       matrices(3),
       vectors(5)
@@ -321,7 +323,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     session->close_file_streams(streams_out);
 }
 
-bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Session, ElementTypeFactory, MaterialsObject, RealConstantsObject, LoadsObject>> old_view)
+bool ElementBuilder::check_compute_matrix()
 {
     auto eq_sys = this->get_parent_object();
     bool update_matrix;
@@ -329,6 +331,7 @@ bool ElementBuilder::check_compute_matrix(std::shared_ptr<TypedContextView<Sessi
     ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
 
+    auto old_view = this->get_old_context_view();
     // Get current and old materials/real constants from the views
     auto current_material_object = this->context<MaterialsObject>();
     auto old_material_object = old_view ? old_view->template get<MaterialsObject>() : nullptr;
@@ -882,15 +885,15 @@ void ElementBuilder::build_solid97_element_solution_vector()
         }
         else
         {
-            if (this->elem_builder_misc_data.old_loads_map != nullptr)
+            if (this->elem_builder_misc_data.old_loads_object != nullptr)
             {
                 auto &J_elem_old = this->vectors[4][0];
                 // Apply ramping to the current load
-                J_elem_old(0) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jx);
-                J_elem_old(1) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jy);
-                J_elem_old(2) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
+                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jx);
+                J_elem_old(1) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jy);
+                J_elem_old(2) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
             }
-            this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
+            this->ramp_vectors(3, 4, 0, 0);
         }
         break;
     }
@@ -961,27 +964,27 @@ void ElementBuilder::build_plane13_element_solution_vector()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        if (elem_builder_misc_data.transient_effect)
-        {
-            auto &J_elem = this->vectors[3][0];
-            dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-            J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-            if (!this->elem_builder_misc_data.ramped)
-            {
-                break;
-            }
-            else
-            {
-                if (this->elem_builder_misc_data.old_loads_map != nullptr)
-                {
-                    auto &J_elem_old = this->vectors[4][0];
-                    // Apply ramping to the current load
-                    J_elem_old(0) = this->elem_builder_misc_data.old_loads_map->current_local_solution->el(dof_jz);
-                }
-                this->ramp_vectors(this->elem_builder_misc_data.time_substep, 3, 4, 0, 0);
-            }
+        auto &J_elem = this->vectors[3][0];
+        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
+
+        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        if (!this->elem_builder_misc_data.ramped)
+        {
+            break;
         }
+        else
+        {
+            if (this->elem_builder_misc_data.old_loads_object != nullptr)
+            {
+                auto &J_elem_old = this->vectors[4][0];
+                // Apply ramping to the current load
+                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
+            }
+            // else not needed because resizing already zeros the vector
+            this->ramp_vectors(3, 4, 0, 0);
+        }
+
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:

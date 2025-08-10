@@ -85,6 +85,7 @@ private:
 };
 
 typedef ApecMSystem<ExplicitSystem, AssemblerSolution> ApecMSolutionSystem;
+typedef ApecMSystem<TransientSystem<ExplicitSystem>, AssemblerSolution> ApecMLoadsSystem;
 
 class ApecMEquationSystems
     : public EquationSystems,
@@ -99,7 +100,7 @@ public:
     ApecMEquationSystems(Args &&...args)
         : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(nullptr)
     {
-        element_builder = std::make_shared<ElementBuilder>(nullptr, this);
+        element_builder = std::make_shared<ElementBuilder>(this, nullptr, nullptr);
     }
 
     std::shared_ptr<ElementBuilder> get_element_builder() const

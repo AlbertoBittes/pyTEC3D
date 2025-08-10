@@ -11,20 +11,20 @@ using namespace libMesh;
 
 // The boundary conditions object:
 // Checks if it is necessary to update the nodal degrees of freedom imposed by the user
-// updates the constraints if necessary. The assembler will then constrian element matrices before putting
-// Them in the global system matrix
+// updates the constraints if necessary. The assembler will then constrain element matrices before putting
+// them in the global system matrix
 class BoundaryConditionsObject
     : public System::Constraint,
-      public FEMServiceAbstract<NodeBCObject, TimeStep>,
+      public FEMServiceWithOldContext<NodeBCObject, TimeStep>,
       public FEParentObjectBase<System>
 {
 public:
     using ContextView = TypedContextView<NodeBCObject, TimeStep>;
     using FEParentObjectBase<System>::FEParentObjectBase;
 
-    BoundaryConditionsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
+    BoundaryConditionsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr, std::shared_ptr<ContextView> old_ctx_view = nullptr)
         : FEParentObjectBase<System>(sys), // Set the parent System
-          FEMServiceAbstract<NodeBCObject, TimeStep>(ctx_view)
+          FEMServiceWithOldContext<NodeBCObject, TimeStep>(ctx_view, old_ctx_view)
     {
     }
 
@@ -37,9 +37,11 @@ public:
         return update_boundary_conditions;
     }
 
-    void check_update_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
+    // Now uses old context view for comparison
+    void check_update_boundary_conditions();
 
-    void set_boundary_conditions(std::shared_ptr<NodeBCObject> prev_node_bc_object);
+    // Uses old context view to decide if constraints need to be reinitialized
+    void set_boundary_conditions();
 
     // Example: access context objects as shared_ptrs
     std::shared_ptr<NodeBCObject> node_bc_object() { return this->context<NodeBCObject>(); }

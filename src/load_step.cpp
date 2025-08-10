@@ -1,6 +1,7 @@
 #include <libmesh/explicit_system.h>
 
 #include "load_step.h"
+#include "load_stepper.h"
 #include "fe_data_object.h"
 #include "apec_m_system_objects.h"
 
@@ -17,11 +18,11 @@ void LoadStep::read_from_file(const std::string &filename)
     auto *load_stepper = this->get_parent_object();
     auto eq_sys = load_stepper->get_parent_object();
     ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    ApecMSolutionSystem &loads_sys = eq_sys->get_system<ApecMSolutionSystem>("ElementLoadsSystem");
-    auto shared_loads_sys = std::shared_ptr<ApecMSolutionSystem>(&loads_sys, [](ApecMSolutionSystem *) {});
+    ApecMLoadsSystem &loads_sys = eq_sys->get_system<ApecMLoadsSystem>("ElementLoadsSystem");
+    auto shared_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&loads_sys, [](ApecMLoadsSystem *) {});
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
-    std::shared_ptr<LoadStep> prev_load_step = load_stepper->get_old_load_step();
+    std::shared_ptr<LoadStep> prev_load_step = load_stepper->old_context<LoadStep>();
 
     // Clear any existing data objects
     data_objects.clear();

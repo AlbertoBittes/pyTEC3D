@@ -7,6 +7,7 @@
 #include <map>
 #include <fstream> // Include this header for std::ifstream
 #include "fe_data_object.h"
+#include "apec_m_system_objects.h"
 
 using namespace libMesh;
 
@@ -16,12 +17,12 @@ typedef std::unordered_map<std::string, ElementLoad> LoadArraysMap;
 
 // The LoadsObject holds the body loads (Js) in a useful structure, to be easily interfaced with the ElementBuilder
 // (BFE loads in APDL)
-class LoadsObject : public FEDataObjectMap<ExplicitSystem>
+class LoadsObject : public FEDataObjectMap<ApecMLoadsSystem>
 {
 public:
     // Constructor that calls the exact FEDataObjectMap constructor you specified
-    LoadsObject(std::ifstream &file, std::shared_ptr<ExplicitSystem> external_map)
-        : FEDataObjectMap<ExplicitSystem>(external_map)
+    LoadsObject(std::ifstream &file, std::shared_ptr<ApecMLoadsSystem> external_map)
+        : FEDataObjectMap<ApecMLoadsSystem>(external_map)
     {
         this->read_data(file); // Call read_data to initialize the data map
         // No additional initialization
