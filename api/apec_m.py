@@ -354,6 +354,15 @@ class APEC_M:
             )
             point_data.GetArray("VOLT").SetName("VOLT")
 
+        # Add a point data array "infinite_boundary" with 1 component, filled with 0, if it doesn't exist
+        if point_data.GetArray("infinite_boundary") is None:
+            num_points = self.mesh.GetNumberOfPoints()
+            infinite_boundary = np.full(num_points, 0)
+            point_data.AddArray(
+                vtknp.numpy_to_vtk(infinite_boundary, deep=True, array_type=vtk.VTK_INT)
+            )
+            point_data.GetArray("infinite_boundary").SetName("infinite_boundary")
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
