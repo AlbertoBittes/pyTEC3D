@@ -535,11 +535,15 @@ void ElementBuilder::build_plane13()
     // variables evaluated at the quadrature points.
     const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
 
+    const std::vector<Point> &xyz = fe->get_xyz();
+
     fe->reinit(elem_data.elem);
 
     this->prepare_element_matrix_building();
 
     // Get the scalar shape functions and vector shape functions
+    //   const unsigned int n_sf =
+    // FEInterface::n_dofs(cfe->get_fe_type(), elem);
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
@@ -553,8 +557,11 @@ void ElementBuilder::build_plane13()
     auto &JAe = this->matrices[2][0];
     auto &Fe = this->vectors[0][0];
 
+    unsigned int axisymm = elem_data.element_type->keyopts[3];
+
     for (unsigned int qp = 0; qp < nq; qp++)
     {
+        Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
@@ -566,9 +573,9 @@ void ElementBuilder::build_plane13()
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp]) / mu_matrix[0];
+                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / pow(r, 2)) * pow(r, axisymm);
     }
-
+    Ke.scale(1.0 / mu_matrix[0]);
     PhysicalRegionEnum physical_region = elem_data.element_type->get_physical_region();
 
     switch (physical_region)
@@ -578,8 +585,11 @@ void ElementBuilder::build_plane13()
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
         for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
+                Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * pow(r, axisymm); // * js_loads[elem->id()][2];
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
@@ -587,14 +597,18 @@ void ElementBuilder::build_plane13()
         elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
         auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
                 // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
                 JAe(qp, dof_i) += phi[dof_i][qp];
 
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                    Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp] * pow(r, axisymm));
             }
+        }
+        Ce.scale(1.0 / rs_matrix[0]);
         break;
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)

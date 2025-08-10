@@ -127,8 +127,9 @@ public:
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
 
-protected:
     const std::vector<unsigned int> keyopts; // Element type keyopts
+
+protected:
     VariableInformation variable_info;
     unsigned int active_dof_vars_size;  // Number of active DOF variables
     PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
