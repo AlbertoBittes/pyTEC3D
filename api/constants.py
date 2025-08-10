@@ -168,6 +168,16 @@ LOADS_BCS_COLUMNS_TYPES = {
     "value": float,
 }
 
+INFINITE_BOUNDARY_OPTIONS_TYPES = {
+    "order": int,
+    "mesh_dimension": int,
+    "edge_elements": int,
+    "boundary_type": str,
+    "origin_x": float,
+    "origin_y": float,
+    "origin_z": float
+}
+
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "time_step_number": int,
     "time": float,
@@ -179,19 +189,9 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "load_step_input_file": str,
 }
 
-DEFAULT_COLUMNS_ATTRIBUTES = {
-    "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
-    "materials": MATERIALS_COLUMNS_TYPES,
-    "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
-    "solver_settings": DEFAULT_SOLVER_SETTINGS,
-    "time_parameters": DEFAULT_TIME_PARAMETERS,
-    "loads": LOADS_BCS_COLUMNS_TYPES,
-    "boundary_conditions": LOADS_BCS_COLUMNS_TYPES,
-    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
-}
-
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
+    "infinite_boundary_options": INFINITE_BOUNDARY_OPTIONS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
@@ -204,6 +204,7 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
 # Define the mapping of sheet names to processing methods
 SHEET_PROCESSING_MAP = {
     "element_types": "read_excel_df",
+    "infinite_boundary_options": "read_excel_dict",
     "materials": "read_excel_df",
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",

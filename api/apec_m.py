@@ -62,7 +62,7 @@ class APEC_M:
         self.transient_analysis = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-
+        self.infinite_boundary_options = {}
         self.process = None
         self.num_processors = 1
 
@@ -212,6 +212,32 @@ class APEC_M:
             # Add the vtk array to the vtkTable
             vtk_table.AddColumn(vtk_array)
 
+        return vtk_table
+
+    def dict_to_vtk_table(self, data_dict):
+        """
+        Converts a dictionary (keys: str, values: int/float/str) into a vtkTable.
+        Each key becomes a column with a single value.
+
+        Parameters:
+            data_dict (dict): The input dictionary.
+
+        Returns:
+            vtk.vtkTable: The resulting vtkTable.
+        """
+        vtk_table = vtk.vtkTable()
+        for key, value in data_dict.items():
+            # Determine the type of the value
+            if isinstance(value, int):
+                vtk_array = vtk.vtkIntArray()
+            elif isinstance(value, float):
+                vtk_array = vtk.vtkDoubleArray()
+            else:
+                vtk_array = vtk.vtkStringArray()
+            vtk_array.SetName(str(key))
+            # Insert the single value
+            vtk_array.InsertNextValue(value)
+            vtk_table.AddColumn(vtk_array)
         return vtk_table
 
     def add_table_to_mesh(self, vtk_table):
@@ -425,6 +451,12 @@ class APEC_M:
         # Attach the vtkTable as field data to the mesh
         self.add_table_to_mesh(vtk_table)
 
+        # Convert the infinite_boundary_options dictionary to a vtkTable
+        vtk_table = self.dict_to_vtk_table(self.infinite_boundary_options)
+
+        # Attach the vtkTable as field data to the mesh
+        self.add_table_to_mesh(vtk_table)
+
         # Define the output file name
         output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 
@@ -440,20 +472,20 @@ class APEC_M:
     def read_excel_df(self, excel_file, sheet_name):
         """
         Reads a specific sheet from an Excel file into a pandas DataFrame and assigns it to the corresponding attribute.
-        Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES.
+        Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
 
         Parameters:
             excel_file (str): The path to the Excel file.
             sheet_name (str): The name of the sheet to read.
 
         Raises:
-            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES or if the columns do not match.
+            ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES or if the columns do not match.
             FileNotFoundError: If the Excel file does not exist.
         """
         # Check if the sheet name is valid
-        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
+        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys():
             raise ValueError(
-                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
             )
 
         # Read the Excel file
@@ -470,7 +502,7 @@ class APEC_M:
             return
 
         # Get the expected columns for the sheet
-        expected_columns = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name]
+        expected_columns = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name]
 
         # Check if the columns in the DataFrame match the expected columns
         if not all(column in expected_columns for column in df.columns):
@@ -511,9 +543,9 @@ class APEC_M:
             FileNotFoundError: If the Excel file does not exist.
         """
         # Check if the sheet name is valid
-        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES.keys():
+        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys():
             raise ValueError(
-                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES.keys())}."
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
             )
 
         # Read the Excel file
@@ -537,7 +569,7 @@ class APEC_M:
             )
 
         # Get the expected keys for the dictionary
-        expected_keys = DEFAULT_COLUMNS_ATTRIBUTES[sheet_name].keys()
+        expected_keys = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name].keys()
 
         # Validate the keys in the 'SETTING' column
         invalid_keys = [key for key in df["SETTING"] if key not in expected_keys]

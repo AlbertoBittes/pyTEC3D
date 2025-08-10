@@ -44,9 +44,9 @@ def process_mesh(file_path):
         if array_name in archive.grid.point_data:
             del archive.grid.point_data[array_name]
 
-    # Add a point data array called boundary_id to the grid
-    boundary_id = np.full(num_points, 0)
-    archive.grid.point_data["boundary_id"] = boundary_id
+    # Add a point data array called infinite_boundary to the grid
+    infinite_boundary = np.full(num_points, 0)
+    archive.grid.point_data["infinite_boundary"] = infinite_boundary
 
     # Add a cell data array "Js" with 3 components, filled with np.nan
     Js = np.full((num_cells, 3), np.nan)
