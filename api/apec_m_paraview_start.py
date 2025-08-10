@@ -1,2 +1,2 @@
-from .apec_m import APEC_M  # relative import, safe for package/module use
+from apec_m import APEC_M
 apec = APEC_M()
