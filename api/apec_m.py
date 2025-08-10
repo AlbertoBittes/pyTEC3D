@@ -9,6 +9,7 @@ import sys
 import re
 import subprocess
 
+
 # Add the current directory to the Python path to ensure imports work
 
 try:
@@ -984,6 +985,8 @@ class APEC_M:
         """
         Replot the mesh in the active view in Paraview.
         """
+        from paraview.simple import TrivialProducer, RenameSource, Show, Render
+
         # Assuming you have a function to replot the mesh in your application
         # This is a placeholder for the actual replotting logic
         print("Plotting the mesh...")
