@@ -63,7 +63,7 @@ class APEC_M:
         self.transient_analysis = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-        self.infinite_boundary_options = {}
+        self.infinite_elements_options = {}
         self.process = None
         self.num_processors = 1
 
@@ -461,11 +461,11 @@ class APEC_M:
         # Attach the vtkTable as field data to the mesh
         self.add_table_to_mesh(vtk_table)
 
-        # Convert the infinite_boundary_options dictionary to a vtkTable
-        vtk_table = self.dict_to_vtk_table(self.infinite_boundary_options)
+        # Convert the infinite_elements_options dictionary to a vtkTable
+        inf_vtk_table = self.dict_to_vtk_table(self.infinite_elements_options)
 
         # Attach the vtkTable as field data to the mesh
-        self.add_table_to_mesh(vtk_table)
+        self.add_table_to_mesh(inf_vtk_table)
 
         # Define the output file name
         output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
@@ -1399,15 +1399,7 @@ class APEC_M:
     def read_excel(
         self,
         excel_file_path,
-        data_to_read=[
-            "element_types",
-            "materials",
-            "real_constants",
-            "solver_settings",
-            "time_parameters",
-            "loads",
-            "boundary_conditions",
-        ],
+        data_to_read=list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
     ):
         """
         Reads data from an Excel file and processes it based on the provided labels.

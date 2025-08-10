@@ -1,12 +1,12 @@
 # Global variable mappings
 VARIABLES_GLOBAL_NUMBERS = {
-    "A":0,
-    "VOLT":1,
-    "EMF":2,
-    "CURR":3,
-    "Js":4,
-    "B":5,
-    "J":6,
+    "A": 0,
+    "VOLT": 1,
+    "EMF": 2,
+    "CURR": 3,
+    "Js": 4,
+    "B": 5,
+    "J": 6,
 }
 # Default solver settings
 DEFAULT_SOLVER_SETTINGS = {
@@ -168,14 +168,14 @@ LOADS_BCS_COLUMNS_TYPES = {
     "value": float,
 }
 
-INFINITE_BOUNDARY_OPTIONS_TYPES = {
-    "order": int,
+INFINITE_ELEMENTS_OPTIONS_TYPES = {
+    "order": str,
     "mesh_dimension": int,
     "edge_elements": int,
     "boundary_type": str,
     "origin_x": float,
     "origin_y": float,
-    "origin_z": float
+    "origin_z": float,
 }
 
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
@@ -191,7 +191,7 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
-    "infinite_boundary_options": INFINITE_BOUNDARY_OPTIONS_TYPES,
+    "infinite_elements_options": INFINITE_ELEMENTS_OPTIONS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
@@ -204,7 +204,7 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
 # Define the mapping of sheet names to processing methods
 SHEET_PROCESSING_MAP = {
     "element_types": "read_excel_df",
-    "infinite_boundary_options": "read_excel_dict",
+    "infinite_elements_options": "read_excel_dict",
     "materials": "read_excel_df",
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
