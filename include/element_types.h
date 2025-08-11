@@ -25,7 +25,8 @@ enum ElementTypeEnum : unsigned int
     PLANE13 = 13,
     PLANE233 = 233,
     INFIN110 = 110,
-    INFIN111 = 111
+    INFIN111 = 111,
+    INFIN112 = 112
 };
 
 enum PhysicalRegionEnum : unsigned int
@@ -75,6 +76,7 @@ public:
         : keyopts(keyopts)
     {
         physical_region = keyopts.empty() ? PhysicalRegionEnum::UNKNOWN : static_cast<PhysicalRegionEnum>(keyopts[1]);
+        order = static_cast<Order>(keyopts[2]);
     }
 
     // Virtual methods to be implemented by derived classes
@@ -140,6 +142,7 @@ protected:
     unsigned int active_dof_vars_size;  // Number of active DOF variables
     PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
     void set_active_dof_vars_size();
+    Order order;
 };
 
 class AVElementType : public ElementType
@@ -239,7 +242,13 @@ public:
     virtual void set_fe_array() override;
 };
 
-class INFIN110Type : public PLANE13Type
+class InfFEBase
+{
+public:
+    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
+};
+
+class INFIN110Type : public PLANE13Type, public InfFEBase
 {
 public:
     INFIN110Type(const std::vector<unsigned int> &keyopts);
@@ -247,11 +256,9 @@ public:
     virtual void set_variable_info() override;
 
     virtual void set_fe_array() override;
-
-    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
 };
 
-class INFIN111Type : public SOLID97Type
+class INFIN111Type : public SOLID97Type, public InfFEBase
 {
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
@@ -259,6 +266,16 @@ public:
     virtual void set_variable_info() override;
 
     virtual void set_fe_array() override;
+};
+
+class INFIN112Type : public SOLID236Type, public InfFEBase
+{
+public:
+    INFIN112Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override { libmesh_error_msg("INFIN112Type::set_variable_info() not implemented yet."); };
+
+    virtual void set_fe_array() override { libmesh_error_msg("INFIN112Type::set_fe_array() not implemented yet."); };
 
     std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
 };

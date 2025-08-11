@@ -68,70 +68,71 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
     // boundary sides in the faces set. Skip sides which lie in symmetry planes.
     // Later, sides of the inner boundary will be sorted out.
     for (const auto &elem : mesh_ptr->active_element_ptr_range())
-        for (auto s : elem->side_index_range())
-            if (elem->neighbor_ptr(s) == nullptr)
-            {
-                boundary_info.boundary_ids(elem, s, side_boundary_ids);
-                if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), 110) != side_boundary_ids.end())
+        if (!elem->infinite())
+            for (auto s : elem->side_index_range())
+                if (elem->neighbor_ptr(s) == nullptr)
                 {
-                    // note that it is safe to use the Elem::side() method,
-                    // which gives a non-full-ordered element
-                    std::unique_ptr<Elem> side(elem->build_side_ptr(s));
-
-                    // bool flags for symmetry detection
-                    bool sym_side = false;
-                    bool on_x_sym = true;
-                    bool on_y_sym = true;
-                    bool on_z_sym = true;
-
-                    // Loop over the nodes to check whether they are on the symmetry planes,
-                    // and therefore sufficient to use a non-full-ordered side element
-                    for (const Node &node : side->node_ref_range())
+                    boundary_info.boundary_ids(elem, s, side_boundary_ids);
+                    if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), this->infinite_elem_side_boundary_id) != side_boundary_ids.end())
                     {
-                        const dof_id_type node_id = node.id();
-                        const Point dist_from_origin =
-                            this->mesh_ptr->point(node_id) - origin;
+                        // note that it is safe to use the Elem::side() method,
+                        // which gives a non-full-ordered element
+                        std::unique_ptr<Elem> side(elem->build_side_ptr(s));
 
-                        if (x_sym)
-                            if (std::abs(dist_from_origin(0)) > 1.e-3)
-                                on_x_sym = false;
+                        // bool flags for symmetry detection
+                        bool sym_side = false;
+                        bool on_x_sym = true;
+                        bool on_y_sym = true;
+                        bool on_z_sym = true;
 
-                        if (y_sym)
-                            if (std::abs(dist_from_origin(1)) > 1.e-3)
-                                on_y_sym = false;
-
-                        if (z_sym)
-                            if (std::abs(dist_from_origin(2)) > 1.e-3)
-                                on_z_sym = false;
-
-                        //       if (x_sym)
-                        // if (std::abs(dist_from_origin(0)) > 1.e-6)
-                        //   on_x_sym=false;
-
-                        //       if (y_sym)
-                        // if (std::abs(dist_from_origin(1)) > 1.e-6)
-                        //   on_y_sym=false;
-
-                        //       if (z_sym)
-                        // if (std::abs(dist_from_origin(2)) > 1.e-6)
-                        //   on_z_sym=false;
-
-                        // find the node most distant from origin
-
-                        Real r = dist_from_origin.norm();
-                        if (r > max_r)
+                        // Loop over the nodes to check whether they are on the symmetry planes,
+                        // and therefore sufficient to use a non-full-ordered side element
+                        for (const Node &node : side->node_ref_range())
                         {
-                            max_r = r;
-                            max_r_node = node_id;
+                            const dof_id_type node_id = node.id();
+                            const Point dist_from_origin =
+                                this->mesh_ptr->point(node_id) - origin;
+
+                            if (x_sym)
+                                if (std::abs(dist_from_origin(0)) > 1.e-3)
+                                    on_x_sym = false;
+
+                            if (y_sym)
+                                if (std::abs(dist_from_origin(1)) > 1.e-3)
+                                    on_y_sym = false;
+
+                            if (z_sym)
+                                if (std::abs(dist_from_origin(2)) > 1.e-3)
+                                    on_z_sym = false;
+
+                            //       if (x_sym)
+                            // if (std::abs(dist_from_origin(0)) > 1.e-6)
+                            //   on_x_sym=false;
+
+                            //       if (y_sym)
+                            // if (std::abs(dist_from_origin(1)) > 1.e-6)
+                            //   on_y_sym=false;
+
+                            //       if (z_sym)
+                            // if (std::abs(dist_from_origin(2)) > 1.e-6)
+                            //   on_z_sym=false;
+
+                            // find the node most distant from origin
+
+                            Real r = dist_from_origin.norm();
+                            if (r > max_r)
+                            {
+                                max_r = r;
+                                max_r_node = node_id;
+                            }
                         }
+
+                        sym_side = (x_sym && on_x_sym) || (y_sym && on_y_sym) || (z_sym && on_z_sym);
+
+                        if (!sym_side)
+                            faces.emplace(elem->id(), s);
                     }
-
-                    sym_side = (x_sym && on_x_sym) || (y_sym && on_y_sym) || (z_sym && on_z_sym);
-
-                    if (!sym_side)
-                        faces.emplace(elem->id(), s);
-                }
-            } // neighbor(s) == nullptr
+                } // neighbor(s) == nullptr
 
     //  If a boundary side has one node on the outer boundary,
     //  all points of this side are on the outer boundary.

@@ -19,6 +19,7 @@ public:
                         std::set<std::pair<libMesh::dof_id_type, unsigned int>> *inner_faces = nullptr);
 
 protected:
+    boundary_id_type infinite_elem_side_boundary_id;
     MeshBase *mesh_ptr;
 };
 

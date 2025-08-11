@@ -32,8 +32,8 @@ AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
 void AVElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::B_x] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
-    variable_info[GlobalVariableName::B_y] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::B_x] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
+    variable_info[GlobalVariableName::B_y] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
     variable_info[GlobalVariableName::J_z] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
     variable_info[GlobalVariableName::Js_z] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
 }
@@ -50,12 +50,12 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
 void AV2DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, order};
 }
 
 void AV2DElementType::set_fe_array()
 {
-    FEType fe_type(FIRST, LAGRANGE);
+    FEType fe_type(order, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -148,18 +148,18 @@ AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVE
 void AV3DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::B_z] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::B_z] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
     variable_info[GlobalVariableName::J_x] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
     variable_info[GlobalVariableName::J_y] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
-    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
-    variable_info[GlobalVariableName::EMF] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::EMF, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, order};
+    variable_info[GlobalVariableName::EMF] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::EMF, LAGRANGE, order};
     variable_info[GlobalVariableName::Js_x] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
     variable_info[GlobalVariableName::Js_y] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
 }
 
 void AV3DElementType::set_fe_array()
 {
-    FEType fe_type(FIRST, LAGRANGE);
+    FEType fe_type(order, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -258,10 +258,10 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
 
 void SOLID97Type::set_variable_info()
 {
-    variable_info[GlobalVariableName::A_x] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
-    variable_info[GlobalVariableName::A_y] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
-    variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
-    variable_info[GlobalVariableName::CURR] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::CURR, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_x] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
+    variable_info[GlobalVariableName::A_y] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
+    variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
+    variable_info[GlobalVariableName::CURR] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::CURR, LAGRANGE, order};
 
     if (physical_region == SOLID_CONDUCTOR || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
@@ -273,7 +273,7 @@ void SOLID97Type::set_variable_info()
 
 void SOLID97Type::set_fe_array()
 {
-    FEType fe_type_vec(FIRST, LAGRANGE_VEC);
+    FEType fe_type_vec(order, LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -348,7 +348,7 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 
 void PLANE13Type::set_variable_info()
 {
-    variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
+    variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
 
     if (physical_region == STRANDED_COIL)
         variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
@@ -372,7 +372,7 @@ void INFIN110Type::set_variable_info() {};
 
 void INFIN110Type::set_fe_array()
 {
-    FEType fe_type(FIRST, LAGRANGE);
+    FEType fe_type(order, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -380,6 +380,31 @@ void INFIN110Type::set_fe_array()
     std::unique_ptr<FEBase> fe = FEBase::build_InfFE(2, fe_type);
     // A 2nd order Gauss quadrature rule for numerical integration.
     QGauss *qrule_vec = new QGauss(2, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe->attach_quadrature_rule(qrule_vec);
+    inf_fe_array.push_back(std::move(fe));
+};
+
+INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
+    : SOLID97Type(keyopts)
+{
+    set_variable_info();
+    set_fe_array();
+    set_active_dof_vars_size();
+}
+
+void INFIN111Type::set_variable_info() {};
+
+void INFIN111Type::set_fe_array()
+{
+    FEType fe_type(order, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe = FEBase::build_InfFE(3, fe_type);
+    // A 3rd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule_vec = new QGauss(3, fe_type.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe->attach_quadrature_rule(qrule_vec);
     inf_fe_array.push_back(std::move(fe));

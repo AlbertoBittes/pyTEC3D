@@ -5,8 +5,10 @@
 #include "system_builder.h"
 #include "load_stepper.h"
 #include "inf_elem_builder_updated.h"
+#include "element_types_factory.h"
 
 #include <libmesh/boundary_info.h>
+#include <libmesh/string_to_enum.h>
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
 #include <libmesh/numeric_vector.h>
@@ -215,8 +217,11 @@ void SimulationController::read_mesh()
 
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
 
-    apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(vtkio.get_element_types_factory()));
-    apec_m_model_data->set_object<InfiniteElementsOptionsObject>(vtkio.get_infinite_elements_options());
+    auto element_types_factory = vtkio.get_element_types_factory();
+    auto infinite_elements_options = vtkio.get_infinite_elements_options();
+
+    apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(element_types_factory));
+    apec_m_model_data->set_object<InfiniteElementsOptionsObject>(std::make_shared<InfiniteElementsOptionsObject>(infinite_elements_options));
 
     MeshCommunication().broadcast(*mesh);
 
@@ -233,30 +238,26 @@ void SimulationController::read_mesh()
         auto &boundary_info = mesh->get_boundary_info();
         this->set_boundary_info({"infinite_boundary"});
         const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
-        if (side_boundary_ids.find(110) != side_boundary_ids.end())
+
+        for (const auto &id : side_boundary_ids)
         {
             // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
             InfElemBuilderUpdated builder(*mesh);
             builder.build_inf_elem(true);
             // find the neighbours; for correct linking the two areas
             mesh->find_neighbors();
-        }
-        // Reassign subdomain_id() of all infinite elements.
-        // and their neighbours. This makes finding the surface
-        // between these elemests much easier.
-        for (auto &elem : mesh->active_local_element_ptr_range())
-            if (elem->infinite())
-            {
-                if (elem->dim() == 2)
+
+            // Reassign subdomain_id() of all infinite elements.
+            // and their neighbours. This makes finding the surface
+            // between these elemests much easier.
+
+            for (auto &elem : mesh->active_local_element_ptr_range())
+                if (elem->infinite())
                 {
-                    elem->subdomain_id() = 110;
+                    elem->subdomain_id() = id;
                 }
-                else
-                    elem->subdomain_id() = 111;
-            }
+        }
     }
-    auto element_types_factory = vtkio.get_element_types_factory();
-    element_types_factory->create_element_type(ElementTypeEnum::INFIN110, {});
 }
 
 void SimulationController::physics()

@@ -78,11 +78,11 @@ struct SolutionVectorSupport
 // Assembled by the assembler.
 
 class ElementBuilder
-    : public FEMServiceWithOldContext<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
+    : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    using ContextView = TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>;
+    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
     ElementBuilder(EquationSystems *equation_systems = nullptr,
@@ -162,7 +162,7 @@ public:
     }
     inline void set_element_data(Elem *elem)
     {
-        auto element_types = this->context<ElementTypeFactory>();
+        auto element_types = this->context<ElementTypesFactory>();
 
         elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(mesh_data_index.etype_num_index));
         elem_data.material_num = elem->get_extra_integer(mesh_data_index.material_num_index);

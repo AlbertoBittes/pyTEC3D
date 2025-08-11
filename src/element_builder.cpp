@@ -12,6 +12,7 @@
 #include "element_types.h" // Include the header defining ElementType
 #include "loads_object.h"
 #include "apec_m_system_objects.h"
+#include "element_types_factory.h"
 
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view,
