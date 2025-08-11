@@ -536,7 +536,7 @@ class APEC_M:
         setattr(self, sheet_name, df)
 
         print(
-            f"Data from sheet '{sheet_name}' successfully loaded into attribute '{sheet_name}'."
+            f"Data from sheet '{sheet_name}' successfully loaded into '{sheet_name}'."
         )
 
     def read_excel_dict(self, excel_file, sheet_name):
@@ -612,7 +612,7 @@ class APEC_M:
             target_dict[setting] = value
 
         print(
-            f"Data from sheet '{sheet_name}' successfully loaded into dictionary '{sheet_name}'."
+            f"Data from sheet '{sheet_name}' successfully loaded into '{sheet_name}'."
         )
 
     def write_excel_loads_bcs(self, output_excel_file, data_type="loads"):
@@ -1385,6 +1385,7 @@ class APEC_M:
         # Get the processing method or method with additional arguments
         processing_info = SHEET_PROCESSING_MAP[sheet_name]
 
+        print(f"Reading sheet '{sheet_name}' from '{excel_file}'...")
         # Call the appropriate method
         if isinstance(processing_info, str):
             # Call read_excel_df or read_excel_dict
@@ -1393,8 +1394,6 @@ class APEC_M:
             # Call update_vtk_grid_from_excel with additional arguments
             method_name, data_type = processing_info
             getattr(self, method_name)(excel_file, sheet_name, data_type)
-
-        print(f"Read sheet '{sheet_name}' from '{excel_file}'.")
 
     def read_excel(
         self,
