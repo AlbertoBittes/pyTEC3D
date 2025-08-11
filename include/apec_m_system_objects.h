@@ -9,7 +9,7 @@
 #include <libmesh/system_subset.h>
 #include "fem_service_abstract.h"
 #include "element_types.h"
-#include "boundary_conditions_object.h"
+#include "global_constraints_object.h"
 #include "assembler.h"
 #include "system_type.h"
 
@@ -21,10 +21,10 @@ class ElementBuilder;
 template <typename SysLike, typename AssemblerLike>
 class ApecMSystem
     : public SysLike,
-      public FEMServiceAbstract<ElementTypeFactory>
+      public FEMServiceAbstract<ElementTypesFactory>
 {
 public:
-    using ContextView = TypedContextView<ElementTypeFactory>;
+    using ContextView = TypedContextView<ElementTypesFactory>;
 
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
@@ -36,7 +36,7 @@ public:
     template <typename... Args>
     ApecMSystem(Args &&...args)
         : SysLike(std::forward<Args>(args)...),
-          FEMServiceAbstract<ElementTypeFactory>(nullptr) // or whatever default you want
+          FEMServiceAbstract<ElementTypesFactory>(nullptr) // or whatever default you want
     {
         this->set_assembler();
     }
@@ -59,7 +59,7 @@ private:
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>, AssemblerLinear>
 {
 public:
-    using ContextView = TypedContextView<ElementTypeFactory>;
+    using ContextView = TypedContextView<ElementTypesFactory>;
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
@@ -67,13 +67,13 @@ public:
         : ApecMSystem<TransientSystem<LinearImplicitSystem>, AssemblerLinear>(
               std::forward<Args>(args)...)
     {
-        boundary_conditions_object = std::make_shared<BoundaryConditionsObject>(this);
-        this->attach_constraint_object(*boundary_conditions_object);
+        global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
+        this->attach_constraint_object(*global_constraints_object);
     }
 
-    std::shared_ptr<BoundaryConditionsObject> get_boundary_conditions_object() const
+    std::shared_ptr<GlobalConstraintsObject> get_global_constraints_object() const
     {
-        return boundary_conditions_object;
+        return global_constraints_object;
     }
 
     void release_subset_solve();
@@ -81,7 +81,7 @@ public:
     void compute_solution_time_derivative(const Substep &time_substep);
 
 private:
-    std::shared_ptr<BoundaryConditionsObject> boundary_conditions_object;
+    std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
 };
 
 typedef ApecMSystem<ExplicitSystem, AssemblerSolution> ApecMSolutionSystem;
@@ -89,16 +89,16 @@ typedef ApecMSystem<TransientSystem<ExplicitSystem>, AssemblerSolution> ApecMLoa
 
 class ApecMEquationSystems
     : public EquationSystems,
-      public FEMServiceAbstract<ElementTypeFactory>
+      public FEMServiceAbstract<ElementTypesFactory>
 
 {
 public:
-    using ContextView = TypedContextView<ElementTypeFactory>;
+    using ContextView = TypedContextView<ElementTypesFactory>;
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>
     ApecMEquationSystems(Args &&...args)
-        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypeFactory>(nullptr)
+        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypesFactory>(nullptr)
     {
         element_builder = std::make_shared<ElementBuilder>(this, nullptr, nullptr);
     }

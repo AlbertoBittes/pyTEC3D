@@ -1,13 +1,13 @@
 #include "fe_parent_object.h"
-#include "boundary_conditions_object.h"
-#include "node_bc_object.h"
+#include "global_constraints_object.h"
+#include "node_dof_constraints.h"
 #include "globals.h"
 #include "fem_data_repository.h"
 #include "fe_data_object.h"
 #include <libmesh/dof_map.h>
 #include <libmesh/node.h>
 
-void BoundaryConditionsObject::constrain()
+void GlobalConstraintsObject::constrain()
 {
     // Example implementation
     // This function should implement the logic to apply constraints to the nodes of the system
@@ -20,7 +20,7 @@ void BoundaryConditionsObject::constrain()
     {
         return;
     }
-    auto node_bc_object = this->context<NodeBCObject>();
+    auto node_bc_object = this->context<NodeDOFConstraints>();
     if (!node_bc_object)
     {
         return;
@@ -85,11 +85,11 @@ void BoundaryConditionsObject::constrain()
     // }
 }
 
-void BoundaryConditionsObject::check_update_boundary_conditions()
+void GlobalConstraintsObject::check_update_boundary_conditions()
 {
     this->update_boundary_conditions = false;
-    auto prev_node_bc_object = this->old_context<NodeBCObject>();
-    auto curr_node_bc_object = this->context<NodeBCObject>();
+    auto prev_node_bc_object = this->old_context<NodeDOFConstraints>();
+    auto curr_node_bc_object = this->context<NodeDOFConstraints>();
 
     if (!prev_node_bc_object || !curr_node_bc_object)
     {
@@ -103,7 +103,7 @@ void BoundaryConditionsObject::check_update_boundary_conditions()
         this->update_boundary_conditions = true;
 }
 
-void BoundaryConditionsObject::set_boundary_conditions()
+void GlobalConstraintsObject::set_boundary_conditions()
 {
     this->check_update_boundary_conditions();
     if (this->update_boundary_conditions)

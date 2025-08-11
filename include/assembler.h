@@ -43,16 +43,16 @@ private:
 // be written in output
 class AssemblerSolution
     : public System::Assembly,
-      public FEMServiceAbstract<ElementTypeFactory, TimeStep, Session>,
+      public FEMServiceAbstract<ElementTypesFactory, TimeStep, Session>,
       public FEParentObjectBase<System>
 {
 public:
-    using ContextView = TypedContextView<ElementTypeFactory, TimeStep, Session>;
+    using ContextView = TypedContextView<ElementTypesFactory, TimeStep, Session>;
     using FEParentObjectBase<System>::FEParentObjectBase;
 
     // Constructor accepting a shared_ptr to a context view
     AssemblerSolution(std::shared_ptr<ContextView> ctx_view = nullptr)
-        : FEMServiceAbstract<ElementTypeFactory, TimeStep, Session>(ctx_view)
+        : FEMServiceAbstract<ElementTypesFactory, TimeStep, Session>(ctx_view)
     {
     }
 

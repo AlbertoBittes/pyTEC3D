@@ -4,7 +4,9 @@
 #include "element_builder.h"
 #include "system_builder.h"
 #include "load_stepper.h"
+#include "inf_elem_builder_updated.h"
 
+#include <libmesh/boundary_info.h>
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
 #include <libmesh/numeric_vector.h>
@@ -31,7 +33,7 @@ void SimulationController::set_transient_effects()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto time_step = load_stepper->context<LoadStep>()->get_object<TimeStep>();
-    auto element_type_factory = apec_m_model_data->get_object<ElementTypeFactory>();
+    auto element_type_factory = apec_m_model_data->get_object<ElementTypesFactory>();
     // Later, this will be a method of system, which will be a viewed object, I still have to think about it
     libMesh::out << "Setting transient effects..." << std::endl;
     if (!time_step->get_transient_effect())
@@ -68,10 +70,10 @@ void SimulationController::set_transient_effects()
 void SimulationController::reinitialize_constrained_dofs()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto boundary_conditions_object = system.get_boundary_conditions_object();
+    auto global_constraints_object = system.get_global_constraints_object();
     libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
     // 3. Prepare context view for boundary conditions object and reinit constraints
-    boundary_conditions_object->set_boundary_conditions();
+    global_constraints_object->set_boundary_conditions();
 }
 
 void SimulationController::set_load_step_data()
@@ -84,19 +86,19 @@ void SimulationController::set_load_step_data()
     libMesh::out << "Setting load step data..." << std::endl;
 
     auto element_builder_view = std::make_shared<
-        TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>>(
-        TypedContextView<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>>(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>::from(
             apec_m_model_data,
             load_step));
     auto element_builder = equation_systems->get_element_builder();
     element_builder->update_context_views(element_builder_view);
 
     auto bc_view = std::make_shared<
-        TypedContextView<NodeBCObject, TimeStep>>(
-        TypedContextView<NodeBCObject, TimeStep>::from(
+        TypedContextView<NodeDOFConstraints, TimeStep>>(
+        TypedContextView<NodeDOFConstraints, TimeStep>::from(
             load_step));
-    auto boundary_conditions_object = system.get_boundary_conditions_object();
-    boundary_conditions_object->update_context_views(bc_view);
+    auto global_constraints_object = system.get_global_constraints_object();
+    global_constraints_object->update_context_views(bc_view);
 
     // 2. Prepare context view for assembler
     auto assembler_view = std::make_shared<
@@ -108,8 +110,8 @@ void SimulationController::set_load_step_data()
     assembler->set_context_view(assembler_view);
 
     auto solution_assembler_view = std::make_shared<
-        TypedContextView<ElementTypeFactory, TimeStep, Session>>(
-        TypedContextView<ElementTypeFactory, TimeStep, Session>::from(
+        TypedContextView<ElementTypesFactory, TimeStep, Session>>(
+        TypedContextView<ElementTypesFactory, TimeStep, Session>::from(
             apec_m_model_data,
             load_step));
     auto assembler_solution = nodal_solution_system.get_assembler();
@@ -171,6 +173,36 @@ void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
     }
 }
 
+void SimulationController::set_boundary_info(const std::set<std::string> &bc_arrays)
+{
+    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+
+    std::shared_ptr<BoundaryInfo> boundary_info = std::make_shared<BoundaryInfo>(mesh->get_boundary_info());
+
+    boundary_info->clear();
+
+    for (auto &array : bc_arrays)
+    {
+        unsigned int node_array_index = mesh->get_node_integer_index(array);
+
+        for (const Node *node_ptr : mesh->local_node_ptr_range())
+        {
+            if (node_ptr->get_extra_integer(node_array_index))
+            {
+                boundary_info->add_node(node_ptr, 110);
+            }
+        }
+
+        boundary_info->parallel_sync_node_ids();
+        boundary_info->build_side_list_from_node_list();
+        boundary_info->parallel_sync_side_ids();
+        boundary_info->clear_boundary_node_ids();
+    }
+
+    boundary_info->print_info();
+    boundary_info->print_summary();
+}
+
 void SimulationController::read_mesh()
 {
 
@@ -183,7 +215,8 @@ void SimulationController::read_mesh()
 
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
 
-    apec_m_model_data->set_object<ElementTypeFactory>(std::make_shared<ElementTypeFactory>(vtkio.get_element_types_map_csv()));
+    apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(vtkio.get_element_types_factory()));
+    apec_m_model_data->set_object<InfiniteElementsOptionsObject>(vtkio.get_infinite_elements_options());
 
     MeshCommunication().broadcast(*mesh);
 
@@ -194,6 +227,36 @@ void SimulationController::read_mesh()
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh->print_info();
+
+    if (mesh_base->has_node_integer("infinite_boundary"))
+    {
+        auto &boundary_info = mesh->get_boundary_info();
+        this->set_boundary_info({"infinite_boundary"});
+        const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
+        if (side_boundary_ids.find(110) != side_boundary_ids.end())
+        {
+            // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
+            InfElemBuilderUpdated builder(*mesh);
+            builder.build_inf_elem(true);
+            // find the neighbours; for correct linking the two areas
+            mesh->find_neighbors();
+        }
+        // Reassign subdomain_id() of all infinite elements.
+        // and their neighbours. This makes finding the surface
+        // between these elemests much easier.
+        for (auto &elem : mesh->active_local_element_ptr_range())
+            if (elem->infinite())
+            {
+                if (elem->dim() == 2)
+                {
+                    elem->subdomain_id() = 110;
+                }
+                else
+                    elem->subdomain_id() = 111;
+            }
+    }
+    auto element_types_factory = vtkio.get_element_types_factory();
+    element_types_factory->create_element_type(ElementTypeEnum::INFIN110, {});
 }
 
 void SimulationController::physics()
@@ -205,8 +268,8 @@ void SimulationController::physics()
     libMesh::out << "Checking system options..." << std::endl;
 
     auto system_builder_view = std::make_shared<
-        TypedContextView<ElementTypeFactory>>(
-        TypedContextView<ElementTypeFactory>::from(
+        TypedContextView<ElementTypesFactory>>(
+        TypedContextView<ElementTypesFactory>::from(
             apec_m_model_data));
     for (int i = 0; i < NUM_SYSTEMS; ++i)
     {

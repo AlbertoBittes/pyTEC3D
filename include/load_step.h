@@ -8,7 +8,7 @@
 #include "materials_object.h"
 #include "loads_object.h"
 #include "real_constants_object.h"
-#include "node_bc_object.h"
+#include "node_dof_constraints.h"
 #include "time_step.h"
 #include "solver_configuration.h"
 

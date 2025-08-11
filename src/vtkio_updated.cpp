@@ -88,7 +88,9 @@ VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_pa
                                                MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
                                                ,
-                                               _compress(false), _sys(nullptr)
+                                               _compress(false), _sys(nullptr),
+                                               element_types_factory(std::make_shared<ElementTypesFactory>()),
+                                               infinite_elements_options(std::make_shared<InfiniteElementsOptionsObject>())
 #endif
 {
 }
@@ -343,7 +345,9 @@ void VTKIO_Updated::read(const std::string &name)
 
     this->add_integers_vtk(mesh);
 
-    this->populate_element_types_from_vtk();
+    this->element_types_factory->populate_element_types_from_vtk(_vtk_grid->GetFieldData());
+
+    this->infinite_elements_options->populate_from_vtk_field_data(_vtk_grid->GetFieldData());
 
 #if LIBMESH_DIM < 3
     libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
@@ -399,80 +403,6 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
             node->set_extra_integer(i, data_array->GetTuple1(node->id()));
         }
     }
-}
-void VTKIO_Updated::populate_element_types_from_vtk()
-{
-    // Get the vtkFieldData from the input grid
-    vtkFieldData *field_data = _vtk_grid->GetFieldData();
-    if (!field_data)
-    {
-        libmesh_error_msg("No vtkFieldData found in the input grid.");
-        return;
-    }
-
-    // Retrieve the arrays from vtkFieldData
-    vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
-    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
-    vtkIntArray *keyopt1 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT1"));
-    vtkIntArray *keyopt2 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT2"));
-    vtkIntArray *keyopt3 = vtkIntArray::SafeDownCast(field_data->GetArray("KEYOPT3"));
-
-    // Validate that all required arrays are present
-    if (!ansys_element_type_num || !element_type || !keyopt1 || !keyopt2 || !keyopt3)
-    {
-        libmesh_error_msg("Missing required vtkFieldData arrays: ansys_etype, element_type, KEYOPT1, KEYOPT2, or KEYOPT3.");
-        return;
-    }
-
-    // Ensure all arrays have the same number of tuples
-    vtkIdType num_tuples = ansys_element_type_num->GetNumberOfTuples();
-    if (element_type->GetNumberOfTuples() != num_tuples ||
-        keyopt1->GetNumberOfTuples() != num_tuples ||
-        keyopt2->GetNumberOfTuples() != num_tuples ||
-        keyopt3->GetNumberOfTuples() != num_tuples)
-    {
-        libmesh_error_msg("Mismatch in the number of tuples between vtkFieldData arrays.");
-        return;
-    }
-
-    // Populate the ElementTypesMapCSV data structure
-    ElementTypesMapCSV element_types_map_csv;
-
-    for (vtkIdType i = 0; i < num_tuples; ++i)
-    {
-        // Extract data from vtkFieldData arrays
-        unsigned int ansys_type = static_cast<unsigned int>(ansys_element_type_num->GetValue(i));
-        std::string elem_type = element_type->GetValue(i);
-        int k1 = keyopt1->GetValue(i);
-        int k2 = keyopt2->GetValue(i);
-        int k3 = keyopt3->GetValue(i);
-
-        // Extract the integer number from elem_type (e.g., "SOLID97" → 97)
-        unsigned int elem_type_number = 0;
-        std::smatch match;
-        std::regex number_regex(R"(\d+)");
-        if (std::regex_search(elem_type, match, number_regex))
-        {
-            elem_type_number = std::stoi(match.str());
-        }
-        else
-        {
-            libmesh_warning("Failed to extract element type number from: " << elem_type);
-        }
-
-        // Create an ElementTypeKeyopts object
-        std::vector<unsigned int> keyopts;
-        keyopts.push_back(elem_type_number); // Add the extracted element type number
-        keyopts.push_back(static_cast<unsigned int>(k1));
-        keyopts.push_back(static_cast<unsigned int>(k2));
-        keyopts.push_back(static_cast<unsigned int>(k3));
-
-        // Insert into the map
-        element_types_map_csv[ansys_type] = keyopts;
-    }
-
-    // Store the populated map in the class or use it as needed
-    _element_types_map_csv = std::move(element_types_map_csv);
 }
 
 void VTKIO_Updated::write_nodal_data(const std::string &fname,
@@ -823,8 +753,10 @@ void VTKIO_Updated::read_apec_m_model(const std::string &mesh_filepath)
     {
         this->read(mesh_filepath);
     }
-    auto element_types_map = this->get_element_types_map_csv();
-    mesh.comm().broadcast<ElementTypesMapCSV>(*element_types_map);
+    auto element_types_map = this->element_types_factory->get_data_map();
+    mesh.comm().set_union<ElementTypesMap>(*element_types_map);
+    auto infinite_elements_options_map = this->infinite_elements_options->get_data_map();
+    mesh.comm().set_union<SettingsMap>(*infinite_elements_options_map);
 }
 
 void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,

@@ -1,9 +1,9 @@
-#include "node_bc_object.h"
+#include "node_dof_constraints.h"
 #include "globals.h"
 
 using namespace libMesh;
 
-void NodeBCObject::read_data(std::ifstream &file)
+void NodeDOFConstraints::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading boundary conditions data..." << std::endl;
 

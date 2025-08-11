@@ -23,7 +23,9 @@ enum ElementTypeEnum : unsigned int
     SOLID97 = 97,
     SOLID236 = 236,
     PLANE13 = 13,
-    PLANE233 = 233
+    PLANE233 = 233,
+    INFIN110 = 110,
+    INFIN111 = 111
 };
 
 enum PhysicalRegionEnum : unsigned int
@@ -129,10 +131,15 @@ public:
 
     const std::vector<unsigned int> keyopts; // Element type keyopts
 
+    virtual void set_variable_info() = 0;
+
+    virtual void set_fe_array() = 0;
+
 protected:
     VariableInformation variable_info;
     unsigned int active_dof_vars_size;  // Number of active DOF variables
     PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
+    void set_active_dof_vars_size();
 };
 
 class AVElementType : public ElementType
@@ -140,6 +147,10 @@ class AVElementType : public ElementType
 public:
     // Constructor
     AVElementType(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class AV3DElementType : public AVElementType
@@ -148,17 +159,21 @@ public:
     // Constructor
     AV3DElementType(const std::vector<unsigned int> &keyopts);
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
 
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class AV2DElementType : public AVElementType
@@ -168,67 +183,83 @@ public:
     AV2DElementType(const std::vector<unsigned int> &keyopts);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class SOLID97Type : public AV3DElementType
 {
 public:
     SOLID97Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class SOLID236Type : public AV3DElementType
 {
 public:
     SOLID236Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class PLANE13Type : public AV2DElementType
 {
 public:
     PLANE13Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class PLANE233Type : public AV2DElementType
 {
 public:
     PLANE233Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
-// ElementTypeFactory holds all ElementTypes
-class ElementTypeFactory : public FEDataObjectMap<ElementTypesMap>
+class INFIN110Type : public PLANE13Type
 {
 public:
-    // Constructor: if csv_map_ptr is not null, call create_element_types
-    ElementTypeFactory(ElementTypesMapCSV *csv_map_ptr = nullptr)
-    {
-        if (csv_map_ptr)
-            create_element_types(csv_map_ptr);
-    }
+    INFIN110Type(const std::vector<unsigned int> &keyopts);
 
-    // Factory method to create an ElementType object
-    static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
-                                                            const std::vector<unsigned int> &keyopts);
+    virtual void set_variable_info() override;
 
-    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const;
+    virtual void set_fe_array() override;
 
-    inline ElementType *get_element_type(subdomain_id_type element_id)
-    {
-        auto it = data_map->find(element_id);
-        if (it != data_map->end())
-        {
-            return it->second.get();
-        }
-        else
-        {
-            libmesh_error_msg("Element type not found for subdomain ID: " + std::to_string(element_id));
-        }
-    }
+    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
+};
 
-    void create_element_types(ElementTypesMapCSV *csv_map);
+class INFIN111Type : public SOLID97Type
+{
+public:
+    INFIN111Type(const std::vector<unsigned int> &keyopts);
+
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
+
+    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
 };
 #endif // ELEMENT_TYPES_H

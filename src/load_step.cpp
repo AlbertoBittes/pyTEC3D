@@ -62,7 +62,7 @@ void LoadStep::read_from_file(const std::string &filename)
             set_object(std::make_shared<LoadsObject>(file, shared_loads_sys));
             break;
         case LoadStepObjectType::NODE_BC_OBJECT:
-            set_object(std::make_shared<NodeBCObject>(file));
+            set_object(std::make_shared<NodeDOFConstraints>(file));
             break;
         default:
             libmesh_error_msg("Invalid load step binary file: unknown type_id " + std::to_string(type_id));

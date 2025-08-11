@@ -1,0 +1,148 @@
+#include "element_types_factory.h"
+#include "system_type.h"
+#include "globals.h"
+#include <regex>
+
+void ElementTypesFactory::add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type)
+{
+    (*data_map)[element_id] = std::move(element_type);
+}
+
+std::unique_ptr<VariableToElementIdsMapType>
+ElementTypesFactory::associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const
+{
+    auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
+    for (const auto &pair : *data_map)
+    {
+        subdomain_id_type elementId = pair.first;
+        const auto &elementType = pair.second;
+
+        auto active_vars = elementType->get_active_variables(variable_category);
+        for (const auto &var : active_vars)
+        {
+            (*variableToElementIds)[var].insert(elementId);
+        }
+    }
+    return variableToElementIds;
+}
+
+std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &keyopts)
+{
+    // Convert the string type to ElementTypeEnum
+    switch (type)
+    {
+    case ElementTypeEnum::SOLID97:
+        return std::make_unique<SOLID97Type>(keyopts);
+    case ElementTypeEnum::SOLID236:
+        return std::make_unique<SOLID236Type>(keyopts);
+    case ElementTypeEnum::PLANE13:
+        return std::make_unique<PLANE13Type>(keyopts);
+    case ElementTypeEnum::PLANE233:
+        return std::make_unique<PLANE233Type>(keyopts);
+    case ElementTypeEnum::INFIN110:
+        return std::make_unique<INFIN110Type>(keyopts);
+    case ElementTypeEnum::INFIN111:
+        return std::make_unique<INFIN210Type>(keyopts);
+    default:
+        libmesh_error_msg("Unknown element type");
+    }
+}
+
+void ElementTypesFactory::populate_element_types_from_vtk(vtkFieldData *field_data)
+{
+    if (!field_data)
+        libmesh_error_msg("No vtkFieldData provided to populate_element_types_from_vtk.");
+
+    // Retrieve the arrays from vtkFieldData
+    vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
+    vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
+
+    // Collect all KEYOPT arrays dynamically
+    std::vector<vtkIntArray *> keyopt_arrays;
+    std::vector<std::string> keyopt_names;
+    int num_field_arrays = field_data->GetNumberOfArrays();
+    for (int i = 0; i < num_field_arrays; ++i)
+    {
+        std::string arr_name = field_data->GetArrayName(i);
+        std::smatch match;
+        if (std::regex_match(arr_name, match, std::regex(R"(KEYOPT\d+)")))
+        {
+            vtkIntArray *keyopt_arr = vtkIntArray::SafeDownCast(field_data->GetArray(arr_name.c_str()));
+            if (keyopt_arr)
+            {
+                keyopt_arrays.push_back(keyopt_arr);
+                keyopt_names.push_back(arr_name);
+            }
+        }
+    }
+
+    // Sort keyopt_names and keyopt_arrays by KEYOPT number for consistency
+    std::vector<std::pair<std::string, vtkIntArray *>> keyopt_pairs;
+    for (size_t i = 0; i < keyopt_names.size(); ++i)
+        keyopt_pairs.emplace_back(keyopt_names[i], keyopt_arrays[i]);
+    std::sort(keyopt_pairs.begin(), keyopt_pairs.end(),
+              [](const auto &a, const auto &b)
+              {
+                  int anum = std::stoi(a.first.substr(6));
+                  int bnum = std::stoi(b.first.substr(6));
+                  return anum < bnum;
+              });
+    keyopt_arrays.clear();
+    for (const auto &p : keyopt_pairs)
+        keyopt_arrays.push_back(p.second);
+
+    // Validate that required arrays are present
+    if (!ansys_element_type_num || !element_type || keyopt_arrays.empty())
+    {
+        libmesh_error_msg("Missing required vtkFieldData arrays: ansys_etype, element_type, or KEYOPT arrays.");
+        return;
+    }
+
+    // Ensure all arrays have the same number of tuples
+    vtkIdType num_tuples = ansys_element_type_num->GetNumberOfTuples();
+    if (element_type->GetNumberOfTuples() != num_tuples)
+    {
+        libmesh_error_msg("Mismatch in the number of tuples between ansys_etype and element_type arrays.");
+        return;
+    }
+    for (auto arr : keyopt_arrays)
+    {
+        if (arr->GetNumberOfTuples() != num_tuples)
+        {
+            libmesh_error_msg("Mismatch in the number of tuples between KEYOPT arrays.");
+            return;
+        }
+    }
+
+    // Clear the data_map before populating
+    data_map->clear();
+
+    // Populate the data_map
+    for (vtkIdType i = 0; i < num_tuples; ++i)
+    {
+        unsigned int ansys_type = static_cast<unsigned int>(ansys_element_type_num->GetValue(i));
+        std::string elem_type = element_type->GetValue(i);
+
+        // Extract the integer number from elem_type (e.g., "SOLID97" → 97)
+        unsigned int elem_type_number = 0;
+        std::smatch match;
+        std::regex number_regex(R"(\d+)");
+        if (std::regex_search(elem_type, match, number_regex))
+        {
+            elem_type_number = std::stoi(match.str());
+        }
+        else
+        {
+            libmesh_warning("Failed to extract element type number from: " << elem_type);
+        }
+
+        // Build keyopts vector: first entry is the element type number, then all KEYOPT values
+        std::vector<unsigned int> keyopts;
+        keyopts.push_back(elem_type_number);
+        for (auto arr : keyopt_arrays)
+            keyopts.push_back(static_cast<unsigned int>(arr->GetValue(i)));
+
+        // Use add_element_type instead of direct assignment
+        add_element_type(ansys_type, create_element_type(static_cast<ElementTypeEnum>(elem_type_number), keyopts));
+    }
+}

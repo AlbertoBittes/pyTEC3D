@@ -36,8 +36,10 @@
 // C++ includes
 #include <cstddef>
 #include <map>
-#include "../include/element_types.h"
-#include "../include/globals.h"
+#include "element_types.h"
+#include "globals.h"
+#include "fe_data_object.h"        // for SettingsFEDataObject
+#include "element_types_factory.h" // for ElementTypesFactory
 
 using namespace libMesh;
 // Forward declarations
@@ -78,9 +80,14 @@ public:
 
     void populate_element_types_from_vtk();
 
-    ElementTypesMapCSV *get_element_types_map_csv()
+    std::shared_ptr<ElementTypesFactory> get_element_types_factory()
     {
-        return &_element_types_map_csv;
+        return element_types_factory;
+    }
+
+    std::shared_ptr<InfiniteElementsOptionsObject> get_infinite_elements_options()
+    {
+        return infinite_elements_options;
     }
 
     void read_apec_m_model(const std::string &mesh_filepath);
@@ -136,9 +143,11 @@ private:
 
     static std::map<ElemMappingType, ElementMaps> _element_maps;
 
+    std::shared_ptr<InfiniteElementsOptionsObject> infinite_elements_options;
+
     static std::map<ElemMappingType, ElementMaps> build_element_maps();
 
-    ElementTypesMapCSV _element_types_map_csv;
+    std::shared_ptr<ElementTypesFactory> element_types_factory;
 #endif
 };
 

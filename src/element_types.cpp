@@ -7,10 +7,29 @@
 #include <vector>
 #include <limits> // for std::numeric_limits
 #include "element_types.h"
+#include <libmesh/inf_fe.h>
 
 using namespace Globals;
+
+void ElementType::set_active_dof_vars_size()
+{
+    active_dof_vars_size = 0;
+    for (const auto &pair : variable_info)
+    {
+        const auto &var_data = pair.second;
+        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
+            ++active_dof_vars_size;
+    }
+}
+
 AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
     : ElementType(keyopts) // Call the parent class constructor
+{
+    set_variable_info();
+    set_fe_array();
+}
+
+void AVElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
     variable_info[GlobalVariableName::B_x] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
@@ -19,10 +38,23 @@ AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
     variable_info[GlobalVariableName::Js_z] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
 }
 
+void AVElementType::set_fe_array() {};
+
 AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
 {
-    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
     // Additional initialization for AVElementType (if needed)
+    set_variable_info();
+    set_fe_array();
+}
+
+void AV2DElementType::set_variable_info()
+{
+    // Additional initialization for AVElementType (if needed)
+    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, FIRST};
+}
+
+void AV2DElementType::set_fe_array()
+{
     FEType fe_type(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -33,6 +65,57 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
     QGauss *qrule = new QGauss(2, fe_type.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_array[0]->attach_quadrature_rule(qrule);
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
+
+    (*matrix_idx_size_map)[0] = {n_sf, n_sf};
+    (*matrix_idx_size_map)[1] = {n_sf, n_sf};
+
+    return matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nodal_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
+
+    (*solution_matrix_idx_size_map)[0] = {2 * n_sf, 2 * n_sf};
+    (*solution_matrix_idx_size_map)[1] = {2 * n_sf, n_sf};
+
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_element_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
+
+    (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf};
+
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vector_idx_size_map()
+{
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+
+    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
+
+    return vector_idx_size_map;
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nodal_solution_vector_idx_size_map()
@@ -58,6 +141,12 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_ele
 
 AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
 {
+    set_variable_info();
+    set_fe_array();
+}
+
+void AV3DElementType::set_variable_info()
+{
     // Additional initialization for AVElementType (if needed)
     variable_info[GlobalVariableName::B_z] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, FIRST};
     variable_info[GlobalVariableName::J_x] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
@@ -66,7 +155,10 @@ AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVE
     variable_info[GlobalVariableName::EMF] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::EMF, LAGRANGE, FIRST};
     variable_info[GlobalVariableName::Js_x] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
     variable_info[GlobalVariableName::Js_y] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
+}
 
+void AV3DElementType::set_fe_array()
+{
     FEType fe_type(FIRST, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -153,12 +245,19 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_ele
 
     return vector_idx_size_map;
 }
+
 // SOLID97
 
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(keyopts)
 {
+    set_variable_info();
+    set_fe_array();
+    set_active_dof_vars_size();
+}
 
+void SOLID97Type::set_variable_info()
+{
     variable_info[GlobalVariableName::A_x] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
     variable_info[GlobalVariableName::A_y] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
     variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
@@ -170,7 +269,10 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
         variable_info[GlobalVariableName::CURR].is_active = true; // Modify the first member
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
+}
 
+void SOLID97Type::set_fe_array()
+{
     FEType fe_type_vec(FIRST, LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -183,15 +285,8 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     fe_vec->attach_quadrature_rule(qrule_vec);
 
     fe_array.push_back(std::move(fe_vec));
-
-    active_dof_vars_size = 0;
-    for (const auto &pair : variable_info)
-    {
-        const auto &var_data = pair.second;
-        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
-            ++active_dof_vars_size;
-    }
 }
+
 // SOLID 236
 
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
@@ -223,6 +318,7 @@ PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(keyopts)
 {
     // TODO: Add initialization if needed
+    libmesh_error_msg("PLANE233Type::PLANE233Type is not implemented.");
 }
 // Dummy implementations for SOLID236Type
 
@@ -245,6 +341,13 @@ PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
 PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(keyopts)
 {
+    set_variable_info();
+    set_fe_array();
+    set_active_dof_vars_size();
+} // Default dimension for PLANE13 is 2
+
+void PLANE13Type::set_variable_info()
+{
     variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, FIRST};
 
     if (physical_region == STRANDED_COIL)
@@ -253,67 +356,34 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
         variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::CURR].is_active = true;
-
-    active_dof_vars_size = 0;
-    for (const auto &pair : variable_info)
-    {
-        const auto &var_data = pair.second;
-        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
-            ++active_dof_vars_size;
-    }
-} // Default dimension for PLANE13 is 2
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
-
-    (*matrix_idx_size_map)[0] = {n_sf, n_sf};
-    (*matrix_idx_size_map)[1] = {n_sf, n_sf};
-
-    return matrix_idx_size_map;
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nodal_solution_matrix_idx_size_map()
+void PLANE13Type::set_fe_array() {};
+
+INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
+    : PLANE13Type(keyopts)
 {
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
-
-    (*solution_matrix_idx_size_map)[0] = {2 * n_sf, 2 * n_sf};
-    (*solution_matrix_idx_size_map)[1] = {2 * n_sf, n_sf};
-
-    return solution_matrix_idx_size_map;
+    set_variable_info();
+    set_fe_array();
+    set_active_dof_vars_size();
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_element_solution_matrix_idx_size_map()
+void INFIN110Type::set_variable_info() {};
+
+void INFIN110Type::set_fe_array()
 {
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
-
-    (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf};
-
-    return solution_matrix_idx_size_map;
-}
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
-
-    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
-
-    return vector_idx_size_map;
-}
-
+    FEType fe_type(FIRST, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe = FEBase::build_InfFE(2, fe_type);
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule_vec = new QGauss(2, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe->attach_quadrature_rule(qrule_vec);
+    inf_fe_array.push_back(std::move(fe));
+};
 // PLANE233
 
 // PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
@@ -335,56 +405,3 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vec
 // {
 //     libmesh_error_msg("PLANE233Type::populate_vector_idx_size_map is not implemented.");
 // }
-
-std::unique_ptr<VariableToElementIdsMapType>
-ElementTypeFactory::associate_variables_with_element_IDs(VariableCategory variable_category) const
-{
-    auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
-    for (const auto &pair : *data_map)
-    {
-        subdomain_id_type elementId = pair.first;
-        const auto &elementType = pair.second;
-
-        auto active_vars = elementType->get_active_variables(variable_category);
-        for (const auto &var : active_vars)
-        {
-            (*variableToElementIds)[var].insert(elementId);
-        }
-    }
-    return variableToElementIds;
-}
-
-std::unique_ptr<ElementType> ElementTypeFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &keyopts)
-{
-    // Convert the string type to ElementTypeEnum
-    switch (type)
-    {
-    case ElementTypeEnum::SOLID97:
-        return std::make_unique<SOLID97Type>(keyopts);
-    case ElementTypeEnum::SOLID236:
-        return std::make_unique<SOLID236Type>(keyopts);
-    case ElementTypeEnum::PLANE13:
-        return std::make_unique<PLANE13Type>(keyopts);
-    case ElementTypeEnum::PLANE233:
-        return std::make_unique<PLANE233Type>(keyopts);
-    default:
-        libmesh_error_msg("Unknown element type");
-    }
-}
-
-void ElementTypeFactory::create_element_types(ElementTypesMapCSV *csv_map)
-{
-    data_map->clear();
-    for (const auto &pair : *csv_map)
-    {
-        unsigned int id = pair.first;
-        const std::vector<unsigned int> &keyopts = pair.second;
-        // You may need to determine the type from keyopts or another source.
-        // Here, we assume the first entry in keyopts is the type enum value.
-        if (keyopts.empty())
-            continue;
-        ElementTypeEnum type_enum = static_cast<ElementTypeEnum>(keyopts[0]);
-        (*data_map)[id] = create_element_type(type_enum, keyopts);
-        // Optionally, call set_conductive after construction:
-    }
-}

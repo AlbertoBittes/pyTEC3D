@@ -1,0 +1,36 @@
+package:
+  name: apec_m
+  version: "0.1.0"
+
+source:
+  git_url: https://github.com/yourusername/apec_m.git
+  git_tag: main  # or your desired branch/tag
+
+build:
+  number: 0
+  skip: false
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - make
+    - cmake
+    - pkg-config
+    - autoconf
+    - automake
+    - libtool
+    - git
+    - mpi
+  host:
+    - vtk
+    - petsc
+    - mpi
+  run:
+    - vtk
+    - petsc
+    - mpi
+
+about:
+  home: https://github.com/yourusername/apec_m
+  summary: "APEC_M: Your program description here."
+  license: Your-License-Here

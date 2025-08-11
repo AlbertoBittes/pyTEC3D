@@ -1,4 +1,17 @@
 from setuptools import setup, find_packages
+import subprocess
+import os
+
+# Define the local_packages path
+local_packages_path = os.path.join("api", "local_packages")
+
+# Ensure the local_packages directory exists
+os.makedirs(local_packages_path, exist_ok=True)
+
+print("Local installation of openpyxl for ParaView...\n")
+
+# Install openpyxl into the local_packages folder
+subprocess.run(["pip", "install", "openpyxl", "--target", local_packages_path])
 
 setup(
     name="apec_m",

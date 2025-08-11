@@ -3,8 +3,9 @@
 
 #include <libmesh/system.h>
 #include <libmesh/equation_systems.h>
+
 #include "fem_service_abstract.h"
-#include "node_bc_object.h"
+#include "node_dof_constraints.h"
 #include "time_step.h"
 
 using namespace libMesh;
@@ -13,22 +14,22 @@ using namespace libMesh;
 // Checks if it is necessary to update the nodal degrees of freedom imposed by the user
 // updates the constraints if necessary. The assembler will then constrain element matrices before putting
 // them in the global system matrix
-class BoundaryConditionsObject
+class GlobalConstraintsObject
     : public System::Constraint,
-      public FEMServiceWithOldContext<NodeBCObject, TimeStep>,
+      public FEMServiceWithOldContext<NodeDOFConstraints, TimeStep>,
       public FEParentObjectBase<System>
 {
 public:
-    using ContextView = TypedContextView<NodeBCObject, TimeStep>;
+    using ContextView = TypedContextView<NodeDOFConstraints, TimeStep>;
     using FEParentObjectBase<System>::FEParentObjectBase;
 
-    BoundaryConditionsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr, std::shared_ptr<ContextView> old_ctx_view = nullptr)
+    GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr, std::shared_ptr<ContextView> old_ctx_view = nullptr)
         : FEParentObjectBase<System>(sys), // Set the parent System
-          FEMServiceWithOldContext<NodeBCObject, TimeStep>(ctx_view, old_ctx_view)
+          FEMServiceWithOldContext<NodeDOFConstraints, TimeStep>(ctx_view, old_ctx_view)
     {
     }
 
-    virtual ~BoundaryConditionsObject() = default;
+    virtual ~GlobalConstraintsObject() = default;
 
     void constrain() override;
 
@@ -44,7 +45,7 @@ public:
     void set_boundary_conditions();
 
     // Example: access context objects as shared_ptrs
-    std::shared_ptr<NodeBCObject> node_bc_object() { return this->context<NodeBCObject>(); }
+    std::shared_ptr<NodeDOFConstraints> node_bc_object() { return this->context<NodeDOFConstraints>(); }
     std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
 
 private:

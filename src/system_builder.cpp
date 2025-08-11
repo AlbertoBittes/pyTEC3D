@@ -15,7 +15,7 @@
 #include "system_type.h"
 #include "fem_data_repository.h"
 #include "apec_m_system_objects.h"
-#include "boundary_conditions_object.h"
+#include "global_constraints_object.h"
 // The definition of a geometric element
 
 using namespace libMesh;
@@ -47,7 +47,7 @@ void SystemBuilder::init_variables()
     std::string vars_set;
 
     System *system = this->get_parent_object();
-    auto element_types_collector = context<ElementTypeFactory>();
+    auto element_types_collector = context<ElementTypesFactory>();
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
     // Do not do the loop here, attacht the initialization object to the other systems too

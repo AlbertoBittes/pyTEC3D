@@ -7,8 +7,13 @@
 #include <variant>
 #include <unordered_map>
 #include <fstream>
+#include <optional>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
+#include <vtkFieldData.h>
+#include <vtkStringArray.h>
+#include <vtkIntArray.h>
+#include <vtkDoubleArray.h>
 
 using namespace libMesh;
 
@@ -55,6 +60,11 @@ public:
 
     // Getter for the data map
     T1 *get_data_map() const
+    {
+        return data_map.get();
+    }
+
+    T1 *get_data_map()
     {
         return data_map.get();
     }
@@ -152,6 +162,67 @@ public:
     }
     // Implement the read_data method
     void read_data(std::ifstream &file);
+};
+
+class InfiniteElementsOptionsObject : public SettingsFEDataObject
+{
+public:
+    InfiniteElementsOptionsObject() = default;
+
+    // Populate the settings map from a vtkFieldData pointer
+    void populate_from_vtk_field_data(vtkFieldData *field_data)
+    {
+        // Set defaults
+        this->set_setting("order", std::string("FIRST"));
+        this->set_setting("mesh_dimension", 2);
+        this->set_setting("edge_elements", 0);
+        this->set_setting("boundary_type", std::string("SPHERICAL"));
+        this->set_setting("origin_x", Real(0));
+        this->set_setting("origin_y", Real(0));
+        this->set_setting("origin_z", Real(0));
+
+        if (!field_data)
+            return;
+
+        // Helper lambdas
+        auto get_string = [&](const char *name) -> std::optional<std::string>
+        {
+            if (auto arr = vtkStringArray::SafeDownCast(field_data->GetAbstractArray(name)))
+                if (arr->GetNumberOfTuples() > 0)
+                    return arr->GetValue(0);
+            return std::nullopt;
+        };
+        auto get_int = [&](const char *name) -> std::optional<int>
+        {
+            if (auto arr = vtkIntArray::SafeDownCast(field_data->GetArray(name)))
+                if (arr->GetNumberOfTuples() > 0)
+                    return arr->GetValue(0);
+            return std::nullopt;
+        };
+        auto get_real = [&](const char *name) -> std::optional<Real>
+        {
+            if (auto arr = vtkDoubleArray::SafeDownCast(field_data->GetArray(name)))
+                if (arr->GetNumberOfTuples() > 0)
+                    return static_cast<Real>(arr->GetValue(0));
+            return std::nullopt;
+        };
+
+        // Try to read each field, fallback to default if not found
+        if (auto v = get_string("order"))
+            this->set_setting("order", *v);
+        if (auto v = get_int("mesh_dimension"))
+            this->set_setting("mesh_dimension", *v);
+        if (auto v = get_int("edge_elements"))
+            this->set_setting("edge_elements", *v);
+        if (auto v = get_string("boundary_type"))
+            this->set_setting("boundary_type", *v);
+        if (auto v = get_real("origin_x"))
+            this->set_setting("origin_x", *v);
+        if (auto v = get_real("origin_y"))
+            this->set_setting("origin_y", *v);
+        if (auto v = get_real("origin_z"))
+            this->set_setting("origin_z", *v);
+    }
 };
 
 #endif // FE_DATA_OBJECT_H

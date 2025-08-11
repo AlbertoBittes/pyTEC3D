@@ -32,6 +32,7 @@ public:
     void reinitialize_constrained_dofs();
     void set_load_step_data();
     void set_solver_settings();
+    void set_boundary_info(const std::set<std::string> &bc_arrays);
 
     // Available CLI commands
     enum class Command

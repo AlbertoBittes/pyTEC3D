@@ -11,18 +11,18 @@ typedef std::unordered_map<dof_id_type, NodeBoundaryConditions> BoundaryConditio
 
 // The NodeBCObject holds the nodal DOF imposed by the user (D in APDL), they will be used by the boundary
 // conditions object to set the constraints in the system matrix
-class NodeBCObject : public FEDataObjectMap<BoundaryConditionsMap>
+class NodeDOFConstraints : public FEDataObjectMap<BoundaryConditionsMap>
 {
 public:
     // Default constructor
-    NodeBCObject(std::ifstream &file)
+    NodeDOFConstraints(std::ifstream &file)
         : FEDataObjectMap<BoundaryConditionsMap>()
     {
         this->read_data(file); // Call read_data to initialize the data map
     }
 
     // Destructor
-    virtual ~NodeBCObject() {}
+    virtual ~NodeDOFConstraints() {}
 
     void read_data(std::ifstream &file) override;
 };

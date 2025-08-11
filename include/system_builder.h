@@ -15,22 +15,22 @@ using namespace libMesh;
 // chosen by the user. It also sets proper initial settings
 class SystemBuilder
     : public System::Initialization,
-      public FEMServiceAbstract<ElementTypeFactory>,
+      public FEMServiceAbstract<ElementTypesFactory>,
       public FEParentObjectBase<System>
 {
 public:
-    using ContextView = TypedContextView<ElementTypeFactory>;
+    using ContextView = TypedContextView<ElementTypesFactory>;
 
     // Constructor: pass context view as shared_ptr to FEMServiceAbstract
     SystemBuilder(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
-        : FEParentObjectBase<System>(sys), FEMServiceAbstract<ElementTypeFactory>(ctx_view) {}
+        : FEParentObjectBase<System>(sys), FEMServiceAbstract<ElementTypesFactory>(ctx_view) {}
 
     // Override the initialize method
     void initialize() override;
 
     void init_variables();
-    // Example: access the ElementTypeFactory from the context view
-    std::shared_ptr<ElementTypeFactory> element_type_factory() { return this->context<ElementTypeFactory>(); }
+    // Example: access the ElementTypesFactory from the context view
+    std::shared_ptr<ElementTypesFactory> element_type_factory() { return this->context<ElementTypesFactory>(); }
 };
 
 #endif // SYSTEM_BUILDER_H

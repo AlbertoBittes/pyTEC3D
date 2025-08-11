@@ -16,7 +16,7 @@
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view,
                                std::shared_ptr<ContextView> old_ctx_view)
-    : FEMServiceWithOldContext<Session, ElementTypeFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view, old_ctx_view),
+    : FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view, old_ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
       matrices(3),
       vectors(5)
@@ -1118,7 +1118,7 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     std::ofstream *solution_vec_output_file = dynamic_cast<std::ofstream *>(out_streams[0].get());
 
-    auto element_types = this->context<ElementTypeFactory>();
+    auto element_types = this->context<ElementTypesFactory>();
 
     std::vector<dof_id_type> dof_indices;
 

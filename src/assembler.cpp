@@ -250,7 +250,7 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
 
-    BoundaryConditionsObject *bc_object = dynamic_cast<BoundaryConditionsObject *>(&system->get_constraint_object());
+    GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&system->get_constraint_object());
 
     const Real rel_eps = 1e-9;
 
