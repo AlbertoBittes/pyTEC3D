@@ -4,11 +4,11 @@
 #include "element_types.h"
 #include "fe_data_object.h"
 // ElementTypeFactory holds all ElementTypes
-class ElementTypesFactory : public DataframeMapFEDataObject<ETypeKeyoptsMap>
+class ElementTypesFactory : public ETypeKeyoptsMap
 {
 public:
     ElementTypesFactory()
-        : DataframeMapFEDataObject<ETypeKeyoptsMap>(),
+        : ETypeKeyoptsMap(),
           element_types_map(std::make_shared<ElementTypesMap>())
     {
     }
@@ -34,7 +34,14 @@ public:
         }
     }
 
-    void populate_element_types_from_vtk(vtkFieldData *field_data);
+    void populate_data_map_from_vtk(vtkFieldData *field_data);
+
+    void populate_element_types_map_from_dataframe();
+
+    inline ElementTypesMap *get_element_types_map() const
+    {
+        return element_types_map.get();
+    }
 
 private:
     std::shared_ptr<ElementTypesMap> element_types_map;

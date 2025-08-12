@@ -124,6 +124,7 @@ void DataframeMapFEDataObject<T>::populate_dataframe_map()
             }
         }
 
+        // Store the vector<T> in the map with int key
         (*dataframe_map)[id] = std::move(values);
     }
 }

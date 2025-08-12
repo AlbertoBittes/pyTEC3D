@@ -48,7 +48,7 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
     }
 }
 
-void ElementTypesFactory::populate_element_types_from_vtk(vtkFieldData *field_data)
+void ElementTypesFactory::populate_data_map_from_vtk(vtkFieldData *field_data)
 {
     if (!field_data)
         libmesh_error_msg("No vtkFieldData provided to populate_element_types_from_vtk.");
@@ -114,35 +114,49 @@ void ElementTypesFactory::populate_element_types_from_vtk(vtkFieldData *field_da
         }
     }
 
-    // Clear the element_types_map before populating
-    element_types_map->clear();
-
-    // Populate the element_types_map
+    // --- Populate data_map ---
+    this->data_map->clear();
     for (vtkIdType i = 0; i < num_tuples; ++i)
     {
-        unsigned int ansys_type = static_cast<unsigned int>(ansys_element_type_num->GetValue(i));
-        std::string elem_type = element_type->GetValue(i);
-
-        // Extract the integer number from elem_type (e.g., "SOLID97" → 97)
-        unsigned int elem_type_number = 0;
-        std::smatch match;
-        std::regex number_regex(R"(\d+)");
-        if (std::regex_search(elem_type, match, number_regex))
-        {
-            elem_type_number = std::stoi(match.str());
-        }
-        else
-        {
-            libmesh_warning("Failed to extract element type number from: " << elem_type);
-        }
-
-        // Build keyopts vector: first entry is the element type number, then all KEYOPT values
-        std::vector<unsigned int> keyopts;
-        keyopts.push_back(elem_type_number);
+        std::vector<std::variant<int, Real, std::string>> row;
+        // ansys_etype (int)
+        row.push_back(static_cast<int>(ansys_element_type_num->GetValue(i)));
+        // element_type (string)
+        row.push_back(element_type->GetValue(i));
+        // KEYOPT values (int)
         for (auto arr : keyopt_arrays)
-            keyopts.push_back(static_cast<unsigned int>(arr->GetValue(i)));
+            row.push_back(static_cast<int>(arr->GetValue(i)));
+        this->data_map->push_back(std::move(row));
+    }
 
-        // Use add_element_type instead of direct assignment
+    // --- Populate dataframe_map from data_map ---
+    this->populate_dataframe_map();
+}
+
+void ElementTypesFactory::populate_element_types_map_from_dataframe()
+{
+    element_types_map->clear();
+
+    auto *df_map = this->get_dataframe_map();
+    if (!df_map)
+        libmesh_error_msg("No dataframe_map available.");
+
+    for (const auto &pair : *df_map)
+    {
+        int ansys_type = pair.first;
+        const std::vector<int> &keyopts_int = pair.second;
+
+        if (keyopts_int.empty())
+            libmesh_error_msg("Empty keyopts vector in dataframe_map.");
+
+        // The first entry is the element type number
+        unsigned int elem_type_number = static_cast<unsigned int>(keyopts_int[0]);
+
+        // The rest (if any) are KEYOPT values
+        std::vector<unsigned int> keyopts;
+        for (size_t j = 1; j < keyopts_int.size(); ++j)
+            keyopts.push_back(static_cast<unsigned int>(keyopts_int[j]));
+
         add_element_type(ansys_type, create_element_type(static_cast<ElementTypeEnum>(elem_type_number), keyopts));
     }
 }

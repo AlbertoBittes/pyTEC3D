@@ -157,25 +157,17 @@ ELEMENT_TYPES_COLUMNS_TYPES = {
     "KEYOPT1": int,
     "KEYOPT2": int,
     "KEYOPT3": int,
+    "KEYOPT4": int,
+    "KEYOPT5": int
 }
 
 
 # Assign types to loads and boundary conditions columns
-LOADS_BCS_COLUMNS_TYPES = {
+CELL_POINT_DATA_COLUMNS_TYPES = {
     "vtk_id": int,
     "label": str,
     "component": int,
     "value": float,
-}
-
-INFINITE_ELEMENTS_OPTIONS_TYPES = {
-    "order": str,
-    "mesh_dimension": int,
-    "edge_elements": int,
-    "boundary_type": str,
-    "origin_x": float,
-    "origin_y": float,
-    "origin_z": float,
 }
 
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
@@ -191,26 +183,24 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
-    "infinite_elements_options": INFINITE_ELEMENTS_OPTIONS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
-    "loads": LOADS_BCS_COLUMNS_TYPES,
-    "boundary_conditions": LOADS_BCS_COLUMNS_TYPES,
+    "cell_data": CELL_POINT_DATA_COLUMNS_TYPES,
+    "point_data": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
 }
 
 # Define the mapping of sheet names to processing methods
 SHEET_PROCESSING_MAP = {
     "element_types": "read_excel_df",
-    "infinite_elements_options": "read_excel_dict",
     "materials": "read_excel_df",
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
-    "loads": ("update_vtk_grid_from_excel", "cell"),
-    "boundary_conditions": ("update_vtk_grid_from_excel", "point"),
+    "cell_data": ("update_vtk_grid_from_excel", "cell_data"),
+    "point_data": ("update_vtk_grid_from_excel", "point_data"),
     "transient_analysis": "read_excel_df",
 }
 
@@ -219,6 +209,6 @@ WRITING_FUNCTIONS_MAP = {
     "solver_settings": "write_settings_to_binary",
     "materials": "write_dataframe_to_binary",
     "real_constants": "write_dataframe_to_binary",
-    "loads": "write_numpy_array_to_binary",
-    "boundary_conditions": "write_numpy_array_to_binary",
+    "cell_data": "write_numpy_array_to_binary",
+    "point_data": "write_numpy_array_to_binary",
 }

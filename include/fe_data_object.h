@@ -115,14 +115,14 @@ public:
     // Constructor
     DataframeMapFEDataObject(std::ifstream &file)
         : DataframeFEDataObject(file), // parent constructor
-          dataframe_map(std::make_shared<std::unordered_map<int, T>>())
+          dataframe_map(std::make_shared<std::unordered_map<int, std::vector<T>>>())
     {
         populate_dataframe_map();
     }
 
     DataframeMapFEDataObject()
         : DataframeFEDataObject(),
-          dataframe_map(std::make_shared<std::unordered_map<int, T>>())
+          dataframe_map(std::make_shared<std::unordered_map<int, std::vector<T>>>())
     {
     }
 
@@ -130,13 +130,13 @@ public:
     void populate_dataframe_map();
 
     // Getter for dataframe_map
-    std::unordered_map<int, T> *get_dataframe_map() const
+    std::unordered_map<int, std::vector<T>> *get_dataframe_map() const
     {
         return dataframe_map.get();
     }
 
 protected:
-    std::shared_ptr<std::unordered_map<int, T>> dataframe_map; // Shared pointer to the map
+    std::shared_ptr<std::unordered_map<int, std::vector<T>>> dataframe_map; // Shared pointer to the map
 };
 
 class SettingsFEDataObject : public FEDataObjectMap<SettingsMap>

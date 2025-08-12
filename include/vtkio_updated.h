@@ -85,11 +85,6 @@ public:
         return element_types_factory;
     }
 
-    std::shared_ptr<InfiniteElementsOptionsObject> get_infinite_elements_options()
-    {
-        return infinite_elements_options;
-    }
-
     void read_apec_m_model(const std::string &mesh_filepath);
 
     void add_integers_vtk(MeshBase &mesh);
@@ -142,8 +137,6 @@ private:
     };
 
     static std::map<ElemMappingType, ElementMaps> _element_maps;
-
-    std::shared_ptr<InfiniteElementsOptionsObject> infinite_elements_options;
 
     static std::map<ElemMappingType, ElementMaps> build_element_maps();
 

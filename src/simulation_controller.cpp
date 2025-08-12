@@ -45,7 +45,7 @@ void SimulationController::set_transient_effects()
         {
             system.release_subset_solve();
             std::set<subdomain_id_type> subdomains;
-            for (const auto &pair : *element_type_factory->get_data_map())
+            for (const auto &pair : *element_type_factory->get_element_types_map())
             {
                 subdomains.insert(pair.first); // pair.first is the subdomain_id_type (element ID)
             }
@@ -204,6 +204,41 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
 
     boundary_info->print_info();
     boundary_info->print_summary();
+
+    return;
+}
+
+void SimulationController::generate_infinite_elements()
+{
+    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+
+    auto mesh_base = static_cast<MeshBase *>(mesh.get());
+
+    if (mesh_base->has_node_integer("infinite_boundary"))
+    {
+        auto &boundary_info = mesh->get_boundary_info();
+        this->set_boundary_info({"infinite_boundary"});
+        const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
+        for (const auto &id : side_boundary_ids)
+        {
+            // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
+            InfElemBuilderUpdated builder(*mesh);
+            const Point origin(0.0, 0.0, 0.0);
+            builder.build_inf_elem(origin);
+            // find the neighbours; for correct linking the two areas
+
+            // Reassign subdomain_id() of all infinite elements.
+            // and their neighbours. This makes finding the surface
+            // between these elemests much easier.
+            for (auto &elem : mesh->active_local_element_ptr_range())
+                if (elem->infinite())
+                {
+                    elem->subdomain_id() = id;
+                }
+        }
+    }
+
+    return;
 }
 
 void SimulationController::read_mesh()
@@ -219,10 +254,10 @@ void SimulationController::read_mesh()
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
 
     auto element_types_factory = vtkio.get_element_types_factory();
-    auto infinite_elements_options = vtkio.get_infinite_elements_options();
 
     apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(element_types_factory));
-    apec_m_model_data->set_object<InfiniteElementsOptionsObject>(std::make_shared<InfiniteElementsOptionsObject>(infinite_elements_options));
+
+    this->generate_infinite_elements();
 
     MeshCommunication().broadcast(*mesh);
 
@@ -234,31 +269,7 @@ void SimulationController::read_mesh()
     std::cout << "Mesh Information: " << std::endl;
     mesh->print_info();
 
-    if (mesh_base->has_node_integer("infinite_boundary"))
-    {
-        auto &boundary_info = mesh->get_boundary_info();
-        this->set_boundary_info({"infinite_boundary"});
-        const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
-        auto origin_coords = infinite_elements_options->get_dataframe_map();
-        for (const auto &id : side_boundary_ids)
-        {
-            // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
-            InfElemBuilderUpdated builder(*mesh);
-            const Point origin(origin_coords->at(id)[0], origin_coords->at(id)[1], origin_coords->at(id)[2]);
-            builder.build_inf_elem(origin);
-            // find the neighbours; for correct linking the two areas
-            mesh->prepare_for_use(true);
-
-            // Reassign subdomain_id() of all infinite elements.
-            // and their neighbours. This makes finding the surface
-            // between these elemests much easier.
-            for (auto &elem : mesh->active_local_element_ptr_range())
-                if (elem->infinite())
-                {
-                    elem->subdomain_id() = id;
-                }
-        }
-    }
+    return;
 }
 
 void SimulationController::physics()

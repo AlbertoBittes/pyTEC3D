@@ -28,12 +28,12 @@ except ImportError:
             "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
         )
 
-try:
-    # Relative import for package execution
-    from .constants import *
-except ImportError:
-    # Absolute import for standalone execution
-    from constants import *
+# try:
+#     # Relative import for package execution
+#     from .constants import *
+# except ImportError:
+#     # Absolute import for standalone execution
+from constants import *
 
 
 class APEC_M:
@@ -615,22 +615,22 @@ class APEC_M:
             f"Data from sheet '{sheet_name}' successfully loaded into '{sheet_name}'."
         )
 
-    def write_excel_loads_bcs(self, output_excel_file, data_type="loads"):
+    def write_excel_loads_bcs(self, output_excel_file, data_type="cell_data"):
         """
         Writes the loads or boundary conditions to an Excel file.
 
         Parameters:
             output_excel_file (str): The path to the output Excel file.
-            data_type (str): The type of data to write ("loads" or "boundary_conditions").
-                            Defaults to "loads".
+            data_type (str): The type of data to write ("cell_data" or "point_data").
+                            Defaults to "cell_data".
 
         Raises:
             ValueError: If the data_type is invalid.
         """
         # Determine the VTK data and mapping based on the data_type
-        if data_type == "loads":
+        if data_type == "cell_data":
             vtk_data = self.mesh.GetCellData()
-        elif data_type == "boundary_conditions":
+        elif data_type == "point_data":
             vtk_data = self.mesh.GetPointData()
         else:
             raise ValueError(
@@ -852,7 +852,7 @@ class APEC_M:
         Creates a NumPy structured array for loads/nodal DOFs from a VTK cell data array.
 
         The structured array contains:
-            - cell_id (unsigned int)
+            - vtk_id (unsigned int)
             - load_number (unsigned int, from VARIABLES_LOADS_NUMBERS mapping)
             - component (unsigned int)
             - value (double)
@@ -935,7 +935,7 @@ class APEC_M:
         # Return an empty array if no data was found
         return np.zeros(0, dtype=dtype)
 
-    def get_loads_numpy_for_binary(self):
+    def get_cell_data_numpy_for_binary(self):
         """
         Retrieves a structured NumPy array for loads using the cell data of the VTK mesh.
 
@@ -948,7 +948,7 @@ class APEC_M:
         # Call create_numpy_array_for_binary to generate the structured array
         return self.create_numpy_array_for_binary(cell_data)
 
-    def get_bcs_numpy_for_binary(self):
+    def get_point_data_numpy_for_binary(self):
         """
         Retrieves a structured NumPy array for boundary conditions using the point data of the VTK mesh.
 
@@ -1178,14 +1178,14 @@ class APEC_M:
             # Convert the NumPy array back to a VTK array
             vtk_array.Modified()
 
-    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type):
+    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type=None):
         """
         Reads a sheet from an Excel file and updates the VTK grid using the data.
 
         Parameters:
             excel_file (str): The path to the Excel file.
             sheet_name (str): The name of the sheet to read.
-            data_type (str): The type of VTK data to update ('cell' or 'point').
+            data_type (str): The type of VTK data to update ('cell_data' or 'point_data').
 
         Raises:
             ValueError: If the data_type is invalid or the sheet does not exist.
@@ -1197,14 +1197,16 @@ class APEC_M:
             print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
             return
 
+        if data_type is None:
+            data_type = sheet_name
         # Determine the VTK data type to update
-        if data_type == "cell":
+        if data_type == "cell_data":
             vtk_data = self.mesh.GetCellData()
-        elif data_type == "point":
+        elif data_type == "point_data":
             vtk_data = self.mesh.GetPointData()
         else:
             raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be 'cell' or 'point'."
+                f"Invalid data_type '{data_type}'. Must be 'cell_data' or 'point_data'."
             )
 
         # Update the VTK grid with the DataFrame
@@ -1252,7 +1254,7 @@ class APEC_M:
         self.read_bfelist(bfelist_file)
 
         # Write the loads to the Excel file
-        self.write_excel_loads_bcs(output_excel_file, data_type="loads")
+        self.write_excel_loads_bcs(output_excel_file, data_type="cell_data")
 
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
@@ -1359,7 +1361,7 @@ class APEC_M:
         self.read_dlist(dlist_file)
 
         # Write the node data to the Excel file
-        self.write_excel_loads_bcs(output_excel_file, data_type="boundary_conditions")
+        self.write_excel_loads_bcs(output_excel_file, data_type="point_data")
 
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
@@ -1476,12 +1478,12 @@ class APEC_M:
             if data is None:
                 raise ValueError(f"DataFrame for '{label}' is missing.")
             getattr(self, function_name)(data, binary_file, label)
-        elif label in ["loads", "boundary_conditions"]:
+        elif label in ["cell_data", "point_data"]:
             # Write NumPy arrays
-            if label == "loads":
-                data = self.get_loads_numpy_for_binary()
-            elif label == "boundary_conditions":
-                data = self.get_bcs_numpy_for_binary()
+            if label == "cell_data":
+                data = self.get_cell_data_numpy_for_binary()
+            elif label == "point_data":
+                data = self.get_point_data_numpy_for_binary()
             if data is None:
                 raise ValueError(f"NumPy array for '{label}' is missing.")
             getattr(self, function_name)(binary_file, data)
@@ -1509,8 +1511,8 @@ class APEC_M:
                     "materials",
                     "real_constants",
                     "solver_settings",
-                    "loads",
-                    "boundary_conditions",
+                    "cell_data",
+                    "point_data",
                 ],
             )
 

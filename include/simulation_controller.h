@@ -33,6 +33,7 @@ public:
     void set_load_step_data();
     void set_solver_settings();
     void set_boundary_info(const std::set<std::string> &bc_arrays);
+    void generate_infinite_elements();
 
     // Available CLI commands
     enum class Command
