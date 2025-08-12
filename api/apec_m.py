@@ -470,10 +470,11 @@ class APEC_M:
                 cell_data, element_types_normal, "ansys_etype"
             )
 
+        point_data = self.mesh.GetPointData()
         # Validate INFIN elements with 'infinite_boundary'
         if not element_types_infin.empty:
             self.validate_dataframe_with_vtk_data(
-                cell_data, element_types_infin, "infinite_boundary"
+                point_data, element_types_infin, "infinite_boundary"
             )
 
         # Convert the element_types DataFrame to a vtkTable
