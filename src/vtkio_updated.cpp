@@ -754,9 +754,10 @@ void VTKIO_Updated::read_apec_m_model(const std::string &mesh_filepath)
         this->read(mesh_filepath);
     }
     auto element_types_map = this->element_types_factory->get_data_map();
-    mesh.comm().set_union<ElementTypesMap>(*element_types_map);
-    auto infinite_elements_options_map = this->infinite_elements_options->get_data_map();
-    mesh.comm().set_union<SettingsMap>(*infinite_elements_options_map);
+    mesh.comm().broadcast<vtkFieldData>(_vtk_grid->GetFieldData());
+    // auto infinite_elements_options_map = this->infinite_elements_options->get_dataframe_map();
+    // mesh.comm().broadcast<MaterialsMap>(*infinite_elements_options_map);
+    // infinite_elements_options->populate_dataframe_map();
 }
 
 void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,

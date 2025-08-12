@@ -4,10 +4,14 @@
 #include "element_types.h"
 #include "fe_data_object.h"
 // ElementTypeFactory holds all ElementTypes
-class ElementTypesFactory : public FEDataObjectMap<ElementTypesMap>
+class ElementTypesFactory : public DataframeMapFEDataObject<ETypeKeyoptsMap>
 {
 public:
-    ElementTypesFactory() = default;
+    ElementTypesFactory()
+        : DataframeMapFEDataObject<ETypeKeyoptsMap>(),
+          element_types_map(std::make_shared<ElementTypesMap>())
+    {
+    }
 
     // Factory method to create an ElementType object
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
@@ -19,8 +23,8 @@ public:
 
     inline ElementType *get_element_type(subdomain_id_type element_id)
     {
-        auto it = data_map->find(element_id);
-        if (it != data_map->end())
+        auto it = element_types_map->find(element_id);
+        if (it != element_types_map->end())
         {
             return it->second.get();
         }
@@ -31,5 +35,8 @@ public:
     }
 
     void populate_element_types_from_vtk(vtkFieldData *field_data);
+
+private:
+    std::shared_ptr<ElementTypesMap> element_types_map;
 };
 #endif // ELEMENT_TYPES_FACTORY_H

@@ -350,8 +350,8 @@ bool ElementBuilder::check_compute_matrix()
         solver->reuse_preconditioner(false);
     }
     else if (
-        *(current_material_object->get_mat_like_map()) != *(old_material_object->get_mat_like_map()) ||
-        *(current_real_constant_object->get_mat_like_map()) != *(old_real_constant_object->get_mat_like_map()))
+        *(current_material_object->get_dataframe_map()) != *(old_material_object->get_dataframe_map()) ||
+        *(current_real_constant_object->get_dataframe_map()) != *(old_real_constant_object->get_dataframe_map()))
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);

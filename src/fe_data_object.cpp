@@ -77,41 +77,54 @@ void DataframeFEDataObject::read_data(std::ifstream &file)
     }
 }
 
-void DataframeMatLikeFEDataObject::populate_mat_like_map()
+template <typename T>
+void DataframeMapFEDataObject<T>::populate_dataframe_map()
 {
-    // Clear the existing mat_like_map
-    mat_like_map->clear();
+    dataframe_map->clear();
 
-    // Ensure the data_map is not empty
     if (data_map->empty())
-    {
         return;
-        // libmesh_error_msg("Data map is empty. Cannot populate mat_like_map.");
-    }
 
-    // Iterate over each row in the data_map
     for (const auto &row : *data_map)
     {
         if (row.empty())
-        {
             libmesh_error_msg("Encountered an empty row in the data map.");
-        }
 
-        // Extract the first column as the ID (cast to dof_id_type)
-        dof_id_type id = std::get<int>(row[0]);
+        // First column is always int
+        int id = std::get<int>(row[0]);
 
-        // Extract the remaining columns as Real values
-        std::vector<Real> values;
+        // Remaining columns are of type T
+        std::vector<T> values;
         for (size_t col = 1; col < row.size(); ++col)
         {
-            if (std::holds_alternative<Real>(row[col]))
+            if constexpr (std::is_same<T, Real>::value)
             {
-                values.push_back(std::get<Real>(row[col]));
+                if (std::holds_alternative<Real>(row[col]))
+                    values.push_back(std::get<Real>(row[col]));
+                else
+                    libmesh_error_msg("Expected Real in data map row.");
+            }
+            else if constexpr (std::is_same<T, int>::value)
+            {
+                if (std::holds_alternative<int>(row[col]))
+                    values.push_back(std::get<int>(row[col]));
+                else
+                    libmesh_error_msg("Expected int in data map row.");
+            }
+            else if constexpr (std::is_same<T, std::string>::value)
+            {
+                if (std::holds_alternative<std::string>(row[col]))
+                    values.push_back(std::get<std::string>(row[col]));
+                else
+                    libmesh_error_msg("Expected string in data map row.");
+            }
+            else
+            {
+                static_assert(sizeof(T) == 0, "Unsupported type for DataframeMapFEDataObject");
             }
         }
 
-        // Populate the mat_like_map
-        (*mat_like_map)[id] = std::move(values);
+        (*dataframe_map)[id] = std::move(values);
     }
 }
 

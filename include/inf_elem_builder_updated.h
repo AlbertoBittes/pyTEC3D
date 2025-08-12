@@ -18,6 +18,9 @@ public:
                         const bool be_verbose = false,
                         std::set<std::pair<libMesh::dof_id_type, unsigned int>> *inner_faces = nullptr);
 
+    void set_infinite_elem_side_boundary_id(boundary_id_type id) { infinite_elem_side_boundary_id = id; }
+    boundary_id_type get_infinite_elem_side_boundary_id() const { return infinite_elem_side_boundary_id; }
+
 protected:
     boundary_id_type infinite_elem_side_boundary_id;
     MeshBase *mesh_ptr;

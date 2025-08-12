@@ -12,28 +12,28 @@ class LoadStep;
 
 // Materials holds the materials numbers and their properties (mu, resistivity, etc.) (MP in APDL)
 // And evaluates the
-class MaterialsObject : public DataframeMatLikeFEDataObject
+class MaterialsObject : public MaterialsMap
 {
 public:
     // Default constructor
     explicit MaterialsObject(std::ifstream &file)
-        : DataframeMatLikeFEDataObject(file),
+        : MaterialsMap(file),
           mu_matrix(3, 0.0),
           rs_matrix(3, 0.0) {}
 
     // Check if a material ID exists in the map
-    bool has_material(dof_id_type mat_id) const { return mat_like_map->find(mat_id) != mat_like_map->end(); }
+    bool has_material(dof_id_type mat_id) const { return dataframe_map->find(mat_id) != dataframe_map->end(); }
 
     // Get material properties by ID
     const std::vector<Real> &get_material_properties(dof_id_type mat_id) const
     {
-        return mat_like_map->at(mat_id);
+        return dataframe_map->at(mat_id);
     }
 
     // Fill the mu_matrix for a given material ID
     inline void fill_mu_matrix(dof_id_type mat_id)
     {
-        const std::vector<Real> &mat_properties = mat_like_map->at(mat_id);
+        const std::vector<Real> &mat_properties = dataframe_map->at(mat_id);
 
         mu_matrix[0] = Globals::MU_0 * mat_properties[0];
         mu_matrix[1] = Globals::MU_0 * mat_properties[1];
@@ -43,7 +43,7 @@ public:
     // Fill the rs_matrix for a given material ID
     inline void fill_rs_matrix(dof_id_type mat_id)
     {
-        const std::vector<Real> &mat_properties = mat_like_map->at(mat_id);
+        const std::vector<Real> &mat_properties = dataframe_map->at(mat_id);
 
         rs_matrix[0] = mat_properties[3];
         rs_matrix[1] = mat_properties[4];

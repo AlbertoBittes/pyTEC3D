@@ -8,6 +8,7 @@
 #include "element_types_factory.h"
 
 #include <libmesh/boundary_info.h>
+#include <libmesh/inf_elem_builder.h>
 #include <libmesh/string_to_enum.h>
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
@@ -238,19 +239,19 @@ void SimulationController::read_mesh()
         auto &boundary_info = mesh->get_boundary_info();
         this->set_boundary_info({"infinite_boundary"});
         const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
-
+        auto origin_coords = infinite_elements_options->get_dataframe_map();
         for (const auto &id : side_boundary_ids)
         {
             // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
             InfElemBuilderUpdated builder(*mesh);
-            builder.build_inf_elem(true);
+            const Point origin(origin_coords->at(id)[0], origin_coords->at(id)[1], origin_coords->at(id)[2]);
+            builder.build_inf_elem(origin);
             // find the neighbours; for correct linking the two areas
-            mesh->find_neighbors();
+            mesh->prepare_for_use(true);
 
             // Reassign subdomain_id() of all infinite elements.
             // and their neighbours. This makes finding the surface
             // between these elemests much easier.
-
             for (auto &elem : mesh->active_local_element_ptr_range())
                 if (elem->infinite())
                 {

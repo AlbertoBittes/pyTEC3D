@@ -15,6 +15,7 @@
 #include "fe_data_object.h"
 #include "fem_data_repository.h"
 #include "element_types.h"
+#include "element_types_factory.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
 #include "loads_object.h"

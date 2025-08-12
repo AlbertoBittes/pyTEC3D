@@ -7,8 +7,10 @@
 #include <libmesh/transient_system.h>
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/system_subset.h>
+
 #include "fem_service_abstract.h"
 #include "element_types.h"
+#include "element_types_factory.h"
 #include "global_constraints_object.h"
 #include "assembler.h"
 #include "system_type.h"

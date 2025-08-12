@@ -8,6 +8,7 @@
 #include <libmesh/system.h>
 #include "globals.h"
 #include "element_types.h" // for VariableCategory
+#include "element_types_factory.h"
 
 using namespace libMesh;
 

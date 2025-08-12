@@ -6,22 +6,22 @@
 #include <memory>
 #include "fe_data_object.h" // Include the base class
 
-// Holds the RealConstants numbers (REAL in APDL) and their values to be used by ElementBuilder during
+// Holds the RealConstants numbers (R in APDL) and their values to be used by ElementBuilder during
 // element matrices' construction
-class RealConstantsObject : public DataframeMatLikeFEDataObject
+class RealConstantsObject : public RealConstantsMap
 {
 public:
     // Default constructor
-    using DataframeMatLikeFEDataObject::DataframeMatLikeFEDataObject;
+    using RealConstantsMap::RealConstantsMap;
 
     // Check if a constant exists in the map
-    bool has_constant(dof_id_type constant_id) const { return mat_like_map->find(constant_id) != mat_like_map->end(); }
+    bool has_constant(dof_id_type constant_id) const { return dataframe_map->find(constant_id) != dataframe_map->end(); }
 
     // Get the values of a constant by ID
     const std::vector<Real> &get_constant(dof_id_type constant_id) const
     {
-        auto it = mat_like_map->find(constant_id);
-        if (it == mat_like_map->end())
+        auto it = dataframe_map->find(constant_id);
+        if (it == dataframe_map->end())
         {
             libmesh_error_msg("Constant not found: " + std::to_string(constant_id));
         }
@@ -31,7 +31,7 @@ public:
     // // Set the values of a constant
     // void set_constant(dof_id_type constant_id, const std::vector<Real> &values)
     // {
-    //     (*mat_like_map)[constant_id] = values;
+    //     (*dataframe_map)[constant_id] = values;
     // }
 };
 

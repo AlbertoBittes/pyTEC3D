@@ -16,11 +16,11 @@
 #include "inf_elem_builder_updated.h"
 
 void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
-                                           const bool x_sym = false,
-                                           const bool y_sym = false,
-                                           const bool z_sym = false,
-                                           const bool be_verbose = false,
-                                           std::set<std::pair<dof_id_type, unsigned int>> *inner_faces = nullptr)
+                                           const bool x_sym,
+                                           const bool y_sym,
+                                           const bool z_sym,
+                                           const bool be_verbose,
+                                           std::set<std::pair<dof_id_type, unsigned int>> *inner_faces)
 {
     //     if (be_verbose)
     //     {

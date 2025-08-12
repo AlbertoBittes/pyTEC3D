@@ -7,6 +7,7 @@
 #include "time_step.h"
 #include "session.h"
 #include "element_types.h"
+#include "element_types_factory.h"
 #include <libmesh/system.h>
 
 using namespace libMesh;

@@ -5,14 +5,14 @@
 
 void ElementTypesFactory::add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type)
 {
-    (*data_map)[element_id] = std::move(element_type);
+    (*element_types_map)[element_id] = std::move(element_type);
 }
 
 std::unique_ptr<VariableToElementIdsMapType>
 ElementTypesFactory::associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const
 {
     auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
-    for (const auto &pair : *data_map)
+    for (const auto &pair : *element_types_map)
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
@@ -114,10 +114,10 @@ void ElementTypesFactory::populate_element_types_from_vtk(vtkFieldData *field_da
         }
     }
 
-    // Clear the data_map before populating
-    data_map->clear();
+    // Clear the element_types_map before populating
+    element_types_map->clear();
 
-    // Populate the data_map
+    // Populate the element_types_map
     for (vtkIdType i = 0; i < num_tuples; ++i)
     {
         unsigned int ansys_type = static_cast<unsigned int>(ansys_element_type_num->GetValue(i));
