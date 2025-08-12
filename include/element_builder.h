@@ -90,143 +90,68 @@ public:
                    std::shared_ptr<ContextView> ctx_view = nullptr,
                    std::shared_ptr<ContextView> old_ctx_view = nullptr);
 
+    void init();
+
+    void write_element_matrices(std::ofstream &outFile, unsigned int matrices_set);
+    void read_element_matrices(std::ifstream &inFile, unsigned int matrices_set);
+    void write_element_vectors(std::ofstream &outFile, unsigned int vectors_set);
+    void read_element_vectors(std::ifstream &inFile, unsigned int vectors_set);
+
+    void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
+    void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
+    void prepare_element_matrix_building();
+    void prepare_solution_vectors();
+
+    void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2);
+
+    void set_element_data(Elem *elem);
+    void set_elem_builder_misc_data();
+
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
 
-    void prepare_element_matrix_building()
-    {
-        // reinit to be done inside each element
-        // as well as the reception of shape functions
-        // this->elem_data.element_type->reinit_fe(this->elem);
-
-        this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
-
-        this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
-        this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
-
-        this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
-        // this->build_vectors(vector_idx_size_map, 1);
-    }
-
-    void prepare_solution_vectors()
-    {
-        // reinit to be done inside each element
-        // as well as the reception of shape functions
-        // this->elem_data.element_type->reinit_fe(this->elem);
-        this->build_vectors(elem_data.element_type->get_nodal_solution_vector_idx_size_map().get(), 2);
-        this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 3);
-        this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 4);
-        // this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
-        // this->build_vectors(vector_idx_size_map, 1);
-    }
-    inline void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
-    {
-        Real y1;
-        Real y2;
-        Real dt = elem_builder_misc_data.time_substep->get_parent_object()->get_delta_t();
-        Real time = elem_builder_misc_data.time_substep->get_time();
-        Real time_beginning = elem_builder_misc_data.time_substep->get_parent_object()->get_time_beginning();
-        Real deltim_subst = time - time_beginning;
-        unsigned int vec_size = vectors[set_vector_1][idx_vector_1].size();
-        for (unsigned int i = 0; i < vec_size; i++)
-        {
-            y2 = vectors[set_vector_1][idx_vector_1](i);
-            y1 = vectors[set_vector_2][idx_vector_2](i);
-
-            vectors[set_vector_1][idx_vector_1](i) = y1 + (y2 - y1) / dt * deltim_subst;
-        }
-    }
+    void build_write_element_matrices_rhs(bool recompute_matrix = true);
+    bool check_compute_matrix();
 
     // Methods to build elements
     void build_element();
     void build_solid97();
     void build_solid236();
     void build_plane13();
+    void build_infin110();
+    void build_infin111();
+    void build_infin112();
 
     // Methods to build elements
     void build_element_rhs();
     void build_solid97_rhs();
     void build_solid236_rhs();
     void build_plane13_rhs();
-
-    void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
-    void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
-    void write_element_matrices(std::ofstream &outFile, unsigned int matrices_set);
-    void read_element_matrices(std::ifstream &inFile, unsigned int matrices_set);
-    void write_element_vectors(std::ofstream &outFile, unsigned int vectors_set);
-    void read_element_vectors(std::ifstream &inFile, unsigned int vectors_set);
-    // void readElementData(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector, std::vector<DenseVector<Number>> &elem_vectors_vector);
-    // void writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector);
-    ElemData &get_element_data()
-    {
-        return elem_data;
-    }
-    inline void set_element_data(Elem *elem)
-    {
-        auto element_types = this->context<ElementTypesFactory>();
-
-        elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(mesh_data_index.etype_num_index));
-        elem_data.material_num = elem->get_extra_integer(mesh_data_index.material_num_index);
-        elem_data.real_constant_num = elem->get_extra_integer(mesh_data_index.real_constants_num_index);
-
-        elem_data.elem = elem;
-    }
-
-    inline void set_elem_builder_misc_data()
-    {
-        auto curr_time_step = this->context<TimeStep>();
-        auto old_time_step = this->old_context<TimeStep>();
-        elem_builder_misc_data.time_substep = curr_time_step ? curr_time_step->get_active_substep() : nullptr;
-        elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
-        elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
-        elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
-
-        // Use old and current LoadsObject for ramping, etc.
-        if (elem_builder_misc_data.time_substep->get_index() == 0)
-        {
-            elem_builder_misc_data.old_loads_object = this->old_context<LoadsObject>();
-            // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_loads_object ? elem_builder_misc_data.old_loads_object->get_data_map() : nullptr;
-            elem_builder_misc_data.loads_object = this->context<LoadsObject>();
-            elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object ? elem_builder_misc_data.loads_object->get_data_map() : nullptr;
-
-            elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
-
-            if (elem_builder_misc_data.loads_map)
-            {
-                elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
-                if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
-                    elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
-                if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
-                    elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
-                if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
-                    elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
-            }
-        }
-    }
-
-    void build_write_element_matrices_rhs(bool recompute_matrix = true);
-
-    bool check_compute_matrix();
+    void build_infin110_rhs();
+    void build_infin111_rhs();
+    void build_infin112_rhs();
 
     void build_write_solution_vectors(const std::string sys_name);
-
     void build_solution_vector(SystemType sys_type);
-
     void build_nodal_solution_vector();
-
     void build_element_solution_vector();
 
     void build_solid97_nodal_solution_vector();
     void build_solid236_nodal_solution_vector();
     void build_plane13_nodal_solution_vector();
+    void build_infin110_nodal_solution_vector();
+    void build_infin111_nodal_solution_vector();
+    void build_infin112_nodal_solution_vector();
+
     void build_solid97_element_solution_vector();
     void build_solid236_element_solution_vector();
     void build_plane13_element_solution_vector();
+    void build_infin110_element_solution_vector();
+    void build_infin111_element_solution_vector();
+    void build_infin112_element_solution_vector();
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
     void fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set);
-
-    void init();
 
 private:
     // Matrices' sets

@@ -17,25 +17,22 @@ LDFLAGS=-L/$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg
 BIN_DIR=../bin
 TARGET=$(BIN_DIR)/apec_m
 
-# Source files
 SOURCES=$(wildcard *.cpp)
+ELEMENT_BUILDERS_SOURCES := $(wildcard element_builders/*.cpp)
 
-# Object files
-OBJECTS=$(SOURCES:.cpp=.o)
+OBJECTS=$(SOURCES:.cpp=.o) $(ELEMENT_BUILDERS_SOURCES:.cpp=.o)
+DEPS=$(SOURCES:.cpp=.d) $(ELEMENT_BUILDERS_SOURCES:.cpp=.d)
 
-# Dependency files
-DEPS=$(SOURCES:.cpp=.d)
-
-# Rule to make the object files
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+    $(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Rule to link the program
+element_builders/%.o: element_builders/%.cpp
+    $(CXX) $(CXXFLAGS) -c $< -o $@
+
 $(TARGET): $(OBJECTS)
-	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
+    $(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
-# Include dependency files if they exist
 -include $(DEPS)
 
 clean:
-	rm -f *.o *.d ../apec_m
+    rm -f *.o *.d element_builders/*.o element_builders/*.d ../apec_m

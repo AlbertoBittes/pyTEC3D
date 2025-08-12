@@ -190,9 +190,10 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
 
         for (const Node *node_ptr : mesh->local_node_ptr_range())
         {
-            if (node_ptr->get_extra_integer(node_array_index))
+            boundary_id_type boundary_id_mesh;
+            if (node_ptr->get_extra_integer(node_array_index) != 0)
             {
-                boundary_info->add_node(node_ptr, 110);
+                boundary_info->add_node(node_ptr, boundary_id_mesh);
             }
         }
 
@@ -255,9 +256,14 @@ void SimulationController::read_mesh()
 
     auto element_types_factory = vtkio.get_element_types_factory();
 
+    element_types_factory->populate_element_types_map_from_dataframe();
+
     apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(element_types_factory));
 
-    this->generate_infinite_elements();
+    if (mesh->comm().rank() == 0)
+    {
+        this->generate_infinite_elements();
+    }
 
     MeshCommunication().broadcast(*mesh);
 

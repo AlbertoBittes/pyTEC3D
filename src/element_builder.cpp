@@ -14,6 +14,12 @@
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 
+//
+//
+// constructor and init
+//
+//
+
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view,
                                std::shared_ptr<ContextView> old_ctx_view)
@@ -34,30 +40,11 @@ void ElementBuilder::init()
     main_dof_map = &main_sys->get_dof_map();
 }
 
-void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
-{
-    this->vectors[vectors_set].resize(sizes_map->size());
-    for (unsigned int i = 0; i < sizes_map->size(); ++i)
-    {
-        const auto &size_pair = (*sizes_map)[i];
-        unsigned int rows = size_pair[0];
-        this->vectors[vectors_set][i].resize(rows);
-    }
-}
-
-void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int matrices_set)
-{
-
-    unsigned int num_matrices = static_cast<unsigned int>(sizes_map->size());
-    this->matrices[matrices_set].resize(num_matrices);
-    for (unsigned int i = 0; i < num_matrices; ++i)
-    {
-        const auto &size_pair = (*sizes_map)[i];
-        unsigned int rows = size_pair[0];
-        unsigned int cols = size_pair[1];
-        this->matrices[matrices_set][i].resize(rows, cols);
-    }
-}
+//
+//
+// read/write matrices/vector from/to file
+//
+//
 
 void ElementBuilder::write_element_matrices(std::ofstream &outFile, unsigned int matrices_set)
 {
@@ -117,20 +104,6 @@ void ElementBuilder::read_element_matrices(std::ifstream &inFile, unsigned int m
     }
 }
 
-// void ElementBuilder::readElementData(std::ifstream &inFile, std::vector<DenseMatrix<Number>> &elem_matrices_vector, std::vector<DenseVector<Number>> &elem_vectors_vector)
-// {
-//     // Read the matrices and vectors
-//     readElementMatrices(inFile, elem_matrices_vector);
-//     readElementVectors(inFile, elem_vectors_vector);
-// }
-
-// void ElementBuilder::writeElementData(std::ofstream &outFile, const std::vector<DenseMatrix<Number>> &elem_matrices_vector, const std::vector<DenseVector<Number>> &elem_vectors_vector)
-// {
-//     // Write the matrices and vectors
-//     writeElementMatrices(outFile, elem_matrices_vector);
-//     writeElementVectors(outFile, elem_vectors_vector);
-// }
-
 void ElementBuilder::write_element_vectors(std::ofstream &outFile, unsigned int vectors_set)
 {
     // Write the number of containers as an unsigned int
@@ -180,28 +153,142 @@ void ElementBuilder::read_element_vectors(std::ifstream &inFile, unsigned int ve
     }
 }
 
-void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set)
+//
+//
+// Methods to size element matrices and vectors
+//
+//
+
+void ElementBuilder::build_vectors(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int vectors_set)
 {
-    solution_vector_support.clear(vectors_set);
-
-    auto active_vars = elem_data.element_type->get_active_variables(Globals::VariableCategory::DOFVariables);
-    for (const auto &var_enum : active_vars)
+    this->vectors[vectors_set].resize(sizes_map->size());
+    for (unsigned int i = 0; i < sizes_map->size(); ++i)
     {
-        unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
-        // solution_vector_support.var_nums.push_back(system_var_num);
-
-        std::vector<dof_id_type> dof_indices;
-        main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
-        // solution_vector_support.dof_indices_var.push_back(dof_indices);
-
-        DenseVector<Number> local_sol(dof_indices.size());
-        for (unsigned int i = 0; i < dof_indices.size(); ++i)
-        {
-            local_sol(i) = solution->el(dof_indices[i]);
-        }
-        solution_vector_support.sol_vectors[vectors_set].push_back(local_sol);
+        const auto &size_pair = (*sizes_map)[i];
+        unsigned int rows = size_pair[0];
+        this->vectors[vectors_set][i].resize(rows);
     }
 }
+
+void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *sizes_map, unsigned int matrices_set)
+{
+
+    unsigned int num_matrices = static_cast<unsigned int>(sizes_map->size());
+    this->matrices[matrices_set].resize(num_matrices);
+    for (unsigned int i = 0; i < num_matrices; ++i)
+    {
+        const auto &size_pair = (*sizes_map)[i];
+        unsigned int rows = size_pair[0];
+        unsigned int cols = size_pair[1];
+        this->matrices[matrices_set][i].resize(rows, cols);
+    }
+}
+
+void ElementBuilder::prepare_element_matrix_building()
+{
+    // reinit to be done inside each element
+    // as well as the reception of shape functions
+    // this->elem_data.element_type->reinit_fe(this->elem);
+
+    this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
+
+    this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
+    this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
+
+    this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
+    // this->build_vectors(vector_idx_size_map, 1);
+}
+
+void ElementBuilder::prepare_solution_vectors()
+{
+    // reinit to be done inside each element
+    // as well as the reception of shape functions
+    // this->elem_data.element_type->reinit_fe(this->elem);
+    this->build_vectors(elem_data.element_type->get_nodal_solution_vector_idx_size_map().get(), 2);
+    this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 3);
+    this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 4);
+    // this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
+    // this->build_vectors(vector_idx_size_map, 1);
+}
+
+//
+//
+// Ramping method
+//
+//
+
+void ElementBuilder::ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
+{
+    Real y1;
+    Real y2;
+    Real dt = elem_builder_misc_data.time_substep->get_parent_object()->get_delta_t();
+    Real time = elem_builder_misc_data.time_substep->get_time();
+    Real time_beginning = elem_builder_misc_data.time_substep->get_parent_object()->get_time_beginning();
+    Real deltim_subst = time - time_beginning;
+    unsigned int vec_size = vectors[set_vector_1][idx_vector_1].size();
+    for (unsigned int i = 0; i < vec_size; i++)
+    {
+        y2 = vectors[set_vector_1][idx_vector_1](i);
+        y1 = vectors[set_vector_2][idx_vector_2](i);
+
+        vectors[set_vector_1][idx_vector_1](i) = y1 + (y2 - y1) / dt * deltim_subst;
+    }
+}
+
+//
+//
+// Setters
+//
+//
+
+inline void ElementBuilder::set_element_data(Elem *elem)
+{
+    auto element_types = this->context<ElementTypesFactory>();
+
+    elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(mesh_data_index.etype_num_index));
+    elem_data.material_num = elem->get_extra_integer(mesh_data_index.material_num_index);
+    elem_data.real_constant_num = elem->get_extra_integer(mesh_data_index.real_constants_num_index);
+
+    elem_data.elem = elem;
+}
+
+inline void ElementBuilder::set_elem_builder_misc_data()
+{
+    auto curr_time_step = this->context<TimeStep>();
+    auto old_time_step = this->old_context<TimeStep>();
+    elem_builder_misc_data.time_substep = curr_time_step ? curr_time_step->get_active_substep() : nullptr;
+    elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
+    elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
+    elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
+
+    // Use old and current LoadsObject for ramping, etc.
+    if (elem_builder_misc_data.time_substep->get_index() == 0)
+    {
+        elem_builder_misc_data.old_loads_object = this->old_context<LoadsObject>();
+        // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_loads_object ? elem_builder_misc_data.old_loads_object->get_data_map() : nullptr;
+        elem_builder_misc_data.loads_object = this->context<LoadsObject>();
+        elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object ? elem_builder_misc_data.loads_object->get_data_map() : nullptr;
+
+        elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
+
+        if (elem_builder_misc_data.loads_map)
+        {
+            elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
+            if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
+                elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
+            if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
+                elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
+            if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
+                elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
+        }
+    }
+}
+
+//
+//
+// Methods to build element matrices and rhs
+//
+//
 
 void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 {
@@ -367,262 +454,6 @@ bool ElementBuilder::check_compute_matrix()
         libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
     return update_matrix;
 }
-// {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
-void ElementBuilder::build_solid97()
-{
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
-    // The element Jacobian * quadrature weight at each integration point.
-    const std::vector<Real> &JxW = fe->get_JxW();
-
-    // The element shape functions evaluated at the quadrature points.
-    const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
-    const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-    // The velocity shape function gradients at interior
-    // quadrature points.
-    const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
-
-    const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
-
-    fe->reinit(elem_data.elem);
-    fe_vec->reinit(elem_data.elem);
-
-    this->prepare_element_matrix_building();
-
-    // Get the scalar shape functions and vector shape functions
-    unsigned int n_dofs_var = fe->n_shape_functions();
-    unsigned int n_dofs_A = n_dofs_var * 3;
-    unsigned int nq = fe->n_quadrature_points();
-
-    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
-
-    auto &Ke = this->matrices[0][0];
-    auto &Ce = this->matrices[0][1];
-    auto &Me = this->matrices[1][0];
-    auto &AAe = this->matrices[1][1];
-    auto &JAe = this->matrices[2][0];
-    auto &JVe = this->matrices[2][1];
-    auto &Fe = this->vectors[0][0];
-
-    for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                for (unsigned int l = 0; l < 3; l++)
-                    for (unsigned int k = 0; k < 3; k++)
-                    {
-                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
-                        AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
-                        Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
-                    }
-
-    switch (elem_data.element_type->get_physical_region())
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int k = 0; k < 3; k++)
-                    Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        Real CAV_value;
-        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            {
-
-                for (unsigned int k = 0; k < 3; k++)
-                {
-                    JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
-                    JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
-                }
-
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                    {
-                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / rs_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        CAV_value = JxW[qp] / rs_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
-                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) / rs_matrix[l] * dphi[dof_j][qp](l);
-                    }
-            }
-
-        // Here when you will implement loads with F
-        // for (unsigned int qp = 0; qp < nq; qp++)
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         for (unsigned int k = 0; k < 3; k++)
-        //             Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
-        break;
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
-
-// Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236()
-{
-    libmesh_error_msg("build_solid236 is not implemented yet.");
-}
-
-// Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13()
-{
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    // The element Jacobian * quadrature weight at each integration point.
-    const std::vector<Real> &JxW = fe->get_JxW();
-
-    // The element shape functions evaluated at the quadrature points.
-    const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
-    const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-    const std::vector<Point> &xyz = fe->get_xyz();
-
-    fe->reinit(elem_data.elem);
-
-    this->prepare_element_matrix_building();
-
-    // Get the scalar shape functions and vector shape functions
-    //   const unsigned int n_sf =
-    // FEInterface::n_dofs(cfe->get_fe_type(), elem);
-    unsigned int n_dofs_var = fe->n_shape_functions();
-    unsigned int nq = fe->n_quadrature_points();
-
-    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
-
-    auto &Ke = this->matrices[0][0];
-    auto &Ce = this->matrices[0][1];
-    auto &Me = this->matrices[1][0];
-    auto &AAe = this->matrices[1][1];
-    auto &JAe = this->matrices[2][0];
-    auto &Fe = this->vectors[0][0];
-
-    unsigned int axisymm = elem_data.element_type->keyopts[3];
-
-    for (unsigned int qp = 0; qp < nq; qp++)
-    {
-        Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-            {
-                AAe(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](1));
-                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](0));
-                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-            }
-
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / pow(r, 2)) * pow(r, axisymm);
-    }
-    Ke.scale(1.0 / mu_matrix[0]);
-    PhysicalRegionEnum physical_region = elem_data.element_type->get_physical_region();
-
-    switch (physical_region)
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * pow(r, axisymm); // * js_loads[elem->id()][2];
-        }
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            {
-                // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
-                JAe(qp, dof_i) += phi[dof_i][qp];
-
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp] * pow(r, axisymm));
-            }
-        }
-        Ce.scale(1.0 / rs_matrix[0]);
-        break;
-        // Here when you will implement loads with F
-        // for (unsigned int qp = 0; qp < nq; qp++)
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
 
 void ElementBuilder::build_element()
 {
@@ -638,6 +469,15 @@ void ElementBuilder::build_element()
         break;
     case ElementTypeEnum::PLANE13:
         this->build_plane13();
+        break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -664,401 +504,11 @@ void ElementBuilder::build_element_rhs()
     }
 }
 
-void ElementBuilder::build_solid97_rhs()
-{
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-
-    switch (elem_data.element_type->get_physical_region())
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        auto &Fe = this->vectors[0][0];
-
-        unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
-        Real js[3];
-
-        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
-        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        js[0] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
-        js[1] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
-        js[2] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-
-        for (unsigned int k = 0; k < 3; k++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Fe(dof_i + k * n_dofs_var) *= js[k];
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        // Here you will need to implement loads with F
-        break;
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
-
-// Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236_rhs()
-{
-    libmesh_error_msg("build_solid236 is not implemented yet.");
-}
-
-// Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13_rhs()
-{
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-
-    switch (elem_data.element_type->get_physical_region())
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        auto &Fe = this->vectors[0][0];
-
-        unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
-        Real js;
-
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        js = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i) *= js;
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        // Here you will need to implement loads with F
-        break;
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
-
-void ElementBuilder::build_nodal_solution_vector()
-{
-    // Build the nodal solution vector
-    // This is a placeholder for the actual implementation
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
-
-    switch (etype)
-    {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_nodal_solution_vector();
-        break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_nodal_solution_vector();
-        break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13_nodal_solution_vector();
-        break;
-    default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
-    }
-}
-
-void ElementBuilder::build_solid97_nodal_solution_vector()
-{
-    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-    // Get Ae
-    DenseVector<Number> Ae;
-    for (unsigned int k = 0; k < 3; k++)
-    {
-        Ae.append(solution_vector_support.sol_vectors[0][k]);
-    }
-
-    auto &AAe = this->matrices[1][1];
-    DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, Ae);
-    auto &Me = this->matrices[1][0];
-    auto &Be = this->vectors[2][0];
-    Be.resize(Me.m());
-    Me.cholesky_solve(Be_q, Be);
-    // fill_solution_vector_support(main_sys->old_local_solution);
-
-    // // Get Ae
-    // DenseVector<Number> Ae_old;
-    // for (unsigned int k = 0; k < 3; k++)
-    // {
-    //     Ae_old.append(solution_vector_support.sol_vectors[k]);
-    // }
-    // Ae_dt.add(-1.0, Ae_old);
-    // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
-}
-
-void ElementBuilder::build_solid236_nodal_solution_vector()
-{
-    libmesh_error_msg("build_solid236_nodal_solution_vector is not implemented yet.");
-}
-
-void ElementBuilder::build_plane13_nodal_solution_vector()
-{
-    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-    auto &AAe = this->matrices[1][1];
-    DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0][0]);
-    auto &Me = this->matrices[1][0];
-    auto &Be = this->vectors[2][0];
-    Be.resize(Me.m());
-    Me.cholesky_solve(Be_q, Be);
-}
-
-void ElementBuilder::build_solid97_element_solution_vector()
-{
-    // Materials could be retrieved in another point
-
-    switch (elem_data.element_type->get_physical_region())
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        auto &J_elem = this->vectors[3][0];
-        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
-        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
-        J_elem(1) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
-        J_elem(2) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-        if (!this->elem_builder_misc_data.ramped)
-        {
-            break;
-        }
-        else
-        {
-            if (this->elem_builder_misc_data.old_loads_object != nullptr)
-            {
-                auto &J_elem_old = this->vectors[4][0];
-                // Apply ramping to the current load
-                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jx);
-                J_elem_old(1) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jy);
-                J_elem_old(2) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
-            }
-            this->ramp_vectors(3, 4, 0, 0);
-        }
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        if (elem_builder_misc_data.transient_effect)
-        {
-            auto &J_elem = this->vectors[3][0];
-
-            elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
-            auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-
-            unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
-
-            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
-
-            DenseVector<Number> Ae_dt;
-            for (unsigned int k = 0; k < 3; k++)
-            {
-                Ae_dt.append(solution_vector_support.sol_vectors[0][k]);
-            }
-
-            auto &JAe = this->matrices[2][0];
-            unsigned int j_qp_size = JAe.m();
-            DenseVector<Number> J_elem_A(j_qp_size);
-            JAe.vector_mult(J_elem_A, Ae_dt);
-
-            DenseVector<Number> J_elem_V(j_qp_size);
-
-            auto &JVe = this->matrices[2][1];
-            unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-            auto &Ve_dt = solution_vector_support.sol_vectors[0][volt_var_num];
-            JVe.vector_mult(J_elem_V, Ve_dt);
-            J_elem_A += J_elem_V;
-
-            unsigned int n_qp = j_qp_size / 3;
-
-            for (unsigned int k = 0; k < 3; k++)
-            {
-                for (unsigned int qp = 0; qp < n_qp; qp++)
-                    J_elem(k) -= J_elem_A(qp + k * n_qp);
-                J_elem(k) = J_elem(k) / rs_matrix[k] / n_qp;
-            }
-        }
-        break;
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
-
-void ElementBuilder::build_solid236_element_solution_vector()
-{
-    // This is a placeholder for the actual implementation
-    libmesh_error_msg("build_solid236_element_solution_vector is not implemented yet.");
-}
-
-void ElementBuilder::build_plane13_element_solution_vector()
-{
-    // Materials could be retrieved in another point
-
-    switch (elem_data.element_type->get_physical_region())
-    {
-    case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
-    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-
-        auto &J_elem = this->vectors[3][0];
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-        if (!this->elem_builder_misc_data.ramped)
-        {
-            break;
-        }
-        else
-        {
-            if (this->elem_builder_misc_data.old_loads_object != nullptr)
-            {
-                auto &J_elem_old = this->vectors[4][0];
-                // Apply ramping to the current load
-                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
-            }
-            // else not needed because resizing already zeros the vector
-            this->ramp_vectors(3, 4, 0, 0);
-        }
-
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        if (elem_builder_misc_data.transient_effect)
-        {
-            auto &J_elem = this->vectors[3][0];
-
-            elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
-            auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-            fill_solution_vector_support(main_sys->request_vector(0), 0); // solution_derivative
-
-            auto &JAe = this->matrices[2][0];
-
-            unsigned int j_qp_size = JAe.m();
-
-            DenseVector<Number> J_elem_A(j_qp_size);
-            JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
-
-            for (unsigned int qp = 0; qp < j_qp_size; qp++)
-                J_elem(0) -= J_elem_A(qp);
-
-            J_elem(0) = J_elem(0) / rs_matrix[0] / j_qp_size;
-        }
-        break;
-    }
-    default:
-        libmesh_error_msg("Physical region not implemented");
-    }
-}
-
-void ElementBuilder::build_element_solution_vector()
-{
-    // Build the element solution vector
-    // This is a placeholder for the actual implementation
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
-
-    switch (etype)
-    {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_element_solution_vector();
-        break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_element_solution_vector();
-        break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13_element_solution_vector();
-        break;
-    default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
-    }
-}
-
-void ElementBuilder::build_solution_vector(SystemType sys_type)
-{
-    switch (sys_type)
-    {
-    case SystemType::NODAL_EXPLICIT:
-    {
-        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
-        build_nodal_solution_vector();
-        break;
-    }
-    case SystemType::ELEMENT_EXPLICIT:
-        build_element_solution_vector();
-        break;
-    default:
-        libmesh_error_msg("System type not supported: " + std::to_string(static_cast<unsigned int>(sys_type)));
-    }
-}
+//
+//
+// solution calculation methods
+//
+//
 
 void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 {
@@ -1142,4 +592,89 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
     // Close file streams
     solution_mtrx_input_file->close();
     solution_vec_output_file->close();
+}
+
+void ElementBuilder::build_solution_vector(SystemType sys_type)
+{
+    switch (sys_type)
+    {
+    case SystemType::NODAL_EXPLICIT:
+    {
+        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
+        build_nodal_solution_vector();
+        break;
+    }
+    case SystemType::ELEMENT_EXPLICIT:
+        build_element_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("System type not supported: " + std::to_string(static_cast<unsigned int>(sys_type)));
+    }
+}
+
+void ElementBuilder::build_nodal_solution_vector()
+{
+    // Build the nodal solution vector
+    // This is a placeholder for the actual implementation
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13_nodal_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::build_element_solution_vector()
+{
+    // Build the element solution vector
+    // This is a placeholder for the actual implementation
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_element_solution_vector();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_element_solution_vector();
+        break;
+    case ElementTypeEnum::PLANE13:
+        this->build_plane13_element_solution_vector();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set)
+{
+    solution_vector_support.clear(vectors_set);
+
+    auto active_vars = elem_data.element_type->get_active_variables(Globals::VariableCategory::DOFVariables);
+    for (const auto &var_enum : active_vars)
+    {
+        unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
+        // solution_vector_support.var_nums.push_back(system_var_num);
+
+        std::vector<dof_id_type> dof_indices;
+        main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
+        // solution_vector_support.dof_indices_var.push_back(dof_indices);
+
+        DenseVector<Number> local_sol(dof_indices.size());
+        for (unsigned int i = 0; i < dof_indices.size(); ++i)
+        {
+            local_sol(i) = solution->el(dof_indices[i]);
+        }
+        solution_vector_support.sol_vectors[vectors_set].push_back(local_sol);
+    }
 }
