@@ -12,12 +12,12 @@ class LoadStep;
 
 // Materials holds the materials numbers and their properties (mu, resistivity, etc.) (MP in APDL)
 // And evaluates the
-class MaterialsObject : public MaterialsMap
+class MaterialsObject : public DataframeMapFEDataObject<Real>
 {
 public:
     // Default constructor
     explicit MaterialsObject(std::ifstream &file)
-        : MaterialsMap(file),
+        : DataframeMapFEDataObject<Real>(file),
           mu_matrix(3, 0.0),
           rs_matrix(3, 0.0) {}
 

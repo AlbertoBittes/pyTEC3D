@@ -13,3 +13,23 @@
 #include "loads_object.h"
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
+
+void ElementBuilder::build_infin112()
+{
+    libmesh_error_msg("build_infin112 is not implemented yet.");
+}
+
+void ElementBuilder::build_infin112_rhs()
+{
+    libmesh_error_msg("build_infin112_rhs is not implemented yet.");
+}
+
+void ElementBuilder::build_infin112_nodal_solution_vector()
+{
+    libmesh_error_msg("build_infin112_nodal_solution_vector is not implemented yet.");
+}
+
+void ElementBuilder::build_infin112_element_solution_vector()
+{
+    libmesh_error_msg("build_infin112_element_solution_vector is not implemented yet.");
+}

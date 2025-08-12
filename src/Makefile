@@ -24,15 +24,15 @@ OBJECTS=$(SOURCES:.cpp=.o) $(ELEMENT_BUILDERS_SOURCES:.cpp=.o)
 DEPS=$(SOURCES:.cpp=.d) $(ELEMENT_BUILDERS_SOURCES:.cpp=.d)
 
 %.o: %.cpp
-    $(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 element_builders/%.o: element_builders/%.cpp
-    $(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJECTS)
-    $(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
+	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
 -include $(DEPS)
 
 clean:
-    rm -f *.o *.d element_builders/*.o element_builders/*.d ../apec_m
+	rm -f *.o *.d element_builders/*.o element_builders/*.d ../apec_m

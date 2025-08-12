@@ -241,7 +241,7 @@ void ElementBuilder::ramp_vectors(unsigned int set_vector_1, unsigned int set_ve
 //
 //
 
-inline void ElementBuilder::set_element_data(Elem *elem)
+void ElementBuilder::set_element_data(Elem *elem)
 {
     auto element_types = this->context<ElementTypesFactory>();
 
@@ -252,7 +252,7 @@ inline void ElementBuilder::set_element_data(Elem *elem)
     elem_data.elem = elem;
 }
 
-inline void ElementBuilder::set_elem_builder_misc_data()
+void ElementBuilder::set_elem_builder_misc_data()
 {
     auto curr_time_step = this->context<TimeStep>();
     auto old_time_step = this->old_context<TimeStep>();

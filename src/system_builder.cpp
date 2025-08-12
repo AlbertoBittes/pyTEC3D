@@ -93,7 +93,7 @@ void SystemBuilder::init_variables()
         const std::string &var_name = system->variable_name(var_num);
 
         // Loop over all elements in the collector
-        for (const auto &elem_pair : *(element_types_collector->get_data_map()))
+        for (const auto &elem_pair : *(element_types_collector->get_element_types_map()))
         {
             const auto &elem_type = elem_pair.second;
             auto &var_info = elem_type->get_variable_information();

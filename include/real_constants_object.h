@@ -8,11 +8,11 @@
 
 // Holds the RealConstants numbers (R in APDL) and their values to be used by ElementBuilder during
 // element matrices' construction
-class RealConstantsObject : public RealConstantsMap
+class RealConstantsObject : public DataframeMapFEDataObject<Real>
 {
 public:
     // Default constructor
-    using RealConstantsMap::RealConstantsMap;
+    using DataframeMapFEDataObject<Real>::DataframeMapFEDataObject;
 
     // Check if a constant exists in the map
     bool has_constant(dof_id_type constant_id) const { return dataframe_map->find(constant_id) != dataframe_map->end(); }

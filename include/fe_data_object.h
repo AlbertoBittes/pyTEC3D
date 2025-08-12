@@ -169,9 +169,8 @@ public:
     void read_data(std::ifstream &file);
 };
 
-typedef DataframeMapFEDataObject<Real> MaterialsMap;
-typedef DataframeMapFEDataObject<Real> RealConstantsMap;
-typedef DataframeMapFEDataObject<int> ETypeKeyoptsMap;
+template class DataframeMapFEDataObject<int>;
+template class DataframeMapFEDataObject<Real>;
 // class InfiniteElementsOptionsObject : public DataframeMatLikeFEDataObject
 // {
 // public:

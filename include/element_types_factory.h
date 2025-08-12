@@ -4,11 +4,11 @@
 #include "element_types.h"
 #include "fe_data_object.h"
 // ElementTypeFactory holds all ElementTypes
-class ElementTypesFactory : public ETypeKeyoptsMap
+class ElementTypesFactory : public DataframeMapFEDataObject<int>
 {
 public:
     ElementTypesFactory()
-        : ETypeKeyoptsMap(),
+        : DataframeMapFEDataObject<int>(),
           element_types_map(std::make_shared<ElementTypesMap>())
     {
     }

@@ -309,16 +309,3 @@ void ElementBuilder::build_solid97_element_solution_vector()
         libmesh_error_msg("Physical region not implemented");
     }
 }
-
-void ElementBuilder::build_plane13_nodal_solution_vector()
-{
-    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-    auto &AAe = this->matrices[1][1];
-    DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0][0]);
-    auto &Me = this->matrices[1][0];
-    auto &Be = this->vectors[2][0];
-    Be.resize(Me.m());
-    Me.cholesky_solve(Be_q, Be);
-}

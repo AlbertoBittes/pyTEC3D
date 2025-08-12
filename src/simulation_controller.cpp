@@ -258,7 +258,7 @@ void SimulationController::read_mesh()
 
     element_types_factory->populate_element_types_map_from_dataframe();
 
-    apec_m_model_data->set_object<ElementTypesFactory>(std::make_shared<ElementTypesFactory>(element_types_factory));
+    apec_m_model_data->set_object<ElementTypesFactory>(element_types_factory);
 
     if (mesh->comm().rank() == 0)
     {

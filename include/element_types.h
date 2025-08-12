@@ -217,9 +217,9 @@ class SOLID236Type : public AV3DElementType
 public:
     SOLID236Type(const std::vector<unsigned int> &keyopts);
 
-    virtual void set_variable_info() override;
+    virtual void set_variable_info() override {};
 
-    virtual void set_fe_array() override;
+    virtual void set_fe_array() override {};
 };
 
 class PLANE13Type : public AV2DElementType
@@ -237,9 +237,9 @@ class PLANE233Type : public AV2DElementType
 public:
     PLANE233Type(const std::vector<unsigned int> &keyopts);
 
-    virtual void set_variable_info() override;
+    virtual void set_variable_info() override {};
 
-    virtual void set_fe_array() override;
+    virtual void set_fe_array() override {};
 };
 
 class InfFEBase
