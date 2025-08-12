@@ -53,11 +53,9 @@ void ElementTypesFactory::populate_data_map_from_vtk(vtkFieldData *field_data)
     if (!field_data)
         libmesh_error_msg("No vtkFieldData provided to populate_element_types_from_vtk.");
 
-    // Retrieve the arrays from vtkFieldData
     vtkIntArray *ansys_element_type_num = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
     vtkStringArray *element_type = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
 
-    // Collect all KEYOPT arrays dynamically
     std::vector<vtkIntArray *> keyopt_arrays;
     std::vector<std::string> keyopt_names;
     int num_field_arrays = field_data->GetNumberOfArrays();
@@ -76,7 +74,6 @@ void ElementTypesFactory::populate_data_map_from_vtk(vtkFieldData *field_data)
         }
     }
 
-    // Sort keyopt_names and keyopt_arrays by KEYOPT number for consistency
     std::vector<std::pair<std::string, vtkIntArray *>> keyopt_pairs;
     for (size_t i = 0; i < keyopt_names.size(); ++i)
         keyopt_pairs.emplace_back(keyopt_names[i], keyopt_arrays[i]);
@@ -91,14 +88,12 @@ void ElementTypesFactory::populate_data_map_from_vtk(vtkFieldData *field_data)
     for (const auto &p : keyopt_pairs)
         keyopt_arrays.push_back(p.second);
 
-    // Validate that required arrays are present
     if (!ansys_element_type_num || !element_type || keyopt_arrays.empty())
     {
         libmesh_error_msg("Missing required vtkFieldData arrays: ansys_etype, element_type, or KEYOPT arrays.");
         return;
     }
 
-    // Ensure all arrays have the same number of tuples
     vtkIdType num_tuples = ansys_element_type_num->GetNumberOfTuples();
     if (element_type->GetNumberOfTuples() != num_tuples)
     {
@@ -121,11 +116,31 @@ void ElementTypesFactory::populate_data_map_from_vtk(vtkFieldData *field_data)
         std::vector<std::variant<int, Real, std::string>> row;
         // ansys_etype (int)
         row.push_back(static_cast<int>(ansys_element_type_num->GetValue(i)));
-        // element_type (string)
-        row.push_back(element_type->GetValue(i));
-        // KEYOPT values (int)
+
+        // element_type (string, e.g., "PLANE13"), extract the integer part
+        std::string elem_type_str = element_type->GetValue(i);
+        std::smatch match;
+        int elem_type_number = 0;
+        if (std::regex_search(elem_type_str, match, std::regex(R"(\d+)")))
+        {
+            elem_type_number = std::stoi(match.str());
+        }
+        else
+        {
+            libmesh_warning("Failed to extract element type number from: " << elem_type_str);
+        }
+
+        // KEYOPT values (int), with element type number as the first value in keyopts
+        std::vector<int> keyopts;
+        keyopts.push_back(elem_type_number);
         for (auto arr : keyopt_arrays)
-            row.push_back(static_cast<int>(arr->GetValue(i)));
+            keyopts.push_back(static_cast<int>(arr->GetValue(i)));
+
+        // Store ansys_etype as first column, then keyopts as the rest
+        row.push_back(elem_type_number); // Optionally keep for reference
+        for (size_t k = 0; k < keyopts.size(); ++k)
+            row.push_back(keyopts[k]);
+
         this->data_map->push_back(std::move(row));
     }
 

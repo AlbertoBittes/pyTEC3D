@@ -118,9 +118,6 @@ MATERIALS_COLUMNS_TYPES = {
     "MGXX": float,
     "MGYY": float,
     "MGZZ": float,
-    "MURX_B-H": int,
-    "MURY_B-H": int,
-    "MURZ_B-H": int,
 }
 
 # Assign types to real constants columns

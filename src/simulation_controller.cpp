@@ -180,31 +180,32 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
 
-    std::shared_ptr<BoundaryInfo> boundary_info = std::make_shared<BoundaryInfo>(mesh->get_boundary_info());
+    BoundaryInfo &boundary_info = mesh->get_boundary_info();
 
-    boundary_info->clear();
+    boundary_info.clear();
 
     for (auto &array : bc_arrays)
     {
         unsigned int node_array_index = mesh->get_node_integer_index(array);
 
-        for (const Node *node_ptr : mesh->local_node_ptr_range())
+        // for (const Node *node_ptr : mesh->local_node_ptr_range())
+        for (const Node *node_ptr : mesh->node_ptr_range())
         {
-            boundary_id_type boundary_id_mesh;
-            if (node_ptr->get_extra_integer(node_array_index) != 0)
+            boundary_id_type boundary_id_mesh = node_ptr->get_extra_integer(node_array_index);
+            if (boundary_id_mesh != 0)
             {
-                boundary_info->add_node(node_ptr, boundary_id_mesh);
+                boundary_info.add_node(node_ptr, boundary_id_mesh);
             }
         }
 
-        boundary_info->parallel_sync_node_ids();
-        boundary_info->build_side_list_from_node_list();
-        boundary_info->parallel_sync_side_ids();
-        boundary_info->clear_boundary_node_ids();
+        // boundary_info->parallel_sync_node_ids();
+        boundary_info.build_side_list_from_node_list();
+        // boundary_info->parallel_sync_side_ids();
+        boundary_info.clear_boundary_node_ids();
     }
 
-    boundary_info->print_info();
-    boundary_info->print_summary();
+    boundary_info.print_info();
+    boundary_info.print_summary();
 
     return;
 }
@@ -213,9 +214,7 @@ void SimulationController::generate_infinite_elements()
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
 
-    auto mesh_base = static_cast<MeshBase *>(mesh.get());
-
-    if (mesh_base->has_node_integer("infinite_boundary"))
+    if (mesh->has_node_integer("infinite_boundary"))
     {
         auto &boundary_info = mesh->get_boundary_info();
         this->set_boundary_info({"infinite_boundary"});
@@ -224,6 +223,7 @@ void SimulationController::generate_infinite_elements()
         {
             // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
             InfElemBuilderUpdated builder(*mesh);
+            builder.set_infinite_elem_side_boundary_id(id);
             const Point origin(0.0, 0.0, 0.0);
             builder.build_inf_elem(origin);
             // find the neighbours; for correct linking the two areas
@@ -249,8 +249,6 @@ void SimulationController::read_mesh()
     const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
     // mesh.clear();
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-
-    auto mesh_base = static_cast<MeshBase *>(mesh.get());
 
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
 
