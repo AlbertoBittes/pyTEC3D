@@ -449,11 +449,32 @@ class APEC_M:
                 "Folder path is not set. Please set self.folderpath before saving the mesh."
             )
 
-        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
         cell_data = self.mesh.GetCellData()
-        self.validate_dataframe_with_vtk_data(
-            cell_data, self.element_types, "ansys_etype"
+
+        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
+        infin_mask = (
+            self.element_types["element_type"].astype(str).str.match(r"INFIN\d+")
         )
+        element_types_infin = self.element_types[infin_mask].copy()
+        element_types_normal = self.element_types[~infin_mask].copy()
+        if not element_types_infin.empty:
+            new_row = {col: 0 for col in element_types_infin.columns}
+            new_row["ansys_etype"] = 0
+            element_types_infin = pd.concat(
+                [element_types_infin, pd.DataFrame([new_row])], ignore_index=True
+            )
+
+        # Validate normal elements with 'ansys_etype'
+        if not element_types_normal.empty:
+            self.validate_dataframe_with_vtk_data(
+                cell_data, element_types_normal, "ansys_etype"
+            )
+
+        # Validate INFIN elements with 'infinite_boundary'
+        if not element_types_infin.empty:
+            self.validate_dataframe_with_vtk_data(
+                cell_data, element_types_infin, "infinite_boundary"
+            )
 
         # Convert the element_types DataFrame to a vtkTable
         vtk_table = self.dataframe_to_vtk_table(self.element_types)
