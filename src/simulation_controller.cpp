@@ -219,6 +219,9 @@ void SimulationController::generate_infinite_elements()
         auto &boundary_info = mesh->get_boundary_info();
         this->set_boundary_info({"infinite_boundary"});
         const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
+        unsigned int etype_num_index = mesh->get_elem_integer_index("ansys_etype");
+        unsigned int material_num_index = mesh->get_elem_integer_index("ansys_material_type");
+        unsigned int real_constants_num_index = mesh->get_elem_integer_index("ansys_real_constant");
         for (const auto &id : side_boundary_ids)
         {
             // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
@@ -231,10 +234,13 @@ void SimulationController::generate_infinite_elements()
             // Reassign subdomain_id() of all infinite elements.
             // and their neighbours. This makes finding the surface
             // between these elemests much easier.
-            for (auto &elem : mesh->active_local_element_ptr_range())
+            for (auto &elem : mesh->active_element_ptr_range())
                 if (elem->infinite())
                 {
                     elem->subdomain_id() = id;
+                    elem->set_extra_integer(etype_num_index, id);
+                    elem->set_extra_integer(material_num_index, 0);
+                    elem->set_extra_integer(real_constants_num_index, 0);
                 }
         }
     }
