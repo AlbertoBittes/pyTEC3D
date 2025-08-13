@@ -198,9 +198,9 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
             }
         }
 
-        // boundary_info.parallel_sync_node_ids();
+        boundary_info.parallel_sync_node_ids();
         boundary_info.build_side_list_from_node_list();
-        // boundary_info.parallel_sync_side_ids();
+        boundary_info.parallel_sync_side_ids();
         boundary_info.clear_boundary_node_ids();
     }
 
@@ -234,7 +234,7 @@ void SimulationController::generate_infinite_elements()
             // Reassign subdomain_id() of all infinite elements.
             // and their neighbours. This makes finding the surface
             // between these elemests much easier.
-            for (auto &elem : mesh->element_ptr_range())
+            for (auto &elem : mesh->active_local_element_ptr_range())
                 if (elem->infinite())
                 {
                     elem->subdomain_id() = id;
@@ -244,7 +244,7 @@ void SimulationController::generate_infinite_elements()
                 }
         }
     }
-
+    mesh->find_neighbors();
     return;
 }
 
@@ -266,11 +266,11 @@ void SimulationController::read_mesh()
 
     MeshCommunication().broadcast(*mesh);
 
-    this->generate_infinite_elements();
-
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
     MeshTools::Modification::orient_elements(*mesh);
+
+    this->generate_infinite_elements();
 
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;

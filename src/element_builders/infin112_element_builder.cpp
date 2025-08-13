@@ -21,15 +21,15 @@ void ElementBuilder::build_infin112()
 
 void ElementBuilder::build_infin112_rhs()
 {
-    libmesh_error_msg("build_infin112_rhs is not implemented yet.");
+    return;
 }
 
 void ElementBuilder::build_infin112_nodal_solution_vector()
 {
-    libmesh_error_msg("build_infin112_nodal_solution_vector is not implemented yet.");
+    return;
 }
 
 void ElementBuilder::build_infin112_element_solution_vector()
 {
-    libmesh_error_msg("build_infin112_element_solution_vector is not implemented yet.");
+    return;
 }
