@@ -22,18 +22,18 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
                                            const bool be_verbose,
                                            std::set<std::pair<dof_id_type, unsigned int>> *inner_faces)
 {
-    //     if (be_verbose)
-    //     {
-    // #ifdef DEBUG
-    //         libMesh::out << " Building Infinite Elements:" << std::endl;
-    //         libMesh::out << "  updating element neighbor tables..." << std::endl;
-    // #else
-    //         libMesh::out << " Verbose mode disabled in non-debug mode." << std::endl;
-    // #endif
-    //     }
+    if (be_verbose)
+    {
+#ifdef DEBUG
+        libMesh::out << " Building Infinite Elements:" << std::endl;
+        libMesh::out << "  updating element neighbor tables..." << std::endl;
+#else
+        libMesh::out << " Verbose mode disabled in non-debug mode." << std::endl;
+#endif
+    }
 
     // update element neighbors
-    this->mesh_ptr->find_neighbors();
+    this->mesh_.find_neighbors();
 
     LOG_SCOPE("build_inf_elem()", "InfElemBuilder");
 
@@ -51,89 +51,88 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
     // The index of the farthest point in the mesh from the origin
     int max_r_node = -1;
 
-    // #ifdef DEBUG
-    //     if (be_verbose)
-    //     {
-    //         libMesh::out << "  collecting boundary sides";
-    //         if (x_sym || y_sym || z_sym)
-    //             libMesh::out << ", skipping sides in symmetry planes..." << std::endl;
-    //         else
-    //             libMesh::out << "..." << std::endl;
-    //     }
-    // #endif
-
-    auto &boundary_info = mesh_ptr->get_boundary_info();
+#ifdef DEBUG
+    if (be_verbose)
+    {
+        libMesh::out << "  collecting boundary sides";
+        if (x_sym || y_sym || z_sym)
+            libMesh::out << ", skipping sides in symmetry planes..." << std::endl;
+        else
+            libMesh::out << "..." << std::endl;
+    }
+#endif
+    auto &boundary_info = mesh_.get_boundary_info();
     std::vector<boundary_id_type> side_boundary_ids;
+
     // Iterate through all elements and sides, collect indices of all active
     // boundary sides in the faces set. Skip sides which lie in symmetry planes.
     // Later, sides of the inner boundary will be sorted out.
-    for (const auto &elem : mesh_ptr->active_element_ptr_range())
-        if (!elem->infinite())
-            for (auto s : elem->side_index_range())
-                if (elem->neighbor_ptr(s) == nullptr)
+    for (const auto &elem : mesh_.active_element_ptr_range())
+        for (auto s : elem->side_index_range())
+            if (elem->neighbor_ptr(s) == nullptr)
+            {
+                boundary_info.boundary_ids(elem, s, side_boundary_ids);
+                if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), this->infinite_elem_side_boundary_id) != side_boundary_ids.end())
                 {
-                    boundary_info.boundary_ids(elem, s, side_boundary_ids);
-                    if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), this->infinite_elem_side_boundary_id) != side_boundary_ids.end())
+                    // note that it is safe to use the Elem::side() method,
+                    // which gives a non-full-ordered element
+                    std::unique_ptr<Elem> side(elem->build_side_ptr(s));
+
+                    // bool flags for symmetry detection
+                    bool sym_side = false;
+                    bool on_x_sym = true;
+                    bool on_y_sym = true;
+                    bool on_z_sym = true;
+
+                    // Loop over the nodes to check whether they are on the symmetry planes,
+                    // and therefore sufficient to use a non-full-ordered side element
+                    for (const Node &node : side->node_ref_range())
                     {
-                        // note that it is safe to use the Elem::side() method,
-                        // which gives a non-full-ordered element
-                        std::unique_ptr<Elem> side(elem->build_side_ptr(s));
+                        const dof_id_type node_id = node.id();
+                        const Point dist_from_origin =
+                            this->mesh_.point(node_id) - origin;
 
-                        // bool flags for symmetry detection
-                        bool sym_side = false;
-                        bool on_x_sym = true;
-                        bool on_y_sym = true;
-                        bool on_z_sym = true;
+                        if (x_sym)
+                            if (std::abs(dist_from_origin(0)) > 1.e-3)
+                                on_x_sym = false;
 
-                        // Loop over the nodes to check whether they are on the symmetry planes,
-                        // and therefore sufficient to use a non-full-ordered side element
-                        for (const Node &node : side->node_ref_range())
+                        if (y_sym)
+                            if (std::abs(dist_from_origin(1)) > 1.e-3)
+                                on_y_sym = false;
+
+                        if (z_sym)
+                            if (std::abs(dist_from_origin(2)) > 1.e-3)
+                                on_z_sym = false;
+
+                        //       if (x_sym)
+                        // if (std::abs(dist_from_origin(0)) > 1.e-6)
+                        //   on_x_sym=false;
+
+                        //       if (y_sym)
+                        // if (std::abs(dist_from_origin(1)) > 1.e-6)
+                        //   on_y_sym=false;
+
+                        //       if (z_sym)
+                        // if (std::abs(dist_from_origin(2)) > 1.e-6)
+                        //   on_z_sym=false;
+
+                        // find the node most distant from origin
+
+                        Real r = dist_from_origin.norm();
+                        if (r > max_r)
                         {
-                            const dof_id_type node_id = node.id();
-                            const Point dist_from_origin =
-                                this->mesh_ptr->point(node_id) - origin;
-
-                            if (x_sym)
-                                if (std::abs(dist_from_origin(0)) > 1.e-3)
-                                    on_x_sym = false;
-
-                            if (y_sym)
-                                if (std::abs(dist_from_origin(1)) > 1.e-3)
-                                    on_y_sym = false;
-
-                            if (z_sym)
-                                if (std::abs(dist_from_origin(2)) > 1.e-3)
-                                    on_z_sym = false;
-
-                            //       if (x_sym)
-                            // if (std::abs(dist_from_origin(0)) > 1.e-6)
-                            //   on_x_sym=false;
-
-                            //       if (y_sym)
-                            // if (std::abs(dist_from_origin(1)) > 1.e-6)
-                            //   on_y_sym=false;
-
-                            //       if (z_sym)
-                            // if (std::abs(dist_from_origin(2)) > 1.e-6)
-                            //   on_z_sym=false;
-
-                            // find the node most distant from origin
-
-                            Real r = dist_from_origin.norm();
-                            if (r > max_r)
-                            {
-                                max_r = r;
-                                max_r_node = node_id;
-                            }
+                            max_r = r;
+                            max_r_node = node_id;
                         }
-
-                        sym_side = (x_sym && on_x_sym) || (y_sym && on_y_sym) || (z_sym && on_z_sym);
-
-                        if (!sym_side)
-                            faces.emplace(elem->id(), s);
                     }
-                } // neighbor(s) == nullptr
 
+                    sym_side = (x_sym && on_x_sym) || (y_sym && on_y_sym) || (z_sym && on_z_sym);
+
+                    if (!sym_side)
+                        faces.emplace(elem->id(), s);
+
+                } // neighbor(s) == nullptr
+            }
     //  If a boundary side has one node on the outer boundary,
     //  all points of this side are on the outer boundary.
     //  Start with the node most distant from origin, which has
@@ -157,7 +156,7 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
 
             // This has to be a full-ordered side element,
             // since we need the correct n_nodes,
-            std::unique_ptr<Elem> side(this->mesh_ptr->elem_ref(p.first).build_side_ptr(p.second));
+            std::unique_ptr<Elem> side(this->mesh_.elem_ref(p.first).build_side_ptr(p.second));
 
             bool found = false;
             for (const Node &node : side->node_ref_range())
@@ -216,28 +215,28 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
     std::map<dof_id_type, Node *> outer_nodes;
 
     // We may need to pick our own object ids in parallel
-    dof_id_type old_max_node_id = mesh_ptr->max_node_id();
-    dof_id_type old_max_elem_id = mesh_ptr->max_elem_id();
+    dof_id_type old_max_node_id = mesh_.max_node_id();
+    dof_id_type old_max_elem_id = mesh_.max_elem_id();
 
     // Likewise with our unique_ids
 #ifdef LIBMESH_ENABLE_UNIQUE_ID
-    unique_id_type old_max_unique_id = mesh_ptr->parallel_max_unique_id();
+    unique_id_type old_max_unique_id = mesh_.parallel_max_unique_id();
 #endif
 
     // for each boundary node, add an outer_node with
     // double distance from origin.
     for (const auto &dof : onodes)
     {
-        Point p = (Point(this->mesh_ptr->point(dof)) * 2) - origin;
-        if (mesh_ptr->is_serial())
+        Point p = (Point(this->mesh_.point(dof)) * 2) - origin;
+        if (mesh_.is_serial())
         {
             // Add with a default id in serial
-            outer_nodes[dof] = this->mesh_ptr->add_point(p);
+            outer_nodes[dof] = this->mesh_.add_point(p);
         }
         else
         {
             // Pick a unique id in parallel
-            Node &bnode = mesh_ptr->node_ref(dof);
+            Node &bnode = mesh_.node_ref(dof);
             dof_id_type new_id = bnode.id() + old_max_node_id;
             std::unique_ptr<Node> new_node = Node::build(p, new_id);
             new_node->processor_id() = bnode.processor_id();
@@ -246,19 +245,19 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
 #endif
 
             outer_nodes[dof] =
-                this->mesh_ptr->add_node(std::move(new_node));
+                this->mesh_.add_node(std::move(new_node));
         }
     }
 
 #ifdef DEBUG
     // for verbose, remember n_elem
-    dof_id_type n_conventional_elem = this->mesh_ptr->n_elem();
+    dof_id_type n_conventional_elem = this->mesh_.n_elem();
 #endif
 
     // build Elems based on boundary side type
     for (auto &p : ofaces)
     {
-        Elem &belem = this->mesh_ptr->elem_ref(p.first);
+        Elem &belem = this->mesh_.elem_ref(p.first);
 
         // build a full-ordered side element to get the base nodes
         std::unique_ptr<Elem> side(belem.build_side_ptr(p.second));
@@ -324,7 +323,7 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
 
         // On a distributed mesh, manually assign unique ids to the new
         // element, and make sure any RemoteElem neighbor links are set.
-        if (!mesh_ptr->is_serial())
+        if (!mesh_.is_serial())
         {
             el->processor_id() = belem.processor_id();
 
@@ -397,15 +396,15 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
         }
 
         // add infinite element to mesh
-        this->mesh_ptr->add_elem(std::move(el));
+        this->mesh_.add_elem(std::move(el));
     } // for
 
 #ifdef DEBUG
-    mesh_ptr->libmesh_assert_valid_parallel_ids();
+    mesh_.libmesh_assert_valid_parallel_ids();
 
     if (be_verbose)
         libMesh::out << "  added "
-                     << this->mesh_ptr->n_elem() - n_conventional_elem
+                     << this->mesh_.n_elem() - n_conventional_elem
                      << " infinite elements and "
                      << onodes.size()
                      << " nodes to the mesh"

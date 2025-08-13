@@ -8,7 +8,7 @@ using namespace libMesh;
 class InfElemBuilderUpdated : public InfElemBuilder
 {
 public:
-    InfElemBuilderUpdated(MeshBase &mesh) : InfElemBuilder(mesh), mesh_ptr(&mesh) {}
+    InfElemBuilderUpdated(MeshBase &mesh) : InfElemBuilder(mesh), mesh_(mesh) {}
 
     // Method hiding (not overriding)
     void build_inf_elem(const libMesh::Point &origin,
@@ -22,7 +22,7 @@ public:
 
 protected:
     boundary_id_type infinite_elem_side_boundary_id;
-    MeshBase *mesh_ptr;
+    MeshBase &mesh_;
 };
 
 #endif // INF_ELEM_BUILDER_UPDATED_H

@@ -189,7 +189,7 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
         unsigned int node_array_index = mesh->get_node_integer_index(array);
 
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
-        for (const Node *node_ptr : mesh->node_ptr_range())
+        for (const Node *node_ptr : mesh->local_node_ptr_range())
         {
             boundary_id_type boundary_id_mesh = node_ptr->get_extra_integer(node_array_index);
             if (boundary_id_mesh != 0)
@@ -198,9 +198,9 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
             }
         }
 
-        // boundary_info->parallel_sync_node_ids();
+        // boundary_info.parallel_sync_node_ids();
         boundary_info.build_side_list_from_node_list();
-        // boundary_info->parallel_sync_side_ids();
+        // boundary_info.parallel_sync_side_ids();
         boundary_info.clear_boundary_node_ids();
     }
 
@@ -230,11 +230,11 @@ void SimulationController::generate_infinite_elements()
             const Point origin(0.0, 0.0, 0.0);
             builder.build_inf_elem(origin);
             // find the neighbours; for correct linking the two areas
-
+            // mesh->find_neighbors();
             // Reassign subdomain_id() of all infinite elements.
             // and their neighbours. This makes finding the surface
             // between these elemests much easier.
-            for (auto &elem : mesh->active_element_ptr_range())
+            for (auto &elem : mesh->element_ptr_range())
                 if (elem->infinite())
                 {
                     elem->subdomain_id() = id;
@@ -264,12 +264,9 @@ void SimulationController::read_mesh()
 
     apec_m_model_data->set_object<ElementTypesFactory>(element_types_factory);
 
-    if (mesh->comm().rank() == 0)
-    {
-        this->generate_infinite_elements();
-    }
-
     MeshCommunication().broadcast(*mesh);
+
+    this->generate_infinite_elements();
 
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
