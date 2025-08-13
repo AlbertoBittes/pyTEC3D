@@ -242,13 +242,13 @@ public:
     virtual void set_fe_array() override {};
 };
 
-class InfFEBase
+class InfFEBaseEtype
 {
 public:
     std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
 };
 
-class INFIN110Type : public PLANE13Type, public InfFEBase
+class INFIN110Type : public PLANE13Type, public InfFEBaseEtype
 {
 public:
     INFIN110Type(const std::vector<unsigned int> &keyopts);
@@ -258,7 +258,7 @@ public:
     virtual void set_fe_array() override;
 };
 
-class INFIN111Type : public SOLID97Type, public InfFEBase
+class INFIN111Type : public SOLID97Type, public InfFEBaseEtype
 {
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
@@ -268,7 +268,7 @@ public:
     virtual void set_fe_array() override;
 };
 
-class INFIN112Type : public SOLID236Type, public InfFEBase
+class INFIN112Type : public SOLID236Type, public InfFEBaseEtype
 {
 public:
     INFIN112Type(const std::vector<unsigned int> &keyopts);

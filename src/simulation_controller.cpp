@@ -189,7 +189,7 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
         unsigned int node_array_index = mesh->get_node_integer_index(array);
 
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
-        for (const Node *node_ptr : mesh->local_node_ptr_range())
+        for (const Node *node_ptr : mesh->node_ptr_range())
         {
             boundary_id_type boundary_id_mesh = node_ptr->get_extra_integer(node_array_index);
             if (boundary_id_mesh != 0)
@@ -198,9 +198,9 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
             }
         }
 
-        boundary_info.parallel_sync_node_ids();
+        // boundary_info.parallel_sync_node_ids();
         boundary_info.build_side_list_from_node_list();
-        boundary_info.parallel_sync_side_ids();
+        // boundary_info.parallel_sync_side_ids();
         boundary_info.clear_boundary_node_ids();
     }
 
@@ -234,7 +234,7 @@ void SimulationController::generate_infinite_elements()
             // Reassign subdomain_id() of all infinite elements.
             // and their neighbours. This makes finding the surface
             // between these elemests much easier.
-            for (auto &elem : mesh->active_local_element_ptr_range())
+            for (auto &elem : mesh->element_ptr_range())
                 if (elem->infinite())
                 {
                     elem->subdomain_id() = id;
@@ -243,8 +243,9 @@ void SimulationController::generate_infinite_elements()
                     elem->set_extra_integer(real_constants_num_index, 0);
                 }
         }
+        mesh->find_neighbors();
     }
-    mesh->find_neighbors();
+
     return;
 }
 
@@ -264,14 +265,13 @@ void SimulationController::read_mesh()
 
     apec_m_model_data->set_object<ElementTypesFactory>(element_types_factory);
 
-    MeshCommunication().broadcast(*mesh);
+    if (mesh->comm().rank() == 0)
+        this->generate_infinite_elements();
 
+    MeshCommunication().broadcast(*mesh);
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
     MeshTools::Modification::orient_elements(*mesh);
-
-    this->generate_infinite_elements();
-
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh->print_info();

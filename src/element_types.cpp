@@ -372,11 +372,12 @@ void INFIN110Type::set_variable_info() {};
 
 void INFIN110Type::set_fe_array()
 {
-    FEType fe_type(order, LAGRANGE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
     // of as a pointer that will clean up after itself.
+    // InfMapType inf_map_type = static_cast<InfMapType>(keyopts[5]);
+    FEType fe_type(order, LAGRANGE);
     std::unique_ptr<FEBase> fe = FEBase::build_InfFE(2, fe_type);
     // A 2nd order Gauss quadrature rule for numerical integration.
     QGauss *qrule_vec = new QGauss(2, fe_type.default_quadrature_order());
