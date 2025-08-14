@@ -66,6 +66,7 @@ void ElementBuilder::build_infin111()
         }
     }
     Ke.scale(1 / Globals::MU_0);
+    return;
 }
 
 void ElementBuilder::build_infin111_rhs()

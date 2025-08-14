@@ -364,6 +364,24 @@ class APEC_M:
             )
             point_data.GetArray("infinite_boundary").SetName("infinite_boundary")
 
+        # Add a point data array "flux_normal" with 1 component, filled with 0, if it doesn't exist
+        if point_data.GetArray("flux_normal") is None:
+            num_points = self.mesh.GetNumberOfPoints()
+            flux_normal = np.full(num_points, 0)
+            point_data.AddArray(
+                vtknp.numpy_to_vtk(flux_normal, deep=True, array_type=vtk.VTK_INT)
+            )
+            point_data.GetArray("flux_normal").SetName("flux_normal")
+
+        # Add a point data array "flux_parallel" with 1 component, filled with 0, if it doesn't exist
+        if point_data.GetArray("flux_parallel") is None:
+            num_points = self.mesh.GetNumberOfPoints()
+            flux_parallel = np.full(num_points, 0)
+            point_data.AddArray(
+                vtknp.numpy_to_vtk(flux_parallel, deep=True, array_type=vtk.VTK_INT)
+            )
+            point_data.GetArray("flux_parallel").SetName("flux_parallel")
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")

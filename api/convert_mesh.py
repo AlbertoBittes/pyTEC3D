@@ -48,6 +48,12 @@ def process_mesh(file_path):
     infinite_boundary = np.full(num_points, 0)
     archive.grid.point_data["infinite_boundary"] = infinite_boundary
 
+    infinite_boundary = np.full(num_points, 0)
+    archive.grid.point_data["flux_normal"] = infinite_boundary
+
+    infinite_boundary = np.full(num_points, 0)
+    archive.grid.point_data["flux_parallel"] = infinite_boundary
+
     # Add a cell data array "Js" with 3 components, filled with np.nan
     Js = np.full((num_cells, 3), np.nan)
     archive.grid.cell_data["Js"] = Js
