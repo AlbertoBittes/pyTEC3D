@@ -33,7 +33,7 @@ int main(int argc, char **argv)
     // Initialize libMesh and any dependent libraries
     LibMeshInit init(argc, argv);
     // {
-    //     if (init.comm().rank() != 0)
+    //     if (init.comm().rank() == 1)
     //     {
     //         int i = 0;
     //         while (0 == i)

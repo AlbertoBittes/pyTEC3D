@@ -1,3 +1,5 @@
 ../configure --prefix=/home/bitteal/libmesh_inst --disable-strict-lgpl --enable-distmesh --enable-ifem --enable-nodeconstraint --with-metis=/usr/lib/x86_64-linux-gnu --with-metis-include=/usr/include --disable-eigen --enable-perflog --with-parmetis-include=/usr/include --with-parmetis=/usr/lib --with-tbb-lib=/usr/lib/x86_64-linux-gnu --enable-blocked-storage --with-tbb=/usr
 
 ../configure --prefix=/home/bitteal/libmesh_inst --disable-strict-lgpl --enable-distmesh  --enable-ifem --enable-perflog --disable-eigen --with-metis=/usr/lib/x86_64-linux-gnu --with-metis-include=/usr/include --with-parmetis=/usr/lib --with-parmetis-include=/usr/include
+
+echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope

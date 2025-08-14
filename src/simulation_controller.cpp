@@ -199,11 +199,10 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
         }
 
         // boundary_info.parallel_sync_node_ids();
-        boundary_info.build_side_list_from_node_list();
         // boundary_info.parallel_sync_side_ids();
-        boundary_info.clear_boundary_node_ids();
+        // boundary_info.clear_boundary_node_ids();
     }
-
+    boundary_info.build_side_list_from_node_list();
     boundary_info.print_info();
     boundary_info.print_summary();
 
@@ -213,11 +212,11 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
 void SimulationController::generate_infinite_elements()
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-
+    auto &boundary_info = mesh->get_boundary_info();
+    this->set_boundary_info({"infinite_boundary"});
     if (mesh->has_node_integer("infinite_boundary"))
     {
-        auto &boundary_info = mesh->get_boundary_info();
-        this->set_boundary_info({"infinite_boundary"});
+
         const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
         unsigned int etype_num_index = mesh->get_elem_integer_index("ansys_etype");
         unsigned int material_num_index = mesh->get_elem_integer_index("ansys_material_type");
@@ -243,7 +242,6 @@ void SimulationController::generate_infinite_elements()
                     elem->set_extra_integer(real_constants_num_index, 0);
                 }
         }
-        mesh->find_neighbors();
     }
 
     return;
@@ -265,10 +263,10 @@ void SimulationController::read_mesh()
 
     apec_m_model_data->set_object<ElementTypesFactory>(element_types_factory);
 
-    if (mesh->comm().rank() == 0)
-        this->generate_infinite_elements();
-
     MeshCommunication().broadcast(*mesh);
+
+    this->generate_infinite_elements();
+
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
     MeshTools::Modification::orient_elements(*mesh);
