@@ -46,28 +46,26 @@ void ElementBuilder::build_infin110()
     // so that we can log the matrix and right-hand-side
     // computation separately.
     //
-    INFIN110Type *inf_fe_type = dynamic_cast<INFIN110Type *>(elem_data.element_type);
-
-    FEBase *inf_fe = dynamic_cast<FEBase *>(inf_fe_type->inf_fe_array[0].get());
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
     // The element Jacobian * quadrature weight at each integration point.
 
     // The element Jacobian * quadrature weight at each integration point.
-    const std::vector<Real> &JxW = inf_fe->get_JxWxdecay_sq();
+    const std::vector<Real> &JxW = fe->get_JxWxdecay_sq();
     // The element shape functions evaluated at the quadrature points.
-    const std::vector<std::vector<Real>> &phi = inf_fe->get_phi_over_decayxR();
-    const std::vector<std::vector<RealGradient>> &dphi = inf_fe->get_dphi_over_decayxR();
-    const std::vector<Real> &sob_w = inf_fe->get_Sobolev_weightxR_sq();
-    const std::vector<RealGradient> &dsob_w = inf_fe->get_Sobolev_dweightxR_sq();
+    const std::vector<std::vector<Real>> &phi = fe->get_phi_over_decayxR();
+    const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi_over_decayxR();
+    const std::vector<Real> &sob_w = fe->get_Sobolev_weightxR_sq();
+    const std::vector<RealGradient> &dsob_w = fe->get_Sobolev_dweightxR_sq();
 
-    inf_fe->reinit(elem_data.elem);
+    fe->reinit(elem_data.elem);
 
     this->prepare_element_matrix_building();
 
     // Get the scalar shape functions and vector shape functions
     //   const unsigned int n_sf =
     // FEInterface::n_dofs(cfe->get_fe_type(), elem);
-    unsigned int n_dofs_var = inf_fe->n_shape_functions();
-    unsigned int nq = inf_fe->n_quadrature_points();
+    unsigned int n_dofs_var = fe->n_shape_functions();
+    unsigned int nq = fe->n_quadrature_points();
 
     auto &Ke = this->matrices[0][0];
 

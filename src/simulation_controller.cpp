@@ -265,11 +265,15 @@ void SimulationController::read_mesh()
 
     MeshCommunication().broadcast(*mesh);
 
+    // orient before generating infinite elems
+    MeshTools::Modification::orient_elements(*mesh);
+
     this->generate_infinite_elements();
 
+    // Partition after generating infinite elems
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
-    MeshTools::Modification::orient_elements(*mesh);
+
     // Print information about the mesh to the screen.
     std::cout << "Mesh Information: " << std::endl;
     mesh->print_info();

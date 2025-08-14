@@ -242,13 +242,13 @@ public:
     virtual void set_fe_array() override {};
 };
 
-class InfFEBaseEtype
-{
-public:
-    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
-};
+// class InfFEBaseEtype
+// {
+// public:
+//     std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
+// };
 
-class INFIN110Type : public PLANE13Type, public InfFEBaseEtype
+class INFIN110Type : public PLANE13Type
 {
 public:
     INFIN110Type(const std::vector<unsigned int> &keyopts);
@@ -258,7 +258,7 @@ public:
     virtual void set_fe_array() override;
 };
 
-class INFIN111Type : public SOLID97Type, public InfFEBaseEtype
+class INFIN111Type : public SOLID97Type
 {
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
@@ -268,7 +268,7 @@ public:
     virtual void set_fe_array() override;
 };
 
-class INFIN112Type : public SOLID236Type, public InfFEBaseEtype
+class INFIN112Type : public SOLID236Type
 {
 public:
     INFIN112Type(const std::vector<unsigned int> &keyopts);
@@ -276,7 +276,5 @@ public:
     virtual void set_variable_info() override { libmesh_error_msg("INFIN112Type::set_variable_info() not implemented yet."); };
 
     virtual void set_fe_array() override { libmesh_error_msg("INFIN112Type::set_fe_array() not implemented yet."); };
-
-    std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
 };
 #endif // ELEMENT_TYPES_H

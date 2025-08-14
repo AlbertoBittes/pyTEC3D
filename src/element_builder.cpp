@@ -499,6 +499,15 @@ void ElementBuilder::build_element_rhs()
     case ElementTypeEnum::PLANE13:
         this->build_plane13_rhs();
         break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110_rhs();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111_rhs();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112_rhs();
+        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
@@ -629,6 +638,15 @@ void ElementBuilder::build_nodal_solution_vector()
     case ElementTypeEnum::PLANE13:
         this->build_plane13_nodal_solution_vector();
         break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111_nodal_solution_vector();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112_nodal_solution_vector();
+        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
@@ -650,6 +668,15 @@ void ElementBuilder::build_element_solution_vector()
         break;
     case ElementTypeEnum::PLANE13:
         this->build_plane13_element_solution_vector();
+        break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110_element_solution_vector();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111_element_solution_vector();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112_element_solution_vector();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));

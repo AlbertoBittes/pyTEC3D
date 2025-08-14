@@ -348,6 +348,9 @@ void AssemblerSolution::compute_derived_quantities()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
+        if (elem->infinite())
+            continue;
+
         solution_dof_map.dof_indices(elem, dof_indices);
 
         elem_builder->read_element_vectors(*solution_input_file, vec_set);
