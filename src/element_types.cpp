@@ -399,6 +399,7 @@ INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
     set_variable_info();
     set_fe_array();
     set_active_dof_vars_size();
+    set_variables_order();
 }
 
 void INFIN110Type::set_variable_info() {};
@@ -431,6 +432,7 @@ INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
     set_variable_info();
     set_fe_array();
     set_active_dof_vars_size();
+    set_variables_order();
 }
 
 void INFIN111Type::set_variable_info() {};

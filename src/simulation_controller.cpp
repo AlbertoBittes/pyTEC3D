@@ -188,7 +188,12 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
     for (auto &array : bc_arrays)
     {
         unsigned int node_array_index = mesh->get_node_integer_index(array);
-        Globals::BoundaryConditionType bc_enum = Globals::string_to_enum(array, Globals::STRING_TO_BC_ARRAY_ENUM, Globals::BoundaryConditionType::UNKNOWN);
+        Globals::BoundaryConditionType bc_enum = Globals::get_key_by_predicate_one(
+            Globals::BOUNDARY_CONDITION_INFO_MAP,
+            [array](const Globals::BoundaryConditionInfo &info)
+            {
+                return info.label == array;
+            });
 
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
         for (const Node *node_ptr : mesh->node_ptr_range())
@@ -306,7 +311,7 @@ void SimulationController::physics()
 {
     libMesh::out << "Building system of equations..." << std::endl;
 
-    System *systems[NUM_SYSTEMS] = {nullptr};
+    System *systems[Globals::NUM_SYSTEMS] = {nullptr};
 
     libMesh::out << "Checking system options..." << std::endl;
 
@@ -314,14 +319,14 @@ void SimulationController::physics()
         TypedContextView<ElementTypesFactory>>(
         TypedContextView<ElementTypesFactory>::from(
             apec_m_model_data));
-    for (int i = 0; i < NUM_SYSTEMS; ++i)
+    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
-        SystemType type = static_cast<SystemType>(i);
-        const std::string sys_name = get_system_name(type);
+        Globals::SystemType type = static_cast<Globals::SystemType>(i);
+        const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
 
-        if (type == MAIN)
+        if (type == Globals::MAIN)
             systems[i] = &equation_systems->add_system<ApecMLinearSystem>(sys_name);
-        else if (type == ELEMENT_LOADS)
+        else if (type == Globals::ELEMENT_LOADS)
             systems[i] = &equation_systems->add_system<ApecMLoadsSystem>(sys_name);
         else
             systems[i] = &equation_systems->add_system<ApecMSolutionSystem>(sys_name);
