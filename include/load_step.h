@@ -6,7 +6,7 @@
 #include "fe_parent_object.h"
 #include "fem_data_repository.h"
 #include "materials_object.h"
-#include "loads_object.h"
+#include "element_loads_object.h"
 #include "real_constants_object.h"
 #include "node_dof_constraints.h"
 #include "time_step.h"
@@ -27,7 +27,8 @@ public:
         PETSC_SOLVER_CONFIG,
         MATERIALS_OBJECT,
         REAL_CONSTANTS_OBJECT,
-        LOADS_OBJECT,
+        ELEMENT_LOADS_OBJECT,
+        NODAL_LOADS_OBJECT,
         NODE_BC_OBJECT
     };
     // Default constructor

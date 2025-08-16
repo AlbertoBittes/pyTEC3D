@@ -58,8 +58,8 @@ void LoadStep::read_from_file(const std::string &filename)
         case LoadStepObjectType::REAL_CONSTANTS_OBJECT:
             set_object(std::make_shared<RealConstantsObject>(file));
             break;
-        case LoadStepObjectType::LOADS_OBJECT:
-            set_object(std::make_shared<LoadsObject>(file, shared_loads_sys));
+        case LoadStepObjectType::element_loads_object:
+            set_object(std::make_shared<ElementLoadsObject>(file, shared_loads_sys));
             break;
         case LoadStepObjectType::NODE_BC_OBJECT:
             set_object(std::make_shared<NodeDOFConstraints>(file));

@@ -22,6 +22,20 @@ void ElementType::set_active_dof_vars_size()
     }
 }
 
+void ElementType::set_variables_order()
+{
+    if (order != FIRST)
+        for (auto &pair : variable_info)
+        {
+            if (pair.second.category == VariableCategory::DOFVariables ||
+                pair.second.category == VariableCategory::NodalSolutionVariables ||
+                pair.second.category == VariableCategory::ElementSolutionVariables)
+            {
+                pair.second.order = order;
+            }
+        }
+}
+
 AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
     : ElementType(keyopts) // Call the parent class constructor
 {
@@ -32,10 +46,11 @@ AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
 void AVElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::B_x] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
-    variable_info[GlobalVariableName::B_y] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
-    variable_info[GlobalVariableName::J_z] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
-    variable_info[GlobalVariableName::Js_z] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::B_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_x);
+    variable_info[GlobalVariableName::B_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_y);
+    variable_info[GlobalVariableName::J_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_z);
+    variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
+    variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
 }
 
 void AVElementType::set_fe_array() {};
@@ -50,7 +65,7 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
 void AV2DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, order};
+    variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
 }
 
 void AV2DElementType::set_fe_array()
@@ -148,13 +163,13 @@ AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVE
 void AV3DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::B_z] = VariableData{VariableCategory::NodalSolutionVariables, true, APIVariableName::B, L2_LAGRANGE, order};
-    variable_info[GlobalVariableName::J_x] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
-    variable_info[GlobalVariableName::J_y] = VariableData{VariableCategory::ElementSolutionVariables, true, APIVariableName::J, MONOMIAL, CONSTANT};
-    variable_info[GlobalVariableName::VOLT] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::VOLT, LAGRANGE, order};
-    variable_info[GlobalVariableName::EMF] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::EMF, LAGRANGE, order};
-    variable_info[GlobalVariableName::Js_x] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
-    variable_info[GlobalVariableName::Js_y] = VariableData{VariableCategory::LoadsVariables, true, APIVariableName::Js, MONOMIAL, CONSTANT};
+    variable_info[GlobalVariableName::B_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_z);
+    variable_info[GlobalVariableName::J_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_x);
+    variable_info[GlobalVariableName::J_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_y);
+    variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
+    variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF);
+    variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x);
+    variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y);
 }
 
 void AV3DElementType::set_fe_array()
@@ -254,21 +269,22 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     set_variable_info();
     set_fe_array();
     set_active_dof_vars_size();
+    set_variables_order();
 }
 
 void SOLID97Type::set_variable_info()
 {
-    variable_info[GlobalVariableName::A_x] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
-    variable_info[GlobalVariableName::A_y] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
-    variable_info[GlobalVariableName::A_z] = VariableData{VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
-    variable_info[GlobalVariableName::CURR] = VariableData{VariableCategory::DOFVariables, false, APIVariableName::CURR, LAGRANGE, order};
+    variable_info[GlobalVariableName::A_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_x);
+    variable_info[GlobalVariableName::A_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_y);
+    variable_info[GlobalVariableName::A_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_z);
+    variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR);
 
     if (physical_region == SOLID_CONDUCTOR || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT), variable_info[GlobalVariableName::VOLT].is_active = true;
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED)
-        variable_info[GlobalVariableName::CURR].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::CURR].is_active = true;
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
 }
 
 void SOLID97Type::set_fe_array()
@@ -360,18 +376,19 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
     set_variable_info();
     set_fe_array();
     set_active_dof_vars_size();
+    set_variables_order();
 } // Default dimension for PLANE13 is 2
 
 void PLANE13Type::set_variable_info()
 {
-    variable_info[GlobalVariableName::A_z] = {VariableCategory::DOFVariables, true, APIVariableName::A, LAGRANGE, order};
+    variable_info[GlobalVariableName::A_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_z);
 
     if (physical_region == STRANDED_COIL)
-        variable_info[GlobalVariableName::VOLT].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT), variable_info[GlobalVariableName::VOLT].is_active = true;
     if (physical_region == STRANDED_COIL || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::EMF].is_active = true; // Modify the first member
+        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::CURR].is_active = true;
+        variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR), variable_info[GlobalVariableName::CURR].is_active = true;
 }
 
 void PLANE13Type::set_fe_array() {};

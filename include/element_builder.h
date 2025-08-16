@@ -18,11 +18,10 @@
 #include "element_types_factory.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
-#include "loads_object.h"
+#include "element_loads_object.h"
 #include "time_step.h"
 #include "session.h"
 #include "globals.h"
-#include "system_type.h"
 
 using namespace libMesh;
 
@@ -48,12 +47,12 @@ struct MiscData
     Real dt = 0.0;
     Substep *time_substep = nullptr; // Pointer to the current time substep
     bool ramped = true;
-    bool transient_effect = false;                               // Flag for transient effects
-    std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
-    std::shared_ptr<LoadsObject> loads_object = nullptr;         // Pointer to LoadsObject
-    std::shared_ptr<LoadsObject> old_loads_object = nullptr;     // Pointer to LoadsObject
-    ApecMLoadsSystem *loads_map = nullptr;                       // Pointer to ApecMLoadsSystem
-    BoundaryInfo *boundary_info = nullptr;                       // Pointer to BoundaryInfo
+    bool transient_effect = false;                                          // Flag for transient effects
+    std::shared_ptr<MaterialsObject> materials_object = nullptr;            // Pointer to MaterialsObject
+    std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr;     // Pointer to ElementLoadsObject
+    std::shared_ptr<ElementLoadsObject> old_element_loads_object = nullptr; // Pointer to ElementLoadsObject
+    ApecMLoadsSystem *loads_map = nullptr;                                  // Pointer to ApecMLoadsSystem
+    BoundaryInfo *boundary_info = nullptr;                                  // Pointer to BoundaryInfo
     // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
     unsigned int loads_sys_number = 0; // System number for loads
     unsigned int jsx_var_num = 0;
@@ -80,11 +79,11 @@ struct SolutionVectorSupport
 // Assembled by the assembler.
 
 class ElementBuilder
-    : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>,
+    : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>;
+    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
     ElementBuilder(EquationSystems *equation_systems = nullptr,
@@ -133,7 +132,7 @@ public:
     void build_infin112_rhs();
 
     void build_write_solution_vectors(const std::string sys_name);
-    void build_solution_vector(SystemType sys_type);
+    void build_solution_vector(Globals::SystemType sys_type);
     void build_nodal_solution_vector();
     void build_element_solution_vector();
 

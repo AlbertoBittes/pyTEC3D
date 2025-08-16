@@ -10,7 +10,7 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "loads_object.h"
+#include "element_loads_object.h"
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 // Temporary placeholder for build_plane13
@@ -242,7 +242,7 @@ void ElementBuilder::build_plane13_element_solution_vector()
         }
         else
         {
-            if (this->elem_builder_misc_data.old_loads_object != nullptr)
+            if (this->elem_builder_misc_data.old_element_loads_object != nullptr)
             {
                 auto &J_elem_old = this->vectors[4][0];
                 // Apply ramping to the current load

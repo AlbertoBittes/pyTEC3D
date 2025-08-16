@@ -7,138 +7,102 @@ using namespace libMesh;
 
 namespace Globals
 {
-    // const std::vector<std::string> GLOBAL_VARIABLES_LABELS = {"A_x", "A_y", "A_z", "VOLT", "Az", "EMF", "CURR"};
-    // const std::vector<std::string> API_VARIABLES_LABELS = {"A", "VOLT", "EMF", "CURR"};
-    // const std::vector<unsigned int> API_VARIABLES_COMPONENTS = {3, 1, 1, 1};
-    // const std::vector<std::string> GLOBAL_LOADS_LABELS = {"Js_x", "Js_y", "Js_z"};
-    // const std::vector<std::string> API_LOADS_LABELS = {"Js"};
-    // const std::vector<unsigned int> API_LOADS_COMPONENTS = {3};
-    // const std::vector<std::string> GLOBAL_NODAL_DERIVED_VARIABLES_LABELS = {"B_x", "B_y", "B_z"};
-    const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM = {
-        {"A_x", GlobalVariableName::A_x},
-        {"A_y", GlobalVariableName::A_y},
-        {"A_z", GlobalVariableName::A_z},
-        {"VOLT", GlobalVariableName::VOLT},
-        {"Az", GlobalVariableName::Az},
-        {"EMF", GlobalVariableName::EMF},
-        {"CURR", GlobalVariableName::CURR},
-        {"Js_x", GlobalVariableName::Js_x},
-        {"Js_y", GlobalVariableName::Js_y},
-        {"Js_z", GlobalVariableName::Js_z},
-        {"B_x", GlobalVariableName::B_x},
-        {"B_y", GlobalVariableName::B_y},
-        {"B_z", GlobalVariableName::B_z},
-        {"J_x", GlobalVariableName::J_x},
-        {"J_y", GlobalVariableName::J_y},
-        {"J_z", GlobalVariableName::J_z},
+    const std::unordered_map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP = {
+        // DOF Variables
+        {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, VariableCategory::DOFVariables, "A_x", "A", LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, VariableCategory::DOFVariables, "A_y", "A", LAGRANGE, FIRST, 1, true, 0}},
+        {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, VariableCategory::DOFVariables, "A_z", "A", LAGRANGE, FIRST, 2, true, 0}},
+        {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, false, 0}},
+        {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::A, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, VariableCategory::DOFVariables, "EMF", "EMF", LAGRANGE, FIRST, 0, false, 0}},
+        {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, VariableCategory::DOFVariables, "CURR", "CURR", LAGRANGE, FIRST, 0, false, 0}},
+
+        // Element Loads Variables
+        {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_x", "Js", MONOMIAL, CONSTANT, 0, true, 0}},
+        {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_y", "Js", MONOMIAL, CONSTANT, 1, true, 0}},
+        {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_z", "Js", MONOMIAL, CONSTANT, 2, true, 0}},
+
+        // Nodal Loads Variables
+        {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, VariableCategory::NodalLoadsVariables, "AMPS", "AMPS", LAGRANGE, FIRST, 0, true, 0}},
+
+        // Nodal Solution Variables
+        {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_x", "B", L2_LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_y", "B", L2_LAGRANGE, FIRST, 1, true, 0}},
+        {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_z", "B", L2_LAGRANGE, FIRST, 2, true, 0}},
+
+        // Element Solution Variables
+        {GlobalVariableName::J_x, {GlobalVariableName::J_x, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_x", "J", MONOMIAL, CONSTANT, 0, true, 0}},
+        {GlobalVariableName::J_y, {GlobalVariableName::J_y, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_y", "J", MONOMIAL, CONSTANT, 1, true, 0}},
+        {GlobalVariableName::J_z, {GlobalVariableName::J_z, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_z", "J", MONOMIAL, CONSTANT, 2, true, 0}},
     };
-
-    const std::unordered_map<std::string, APIVariableName> API_STRING_TO_ENUM = {
-        {"A", APIVariableName::A},
-        {"VOLT", APIVariableName::VOLT},
-        {"EMF", APIVariableName::EMF},
-        {"CURR", APIVariableName::CURR},
-        {"Js", APIVariableName::Js},
-        {"B", APIVariableName::B},
-        {"J", APIVariableName::J},
-    };
-
-    // Enum-to-string mapping
-    const std::unordered_map<GlobalVariableName, std::string> ENUM_TO_STRING = {
-        {GlobalVariableName::A_x, "A_x"},
-        {GlobalVariableName::A_y, "A_y"},
-        {GlobalVariableName::A_z, "A_z"},
-        {GlobalVariableName::VOLT, "VOLT"},
-        {GlobalVariableName::Az, "Az"},
-        {GlobalVariableName::EMF, "EMF"},
-        {GlobalVariableName::CURR, "CURR"},
-        {GlobalVariableName::Js_x, "Js_x"},
-        {GlobalVariableName::Js_y, "Js_y"},
-        {GlobalVariableName::Js_z, "Js_z"},
-        {GlobalVariableName::B_x, "B_x"},
-        {GlobalVariableName::B_y, "B_y"},
-        {GlobalVariableName::B_z, "B_z"},
-        {GlobalVariableName::J_x, "J_x"},
-        {GlobalVariableName::J_y, "J_y"},
-        {GlobalVariableName::J_z, "J_z"},
-    };
-    // Enum-to-string mapping for API variables
-    const std::unordered_map<APIVariableName, std::string> API_ENUM_TO_STRING = {
-        {APIVariableName::A, "A"},
-        {APIVariableName::VOLT, "VOLT"},
-        {APIVariableName::EMF, "EMF"},
-        {APIVariableName::CURR, "CURR"},
-        {APIVariableName::Js, "Js"},
-        {APIVariableName::B, "B"},
-        {APIVariableName::J, "J"},
-    };
-    // Use unordered_map for fast lookup
-    const std::unordered_map<GlobalVariableName, std::pair<std::string, unsigned int>> GLOBAL_TO_API_VARIABLE_MAP = {
-        {GlobalVariableName::A_x, {"A", 0}},
-        {GlobalVariableName::A_y, {"A", 1}},
-        {GlobalVariableName::A_z, {"A", 2}},
-        {GlobalVariableName::VOLT, {"VOLT", 0}},
-        {GlobalVariableName::Az, {"A", 2}}, // Az is the same as A_z
-        {GlobalVariableName::EMF, {"EMF", 0}},
-        {GlobalVariableName::CURR, {"CURR", 0}},
-        {GlobalVariableName::Js_x, {"Js", 0}},
-        {GlobalVariableName::Js_y, {"Js", 1}},
-        {GlobalVariableName::Js_z, {"Js", 2}},
-        {GlobalVariableName::B_x, {"B", 0}},
-        {GlobalVariableName::B_y, {"B", 1}},
-        {GlobalVariableName::B_z, {"B", 2}},
-        {GlobalVariableName::J_x, {"J", 0}},
-        {GlobalVariableName::J_y, {"J", 1}},
-        {GlobalVariableName::J_z, {"J", 2}}};
-
-    // Reverse mapping: API variable -> vector of global variable names (ordered by component)
-    const std::unordered_map<APIVariableName, std::vector<std::string>> API_TO_GLOBAL_VARIABLE_MAP = {
-        {APIVariableName::A, {"A_x", "A_y", "A_z"}},
-        {APIVariableName::VOLT, {"VOLT"}},
-        {APIVariableName::EMF, {"EMF"}},
-        {APIVariableName::CURR, {"CURR"}},
-        {APIVariableName::Js, {"Js_x", "Js_y", "Js_z"}},
-        {APIVariableName::B, {"B_x", "B_y", "B_z"}},
-        {APIVariableName::J, {"J_x", "J_y", "J_z"}}};
-
-    const std::unordered_map<VariableCategory, std::vector<GlobalVariableName>> CATEGORY_TO_GLOBAL_VARIABLES_MAP = {
-        {VariableCategory::DOFVariables, {GlobalVariableName::A_x, GlobalVariableName::A_y, GlobalVariableName::A_z, GlobalVariableName::VOLT, GlobalVariableName::Az, GlobalVariableName::EMF, GlobalVariableName::CURR}},
-        {VariableCategory::LoadsVariables, {GlobalVariableName::Js_x, GlobalVariableName::Js_y, GlobalVariableName::Js_z}},
-        {VariableCategory::NodalSolutionVariables, {GlobalVariableName::B_x, GlobalVariableName::B_y, GlobalVariableName::B_z}},
-        {VariableCategory::ElementSolutionVariables, {GlobalVariableName::J_x, GlobalVariableName::J_y, GlobalVariableName::J_z}},
-    };
-
-    const std::unordered_map<GlobalVariableName, VariableCategory> GLOBAL_VARIABLE_TO_CATEGORY_MAP = {
-        {GlobalVariableName::A_x, VariableCategory::DOFVariables},
-        {GlobalVariableName::A_y, VariableCategory::DOFVariables},
-        {GlobalVariableName::A_z, VariableCategory::DOFVariables},
-        {GlobalVariableName::VOLT, VariableCategory::DOFVariables},
-        {GlobalVariableName::Az, VariableCategory::DOFVariables},
-        {GlobalVariableName::EMF, VariableCategory::DOFVariables},
-        {GlobalVariableName::CURR, VariableCategory::DOFVariables},
-        {GlobalVariableName::Js_x, VariableCategory::LoadsVariables},
-        {GlobalVariableName::Js_y, VariableCategory::LoadsVariables},
-        {GlobalVariableName::Js_z, VariableCategory::LoadsVariables},
-        {GlobalVariableName::B_x, VariableCategory::NodalSolutionVariables},
-        {GlobalVariableName::B_y, VariableCategory::NodalSolutionVariables},
-        {GlobalVariableName::B_z, VariableCategory::NodalSolutionVariables},
-        {GlobalVariableName::J_x, VariableCategory::ElementSolutionVariables},
-        {GlobalVariableName::J_y, VariableCategory::ElementSolutionVariables},
-        {GlobalVariableName::J_z, VariableCategory::ElementSolutionVariables},
-    };
-
-    const std::unordered_map<std::string, BoundaryConditionArray> STRING_TO_BC_ARRAY_ENUM = {
-        {"infinite_boundary", BoundaryConditionArray::INFINITE_BOUNDARY},
-        {"flux_normal", BoundaryConditionArray::FLUX_NORMAL},
-        {"flux_parallel", BoundaryConditionArray::FLUX_PARALLEL}};
-
-    const std::unordered_map<BoundaryConditionArray, std::string> BC_ARRAY_ENUM_TO_STRING = {
-        {BoundaryConditionArray::INFINITE_BOUNDARY, "infinite_boundary"},
-        {BoundaryConditionArray::FLUX_NORMAL, "flux_normal"},
-        {BoundaryConditionArray::FLUX_PARALLEL, "flux_parallel"},
-        {BoundaryConditionArray::UNKNOWN, "UNKNOWN"}};
 
     const double MU_0 = libMesh::pi * 4.0 * 1e-7;                // 4 * pi constant
     const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition
     const libMesh::boundary_id_type FLUX_NORMAL_ID_BC = 32761;   // Example ID for flux normal boundary condition
+
+    const std::unordered_map<SystemType, SystemInfo> SYSTEM_INFO_MAP = {
+        {MAIN, {MAIN, "ApecMLinearSystem", Globals::VariableCategory::DOFVariables}},
+        {NODAL_EXPLICIT, {NODAL_EXPLICIT, "NodalSolutionSystem", Globals::VariableCategory::NodalSolutionVariables}},
+        {ELEMENT_EXPLICIT, {ELEMENT_EXPLICIT, "ElementSolutionSystem", Globals::VariableCategory::ElementSolutionVariables}},
+        {ELEMENT_LOADS, {ELEMENT_LOADS, "ElementLoadsSystem", Globals::VariableCategory::ElementLoadsVariables}},
+        {NODAL_LOADS, {NODAL_LOADS, "NodalLoadsSystem", Globals::VariableCategory::NodalLoadsVariables}},
+    };
+
+    const std::unordered_map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {
+        {BoundaryConditionType::INFINITE_BOUNDARY, {BoundaryConditionType::INFINITE_BOUNDARY, "infinite_boundary", 0}},
+        {BoundaryConditionType::FLUX_NORMAL, {BoundaryConditionType::FLUX_NORMAL, "flux_normal", FLUX_NORMAL_ID_BC}},
+        {BoundaryConditionType::FLUX_PARALLEL, {BoundaryConditionType::FLUX_PARALLEL, "flux_parallel", FLUX_PARALLEL_ID_BC}},
+        {BoundaryConditionType::UNKNOWN, {BoundaryConditionType::UNKNOWN, "UNKNOWN", 0}}};
+
+    template <typename MapType>
+    const typename MapType::mapped_type &get_info_by_key(const MapType &map, const typename MapType::key_type &key)
+    {
+        auto it = map.find(key);
+        if (it == map.end())
+            libmesh_error_msg("Key not found in info map");
+        return it->second;
+    }
+
+    // Usage example
+    // auto info = get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, Globals::GlobalVariableName::A_x);
+    // auto sysinfo = get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::SystemType::MAIN);
+    // auto bcinfo = get_info_by_key(Globals::BOUNDARY_CONDITION_INFO_MAP, Globals::BoundaryConditionType::FLUX_NORMAL);
+
+    template <typename MapType, typename Predicate>
+    std::vector<typename MapType::key_type> get_keys_by_predicate(const MapType &map, Predicate pred)
+    {
+        std::vector<typename MapType::key_type> result;
+        for (const auto &pair : map)
+            if (pred(pair.second))
+                result.push_back(pair.first);
+        return result;
+    }
+    // Usage example
+    // auto keys = get_keys_by_predicate(
+    //     Globals::GLOBAL_VARIABLE_INFO_MAP,
+    //     [](const Globals::VariableInfo &info)
+    //     { return info.api_name == Globals::APIVariableName::A; });
+
+    // // Get all SystemType for a given VariableCategory
+    // auto sys_types = get_keys_by_predicate(
+    //     Globals::SYSTEM_INFO_MAP,
+    //     [](const Globals::SystemInfo &info)
+    //     { return info.category == Globals::VariableCategory::ElementLoadsVariables; });
+
+    template <typename MapType, typename Predicate>
+    typename MapType::key_type get_key_by_predicate_one(const MapType &map, Predicate pred)
+    {
+        auto keys = get_keys_by_predicate(map, pred);
+        if (keys.size() == 1)
+            return keys[0];
+        libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
+    }
+    // Usage example
+    // // Get GlobalVariableName for API label and component
+    // auto key = get_key_by_predicate_one(
+    //     Globals::GLOBAL_VARIABLE_INFO_MAP,
+    //     [](const Globals::VariableInfo &info)
+    //     {
+    //         return info.api_label == "A" && info.component_index == 2;
+    //     });
 }

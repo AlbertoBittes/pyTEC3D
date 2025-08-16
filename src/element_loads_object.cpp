@@ -1,9 +1,9 @@
-#include "loads_object.h"
+#include "element_loads_object.h"
 #include "globals.h"
 #include <libmesh/numeric_vector.h>
 #include <libmesh/dof_map.h>
 
-void LoadsObject::read_data(std::ifstream &file)
+void ElementLoadsObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading loads data from an open file stream..." << std::endl;
     data_map->old_local_solution->close();
@@ -56,7 +56,7 @@ void LoadsObject::read_data(std::ifstream &file)
     }
 }
 
-// void LoadsObject::zero_loads_array()
+// void ElementLoadsObject::zero_loads_array()
 // {
 //     if (!data_map)
 //     {
@@ -81,7 +81,7 @@ void LoadsObject::read_data(std::ifstream &file)
 //     }
 // }
 
-// void LoadsObject::build_load_data_vectors(const MeshBase &mesh)
+// void ElementLoadsObject::build_load_data_vectors(const MeshBase &mesh)
 // {
 
 //     // Get the load quantity from the cell data

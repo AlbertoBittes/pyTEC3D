@@ -6,10 +6,13 @@
 #include <vector>
 #include <utility>
 #include <libmesh/libmesh.h>
-
+#include <libmesh/fe.h>
 // Some useful global variables
 namespace Globals
 {
+    //
+    // Variables globals
+    //
     // Enum for global variable names
     enum class GlobalVariableName
     {
@@ -23,6 +26,7 @@ namespace Globals
         Js_x,
         Js_y,
         Js_z,
+        AMPS,
         B_x,
         B_y,
         B_z,
@@ -40,6 +44,7 @@ namespace Globals
         EMF,
         CURR,
         Js,
+        AMPS,
         B,
         J,
         UNKNOWN // Fallback for invalid strings
@@ -48,13 +53,57 @@ namespace Globals
     enum class VariableCategory
     {
         DOFVariables,
-        LoadsVariables,
+        ElementLoadsVariables,
+        NodalLoadsVariables,
         NodalSolutionVariables,
         ElementSolutionVariables
-        // NodalBCsVariables,
     };
 
-    enum class BoundaryConditionArray
+    struct VariableInfo
+    {
+        GlobalVariableName global_name;
+        APIVariableName api_name;
+        VariableCategory category;
+        std::string global_label;
+        std::string api_label;
+        FEFamily fe_family;
+        Order order;
+        unsigned int component_index;
+        bool is_active;
+        unsigned int system_var_num;
+        // Add other fields as needed
+    };
+
+    // Global variable information map
+    extern const std::unordered_map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
+
+    //
+    // System type globals
+    //
+    enum SystemType
+    {
+        MAIN = 0,
+        NODAL_EXPLICIT,
+        ELEMENT_EXPLICIT,
+        ELEMENT_LOADS,
+        NODAL_LOADS,
+        NUM_SYSTEMS
+    };
+
+    struct SystemInfo
+    {
+        SystemType type;
+        std::string name;
+        Globals::VariableCategory category;
+        // Add other fields as needed
+    };
+    // Global system info map
+    extern const std::unordered_map<SystemType, SystemInfo> SYSTEM_INFO_MAP;
+
+    //
+    // BCs globals infomrations
+    //
+    enum class BoundaryConditionType
     {
         INFINITE_BOUNDARY,
         FLUX_NORMAL,
@@ -62,41 +111,28 @@ namespace Globals
         UNKNOWN // Fallback for invalid strings
     };
 
-    // Declare mappings
-    extern const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM;
-    extern const std::unordered_map<std::string, APIVariableName> API_STRING_TO_ENUM;
-    extern const std::unordered_map<GlobalVariableName, std::string> ENUM_TO_STRING;
-    extern const std::unordered_map<APIVariableName, std::string> API_ENUM_TO_STRING;
-    extern const std::unordered_map<GlobalVariableName, std::pair<std::string, unsigned int>> GLOBAL_TO_API_VARIABLE_MAP;
-    extern const std::unordered_map<APIVariableName, std::vector<std::string>> API_TO_GLOBAL_VARIABLE_MAP;
-    extern const std::unordered_map<VariableCategory, std::vector<GlobalVariableName>> CATEGORY_TO_GLOBAL_VARIABLES_MAP;
-    extern const std::unordered_map<GlobalVariableName, VariableCategory> GLOBAL_VARIABLE_TO_CATEGORY_MAP;
-
-    extern const std::unordered_map<std::string, BoundaryConditionArray> STRING_TO_BC_ARRAY_ENUM;
-    extern const std::unordered_map<BoundaryConditionArray, std::string> BC_ARRAY_ENUM_TO_STRING;
-    // Declare global constants
-    extern const double MU_0;
+    struct BoundaryConditionInfo
+    {
+        BoundaryConditionType array_enum;
+        std::string label;
+        libMesh::boundary_id_type id;
+        // Add other fields as needed
+    };
     extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
     extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
-    // Utility functions
-    template <typename EnumType>
-    inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value)
-    {
-        auto it = str_to_enum_map.find(name);
-        if (it != str_to_enum_map.end())
-            return it->second;
-        return unknown_value;
-    }
+    // Centralized boundary condition info map
+    extern const std::unordered_map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP;
 
-    // Generic enum-to-string conversion
-    template <typename EnumType>
-    inline std::string enum_to_string(EnumType value, const std::unordered_map<EnumType, std::string> &enum_to_str_map)
-    {
-        auto it = enum_to_str_map.find(value);
-        if (it != enum_to_str_map.end())
-            return it->second;
-        return "UNKNOWN";
-    }
+    // Declare physical constants
+    extern const double MU_0;
+
+    template <typename MapType>
+    const typename MapType::mapped_type &get_info_by_key(const MapType &map, const typename MapType::key_type &key);
+    template <typename MapType, typename Predicate>
+    std::vector<typename MapType::key_type> get_keys_by_predicate(const MapType &map, Predicate pred);
+    template <typename MapType, typename Predicate>
+    typename MapType::key_type get_key_by_predicate_one(const MapType &map, Predicate pred);
+
 }
 
 #endif // GLOBALS_H

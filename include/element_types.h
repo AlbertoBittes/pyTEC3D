@@ -43,20 +43,9 @@ enum PhysicalRegionEnum : unsigned int
     UNKNOWN
 };
 
-struct VariableData
-{
-    Globals::VariableCategory category;
-    bool is_active;
-    Globals::APIVariableName api_label;
-    FEFamily fe_family;
-    Order order;
-    unsigned int system_var_num = 0;
-};
-
-typedef std::unordered_map<unsigned int, std::vector<unsigned int>> ElementTypesMapCSV;
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
 typedef std::map<Globals::GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
-typedef std::map<Globals::GlobalVariableName, VariableData> VariableInformation;
+typedef std::map<Globals::GlobalVariableName, Globals::VariableInfo> VariableInformation;
 
 // This is probably one of the most important classes of the program (ETYPE in APDL).
 // It holds the ElementTypes ID numbers (formulations) and all the information relevant for the formulation of the problem:
@@ -86,7 +75,7 @@ public:
         for (const auto &pair : variable_info)
         {
             const Globals::GlobalVariableName &var_name = pair.first;
-            const VariableData &var_data = pair.second;
+            const Globals::VariableInfo &var_data = pair.second;
 
             if (var_data.category == variable_cat && var_data.is_active)
             {
@@ -95,6 +84,18 @@ public:
         }
         return active_vars;
     }
+    // // Sets system_var_num for all variables in variable_info incrementally from 0
+    // void set_system_var_num()
+    // {
+    //     unsigned int idx = 0;
+    //     for (auto &pair : variable_info)
+    //     {
+    //         if (pair.second.is_active)
+    //         {
+    //             pair.second.system_var_num = idx++;
+    //         }
+    //     }
+    // }
 
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
@@ -136,6 +137,8 @@ public:
     virtual void set_variable_info() = 0;
 
     virtual void set_fe_array() = 0;
+
+    void set_variables_order();
 
 protected:
     VariableInformation variable_info;

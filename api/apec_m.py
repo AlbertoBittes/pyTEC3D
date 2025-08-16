@@ -324,63 +324,7 @@ class APEC_M:
         if not os.path.exists(self.load_steps_folder):
             os.makedirs(self.load_steps_folder)
 
-        # Check if the arrays already exist in the mesh
-        cell_data = self.mesh.GetCellData()
-        point_data = self.mesh.GetPointData()
-
-        # Add a cell data array "Js" with 3 components, filled with np.nan, if it doesn't exist
-        if cell_data.GetArray("Js") is None:
-            num_cells = self.mesh.GetNumberOfCells()
-            Js = np.full((num_cells, 3), np.nan)
-            cell_data.AddArray(
-                vtknp.numpy_to_vtk(Js, deep=True, array_type=vtk.VTK_DOUBLE)
-            )
-            cell_data.GetArray("Js").SetName("Js")
-
-        # Add a point data array "A" with 3 components, filled with np.nan, if it doesn't exist
-        if point_data.GetArray("A") is None:
-            num_points = self.mesh.GetNumberOfPoints()
-            A = np.full((num_points, 3), np.nan)
-            point_data.AddArray(
-                vtknp.numpy_to_vtk(A, deep=True, array_type=vtk.VTK_DOUBLE)
-            )
-            point_data.GetArray("A").SetName("A")
-
-        # Add a point data array "VOLT" with 1 component, filled with np.nan, if it doesn't exist
-        if point_data.GetArray("VOLT") is None:
-            num_points = self.mesh.GetNumberOfPoints()
-            VOLT = np.full(num_points, np.nan)
-            point_data.AddArray(
-                vtknp.numpy_to_vtk(VOLT, deep=True, array_type=vtk.VTK_DOUBLE)
-            )
-            point_data.GetArray("VOLT").SetName("VOLT")
-
-        # Add a point data array "infinite_boundary" with 1 component, filled with 0, if it doesn't exist
-        if point_data.GetArray("infinite_boundary") is None:
-            num_points = self.mesh.GetNumberOfPoints()
-            infinite_boundary = np.full(num_points, 0)
-            point_data.AddArray(
-                vtknp.numpy_to_vtk(infinite_boundary, deep=True, array_type=vtk.VTK_INT)
-            )
-            point_data.GetArray("infinite_boundary").SetName("infinite_boundary")
-
-        # Add a point data array "flux_normal" with 1 component, filled with 0, if it doesn't exist
-        if point_data.GetArray("flux_normal") is None:
-            num_points = self.mesh.GetNumberOfPoints()
-            flux_normal = np.full(num_points, 0)
-            point_data.AddArray(
-                vtknp.numpy_to_vtk(flux_normal, deep=True, array_type=vtk.VTK_INT)
-            )
-            point_data.GetArray("flux_normal").SetName("flux_normal")
-
-        # Add a point data array "flux_parallel" with 1 component, filled with 0, if it doesn't exist
-        if point_data.GetArray("flux_parallel") is None:
-            num_points = self.mesh.GetNumberOfPoints()
-            flux_parallel = np.full(num_points, 0)
-            point_data.AddArray(
-                vtknp.numpy_to_vtk(flux_parallel, deep=True, array_type=vtk.VTK_INT)
-            )
-            point_data.GetArray("flux_parallel").SetName("flux_parallel")
+        self.initialize_vtk_arrays()
 
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
@@ -395,6 +339,26 @@ class APEC_M:
         print(
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
+
+    def initialize_vtk_arrays(self):
+        """
+        Initializes required VTK arrays in cell/point data as specified in VTK_ARRAYS_TO_INIT.
+        """
+        from constants import VTK_ARRAYS_TO_INIT
+
+        cell_data = self.mesh.GetCellData()
+        point_data = self.mesh.GetPointData()
+
+        for name, info in VTK_ARRAYS_TO_INIT.items():
+            data_obj = cell_data if info["location"] == "cell" else point_data
+            if data_obj.GetArray(name) is None:
+                num = self.mesh.GetNumberOfCells() if info["location"] == "cell" else self.mesh.GetNumberOfPoints()
+                shape = (num, info["components"]) if info["components"] > 1 else num
+                arr = np.full(shape, info["fill"])
+                data_obj.AddArray(
+                    vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
+                )
+                data_obj.GetArray(name).SetName(name)
 
     def validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
         """

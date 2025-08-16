@@ -90,8 +90,8 @@ void SimulationController::set_load_step_data()
     libMesh::out << "Setting load step data..." << std::endl;
 
     auto element_builder_view = std::make_shared<
-        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>>(
-        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>::from(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>>(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>::from(
             apec_m_model_data,
             load_step));
     auto element_builder = equation_systems->get_element_builder();
@@ -188,7 +188,7 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
     for (auto &array : bc_arrays)
     {
         unsigned int node_array_index = mesh->get_node_integer_index(array);
-        Globals::BoundaryConditionArray bc_enum = Globals::string_to_enum(array, Globals::STRING_TO_BC_ARRAY_ENUM, Globals::BoundaryConditionArray::UNKNOWN);
+        Globals::BoundaryConditionType bc_enum = Globals::string_to_enum(array, Globals::STRING_TO_BC_ARRAY_ENUM, Globals::BoundaryConditionType::UNKNOWN);
 
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
         for (const Node *node_ptr : mesh->node_ptr_range())
@@ -198,13 +198,13 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
             {
                 switch (bc_enum)
                 {
-                case Globals::BoundaryConditionArray::INFINITE_BOUNDARY:
+                case Globals::BoundaryConditionType::INFINITE_BOUNDARY:
                     boundary_info.add_node(node_ptr, boundary_id_mesh);
                     break;
-                case Globals::BoundaryConditionArray::FLUX_NORMAL:
+                case Globals::BoundaryConditionType::FLUX_NORMAL:
                     boundary_info.add_node(node_ptr, Globals::FLUX_NORMAL_ID_BC);
                     break;
-                case Globals::BoundaryConditionArray::FLUX_PARALLEL:
+                case Globals::BoundaryConditionType::FLUX_PARALLEL:
                     boundary_info.add_node(node_ptr, Globals::FLUX_PARALLEL_ID_BC);
                     break;
                 default:

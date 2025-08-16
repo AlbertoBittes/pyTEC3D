@@ -29,10 +29,6 @@ def process_mesh(file_path):
     if archive is None:
         raise ValueError("Failed to read the mesh file.")
 
-    # Get the number of points and cells
-    num_points = archive.grid.n_points
-    num_cells = archive.grid.n_cells
-
     # Remove specified arrays if they exist in the grid
     # Check and remove from cell data
     for array_name in ["ansys_elem_type_num"]:
@@ -40,46 +36,9 @@ def process_mesh(file_path):
             del archive.grid.cell_data[array_name]
 
     # Check and remove from point data
-    for array_name in ["angles", "angles_magnitude", "origid", "VTKorigID"]:
+    for array_name in ["origid", "VTKorigID"]:
         if array_name in archive.grid.point_data:
             del archive.grid.point_data[array_name]
-
-    # Add a point data array called infinite_boundary to the grid
-    infinite_boundary = np.full(num_points, 0)
-    archive.grid.point_data["infinite_boundary"] = infinite_boundary
-
-    infinite_boundary = np.full(num_points, 0)
-    archive.grid.point_data["flux_normal"] = infinite_boundary
-
-    infinite_boundary = np.full(num_points, 0)
-    archive.grid.point_data["flux_parallel"] = infinite_boundary
-
-    # Add a cell data array "Js" with 3 components, filled with np.nan
-    Js = np.full((num_cells, 3), np.nan)
-    archive.grid.cell_data["Js"] = Js
-
-    # Add a point data array "A" with 3 components, filled with np.nan
-    A = np.full((num_points, 3), np.nan)
-    archive.grid.point_data["A"] = A
-
-    # Add a point data array "VOLT" with 1 component, filled with np.nan
-    VOLT = np.full(num_points, np.nan)
-    archive.grid.point_data["VOLT"] = VOLT
-    # Check for arrays with "PERIODIC_BOUNDARY_" or "INFINITE_BOUNDARY_" in their names
-    # for array_name in archive.grid.point_data.keys():
-    #     if array_name.startswith("PERIODIC_BOUNDARY_") or array_name.startswith(
-    #         "INFINITE_BOUNDARY_"
-    #     ):
-    #         # Extract the number after the last underscore
-    #         boundary_number = int(array_name.split("_")[-1])
-    #         periodic_boundary = archive.grid.point_data[array_name]
-    #         boundary_id = archive.grid.point_data["boundary_id"]
-
-    #         # Assign the boundary number to points where the array value is 1
-    #         boundary_id[periodic_boundary == 1] = boundary_number
-
-    #         # Update the boundary_id in the point data
-    #         archive.grid.point_data["boundary_id"] = boundary_id
 
     # Save the modified grid to a .vtu file
     output_file = os.path.join(

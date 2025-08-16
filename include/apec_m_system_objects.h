@@ -13,7 +13,7 @@
 #include "element_types_factory.h"
 #include "global_constraints_object.h"
 #include "assembler.h"
-#include "system_type.h"
+#include "globals.h"
 
 using namespace libMesh;
 

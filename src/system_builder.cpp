@@ -12,7 +12,6 @@
 #include "system_builder.h"
 #include "fe_parent_object.h"
 #include "assembler.h"
-#include "system_type.h"
 #include "globals.h"
 #include "element_types_factory.h"
 #include "fem_data_repository.h"
@@ -55,15 +54,19 @@ void SystemBuilder::init_variables()
     // Do not do the loop here, attacht the initialization object to the other systems too
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
-    // Map system name to SystemType
-    SystemType type = get_system_type_from_name(system->name());
-    Globals::VariableCategory category = get_variable_category(type);
+    // Use new helper functions to map system name to SystemType and get category
+    Globals::SystemType type = Globals::get_key_by_predicate_one(
+        Globals::SYSTEM_INFO_MAP,
+        [sys_name = system->name()](const Globals::SystemInfo &info)
+        {
+            return info.name == sys_name;
+        });
+    Globals::VariableCategory category = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).category;
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(category);
 
     for (const auto &pair : *vars_to_subdomain_ids)
     {
-        const std::string &variable_string =
-            Globals::enum_to_string(pair.first, Globals::ENUM_TO_STRING);
+        const auto &variable_string = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, pair.first).global_label;
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;
         auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
 
@@ -73,7 +76,7 @@ void SystemBuilder::init_variables()
         if (it == var_info.end())
             continue; // Skip if variable info not found
 
-        VariableData &data = it->second;
+        Globals::VariableInfo &data = it->second;
         if (!data.is_active)
             continue; // Skip inactive variables
 
@@ -101,7 +104,7 @@ void SystemBuilder::init_variables()
             // Find the variable enum corresponding to var_name
             for (auto &info_pair : var_info)
             {
-                const std::string &enum_name = Globals::enum_to_string(info_pair.first, Globals::ENUM_TO_STRING);
+                auto enum_name = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, info_pair.first).global_label;
                 if (enum_name == var_name)
                 {
                     info_pair.second.system_var_num = var_num;

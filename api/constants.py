@@ -1,13 +1,18 @@
+import vtk
+import numpy as np
+
 # Global variable mappings
 VARIABLES_GLOBAL_NUMBERS = {
     "A": 0,
     "VOLT": 1,
     "EMF": 2,
     "CURR": 3,
-    "Js": 4,
-    "B": 5,
-    "J": 6,
+    "AMPS": 4,
+    "Js": 5,
+    "B": 6,
+    "J": 7,
 }
+
 # Default solver settings
 DEFAULT_SOLVER_SETTINGS = {
     "ksp_type": "kspreonly",
@@ -208,4 +213,14 @@ WRITING_FUNCTIONS_MAP = {
     "real_constants": "write_dataframe_to_binary",
     "cell_data": "write_numpy_array_to_binary",
     "point_data": "write_numpy_array_to_binary",
+}
+
+VTK_ARRAYS_TO_INIT = {
+    "Js":      {"location": "cell",  "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "A":       {"location": "point", "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "VOLT":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "AMPS":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "infinite_boundary": {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
+    "flux_normal":       {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
+    "flux_parallel":     {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
 }

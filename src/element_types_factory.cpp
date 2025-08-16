@@ -1,5 +1,5 @@
 #include "element_types_factory.h"
-#include "system_type.h"
+#include "globals.h"
 #include "globals.h"
 #include <regex>
 

@@ -10,7 +10,7 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "loads_object.h"
+#include "element_loads_object.h"
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 
@@ -23,7 +23,7 @@
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view,
                                std::shared_ptr<ContextView> old_ctx_view)
-    : FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, LoadsObject>(ctx_view, old_ctx_view),
+    : FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>(ctx_view, old_ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
       matrices(3),
       vectors(5)
@@ -261,14 +261,14 @@ void ElementBuilder::set_elem_builder_misc_data()
     elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
     elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
 
-    // Use old and current LoadsObject for ramping, etc.
+    // Use old and current ElementLoadsObject for ramping, etc.
     if (elem_builder_misc_data.time_substep->get_index() == 0)
     {
 
-        elem_builder_misc_data.old_loads_object = this->old_context<LoadsObject>();
-        // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_loads_object ? elem_builder_misc_data.old_loads_object->get_data_map() : nullptr;
-        elem_builder_misc_data.loads_object = this->context<LoadsObject>();
-        elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object ? elem_builder_misc_data.loads_object->get_data_map() : nullptr;
+        elem_builder_misc_data.old_element_loads_object = this->old_context<ElementLoadsObject>();
+        // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_element_loads_object ? elem_builder_misc_data.old_element_loads_object->get_data_map() : nullptr;
+        elem_builder_misc_data.element_loads_object = this->context<ElementLoadsObject>();
+        elem_builder_misc_data.loads_map = elem_builder_misc_data.element_loads_object ? elem_builder_misc_data.element_loads_object->get_data_map() : nullptr;
 
         elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
 
@@ -571,7 +571,12 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
         vec_set = 3;
         libMesh::out << "Computing element solutions" << std::endl;
     }
-    auto sys_type = get_system_type_from_name(sys_name);
+    auto sys_type = get_key_by_predicate_one(
+        Globals::SYSTEM_INFO_MAP,
+        [sys_name](const Globals::SystemInfo &info)
+        {
+            return info.name == sys_name;
+        });
 
     auto inp_streams = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
@@ -606,21 +611,21 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
     solution_vec_output_file->close();
 }
 
-void ElementBuilder::build_solution_vector(SystemType sys_type)
+void ElementBuilder::build_solution_vector(Globals::SystemType sys_type)
 {
     switch (sys_type)
     {
-    case SystemType::NODAL_EXPLICIT:
+    case Globals::SystemType::NODAL_EXPLICIT:
     {
         this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
         build_nodal_solution_vector();
         break;
-    }
-    case SystemType::ELEMENT_EXPLICIT:
+    case Globals::SystemType::ELEMENT_EXPLICIT:
         build_element_solution_vector();
         break;
     default:
         libmesh_error_msg("System type not supported: " + std::to_string(static_cast<unsigned int>(sys_type)));
+    }
     }
 }
 
