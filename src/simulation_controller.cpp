@@ -1,5 +1,6 @@
 #include "simulation_controller.h"
 #include "vtkio_updated.h"
+#include "globals.h"
 #include "element_types.h"
 #include "element_builder.h"
 #include "system_builder.h"
@@ -187,6 +188,7 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
     for (auto &array : bc_arrays)
     {
         unsigned int node_array_index = mesh->get_node_integer_index(array);
+        Globals::BoundaryConditionArray bc_enum = Globals::string_to_enum(array, Globals::STRING_TO_BC_ARRAY_ENUM, Globals::BoundaryConditionArray::UNKNOWN);
 
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
         for (const Node *node_ptr : mesh->node_ptr_range())
@@ -194,15 +196,29 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
             boundary_id_type boundary_id_mesh = node_ptr->get_extra_integer(node_array_index);
             if (boundary_id_mesh != 0)
             {
-                boundary_info.add_node(node_ptr, boundary_id_mesh);
+                switch (bc_enum)
+                {
+                case Globals::BoundaryConditionArray::INFINITE_BOUNDARY:
+                    boundary_info.add_node(node_ptr, boundary_id_mesh);
+                    break;
+                case Globals::BoundaryConditionArray::FLUX_NORMAL:
+                    boundary_info.add_node(node_ptr, Globals::FLUX_NORMAL_ID_BC);
+                    break;
+                case Globals::BoundaryConditionArray::FLUX_PARALLEL:
+                    boundary_info.add_node(node_ptr, Globals::FLUX_PARALLEL_ID_BC);
+                    break;
+                default:
+                    // Handle unknown
+                    break;
+                }
             }
         }
-
+        boundary_info.build_side_list_from_node_list();
         // boundary_info.parallel_sync_node_ids();
         // boundary_info.parallel_sync_side_ids();
         // boundary_info.clear_boundary_node_ids();
     }
-    boundary_info.build_side_list_from_node_list();
+
     boundary_info.print_info();
     boundary_info.print_summary();
 
@@ -213,7 +229,7 @@ void SimulationController::generate_infinite_elements()
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
     auto &boundary_info = mesh->get_boundary_info();
-    this->set_boundary_info({"infinite_boundary"});
+    // In the future change this by looping over the elementtypes
     if (mesh->has_node_integer("infinite_boundary"))
     {
 
@@ -268,8 +284,13 @@ void SimulationController::read_mesh()
     // orient before generating infinite elems
     MeshTools::Modification::orient_elements(*mesh);
 
+    auto &boundary_info = mesh->get_boundary_info();
+
+    this->set_boundary_info({"infinite_boundary"});
+
     this->generate_infinite_elements();
 
+    this->set_boundary_info({"flux_parallel", "flux_normal"});
     // Partition after generating infinite elems
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);

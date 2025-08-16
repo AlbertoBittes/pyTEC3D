@@ -285,6 +285,22 @@ void SOLID97Type::set_fe_array()
     fe_vec->attach_quadrature_rule(qrule_vec);
 
     fe_array.push_back(std::move(fe_vec));
+
+    FEType fe_type_face(order, LAGRANGE);
+
+    std::unique_ptr<FEBase> fe_face = FEBase::build(3, fe_type_face);
+
+    // Boundary integration requires another quadrature rule,
+    // with dimensionality one less than the dimensionality
+    // of the element.
+    // In 1D, the Clough and Gauss quadrature rules are identical.
+    QGauss *qface = new QGauss(2, fe_type_face.default_quadrature_order());
+
+    // Tell the finite element object to use our
+    // quadrature rule.
+    fe_face->attach_quadrature_rule(qface);
+
+    fe_array.push_back(std::move(fe_face));
 }
 
 // SOLID 236

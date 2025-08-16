@@ -53,6 +53,7 @@ struct MiscData
     std::shared_ptr<LoadsObject> loads_object = nullptr;         // Pointer to LoadsObject
     std::shared_ptr<LoadsObject> old_loads_object = nullptr;     // Pointer to LoadsObject
     ApecMLoadsSystem *loads_map = nullptr;                       // Pointer to ApecMLoadsSystem
+    BoundaryInfo *boundary_info = nullptr;                       // Pointer to BoundaryInfo
     // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
     unsigned int loads_sys_number = 0; // System number for loads
     unsigned int jsx_var_num = 0;

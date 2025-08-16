@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include <utility>
+#include <libmesh/libmesh.h>
 
 // Some useful global variables
 namespace Globals
@@ -52,6 +53,15 @@ namespace Globals
         ElementSolutionVariables
         // NodalBCsVariables,
     };
+
+    enum class BoundaryConditionArray
+    {
+        INFINITE_BOUNDARY,
+        FLUX_NORMAL,
+        FLUX_PARALLEL,
+        UNKNOWN // Fallback for invalid strings
+    };
+
     // Declare mappings
     extern const std::unordered_map<std::string, GlobalVariableName> STRING_TO_ENUM;
     extern const std::unordered_map<std::string, APIVariableName> API_STRING_TO_ENUM;
@@ -62,9 +72,12 @@ namespace Globals
     extern const std::unordered_map<VariableCategory, std::vector<GlobalVariableName>> CATEGORY_TO_GLOBAL_VARIABLES_MAP;
     extern const std::unordered_map<GlobalVariableName, VariableCategory> GLOBAL_VARIABLE_TO_CATEGORY_MAP;
 
+    extern const std::unordered_map<std::string, BoundaryConditionArray> STRING_TO_BC_ARRAY_ENUM;
+    extern const std::unordered_map<BoundaryConditionArray, std::string> BC_ARRAY_ENUM_TO_STRING;
     // Declare global constants
     extern const double MU_0;
-
+    extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
+    extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
     // Utility functions
     template <typename EnumType>
     inline EnumType string_to_enum(const std::string &name, const std::unordered_map<std::string, EnumType> &str_to_enum_map, EnumType unknown_value)

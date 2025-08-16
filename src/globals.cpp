@@ -127,5 +127,18 @@ namespace Globals
         {GlobalVariableName::J_z, VariableCategory::ElementSolutionVariables},
     };
 
-    const double MU_0 = libMesh::pi * 4.0 * 1e-7; // 4 * pi constant
+    const std::unordered_map<std::string, BoundaryConditionArray> STRING_TO_BC_ARRAY_ENUM = {
+        {"infinite_boundary", BoundaryConditionArray::INFINITE_BOUNDARY},
+        {"flux_normal", BoundaryConditionArray::FLUX_NORMAL},
+        {"flux_parallel", BoundaryConditionArray::FLUX_PARALLEL}};
+
+    const std::unordered_map<BoundaryConditionArray, std::string> BC_ARRAY_ENUM_TO_STRING = {
+        {BoundaryConditionArray::INFINITE_BOUNDARY, "infinite_boundary"},
+        {BoundaryConditionArray::FLUX_NORMAL, "flux_normal"},
+        {BoundaryConditionArray::FLUX_PARALLEL, "flux_parallel"},
+        {BoundaryConditionArray::UNKNOWN, "UNKNOWN"}};
+
+    const double MU_0 = libMesh::pi * 4.0 * 1e-7;                // 4 * pi constant
+    const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition
+    const libMesh::boundary_id_type FLUX_NORMAL_ID_BC = 32761;   // Example ID for flux normal boundary condition
 }

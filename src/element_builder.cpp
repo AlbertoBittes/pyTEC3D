@@ -264,12 +264,15 @@ void ElementBuilder::set_elem_builder_misc_data()
     // Use old and current LoadsObject for ramping, etc.
     if (elem_builder_misc_data.time_substep->get_index() == 0)
     {
+
         elem_builder_misc_data.old_loads_object = this->old_context<LoadsObject>();
         // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_loads_object ? elem_builder_misc_data.old_loads_object->get_data_map() : nullptr;
         elem_builder_misc_data.loads_object = this->context<LoadsObject>();
         elem_builder_misc_data.loads_map = elem_builder_misc_data.loads_object ? elem_builder_misc_data.loads_object->get_data_map() : nullptr;
 
         elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
+
+        elem_builder_misc_data.boundary_info = &(elem_builder_misc_data.loads_map->get_mesh().get_boundary_info());
 
         if (elem_builder_misc_data.loads_map)
         {
