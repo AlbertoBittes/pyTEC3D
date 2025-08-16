@@ -88,10 +88,10 @@ void ElementBuilder::build_plane13()
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
                 // Here I should modify the matrices someway for axisymm elements
-                AAe(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](1));
-                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](0));
-                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                AAe(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](1)) * pow(r, axisymm);
+                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](0) + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r) * pow(r, axisymm);
+                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
+                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
             }
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
