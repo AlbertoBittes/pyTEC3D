@@ -21,6 +21,7 @@ namespace Globals
 
         // Nodal Loads Variables
         {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, VariableCategory::NodalLoadsVariables, "AMPS", "AMPS", LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::CSGZ, {GlobalVariableName::CSGZ, APIVariableName::CSGZ, VariableCategory::NodalLoadsVariables, "CSGZ", "CSGZ", LAGRANGE, FIRST, 0, true, 0}},
 
         // Element Loads Variables
         {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_x", "Js", MONOMIAL, CONSTANT, 0, true, 0}},

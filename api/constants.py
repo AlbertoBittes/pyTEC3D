@@ -9,9 +9,10 @@ VARIABLES_GLOBAL_NUMBERS = {
     "EMF": 3,
     "CURR": 4,
     "AMPS": 5,
-    "Js": 6,
-    "B": 7,
-    "J": 8,
+    "CSGZ": 6,
+    "Js": 7,
+    "B": 8,
+    "J": 9,
 }
 
 # Default solver settings
@@ -248,6 +249,12 @@ VTK_ARRAYS_TO_INIT = {
         "dtype": vtk.VTK_DOUBLE,
     },
     "AMPS": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "CSGZ": {
         "location": "point",
         "components": 1,
         "fill": np.nan,
