@@ -140,7 +140,13 @@ class APEC_M:
                 arr = np.full(shape, info["fill"])
                 vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
                 vtk_arr.SetName(name)  # Set the name BEFORE adding
+                # vtk_arr.SetNumberOfComponents(info["components"])
+                if info["components"] > 1:
+                    vtk_arr.SetNumberOfComponents(info["components"])  # <-- Fix here
+                else:
+                    vtk_arr.SetNumberOfComponents(1)
                 data_obj.AddArray(vtk_arr)
+                # data_obj.GetArray(name).SetName(name)
 
     def _validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
         """
