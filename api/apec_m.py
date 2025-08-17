@@ -124,7 +124,6 @@ class APEC_M:
         """
         Initializes required VTK arrays in cell/point data as specified in VTK_ARRAYS_TO_INIT.
         """
-        from constants import VTK_ARRAYS_TO_INIT
 
         cell_data = self.mesh.GetCellData()
         point_data = self.mesh.GetPointData()
@@ -132,13 +131,16 @@ class APEC_M:
         for name, info in VTK_ARRAYS_TO_INIT.items():
             data_obj = cell_data if info["location"] == "cell" else point_data
             if data_obj.GetArray(name) is None:
-                num = self.mesh.GetNumberOfCells() if info["location"] == "cell" else self.mesh.GetNumberOfPoints()
+                num = (
+                    self.mesh.GetNumberOfCells()
+                    if info["location"] == "cell"
+                    else self.mesh.GetNumberOfPoints()
+                )
                 shape = (num, info["components"]) if info["components"] > 1 else num
                 arr = np.full(shape, info["fill"])
-                data_obj.AddArray(
-                    vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
-                )
-                data_obj.GetArray(name).SetName(name)
+                vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
+                vtk_arr.SetName(name)  # Set the name BEFORE adding
+                data_obj.AddArray(vtk_arr)
 
     def _validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
         """
@@ -256,6 +258,7 @@ class APEC_M:
         writer.Write()
 
         print(f"Mesh saved to '{output_file}'.")
+
     #
     #
     #
@@ -768,7 +771,7 @@ class APEC_M:
             )
 
         # Retrieve the final_data NumPy array
-        final_data = self.create_numpy_array_for_binary(vtk_data)
+        final_data = self._create_numpy_array_for_binary(vtk_data)
 
         # Convert the NumPy array to a pandas DataFrame
         df = pd.DataFrame(final_data)

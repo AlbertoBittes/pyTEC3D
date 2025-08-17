@@ -160,7 +160,7 @@ ELEMENT_TYPES_COLUMNS_TYPES = {
     "KEYOPT2": int,
     "KEYOPT3": int,
     "KEYOPT4": int,
-    "KEYOPT5": int
+    "KEYOPT5": int,
 }
 
 
@@ -207,22 +207,67 @@ SHEET_PROCESSING_MAP = {
 }
 
 WRITING_FUNCTIONS_MAP = {
-    "time_parameters": "write_settings_to_binary",
-    "solver_settings": "write_settings_to_binary",
-    "materials": "write_dataframe_to_binary",
-    "real_constants": "write_dataframe_to_binary",
-    "point_data": "write_numpy_array_to_binary",
-    "cell_data": "write_numpy_array_to_binary",
+    "time_parameters": "_write_settings_to_binary",
+    "solver_settings": "_write_settings_to_binary",
+    "materials": "_write_dataframe_to_binary",
+    "real_constants": "_write_dataframe_to_binary",
+    "point_data": "_write_numpy_array_to_binary",
+    "cell_data": "_write_numpy_array_to_binary",
 }
 
 VTK_ARRAYS_TO_INIT = {
-    "A":       {"location": "point", "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "VOLT":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "EMF":     {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "CURR":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "AMPS":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "Js":      {"location": "cell",  "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
-    "infinite_boundary": {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
-    "flux_normal":       {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
-    "flux_parallel":     {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
+    "A": {
+        "location": "point",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "VOLT": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "EMF": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "CURR": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "AMPS": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "Js": {
+        "location": "cell",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "infinite_boundary": {
+        "location": "point",
+        "components": 1,
+        "fill": 0,
+        "dtype": vtk.VTK_INT,
+    },
+    "flux_normal": {
+        "location": "point",
+        "components": 1,
+        "fill": 0,
+        "dtype": vtk.VTK_INT,
+    },
+    "flux_parallel": {
+        "location": "point",
+        "components": 1,
+        "fill": 0,
+        "dtype": vtk.VTK_INT,
+    },
 }
