@@ -32,13 +32,11 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
 
     // Nodal loads system
     {
-        TransientSystem<ExplicitSystem> *nodal_loads_system = &data_map->get_system<TransientSystem<ExplicitSystem>>("NodalLoadsSystem");
-        // Cast to ApecMSystem to access system_info
-        auto *apecm_loads = dynamic_cast<ApecMLoadsSystem *>(nodal_loads_system);
+        ApecMLoadsSystem *nodal_loads_system = &data_map->get_system<ApecMLoadsSystem>("NodalLoadsSystem");
         systems.push_back({nodal_loads_system->number(),
                            nodal_loads_system->current_local_solution.get(),
                            nodal_loads_system->old_local_solution,
-                           &apecm_loads->system_info});
+                           &nodal_loads_system->system_info});
     }
 
     // Initialize all vectors: copy current to old, set current to NaN

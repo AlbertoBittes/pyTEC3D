@@ -329,7 +329,7 @@ void SimulationController::physics()
 
         if (type == Globals::MAIN)
             systems[i] = &equation_systems->add_system<ApecMLinearSystem>(sys_name);
-        else if (type == Globals::ELEMENT_LOADS)
+        else if (type == Globals::ELEMENT_LOADS || type == Globals::NODAL_LOADS)
             systems[i] = &equation_systems->add_system<ApecMLoadsSystem>(sys_name);
         else
             systems[i] = &equation_systems->add_system<ApecMSolutionSystem>(sys_name);
