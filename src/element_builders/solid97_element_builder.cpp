@@ -317,7 +317,8 @@ void ElementBuilder::build_solid97_rhs()
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         unsigned int volt_var_num = main_sys->variable_number("VOLT");
-        unsigned int amp_var_num = main_sys->variable_number("AMPS");
+        unsigned int amp_var_num = elem_builder_misc_data.nodal_loads_map->variable_number("AMPS");
+
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i + volt_var_num * n_dofs_var) = nodal_loads[dof_i + amp_var_num * n_dofs_var];
 
