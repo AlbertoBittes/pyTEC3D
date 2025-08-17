@@ -4,13 +4,14 @@ import numpy as np
 # Global variable mappings
 VARIABLES_GLOBAL_NUMBERS = {
     "A": 0,
-    "VOLT": 1,
-    "EMF": 2,
-    "CURR": 3,
-    "AMPS": 4,
-    "Js": 5,
-    "B": 6,
-    "J": 7,
+    "Az": 1,
+    "VOLT": 2,
+    "EMF": 3,
+    "CURR": 4,
+    "AMPS": 5,
+    "Js": 6,
+    "B": 7,
+    "J": 8,
 }
 
 # Default solver settings
@@ -219,6 +220,12 @@ VTK_ARRAYS_TO_INIT = {
     "A": {
         "location": "point",
         "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "Az": {
+        "location": "point",
+        "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },

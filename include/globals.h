@@ -43,6 +43,7 @@ namespace Globals
     enum class APIVariableName
     {
         A,
+        Az,
         VOLT,
         EMF,
         CURR,

@@ -15,7 +15,7 @@ namespace Globals
         {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, VariableCategory::DOFVariables, "A_y", "A", LAGRANGE, FIRST, 1, true, 0}},
         {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, VariableCategory::DOFVariables, "A_z", "A", LAGRANGE, FIRST, 2, true, 0}},
         {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, false, 0}},
-        {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::A, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, true, 0}},
         {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, VariableCategory::DOFVariables, "EMF", "EMF", LAGRANGE, FIRST, 0, false, 0}},
         {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, VariableCategory::DOFVariables, "CURR", "CURR", LAGRANGE, FIRST, 0, false, 0}},
 
