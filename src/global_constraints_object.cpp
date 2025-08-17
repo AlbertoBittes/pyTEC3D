@@ -50,6 +50,7 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
     if (!prev_node_bc_object || !curr_node_bc_object)
     {
         this->update_boundary_conditions = true;
+        libMesh::out << "Boundary conditions update required" << std::endl;
         return;
     }
 
@@ -66,6 +67,7 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
         if ((std::isnan(new_val) != std::isnan(old_val)) || (!std::isnan(new_val) && !std::isnan(old_val) && new_val != old_val))
         {
             this->update_boundary_conditions = true;
+            libMesh::out << "Boundary conditions update required" << std::endl;
             break;
         }
     }

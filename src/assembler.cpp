@@ -275,7 +275,8 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
             Real max_old_new_dt = std::max(std::abs(time_substep->get_dt()), std::abs(prev_substep->get_dt()));
             if (diff_dt > rel_eps * max_old_new_dt ||
                 bc_object->get_update_boundary_conditions() ||
-                time_substep->get_transient_effect() != prev_substep->get_transient_effect())
+                time_substep->get_transient_effect() != prev_substep->get_transient_effect() ||
+                time_substep->get_theta() != prev_substep->get_theta())
             {
                 update_matrix = true;
                 solver->reuse_preconditioner(false);
