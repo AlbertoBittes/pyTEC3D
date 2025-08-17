@@ -216,12 +216,12 @@ WRITING_FUNCTIONS_MAP = {
 }
 
 VTK_ARRAYS_TO_INIT = {
-    "Js":      {"location": "cell",  "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "A":       {"location": "point", "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "VOLT":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "EMF":     {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "CURR":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "AMPS":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "Js":      {"location": "cell",  "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "infinite_boundary": {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
     "flux_normal":       {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
     "flux_parallel":     {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},

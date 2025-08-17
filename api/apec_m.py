@@ -63,10 +63,210 @@ class APEC_M:
         self.transient_analysis = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-        self.infinite_elements_options = {}
         self.process = None
         self.num_processors = 1
 
+    #
+    #
+    #
+    #
+    #
+    #  Basic methods: read, initialize and save model
+    #
+    #
+    #
+    #
+    #
+    def read_mesh(self, vtk_file_path):
+        """
+        Reads a VTK unstructured grid from a file in XML format.
+
+        Parameters:
+            vtk_file_path (str): Path to the VTK file in XML format.
+        """
+        # Check if the mesh file exists
+        if not os.path.exists(vtk_file_path):
+            raise FileNotFoundError(f"Mesh file '{vtk_file_path}' not found.")
+
+        reader = vtk.vtkXMLUnstructuredGridReader()
+        reader.SetFileName(vtk_file_path)
+        reader.Update()
+        self.mesh = reader.GetOutput()
+
+        self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
+        self.folderpath = os.path.dirname(vtk_file_path)
+
+        # Set the current working directory
+        os.chdir(self.folderpath)
+
+        # Create a folder named 'loads_steps' in the current working directory
+        self.load_steps_folder = os.path.join(os.getcwd(), "load_steps")
+        if not os.path.exists(self.load_steps_folder):
+            os.makedirs(self.load_steps_folder)
+
+        self._initialize_vtk_arrays()
+
+        print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
+        # print a summary of the mesh
+        print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
+        print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
+        print(
+            f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}"
+        )
+        print(
+            f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
+        )
+
+    def _initialize_vtk_arrays(self):
+        """
+        Initializes required VTK arrays in cell/point data as specified in VTK_ARRAYS_TO_INIT.
+        """
+        from constants import VTK_ARRAYS_TO_INIT
+
+        cell_data = self.mesh.GetCellData()
+        point_data = self.mesh.GetPointData()
+
+        for name, info in VTK_ARRAYS_TO_INIT.items():
+            data_obj = cell_data if info["location"] == "cell" else point_data
+            if data_obj.GetArray(name) is None:
+                num = self.mesh.GetNumberOfCells() if info["location"] == "cell" else self.mesh.GetNumberOfPoints()
+                shape = (num, info["components"]) if info["components"] > 1 else num
+                arr = np.full(shape, info["fill"])
+                data_obj.AddArray(
+                    vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
+                )
+                data_obj.GetArray(name).SetName(name)
+
+    def _validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
+        """
+        Validates that the first column of a DataFrame has unique values,
+        all values have a correspondence in the specified VTK data array,
+        and there are no undefined values in the VTK data array.
+
+        Parameters:
+            vtk_data (vtk.vtkDataSetAttributes): The VTK cell or point data to validate against.
+            df (pd.DataFrame): The DataFrame to validate.
+            array_name (str): The name of the VTK data array to check.
+
+        Raises:
+            ValueError: If the DataFrame is empty, the first column is not unique,
+                        the VTK data array is missing, or the checks fail.
+        """
+        # Check if the DataFrame is empty
+        if df.empty:
+            print("The DataFrame is empty.")
+            return
+
+        # Validate that the first column has unique values
+        first_column = df.iloc[:, 0]
+        if not first_column.is_unique:
+            raise ValueError(
+                "The first column of the DataFrame must have unique values."
+            )
+
+        # Retrieve the VTK data array
+        vtk_array = vtk_data.GetArray(array_name)
+        if vtk_array is None:
+            raise ValueError(f"The '{array_name}' array is missing in the VTK data.")
+
+        # Convert the VTK array to a NumPy array
+        vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
+
+        # Check if all values in the first column have a correspondence in the VTK array
+        if not set(first_column).issubset(set(vtk_array_np)):
+            raise ValueError(
+                f"Some values in the first column of the DataFrame do not have a correspondence in the '{array_name}' array."
+            )
+
+        # Check for undefined values in the VTK array
+        undefined_values = set(vtk_array_np) - set(first_column)
+        if undefined_values:
+            raise ValueError(
+                f"The VTK data contains undefined values: {undefined_values}."
+            )
+
+        print(f"Validation passed for '{array_name}' array and DataFrame.")
+
+    def save_mesh(self):
+        """
+        Saves the unstructured grid in self.mesh to a .vtu file named after self.jobname.
+        Before writing, attaches the element_types DataFrame as field data to the grid.
+        Validates that the first column of element_types has unique values, all values have a correspondence
+        in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
+
+        Raises:
+            ValueError: If self.jobname is not set, if the folder path is not set,
+                        or if the validation fails.
+        """
+        if not self.jobname:
+            raise ValueError(
+                "Job name is not set. Please set self.jobname before saving the mesh."
+            )
+
+        if not self.folderpath:
+            raise ValueError(
+                "Folder path is not set. Please set self.folderpath before saving the mesh."
+            )
+
+        cell_data = self.mesh.GetCellData()
+
+        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
+        infin_mask = (
+            self.element_types["element_type"].astype(str).str.match(r"INFIN\d+")
+        )
+        element_types_infin = self.element_types[infin_mask].copy()
+        element_types_normal = self.element_types[~infin_mask].copy()
+        if not element_types_infin.empty:
+            new_row = {col: 0 for col in element_types_infin.columns}
+            new_row["ansys_etype"] = 0
+            element_types_infin = pd.concat(
+                [element_types_infin, pd.DataFrame([new_row])], ignore_index=True
+            )
+
+        # Validate normal elements with 'ansys_etype'
+        if not element_types_normal.empty:
+            self._validate_dataframe_with_vtk_data(
+                cell_data, element_types_normal, "ansys_etype"
+            )
+
+        point_data = self.mesh.GetPointData()
+        # Validate INFIN elements with 'infinite_boundary'
+        if not element_types_infin.empty:
+            self._validate_dataframe_with_vtk_data(
+                point_data, element_types_infin, "infinite_boundary"
+            )
+
+        # Convert the element_types DataFrame to a vtkTable
+        vtk_table = self.dataframe_to_vtk_table(self.element_types)
+
+        # Attach the vtkTable as field data to the mesh
+        self.add_table_to_mesh(vtk_table)
+
+        # Define the output file name
+        output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
+
+        # Write the unstructured grid to the .vtu file
+        writer = vtk.vtkXMLUnstructuredGridWriter()
+        writer.SetFileName(output_file)
+        writer.SetInputData(self.mesh)
+        writer.SetDataModeToBinary()  # Set the writer to binary mode
+        writer.Write()
+
+        print(f"Mesh saved to '{output_file}'.")
+    #
+    #
+    #
+    #
+    #
+    #  Methods for CLI interaction with solver (not used or tested yet).
+    #
+    #
+    #
+    #
+    #
     def start_process(self, command, num_processors=1):
         """
         Start a process and set it as an attribute. If num_processors > 1, use mpirun.
@@ -178,6 +378,17 @@ class APEC_M:
             if self.process and self.process.poll() is None:
                 self.process.terminate()  # Ensure the process is terminated
 
+    #
+    #
+    #
+    #
+    #
+    #  Methods to interface with the VTK grid Field Data, needed to write model metadata
+    #
+    #
+    #
+    #
+    #
     def dataframe_to_vtk_table(self, df):
         """
         Converts a Pandas DataFrame into a vtkTable.
@@ -297,191 +508,106 @@ class APEC_M:
 
         return df
 
-    def read_mesh(self, vtk_file_path):
+    #
+    #
+    #
+    #
+    #
+    #  Excel I/O methods
+    #
+    #
+    #
+    #
+    #
+    def read_excel(
+        self,
+        excel_file_path,
+        data_to_read=list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
+    ):
         """
-        Reads a VTK unstructured grid from a file in XML format.
+        Reads data from an Excel file and processes it based on the provided labels.
 
         Parameters:
-            vtk_file_path (str): Path to the VTK file in XML format.
+            excel_file_path (str): The path to the Excel file.
+            data_to_read (list): A list of data types to read and process.
         """
-        # Check if the mesh file exists
-        if not os.path.exists(vtk_file_path):
-            raise FileNotFoundError(f"Mesh file '{vtk_file_path}' not found.")
+        # Check if the Excel file exists
+        if not os.path.exists(excel_file_path):
+            raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
 
-        reader = vtk.vtkXMLUnstructuredGridReader()
-        reader.SetFileName(vtk_file_path)
-        reader.Update()
-        self.mesh = reader.GetOutput()
+        # Loop through the data_to_read labels and process each one
+        for label in data_to_read:
+            try:
+                self.read_excel_sheet(excel_file_path, label)
+            except ValueError as e:
+                print(f"Warning: {e}")
 
-        self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
-        self.folderpath = os.path.dirname(vtk_file_path)
-
-        # Set the current working directory
-        os.chdir(self.folderpath)
-
-        # Create a folder named 'loads_steps' in the current working directory
-        self.load_steps_folder = os.path.join(os.getcwd(), "load_steps")
-        if not os.path.exists(self.load_steps_folder):
-            os.makedirs(self.load_steps_folder)
-
-        self.initialize_vtk_arrays()
-
-        print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
-        # print a summary of the mesh
-        print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
-        print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
-        print(
-            f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}"
-        )
-        print(
-            f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}"
-        )
-        print(
-            f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
-        )
-
-    def initialize_vtk_arrays(self):
+    def read_excel_sheet(self, excel_file, sheet_name):
         """
-        Initializes required VTK arrays in cell/point data as specified in VTK_ARRAYS_TO_INIT.
-        """
-        from constants import VTK_ARRAYS_TO_INIT
-
-        cell_data = self.mesh.GetCellData()
-        point_data = self.mesh.GetPointData()
-
-        for name, info in VTK_ARRAYS_TO_INIT.items():
-            data_obj = cell_data if info["location"] == "cell" else point_data
-            if data_obj.GetArray(name) is None:
-                num = self.mesh.GetNumberOfCells() if info["location"] == "cell" else self.mesh.GetNumberOfPoints()
-                shape = (num, info["components"]) if info["components"] > 1 else num
-                arr = np.full(shape, info["fill"])
-                data_obj.AddArray(
-                    vtknp.numpy_to_vtk(arr, deep=True, array_type=info["dtype"])
-                )
-                data_obj.GetArray(name).SetName(name)
-
-    def validate_dataframe_with_vtk_data(self, vtk_data, df, array_name):
-        """
-        Validates that the first column of a DataFrame has unique values,
-        all values have a correspondence in the specified VTK data array,
-        and there are no undefined values in the VTK data array.
+        Processes an Excel sheet by determining the appropriate method to call
+        (read_excel_df, read_excel_dict, or update_vtk_grid_from_excel) based on a global dictionary.
 
         Parameters:
-            vtk_data (vtk.vtkDataSetAttributes): The VTK cell or point data to validate against.
-            df (pd.DataFrame): The DataFrame to validate.
-            array_name (str): The name of the VTK data array to check.
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to process.
 
         Raises:
-            ValueError: If the DataFrame is empty, the first column is not unique,
-                        the VTK data array is missing, or the checks fail.
+            ValueError: If the sheet name is not recognized.
         """
-        # Check if the DataFrame is empty
-        if df.empty:
-            print("The DataFrame is empty.")
+
+        # Check if the sheet name is valid
+        if sheet_name not in SHEET_PROCESSING_MAP:
+            raise ValueError(
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(SHEET_PROCESSING_MAP.keys())}."
+            )
+
+        # Get the processing method or method with additional arguments
+        processing_info = SHEET_PROCESSING_MAP[sheet_name]
+
+        print(f"Reading sheet '{sheet_name}' from '{excel_file}'...")
+        # Call the appropriate method
+        if isinstance(processing_info, str):
+            # Call read_excel_df or read_excel_dict
+            getattr(self, processing_info)(excel_file, sheet_name)
+        elif isinstance(processing_info, tuple):
+            # Call update_vtk_grid_from_excel with additional arguments
+            method_name, data_type = processing_info
+            getattr(self, method_name)(excel_file, sheet_name, data_type)
+
+    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type=None):
+        """
+        Reads a sheet from an Excel file and updates the VTK grid using the data.
+
+        Parameters:
+            excel_file (str): The path to the Excel file.
+            sheet_name (str): The name of the sheet to read.
+            data_type (str): The type of VTK data to update ('cell_data' or 'point_data').
+
+        Raises:
+            ValueError: If the data_type is invalid or the sheet does not exist.
+        """
+        # Check if the sheet exists in the Excel file
+        try:
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
+        except ValueError:
+            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
             return
 
-        # Validate that the first column has unique values
-        first_column = df.iloc[:, 0]
-        if not first_column.is_unique:
+        if data_type is None:
+            data_type = sheet_name
+        # Determine the VTK data type to update
+        if data_type == "cell_data":
+            vtk_data = self.mesh.GetCellData()
+        elif data_type == "point_data":
+            vtk_data = self.mesh.GetPointData()
+        else:
             raise ValueError(
-                "The first column of the DataFrame must have unique values."
+                f"Invalid data_type '{data_type}'. Must be 'cell_data' or 'point_data'."
             )
 
-        # Retrieve the VTK data array
-        vtk_array = vtk_data.GetArray(array_name)
-        if vtk_array is None:
-            raise ValueError(f"The '{array_name}' array is missing in the VTK data.")
-
-        # Convert the VTK array to a NumPy array
-        vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
-
-        # Check if all values in the first column have a correspondence in the VTK array
-        if not set(first_column).issubset(set(vtk_array_np)):
-            raise ValueError(
-                f"Some values in the first column of the DataFrame do not have a correspondence in the '{array_name}' array."
-            )
-
-        # Check for undefined values in the VTK array
-        undefined_values = set(vtk_array_np) - set(first_column)
-        if undefined_values:
-            raise ValueError(
-                f"The VTK data contains undefined values: {undefined_values}."
-            )
-
-        print(f"Validation passed for '{array_name}' array and DataFrame.")
-
-    def save_mesh(self):
-        """
-        Saves the unstructured grid in self.mesh to a .vtu file named after self.jobname.
-        Before writing, attaches the element_types DataFrame as field data to the grid.
-        Validates that the first column of element_types has unique values, all values have a correspondence
-        in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
-
-        Raises:
-            ValueError: If self.jobname is not set, if the folder path is not set,
-                        or if the validation fails.
-        """
-        if not self.jobname:
-            raise ValueError(
-                "Job name is not set. Please set self.jobname before saving the mesh."
-            )
-
-        if not self.folderpath:
-            raise ValueError(
-                "Folder path is not set. Please set self.folderpath before saving the mesh."
-            )
-
-        cell_data = self.mesh.GetCellData()
-
-        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
-        infin_mask = (
-            self.element_types["element_type"].astype(str).str.match(r"INFIN\d+")
-        )
-        element_types_infin = self.element_types[infin_mask].copy()
-        element_types_normal = self.element_types[~infin_mask].copy()
-        if not element_types_infin.empty:
-            new_row = {col: 0 for col in element_types_infin.columns}
-            new_row["ansys_etype"] = 0
-            element_types_infin = pd.concat(
-                [element_types_infin, pd.DataFrame([new_row])], ignore_index=True
-            )
-
-        # Validate normal elements with 'ansys_etype'
-        if not element_types_normal.empty:
-            self.validate_dataframe_with_vtk_data(
-                cell_data, element_types_normal, "ansys_etype"
-            )
-
-        point_data = self.mesh.GetPointData()
-        # Validate INFIN elements with 'infinite_boundary'
-        if not element_types_infin.empty:
-            self.validate_dataframe_with_vtk_data(
-                point_data, element_types_infin, "infinite_boundary"
-            )
-
-        # Convert the element_types DataFrame to a vtkTable
-        vtk_table = self.dataframe_to_vtk_table(self.element_types)
-
-        # Attach the vtkTable as field data to the mesh
-        self.add_table_to_mesh(vtk_table)
-
-        # Convert the infinite_elements_options dictionary to a vtkTable
-        inf_vtk_table = self.dict_to_vtk_table(self.infinite_elements_options)
-
-        # Attach the vtkTable as field data to the mesh
-        self.add_table_to_mesh(inf_vtk_table)
-
-        # Define the output file name
-        output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
-
-        # Write the unstructured grid to the .vtu file
-        writer = vtk.vtkXMLUnstructuredGridWriter()
-        writer.SetFileName(output_file)
-        writer.SetInputData(self.mesh)
-        writer.SetDataModeToBinary()  # Set the writer to binary mode
-        writer.Write()
-
-        print(f"Mesh saved to '{output_file}'.")
+        # Update the VTK grid with the DataFrame
+        self.update_vtk_grid(vtk_data, df)
+        print(f"VTK grid updated with data from sheet '{sheet_name}'.")
 
     def read_excel_df(self, excel_file, sheet_name):
         """
@@ -619,7 +745,7 @@ class APEC_M:
             f"Data from sheet '{sheet_name}' successfully loaded into '{sheet_name}'."
         )
 
-    def write_excel_loads_bcs(self, output_excel_file, data_type="cell_data"):
+    def write_excel_cell_point_data(self, output_excel_file, data_type="cell_data"):
         """
         Writes the loads or boundary conditions to an Excel file.
 
@@ -671,7 +797,119 @@ class APEC_M:
                 df.to_excel(writer, sheet_name=data_type, index=False)
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
-    def write_settings_to_binary(self, settings, binary_file, label):
+    #
+    #
+    #
+    #
+    #
+    #  Binary Output methods
+    #
+    #
+    #
+    #
+    #
+    def write_load_step(self, output_file, labels_to_write=None):
+        """
+        Writes the current load step data to a single binary file based on the provided labels.
+
+        Parameters:
+            output_file (str): The path to the output binary file.
+            labels_to_write (list): A list of labels specifying what to write. Defaults to all supported labels.
+        """
+
+        # Default labels to write if none are provided
+        if labels_to_write is None:
+            labels_to_write = list(WRITING_FUNCTIONS_MAP.keys())
+
+        # Open the file in write mode to overwrite if it already exists
+        with open(output_file, "wb") as binary_file:
+            binary_file.write(struct.pack("I", len(labels_to_write)))
+
+            for k, label in enumerate(labels_to_write):
+                try:
+                    # Call the appropriate function based on the label
+                    binary_file.write(struct.pack("I", k))
+                    self._write_label_to_binary(binary_file, label)
+                    print(f"{label.replace('_', ' ').capitalize()} written.")
+                except ValueError as e:
+                    print(f"Warning: {e}")
+
+        print(f"Load step written to '{output_file}'.")
+
+    def generate_transient_analysis(
+        self,
+        # excel_file_path,
+    ):
+        # if not os.path.exists(excel_file_path):
+        #     raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
+
+        # self.read_excel_sheet(excel_file_path, "transient_analysis")
+        # print(f"Transient analysis loaded from '{excel_file_path}'.")
+
+        for idx, row in self.transient_analysis.iterrows():
+            # Step 1: Update self.time_parameters with the values from the current row
+            for column in DEFAULT_TIME_PARAMETERS.keys():
+                if column in row:
+                    self.time_parameters[column] = row[column]
+
+            # Check if the file exists before reading
+            self.read_excel(
+                row["load_step_input_file"],
+                [
+                    "materials",
+                    "real_constants",
+                    "solver_settings",
+                    "point_data",
+                    "cell_data",
+                ],
+            )
+
+            self.write_load_step(
+                os.path.join(self.load_steps_folder, f"load_step_{idx + 1}.bin")
+            )
+            print(f"Load step {idx + 1} written to binary file.")
+
+    def _write_label_to_binary(self, binary_file, label):
+        """
+        Writes a specific label to the binary file using the appropriate function.
+
+        Parameters:
+            binary_file (file object): An open binary file stream.
+            label (str): The label to write (e.g., 'time_parameters', 'materials').
+
+        Raises:
+            ValueError: If the label is not recognized or the corresponding data is missing.
+        """
+        if label not in WRITING_FUNCTIONS_MAP:
+            raise ValueError(f"Unrecognized label '{label}'.")
+
+        # Get the function name from the map
+        function_name = WRITING_FUNCTIONS_MAP[label]
+
+        # Call the appropriate function dynamically
+        if label in ["time_parameters", "solver_settings"]:
+            # Write settings dictionaries
+            data = getattr(self, label, None)
+            if data is None:
+                raise ValueError(f"Data for '{label}' is missing.")
+            getattr(self, function_name)(data, binary_file, label)
+        elif label in ["materials", "real_constants"]:
+            # Write DataFrames
+            data = getattr(self, label, None)
+            if data is None:
+                raise ValueError(f"DataFrame for '{label}' is missing.")
+            getattr(self, function_name)(data, binary_file, label)
+        elif label in ["cell_data", "point_data"]:
+            # Write NumPy arrays
+            if label == "cell_data":
+                data = self._get_cell_data_numpy_for_binary()
+            elif label == "point_data":
+                data = self._get_point_data_numpy_for_binary()
+            if data is None:
+                raise ValueError(f"NumPy array for '{label}' is missing.")
+            getattr(self, function_name)(binary_file, data)
+
+    def _write_settings_to_binary(self, settings, binary_file, label):
         """
         Writes a settings dictionary to an open binary file stream.
 
@@ -731,7 +969,7 @@ class APEC_M:
             else:
                 raise ValueError(f"Unsupported value type: {type(value)}")
 
-    def write_dataframe_to_binary(self, df, binary_file, key):
+    def _write_dataframe_to_binary(self, df, binary_file, key):
         """
         Writes a pandas DataFrame to an open binary file stream using predefined types for each column.
 
@@ -754,11 +992,11 @@ class APEC_M:
         """
         # Validate the DataFrame if it is self.materials or self.real_constants
         if df is self.materials:
-            self.validate_dataframe_with_vtk_data(
+            self._validate_dataframe_with_vtk_data(
                 self.mesh.GetCellData(), df, "ansys_material_type"
             )
         elif df is self.real_constants:
-            self.validate_dataframe_with_vtk_data(
+            self._validate_dataframe_with_vtk_data(
                 self.mesh.GetCellData(), df, "ansys_real_constant"
             )
         # Retrieve the column types dictionary
@@ -851,7 +1089,7 @@ class APEC_M:
                         f"Unsupported column type '{column_type}' for column '{column}'."
                     )
 
-    def create_numpy_array_for_binary(self, cell_point_data):
+    def _create_numpy_array_for_binary(self, cell_point_data):
         """
         Creates a NumPy structured array for loads/nodal DOFs from a VTK cell data array.
 
@@ -939,7 +1177,7 @@ class APEC_M:
         # Return an empty array if no data was found
         return np.zeros(0, dtype=dtype)
 
-    def get_cell_data_numpy_for_binary(self):
+    def _get_cell_data_numpy_for_binary(self):
         """
         Retrieves a structured NumPy array for loads using the cell data of the VTK mesh.
 
@@ -950,9 +1188,9 @@ class APEC_M:
         cell_data = self.mesh.GetCellData()
 
         # Call create_numpy_array_for_binary to generate the structured array
-        return self.create_numpy_array_for_binary(cell_data)
+        return self._create_numpy_array_for_binary(cell_data)
 
-    def get_point_data_numpy_for_binary(self):
+    def _get_point_data_numpy_for_binary(self):
         """
         Retrieves a structured NumPy array for boundary conditions using the point data of the VTK mesh.
 
@@ -963,9 +1201,9 @@ class APEC_M:
         point_data = self.mesh.GetPointData()
 
         # Call create_numpy_array_for_binary to generate the structured array
-        return self.create_numpy_array_for_binary(point_data)
+        return self._create_numpy_array_for_binary(point_data)
 
-    def write_numpy_array_to_binary(self, binary_file, numpy_array):
+    def _write_numpy_array_to_binary(self, binary_file, numpy_array):
         """
         Writes a NumPy structured array to an open binary file stream.
 
@@ -985,6 +1223,17 @@ class APEC_M:
         # Write the array data to the file
         binary_file.write(numpy_array.tobytes())
 
+    #
+    #
+    #
+    #
+    #
+    #  Method to plot the model in ParaView
+    #
+    #
+    #
+    #
+    #
     def plot(self):
         """
         Replot the mesh in the active view in Paraview.
@@ -1000,7 +1249,146 @@ class APEC_M:
         Show(producer)
         Render()
 
-    def read_parse_bfelist(self, file_path):
+    #
+    #
+    #
+    #
+    #
+    #  Update the unstructured grid's cell/point data representing the model with a DataFrame as input
+    #
+    #
+    #
+    #
+    #
+    def update_vtk_grid(self, data, df):
+        """
+        Updates the VTK grid's cell data arrays using the DataFrame resulting from `replace_ansys_with_vtk_ids`.
+        The function assigns values to the appropriate components at the corresponding VTK IDs.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing columns 'vtk_id', 'label', 'component', and 'value'.
+        """
+        # Get the distinct load labels
+        loads_bc_labels = df["label"].unique()
+
+        for load_bc_label in loads_bc_labels:
+            # Filter the DataFrame for the current load label
+            load_bc_df = df[df["label"] == load_bc_label]
+
+            # Get the corresponding VTK array
+            vtk_array = data.GetArray(load_bc_label)
+            if vtk_array is None:
+                raise ValueError(f"Array '{load_bc_label}' not found in the VTK file.")
+
+            # Convert the VTK array to a NumPy array
+            vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
+
+            # Reset the array to NaN
+            if vtk_array_np.ndim == 1:
+                # For 1D arrays, reset all values to NaN
+                vtk_array_np[:] = np.nan
+            else:
+                # For multi-dimensional arrays, reset all components to NaN
+                vtk_array_np[:] = np.full(vtk_array_np.shape, np.nan)
+
+            # Check if the NumPy array is 1D
+            if vtk_array_np.ndim == 1:
+                # Iterate over distinct component values
+                for component in load_bc_df["component"].unique():
+                    # Filter rows for the current component
+                    component_mask = load_bc_df["component"] == component
+                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
+                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
+
+                    # Assign values directly to the 1D array
+                    vtk_array_np[vtk_ids] = values
+            else:
+                # Iterate over distinct component values
+                for component in load_bc_df["component"].unique():
+                    # Filter rows for the current component
+                    component_mask = load_bc_df["component"] == component
+                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
+                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
+
+                    # Assign values to the appropriate indices and component
+                    vtk_array_np[vtk_ids, component] = values
+
+            # Convert the NumPy array back to a VTK array
+            vtk_array.Modified()
+
+    #
+    #
+    #
+    #
+    #
+    #  ANSYS files processing functions
+    #
+    #
+    #
+    #
+    #
+    def map_data_to_vtk(self, data, label):
+        """
+        Maps the ANSYS numbers (e.g., element or node numbers) to VTK IDs and returns a 2D NumPy array.
+        This function assumes that the VTK grid has been loaded and contains the specified label.
+
+        Parameters:
+            data (vtk.vtkDataSetAttributes): The VTK data (e.g., CellData or PointData).
+            label (str): The name of the array to map (e.g., "ansys_elem_num" or "ansys_node_num").
+
+        Returns:
+            np.ndarray: A 2D NumPy array where each row contains:
+                        [VTK ID, ANSYS number].
+
+        Raises:
+            ValueError: If the specified label is not found in the provided data.
+        """
+        # Get the array with the specified label
+        vtk_array = data.GetArray(label)
+        if vtk_array is None:
+            raise ValueError(f"Array '{label}' not found in the provided VTK data.")
+
+        # Convert the VTK array to a NumPy array
+        ansys_numbers = vtknp.vtk_to_numpy(vtk_array)
+
+        # Create a 2D NumPy array with VTK IDs and ANSYS numbers
+        vtk_ids = np.arange(len(ansys_numbers))  # VTK IDs are sequential from 0
+        mapping_array = np.column_stack((vtk_ids, ansys_numbers))
+
+        return mapping_array
+
+    def replace_ansys_with_vtk_ids(self, df, mapping_array, label):
+        """
+        Replaces the 'ansys_elem_num' column in the DataFrame with the corresponding VTK ID values
+        using the provided mapping array. The column is renamed to 'vtk_element_id'.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing the 'ansys_elem_num' column.
+            mapping_array (np.ndarray): A 2D NumPy array where each row contains [VTK ID, ANSYS element number].
+
+        Returns:
+            pd.DataFrame: A new DataFrame with the 'ansys_elem_num' column replaced by VTK IDs and renamed to 'vtk_element_id'.
+        """
+        # Extract the 'ansys_elem_num' column as a NumPy array
+        ansys_numbers = df[label].to_numpy()
+
+        # Extract the VTK IDs using NumPy indexing
+        vtk_ids = mapping_array[
+            :, 0
+        ]  # VTK IDs are in the first column of the mapping array
+        ansys_mapping = mapping_array[:, 1]  # ANSYS numbers are in the second column
+
+        vtk_id_array = vtk_ids[np.searchsorted(ansys_mapping, ansys_numbers)]
+
+        # Replace the column in the DataFrame and rename it to 'vtk_element_id'
+        df.insert(
+            0, "vtk_id", vtk_id_array
+        )  # Insert 'vtk_element_id' as the first column
+        df = df.drop(columns=[label])
+
+        return df
+
+    def _read_parse_bfelist(self, file_path):
         """
         Parses element load data from the given file and stores it in a pandas DataFrame.
 
@@ -1065,158 +1453,6 @@ class APEC_M:
         )
         return df
 
-    def map_data_to_vtk(self, data, label):
-        """
-        Maps the ANSYS numbers (e.g., element or node numbers) to VTK IDs and returns a 2D NumPy array.
-        This function assumes that the VTK grid has been loaded and contains the specified label.
-
-        Parameters:
-            data (vtk.vtkDataSetAttributes): The VTK data (e.g., CellData or PointData).
-            label (str): The name of the array to map (e.g., "ansys_elem_num" or "ansys_node_num").
-
-        Returns:
-            np.ndarray: A 2D NumPy array where each row contains:
-                        [VTK ID, ANSYS number].
-
-        Raises:
-            ValueError: If the specified label is not found in the provided data.
-        """
-        # Get the array with the specified label
-        vtk_array = data.GetArray(label)
-        if vtk_array is None:
-            raise ValueError(f"Array '{label}' not found in the provided VTK data.")
-
-        # Convert the VTK array to a NumPy array
-        ansys_numbers = vtknp.vtk_to_numpy(vtk_array)
-
-        # Create a 2D NumPy array with VTK IDs and ANSYS numbers
-        vtk_ids = np.arange(len(ansys_numbers))  # VTK IDs are sequential from 0
-        mapping_array = np.column_stack((vtk_ids, ansys_numbers))
-
-        return mapping_array
-
-    def replace_ansys_with_vtk_ids(self, df, mapping_array, label):
-        """
-        Replaces the 'ansys_elem_num' column in the DataFrame with the corresponding VTK ID values
-        using the provided mapping array. The column is renamed to 'vtk_element_id'.
-
-        Args:
-            df (pd.DataFrame): The DataFrame containing the 'ansys_elem_num' column.
-            mapping_array (np.ndarray): A 2D NumPy array where each row contains [VTK ID, ANSYS element number].
-
-        Returns:
-            pd.DataFrame: A new DataFrame with the 'ansys_elem_num' column replaced by VTK IDs and renamed to 'vtk_element_id'.
-        """
-        # Extract the 'ansys_elem_num' column as a NumPy array
-        ansys_numbers = df[label].to_numpy()
-
-        # Extract the VTK IDs using NumPy indexing
-        vtk_ids = mapping_array[
-            :, 0
-        ]  # VTK IDs are in the first column of the mapping array
-        ansys_mapping = mapping_array[:, 1]  # ANSYS numbers are in the second column
-
-        vtk_id_array = vtk_ids[np.searchsorted(ansys_mapping, ansys_numbers)]
-
-        # Replace the column in the DataFrame and rename it to 'vtk_element_id'
-        df.insert(
-            0, "vtk_id", vtk_id_array
-        )  # Insert 'vtk_element_id' as the first column
-        df = df.drop(columns=[label])
-
-        return df
-
-    def update_vtk_grid(self, data, df):
-        """
-        Updates the VTK grid's cell data arrays using the DataFrame resulting from `replace_ansys_with_vtk_ids`.
-        The function assigns values to the appropriate components at the corresponding VTK IDs.
-
-        Args:
-            df (pd.DataFrame): The DataFrame containing columns 'vtk_id', 'label', 'component', and 'value'.
-        """
-        # Get the distinct load labels
-        loads_bc_labels = df["label"].unique()
-
-        for load_bc_label in loads_bc_labels:
-            # Filter the DataFrame for the current load label
-            load_bc_df = df[df["label"] == load_bc_label]
-
-            # Get the corresponding VTK array
-            vtk_array = data.GetArray(load_bc_label)
-            if vtk_array is None:
-                raise ValueError(f"Array '{load_bc_label}' not found in the VTK file.")
-
-            # Convert the VTK array to a NumPy array
-            vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
-
-            # Reset the array to NaN
-            if vtk_array_np.ndim == 1:
-                # For 1D arrays, reset all values to NaN
-                vtk_array_np[:] = np.nan
-            else:
-                # For multi-dimensional arrays, reset all components to NaN
-                vtk_array_np[:] = np.full(vtk_array_np.shape, np.nan)
-
-            # Check if the NumPy array is 1D
-            if vtk_array_np.ndim == 1:
-                # Iterate over distinct component values
-                for component in load_bc_df["component"].unique():
-                    # Filter rows for the current component
-                    component_mask = load_bc_df["component"] == component
-                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
-                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
-
-                    # Assign values directly to the 1D array
-                    vtk_array_np[vtk_ids] = values
-            else:
-                # Iterate over distinct component values
-                for component in load_bc_df["component"].unique():
-                    # Filter rows for the current component
-                    component_mask = load_bc_df["component"] == component
-                    vtk_ids = load_bc_df.loc[component_mask, "vtk_id"].to_numpy()
-                    values = load_bc_df.loc[component_mask, "value"].to_numpy()
-
-                    # Assign values to the appropriate indices and component
-                    vtk_array_np[vtk_ids, component] = values
-
-            # Convert the NumPy array back to a VTK array
-            vtk_array.Modified()
-
-    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type=None):
-        """
-        Reads a sheet from an Excel file and updates the VTK grid using the data.
-
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
-            data_type (str): The type of VTK data to update ('cell_data' or 'point_data').
-
-        Raises:
-            ValueError: If the data_type is invalid or the sheet does not exist.
-        """
-        # Check if the sheet exists in the Excel file
-        try:
-            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
-        except ValueError:
-            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
-            return
-
-        if data_type is None:
-            data_type = sheet_name
-        # Determine the VTK data type to update
-        if data_type == "cell_data":
-            vtk_data = self.mesh.GetCellData()
-        elif data_type == "point_data":
-            vtk_data = self.mesh.GetPointData()
-        else:
-            raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be 'cell_data' or 'point_data'."
-            )
-
-        # Update the VTK grid with the DataFrame
-        self.update_vtk_grid(vtk_data, df)
-        print(f"VTK grid updated with data from sheet '{sheet_name}'.")
-
     def read_bfelist(self, file_path):
         """
         Combines parsing element load data, mapping ANSYS element numbers to VTK IDs,
@@ -1229,7 +1465,7 @@ class APEC_M:
             str: The label of the load (e.g., "Js").
         """
         # Step 1: Parse the element load data into a DataFrame
-        df = self.read_parse_bfelist(file_path)
+        df = self._read_parse_bfelist(file_path)
 
         # Step 2: Map ANSYS element numbers to VTK IDs
         mapping_array = self.map_data_to_vtk(self.mesh.GetCellData(), "ansys_elem_num")
@@ -1258,11 +1494,11 @@ class APEC_M:
         self.read_bfelist(bfelist_file)
 
         # Write the loads to the Excel file
-        self.write_excel_loads_bcs(output_excel_file, data_type="cell_data")
+        self.write_excel_cell_point_data(output_excel_file, data_type="cell_data")
 
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
-    def read_parse_dlist(self, file_path):
+    def _read_parse_dlist(self, file_path):
         """
         Parses node data from the given file and stores it in a pandas DataFrame.
 
@@ -1336,7 +1572,7 @@ class APEC_M:
             list: A list of variable labels found in the file.
         """
         # Step 1: Parse the node data into a DataFrame
-        df = self.read_parse_dlist(file_path)
+        df = self._read_parse_dlist(file_path)
 
         # Step 2: Map ANSYS node numbers to VTK point IDs
         mapping_array = self.map_data_to_vtk(self.mesh.GetPointData(), "ansys_node_num")
@@ -1365,165 +1601,9 @@ class APEC_M:
         self.read_dlist(dlist_file)
 
         # Write the node data to the Excel file
-        self.write_excel_loads_bcs(output_excel_file, data_type="point_data")
+        self.write_excel_cell_point_data(output_excel_file, data_type="point_data")
 
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
-
-    def read_excel_sheet(self, excel_file, sheet_name):
-        """
-        Processes an Excel sheet by determining the appropriate method to call
-        (read_excel_df, read_excel_dict, or update_vtk_grid_from_excel) based on a global dictionary.
-
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to process.
-
-        Raises:
-            ValueError: If the sheet name is not recognized.
-        """
-
-        # Check if the sheet name is valid
-        if sheet_name not in SHEET_PROCESSING_MAP:
-            raise ValueError(
-                f"Invalid sheet name '{sheet_name}'. Must be one of {list(SHEET_PROCESSING_MAP.keys())}."
-            )
-
-        # Get the processing method or method with additional arguments
-        processing_info = SHEET_PROCESSING_MAP[sheet_name]
-
-        print(f"Reading sheet '{sheet_name}' from '{excel_file}'...")
-        # Call the appropriate method
-        if isinstance(processing_info, str):
-            # Call read_excel_df or read_excel_dict
-            getattr(self, processing_info)(excel_file, sheet_name)
-        elif isinstance(processing_info, tuple):
-            # Call update_vtk_grid_from_excel with additional arguments
-            method_name, data_type = processing_info
-            getattr(self, method_name)(excel_file, sheet_name, data_type)
-
-    def read_excel(
-        self,
-        excel_file_path,
-        data_to_read=list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
-    ):
-        """
-        Reads data from an Excel file and processes it based on the provided labels.
-
-        Parameters:
-            excel_file_path (str): The path to the Excel file.
-            data_to_read (list): A list of data types to read and process.
-        """
-        # Check if the Excel file exists
-        if not os.path.exists(excel_file_path):
-            raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
-
-        # Loop through the data_to_read labels and process each one
-        for label in data_to_read:
-            try:
-                self.read_excel_sheet(excel_file_path, label)
-            except ValueError as e:
-                print(f"Warning: {e}")
-
-    def write_load_step(self, output_file, labels_to_write=None):
-        """
-        Writes the current load step data to a single binary file based on the provided labels.
-
-        Parameters:
-            output_file (str): The path to the output binary file.
-            labels_to_write (list): A list of labels specifying what to write. Defaults to all supported labels.
-        """
-
-        # Default labels to write if none are provided
-        if labels_to_write is None:
-            labels_to_write = list(WRITING_FUNCTIONS_MAP.keys())
-
-        # Open the file in write mode to overwrite if it already exists
-        with open(output_file, "wb") as binary_file:
-            binary_file.write(struct.pack("I", len(labels_to_write)))
-
-            for k, label in enumerate(labels_to_write):
-                try:
-                    # Call the appropriate function based on the label
-                    binary_file.write(struct.pack("I", k))
-                    self._write_label_to_binary(binary_file, label)
-                    print(f"{label.replace('_', ' ').capitalize()} written.")
-                except ValueError as e:
-                    print(f"Warning: {e}")
-
-        print(f"Load step written to '{output_file}'.")
-
-    def _write_label_to_binary(self, binary_file, label):
-        """
-        Writes a specific label to the binary file using the appropriate function.
-
-        Parameters:
-            binary_file (file object): An open binary file stream.
-            label (str): The label to write (e.g., 'time_parameters', 'materials').
-
-        Raises:
-            ValueError: If the label is not recognized or the corresponding data is missing.
-        """
-        if label not in WRITING_FUNCTIONS_MAP:
-            raise ValueError(f"Unrecognized label '{label}'.")
-
-        # Get the function name from the map
-        function_name = WRITING_FUNCTIONS_MAP[label]
-
-        # Call the appropriate function dynamically
-        if label in ["time_parameters", "solver_settings"]:
-            # Write settings dictionaries
-            data = getattr(self, label, None)
-            if data is None:
-                raise ValueError(f"Data for '{label}' is missing.")
-            getattr(self, function_name)(data, binary_file, label)
-        elif label in ["materials", "real_constants"]:
-            # Write DataFrames
-            data = getattr(self, label, None)
-            if data is None:
-                raise ValueError(f"DataFrame for '{label}' is missing.")
-            getattr(self, function_name)(data, binary_file, label)
-        elif label in ["cell_data", "point_data"]:
-            # Write NumPy arrays
-            if label == "cell_data":
-                data = self.get_cell_data_numpy_for_binary()
-            elif label == "point_data":
-                data = self.get_point_data_numpy_for_binary()
-            if data is None:
-                raise ValueError(f"NumPy array for '{label}' is missing.")
-            getattr(self, function_name)(binary_file, data)
-
-    def generate_transient_analysis(
-        self,
-        excel_file_path,
-    ):
-        if not os.path.exists(excel_file_path):
-            raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
-
-        self.read_excel_sheet(excel_file_path, "transient_analysis")
-        print(f"Transient analysis loaded from '{excel_file_path}'.")
-
-        for idx, row in self.transient_analysis.iterrows():
-            # Step 1: Update self.time_parameters with the values from the current row
-            for column in DEFAULT_TIME_PARAMETERS.keys():
-                if column in row:
-                    self.time_parameters[column] = row[column]
-
-            # Check if the file exists before reading
-            self.read_excel(
-                row["load_step_input_file"],
-                [
-                    "materials",
-                    "real_constants",
-                    "solver_settings",
-                    "cell_data",
-                    "point_data",
-                ],
-            )
-
-            self.write_load_step(
-                os.path.join(self.load_steps_folder, f"load_step_{idx + 1}.bin")
-            )
-            print(f"Load step {idx + 1} written to binary file.")
 
 
 # Only execute this block if the script is run directly
