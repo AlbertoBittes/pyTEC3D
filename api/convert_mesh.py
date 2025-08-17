@@ -36,7 +36,7 @@ def process_mesh(file_path):
             del archive.grid.cell_data[array_name]
 
     # Check and remove from point data
-    for array_name in ["origid", "VTKorigID"]:
+    for array_name in ["angles", "origid", "VTKorigID"]:
         if array_name in archive.grid.point_data:
             del archive.grid.point_data[array_name]
 
