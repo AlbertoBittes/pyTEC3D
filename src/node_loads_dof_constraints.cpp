@@ -42,6 +42,8 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
     // Initialize all vectors: copy current to old, set current to NaN
     for (auto &ctx : systems)
     {
+        ctx.old_vec->close();
+        ctx.vec->close();
         *ctx.old_vec = *ctx.vec;
         *ctx.vec = std::numeric_limits<Real>::quiet_NaN();
     }

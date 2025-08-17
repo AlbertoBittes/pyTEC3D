@@ -28,11 +28,12 @@ void GlobalConstraintsObject::constrain()
     ApecMEquationSystems *data_map = node_bc_object->get_data_map();
     ApecMLinearSystem &system = data_map->get_system<ApecMLinearSystem>(this->parent_object->number());
     NumericVector<Number> &node_dof_constraints = *system.request_vector("node_dof_constraints");
+    unsigned int size = node_dof_constraints.size();
     // std::string string_variable_label;
-    for (numeric_index_type k = node_dof_constraints.first_local_index(); k <= node_dof_constraints.last_local_index(); ++k)
+    for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
     {
         Real value = node_dof_constraints(k);
-        if (value != std::numeric_limits<Real>::quiet_NaN())
+        if (!std::isnan(value))
         {
             DofConstraintRow constraint_row;
             dof_map.add_constraint_row(k, constraint_row, value, true);
@@ -57,9 +58,12 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
     NumericVector<Number> &node_dof_constraints = *system.request_vector("node_dof_constraints");
     NumericVector<Number> &old_node_dof_constraints = *system.request_vector("old_node_dof_constraints");
     this->update_boundary_conditions = false;
-    for (numeric_index_type k = node_dof_constraints.first_local_index(); k <= node_dof_constraints.last_local_index(); ++k)
+    for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
     {
-        if (node_dof_constraints(k) != old_node_dof_constraints(k))
+        Real new_val = node_dof_constraints(k);
+        Real old_val = old_node_dof_constraints(k);
+        // If one is NaN and the other is not, or both are not NaN and different
+        if ((std::isnan(new_val) != std::isnan(old_val)) || (!std::isnan(new_val) && !std::isnan(old_val) && new_val != old_val))
         {
             this->update_boundary_conditions = true;
             break;

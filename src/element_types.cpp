@@ -46,8 +46,8 @@ AVElementType::AVElementType(const std::vector<unsigned int> &keyopts)
 void AVElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::B_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_x);
-    variable_info[GlobalVariableName::B_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_y);
+    variable_info[GlobalVariableName::B_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_x);
+    variable_info[GlobalVariableName::B_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_y);
     variable_info[GlobalVariableName::J_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_z);
     variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
     variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
