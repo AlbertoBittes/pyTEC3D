@@ -527,7 +527,6 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     auto eq_sys = this->get_parent_object();
 
-    ApecMSolutionSystem &solution_system = eq_sys->get_system<ApecMSolutionSystem>(sys_name);
     ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
     const MeshBase &mesh = system.get_mesh();

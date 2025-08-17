@@ -6,8 +6,11 @@
 #include <vector>
 #include <utility>
 #include <libmesh/libmesh.h>
+#include <libmesh/enum_fe_family.h>
+#include <libmesh/enum_order.h>
 #include <libmesh/fe.h>
 // Some useful global variables
+using namespace libMesh;
 namespace Globals
 {
     //
@@ -43,8 +46,8 @@ namespace Globals
         VOLT,
         EMF,
         CURR,
-        Js,
         AMPS,
+        Js,
         B,
         J,
         UNKNOWN // Fallback for invalid strings
@@ -53,8 +56,8 @@ namespace Globals
     enum class VariableCategory
     {
         DOFVariables,
-        ElementLoadsVariables,
         NodalLoadsVariables,
+        ElementLoadsVariables,
         NodalSolutionVariables,
         ElementSolutionVariables
     };
@@ -127,11 +130,56 @@ namespace Globals
     extern const double MU_0;
 
     template <typename MapType>
-    const typename MapType::mapped_type &get_info_by_key(const MapType &map, const typename MapType::key_type &key);
+    const typename MapType::mapped_type &get_info_by_key(const MapType &map, const typename MapType::key_type &key)
+    {
+        auto it = map.find(key);
+        if (it == map.end())
+            libmesh_error_msg("Key not found in info map");
+        return it->second;
+    }
+
+    // Usage example
+    // auto info = get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, Globals::GlobalVariableName::A_x);
+    // auto sysinfo = get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::SystemType::MAIN);
+    // auto bcinfo = get_info_by_key(Globals::BOUNDARY_CONDITION_INFO_MAP, Globals::BoundaryConditionType::FLUX_NORMAL);
+
     template <typename MapType, typename Predicate>
-    std::vector<typename MapType::key_type> get_keys_by_predicate(const MapType &map, Predicate pred);
+    std::vector<typename MapType::key_type> get_keys_by_predicate(const MapType &map, Predicate pred)
+    {
+        std::vector<typename MapType::key_type> result;
+        for (const auto &pair : map)
+            if (pred(pair.second))
+                result.push_back(pair.first);
+        return result;
+    }
+    // Usage example
+    // auto keys = get_keys_by_predicate(
+    //     Globals::GLOBAL_VARIABLE_INFO_MAP,
+    //     [](const Globals::VariableInfo &info)
+    //     { return info.api_name == Globals::APIVariableName::A; });
+
+    // // Get all SystemType for a given VariableCategory
+    // auto sys_types = get_keys_by_predicate(
+    //     Globals::SYSTEM_INFO_MAP,
+    //     [](const Globals::SystemInfo &info)
+    //     { return info.category == Globals::VariableCategory::ElementLoadsVariables; });
+
     template <typename MapType, typename Predicate>
-    typename MapType::key_type get_key_by_predicate_one(const MapType &map, Predicate pred);
+    typename MapType::key_type get_key_by_predicate_one(const MapType &map, Predicate pred)
+    {
+        auto keys = get_keys_by_predicate(map, pred);
+        if (keys.size() == 1)
+            return keys[0];
+        libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
+    }
+    // Usage example
+    // // Get GlobalVariableName for API label and component
+    // auto key = get_key_by_predicate_one(
+    //     Globals::GLOBAL_VARIABLE_INFO_MAP,
+    //     [](const Globals::VariableInfo &info)
+    //     {
+    //         return info.api_label == "A" && info.component_index == 2;
+    //     });
 
 }
 

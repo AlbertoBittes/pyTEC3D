@@ -7,6 +7,9 @@
 #include "load_stepper.h"
 #include "inf_elem_builder_updated.h"
 #include "element_types_factory.h"
+#include "solver_configuration.h"
+#include "global_constraints_object.h"
+#include "node_loads_dof_constraints.h"
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/inf_elem_builder.h>
@@ -98,8 +101,8 @@ void SimulationController::set_load_step_data()
     element_builder->update_context_views(element_builder_view);
 
     auto bc_view = std::make_shared<
-        TypedContextView<NodeDOFConstraints, TimeStep>>(
-        TypedContextView<NodeDOFConstraints, TimeStep>::from(
+        TypedContextView<NodeLoadsDOFConstraints, TimeStep>>(
+        TypedContextView<NodeLoadsDOFConstraints, TimeStep>::from(
             load_step));
     auto global_constraints_object = system.get_global_constraints_object();
     global_constraints_object->update_context_views(bc_view);

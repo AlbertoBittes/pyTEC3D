@@ -4,6 +4,13 @@
 #include "load_stepper.h"
 #include "fe_data_object.h"
 #include "apec_m_system_objects.h"
+#include "materials_object.h"
+#include "real_constants_object.h"
+#include "node_loads_dof_constraints.h"
+#include "element_loads_object.h"
+#include "node_loads_dof_constraints.h"
+#include "time_step.h"
+#include "solver_configuration.h"
 
 using namespace libMesh;
 void LoadStep::read_from_file(const std::string &filename)
@@ -16,10 +23,17 @@ void LoadStep::read_from_file(const std::string &filename)
     }
 
     auto *load_stepper = this->get_parent_object();
-    auto eq_sys = load_stepper->get_parent_object();
+    auto raw_eq_sys = static_cast<ApecMEquationSystems *>(load_stepper->get_parent_object());
+    std::shared_ptr<ApecMEquationSystems> eq_sys(raw_eq_sys, [](ApecMEquationSystems *) {}); // aliasing shared_ptr, no ownership
+
     ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    ApecMLoadsSystem &loads_sys = eq_sys->get_system<ApecMLoadsSystem>("ElementLoadsSystem");
-    auto shared_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&loads_sys, [](ApecMLoadsSystem *) {});
+
+    // ApecMLoadsSystem &node_loads_sys = eq_sys->get_system<ApecMLoadsSystem>("NodeLoadsSystem");
+    // auto shared_node_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&node_loads_sys, [](ApecMLoadsSystem *) {});
+
+    ApecMLoadsSystem &element_loads_sys = eq_sys->get_system<ApecMLoadsSystem>("ElementLoadsSystem");
+    auto shared_element_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&element_loads_sys, [](ApecMLoadsSystem *) {});
+
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
     std::shared_ptr<LoadStep> prev_load_step = load_stepper->old_context<LoadStep>();
@@ -58,11 +72,11 @@ void LoadStep::read_from_file(const std::string &filename)
         case LoadStepObjectType::REAL_CONSTANTS_OBJECT:
             set_object(std::make_shared<RealConstantsObject>(file));
             break;
-        case LoadStepObjectType::element_loads_object:
-            set_object(std::make_shared<ElementLoadsObject>(file, shared_loads_sys));
+        case LoadStepObjectType::NODE_LOADS_DOF_CONSTRAINTS_OBJECT:
+            set_object(std::make_shared<NodeLoadsDOFConstraints>(file, eq_sys));
             break;
-        case LoadStepObjectType::NODE_BC_OBJECT:
-            set_object(std::make_shared<NodeDOFConstraints>(file));
+        case LoadStepObjectType::ELEMENT_LOADS_OBJECT:
+            set_object(std::make_shared<ElementLoadsObject>(file, shared_element_loads_sys));
             break;
         default:
             libmesh_error_msg("Invalid load step binary file: unknown type_id " + std::to_string(type_id));

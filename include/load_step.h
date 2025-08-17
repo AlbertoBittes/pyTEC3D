@@ -5,12 +5,6 @@
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
 #include "fem_data_repository.h"
-#include "materials_object.h"
-#include "element_loads_object.h"
-#include "real_constants_object.h"
-#include "node_dof_constraints.h"
-#include "time_step.h"
-#include "solver_configuration.h"
 
 class LoadStepper;
 
@@ -27,9 +21,8 @@ public:
         PETSC_SOLVER_CONFIG,
         MATERIALS_OBJECT,
         REAL_CONSTANTS_OBJECT,
-        ELEMENT_LOADS_OBJECT,
-        NODAL_LOADS_OBJECT,
-        NODE_BC_OBJECT
+        NODE_LOADS_DOF_CONSTRAINTS_OBJECT,
+        ELEMENT_LOADS_OBJECT
     };
     // Default constructor
     LoadStep(LoadStepper *load_stepper = nullptr)

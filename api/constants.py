@@ -189,8 +189,8 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
-    "cell_data": CELL_POINT_DATA_COLUMNS_TYPES,
     "point_data": CELL_POINT_DATA_COLUMNS_TYPES,
+    "cell_data": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
 }
 
@@ -201,8 +201,8 @@ SHEET_PROCESSING_MAP = {
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
-    "cell_data": ("update_vtk_grid_from_excel", "cell_data"),
     "point_data": ("update_vtk_grid_from_excel", "point_data"),
+    "cell_data": ("update_vtk_grid_from_excel", "cell_data"),
     "transient_analysis": "read_excel_df",
 }
 
@@ -211,14 +211,16 @@ WRITING_FUNCTIONS_MAP = {
     "solver_settings": "write_settings_to_binary",
     "materials": "write_dataframe_to_binary",
     "real_constants": "write_dataframe_to_binary",
-    "cell_data": "write_numpy_array_to_binary",
     "point_data": "write_numpy_array_to_binary",
+    "cell_data": "write_numpy_array_to_binary",
 }
 
 VTK_ARRAYS_TO_INIT = {
     "Js":      {"location": "cell",  "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "A":       {"location": "point", "components": 3, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "VOLT":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "EMF":     {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
+    "CURR":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "AMPS":    {"location": "point", "components": 1, "fill": np.nan, "dtype": vtk.VTK_DOUBLE},
     "infinite_boundary": {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},
     "flux_normal":       {"location": "point", "components": 1, "fill": 0, "dtype": vtk.VTK_INT},

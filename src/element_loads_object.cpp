@@ -9,6 +9,7 @@ void ElementLoadsObject::read_data(std::ifstream &file)
     data_map->old_local_solution->close();
     data_map->current_local_solution->close();
     *data_map->old_local_solution = *data_map->current_local_solution;
+    data_map->current_local_solution->zero();
     // Use dof_id_type (uint32_t) for binary I/O
     dof_id_type num_loads = 0;
     file.read(reinterpret_cast<char *>(&num_loads), sizeof(dof_id_type));
@@ -17,8 +18,6 @@ void ElementLoadsObject::read_data(std::ifstream &file)
         libmesh_error_msg("Error: Failed to read the number of loads from the binary stream.");
     }
 
-    std::string load_label_api;
-    std::string load_label_global;
     unsigned int sys_number = data_map->number();
     const MeshBase &mesh = data_map->get_mesh();
     dof_id_type dof_id;
@@ -38,10 +37,15 @@ void ElementLoadsObject::read_data(std::ifstream &file)
         // Map the load label number to the corresponding API enum
         Globals::APIVariableName api_var_enum = static_cast<Globals::APIVariableName>(static_cast<unsigned int>(load_label_number));
 
-        // Use the map to get the global variable string
-        const auto &global_vars = Globals::API_TO_GLOBAL_VARIABLE_MAP.at(api_var_enum);
-        load_label_global = global_vars[static_cast<unsigned int>(component_number)];
-        unsigned int var_num_sys = data_map->variable_number(load_label_global);
+        Globals::GlobalVariableName load_label_global = Globals::get_key_by_predicate_one(
+            Globals::GLOBAL_VARIABLE_INFO_MAP,
+            [api_var_enum, component_number](const Globals::VariableInfo &info)
+            {
+                return info.api_name == api_var_enum && info.component_index == static_cast<unsigned int>(component_number);
+            });
+        unsigned int var_num_sys = data_map->variable_number(
+            Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, load_label_global).global_label);
+
         const Elem *elem_ptr = mesh.query_elem_ptr(static_cast<unsigned int>(element_number));
 
         if (!elem_ptr)
