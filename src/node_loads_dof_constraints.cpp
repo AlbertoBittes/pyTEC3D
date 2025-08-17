@@ -2,6 +2,7 @@
 #include "apec_m_system_objects.h"
 #include <libmesh/numeric_vector.h>
 #include <libmesh/node.h>
+#include <libmesh/dof_map.h>
 #include "globals.h"
 
 using namespace libMesh;
@@ -12,6 +13,7 @@ struct SystemDataRepo
     NumericVector<Number> *vec;
     NumericVector<Number> *old_vec;
     Globals::SystemInfo *system_info; // pointer to system_info attribute
+    Real initial_val;
 };
 
 void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
@@ -27,7 +29,8 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
         systems.push_back({system->number(),
                            system->request_vector("node_dof_constraints"),
                            system->request_vector("old_node_dof_constraints"),
-                           &system->system_info});
+                           &system->system_info,
+                           std::numeric_limits<Real>::quiet_NaN()});
     }
 
     // Nodal loads system
@@ -36,7 +39,8 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
         systems.push_back({nodal_loads_system->number(),
                            nodal_loads_system->current_local_solution.get(),
                            nodal_loads_system->old_local_solution,
-                           &nodal_loads_system->system_info});
+                           &nodal_loads_system->system_info,
+                           0});
     }
 
     // Initialize all vectors: copy current to old, set current to NaN
@@ -45,7 +49,7 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
         ctx.old_vec->close();
         ctx.vec->close();
         *ctx.old_vec = *ctx.vec;
-        *ctx.vec = std::numeric_limits<Real>::quiet_NaN();
+        *ctx.vec = ctx.initial_val; // Set current vector to NaN or initial value
     }
 
     dof_id_type num_cell_data = 0;
@@ -63,6 +67,7 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
     std::string cached_variable_label;
     unsigned int cached_var_num = 0;
     unsigned int cached_sys_number = 0;
+    std::vector<dof_id_type> dof_indices;
 
     for (dof_id_type i = 0; i < num_cell_data; ++i)
     {
@@ -123,6 +128,7 @@ void NodeLoadsDOFConstraints::read_data(std::ifstream &file)
             {
                 // Use cached_var_num and cached_sys_number
                 dof_id_type dof_id = node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
+                // ctx.dof_map->dof_indices(node_ptr, dof_indices, cached_var_num);
                 ctx.vec->set(dof_id, load_value);
                 break;
             }

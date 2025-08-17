@@ -129,8 +129,7 @@ void ElementBuilder::build_solid97()
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
         //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         for (unsigned int k = 0; k < 3; k++)
-        //             Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+        //         Fe(dof_i + 3 * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
         break;
     }
     default:
@@ -310,7 +309,21 @@ void ElementBuilder::build_solid97_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        // Here you will need to implement loads with F
+        auto &Fe = this->vectors[0][0];
+
+        unsigned int n_dofs_var = elem_data.elem->n_nodes();
+
+        std::vector<dof_id_type> dof_indices_amps;
+        std::vector<Real> amps;
+        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_amps);
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_amps, amps);
+
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Fe(dof_i + 3 * n_dofs_var) = amps[dof_i];
+
+        for (dof_id_type &dof_value : dof_indices_amps)
+            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
         break;
     }
     default:

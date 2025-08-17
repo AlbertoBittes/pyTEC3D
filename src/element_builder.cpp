@@ -270,6 +270,9 @@ void ElementBuilder::set_elem_builder_misc_data()
         elem_builder_misc_data.element_loads_object = this->context<ElementLoadsObject>();
         elem_builder_misc_data.loads_map = elem_builder_misc_data.element_loads_object ? elem_builder_misc_data.element_loads_object->get_data_map() : nullptr;
 
+        elem_builder_misc_data.nodal_loads_map = &this->get_parent_object()->get_system<ApecMLoadsSystem>("NodalLoadsSystem");
+        elem_builder_misc_data.dof_map_nodal_loads = &elem_builder_misc_data.nodal_loads_map->get_dof_map();
+
         elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
 
         elem_builder_misc_data.boundary_info = &(elem_builder_misc_data.loads_map->get_mesh().get_boundary_info());
@@ -336,8 +339,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
         std::filesystem::path new_rhs_path = emat_folderpath / ("rhs_" + rank_str + "_prev.temp");
         std::filesystem::rename(rhs_path, new_rhs_path);
     }
-
-    std::vector<dof_id_type> dof_indices;
 
     if (recompute_matrix)
     {
@@ -587,8 +588,6 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     auto element_types = this->context<ElementTypesFactory>();
 
-    std::vector<dof_id_type> dof_indices;
-
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.
@@ -700,7 +699,6 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
         unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
         // solution_vector_support.var_nums.push_back(system_var_num);
 
-        std::vector<dof_id_type> dof_indices;
         main_dof_map->dof_indices(elem_data.elem, dof_indices, system_var_num);
         // solution_vector_support.dof_indices_var.push_back(dof_indices);
 

@@ -285,6 +285,16 @@ void SOLID97Type::set_variable_info()
         variable_info[GlobalVariableName::CURR].is_active = true;
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
+
+    if (physical_region != STRANDED_CONDUCTOR)
+    {
+        variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x), variable_info[GlobalVariableName::Js_x].is_active = false;
+        variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y), variable_info[GlobalVariableName::Js_y].is_active = false;
+        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z), variable_info[GlobalVariableName::Js_z].is_active = false;
+    }
+
+    if (physical_region != SOLID_CONDUCTOR)
+        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS), variable_info[GlobalVariableName::AMPS].is_active = false;
 }
 
 void SOLID97Type::set_fe_array()
@@ -389,6 +399,14 @@ void PLANE13Type::set_variable_info()
         variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
     if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
         variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR), variable_info[GlobalVariableName::CURR].is_active = true;
+
+    if (physical_region != STRANDED_CONDUCTOR)
+    {
+        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z), variable_info[GlobalVariableName::Js_z].is_active = false;
+    }
+
+    if (physical_region != SOLID_CONDUCTOR && physical_region != STRANDED_COIL)
+        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS), variable_info[GlobalVariableName::AMPS].is_active = false;
 }
 
 void PLANE13Type::set_fe_array() {};

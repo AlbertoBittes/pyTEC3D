@@ -52,7 +52,10 @@ struct MiscData
     std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr;     // Pointer to ElementLoadsObject
     std::shared_ptr<ElementLoadsObject> old_element_loads_object = nullptr; // Pointer to ElementLoadsObject
     ApecMLoadsSystem *loads_map = nullptr;                                  // Pointer to ApecMLoadsSystem
-    BoundaryInfo *boundary_info = nullptr;                                  // Pointer to BoundaryInfo
+
+    ApecMLoadsSystem *nodal_loads_map = nullptr;
+    DofMap *dof_map_nodal_loads = nullptr;
+    BoundaryInfo *boundary_info = nullptr; // Pointer to BoundaryInfo
     // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
     unsigned int loads_sys_number = 0; // System number for loads
     unsigned int jsx_var_num = 0;
@@ -165,8 +168,9 @@ private:
     // Idx 3: Element solution vectors (J, ...)
     // Idx 4: Other support vectors
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
-    ElemData elem_data;                                    // Element data structure
-    MeshDataIndex mesh_data_index;                         // Mesh data structure
+    std::vector<dof_id_type> dof_indices;
+    ElemData elem_data;            // Element data structure
+    MeshDataIndex mesh_data_index; // Mesh data structure
     SolutionVectorSupport solution_vector_support;
     const DofMap *main_dof_map = nullptr;
     ApecMLinearSystem *main_sys = nullptr; // Main system and dof map pointers
