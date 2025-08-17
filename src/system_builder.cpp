@@ -77,8 +77,6 @@ void SystemBuilder::init_variables()
             continue; // Skip if variable info not found
 
         Globals::VariableInfo &data = it->second;
-        if (!data.is_active)
-            continue; // Skip inactive variables
 
         // Add the variable to the system, specifying subdomains
         system->add_variable(

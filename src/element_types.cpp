@@ -17,7 +17,7 @@ void ElementType::set_active_dof_vars_size()
     for (const auto &pair : variable_info)
     {
         const auto &var_data = pair.second;
-        if (var_data.is_active && var_data.category == VariableCategory::DOFVariables)
+        if (var_data.category == VariableCategory::DOFVariables)
             ++active_dof_vars_size;
     }
 }
@@ -49,8 +49,6 @@ void AVElementType::set_variable_info()
     variable_info[GlobalVariableName::B_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_x);
     variable_info[GlobalVariableName::B_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_y);
     variable_info[GlobalVariableName::J_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_z);
-    variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
-    variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
 }
 
 void AVElementType::set_fe_array() {};
@@ -65,7 +63,7 @@ AV2DElementType::AV2DElementType(const std::vector<unsigned int> &keyopts) : AVE
 void AV2DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
-    variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
+    variable_info[GlobalVariableName::CSG_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_z);
 }
 
 void AV2DElementType::set_fe_array()
@@ -166,10 +164,6 @@ void AV3DElementType::set_variable_info()
     variable_info[GlobalVariableName::B_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_z);
     variable_info[GlobalVariableName::J_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_x);
     variable_info[GlobalVariableName::J_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_y);
-    variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
-    variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF);
-    variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x);
-    variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y);
 }
 
 void AV3DElementType::set_fe_array()
@@ -277,24 +271,32 @@ void SOLID97Type::set_variable_info()
     variable_info[GlobalVariableName::A_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_x);
     variable_info[GlobalVariableName::A_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_y);
     variable_info[GlobalVariableName::A_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_z);
-    variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR);
+
+    variable_info[GlobalVariableName::CSG_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_x);
+    variable_info[GlobalVariableName::CSG_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_y);
+    variable_info[GlobalVariableName::CSG_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_z);
 
     if (physical_region == SOLID_CONDUCTOR || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT), variable_info[GlobalVariableName::VOLT].is_active = true;
-    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED)
-        variable_info[GlobalVariableName::CURR].is_active = true;
-    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
-
-    if (physical_region != STRANDED_CONDUCTOR)
     {
-        variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x), variable_info[GlobalVariableName::Js_x].is_active = false;
-        variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y), variable_info[GlobalVariableName::Js_y].is_active = false;
-        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z), variable_info[GlobalVariableName::Js_z].is_active = false;
+        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
+        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
     }
-
-    if (physical_region != SOLID_CONDUCTOR)
-        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS), variable_info[GlobalVariableName::AMPS].is_active = false;
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED)
+    {
+        variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR);
+        variable_info[GlobalVariableName::VLTG] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VLTG);
+    }
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
+    {
+        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF);
+        variable_info[GlobalVariableName::CURT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURT);
+    }
+    if (physical_region == STRANDED_CONDUCTOR)
+    {
+        variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x);
+        variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y);
+        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
+    }
 }
 
 void SOLID97Type::set_fe_array()
@@ -392,21 +394,27 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 void PLANE13Type::set_variable_info()
 {
     variable_info[GlobalVariableName::A_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::A_z);
+    variable_info[GlobalVariableName::CSG_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_z);
 
     if (physical_region == STRANDED_COIL)
-        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT), variable_info[GlobalVariableName::VOLT].is_active = true;
-    if (physical_region == STRANDED_COIL || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF), variable_info[GlobalVariableName::EMF].is_active = true;
-    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR), variable_info[GlobalVariableName::CURR].is_active = true;
-
-    if (physical_region != STRANDED_CONDUCTOR)
     {
-        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z), variable_info[GlobalVariableName::Js_z].is_active = false;
+        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
+        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
     }
-
-    if (physical_region != SOLID_CONDUCTOR && physical_region != STRANDED_COIL)
-        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS), variable_info[GlobalVariableName::AMPS].is_active = false;
+    if (physical_region == STRANDED_COIL || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
+    {
+        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF);
+        variable_info[GlobalVariableName::CURT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURT);
+    }
+    if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED || physical_region == STRANDED_COIL_VOLTAGE_FED || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
+    {
+        variable_info[GlobalVariableName::CURR] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURR);
+        variable_info[GlobalVariableName::VLTG] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VLTG);
+    }
+    if (physical_region == STRANDED_CONDUCTOR)
+    {
+        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
+    }
 }
 
 void PLANE13Type::set_fe_array() {};

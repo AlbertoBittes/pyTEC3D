@@ -281,6 +281,17 @@ void ElementBuilder::build_solid97_rhs()
     // computation separately.
     //
     // Now start logging the element matrix computation
+    auto &Fe = this->vectors[0][0];
+
+    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+
+    std::vector<dof_id_type> dof_indices_nodal_loads;
+    std::vector<Real> nodal_loads;
+    elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_nodal_loads);
+    elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_nodal_loads, nodal_loads);
+
+    for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
+        Fe(dof_i) = nodal_loads[dof_i];
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -288,10 +299,6 @@ void ElementBuilder::build_solid97_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &Fe = this->vectors[0][0];
-
-        unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
         Real js[3];
 
         dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
@@ -309,19 +316,12 @@ void ElementBuilder::build_solid97_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        auto &Fe = this->vectors[0][0];
-
-        unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
-        std::vector<dof_id_type> dof_indices_amps;
-        std::vector<Real> amps;
-        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_amps);
-        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_amps, amps);
-
+        unsigned int volt_var_num = main_sys->variable_number("VOLT");
+        unsigned int amp_var_num = main_sys->variable_number("AMPS");
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i + 3 * n_dofs_var) = amps[dof_i];
+            Fe(dof_i + volt_var_num * n_dofs_var) = nodal_loads[dof_i + amp_var_num * n_dofs_var];
 
-        for (dof_id_type &dof_value : dof_indices_amps)
+        for (dof_id_type &dof_value : dof_indices_nodal_loads)
             elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
 
         break;
@@ -329,6 +329,11 @@ void ElementBuilder::build_solid97_rhs()
     default:
         libmesh_error_msg("Physical region not implemented");
     }
+
+    for (dof_id_type &dof_value : dof_indices_nodal_loads)
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
+    return;
 }
 
 void ElementBuilder::build_solid97_nodal_solution_vector()

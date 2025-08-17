@@ -178,6 +178,19 @@ void ElementBuilder::build_plane13_rhs()
     //
     // Now start logging the element matrix computation
 
+    // SOmeway you could optimize this by skipping this, is very useles and very rarely used
+    auto &Fe = this->vectors[0][0];
+
+    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+
+    std::vector<dof_id_type> dof_indices_nodal_loads;
+    std::vector<Real> nodal_loads;
+    elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_nodal_loads);
+    elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_nodal_loads, nodal_loads);
+
+    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        Fe(dof_i) = nodal_loads[dof_i];
+
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
@@ -200,12 +213,16 @@ void ElementBuilder::build_plane13_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        // Here you will need to implement loads with F
         break;
     }
     default:
         libmesh_error_msg("Physical region not implemented");
     }
+
+    for (dof_id_type &dof_value : dof_indices_nodal_loads)
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
+    return;
 }
 
 void ElementBuilder::build_plane13_nodal_solution_vector()

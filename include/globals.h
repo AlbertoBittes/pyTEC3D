@@ -29,8 +29,12 @@ namespace Globals
         Js_x,
         Js_y,
         Js_z,
+        CSG_x,
+        CSG_y,
+        CSG_z,
         AMPS,
-        CSGZ,
+        VLTG,
+        CURT,
         B_x,
         B_y,
         B_z,
@@ -48,8 +52,10 @@ namespace Globals
         VOLT,
         EMF,
         CURR,
+        CSG,
         AMPS,
-        CSGZ,
+        VLTG,
+        CURT,
         Js,
         B,
         J,
@@ -75,7 +81,6 @@ namespace Globals
         FEFamily fe_family;
         Order order;
         unsigned int component_index;
-        bool is_active;
         unsigned int system_var_num;
         // Add other fields as needed
     };

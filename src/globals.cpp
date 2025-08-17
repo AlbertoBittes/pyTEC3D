@@ -11,32 +11,36 @@ namespace Globals
 {
     const std::unordered_map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP = {
         // DOF Variables
-        {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, VariableCategory::DOFVariables, "A_x", "A", LAGRANGE, FIRST, 0, true, 0}},
-        {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, VariableCategory::DOFVariables, "A_y", "A", LAGRANGE, FIRST, 1, true, 0}},
-        {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, VariableCategory::DOFVariables, "A_z", "A", LAGRANGE, FIRST, 2, true, 0}},
-        {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, false, 0}},
-        {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, true, 0}},
-        {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, VariableCategory::DOFVariables, "EMF", "EMF", LAGRANGE, FIRST, 0, false, 0}},
-        {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, VariableCategory::DOFVariables, "CURR", "CURR", LAGRANGE, FIRST, 0, false, 0}},
+        {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, VariableCategory::DOFVariables, "A_x", "A", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, VariableCategory::DOFVariables, "A_y", "A", LAGRANGE, FIRST, 1, 0}},
+        {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, VariableCategory::DOFVariables, "A_z", "A", LAGRANGE, FIRST, 2, 0}},
+        {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, VariableCategory::DOFVariables, "EMF", "EMF", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, VariableCategory::DOFVariables, "CURR", "CURR", LAGRANGE, FIRST, 0, 0}},
 
         // Nodal Loads Variables
-        {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, VariableCategory::NodalLoadsVariables, "AMPS", "AMPS", LAGRANGE, FIRST, 0, true, 0}},
-        {GlobalVariableName::CSGZ, {GlobalVariableName::CSGZ, APIVariableName::CSGZ, VariableCategory::NodalLoadsVariables, "CSGZ", "CSGZ", LAGRANGE, FIRST, 0, true, 0}},
+        {GlobalVariableName::CSG_x, {GlobalVariableName::CSG_x, APIVariableName::CSG, VariableCategory::NodalLoadsVariables, "CSG_x", "CSG", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::CSG_y, {GlobalVariableName::CSG_y, APIVariableName::CSG, VariableCategory::NodalLoadsVariables, "CSG_y", "CSG", LAGRANGE, FIRST, 1, 0}},
+        {GlobalVariableName::CSG_z, {GlobalVariableName::CSG_z, APIVariableName::CSG, VariableCategory::NodalLoadsVariables, "CSG_z", "CSG", LAGRANGE, FIRST, 2, 0}},
+        {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, VariableCategory::NodalLoadsVariables, "AMPS", "AMPS", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::VLTG, {GlobalVariableName::VLTG, APIVariableName::VLTG, VariableCategory::NodalLoadsVariables, "VLTG", "VLTG", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::CURT, {GlobalVariableName::CURT, APIVariableName::CURT, VariableCategory::NodalLoadsVariables, "CURT", "CURT", LAGRANGE, FIRST, 0, 0}},
 
         // Element Loads Variables
-        {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_x", "Js", MONOMIAL, CONSTANT, 0, true, 0}},
-        {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_y", "Js", MONOMIAL, CONSTANT, 1, true, 0}},
-        {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_z", "Js", MONOMIAL, CONSTANT, 2, true, 0}},
+        {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_x", "Js", MONOMIAL, CONSTANT, 0, 0}},
+        {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_y", "Js", MONOMIAL, CONSTANT, 1, 0}},
+        {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, VariableCategory::ElementLoadsVariables, "Js_z", "Js", MONOMIAL, CONSTANT, 2, 0}},
 
         // Nodal Solution Variables
-        {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_x", "B", L2_LAGRANGE, FIRST, 0, true, 0}},
-        {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_y", "B", L2_LAGRANGE, FIRST, 1, true, 0}},
-        {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_z", "B", L2_LAGRANGE, FIRST, 2, true, 0}},
+        {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_x", "B", L2_LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_y", "B", L2_LAGRANGE, FIRST, 1, 0}},
+        {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_z", "B", L2_LAGRANGE, FIRST, 2, 0}},
 
         // Element Solution Variables
-        {GlobalVariableName::J_x, {GlobalVariableName::J_x, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_x", "J", MONOMIAL, CONSTANT, 0, true, 0}},
-        {GlobalVariableName::J_y, {GlobalVariableName::J_y, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_y", "J", MONOMIAL, CONSTANT, 1, true, 0}},
-        {GlobalVariableName::J_z, {GlobalVariableName::J_z, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_z", "J", MONOMIAL, CONSTANT, 2, true, 0}}};
+        {GlobalVariableName::J_x, {GlobalVariableName::J_x, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_x", "J", MONOMIAL, CONSTANT, 0, 0}},
+        {GlobalVariableName::J_y, {GlobalVariableName::J_y, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_y", "J", MONOMIAL, CONSTANT, 1, 0}},
+        {GlobalVariableName::J_z, {GlobalVariableName::J_z, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_z", "J", MONOMIAL, CONSTANT, 2, 0}}};
 
     const double MU_0 = pi * 4.0 * 1e-7;                // 4 * pi constant
     const boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition

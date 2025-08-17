@@ -77,7 +77,7 @@ public:
             const Globals::GlobalVariableName &var_name = pair.first;
             const Globals::VariableInfo &var_data = pair.second;
 
-            if (var_data.category == variable_cat && var_data.is_active)
+            if (var_data.category == variable_cat)
             {
                 active_vars.push_back(var_name);
             }
