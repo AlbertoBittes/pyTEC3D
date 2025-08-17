@@ -25,6 +25,7 @@ public:
     // Switch pointers and read a new LoadStep, updating context views
     void read_new_load_step(const std::string &filename)
     {
+        std::swap(this->ctx_view, this->old_ctx_view);
         // Create and load the new LoadStep
         auto new_load_step = std::make_shared<LoadStep>(this);
         new_load_step->read_from_file(filename);
@@ -37,7 +38,7 @@ public:
         auto new_view = std::make_shared<ContextView>(ContextView::from(temp_repo));
 
         // Update context views
-        this->update_context_views(new_view);
+        this->ctx_view = new_view;
 
         // Update the load step index
         load_step_index++;

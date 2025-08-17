@@ -45,12 +45,13 @@ public:
 
     void print_solve_msg() const
     {
-        libMesh::out << "Substep: " << get_index() + 1
-                     << ", Time: " << get_time()
-                     << ", dt: " << get_dt()
-                     << ", Write Results: " << get_write_results()
-                     << ", Transient Effect: " << get_transient_effect()
-                     << std::endl;
+        libMesh::out << "Substep: " << get_index() + 1 << std::endl
+                     << "Time: " << get_time() << std::endl
+                     << "dt: " << get_dt() << std::endl
+                     << "Write Results: " << get_write_results() << std::endl
+                     << "Transient Effect: " << get_transient_effect() << std::endl
+                     << "Ramped Load: " << get_ramped_load() << std::endl
+                     << "Theta: " << get_theta() << std::endl;
     }
 
 private:

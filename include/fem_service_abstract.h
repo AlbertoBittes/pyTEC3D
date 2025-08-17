@@ -54,7 +54,7 @@ public:
     // Update both: current becomes old, new_view becomes current
     void update_context_views(std::shared_ptr<ContextView> new_view)
     {
-        old_ctx_view = this->ctx_view;
+        std::swap(this->ctx_view, old_ctx_view);
         this->ctx_view = new_view;
     }
 
