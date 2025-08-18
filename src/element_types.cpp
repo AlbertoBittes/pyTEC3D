@@ -29,7 +29,7 @@ void ElementType::set_variables_order()
         {
             if (pair.second.category == VariableCategory::DOFVariables ||
                 pair.second.category == VariableCategory::NodalSolutionVariables ||
-                pair.second.category == VariableCategory::ElementSolutionVariables)
+                pair.second.category == VariableCategory::NodalLoadsVariables)
             {
                 pair.second.order = order;
             }

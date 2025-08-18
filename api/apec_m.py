@@ -66,6 +66,8 @@ class APEC_M:
         self.process = None
         self.num_processors = 1
 
+        self.selection = {"point_data": np.array([], dtype=int), "cell_data": np.array([], dtype=int)}
+
     #
     #
     #
@@ -1614,6 +1616,58 @@ class APEC_M:
 
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
+    def select_ids_by_array_value(self, array_name, value, component=0, cell_or_point="point_data"):
+        """
+        Selects cell/point IDs where the specified array's component equals the given value.
+        Stores the selection in self.selection as a dict with keys 'cell_data' and 'point_data'.
+
+        Args:
+
+            array_name (str): Name of the array to search
+            value (float/int): Value to match
+            component (int): Component index
+            cell_or_point (str): 'cell_data' or 'point_data'
+        """
+        data = self.mesh.GetCellData() if cell_or_point == "cell_data" else self.mesh.GetPointData()
+        vtk_array = data.GetArray(array_name)
+        if vtk_array is None:
+            raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
+        arr_np = vtknp.vtk_to_numpy(vtk_array)
+        if arr_np.ndim == 1:
+            mask = arr_np == value
+            selected_ids = np.where(mask)[0]
+        else:
+            mask = arr_np[:, component] == value
+            selected_ids = np.where(mask)[0]
+        if not hasattr(self, "selection"):
+            self.selection = {"cell_data": np.array([], dtype=int), "point_data": np.array([], dtype=int)}
+        self.selection[cell_or_point] = selected_ids
+
+    def set_array_value_by_selection(self, array_name, value, component=0, cell_or_point="point_data"):
+        """
+        Sets the specified array's component to the given value for all selected IDs in self.selection.
+
+        Args:
+            array_name (str): Name of the array to modify
+            value (float/int): Value to set
+            component (int): Component index
+            cell_or_point (str): 'cell_data' or 'point_data'
+        """
+        data = self.mesh.GetCellData() if cell_or_point == "cell_data" else self.mesh.GetPointData()
+        vtk_array = data.GetArray(array_name)
+        if vtk_array is None:
+            raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
+        arr_np = vtknp.vtk_to_numpy(vtk_array)
+        selected_ids = getattr(self, "selection", {}).get(cell_or_point, np.array([], dtype=int))
+        if arr_np.ndim == 1:
+            arr_np[selected_ids] = value
+        else:
+            arr_np[selected_ids, component] = value
+        vtk_array.Modified()
+
+    # Example usage:
+    # apec.select_ids_by_array_value("point_data", "X_BOUNDS_1", 0, 1)
+    # apec.set_array_value_by_selection("point_data", "A", 0, 0)
 
 # Only execute this block if the script is run directly
 if __name__ == "__main__":
