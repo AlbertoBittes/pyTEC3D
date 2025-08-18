@@ -260,7 +260,7 @@ class TreeGaugeHelper:
         return mask
 
     @staticmethod
-    def add_midside_mask_array(ugrid, array_name="MidsideMask"):
+    def add_midside_mask_array(ugrid, array_name="MidsideNodes"):
         """
         Adds an array to the unstructured grid with 1 on midside nodes, 0 on corner nodes.
         The mask is determined by the cell types and VTK quadratic element conventions.

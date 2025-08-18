@@ -234,8 +234,8 @@ class APEC_M:
         point_data = self.mesh.GetPointData()
         if point_data.HasArray("selection_point"):
             point_data.RemoveArray("selection_point")
-        if point_data.HasArray("MidsideMask"):
-            point_data.RemoveArray("MidsideMask")
+        if point_data.HasArray("MidsideNodes"):
+            point_data.RemoveArray("MidsideNodes")
         # Remove cell centroids array if present
         if cell_data.HasArray("cell_centroids"):
             cell_data.RemoveArray("cell_centroids")
