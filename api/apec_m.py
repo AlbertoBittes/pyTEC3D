@@ -66,11 +66,6 @@ class APEC_M:
         self.process = None
         self.num_processors = 1
 
-        self.selection = {
-            "point_data": np.array([], dtype=int),
-            "cell_data": np.array([], dtype=int),
-        }
-
     #
     #
     #
@@ -112,6 +107,9 @@ class APEC_M:
         self._initialize_vtk_arrays()
 
         self._ensure_selection_arrays()
+
+        self.compute_and_store_cell_centroids()
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -1661,7 +1659,12 @@ class APEC_M:
         self, array_name, value, component=0, cell_or_point="point_data", mode="s"
     ):
         """
-        Selects cell/point IDs where the specified array's component equals the given value.
+        Selects cell/point IDs where the specified array's component matches the given value(s).
+        Supports:
+            - Single value (equality)
+            - Range (tuple of two values, inclusive)
+            - Set of values (membership)
+            - Magnitude (for multi-component arrays, use component='magnitude')
         Selection is stored as a mask array (0/1) in the VTK grid.
         Modes:
             s: select from all (replace selection)
@@ -1679,10 +1682,44 @@ class APEC_M:
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
         arr_np = vtknp.vtk_to_numpy(vtk_array)
-        if arr_np.ndim == 1:
-            mask = arr_np == value
+        # Handle magnitude selection
+        if component == "magnitude":
+            if arr_np.ndim == 1:
+                arr = np.abs(arr_np)
+            else:
+                arr = np.linalg.norm(arr_np, axis=1)
         else:
-            mask = arr_np[:, component] == value
+            arr = arr_np if arr_np.ndim == 1 else arr_np[:, component]
+        self._apply_selection_mask(arr, value, data, cell_or_point, mode)
+
+    def select_pos(self, axis, value, mode="s"):
+        """
+        Selects points based on position (x, y, or z coordinate).
+        axis: 0 (x), 1 (y), or 2 (z)
+        value: single value, tuple (range), or set (set of values)
+        mode: selection mode ('s', 'a', 'r', 'u')
+        """
+        self._ensure_selection_arrays()
+        coords = vtknp.vtk_to_numpy(self.mesh.GetPoints().GetData())
+        arr = coords[:, axis]
+        data = self.mesh.GetPointData()
+        self._apply_selection_mask(arr, value, data, "point_data", mode)
+
+    def _apply_selection_mask(self, arr, value, data, cell_or_point, mode):
+        """
+        Builds the selection mask based on value type and applies it to the selection array in the VTK grid.
+        """
+        # Build mask based on value type
+        if isinstance(value, tuple):
+            if len(value) != 2:
+                raise ValueError(
+                    "Tuple for range selection must have exactly two elements."
+                )
+            mask = (arr >= value[0]) & (arr <= value[1])
+        elif isinstance(value, set):
+            mask = np.isin(arr, list(value))
+        else:
+            mask = arr == value
         mask = mask.astype(np.uint8)
         # Get selection array from VTK
         sel_array = data.GetArray(
@@ -1753,6 +1790,156 @@ class APEC_M:
             point_sel[:] = 0
             self.mesh.GetPointData().GetArray("selection_point").Modified()
 
+    # def nsle(self):
+    #     """
+    #     Selects the nodes attached to currently selected cells.
+    #     Updates the 'selection_point' array in PointData.
+    #     """
+    #     cell_sel_array = self.mesh.GetCellData().GetArray("selection_cell")
+    #     if cell_sel_array is None:
+    #         raise ValueError(
+    #             "Cell selection array 'selection_cell' not found. Run _ensure_selection_arrays first."
+    #         )
+    #     cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
+    #     selected_cell_ids = np.where(cell_sel == 1)[0]
+    #     if len(selected_cell_ids) == 0:
+    #         print("No cells are selected.")
+    #         return
+
+    #     cell_array = vtknp.vtk_to_numpy(self.mesh.GetCells().GetData())
+    #     cell_offsets = vtknp.vtk_to_numpy(self.mesh.GetCellLocationsArray())
+
+    #     # Efficiently collect all node IDs attached to selected cells
+    #     offsets = cell_offsets[selected_cell_ids]
+    #     npts = cell_array[offsets]
+    #     # Build a list of all node indices for selected cells
+    #     all_node_ids = [
+    #         cell_array[offset + 1 : offset + 1 + npt]
+    #         for offset, npt in zip(offsets, npts)
+    #     ]
+    #     # Flatten and get unique node IDs
+    #     attached_nodes = np.unique(np.concatenate(all_node_ids))
+
+    #     point_sel_array = self.mesh.GetPointData().GetArray("selection_point")
+    #     if point_sel_array is None:
+    #         raise ValueError(
+    #             "Point selection array 'selection_point' not found. Run _ensure_selection_arrays first."
+    #         )
+    #     point_sel = vtknp.vtk_to_numpy(point_sel_array)
+    #     point_sel[:] = 0
+    #     point_sel[attached_nodes] = 1
+    #     point_sel_array.Modified()
+
+    # def esln(self, all_nodes=False):
+    #     """
+    #     Selects cells based on node selection:
+    #     - If all_nodes=False: selects cells with at least one selected node.
+    #     - If all_nodes=True: selects cells where all nodes are selected.
+    #     Updates the 'selection_cell' array in CellData.
+    #     """
+    #     point_sel_array = self.mesh.GetPointData().GetArray("selection_point")
+    #     if point_sel_array is None:
+    #         raise ValueError(
+    #             "Point selection array 'selection_point' not found. Run _ensure_selection_arrays first."
+    #         )
+    #     point_sel = vtknp.vtk_to_numpy(point_sel_array)
+    #     selected_points = np.where(point_sel == 1)[0]
+    #     if selected_points.size == 0:
+    #         print("No nodes are selected.")
+    #         return
+
+    #     # Get connectivity arrays as NumPy
+    #     cell_array = vtknp.vtk_to_numpy(self.mesh.GetCells().GetData())
+    #     cell_offsets = vtknp.vtk_to_numpy(self.mesh.GetCellLocationsArray())
+    #     num_cells = self.mesh.GetNumberOfCells()
+    #     cell_sel_array = self.mesh.GetCellData().GetArray("selection_cell")
+    #     if cell_sel_array is None:
+    #         raise ValueError(
+    #             "Cell selection array 'selection_cell' not found. Run _ensure_selection_arrays first."
+    #         )
+    #     cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
+    #     cell_sel[:] = 0
+
+    #     # Efficient cell classification
+    #     mask_any = np.zeros(num_cells, dtype=bool)
+    #     mask_all = np.zeros(num_cells, dtype=bool)
+    #     selected_set = set(selected_points)
+
+    #     for cid in range(num_cells):
+    #         start = cell_offsets[cid]
+    #         npts = cell_array[start]
+    #         pts = cell_array[start + 1 : start + 1 + npts]
+    #         sel_mask = np.isin(pts, selected_points)
+    #         mask_any[cid] = sel_mask.any()
+    #         mask_all[cid] = sel_mask.all()
+
+    #     if all_nodes:
+    #         cell_sel[:] = mask_all.astype(np.uint8)
+    #     else:
+    #         cell_sel[:] = mask_any.astype(np.uint8)
+    #     cell_sel_array.Modified()
+
+    def nsel_ext(self):
+        """
+        Selects all external nodes (points) of the currently selected cells.
+        Updates the 'selection_point' array in PointData.
+        """
+        self._ensure_selection_arrays()
+
+        # Get selected cell IDs as a NumPy array
+        cell_sel_array = self.mesh.GetCellData().GetArray("selection_cell")
+        if cell_sel_array is None:
+            raise ValueError(
+                "Cell selection array 'selection_cell' not found. Run _ensure_selection_arrays first."
+            )
+        cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
+        selected_cell_ids = np.where(cell_sel == 1)[0]
+        if selected_cell_ids.size == 0:
+            print("No cells are selected.")
+            return
+
+        # Use numpy_to_vtkIdTypeArray for efficient conversion
+        id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
+
+        # Prepare selection node and selection
+        selection_node = vtk.vtkSelectionNode()
+        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+        selection_node.SetSelectionList(id_array)
+        selection = vtk.vtkSelection()
+        selection.AddNode(selection_node)
+
+        # Extract selected cells
+        extract_selection = vtk.vtkExtractSelection()
+        extract_selection.SetInputData(0, self.mesh)
+        extract_selection.SetInputData(1, selection)
+        extract_selection.Update()
+        selected_mesh = extract_selection.GetOutput()
+
+        # Extract external surface
+        extract_surface = vtk.vtkGeometryFilter()
+        extract_surface.SetInputData(selected_mesh)
+        extract_surface.Update()
+        surface = extract_surface.GetOutput()
+
+        # Get external point IDs using NumPy interface
+        vtk_ids_array = surface.GetPointData().GetArray("vtkOriginalPointIds")
+        if vtk_ids_array is None:
+            print("No external nodes found (vtkOriginalPointIds missing).")
+            return
+        surface_point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+
+        # Update selection_point array efficiently
+        point_sel_array = self.mesh.GetPointData().GetArray("selection_point")
+        if point_sel_array is None:
+            raise ValueError(
+                "Point selection array 'selection_point' not found. Run _ensure_selection_arrays first."
+            )
+        point_sel = vtknp.vtk_to_numpy(point_sel_array)
+        point_sel[:] = 0
+        point_sel[surface_point_ids] = 1
+        point_sel_array.Modified()
+
     def set_value_on_selection(
         self, array_name, value, component=0, cell_or_point="point_data"
     ):
@@ -1789,6 +1976,46 @@ class APEC_M:
     # Example usage:
     # apec.select_ids_by_array_value("point_data", "X_BOUNDS_1", 0, 1)
     # apec.set_array_value_by_selection("point_data", "A", 0, 0)
+    #
+    #
+    # Cell centroids
+    #
+    #
+    #
+    def compute_and_store_cell_centroids(self):
+        """
+        Computes centroids for all cells and stores them in a VTK array 'cell_centroids' in CellData.
+        """
+        cellCenters = vtk.vtkCellCenters()
+        cellCenters.SetInputData(self.mesh)
+        cellCenters.Update()
+        vtk_points = cellCenters.GetOutput().GetPoints().GetData()
+        np_centers = vtknp.vtk_to_numpy(vtk_points)  # shape (num_cells, 3)
+        vtk_centers = vtknp.numpy_to_vtk(
+            np_centers, deep=True, array_type=vtk.VTK_DOUBLE
+        )
+        vtk_centers.SetName("cell_centroids")
+        vtk_centers.SetNumberOfComponents(3)
+        self.mesh.GetCellData().AddArray(vtk_centers)
+
+    def get_cell_centroids(self):
+        """
+        Returns the cell centroids as a NumPy array from the VTK array.
+        """
+        arr = self.mesh.GetCellData().GetArray("cell_centroids")
+        if arr is None:
+            raise ValueError(
+                "Cell centroids array not found. Run compute_and_store_cell_centroids first."
+            )
+        return vtknp.vtk_to_numpy(arr)
+
+    def remove_cell_centroids(self):
+        """
+        Removes the cell centroids array from CellData.
+        """
+        cell_data = self.mesh.GetCellData()
+        if cell_data.HasArray("cell_centroids"):
+            cell_data.RemoveArray("cell_centroids")
 
 
 # Only execute this block if the script is run directly
