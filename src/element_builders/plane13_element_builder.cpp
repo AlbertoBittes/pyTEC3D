@@ -205,7 +205,7 @@ void ElementBuilder::build_plane13_rhs()
 
         dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
 
-        js = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        js = elem_builder_misc_data.element_loads_map->current_local_solution->el(dof_jz);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i) *= js;
@@ -225,49 +225,65 @@ void ElementBuilder::build_plane13_rhs()
     return;
 }
 
-void ElementBuilder::build_plane13_nodal_solution_vector()
+void ElementBuilder::build_plane13_solution_vectors()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    auto &Bn = this->vectors[2][0];
+    auto &Hn = this->vectors[2][1];
+    auto &Be = this->vectors[2][3];
+    auto &He = this->vectors[2][4];
 
-    auto &AAe = this->matrices[1][1];
-    DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, solution_vector_support.sol_vectors[0][0]);
     auto &Me = this->matrices[1][0];
-    auto &Be = this->vectors[2][0];
-    Be.resize(Me.m());
-    Me.cholesky_solve(Be_q, Be);
-}
+    auto &AAe = this->matrices[1][1];
+    auto &BAe = this->matrices[1][4];
 
-void ElementBuilder::build_plane13_element_solution_vector()
-{
-    // Materials could be retrieved in another point
+    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
 
+    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    unsigned int n_qp = BAe.m();
+
+    auto &An = solution_vector_support.sol_vectors[0][0];
+    // Compute B in nodes
+    DenseVector<Number> Bn_x(AAe.m());
+    AAe.vector_mult(Bn_x, An);
+    Bn.resize(Me.m());
+    Me.cholesky_solve(Bn_x, Bn);
+
+    // Compute H in nodes
+    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        Hn(dof_i) += Bn(dof_i) * mu_matrix[0];
+
+    // Compute B in elements
+    DenseVector<Number> Bq(2 * n_qp);
+    BAe.vector_mult(Bq, An);
+    for (unsigned int k = 0; k < 2; k++)
+    {
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            Be(k) += Bq(qp + k * n_qp);
+        Be(k) = Be(k) / n_qp;
+    }
+
+    // Compute H in elements
+    for (unsigned int k = 0; k < 2; k++)
+        He(k) = Be(k) / mu_matrix[0];
+
+    // Compute J in elements
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
+        auto &Je = this->vectors[2][2];
+        auto &JHe = this->matrices[1][3];
 
-        auto &J_elem = this->vectors[3][0];
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
+        DenseVector<Number> Jq(n_qp);
+        JHe.vector_mult(Jq, Hn);
 
-        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-        if (!this->elem_builder_misc_data.ramped)
-        {
-            break;
-        }
-        else
-        {
-            if (this->elem_builder_misc_data.old_element_loads_object != nullptr)
-            {
-                auto &J_elem_old = this->vectors[4][0];
-                // Apply ramping to the current load
-                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
-            }
-            // else not needed because resizing already zeros the vector
-            this->ramp_vectors(3, 4, 0, 0);
-        }
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            Je(0) += Jq(qp);
+        Je(0) = Je(0) / mu_matrix[0] / n_qp;
 
         break;
     }
@@ -275,26 +291,25 @@ void ElementBuilder::build_plane13_element_solution_vector()
     {
         if (elem_builder_misc_data.transient_effect)
         {
-            auto &J_elem = this->vectors[3][0];
+            auto &JAe = this->matrices[1][2];
+            auto &Je = this->vectors[2][2];
 
             elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
             auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
 
-            fill_solution_vector_support(main_sys->request_vector(0), 0); // solution_derivative
+            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
 
-            auto &JAe = this->matrices[2][0];
+            // Get derivative of A DOF Solutions (dA/dt, dV/dt)
+            auto &An_dt = solution_vector_support.sol_vectors[0][0];
 
-            unsigned int j_qp_size = JAe.m();
+            // Compute dA/dt in quadrature points
+            DenseVector<Number> Jq_A(n_qp);
+            JAe.vector_mult(Jq_A, An_dt);
 
-            DenseVector<Number> J_elem_A(j_qp_size);
-            JAe.vector_mult(J_elem_A, solution_vector_support.sol_vectors[0][0]);
-
-            for (unsigned int qp = 0; qp < j_qp_size; qp++)
-                J_elem(0) -= J_elem_A(qp);
-
-            J_elem(0) = J_elem(0) / rs_matrix[0] / j_qp_size;
+            // average on quadrature points and scale by conductivity
+            for (unsigned int qp = 0; qp < n_qp; qp++)
+                Je(0) -= Jq_A(qp);
+            Je(0) = Je(0) / rs_matrix[0] / n_qp;
         }
         break;
     }

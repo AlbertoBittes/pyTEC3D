@@ -74,12 +74,7 @@ void ElementBuilder::build_infin111_rhs()
     return;
 }
 
-void ElementBuilder::build_infin111_nodal_solution_vector()
-{
-    return;
-}
-
-void ElementBuilder::build_infin111_element_solution_vector()
+void ElementBuilder::build_infin111_solution_vectors()
 {
     return;
 }

@@ -25,8 +25,8 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> old_ctx_view)
     : FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>(ctx_view, old_ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
-      matrices(3),
-      vectors(5)
+      matrices(2),
+      vectors(3)
 {
 }
 
@@ -189,11 +189,8 @@ void ElementBuilder::prepare_element_matrix_building()
     // reinit to be done inside each element
     // as well as the reception of shape functions
     // this->elem_data.element_type->reinit_fe(this->elem);
-
     this->build_matrices(elem_data.element_type->get_dof_matrix_idx_size_map().get(), 0);
-
-    this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), 1);
-    this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), 2);
+    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map().get(), 1);
 
     this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
     // this->build_vectors(vector_idx_size_map, 1);
@@ -204,11 +201,7 @@ void ElementBuilder::prepare_solution_vectors()
     // reinit to be done inside each element
     // as well as the reception of shape functions
     // this->elem_data.element_type->reinit_fe(this->elem);
-    this->build_vectors(elem_data.element_type->get_nodal_solution_vector_idx_size_map().get(), 2);
-    this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 3);
-    this->build_vectors(elem_data.element_type->get_element_solution_vector_idx_size_map().get(), 4);
-    // this->build_vectors(elem_data.element_type->get_vector_idx_size_map().get(), 0);
-    // this->build_vectors(vector_idx_size_map, 1);
+    this->build_vectors(elem_data.element_type->get_solution_vector_idx_size_map().get(), 2);
 }
 
 //
@@ -255,38 +248,40 @@ void ElementBuilder::set_element_data(Elem *elem)
 void ElementBuilder::set_elem_builder_misc_data()
 {
     auto curr_time_step = this->context<TimeStep>();
-    auto old_time_step = this->old_context<TimeStep>();
+    // auto old_time_step = this->old_context<TimeStep>();
     elem_builder_misc_data.time_substep = curr_time_step ? curr_time_step->get_active_substep() : nullptr;
-    elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
-    elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
-    elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
+    // elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
+    // elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
+    // elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
 
     // Use old and current ElementLoadsObject for ramping, etc.
     if (elem_builder_misc_data.time_substep->get_index() == 0)
     {
 
-        elem_builder_misc_data.old_element_loads_object = this->old_context<ElementLoadsObject>();
-        // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_element_loads_object ? elem_builder_misc_data.old_element_loads_object->get_data_map() : nullptr;
-        elem_builder_misc_data.element_loads_object = this->context<ElementLoadsObject>();
-        elem_builder_misc_data.loads_map = elem_builder_misc_data.element_loads_object ? elem_builder_misc_data.element_loads_object->get_data_map() : nullptr;
+        // elem_builder_misc_data.old_element_loads_object = this->old_context<ElementLoadsObject>();
+        // // elem_builder_misc_data.old_loads_map = elem_builder_misc_data.old_element_loads_object ? elem_builder_misc_data.old_element_loads_object->get_data_map() : nullptr;
+        // elem_builder_misc_data.element_loads_object = this->context<ElementLoadsObject>();
+        // elem_builder_misc_data.element_loads_map = elem_builder_misc_data.element_loads_object ? elem_builder_misc_data.element_loads_object->get_data_map() : nullptr;
 
+        elem_builder_misc_data.element_loads_map = &this->get_parent_object()->get_system<ApecMLoadsSystem>("ElementLoadsSystem");
+        elem_builder_misc_data.dof_map_element_loads = &elem_builder_misc_data.element_loads_map->get_dof_map();
         elem_builder_misc_data.nodal_loads_map = &this->get_parent_object()->get_system<ApecMLoadsSystem>("NodalLoadsSystem");
         elem_builder_misc_data.dof_map_nodal_loads = &elem_builder_misc_data.nodal_loads_map->get_dof_map();
 
         elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
 
-        elem_builder_misc_data.boundary_info = &(elem_builder_misc_data.loads_map->get_mesh().get_boundary_info());
+        elem_builder_misc_data.boundary_info = &(elem_builder_misc_data.element_loads_map->get_mesh().get_boundary_info());
 
-        if (elem_builder_misc_data.loads_map)
-        {
-            elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.loads_map->number();
-            if (elem_builder_misc_data.loads_map->has_variable("Js_x"))
-                elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.loads_map->variable_number("Js_x");
-            if (elem_builder_misc_data.loads_map->has_variable("Js_y"))
-                elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.loads_map->variable_number("Js_y");
-            if (elem_builder_misc_data.loads_map->has_variable("Js_z"))
-                elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.loads_map->variable_number("Js_z");
-        }
+        // if (elem_builder_misc_data.element_loads_map)
+        // {
+        //     elem_builder_misc_data.loads_sys_number = elem_builder_misc_data.element_loads_map->number();
+        //     if (elem_builder_misc_data.element_loads_map->has_variable("Js_x"))
+        //         elem_builder_misc_data.jsx_var_num = elem_builder_misc_data.element_loads_map->variable_number("Js_x");
+        //     if (elem_builder_misc_data.element_loads_map->has_variable("Js_y"))
+        //         elem_builder_misc_data.jsy_var_num = elem_builder_misc_data.element_loads_map->variable_number("Js_y");
+        //     if (elem_builder_misc_data.element_loads_map->has_variable("Js_z"))
+        //         elem_builder_misc_data.jsz_var_num = elem_builder_misc_data.element_loads_map->variable_number("Js_z");
+        // }
     }
 }
 
@@ -523,17 +518,15 @@ void ElementBuilder::build_element_rhs()
 //
 //
 
-void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
+void ElementBuilder::build_write_solution_vectors()
 {
 
     auto eq_sys = this->get_parent_object();
 
-    ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
-    const MeshBase &mesh = system.get_mesh();
+    const MeshBase &mesh = main_sys->get_mesh();
 
     // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = system.comm();
+    const auto &comm = mesh.comm();
 
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
@@ -550,33 +543,25 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
     std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
 
-    std::vector<std::string> inp_filenames = {};
-    std::vector<std::string> out_filenames = {};
+    std::vector<std::string> inp_filenames = {"sol_mtrx_" + rank_str + ".temp"};
+    std::vector<std::string> out_filenames = {"sol_vec_" + rank_str + ".temp"};
 
-    unsigned int matrices_set = 0;
-    unsigned int vec_set = 0;
-    if (sys_name == "NodalSolutionSystem")
-    {
-        inp_filenames.push_back("nodal_sol_mtrx_" + rank_str + ".temp");
-        out_filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
-        matrices_set = 1;
-        vec_set = 2;
-        libMesh::out << "Computing nodal solutions" << std::endl;
-    }
-    else if (sys_name == "ElementSolutionSystem")
-    {
-        inp_filenames.push_back("elem_sol_mtrx_" + rank_str + ".temp");
-        out_filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
-        matrices_set = 2;
-        vec_set = 3;
-        libMesh::out << "Computing element solutions" << std::endl;
-    }
-    auto sys_type = get_key_by_predicate_one(
-        Globals::SYSTEM_INFO_MAP,
-        [sys_name](const Globals::SystemInfo &info)
-        {
-            return info.name == sys_name;
-        });
+    // matrices_set = 1;
+    // vec_set = 2;
+    libMesh::out << "Computing nodal and elemental solutions" << std::endl;
+
+    // inp_filenames.push_back("elem_sol_mtrx_" + rank_str + ".temp");
+    // out_filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
+    // matrices_set = 2;
+    // vec_set = 3;
+    // libMesh::out << "Computing element solutions" << std::endl;
+
+    // auto sys_type = get_key_by_predicate_one(
+    //     Globals::SYSTEM_INFO_MAP,
+    //     [sys_name](const Globals::SystemInfo &info)
+    //     {
+    //         return info.name == sys_name;
+    //     });
 
     auto inp_streams = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
@@ -596,38 +581,20 @@ void ElementBuilder::build_write_solution_vectors(const std::string sys_name)
 
         this->set_element_data(elem);
 
-        this->read_element_matrices(*solution_mtrx_input_file, matrices_set);
+        this->read_element_matrices(*solution_mtrx_input_file, 1);
 
         this->prepare_solution_vectors();
 
-        this->build_solution_vector(sys_type);
+        this->build_solution_vectors();
 
-        this->write_element_vectors(*solution_vec_output_file, vec_set);
+        this->write_element_vectors(*solution_vec_output_file, 2);
     }
     // Close file streams
     solution_mtrx_input_file->close();
     solution_vec_output_file->close();
 }
 
-void ElementBuilder::build_solution_vector(Globals::SystemType sys_type)
-{
-    switch (sys_type)
-    {
-    case Globals::SystemType::NODAL_EXPLICIT:
-    {
-        this->fill_solution_vector_support(main_sys->current_local_solution.get(), 0);
-        build_nodal_solution_vector();
-        break;
-    case Globals::SystemType::ELEMENT_EXPLICIT:
-        build_element_solution_vector();
-        break;
-    default:
-        libmesh_error_msg("System type not supported: " + std::to_string(static_cast<unsigned int>(sys_type)));
-    }
-    }
-}
-
-void ElementBuilder::build_nodal_solution_vector()
+void ElementBuilder::build_solution_vectors()
 {
     // Build the nodal solution vector
     // This is a placeholder for the actual implementation
@@ -636,53 +603,22 @@ void ElementBuilder::build_nodal_solution_vector()
     switch (etype)
     {
     case ElementTypeEnum::SOLID97:
-        this->build_solid97_nodal_solution_vector();
+        this->build_solid97_solution_vectors();
         break;
     case ElementTypeEnum::SOLID236:
-        this->build_solid236_nodal_solution_vector();
+        this->build_solid236_solution_vectors();
         break;
     case ElementTypeEnum::PLANE13:
-        this->build_plane13_nodal_solution_vector();
+        this->build_plane13_solution_vectors();
         break;
     case ElementTypeEnum::INFIN110:
-        this->build_infin110_nodal_solution_vector();
+        this->build_infin110_solution_vectors();
         break;
     case ElementTypeEnum::INFIN111:
-        this->build_infin111_nodal_solution_vector();
+        this->build_infin111_solution_vectors();
         break;
     case ElementTypeEnum::INFIN112:
-        this->build_infin112_nodal_solution_vector();
-        break;
-    default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
-    }
-}
-
-void ElementBuilder::build_element_solution_vector()
-{
-    // Build the element solution vector
-    // This is a placeholder for the actual implementation
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
-
-    switch (etype)
-    {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_element_solution_vector();
-        break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_element_solution_vector();
-        break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13_element_solution_vector();
-        break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110_element_solution_vector();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111_element_solution_vector();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112_element_solution_vector();
+        this->build_infin112_solution_vectors();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));

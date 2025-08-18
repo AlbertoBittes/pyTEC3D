@@ -26,9 +26,9 @@ void ElementBuilder::build_solid236_rhs()
     libmesh_error_msg("build_solid236 is not implemented yet.");
 }
 
-void ElementBuilder::build_solid236_nodal_solution_vector()
+void ElementBuilder::build_solid236_solution_vectors()
 {
-    libmesh_error_msg("build_solid236_nodal_solution_vector is not implemented yet.");
+    libmesh_error_msg("build_solid236_solution_vectors is not implemented yet.");
 }
 
 void ElementBuilder::build_solid236_element_solution_vector()

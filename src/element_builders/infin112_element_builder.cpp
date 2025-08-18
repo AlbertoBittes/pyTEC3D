@@ -24,12 +24,7 @@ void ElementBuilder::build_infin112_rhs()
     return;
 }
 
-void ElementBuilder::build_infin112_nodal_solution_vector()
-{
-    return;
-}
-
-void ElementBuilder::build_infin112_element_solution_vector()
+void ElementBuilder::build_infin112_solution_vectors()
 {
     return;
 }

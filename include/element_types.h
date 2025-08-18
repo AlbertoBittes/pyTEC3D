@@ -120,13 +120,13 @@ public:
     // Virtual methods for populating maps
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() = 0;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() = 0;
 
@@ -167,13 +167,13 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 
@@ -190,13 +190,13 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_vector_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 

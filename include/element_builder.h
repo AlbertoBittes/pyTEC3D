@@ -47,20 +47,19 @@ struct MiscData
     Real dt = 0.0;
     Substep *time_substep = nullptr; // Pointer to the current time substep
     bool ramped = true;
-    bool transient_effect = false;                                          // Flag for transient effects
-    std::shared_ptr<MaterialsObject> materials_object = nullptr;            // Pointer to MaterialsObject
-    std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr;     // Pointer to ElementLoadsObject
-    std::shared_ptr<ElementLoadsObject> old_element_loads_object = nullptr; // Pointer to ElementLoadsObject
-    ApecMLoadsSystem *loads_map = nullptr;                                  // Pointer to ApecMLoadsSystem
-
+    bool transient_effect = false;                               // Flag for transient effects
+    std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
+    // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
+    ApecMLoadsSystem *element_loads_map = nullptr; // Pointer to ApecMLoadsSystem
     ApecMLoadsSystem *nodal_loads_map = nullptr;
+    DofMap *dof_map_element_loads = nullptr;
     DofMap *dof_map_nodal_loads = nullptr;
     BoundaryInfo *boundary_info = nullptr; // Pointer to BoundaryInfo
     // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
-    unsigned int loads_sys_number = 0; // System number for loads
-    unsigned int jsx_var_num = 0;
-    unsigned int jsy_var_num = 0;
-    unsigned int jsz_var_num = 0;
+    // unsigned int loads_sys_number = 0; // System number for loads
+    // unsigned int jsx_var_num = 0;
+    // unsigned int jsy_var_num = 0;
+    // unsigned int jsz_var_num = 0;
 };
 
 struct SolutionVectorSupport
@@ -134,24 +133,15 @@ public:
     void build_infin111_rhs();
     void build_infin112_rhs();
 
-    void build_write_solution_vectors(const std::string sys_name);
-    void build_solution_vector(Globals::SystemType sys_type);
-    void build_nodal_solution_vector();
-    void build_element_solution_vector();
+    void build_write_solution_vectors();
+    void build_solution_vectors();
 
-    void build_solid97_nodal_solution_vector();
-    void build_solid236_nodal_solution_vector();
-    void build_plane13_nodal_solution_vector();
-    void build_infin110_nodal_solution_vector();
-    void build_infin111_nodal_solution_vector();
-    void build_infin112_nodal_solution_vector();
-
-    void build_solid97_element_solution_vector();
-    void build_solid236_element_solution_vector();
-    void build_plane13_element_solution_vector();
-    void build_infin110_element_solution_vector();
-    void build_infin111_element_solution_vector();
-    void build_infin112_element_solution_vector();
+    void build_solid97_solution_vectors();
+    void build_solid236_solution_vectors();
+    void build_plane13_solution_vectors();
+    void build_infin110_solution_vectors();
+    void build_infin111_solution_vectors();
+    void build_infin112_solution_vectors();
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
     void fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set);
@@ -159,14 +149,11 @@ public:
 private:
     // Matrices' sets
     // Idx 0: element stiffness/capacitance matrices: Ke, Ce, etc.)
-    // Idx 1: Nodal solution matrices (e.g. AAe, Me used to compute B from A)
-    // Idx 2: Element solution matrices (e.g. JAe, JVe used to compute J from dA/dt and dV/dt)
+    // Idx 1: Nodal solution matrices (e.g. AAe, Me used to compute B from A, JAe, JVe used to compute J from dA/dt and dV/dt)
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices
     // Idx 0: elements' RHS (Fe)
     // Idx 1: elements' old RHS at previous LoadStep (used for ramping loads)
-    // Idx 2: Nodal solution vectors (B, ...)
-    // Idx 3: Element solution vectors (J, ...)
-    // Idx 4: Other support vectors
+    // Idx 2: Nodal solution vectors (B, H, Jt, Be ...)
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
     std::vector<dof_id_type> dof_indices;
     ElemData elem_data;            // Element data structure

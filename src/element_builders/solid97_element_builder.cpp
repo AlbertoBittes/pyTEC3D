@@ -113,13 +113,11 @@ void ElementBuilder::build_solid97()
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
-
                 for (unsigned int k = 0; k < 3; k++)
                 {
                     JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
                     JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
                 }
-
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
                     {
@@ -289,13 +287,8 @@ void ElementBuilder::build_solid97_rhs()
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    std::vector<dof_id_type> dof_indices_nodal_loads;
-    std::vector<Real> nodal_loads;
-    elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_nodal_loads);
-    elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_nodal_loads, nodal_loads);
-
-    for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
-        Fe(dof_i) = nodal_loads[dof_i];
+    std::vector<dof_id_type> dof_indices_loads;
+    std::vector<Real> loads_vec;
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -303,30 +296,38 @@ void ElementBuilder::build_solid97_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        Real js[3];
-
-        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
-        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        js[0] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
-        js[1] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
-        js[2] = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
+        elem_builder_misc_data.dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.element_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int k = 0; k < 3; k++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Fe(dof_i + k * n_dofs_var) *= js[k];
+                Fe(dof_i + k * n_dofs_var) *= loads_vec[k];
+
+        // Apply nodal CSG loads
+        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+
+        for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
+            Fe(dof_i) = loads_vec[dof_i];
+
+        for (dof_id_type &dof_value : dof_indices_loads)
+            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        unsigned int volt_var_num = main_sys->variable_number("VOLT");
-        unsigned int amp_var_num = elem_builder_misc_data.nodal_loads_map->variable_number("AMPS");
+        unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+        unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+
+        // Apply nodal AMPS loads
+        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i + volt_var_num * n_dofs_var) = nodal_loads[dof_i + amp_var_num * n_dofs_var];
+            Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
 
-        for (dof_id_type &dof_value : dof_indices_nodal_loads)
+        for (dof_id_type &dof_value : dof_indices_loads)
             elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
 
         break;
@@ -335,75 +336,75 @@ void ElementBuilder::build_solid97_rhs()
         libmesh_error_msg("Physical region not implemented");
     }
 
-    for (dof_id_type &dof_value : dof_indices_nodal_loads)
-        elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
-
     return;
 }
 
-void ElementBuilder::build_solid97_nodal_solution_vector()
+void ElementBuilder::build_solid97_solution_vectors()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    auto &Bn = this->vectors[2][0];
+    auto &Hn = this->vectors[2][1];
+    auto &Be = this->vectors[2][3];
+    auto &He = this->vectors[2][4];
 
-    // Get Ae
-    DenseVector<Number> Ae;
+    auto &Me = this->matrices[1][0];
+    auto &AAe = this->matrices[1][1];
+    auto &BAe = this->matrices[1][4];
+
+    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
+
+    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    unsigned int qp_3d = BAe.m();
+    unsigned int n_qp = qp_3d / 3;
+
+    // Get DOF Solutions in the nodes
+    DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
     {
-        Ae.append(solution_vector_support.sol_vectors[0][k]);
+        An.append(solution_vector_support.sol_vectors[0][k]);
     }
 
-    auto &AAe = this->matrices[1][1];
-    DenseVector<Number> Be_q(AAe.m());
-    AAe.vector_mult(Be_q, Ae);
-    auto &Me = this->matrices[1][0];
-    auto &Be = this->vectors[2][0];
-    Be.resize(Me.m());
-    Me.cholesky_solve(Be_q, Be);
-    // fill_solution_vector_support(main_sys->old_local_solution);
+    // Compute B in nodes
+    DenseVector<Number> Bn_x(AAe.m());
+    AAe.vector_mult(Bn_x, An);
+    Bn.resize(Me.m());
+    Me.cholesky_solve(Bn_x, Bn);
 
-    // // Get Ae
-    // DenseVector<Number> Ae_old;
-    // for (unsigned int k = 0; k < 3; k++)
-    // {
-    //     Ae_old.append(solution_vector_support.sol_vectors[k]);
-    // }
-    // Ae_dt.add(-1.0, Ae_old);
-    // Ae_dt.scale(1.0 / time_step->get_active_substep()->get_dt());
-}
+    // Compute H in nodes
+    for (unsigned int k = 0; k < 3; k++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * mu_matrix[k];
 
-void ElementBuilder::build_solid97_element_solution_vector()
-{
-    // Materials could be retrieved in another point
+    // Compute B in elements
+    DenseVector<Number> Bq(qp_3d);
+    BAe.vector_mult(Bq, An);
+    for (unsigned int k = 0; k < 3; k++)
+    {
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            Be(k) += Bq(qp + k * n_qp);
+        Be(k) = Be(k) / n_qp;
+    }
 
+    // Compute H in elements
+    for (unsigned int k = 0; k < 3; k++)
+        He(k) = Be(k) / mu_matrix[k];
+
+    // Compute J in elements
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &J_elem = this->vectors[3][0];
-        dof_id_type dof_jx = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsx_var_num, 0);
-        dof_id_type dof_jy = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsy_var_num, 0);
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        J_elem(0) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jx);
-        J_elem(1) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jy);
-        J_elem(2) = elem_builder_misc_data.loads_map->current_local_solution->el(dof_jz);
-        if (!this->elem_builder_misc_data.ramped)
+        auto &Je = this->vectors[2][2];
+        DenseVector<Number> Jq(qp_3d);
+        BAe.vector_mult(Jq, Hn);
+        for (unsigned int k = 0; k < 3; k++)
         {
-            break;
-        }
-        else
-        {
-            if (this->elem_builder_misc_data.old_element_loads_object != nullptr)
-            {
-                auto &J_elem_old = this->vectors[4][0];
-                // Apply ramping to the current load
-                J_elem_old(0) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jx);
-                J_elem_old(1) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jy);
-                J_elem_old(2) = this->elem_builder_misc_data.loads_map->old_local_solution->el(dof_jz);
-            }
-            this->ramp_vectors(3, 4, 0, 0);
+            for (unsigned int qp = 0; qp < n_qp; qp++)
+                Je(k) += Jq(qp + k * n_qp);
+            Je(k) = Je(k) / mu_matrix[k] / n_qp;
         }
         break;
     }
@@ -411,44 +412,41 @@ void ElementBuilder::build_solid97_element_solution_vector()
     {
         if (elem_builder_misc_data.transient_effect)
         {
-            auto &J_elem = this->vectors[3][0];
+            auto &JAe = this->matrices[1][2];
+            auto &JVe = this->matrices[1][3];
+            auto &Je = this->vectors[2][2];
 
             elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-
             auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
-
-            unsigned int solv_var_vector_size = solution_vector_support.sol_vectors[0].size();
-
-            // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+            unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
 
             fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
 
-            DenseVector<Number> Ae_dt;
+            // Get derivative of A DOF Solutions (dA/dt, dV/dt)
+            DenseVector<Number> An_dt;
             for (unsigned int k = 0; k < 3; k++)
             {
-                Ae_dt.append(solution_vector_support.sol_vectors[0][k]);
+                An_dt.append(solution_vector_support.sol_vectors[0][k]);
             }
+            auto &Vn_dt = solution_vector_support.sol_vectors[0][volt_var_num];
 
-            auto &JAe = this->matrices[2][0];
-            unsigned int j_qp_size = JAe.m();
-            DenseVector<Number> J_elem_A(j_qp_size);
-            JAe.vector_mult(J_elem_A, Ae_dt);
+            // Compute dA/dt in quadrature points
+            DenseVector<Number> Jq_A(qp_3d);
+            JAe.vector_mult(Jq_A, An_dt);
 
-            DenseVector<Number> J_elem_V(j_qp_size);
+            // Compute dV/dt in quadrature points
+            DenseVector<Number> Jq_V(qp_3d);
+            JVe.vector_mult(Jq_V, Vn_dt);
 
-            auto &JVe = this->matrices[2][1];
-            unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-            auto &Ve_dt = solution_vector_support.sol_vectors[0][volt_var_num];
-            JVe.vector_mult(J_elem_V, Ve_dt);
-            J_elem_A += J_elem_V;
+            // sum the two contributions
+            Jq_A += Jq_V;
 
-            unsigned int n_qp = j_qp_size / 3;
-
+            // average on quadrature points and scale by conductivity
             for (unsigned int k = 0; k < 3; k++)
             {
                 for (unsigned int qp = 0; qp < n_qp; qp++)
-                    J_elem(k) -= J_elem_A(qp + k * n_qp);
-                J_elem(k) = J_elem(k) / rs_matrix[k] / n_qp;
+                    Je(k) -= Jq_A(qp + k * n_qp);
+                Je(k) = Je(k) / rs_matrix[k] / n_qp;
             }
         }
         break;
