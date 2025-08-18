@@ -76,7 +76,9 @@ void ElementBuilder::build_plane13()
     auto &Ce = this->matrices[0][1];
     auto &Me = this->matrices[1][0];
     auto &AAe = this->matrices[1][1];
-    auto &JAe = this->matrices[2][0];
+    auto &JAe = this->matrices[1][2];
+    auto &JHe = this->matrices[1][3];
+    auto &BAe = this->matrices[1][4];
     auto &Fe = this->vectors[0][0];
 
     unsigned int axisymm = elem_data.element_type->keyopts[3];
@@ -85,6 +87,13 @@ void ElementBuilder::build_plane13()
     {
         Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        {
+            // Here I should modify the matrices someway for axisymm elements
+            // Also, the pow here is not always needed, is not there when you dont integrate
+            BAe(qp, dof_i) += dphi[dof_i][qp](1);
+            BAe(qp + nq, dof_i) -= (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
+            JHe(qp, dof_i) += dphi[dof_i][qp](0);
+            BAe(qp, dof_i * n_dofs_var) -= (dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
                 // Here I should modify the matrices someway for axisymm elements
@@ -93,7 +102,7 @@ void ElementBuilder::build_plane13()
                 Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
                 Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
             }
-
+        }
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                 Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / pow(r, 2)) * pow(r, axisymm);
@@ -146,18 +155,7 @@ void ElementBuilder::build_plane13()
 // Temporary placeholder for build_plane13
 void ElementBuilder::build_plane13_rhs()
 {
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
+
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
     // the trial functions (j).
@@ -177,19 +175,12 @@ void ElementBuilder::build_plane13_rhs()
     // computation separately.
     //
     // Now start logging the element matrix computation
-
-    // SOmeway you could optimize this by skipping this, is very useles and very rarely used
     auto &Fe = this->vectors[0][0];
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    std::vector<dof_id_type> dof_indices_nodal_loads;
-    std::vector<Real> nodal_loads;
-    elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_nodal_loads);
-    elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_nodal_loads, nodal_loads);
-
-    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        Fe(dof_i) = nodal_loads[dof_i];
+    std::vector<dof_id_type> dof_indices_loads;
+    std::vector<Real> loads_vec;
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -197,30 +188,55 @@ void ElementBuilder::build_plane13_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &Fe = this->vectors[0][0];
-
-        unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
-        Real js;
-
-        dof_id_type dof_jz = elem_data.elem->dof_number(elem_builder_misc_data.loads_sys_number, elem_builder_misc_data.jsz_var_num, 0);
-
-        js = elem_builder_misc_data.element_loads_map->current_local_solution->el(dof_jz);
+        elem_builder_misc_data.dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.element_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i) *= js;
+            Fe(dof_i) *= loads_vec[0];
+
+        // Apply nodal CSG loads
+        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Fe(dof_i) = loads_vec[dof_i];
+
+        for (dof_id_type &dof_value : dof_indices_loads)
+            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
+        // Apply nodal CSG loads
+        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            Fe(dof_i) = loads_vec[dof_i];
+
+        for (dof_id_type &dof_value : dof_indices_loads)
+            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
         break;
+        // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+        // unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+
+        // // Apply nodal AMPS loads
+        // elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        // elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+
+        // for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //     Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
+
+        // for (dof_id_type &dof_value : dof_indices_loads)
+        //     elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+
+        // break;
     }
     default:
         libmesh_error_msg("Physical region not implemented");
     }
-
-    for (dof_id_type &dof_value : dof_indices_nodal_loads)
-        elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
 
     return;
 }

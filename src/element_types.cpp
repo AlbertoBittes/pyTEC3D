@@ -116,7 +116,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_sol
     // JAe
     (*solution_matrix_idx_size_map)[2] = {n_qp, n_sf};
     // JHe
-    (*solution_matrix_idx_size_map)[3] = {n_qp, n_sf};
+    (*solution_matrix_idx_size_map)[3] = {n_qp, 2 * n_sf};
     // BAe
     (*solution_matrix_idx_size_map)[4] = {2 * n_qp, n_sf};
 

@@ -74,9 +74,9 @@ void ElementBuilder::build_solid97()
     auto &Ce = this->matrices[0][1];
     auto &Me = this->matrices[1][0];
     auto &AAe = this->matrices[1][1];
-    auto &JAe = this->matrices[2][0];
-    auto &JVe = this->matrices[2][1];
-    auto &BAe = this->matrices[2][2];
+    auto &JAe = this->matrices[1][2];
+    auto &JVe = this->matrices[1][3];
+    auto &BAe = this->matrices[1][4];
     auto &Fe = this->vectors[0][0];
 
     for (unsigned int qp = 0; qp < nq; qp++)
