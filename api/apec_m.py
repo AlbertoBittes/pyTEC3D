@@ -1619,17 +1619,33 @@ class APEC_M:
 
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
-    def select(self, array_name, value, component=0, cell_or_point="point_data"):
+    #
+    #
+    #
+    #
+    # Selection methods
+    #
+    #
+    #
+    #
+    #
+    def select(
+        self, array_name, value, component=0, cell_or_point="point_data", mode="s"
+    ):
         """
         Selects cell/point IDs where the specified array's component equals the given value.
-        Stores the selection in self.selection as a dict with keys 'cell_data' and 'point_data'.
+        Supports four modes:
+            s: select from all (replace selection)
+            a: add new selection to current selection
+            r: reselect from current selection (intersection)
+            u: remove masked ids from current selection
 
         Args:
-
             array_name (str): Name of the array to search
             value (float/int): Value to match
             component (int): Component index
             cell_or_point (str): 'cell_data' or 'point_data'
+            mode (str): Selection mode ('s', 'a', 'r', 'u')
         """
         data = (
             self.mesh.GetCellData()
@@ -1642,16 +1658,92 @@ class APEC_M:
         arr_np = vtknp.vtk_to_numpy(vtk_array)
         if arr_np.ndim == 1:
             mask = arr_np == value
-            selected_ids = np.where(mask)[0]
+            masked_ids = np.where(mask)[0]
         else:
             mask = arr_np[:, component] == value
-            selected_ids = np.where(mask)[0]
+            masked_ids = np.where(mask)[0]
         if not hasattr(self, "selection"):
             self.selection = {
                 "cell_data": np.array([], dtype=int),
                 "point_data": np.array([], dtype=int),
             }
-        self.selection[cell_or_point] = selected_ids
+        if mode == "s":
+            self._select_replace(masked_ids, cell_or_point)
+        elif mode == "a":
+            self._select_add(masked_ids, cell_or_point)
+        elif mode == "r":
+            self._select_intersect(masked_ids, cell_or_point)
+        elif mode == "u":
+            self._select_remove(masked_ids, cell_or_point)
+        else:
+            raise ValueError(f"Unknown selection mode '{mode}'.")
+
+    def _select_replace(self, masked_ids, cell_or_point):
+        self.selection[cell_or_point] = masked_ids
+
+    def _select_add(self, masked_ids, cell_or_point):
+        self.selection[cell_or_point] = np.unique(
+            np.concatenate([self.selection[cell_or_point], masked_ids])
+        )
+
+    def _select_intersect(self, masked_ids, cell_or_point):
+        self.selection[cell_or_point] = np.intersect1d(
+            self.selection[cell_or_point], masked_ids
+        )
+
+    def _select_remove(self, masked_ids, cell_or_point):
+        self.selection[cell_or_point] = np.setdiff1d(
+            self.selection[cell_or_point], masked_ids
+        )
+
+    def select_all(self, cell_or_point=None):
+        """
+        Selects all IDs in the specified data type ('cell_data', 'point_data'), or both if not specified.
+
+        Args:
+            cell_or_point (str or None): 'cell_data', 'point_data', or None/empty for both.
+        """
+        if not hasattr(self, "selection"):
+            self.selection = {
+                "cell_data": np.array([], dtype=int),
+                "point_data": np.array([], dtype=int),
+            }
+        if not cell_or_point or cell_or_point not in ["cell_data", "point_data"]:
+            # Select all for both
+            self.selection["cell_data"] = np.arange(
+                self.mesh.GetNumberOfCells(), dtype=int
+            )
+            self.selection["point_data"] = np.arange(
+                self.mesh.GetNumberOfPoints(), dtype=int
+            )
+        else:
+            if cell_or_point == "cell_data":
+                self.selection["cell_data"] = np.arange(
+                    self.mesh.GetNumberOfCells(), dtype=int
+                )
+            elif cell_or_point == "point_data":
+                self.selection["point_data"] = np.arange(
+                    self.mesh.GetNumberOfPoints(), dtype=int
+                )
+
+    def unselect_all(self, cell_or_point=None):
+        """
+        Clears the selection for the specified data type ('cell_data', 'point_data'), or both if not specified.
+
+        Args:
+            cell_or_point (str or None): 'cell_data', 'point_data', or None/empty for both.
+        """
+        if not hasattr(self, "selection"):
+            self.selection = {
+                "cell_data": np.array([], dtype=int),
+                "point_data": np.array([], dtype=int),
+            }
+        if not cell_or_point or cell_or_point not in ["cell_data", "point_data"]:
+            # Unselect all for both
+            self.selection["cell_data"] = np.array([], dtype=int)
+            self.selection["point_data"] = np.array([], dtype=int)
+        else:
+            self.selection[cell_or_point] = np.array([], dtype=int)
 
     def set_value_on_selection(
         self, array_name, value, component=0, cell_or_point="point_data"
