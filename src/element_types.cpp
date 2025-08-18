@@ -48,7 +48,13 @@ void AVElementType::set_variable_info()
     // Additional initialization for AVElementType (if needed)
     variable_info[GlobalVariableName::B_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_x);
     variable_info[GlobalVariableName::B_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_y);
-    variable_info[GlobalVariableName::J_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_z);
+    variable_info[GlobalVariableName::H_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::H_x);
+    variable_info[GlobalVariableName::H_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::H_y);
+    variable_info[GlobalVariableName::Jt_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Jt_z);
+    variable_info[GlobalVariableName::Be_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Be_x);
+    variable_info[GlobalVariableName::Be_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Be_y);
+    variable_info[GlobalVariableName::He_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::He_x);
+    variable_info[GlobalVariableName::He_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::He_y);
 }
 
 void AVElementType::set_fe_array() {};
@@ -87,7 +93,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
+    // Ke
     (*matrix_idx_size_map)[0] = {n_sf, n_sf};
+    // Ce
     (*matrix_idx_size_map)[1] = {n_sf, n_sf};
 
     return matrix_idx_size_map;
@@ -101,7 +109,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nod
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
+    // Me
     (*solution_matrix_idx_size_map)[0] = {2 * n_sf, 2 * n_sf};
+    // AAe
     (*solution_matrix_idx_size_map)[1] = {2 * n_sf, n_sf};
 
     return solution_matrix_idx_size_map;
@@ -113,9 +123,12 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_ele
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
+    // JAe
     (*solution_matrix_idx_size_map)[0] = {n_qp, n_sf};
+    // BAe
+    (*solution_matrix_idx_size_map)[1] = {n_qp, 2 * n_sf};
 
     return solution_matrix_idx_size_map;
 }
@@ -135,9 +148,12 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nod
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(1, 0));
 
+    // B
     (*vector_idx_size_map)[0] = {2 * n_sf};
+    // H
+    (*vector_idx_size_map)[1] = {2 * n_sf};
 
     return vector_idx_size_map;
 }
@@ -145,9 +161,14 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_nod
 std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_element_solution_vector_idx_size_map()
 {
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(3, std::vector<unsigned int>(1, 0));
 
+    // Jt
     (*vector_idx_size_map)[0] = {1};
+    // Be
+    (*vector_idx_size_map)[1] = {1};
+    // He
+    (*vector_idx_size_map)[2] = {1};
 
     return vector_idx_size_map;
 }
@@ -162,8 +183,11 @@ void AV3DElementType::set_variable_info()
 {
     // Additional initialization for AVElementType (if needed)
     variable_info[GlobalVariableName::B_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::B_z);
-    variable_info[GlobalVariableName::J_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_x);
-    variable_info[GlobalVariableName::J_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::J_y);
+    variable_info[GlobalVariableName::H_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::H_z);
+    variable_info[GlobalVariableName::Jt_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Jt_x);
+    variable_info[GlobalVariableName::Jt_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Jt_y);
+    variable_info[GlobalVariableName::Be_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Be_z);
+    variable_info[GlobalVariableName::He_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::He_z);
 }
 
 void AV3DElementType::set_fe_array()
@@ -187,7 +211,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
+    // Ke
     (*matrix_idx_size_map)[0] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    // Ce
     (*matrix_idx_size_map)[1] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
     return matrix_idx_size_map;
@@ -202,7 +228,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nod
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
+    // Me
     (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
+    // AAe
     (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_vec};
 
     return solution_matrix_idx_size_map;
@@ -215,10 +243,14 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_ele
     unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(3, std::vector<unsigned int>(2, 0));
 
+    // JAe
     (*solution_matrix_idx_size_map)[0] = {3 * n_qp, n_sf_vec};
+    // JVe
     (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf};
+    // BAe
+    (*solution_matrix_idx_size_map)[2] = {3 * n_qp, n_sf_vec};
 
     return solution_matrix_idx_size_map;
 }
@@ -238,9 +270,12 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nod
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(1, 0));
 
+    // B
     (*vector_idx_size_map)[0] = {3 * n_sf};
+    // H
+    (*vector_idx_size_map)[1] = {3 * n_sf};
 
     return vector_idx_size_map;
 }
@@ -248,9 +283,14 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_nod
 std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_element_solution_vector_idx_size_map()
 {
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(3, std::vector<unsigned int>(1, 0));
 
+    // Jt
     (*vector_idx_size_map)[0] = {3};
+    // Be
+    (*vector_idx_size_map)[1] = {3};
+    // He
+    (*vector_idx_size_map)[2] = {3};
 
     return vector_idx_size_map;
 }

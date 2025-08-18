@@ -36,11 +36,20 @@ namespace Globals
         {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_x", "B", L2_LAGRANGE, FIRST, 0, 0}},
         {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_y", "B", L2_LAGRANGE, FIRST, 1, 0}},
         {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, VariableCategory::NodalSolutionVariables, "B_z", "B", L2_LAGRANGE, FIRST, 2, 0}},
+        {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, VariableCategory::NodalSolutionVariables, "H_x", "H", L2_LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, VariableCategory::NodalSolutionVariables, "H_y", "H", L2_LAGRANGE, FIRST, 1, 0}},
+        {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, VariableCategory::NodalSolutionVariables, "H_z", "H", L2_LAGRANGE, FIRST, 2, 0}},
 
         // Element Solution Variables
-        {GlobalVariableName::J_x, {GlobalVariableName::J_x, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_x", "J", MONOMIAL, CONSTANT, 0, 0}},
-        {GlobalVariableName::J_y, {GlobalVariableName::J_y, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_y", "J", MONOMIAL, CONSTANT, 1, 0}},
-        {GlobalVariableName::J_z, {GlobalVariableName::J_z, APIVariableName::J, VariableCategory::ElementSolutionVariables, "J_z", "J", MONOMIAL, CONSTANT, 2, 0}}};
+        {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, VariableCategory::ElementSolutionVariables, "Jt_x", "Jt", MONOMIAL, CONSTANT, 0, 0}},
+        {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, VariableCategory::ElementSolutionVariables, "Jt_y", "Jt", MONOMIAL, CONSTANT, 1, 0}},
+        {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, VariableCategory::ElementSolutionVariables, "Jt_z", "Jt", MONOMIAL, CONSTANT, 2, 0}},
+        {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, VariableCategory::ElementSolutionVariables, "Be_x", "Be", MONOMIAL, CONSTANT, 0, 0}},
+        {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, VariableCategory::ElementSolutionVariables, "Be_y", "Be", MONOMIAL, CONSTANT, 1, 0}},
+        {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, VariableCategory::ElementSolutionVariables, "Be_z", "Be", MONOMIAL, CONSTANT, 2, 0}},
+        {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, VariableCategory::ElementSolutionVariables, "He_x", "He", MONOMIAL, CONSTANT, 0, 0}},
+        {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, VariableCategory::ElementSolutionVariables, "He_y", "He", MONOMIAL, CONSTANT, 1, 0}},
+        {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, VariableCategory::ElementSolutionVariables, "He_z", "He", MONOMIAL, CONSTANT, 2, 0}}};
 
     const double MU_0 = pi * 4.0 * 1e-7;                // 4 * pi constant
     const boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition

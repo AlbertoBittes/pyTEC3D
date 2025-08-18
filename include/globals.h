@@ -38,9 +38,18 @@ namespace Globals
         B_x,
         B_y,
         B_z,
-        J_x,
-        J_y,
-        J_z,
+        H_x,
+        H_y,
+        H_z,
+        Jt_x,
+        Jt_y,
+        Jt_z,
+        Be_x,
+        Be_y,
+        Be_z,
+        He_x,
+        He_y,
+        He_z,
         UNKNOWN // Fallback for invalid strings
     };
 
@@ -58,7 +67,10 @@ namespace Globals
         CURT,
         Js,
         B,
-        J,
+        H,
+        Jt,
+        Be,
+        He,
         UNKNOWN // Fallback for invalid strings
     };
 

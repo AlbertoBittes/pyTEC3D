@@ -76,18 +76,22 @@ void ElementBuilder::build_solid97()
     auto &AAe = this->matrices[1][1];
     auto &JAe = this->matrices[2][0];
     auto &JVe = this->matrices[2][1];
+    auto &BAe = this->matrices[2][2];
     auto &Fe = this->vectors[0][0];
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+            for (unsigned int k = 0; k < 3; k++)
                 for (unsigned int l = 0; l < 3; l++)
-                    for (unsigned int k = 0; k < 3; k++)
+                {
+                    BAe(qp + k * n_dofs_var, dof_i + l * n_dofs_var) += curl_phi_vec[dof_i * 3 + l][qp](k);
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
                         AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
                         Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
                     }
+                }
 
     switch (elem_data.element_type->get_physical_region())
     {
