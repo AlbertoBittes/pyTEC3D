@@ -111,6 +111,7 @@ class APEC_M:
 
         self._initialize_vtk_arrays()
 
+        self._ensure_selection_arrays()
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -225,6 +226,13 @@ class APEC_M:
             )
 
         cell_data = self.mesh.GetCellData()
+
+        # Remove selection arrays if present
+        if cell_data.HasArray("selection_cell"):
+            cell_data.RemoveArray("selection_cell")
+        point_data = self.mesh.GetPointData()
+        if point_data.HasArray("selection_point"):
+            point_data.RemoveArray("selection_point")
 
         # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
         infin_mask = (
@@ -1629,24 +1637,39 @@ class APEC_M:
     #
     #
     #
+    def _ensure_selection_arrays(self):
+        # Cell selection array
+        cell_data = self.mesh.GetCellData()
+        if cell_data.GetArray("selection_cell") is None:
+            arr = np.zeros(self.mesh.GetNumberOfCells(), dtype=np.uint8)
+            vtk_arr = vtknp.numpy_to_vtk(
+                arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR
+            )
+            vtk_arr.SetName("selection_cell")
+            cell_data.AddArray(vtk_arr)
+        # Point selection array
+        point_data = self.mesh.GetPointData()
+        if point_data.GetArray("selection_point") is None:
+            arr = np.zeros(self.mesh.GetNumberOfPoints(), dtype=np.uint8)
+            vtk_arr = vtknp.numpy_to_vtk(
+                arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR
+            )
+            vtk_arr.SetName("selection_point")
+            point_data.AddArray(vtk_arr)
+
     def select(
         self, array_name, value, component=0, cell_or_point="point_data", mode="s"
     ):
         """
         Selects cell/point IDs where the specified array's component equals the given value.
-        Supports four modes:
+        Selection is stored as a mask array (0/1) in the VTK grid.
+        Modes:
             s: select from all (replace selection)
             a: add new selection to current selection
             r: reselect from current selection (intersection)
             u: remove masked ids from current selection
-
-        Args:
-            array_name (str): Name of the array to search
-            value (float/int): Value to match
-            component (int): Component index
-            cell_or_point (str): 'cell_data' or 'point_data'
-            mode (str): Selection mode ('s', 'a', 'r', 'u')
         """
+        self._ensure_selection_arrays()
         data = (
             self.mesh.GetCellData()
             if cell_or_point == "cell_data"
@@ -1658,98 +1681,83 @@ class APEC_M:
         arr_np = vtknp.vtk_to_numpy(vtk_array)
         if arr_np.ndim == 1:
             mask = arr_np == value
-            masked_ids = np.where(mask)[0]
         else:
             mask = arr_np[:, component] == value
-            masked_ids = np.where(mask)[0]
-        if not hasattr(self, "selection"):
-            self.selection = {
-                "cell_data": np.array([], dtype=int),
-                "point_data": np.array([], dtype=int),
-            }
+        mask = mask.astype(np.uint8)
+        # Get selection array from VTK
+        sel_array = data.GetArray(
+            "selection_cell" if cell_or_point == "cell_data" else "selection_point"
+        )
+        sel_np = vtknp.vtk_to_numpy(sel_array)
         if mode == "s":
-            self._select_replace(masked_ids, cell_or_point)
+            sel_np[:] = mask
         elif mode == "a":
-            self._select_add(masked_ids, cell_or_point)
+            sel_np[:] = np.logical_or(sel_np, mask).astype(np.uint8)
         elif mode == "r":
-            self._select_intersect(masked_ids, cell_or_point)
+            sel_np[:] = np.logical_and(sel_np, mask).astype(np.uint8)
         elif mode == "u":
-            self._select_remove(masked_ids, cell_or_point)
+            sel_np[:] = np.logical_and(sel_np, np.logical_not(mask)).astype(np.uint8)
         else:
             raise ValueError(f"Unknown selection mode '{mode}'.")
-
-    def _select_replace(self, masked_ids, cell_or_point):
-        self.selection[cell_or_point] = masked_ids
-
-    def _select_add(self, masked_ids, cell_or_point):
-        self.selection[cell_or_point] = np.unique(
-            np.concatenate([self.selection[cell_or_point], masked_ids])
-        )
-
-    def _select_intersect(self, masked_ids, cell_or_point):
-        self.selection[cell_or_point] = np.intersect1d(
-            self.selection[cell_or_point], masked_ids
-        )
-
-    def _select_remove(self, masked_ids, cell_or_point):
-        self.selection[cell_or_point] = np.setdiff1d(
-            self.selection[cell_or_point], masked_ids
-        )
+        sel_array.Modified()
 
     def select_all(self, cell_or_point=None):
-        """
-        Selects all IDs in the specified data type ('cell_data', 'point_data'), or both if not specified.
-
-        Args:
-            cell_or_point (str or None): 'cell_data', 'point_data', or None/empty for both.
-        """
-        if not hasattr(self, "selection"):
-            self.selection = {
-                "cell_data": np.array([], dtype=int),
-                "point_data": np.array([], dtype=int),
-            }
-        if not cell_or_point or cell_or_point not in ["cell_data", "point_data"]:
-            # Select all for both
-            self.selection["cell_data"] = np.arange(
-                self.mesh.GetNumberOfCells(), dtype=int
+        self._ensure_selection_arrays()
+        if cell_or_point is None or cell_or_point not in ["cell_data", "point_data"]:
+            cell_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetCellData().GetArray("selection_cell")
             )
-            self.selection["point_data"] = np.arange(
-                self.mesh.GetNumberOfPoints(), dtype=int
+            cell_sel[:] = 1
+            self.mesh.GetCellData().GetArray("selection_cell").Modified()
+            point_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetPointData().GetArray("selection_point")
             )
-        else:
-            if cell_or_point == "cell_data":
-                self.selection["cell_data"] = np.arange(
-                    self.mesh.GetNumberOfCells(), dtype=int
-                )
-            elif cell_or_point == "point_data":
-                self.selection["point_data"] = np.arange(
-                    self.mesh.GetNumberOfPoints(), dtype=int
-                )
+            point_sel[:] = 1
+            self.mesh.GetPointData().GetArray("selection_point").Modified()
+        elif cell_or_point == "cell_data":
+            cell_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetCellData().GetArray("selection_cell")
+            )
+            cell_sel[:] = 1
+            self.mesh.GetCellData().GetArray("selection_cell").Modified()
+        elif cell_or_point == "point_data":
+            point_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetPointData().GetArray("selection_point")
+            )
+            point_sel[:] = 1
+            self.mesh.GetPointData().GetArray("selection_point").Modified()
 
     def unselect_all(self, cell_or_point=None):
-        """
-        Clears the selection for the specified data type ('cell_data', 'point_data'), or both if not specified.
-
-        Args:
-            cell_or_point (str or None): 'cell_data', 'point_data', or None/empty for both.
-        """
-        if not hasattr(self, "selection"):
-            self.selection = {
-                "cell_data": np.array([], dtype=int),
-                "point_data": np.array([], dtype=int),
-            }
-        if not cell_or_point or cell_or_point not in ["cell_data", "point_data"]:
-            # Unselect all for both
-            self.selection["cell_data"] = np.array([], dtype=int)
-            self.selection["point_data"] = np.array([], dtype=int)
-        else:
-            self.selection[cell_or_point] = np.array([], dtype=int)
+        self._ensure_selection_arrays()
+        if cell_or_point is None or cell_or_point not in ["cell_data", "point_data"]:
+            cell_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetCellData().GetArray("selection_cell")
+            )
+            cell_sel[:] = 0
+            self.mesh.GetCellData().GetArray("selection_cell").Modified()
+            point_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetPointData().GetArray("selection_point")
+            )
+            point_sel[:] = 0
+            self.mesh.GetPointData().GetArray("selection_point").Modified()
+        elif cell_or_point == "cell_data":
+            cell_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetCellData().GetArray("selection_cell")
+            )
+            cell_sel[:] = 0
+            self.mesh.GetCellData().GetArray("selection_cell").Modified()
+        elif cell_or_point == "point_data":
+            point_sel = vtknp.vtk_to_numpy(
+                self.mesh.GetPointData().GetArray("selection_point")
+            )
+            point_sel[:] = 0
+            self.mesh.GetPointData().GetArray("selection_point").Modified()
 
     def set_value_on_selection(
         self, array_name, value, component=0, cell_or_point="point_data"
     ):
         """
-        Sets the specified array's component to the given value for all selected IDs in self.selection.
+        Sets the specified array's component to the given value for all selected IDs in the VTK selection array.
 
         Args:
             array_name (str): Name of the array to modify
@@ -1757,6 +1765,7 @@ class APEC_M:
             component (int): Component index
             cell_or_point (str): 'cell_data' or 'point_data'
         """
+        self._ensure_selection_arrays()
         data = (
             self.mesh.GetCellData()
             if cell_or_point == "cell_data"
@@ -1766,9 +1775,11 @@ class APEC_M:
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
         arr_np = vtknp.vtk_to_numpy(vtk_array)
-        selected_ids = getattr(self, "selection", {}).get(
-            cell_or_point, np.array([], dtype=int)
+        sel_array = data.GetArray(
+            "selection_cell" if cell_or_point == "cell_data" else "selection_point"
         )
+        sel_np = vtknp.vtk_to_numpy(sel_array)
+        selected_ids = np.where(sel_np == 1)[0]
         if arr_np.ndim == 1:
             arr_np[selected_ids] = value
         else:
