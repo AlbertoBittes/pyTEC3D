@@ -34,6 +34,7 @@ except ImportError:
 # except ImportError:
 #     # Absolute import for standalone execution
 from constants import *
+from apec_m_tree_gauge_helper import TreeGaugeHelper
 
 
 class APEC_M:
@@ -109,6 +110,8 @@ class APEC_M:
         self._ensure_selection_arrays()
 
         self.compute_and_store_cell_centroids()
+
+        TreeGaugeHelper.add_midside_mask_array(self.mesh)
 
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
@@ -231,7 +234,11 @@ class APEC_M:
         point_data = self.mesh.GetPointData()
         if point_data.HasArray("selection_point"):
             point_data.RemoveArray("selection_point")
-
+        if point_data.HasArray("MidsideMask"):
+            point_data.RemoveArray("MidsideMask")
+        # Remove cell centroids array if present
+        if cell_data.HasArray("cell_centroids"):
+            cell_data.RemoveArray("cell_centroids")
         # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
         infin_mask = (
             self.element_types["element_type"].astype(str).str.match(r"INFIN\d+")
@@ -856,33 +863,35 @@ class APEC_M:
 
         print(f"Load step written to '{output_file}'.")
 
-    def generate_transient_analysis(
-        self,
-        # excel_file_path,
-    ):
-        # if not os.path.exists(excel_file_path):
-        #     raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
-
-        # self.read_excel_sheet(excel_file_path, "transient_analysis")
-        # print(f"Transient analysis loaded from '{excel_file_path}'.")
-
+    def generate_transient_analysis(self):
         for idx, row in self.transient_analysis.iterrows():
             # Step 1: Update self.time_parameters with the values from the current row
             for column in DEFAULT_TIME_PARAMETERS.keys():
                 if column in row:
                     self.time_parameters[column] = row[column]
 
-            # Check if the file exists before reading
-            self.read_excel(
-                row["load_step_input_file"],
-                [
-                    "materials",
-                    "real_constants",
-                    "solver_settings",
-                    "point_data",
-                    "cell_data",
-                ],
-            )
+            # Only read Excel if load_step_input_file is provided and not empty/NaN/"nan"
+            input_file = row.get("load_step_input_file", None)
+            if (
+                input_file
+                and pd.notna(input_file)
+                and str(input_file).strip()
+                and str(input_file).strip().lower() != "nan"
+            ):
+                self.read_excel(
+                    input_file,
+                    [
+                        "materials",
+                        "real_constants",
+                        "solver_settings",
+                        "point_data",
+                        "cell_data",
+                    ],
+                )
+            else:
+                print(
+                    f"Skipping Excel read for load step {idx + 1}: no input file provided."
+                )
 
             self.write_load_step(
                 os.path.join(self.load_steps_folder, f"load_step_{idx + 1}.bin")
@@ -2017,9 +2026,372 @@ class APEC_M:
         if cell_data.HasArray("cell_centroids"):
             cell_data.RemoveArray("cell_centroids")
 
+    #
+    #
+    #
+    #
+    #
+    #
+    # caller for tree-cotree gauge helper
+    #
+    #
+    #
+    #
+    #
+    def build_tree_cotree_gauge(
+        self, array_name="Az", tree_name="TreeEdges", cotree_name="CotreeEdges"
+    ):
+        """
+        Builds the tree–cotree decomposition for midside edges using the TreeGaugeHelper.
+        Edges with a value different from NaN in the specified array (default "Az") are passed as forced_cotree_mask.
+        The resulting tree and cotree arrays are attached to self.mesh PointData.
+        """
+        arr = self.mesh.GetPointData().GetArray(array_name)
+        if arr is None:
+            raise ValueError(f"Array '{array_name}' not found in PointData.")
+        arr_np = vtknp.vtk_to_numpy(arr)
+        # Build forced_cotree_mask: 1 where not NaN, 0 where NaN
+        forced_cotree_mask = np.zeros(arr_np.shape, dtype=np.int32)
+        forced_cotree_mask[~np.isnan(arr_np)] = 1
+        info = TreeGaugeHelper.annotate_grid_with_tree_cotree(
+            self.mesh,
+            constrained_point_ids=None,
+            forced_cotree_mask=forced_cotree_mask,
+            tree_name=tree_name,
+            cotree_name=cotree_name,
+        )
+        print(f"Tree–cotree gauge built. Info: {info}")
+
 
 # Only execute this block if the script is run directly
 if __name__ == "__main__":
     # Example usage
     apec = APEC_M()
     # print("APEC instance created.")
+
+# VTK Tree–Cotree Gauge via Midside Nodes (general 2nd‑order cells)
+#
+# This module builds a tree–cotree decomposition on a vtkUnstructuredGrid that
+# contains second‑order elements (edges identified by their midside nodes).
+#
+# Key ideas:
+# - Every edge is uniquely identified by its midside node (point id).
+# - Constrained corner nodes are excluded from the spanning forest traversal.
+# - You can also provide an initial boolean mask over midside nodes to force
+#   some edges into the cotree (e.g., boundary/Dirichlet edges).
+# - The result is written into two vtkIntArray attached to PointData
+#   (size = number of points), with 1 at midside nodes for tree/cotree.
+#
+# Supported cell types:
+#   - VTK_QUADRATIC_EDGE (3)
+#   - VTK_QUADRATIC_TRIANGLE (6)
+#   - VTK_QUADRATIC_QUAD (8)
+#   - VTK_QUADRATIC_TETRA (10)
+#   - VTK_QUADRATIC_WEDGE (15)
+#   - VTK_QUADRATIC_PYRAMID (13)
+#   - VTK_QUADRATIC_HEXAHEDRON (20)
+#
+# Usage example:
+#   tree_arr, cotree_arr, info = build_tree_cotree_for_midside_edges(
+#       ugrid,
+#       constrained_point_ids={...},            # corner nodes to exclude entirely
+#       forced_cotree_mask=your_numpy_bool_mask  # length = ugrid.GetNumberOfPoints()
+#   )
+#   ugrid.GetPointData().AddArray(tree_arr)
+#   ugrid.GetPointData().AddArray(cotree_arr)
+#
+# Notes:
+# - If forced_cotree_mask is None, only constrained nodes are excluded.
+# - Edges that touch any constrained node are automatically cotree.
+# - Among the remaining edges, we build a spanning forest using Union‑Find.
+#
+# (c) Provide as-is; tailor as needed for your mesh conventions.
+
+# from typing import Dict, List, Tuple, Set, Optional
+
+# try:
+#     import vtk  # type: ignore
+# except Exception as e:
+#     raise RuntimeError("This module requires VTK (pip install vtk)") from e
+
+# # ------------------------------
+# # Edge tables for 2nd-order VTK cells
+# # Each entry maps cell type to (corner_pairs, midside_local_ids)
+# # Point ordering follows VTK's standard for quadratic cells.
+# # ------------------------------
+
+# EDGE_TABLES: Dict[int, Tuple[List[Tuple[int,int]], List[int]]] = {
+#     vtk.VTK_QUADRATIC_EDGE: (
+#         [(0, 1)],                      # one edge
+#         [2],                           # midside id
+#     ),
+#     vtk.VTK_QUADRATIC_TRIANGLE: (
+#         [(0,1), (1,2), (2,0)],         # 3 edges
+#         [3, 4, 5],                      # midside ids
+#     ),
+#     vtk.VTK_QUADRATIC_QUAD: (
+#         [(0,1), (1,2), (2,3), (3,0)],  # 4 edges
+#         [4, 5, 6, 7],                   # midside ids
+#     ),
+#     vtk.VTK_QUADRATIC_TETRA: (
+#         [(0,1), (1,2), (2,0), (0,3), (1,3), (2,3)],  # 6 edges
+#         [4, 5, 6, 7, 8, 9],                           # midside ids
+#     ),
+#     vtk.VTK_QUADRATIC_WEDGE: (
+#         # Corners: 0..5 (tri base 0,1,2; top 3,4,5). 9 edges total.
+#         [(0,1), (1,2), (2,0), (3,4), (4,5), (5,3), (0,3), (1,4), (2,5)],
+#         [6, 7, 8, 9, 10, 11, 12, 13, 14],
+#     ),
+#     vtk.VTK_QUADRATIC_PYRAMID: (
+#         # Corners: base square 0,1,2,3; apex 4. 8 edges total.
+#         [(0,1), (1,2), (2,3), (3,0), (0,4), (1,4), (2,4), (3,4)],
+#         [5, 6, 7, 8, 9, 10, 11, 12],
+#     ),
+#     vtk.VTK_QUADRATIC_HEXAHEDRON: (
+#         # Corners: 0..7; 12 edges in the standard order
+#         [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)],
+#         [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+#     ),
+# }
+
+# # ------------------------------
+# # Disjoint Set Union (Union‑Find)
+# # ------------------------------
+
+# class DSU:
+#     def __init__(self):
+#         self.parent: Dict[int, int] = {}
+#         self.rank: Dict[int, int] = {}
+
+#     def find(self, x: int) -> int:
+#         if x not in self.parent:
+#             self.parent[x] = x
+#             self.rank[x] = 0
+#             return x
+#         # path compression
+#         if self.parent[x] != x:
+#             self.parent[x] = self.find(self.parent[x])
+#         return self.parent[x]
+
+#     def union(self, a: int, b: int) -> bool:
+#         ra, rb = self.find(a), self.find(b)
+#         if ra == rb:
+#             return False
+#         # union by rank
+#         if self.rank[ra] < self.rank[rb]:
+#             ra, rb = rb, ra
+#         self.parent[rb] = ra
+#         if self.rank[ra] == self.rank[rb]:
+#             self.rank[ra] += 1
+#         return True
+
+# # ------------------------------
+# # Core builder
+# # ------------------------------
+
+# def build_tree_cotree_for_midside_edges(
+#     ugrid: 'vtk.vtkUnstructuredGrid',
+#     constrained_point_ids: Optional[Set[int]] = None,
+#     forced_cotree_mask: Optional['list|tuple'] = None,
+#     tree_name: str = "TreeEdges",
+#     cotree_name: str = "CotreeEdges",
+# ):
+#     """
+#     Build a tree–cotree decomposition for second‑order cells, identifying edges by
+#     their midside node ids. Results are vtkIntArray on PointData (1 at midside nodes).
+
+#     Parameters
+#     ----------
+#     ugrid : vtkUnstructuredGrid
+#         Mesh with second‑order elements (quadratic). Edges are implicit.
+#     constrained_point_ids : set[int], optional
+#         Corner point ids to exclude entirely from traversal (e.g., Dirichlet nodes).
+#     forced_cotree_mask : sequence of bool/int, optional
+#         Length = number of points. Nonzero/True at midside points forces that edge into cotree.
+#     tree_name, cotree_name : str
+#         Names for the output arrays (PointData).
+
+#     Returns
+#     -------
+#     tree_arr : vtkIntArray  (PointData)
+#     cotree_arr : vtkIntArray  (PointData)
+#     info : dict
+#         Diagnostic info: { 'num_edges', 'num_tree', 'num_cotree', 'skipped_unknown_cells', ... }
+#     """
+#     npts = ugrid.GetNumberOfPoints()
+#     constrained: Set[int] = set(constrained_point_ids or [])
+
+#     # Prepare forced cotree mask at point level
+#     if forced_cotree_mask is None:
+#         forced_cotree_mask = [0] * npts
+#     else:
+#         if len(forced_cotree_mask) != npts:
+#             raise ValueError("forced_cotree_mask must have length equal to number of points")
+#         # coerce to int 0/1
+#         forced_cotree_mask = [1 if bool(v) else 0 for v in forced_cotree_mask]
+
+#     # Output arrays (point data) — mark midside nodes only
+#     tree_arr = vtk.vtkIntArray(); tree_arr.SetName(tree_name); tree_arr.SetNumberOfTuples(npts)
+#     cotree_arr = vtk.vtkIntArray(); cotree_arr.SetName(cotree_name); cotree_arr.SetNumberOfTuples(npts)
+#     for i in range(npts):
+#         tree_arr.SetValue(i, 0)
+#         cotree_arr.SetValue(i, 0)
+
+#     # Collect unique edges using midside node id as key
+#     # edge_map[mid_pid] = (v0_pid, v1_pid)
+#     edge_map: Dict[int, Tuple[int,int]] = {}
+#     unknown_cells = 0
+
+#     for ci in range(ugrid.GetNumberOfCells()):
+#         cell = ugrid.GetCell(ci)
+#         ctype = cell.GetCellType()
+#         if ctype not in EDGE_TABLES:
+#             unknown_cells += 1
+#             continue
+#         corner_pairs, mid_locals = EDGE_TABLES[ctype]
+#         ids = cell.GetPointIds()
+#         for (v0_local, v1_local), mid_local in zip(corner_pairs, mid_locals):
+#             v0 = ids.GetId(v0_local)
+#             v1 = ids.GetId(v1_local)
+#             mid = ids.GetId(mid_local)
+#             # Register if not seen yet; verify if seen
+#             if mid not in edge_map:
+#                 edge_map[mid] = (v0, v1)
+#             else:
+#                 # Optionally verify consistency
+#                 ev0, ev1 = edge_map[mid]
+#                 if not ((ev0 == v0 and ev1 == v1) or (ev0 == v1 and ev1 == v0)):
+#                     raise RuntimeError(f"Inconsistent edge definition for midside {mid}: "
+#                                        f"existing ({ev0},{ev1}) vs new ({v0},{v1})")
+
+#     # First, honor forced cotree edges immediately
+#     for mid, (a, b) in edge_map.items():
+#         if forced_cotree_mask[mid]:
+#             cotree_arr.SetValue(mid, 1)
+
+#     # Any edge touching constrained nodes is always cotree
+#     for mid, (a, b) in edge_map.items():
+#         if cotree_arr.GetValue(mid) == 1:
+#             continue
+#         if (a in constrained) or (b in constrained):
+#             cotree_arr.SetValue(mid, 1)
+
+#     # Build spanning forest on unconstrained nodes using only eligible edges
+#     dsu = DSU()
+
+#     # Pre‑register unconstrained corner nodes that appear
+#     for mid, (a, b) in edge_map.items():
+#         if (a not in constrained) and (b not in constrained):
+#             dsu.find(a); dsu.find(b)
+
+#     # Deterministic edge order: sort by midside id (stable classification)
+#     for mid in sorted(edge_map.keys()):
+#         if cotree_arr.GetValue(mid) == 1:
+#             continue  # already forced cotree or touching constrained
+#         a, b = edge_map[mid]
+#         # Consider only edges fully unconstrained
+#         if (a in constrained) or (b in constrained):
+#             continue
+#         # If connecting two different components → tree; else → cotree
+#         if dsu.union(a, b):
+#             tree_arr.SetValue(mid, 1)
+#         else:
+#             cotree_arr.SetValue(mid, 1)
+
+#     # Any unclassified midside nodes that were not touched remain 0 in both arrays
+
+#     # Diagnostics
+#     num_edges = len(edge_map)
+#     num_tree = sum(int(tree_arr.GetValue(mid)) for mid in edge_map)
+#     num_cotree = sum(int(cotree_arr.GetValue(mid)) for mid in edge_map)
+
+#     info = {
+#         'num_points': npts,
+#         'num_cells': ugrid.GetNumberOfCells(),
+#         'num_edges': num_edges,
+#         'num_tree': num_tree,
+#         'num_cotree': num_cotree,
+#         'skipped_unknown_cells': unknown_cells,
+#     }
+
+#     return tree_arr, cotree_arr, info
+
+# # ------------------------------
+# # Convenience: attach arrays to the grid
+# # ------------------------------
+
+# def annotate_grid_with_tree_cotree(
+#     ugrid: 'vtk.vtkUnstructuredGrid',
+#     constrained_point_ids: Optional[Set[int]] = None,
+#     forced_cotree_mask: Optional['list|tuple'] = None,
+#     tree_name: str = "TreeEdges",
+#     cotree_name: str = "CotreeEdges",
+# ) -> dict:
+#     tree_arr, cotree_arr, info = build_tree_cotree_for_midside_edges(
+#         ugrid,
+#         constrained_point_ids=constrained_point_ids,
+#         forced_cotree_mask=forced_cotree_mask,
+#         tree_name=tree_name,
+#         cotree_name=cotree_name,
+#     )
+#     ugrid.GetPointData().AddArray(tree_arr)
+#     ugrid.GetPointData().AddArray(cotree_arr)
+#     return info
+
+# # ------------------------------
+# # Optional: helper to create a forced_cotree_mask from a set of midside ids
+# # ------------------------------
+
+# def forced_mask_from_midside_set(n_points: int, midside_ids: Set[int]):
+#     mask = [0]*n_points
+#     for mid in midside_ids:
+#         if 0 <= mid < n_points:
+#             mask[mid] = 1
+#     return mask
+
+# def build_tree_cotree_for_midside_edges(...):
+#     npts = ugrid.GetNumberOfPoints()
+
+#     # numpy arrays instead of vtk.SetValue loops
+#     tree_np = np.zeros(npts, dtype=np.int32)
+#     cotree_np = np.zeros(npts, dtype=np.int32)
+
+#     ...
+#     # After building edge_map
+
+#     # Forced cotree
+#     forced = np.asarray(forced_cotree_mask, dtype=bool) if forced_cotree_mask is not None else None
+#     if forced is not None:
+#         cotree_np[forced] = 1
+
+#     # Constrained edges → cotree
+#     for mid, (a, b) in edge_map.items():
+#         if cotree_np[mid]:  # already forced
+#             continue
+#         if (a in constrained) or (b in constrained):
+#             cotree_np[mid] = 1
+
+#     # Union–Find spanning tree
+#     dsu = DSU()
+#     for mid, (a, b) in edge_map.items():
+#         if cotree_np[mid]:
+#             continue
+#         if (a in constrained) or (b in constrained):
+#             continue
+#         if dsu.union(a, b):
+#             tree_np[mid] = 1
+#         else:
+#             cotree_np[mid] = 1
+
+#     # Convert back to vtk arrays in one shot
+#     tree_arr = numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_INT)
+#     tree_arr.SetName(tree_name)
+#     cotree_arr = numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_INT)
+#     cotree_arr.SetName(cotree_name)
+
+#     info = {
+#         'num_edges': len(edge_map),
+#         'num_tree': int(tree_np.sum()),
+#         'num_cotree': int(cotree_np.sum()),
+#     }
+#     return tree_arr, cotree_arr, info
