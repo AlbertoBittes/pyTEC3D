@@ -5,7 +5,6 @@
 #include <libmesh/equation_systems.h>
 
 #include "fem_service_abstract.h"
-#include "node_loads_dof_constraints.h"
 #include "time_step.h"
 
 using namespace libMesh;
@@ -16,16 +15,16 @@ using namespace libMesh;
 // them in the global system matrix
 class GlobalConstraintsObject
     : public System::Constraint,
-      public FEMServiceWithOldContext<NodeLoadsDOFConstraints, TimeStep>,
+      public FEMServiceWithOldContext<TimeStep>,
       public FEParentObjectBase<System>
 {
 public:
-    using ContextView = TypedContextView<NodeLoadsDOFConstraints, TimeStep>;
+    using ContextView = TypedContextView<TimeStep>;
     using FEParentObjectBase<System>::FEParentObjectBase;
 
     GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr, std::shared_ptr<ContextView> old_ctx_view = nullptr)
         : FEParentObjectBase<System>(sys), // Set the parent System
-          FEMServiceWithOldContext<NodeLoadsDOFConstraints, TimeStep>(ctx_view, old_ctx_view)
+          FEMServiceWithOldContext<TimeStep>(ctx_view, old_ctx_view)
     {
     }
 
@@ -45,7 +44,7 @@ public:
     void set_boundary_conditions();
 
     // Example: access context objects as shared_ptrs
-    std::shared_ptr<NodeLoadsDOFConstraints> node_bc_object() { return this->context<NodeLoadsDOFConstraints>(); }
+    // std::shared_ptr<NodeLoadsDOFConstraints> node_bc_object() { return this->context<NodeLoadsDOFConstraints>(); }
     std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
 
 private:

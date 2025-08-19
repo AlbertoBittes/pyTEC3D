@@ -10,7 +10,6 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "element_loads_object.h"
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 // Temporary placeholder for build_plane13
@@ -72,14 +71,14 @@ void ElementBuilder::build_plane13()
     elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
     auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
 
-    auto &Ke = this->matrices[0][0];
-    auto &Ce = this->matrices[0][1];
-    auto &Me = this->matrices[1][0];
-    auto &AAe = this->matrices[1][1];
-    auto &JAe = this->matrices[1][2];
-    auto &JHe = this->matrices[1][3];
-    auto &BAe = this->matrices[1][4];
-    auto &Fe = this->vectors[0][0];
+    auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][PLANE13DOFMatrices::Ke_PLANE13];
+    auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][PLANE13DOFMatrices::Ce_PLANE13];
+    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::Me_PLANE13];
+    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::AAe_PLANE13];
+    auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JAe_PLANE13];
+    auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
+    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::BAe_PLANE13];
+    auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int axisymm = elem_data.element_type->keyopts[3];
 
@@ -93,7 +92,7 @@ void ElementBuilder::build_plane13()
             BAe(qp, dof_i) += dphi[dof_i][qp](1);
             BAe(qp + nq, dof_i) -= (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
             JHe(qp, dof_i) += dphi[dof_i][qp](0);
-            BAe(qp, dof_i * n_dofs_var) -= (dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
+            JHe(qp, dof_i * n_dofs_var) -= (dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
                 // Here I should modify the matrices someway for axisymm elements
@@ -175,12 +174,18 @@ void ElementBuilder::build_plane13_rhs()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    auto &Fe = this->vectors[0][0];
+    auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
+
+    System *nodal_solution_system = elem_builder_misc_data.systems[Globals::NODAL_LOADS];
+    System *element_solution_system = elem_builder_misc_data.systems[Globals::ELEMENT_LOADS];
+
+    auto dof_map_nodal_loads = elem_builder_misc_data.dof_maps[Globals::NODAL_LOADS];
+    auto dof_map_element_loads = elem_builder_misc_data.dof_maps[Globals::ELEMENT_LOADS];
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -188,35 +193,35 @@ void ElementBuilder::build_plane13_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        elem_builder_misc_data.dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        elem_builder_misc_data.element_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+        dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        element_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i) *= loads_vec[0];
 
         // Apply nodal CSG loads
-        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        nodal_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i) = loads_vec[dof_i];
 
         for (dof_id_type &dof_value : dof_indices_loads)
-            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+            nodal_solution_system->current_local_solution->set(dof_value, 0);
 
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         // Apply nodal CSG loads
-        elem_builder_misc_data.dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        elem_builder_misc_data.nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        nodal_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i) = loads_vec[dof_i];
 
         for (dof_id_type &dof_value : dof_indices_loads)
-            elem_builder_misc_data.nodal_loads_map->current_local_solution->set(dof_value, 0);
+            nodal_solution_system->current_local_solution->set(dof_value, 0);
 
         break;
         // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
@@ -244,31 +249,49 @@ void ElementBuilder::build_plane13_rhs()
 void ElementBuilder::build_plane13_solution_vectors()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    auto &Bn = this->vectors[2][0];
-    auto &Hn = this->vectors[2][1];
-    auto &Be = this->vectors[2][3];
-    auto &He = this->vectors[2][4];
+    DenseVector<Number> Bn;
+    DenseVector<Number> Hn;
+    DenseVector<Number> Be(1);
+    DenseVector<Number> He(1);
+    DenseVector<Number> Je(1);
 
-    auto &Me = this->matrices[1][0];
-    auto &AAe = this->matrices[1][1];
-    auto &BAe = this->matrices[1][4];
+    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::Me_PLANE13];
+    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::AAe_PLANE13];
+    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::BAe_PLANE13];
 
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(elem_builder_misc_data.systems[Globals::DOF_SOLUTION_SYSTEM]);
+    System *nodal_solution_system = elem_builder_misc_data.systems[Globals::NODAL_SOLUTION];
+    System *element_solution_system = elem_builder_misc_data.systems[Globals::ELEMENT_SOLUTION];
+
+    this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
     elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
     auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
     unsigned int n_qp = BAe.m();
 
-    auto &An = solution_vector_support.sol_vectors[0][0];
+    auto &An = solution_vector_support.sol_vectors[0];
     // Compute B in nodes
-    DenseVector<Number> Bn_x(AAe.m());
+    DenseVector<Number> Bn_x;
     AAe.vector_mult(Bn_x, An);
-    Bn.resize(Me.m());
+    // Bn.resize(Me.m());
     Me.cholesky_solve(Bn_x, Bn);
 
     // Compute H in nodes
+    Hn.resize(Bn.size());
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
         Hn(dof_i) += Bn(dof_i) * mu_matrix[0];
+
+    // Set B and H in nodes
+    this->elem_builder_misc_data.dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    Bn.append(Hn);
+    for (unsigned int i = 0; i < dof_indices.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
+            (dof_index < nodal_solution_system->solution->last_local_index()))
+            nodal_solution_system->solution->set(dof_index, Bn(i));
+    }
 
     // Compute B in elements
     DenseVector<Number> Bq(2 * n_qp);
@@ -285,14 +308,14 @@ void ElementBuilder::build_plane13_solution_vectors()
         He(k) = Be(k) / mu_matrix[0];
 
     // Compute J in elements
+
     switch (elem_data.element_type->get_physical_region())
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &Je = this->vectors[2][2];
-        auto &JHe = this->matrices[1][3];
+        auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
 
         DenseVector<Number> Jq(n_qp);
         JHe.vector_mult(Jq, Hn);
@@ -307,16 +330,15 @@ void ElementBuilder::build_plane13_solution_vectors()
     {
         if (elem_builder_misc_data.transient_effect)
         {
-            auto &JAe = this->matrices[1][2];
-            auto &Je = this->vectors[2][2];
+            auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JAe_PLANE13];
 
             elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
             auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
 
-            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
+            fill_solution_vector_support(main_sys->older_local_solution, Globals::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
-            auto &An_dt = solution_vector_support.sol_vectors[0][0];
+            auto &An_dt = solution_vector_support.sol_vectors[0];
 
             // Compute dA/dt in quadrature points
             DenseVector<Number> Jq_A(n_qp);
@@ -331,5 +353,16 @@ void ElementBuilder::build_plane13_solution_vectors()
     }
     default:
         libmesh_error_msg("Physical region not implemented");
+    }
+
+    this->elem_builder_misc_data.dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    Je.append(Be);
+    Je.append(He);
+    for (unsigned int i = 0; i < dof_indices.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((element_solution_system->solution->first_local_index() <= dof_index) &&
+            (dof_index < element_solution_system->solution->last_local_index()))
+            element_solution_system->solution->set(dof_index, Je(i));
     }
 }

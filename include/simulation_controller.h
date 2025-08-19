@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include "apec_m_system_objects.h"
+#include "apec_m_eq_system_object.h"
 #include "load_step.h"
 // #include "apec_m_linear_system.h"
 // Add other service headers as needed

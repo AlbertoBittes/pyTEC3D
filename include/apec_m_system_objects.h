@@ -22,7 +22,7 @@ class ElementBuilder;
 // class GlobalConstraintsObject;
 
 // The basic libMesh class (System, EquationSystems, see libMesh guide) are extendend to meet APEC-M code structure requirements
-template <typename SysLike, typename AssemblerLike>
+template <typename SysLike>
 class ApecMSystem
     : public SysLike,
       public FEMServiceAbstract<ElementTypesFactory>
@@ -32,9 +32,6 @@ public:
 
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
-
-    static_assert(std::is_base_of<System::Assembly, AssemblerLike>::value,
-                  "AssemblerLike must be System::Assembly or its subclass");
 
     Globals::SystemInfo system_info; // Attribute to hold SystemInfo
 
@@ -53,25 +50,12 @@ public:
                 return info.name == sys_name;
             });
         system_info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, sys_type);
-        this->set_assembler();
-    }
-
-    void set_assembler()
-    {
-        assembler = std::make_shared<AssemblerLike>(this);
-        this->attach_assemble_object(*assembler);
-    }
-
-    std::shared_ptr<AssemblerLike> get_assembler() const
-    {
-        return assembler;
     }
 
 private:
-    std::shared_ptr<AssemblerLike> assembler;
 };
 
-class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>, AssemblerLinear>
+class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
 {
 public:
     using ContextView = TypedContextView<ElementTypesFactory>;
@@ -79,13 +63,24 @@ public:
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
     ApecMLinearSystem(Args &&...args)
-        : ApecMSystem<TransientSystem<LinearImplicitSystem>, AssemblerLinear>(
+        : ApecMSystem<TransientSystem<LinearImplicitSystem>>(
               std::forward<Args>(args)...)
     {
         global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
         this->attach_constraint_object(*global_constraints_object);
         this->add_vector("node_dof_constraints");
         this->add_vector("old_node_dof_constraints");
+        assembler = std::make_shared<AssemblerLinear>(this);
+        this->attach_assemble_object(*assembler);
+    }
+
+    void release_subset_solve();
+
+    void compute_solution_time_derivative(const Substep &time_substep);
+
+    std::shared_ptr<AssemblerLinear> get_assembler() const
+    {
+        return assembler;
     }
 
     std::shared_ptr<GlobalConstraintsObject> get_global_constraints_object() const
@@ -93,15 +88,11 @@ public:
         return global_constraints_object;
     }
 
-    void release_subset_solve();
-
-    void compute_solution_time_derivative(const Substep &time_substep);
-
 private:
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
+    std::shared_ptr<AssemblerLinear> assembler;
 };
 
-typedef ApecMSystem<ExplicitSystem, AssemblerSolution> ApecMSolutionSystem;
-typedef ApecMSystem<TransientSystem<ExplicitSystem>, AssemblerSolution> ApecMLoadsSystem;
+typedef ApecMSystem<ExplicitSystem> ApecMExplicitSystem;
 
 #endif // APEC_M_SYSTEM_OBJECTS_H

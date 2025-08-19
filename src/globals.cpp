@@ -55,12 +55,12 @@ namespace Globals
     const boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition
     const boundary_id_type FLUX_NORMAL_ID_BC = 32761;   // Example ID for flux normal boundary condition
 
-    const std::unordered_map<SystemType, SystemInfo> SYSTEM_INFO_MAP = {
-        {MAIN, {MAIN, "ApecMLinearSystem", Globals::VariableCategory::DOFVariables}},
+    const std::map<SystemType, SystemInfo> SYSTEM_INFO_MAP = {
+        {DOF_SOLUTION_SYSTEM, {DOF_SOLUTION_SYSTEM, "ApecMLinearSystem", Globals::VariableCategory::DOFVariables}},
         {NODAL_LOADS, {NODAL_LOADS, "NodalLoadsSystem", Globals::VariableCategory::NodalLoadsVariables}},
         {ELEMENT_LOADS, {ELEMENT_LOADS, "ElementLoadsSystem", Globals::VariableCategory::ElementLoadsVariables}},
-        {NODAL_EXPLICIT, {NODAL_EXPLICIT, "NodalSolutionSystem", Globals::VariableCategory::NodalSolutionVariables}},
-        {ELEMENT_EXPLICIT, {ELEMENT_EXPLICIT, "ElementSolutionSystem", Globals::VariableCategory::ElementSolutionVariables}},
+        {NODAL_SOLUTION, {NODAL_SOLUTION, "NodalSolutionSystem", Globals::VariableCategory::NodalSolutionVariables}},
+        {ELEMENT_SOLUTION, {ELEMENT_SOLUTION, "ElementSolutionSystem", Globals::VariableCategory::ElementSolutionVariables}},
     };
 
     const std::unordered_map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {

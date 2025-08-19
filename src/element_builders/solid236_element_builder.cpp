@@ -10,7 +10,6 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "element_loads_object.h"
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 
@@ -29,10 +28,4 @@ void ElementBuilder::build_solid236_rhs()
 void ElementBuilder::build_solid236_solution_vectors()
 {
     libmesh_error_msg("build_solid236_solution_vectors is not implemented yet.");
-}
-
-void ElementBuilder::build_solid236_element_solution_vector()
-{
-    // This is a placeholder for the actual implementation
-    libmesh_error_msg("build_solid236_element_solution_vector is not implemented yet.");
 }

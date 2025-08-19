@@ -122,13 +122,9 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() = 0;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() = 0;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
 
@@ -169,13 +165,9 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 
     virtual void set_variable_info() override;
 
@@ -192,13 +184,9 @@ public:
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_vector_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_vector_idx_size_map() override;
 
     virtual void set_variable_info() override;
 

@@ -18,7 +18,6 @@
 #include "element_types_factory.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
-#include "element_loads_object.h"
 #include "time_step.h"
 #include "session.h"
 #include "globals.h"
@@ -50,10 +49,8 @@ struct MiscData
     bool transient_effect = false;                               // Flag for transient effects
     std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
     // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
-    ApecMLoadsSystem *element_loads_map = nullptr; // Pointer to ApecMLoadsSystem
-    ApecMLoadsSystem *nodal_loads_map = nullptr;
-    DofMap *dof_map_element_loads = nullptr;
-    DofMap *dof_map_nodal_loads = nullptr;
+    std::vector<System *> systems;
+    std::vector<DofMap *> dof_maps;
     BoundaryInfo *boundary_info = nullptr; // Pointer to BoundaryInfo
     // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
     // unsigned int loads_sys_number = 0; // System number for loads
@@ -66,13 +63,14 @@ struct SolutionVectorSupport
 {
     // std::vector<unsigned int> var_nums;
     // std::vector<std::vector<dof_id_type>> dof_indices_var;
-    std::vector<DenseVector<Number>> sol_vectors[2];
-
+    std::vector<DenseVector<Number>> sol_vectors;
+    std::vector<std::vector<dof_id_type>> dof_indices_var;
     void clear(unsigned int idx = 0)
     {
         // var_nums.clear();
         // dof_indices_var.clear();
-        sol_vectors[idx].clear();
+        sol_vectors.clear();
+        dof_indices_var.clear();
     }
 };
 
@@ -81,11 +79,76 @@ struct SolutionVectorSupport
 // Assembled by the assembler.
 
 class ElementBuilder
-    : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>,
+    : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
       public FEParentObjectBase<EquationSystems>
 {
+    enum MatricesSet
+    {
+        DOF_SOLUTION_MATRICES,
+        NODAL_ELEMENT_SOLUTION_MATRICES,
+        NUM_MATRICES_SETS
+    };
+
+    enum VectorsSet
+    {
+        RHS_VECTORS,
+        OLD_RHS_VECTORS,
+        NUM_VECTORS_SETS
+    };
+
+    enum SOLID97DOFMatrices
+    {
+        Ke_SOLID97,
+        Ce_SOLID97,
+        NUM_SOLID97_DOF_MATRICES,
+    };
+
+    enum SOLID236DOFMatrices
+    {
+        Ke_SOLID236,
+        Ce_SOLID236,
+        NUM_SOLID236_DOF_MATRICES
+    };
+
+    enum PLANE13DOFMatrices
+    {
+        Ke_PLANE13,
+        Ce_PLANE13,
+        NUM_PLANE13_DOF_MATRICES
+    };
+
+    enum SOLID97SolutionMatrices
+    {
+        Me_SOLID97,
+        AAe_SOLID97,
+        JAe_SOLID97,
+        JVe_SOLID97,
+        BAe_SOLID97,
+        NUM_SOLID97_SOLUTION_MATRICES
+    };
+
+    enum SOLID236SolutionMatrices
+    {
+        Me_SOLID236,
+        AAe_SOLID236,
+        JAe_SOLID236,
+        JVe_SOLID236,
+        BAe_SOLID236,
+        NUM_SOLID236_SOLUTION_MATRICES
+    };
+
+    enum PLANE13SolutionMatrices
+    {
+        Me_PLANE13,
+        AAe_PLANE13,
+        JAe_PLANE13,
+        JHe_PLANE13,
+        BAe_PLANE13,
+        NUM_PLANE13_SOLUTION_MATRICES
+    };
+
 public:
-    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>;
+    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
     ElementBuilder(EquationSystems *equation_systems = nullptr,
@@ -102,7 +165,6 @@ public:
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
     void prepare_element_matrix_building();
-    void prepare_solution_vectors();
 
     void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2);
 
@@ -144,7 +206,7 @@ public:
     void build_infin112_solution_vectors();
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
-    void fill_solution_vector_support(const NumericVector<Number> *solution, unsigned int vectors_set);
+    void fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index);
 
 private:
     // Matrices' sets
@@ -159,9 +221,10 @@ private:
     ElemData elem_data;            // Element data structure
     MeshDataIndex mesh_data_index; // Mesh data structure
     SolutionVectorSupport solution_vector_support;
-    const DofMap *main_dof_map = nullptr;
-    ApecMLinearSystem *main_sys = nullptr; // Main system and dof map pointers
     MiscData elem_builder_misc_data;
+
+    // Helper function to populate systems and dof_maps vectors
+    void populate_systems_and_dofmaps();
 };
 
 #endif // ELEMENT_BUILDER_H

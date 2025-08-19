@@ -21,8 +21,8 @@ public:
         PETSC_SOLVER_CONFIG,
         MATERIALS_OBJECT,
         REAL_CONSTANTS_OBJECT,
-        NODE_LOADS_DOF_CONSTRAINTS_OBJECT,
-        ELEMENT_LOADS_OBJECT
+        VTK_POINT_DATA,
+        VTK_CELL_DATA
     };
     // Default constructor
     LoadStep(LoadStepper *load_stepper = nullptr)

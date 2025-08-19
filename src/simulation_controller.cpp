@@ -9,7 +9,7 @@
 #include "element_types_factory.h"
 #include "solver_configuration.h"
 #include "global_constraints_object.h"
-#include "node_loads_dof_constraints.h"
+#include "apec_m_eq_system_object.h"
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/inf_elem_builder.h>
@@ -86,23 +86,21 @@ void SimulationController::reinitialize_constrained_dofs()
 void SimulationController::set_load_step_data()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto &nodal_solution_system = equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
-    auto &element_solution_system = equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem");
     auto load_step = load_stepper->context<LoadStep>();
 
     libMesh::out << "Setting load step data..." << std::endl;
 
     auto element_builder_view = std::make_shared<
-        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>>(
-        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, ElementLoadsObject>::from(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>>(
+        TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>::from(
             apec_m_model_data,
             load_step));
     auto element_builder = equation_systems->get_element_builder();
     element_builder->update_context_views(element_builder_view);
 
     auto bc_view = std::make_shared<
-        TypedContextView<NodeLoadsDOFConstraints, TimeStep>>(
-        TypedContextView<NodeLoadsDOFConstraints, TimeStep>::from(
+        TypedContextView<TimeStep>>(
+        TypedContextView<TimeStep>::from(
             load_step));
     auto global_constraints_object = system.get_global_constraints_object();
     global_constraints_object->update_context_views(bc_view);
@@ -115,16 +113,6 @@ void SimulationController::set_load_step_data()
             load_step));
     auto assembler = system.get_assembler();
     assembler->set_context_view(assembler_view);
-
-    auto solution_assembler_view = std::make_shared<
-        TypedContextView<ElementTypesFactory, TimeStep, Session>>(
-        TypedContextView<ElementTypesFactory, TimeStep, Session>::from(
-            apec_m_model_data,
-            load_step));
-    auto assembler_solution = nodal_solution_system.get_assembler();
-    assembler_solution->set_context_view(solution_assembler_view);
-    auto assembler_element_solution = element_solution_system.get_assembler();
-    assembler_element_solution->set_context_view(solution_assembler_view);
 }
 
 void SimulationController::set_solver_settings()
@@ -292,8 +280,6 @@ void SimulationController::read_mesh()
     // orient before generating infinite elems
     MeshTools::Modification::orient_elements(*mesh);
 
-    auto &boundary_info = mesh->get_boundary_info();
-
     this->set_boundary_info({"infinite_boundary"});
 
     this->generate_infinite_elements();
@@ -327,12 +313,10 @@ void SimulationController::physics()
         Globals::SystemType type = static_cast<Globals::SystemType>(i);
         const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
 
-        if (type == Globals::MAIN)
+        if (type == Globals::DOF_SOLUTION_SYSTEM)
             systems[i] = &equation_systems->add_system<ApecMLinearSystem>(sys_name);
-        else if (type == Globals::ELEMENT_LOADS || type == Globals::NODAL_LOADS)
-            systems[i] = &equation_systems->add_system<ApecMLoadsSystem>(sys_name);
         else
-            systems[i] = &equation_systems->add_system<ApecMSolutionSystem>(sys_name);
+            systems[i] = &equation_systems->add_system<ApecMExplicitSystem>(sys_name);
 
         SystemBuilder *builder = new SystemBuilder(systems[i], system_builder_view);
         builder->init_variables();
@@ -400,12 +384,8 @@ void SimulationController::solve()
             libMesh::out << "Computing derived quantities..." << std::endl;
             // Call the function to compute the magnetic field
 
-            equation_systems->get_element_builder()->build_write_solution_vectors("NodalSolutionSystem");
-            equation_systems->get_element_builder()->build_write_solution_vectors("ElementSolutionSystem");
-            auto nodal_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("NodalSolutionSystem");
-            auto element_solution_system = &equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem");
-            nodal_solution_system->get_assembler()->compute_derived_quantities();
-            element_solution_system->get_assembler()->compute_derived_quantities();
+            equation_systems->get_element_builder()->build_write_solution_vectors();
+
             // equation_systems.parameters.get<std::shared_ptr<AssemblerLinear>>("assembler")->compute_derived_quantities();
             std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
             // // Write the results
@@ -415,7 +395,7 @@ void SimulationController::solve()
             // session->set_output_filepath(time_step.get_time_stepper().get_cumulative_substep());
             // // Write the results
             session->set_output_filepath(load_stepper->get_cumulative_substep_index());
-            VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ApecMSolutionSystem>("ElementSolutionSystem"));
+            VTKIO_Updated vtk_output(equation_systems->get_mesh(), &equation_systems->get_system<ApecMExplicitSystem>("ElementSolutionSystem"));
             vtk_output.write_equation_systems(session->get_path("final_output_path"), *equation_systems, &system_names);
             load_stepper->update_cumulative_substep_index();
         }

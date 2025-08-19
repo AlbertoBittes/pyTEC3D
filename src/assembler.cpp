@@ -13,8 +13,10 @@
 
 #include "assembler.h"
 #include "apec_m_system_objects.h"
+#include "apec_m_eq_system_object.h"
 #include "element_builder.h"
 #include "element_types.h"
+#include "global_constraints_object.h"
 #include "system_builder.h"
 
 using namespace libMesh;
@@ -246,7 +248,7 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 {
     bool update_matrix = false;
 
-    ApecMLinearSystem *system = dynamic_cast<ApecMLinearSystem *>(this->get_parent_object());
+    TransientSystem<LinearImplicitSystem> *system = dynamic_cast<TransientSystem<LinearImplicitSystem> *>(this->get_parent_object());
 
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
 
@@ -293,79 +295,4 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
     else
         libMesh::out << "Reusing system matrix from previous time step" << std::endl;
     return update_matrix;
-}
-
-// This you will need to improve it by making it a method of equations systems to save time on the resizing and retrieving of solution
-void AssemblerSolution::compute_derived_quantities()
-{
-    ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-
-    ApecMEquationSystems *eq_sys = dynamic_cast<ApecMEquationSystems *>(&solution_system->get_equation_systems());
-
-    std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
-    // ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
-    const MeshBase &mesh = solution_system->get_mesh();
-
-    // Get a reference to the LinearImplicitSystem we are solving
-    const auto &comm = solution_system->comm();
-
-    // A reference to the DofMap object for this system.  The DofMap
-    // object handles the index translation from node and element numbers
-    // to degree of freedom numbers.  We will talk more about the DofMap
-    // in future examples.
-    // const DofMap &dof_map = system.get_dof_map();
-    const DofMap &solution_dof_map = solution_system->get_dof_map();
-
-    auto session = this->context<Session>();
-
-    // std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
-
-    auto sys_name = solution_system->name();
-
-    const auto rank_str = std::to_string(comm.rank());
-
-    std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
-
-    std::vector<std::string> filenames = {};
-
-    unsigned int vec_set = 0;
-    if (sys_name == "NodalSolutionSystem")
-    {
-        filenames.push_back("nodal_sol_vec_" + rank_str + ".temp");
-        vec_set = 2;
-        libMesh::out << "Setting nodal solution results " << std::endl;
-    }
-    else if (sys_name == "ElementSolutionSystem")
-    {
-        filenames.push_back("elem_sol_vec_" + rank_str + ".temp");
-        vec_set = 3;
-        libMesh::out << "Setting element solution results " << std::endl;
-    }
-    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
-    std::ifstream *solution_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
-
-    std::vector<dof_id_type> dof_indices;
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        if (elem->infinite())
-            continue;
-
-        solution_dof_map.dof_indices(elem, dof_indices);
-
-        elem_builder->read_element_vectors(*solution_input_file, vec_set);
-
-        auto &solution_vector = elem_builder->get_vectors()[vec_set][0];
-
-        for (unsigned int i = 0; i < dof_indices.size(); i++)
-        {
-            dof_id_type dof_index = dof_indices[i];
-            if ((solution_system->solution->first_local_index() <= dof_index) &&
-                (dof_index < solution_system->solution->last_local_index()))
-                solution_system->solution->set(dof_index, solution_vector(i));
-        }
-    }
-    solution_system->solution->close();
-    solution_system->update();
 }

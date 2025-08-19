@@ -4,11 +4,10 @@
 #include "load_stepper.h"
 #include "fe_data_object.h"
 #include "apec_m_system_objects.h"
+#include "apec_m_eq_system_object.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
-#include "node_loads_dof_constraints.h"
-#include "element_loads_object.h"
-#include "node_loads_dof_constraints.h"
+#include "vtk_data_map_object.h"
 #include "time_step.h"
 #include "solver_configuration.h"
 
@@ -27,12 +26,6 @@ void LoadStep::read_from_file(const std::string &filename)
     std::shared_ptr<ApecMEquationSystems> eq_sys(raw_eq_sys, [](ApecMEquationSystems *) {}); // aliasing shared_ptr, no ownership
 
     ApecMLinearSystem &sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
-    // ApecMLoadsSystem &node_loads_sys = eq_sys->get_system<ApecMLoadsSystem>("NodeLoadsSystem");
-    // auto shared_node_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&node_loads_sys, [](ApecMLoadsSystem *) {});
-
-    ApecMLoadsSystem &element_loads_sys = eq_sys->get_system<ApecMLoadsSystem>("ElementLoadsSystem");
-    auto shared_element_loads_sys = std::shared_ptr<ApecMLoadsSystem>(&element_loads_sys, [](ApecMLoadsSystem *) {});
 
     PetscLinearSolver<Number> *petsc_linear_solver =
         cast_ptr<PetscLinearSolver<Number> *>(sys.get_linear_solver());
@@ -72,12 +65,22 @@ void LoadStep::read_from_file(const std::string &filename)
         case LoadStepObjectType::REAL_CONSTANTS_OBJECT:
             set_object(std::make_shared<RealConstantsObject>(file));
             break;
-        case LoadStepObjectType::NODE_LOADS_DOF_CONSTRAINTS_OBJECT:
-            set_object(std::make_shared<NodeLoadsDOFConstraints>(file, eq_sys));
+        case LoadStepObjectType::VTK_POINT_DATA:
+        {
+            auto node_loads_dof_constraints = std::make_shared<VTKDataMapFEDataObject>(eq_sys);
+            node_loads_dof_constraints->add_dof_system();
+            node_loads_dof_constraints->add_nodal_loads_system();
+            node_loads_dof_constraints->read_data(file);
             break;
-        case LoadStepObjectType::ELEMENT_LOADS_OBJECT:
-            set_object(std::make_shared<ElementLoadsObject>(file, shared_element_loads_sys));
+        }
+        case LoadStepObjectType::VTK_CELL_DATA:
+        {
+            auto element_loads = std::make_shared<VTKDataMapFEDataObject>(eq_sys);
+            element_loads->set_is_element_data(true);
+            element_loads->add_element_loads_system();
+            element_loads->read_data(file);
             break;
+        }
         default:
             libmesh_error_msg("Invalid load step binary file: unknown type_id " + std::to_string(type_id));
             continue;

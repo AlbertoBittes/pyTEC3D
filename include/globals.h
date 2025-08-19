@@ -105,11 +105,11 @@ namespace Globals
     //
     enum SystemType
     {
-        MAIN = 0,
-        NODAL_EXPLICIT,
-        ELEMENT_EXPLICIT,
-        ELEMENT_LOADS,
+        DOF_SOLUTION_SYSTEM = 0,
         NODAL_LOADS,
+        ELEMENT_LOADS,
+        NODAL_SOLUTION,
+        ELEMENT_SOLUTION,
         NUM_SYSTEMS
     };
 
@@ -121,7 +121,7 @@ namespace Globals
         // Add other fields as needed
     };
     // Global system info map
-    extern const std::unordered_map<SystemType, SystemInfo> SYSTEM_INFO_MAP;
+    extern const std::map<SystemType, SystemInfo> SYSTEM_INFO_MAP;
 
     //
     // BCs globals infomrations
@@ -160,7 +160,7 @@ namespace Globals
 
     // Usage example
     // auto info = get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, Globals::GlobalVariableName::A_x);
-    // auto sysinfo = get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::SystemType::MAIN);
+    // auto sysinfo = get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::SystemType::DOF_SOLUTION_SYSTEM);
     // auto bcinfo = get_info_by_key(Globals::BOUNDARY_CONDITION_INFO_MAP, Globals::BoundaryConditionType::FLUX_NORMAL);
 
     template <typename MapType, typename Predicate>
