@@ -365,6 +365,8 @@ void ElementBuilder::build_solid97_solution_vectors()
     auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
 
+    std::vector<dof_id_type> dof_indices;
+
     auto materials_object = this->context<MaterialsObject>();
 
     materials_object->fill_mu_matrix(this->elem_data.material_num);
@@ -418,6 +420,9 @@ void ElementBuilder::build_solid97_solution_vectors()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
+        dof_maps[Globals::ELEMENT_LOADS]->dof_indices(elem_data.elem, dof_indices);
+        NumericVector<Number> *element_loads_vector = systems[Globals::ELEMENT_LOADS]->request_vector(2);
+        element_loads_vector->get(dof_indices, Je.get_values());
         // DenseVector<Number> Jq;
         // BAe.vector_mult(Jq, Hn);
         // for (unsigned int k = 0; k < 3; k++)
@@ -475,7 +480,7 @@ void ElementBuilder::build_solid97_solution_vectors()
         libmesh_error_msg("Physical region not implemented");
     }
     // Set B and H in nodes
-    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
     Bn.append(Hn);
     for (unsigned int i = 0; i < dof_indices.size(); i++)
     {
@@ -485,7 +490,7 @@ void ElementBuilder::build_solid97_solution_vectors()
             nodal_solution_system->solution->set(dof_index, Bn(i));
     }
 
-    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
     Je.append(Be);
     Je.append(He);
     for (unsigned int i = 0; i < dof_indices.size(); i++)

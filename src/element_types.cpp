@@ -7,6 +7,7 @@
 #include <vector>
 #include <limits> // for std::numeric_limits
 #include "element_types.h"
+#include "element_builder.h"
 #include <libmesh/inf_fe.h>
 
 using namespace Globals;
@@ -94,9 +95,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
     // Ke
-    (*matrix_idx_size_map)[0] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[ElementBuilder::PLANE13DOFMatrices::Ke_PLANE13] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
     // Ce
-    (*matrix_idx_size_map)[1] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[ElementBuilder::PLANE13DOFMatrices::Ce_PLANE13] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
     return matrix_idx_size_map;
 }
@@ -110,15 +111,15 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_sol
         std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
 
     // Me
-    (*solution_matrix_idx_size_map)[0] = {2 * n_sf, 2 * n_sf};
+    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::Me_PLANE13] = {2 * n_sf, 2 * n_sf};
     // AAe
-    (*solution_matrix_idx_size_map)[1] = {2 * n_sf, n_sf};
+    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::AAe_PLANE13] = {2 * n_sf, n_sf};
     // JAe
-    (*solution_matrix_idx_size_map)[2] = {n_qp, n_sf};
+    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::JAe_PLANE13] = {n_qp, n_sf};
     // JHe
-    (*solution_matrix_idx_size_map)[3] = {n_qp, 2 * n_sf};
+    // (*solution_matrix_idx_size_map)[3] = {n_qp, 2 * n_sf};
     // BAe
-    (*solution_matrix_idx_size_map)[4] = {2 * n_qp, n_sf};
+    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::BAe_PLANE13] = {2 * n_qp, n_sf};
 
     return solution_matrix_idx_size_map;
 }
@@ -129,27 +130,8 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vec
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
 
-    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
+    (*vector_idx_size_map)[ElementBuilder::VectorsSet::RHS_VECTORS] = {active_dof_vars_size * n_sf};
 
-    return vector_idx_size_map;
-}
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_solution_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(1, 0));
-
-    // B
-    (*vector_idx_size_map)[0] = {2 * n_sf};
-    // H
-    (*vector_idx_size_map)[1] = {2 * n_sf};
-    // Jt
-    (*vector_idx_size_map)[2] = {1};
-    // Be
-    (*vector_idx_size_map)[3] = {1};
-    // He
-    (*vector_idx_size_map)[4] = {1};
     return vector_idx_size_map;
 }
 
@@ -192,9 +174,9 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
         std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
 
     // Ke
-    (*matrix_idx_size_map)[0] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[ElementBuilder::SOLID97DOFMatrices::Ke_SOLID97] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
     // Ce
-    (*matrix_idx_size_map)[1] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
+    (*matrix_idx_size_map)[ElementBuilder::SOLID97DOFMatrices::Ce_SOLID97] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
 
     return matrix_idx_size_map;
 };
@@ -209,15 +191,15 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_sol
         std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
 
     // Me
-    (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::Me_SOLID97] = {n_sf_vec, n_sf_vec};
     // AAe
-    (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_vec};
     // JAe
-    (*solution_matrix_idx_size_map)[2] = {3 * n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_vec};
     // JVe
-    (*solution_matrix_idx_size_map)[3] = {3 * n_qp, n_sf};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JVe_SOLID97] = {3 * n_qp, n_sf};
     // BAe
-    (*solution_matrix_idx_size_map)[4] = {3 * n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_vec};
 
     return solution_matrix_idx_size_map;
 }
@@ -228,27 +210,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vec
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
 
-    (*vector_idx_size_map)[0] = {active_dof_vars_size * n_sf};
-
-    return vector_idx_size_map;
-}
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(1, 0));
-
-    // B
-    (*vector_idx_size_map)[0] = {3 * n_sf};
-    // H
-    (*vector_idx_size_map)[1] = {3 * n_sf};
-    // Jt
-    (*vector_idx_size_map)[2] = {3};
-    // Be
-    (*vector_idx_size_map)[3] = {3};
-    // He
-    (*vector_idx_size_map)[4] = {3};
+    (*vector_idx_size_map)[ElementBuilder::VectorsSet::RHS_VECTORS] = {active_dof_vars_size * n_sf};
 
     return vector_idx_size_map;
 }

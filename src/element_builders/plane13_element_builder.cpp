@@ -78,35 +78,39 @@ void ElementBuilder::build_plane13()
     auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::Me_PLANE13];
     auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::AAe_PLANE13];
     auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JAe_PLANE13];
-    auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
+    // auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::BAe_PLANE13];
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int axisymm = elem_data.element_type->keyopts[3];
 
+    Real r_sign = pow(-1, axisymm);
+
     for (unsigned int qp = 0; qp < nq; qp++)
     {
         Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+        Real r_mult = pow(r, axisymm);
+        Real r_sq = pow(r, 2);
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
         {
             // Here I should modify the matrices someway for axisymm elements
             // Also, the pow here is not always needed, is not there when you dont integrate
-            BAe(qp, dof_i) += dphi[dof_i][qp](1);
-            BAe(qp + nq, dof_i) -= (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
-            JHe(qp, dof_i) += dphi[dof_i][qp](0);
-            JHe(qp, dof_i * n_dofs_var) -= (dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
+            BAe(qp, dof_i) += r_sign * dphi[dof_i][qp](1);
+            BAe(qp + nq, dof_i) -= (r_sign * dphi[dof_i][qp](0) - axisymm * phi[dof_i][qp] / r);
+            // JHe(qp, dof_i) += dphi[dof_i][qp](0);
+            // JHe(qp, dof_i + n_dofs_var) += (pow(-1, axisymm) * dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
             {
                 // Here I should modify the matrices someway for axisymm elements
-                AAe(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](1)) * pow(r, axisymm);
-                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (phi[dof_i][qp] * dphi[dof_j][qp](0) + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r) * pow(r, axisymm);
-                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
-                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * pow(r, axisymm);
+                AAe(dof_i, dof_j) += JxW[qp] * (r_sign * phi[dof_i][qp] * dphi[dof_j][qp](1)) * r_mult;
+                AAe(dof_i + n_dofs_var, dof_j) -= JxW[qp] * (r_sign * phi[dof_i][qp] * dphi[dof_j][qp](0) - axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r) * r_mult;
+                Me(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
+                Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
             }
         }
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / pow(r, 2)) * pow(r, axisymm);
+                Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r_sq) * r_mult;
     }
     Ke.scale(1.0 / mu_matrix[0]);
     PhysicalRegionEnum physical_region = elem_data.element_type->get_physical_region();
@@ -257,9 +261,11 @@ void ElementBuilder::build_plane13_solution_vectors()
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
     DenseVector<Number> Bn;
     DenseVector<Number> Hn;
-    DenseVector<Number> Be(1);
-    DenseVector<Number> He(1);
+    DenseVector<Number> Be(2);
+    DenseVector<Number> He(2);
     DenseVector<Number> Je(1);
+
+    std::vector<dof_id_type> dof_indices;
 
     auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::Me_PLANE13];
     auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::AAe_PLANE13];
@@ -277,7 +283,7 @@ void ElementBuilder::build_plane13_solution_vectors()
     auto &mu_matrix = materials_object->get_mu_matrix();
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
-    unsigned int n_qp = BAe.m();
+    unsigned int n_qp = BAe.m() / 2;
 
     auto &An = solution_vector_support.sol_vectors[0];
     // Compute B in nodes
@@ -313,14 +319,17 @@ void ElementBuilder::build_plane13_solution_vectors()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
+        // auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
 
-        DenseVector<Number> Jq(n_qp);
-        JHe.vector_mult(Jq, Hn);
+        // DenseVector<Number> Jq(n_qp);
+        // JHe.vector_mult(Jq, Hn);
 
-        for (unsigned int qp = 0; qp < n_qp; qp++)
-            Je(0) += Jq(qp);
-        Je(0) = Je(0) / n_qp;
+        // for (unsigned int qp = 0; qp < n_qp; qp++)
+        //     Je(0) += Jq(qp);
+        // Je(0) = Je(0) / n_qp;
+        dof_maps[Globals::ELEMENT_LOADS]->dof_indices(elem_data.elem, dof_indices);
+        NumericVector<Number> *element_loads_vector = systems[Globals::ELEMENT_LOADS]->request_vector(2);
+        element_loads_vector->get(dof_indices, Je.get_values());
 
         break;
     }
@@ -353,7 +362,7 @@ void ElementBuilder::build_plane13_solution_vectors()
         libmesh_error_msg("Physical region not implemented");
     }
     // Set B and H in nodes
-    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
     Bn.append(Hn);
     for (unsigned int i = 0; i < dof_indices.size(); i++)
     {
@@ -363,7 +372,7 @@ void ElementBuilder::build_plane13_solution_vectors()
             nodal_solution_system->solution->set(dof_index, Bn(i));
     }
 
-    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
     Je.append(Be);
     Je.append(He);
     for (unsigned int i = 0; i < dof_indices.size(); i++)

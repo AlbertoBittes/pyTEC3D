@@ -274,6 +274,8 @@ void ElementBuilder::build_write_element_matrices_rhs()
         std::ofstream *sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
         std::ofstream *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
 
+        std::vector<dof_id_type> dof_indices;
+
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             // this can be moved
@@ -314,6 +316,9 @@ void ElementBuilder::build_write_element_matrices_rhs()
     std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
 
     libMesh::out << "Applying loads to RHS" << std::endl;
+
+    std::vector<dof_id_type> dof_indices;
+
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         // Start logging the shape function initialization.

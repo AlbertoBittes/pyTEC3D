@@ -14,7 +14,7 @@
 #include "fem_service_abstract.h"
 #include "fe_data_object.h"
 #include "fem_data_repository.h"
-#include "element_types.h"
+// #include "element_types.h"
 #include "element_types_factory.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
@@ -124,7 +124,6 @@ public:
         Me_PLANE13,
         AAe_PLANE13,
         JAe_PLANE13,
-        JHe_PLANE13,
         BAe_PLANE13,
         NUM_PLANE13_SOLUTION_MATRICES
     };
@@ -196,8 +195,6 @@ private:
     // Idx 0: elements' RHS (Fe)
     // Idx 1: elements' old RHS at previous LoadStep (used for ramping loads)
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
-
-    std::vector<dof_id_type> dof_indices;
 
     ElemData elem_data;            // Element data structure
     MeshDataIndex mesh_data_index; // Mesh data structure
