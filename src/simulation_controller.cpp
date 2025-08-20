@@ -78,7 +78,7 @@ void SimulationController::check_constrained_dofs()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto global_constraints_object = system.get_global_constraints_object();
-    libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
+    libMesh::out << "Checking constrained DOFs..." << std::endl;
     // 3. Prepare context view for boundary conditions object and reinit constraints
     global_constraints_object->check_update_boundary_conditions();
 }
@@ -364,10 +364,9 @@ void SimulationController::solve()
 
         system.reinit_constraints();
 
-        if (substep.get_index() == 0)
-        {
-            element_builder->build_write_element_matrices_rhs(element_builder->check_compute_matrix());
-        }
+        element_builder->check_compute_matrix();
+
+        element_builder->build_write_element_matrices_rhs();
         substep.print_solve_msg();
         // update time in element data object
         // Assemble & solve the linear system

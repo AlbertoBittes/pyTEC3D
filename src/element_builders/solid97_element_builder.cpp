@@ -299,8 +299,8 @@ void ElementBuilder::build_solid97_rhs()
     auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
     auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
 
-    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(1);
-    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(1);
+    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(2);
+    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(2);
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -418,14 +418,15 @@ void ElementBuilder::build_solid97_solution_vectors()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        DenseVector<Number> Jq;
-        BAe.vector_mult(Jq, Hn);
-        for (unsigned int k = 0; k < 3; k++)
-        {
-            for (unsigned int qp = 0; qp < n_qp; qp++)
-                Je(k) += Jq(qp + k * n_qp);
-            Je(k) = Je(k) / n_qp;
-        }
+        // DenseVector<Number> Jq;
+        // BAe.vector_mult(Jq, Hn);
+        // for (unsigned int k = 0; k < 3; k++)
+        // {
+        //     for (unsigned int qp = 0; qp < n_qp; qp++)
+        //         Je(k) += Jq(qp + k * n_qp);
+        //     Je(k) = Je(k) / n_qp;
+        // }
+
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:

@@ -154,8 +154,8 @@ public:
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
 
-    void build_write_element_matrices_rhs(bool recompute_matrix = true);
-    bool check_compute_matrix();
+    void build_write_element_matrices_rhs();
+    void check_compute_matrix();
 
     // Methods to build elements
     void build_element();
@@ -207,6 +207,7 @@ private:
     std::vector<System *> systems;
     std::vector<DofMap *> dof_maps;
 
+    bool update_matrix = true;
     // Helper function to populate systems and dof_maps vectors
     void populate_systems_and_dofmaps();
 };

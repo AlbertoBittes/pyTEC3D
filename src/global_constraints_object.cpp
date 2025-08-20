@@ -21,8 +21,9 @@ void GlobalConstraintsObject::constrain()
     {
         return;
     }
+    libMesh::out << "Applying constraints to the system." << std::endl;
 
-    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("node_dof_constraints");
+    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("ramped_node_dof_constraints");
     // std::string string_variable_label;
     for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
     {
@@ -54,7 +55,7 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
     //     return;
     // }
 
-    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("ramped_node_dof_constraints");
+    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("node_dof_constraints");
     NumericVector<Number> &old_node_dof_constraints = *this->get_parent_object()->request_vector("old_node_dof_constraints");
 
     for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)

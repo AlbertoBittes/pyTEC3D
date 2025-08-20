@@ -7,6 +7,7 @@
 #include "element_types_factory.h"
 #include "fem_service_abstract.h"
 #include "fem_data_repository.h"
+#include "time_step.h"
 
 using namespace libMesh;
 

@@ -70,9 +70,9 @@ public:
     {
         global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
         this->attach_constraint_object(*global_constraints_object);
-        this->add_vector("node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
-        this->add_vector("old_node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
-        this->add_vector("ramped_node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
+        this->add_vector("node_dof_constraints");
+        this->add_vector("old_node_dof_constraints");
+        this->add_vector("ramped_node_dof_constraints");
         assembler = std::make_shared<AssemblerLinear>(this);
         this->attach_assemble_object(*assembler);
     }

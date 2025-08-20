@@ -218,7 +218,7 @@ void ElementBuilder::set_element_data(Elem *elem)
 //
 //
 
-void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
+void ElementBuilder::build_write_element_matrices_rhs()
 {
     // Declare a performance log.  Give it a descriptive
     // string to identify what part of the code we are
@@ -257,8 +257,8 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
     // Handle renaming of rhs file if it exists
-
-    if (recompute_matrix)
+    // Print check results
+    if (update_matrix)
     {
         libMesh::out << "Recomputing element matrices and vectors for current time step" << std::endl;
         std::vector<std::string> filenames = {
@@ -298,6 +298,9 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
         session->close_file_streams(streams);
     }
+    else
+        libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
+
     std::vector<std::string> inp_filenames = {
         "base_rhs_" + rank_str + ".temp"};
     std::vector<std::string> out_filenames = {
@@ -330,10 +333,9 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     session->close_file_streams(streams_out);
 }
 
-bool ElementBuilder::check_compute_matrix()
+void ElementBuilder::check_compute_matrix()
 {
     auto eq_sys = this->get_parent_object();
-    bool update_matrix;
 
     ApecMLinearSystem &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
@@ -345,33 +347,43 @@ bool ElementBuilder::check_compute_matrix()
     auto current_real_constant_object = this->context<RealConstantsObject>();
     auto old_real_constant_object = old_view ? old_view->template get<RealConstantsObject>() : nullptr;
 
+    // If not the first substep, we can reuse the preconditioner (in linear system assuming linear mat props)
+    if (this->context<TimeStep>()->get_active_substep()->get_index())
+    {
+        update_matrix = false;
+        solver->reuse_preconditioner(true);
+        return;
+    }
+
+    // If first time substep of first time step, generate the matrix
     if (old_view == nullptr)
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
+        return;
     }
     else if (!old_material_object || !old_real_constant_object)
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
+        return;
     }
+
+    // Check if material properties/real constants have changed
     else if (
         *(current_material_object->get_dataframe_map()) != *(old_material_object->get_dataframe_map()) ||
         *(current_real_constant_object->get_dataframe_map()) != *(old_real_constant_object->get_dataframe_map()))
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
+        return;
     }
     else
     {
         update_matrix = false;
         solver->reuse_preconditioner(true);
+        return;
     }
-    if (update_matrix)
-        libMesh::out << "Element matrices will be recomputed for current time step" << std::endl;
-    else
-        libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
-    return update_matrix;
 }
 
 void ElementBuilder::build_element()
