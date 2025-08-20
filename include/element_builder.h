@@ -41,24 +41,6 @@ struct MeshDataIndex
     unsigned int real_constants_num_index = 0; // Real constants number index
 };
 
-struct MiscData
-{
-    Real dt = 0.0;
-    Substep *time_substep = nullptr; // Pointer to the current time substep
-    bool ramped = true;
-    bool transient_effect = false;                               // Flag for transient effects
-    std::shared_ptr<MaterialsObject> materials_object = nullptr; // Pointer to MaterialsObject
-    // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
-    std::vector<System *> systems;
-    std::vector<DofMap *> dof_maps;
-    BoundaryInfo *boundary_info = nullptr; // Pointer to BoundaryInfo
-    // ExplicitSystem *old_loads_map = nullptr;                     // Shared pointer to ExplicitSystem
-    // unsigned int loads_sys_number = 0; // System number for loads
-    // unsigned int jsx_var_num = 0;
-    // unsigned int jsy_var_num = 0;
-    // unsigned int jsz_var_num = 0;
-};
-
 struct SolutionVectorSupport
 {
     // std::vector<unsigned int> var_nums;
@@ -82,6 +64,7 @@ class ElementBuilder
     : public FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
       public FEParentObjectBase<EquationSystems>
 {
+public:
     enum MatricesSet
     {
         DOF_SOLUTION_MATRICES,
@@ -92,7 +75,6 @@ class ElementBuilder
     enum VectorsSet
     {
         RHS_VECTORS,
-        OLD_RHS_VECTORS,
         NUM_VECTORS_SETS
     };
 
@@ -147,7 +129,6 @@ class ElementBuilder
         NUM_PLANE13_SOLUTION_MATRICES
     };
 
-public:
     using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
@@ -166,10 +147,9 @@ public:
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
     void prepare_element_matrix_building();
 
-    void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2);
+    // void ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2);
 
     void set_element_data(Elem *elem);
-    void set_elem_builder_misc_data();
 
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }
@@ -215,13 +195,17 @@ private:
     std::vector<std::vector<DenseMatrix<Number>>> matrices; // Element matrices
     // Idx 0: elements' RHS (Fe)
     // Idx 1: elements' old RHS at previous LoadStep (used for ramping loads)
-    // Idx 2: Nodal solution vectors (B, H, Jt, Be ...)
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
+
     std::vector<dof_id_type> dof_indices;
+
     ElemData elem_data;            // Element data structure
     MeshDataIndex mesh_data_index; // Mesh data structure
     SolutionVectorSupport solution_vector_support;
-    MiscData elem_builder_misc_data;
+
+    // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
+    std::vector<System *> systems;
+    std::vector<DofMap *> dof_maps;
 
     // Helper function to populate systems and dof_maps vectors
     void populate_systems_and_dofmaps();

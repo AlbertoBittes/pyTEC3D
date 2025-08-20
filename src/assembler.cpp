@@ -89,8 +89,7 @@ void AssemblerLinear::assemble()
 
     std::vector<std::string> filenames = {
         "mtrx_" + rank_str + ".temp",
-        "rhs_" + rank_str + ".temp",
-        "rhs_" + std::to_string(comm.rank()) + "_prev.temp"};
+        "rhs_" + rank_str + ".temp"};
 
     // Open the main files
     auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
@@ -98,7 +97,6 @@ void AssemblerLinear::assemble()
     // Downcast to use as ifstream
     std::ifstream *mtrx_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
     std::ifstream *rhs_input_file = dynamic_cast<std::ifstream *>(streams[1].get());
-    std::ifstream *rhs_prev_input_file = dynamic_cast<std::ifstream *>(streams[2].get());
 
     // Matrix changes when we have nonlinearities or different dt
 
@@ -113,9 +111,7 @@ void AssemblerLinear::assemble()
     // we would have to apply any hanging node constraint equations
     // Also, note that here we call heterogenously_constrain_element_matrix_and_vector
     // to impose a inhomogeneous Dirichlet boundary conditions.
-    auto &vecs = elem_builder->get_vectors()[1];
-    vecs.resize(1);
-    auto &dummy_prev_rhs = vecs[0];
+
     // The element matrix and right-hand-side are now built
     // for this element.  Add them to the global matrix and
     // right-hand-side vector.  The SparseMatrix::add_matrix()
@@ -150,8 +146,8 @@ void AssemblerLinear::assemble()
 
         elem_builder->read_element_matrices(*mtrx_input_file, 0);
 
-        auto &Ke = elem_builder->get_matrices()[0][0];
-        auto &Ce = elem_builder->get_matrices()[0][1];
+        auto &Ke = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
+        auto &Ce = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
 
         Ce.scale(1 / (time_substep->get_dt() * theta));
 
@@ -165,20 +161,7 @@ void AssemblerLinear::assemble()
         }
 
         elem_builder->read_element_vectors(*rhs_input_file, 0);
-        auto &rhs = elem_builder->get_vectors()[0][0];
-
-        if (time_substep->get_ramped_load())
-        {
-            if (rhs_prev_input_file == nullptr)
-            {
-                dummy_prev_rhs.resize(n_dofs);
-            }
-            else
-            {
-                elem_builder->read_element_vectors(*rhs_prev_input_file, 1);
-            }
-            elem_builder->ramp_vectors(0, 1, 0, 0);
-        }
+        auto &rhs = elem_builder->get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
 
         // elem_builder->apply_load();
 

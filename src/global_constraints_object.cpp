@@ -14,7 +14,9 @@ void GlobalConstraintsObject::constrain()
     // identified by system_name within the provided equation_systems object.
     // The actual implementation would depend on the specific constraints to be applied.
     // Retrieve the system by name
+    // at system init
     DofMap &dof_map = this->parent_object->get_dof_map();
+
     if (!this->ctx_view)
     {
         return;
@@ -35,42 +37,37 @@ void GlobalConstraintsObject::constrain()
 
 void GlobalConstraintsObject::check_update_boundary_conditions()
 {
+    DofMap &dof_map = this->parent_object->get_dof_map();
+
+    // dof_map.swap_dof_constraints();
+
     this->update_boundary_conditions = false;
 
-    if (!this->ctx_view)
-    {
-        libmesh_error_msg("Context view is not set in GlobalConstraintsObject.");
-    }
-    if (!old_ctx_view)
-    {
-        this->update_boundary_conditions = true;
-        libMesh::out << "Boundary conditions update required" << std::endl;
-        return;
-    }
+    // if (!this->ctx_view)
+    // {
+    //     libmesh_error_msg("Context view is not set in GlobalConstraintsObject.");
+    // }
+    // if (!old_ctx_view)
+    // {
+    //     this->update_boundary_conditions = true;
+    //     libMesh::out << "Boundary conditions update required" << std::endl;
+    //     return;
+    // }
 
-    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("node_dof_constraints");
+    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("ramped_node_dof_constraints");
     NumericVector<Number> &old_node_dof_constraints = *this->get_parent_object()->request_vector("old_node_dof_constraints");
-    this->update_boundary_conditions = false;
+
     for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
     {
         Real new_val = node_dof_constraints(k);
         Real old_val = old_node_dof_constraints(k);
-        // If one is NaN and the other is not, or both are not NaN and different
-        if ((std::isnan(new_val) != std::isnan(old_val)) || (!std::isnan(new_val) && !std::isnan(old_val) && new_val != old_val))
+        // If one is NaN and the other is not,
+        if ((std::isnan(new_val) != std::isnan(old_val))) //|| (!std::isnan(new_val) && !std::isnan(old_val) && new_val != old_val))
         {
             this->update_boundary_conditions = true;
-            libMesh::out << "Boundary conditions update required" << std::endl;
+            libMesh::out << "New DOF constraints: Matrix update required" << std::endl;
             break;
         }
     }
     return;
-}
-
-void GlobalConstraintsObject::set_boundary_conditions()
-{
-    this->check_update_boundary_conditions();
-    if (this->update_boundary_conditions)
-    {
-        parent_object->reinit_constraints();
-    }
 }

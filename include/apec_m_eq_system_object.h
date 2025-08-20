@@ -34,6 +34,8 @@ public:
         return element_builder;
     }
 
+    void apply_ramped_effects(const Substep &time_substep);
+
 private:
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
 };

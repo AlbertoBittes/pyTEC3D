@@ -74,13 +74,13 @@ void SimulationController::set_transient_effects()
     }
 }
 
-void SimulationController::reinitialize_constrained_dofs()
+void SimulationController::check_constrained_dofs()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto global_constraints_object = system.get_global_constraints_object();
     libMesh::out << "Reinitializing constrained DOFs..." << std::endl;
     // 3. Prepare context view for boundary conditions object and reinit constraints
-    global_constraints_object->set_boundary_conditions();
+    global_constraints_object->check_update_boundary_conditions();
 }
 
 void SimulationController::set_load_step_data()
@@ -353,14 +353,16 @@ void SimulationController::solve()
 
     this->set_transient_effects();
 
-    this->reinitialize_constrained_dofs();
+    this->check_constrained_dofs();
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
     system.get_system_matrix().zero();
 
     for (auto &substep : *time_step)
     {
-        equation_systems->get_element_builder()->set_elem_builder_misc_data();
+        equation_systems->apply_ramped_effects(substep);
+
+        system.reinit_constraints();
 
         if (substep.get_index() == 0)
         {

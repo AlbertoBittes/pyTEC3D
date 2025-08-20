@@ -197,30 +197,6 @@ void ElementBuilder::prepare_element_matrix_building()
 
 //
 //
-// Ramping method
-//
-//
-
-void ElementBuilder::ramp_vectors(unsigned int set_vector_1, unsigned int set_vector_2, unsigned int idx_vector_1, unsigned int idx_vector_2)
-{
-    Real y1;
-    Real y2;
-    Real dt = elem_builder_misc_data.time_substep->get_parent_object()->get_delta_t();
-    Real time = elem_builder_misc_data.time_substep->get_time();
-    Real time_beginning = elem_builder_misc_data.time_substep->get_parent_object()->get_time_beginning();
-    Real deltim_subst = time - time_beginning;
-    unsigned int vec_size = vectors[set_vector_1][idx_vector_1].size();
-    for (unsigned int i = 0; i < vec_size; i++)
-    {
-        y2 = vectors[set_vector_1][idx_vector_1](i);
-        y1 = vectors[set_vector_2][idx_vector_2](i);
-
-        vectors[set_vector_1][idx_vector_1](i) = y1 + (y2 - y1) / dt * deltim_subst;
-    }
-}
-
-//
-//
 // Setters
 //
 //
@@ -234,23 +210,6 @@ void ElementBuilder::set_element_data(Elem *elem)
     elem_data.real_constant_num = elem->get_extra_integer(mesh_data_index.real_constants_num_index);
 
     elem_data.elem = elem;
-}
-
-void ElementBuilder::set_elem_builder_misc_data()
-{
-    auto curr_time_step = this->context<TimeStep>();
-    // auto old_time_step = this->old_context<TimeStep>();
-    elem_builder_misc_data.time_substep = curr_time_step ? curr_time_step->get_active_substep() : nullptr;
-    // elem_builder_misc_data.dt = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_dt() : 0.0;
-    // elem_builder_misc_data.ramped = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_ramped_load() : true;
-    // elem_builder_misc_data.transient_effect = elem_builder_misc_data.time_substep ? elem_builder_misc_data.time_substep->get_transient_effect() : false;
-
-    // Use old and current ElementLoadsObject for ramping, etc.
-    if (elem_builder_misc_data.time_substep->get_index() == 0)
-    {
-        elem_builder_misc_data.materials_object = this->context<MaterialsObject>();
-        elem_builder_misc_data.boundary_info = &(this->get_parent_object()->get_mesh().get_boundary_info());
-    }
 }
 
 //
@@ -273,7 +232,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
     // Get a reference to the LinearImplicitSystem we are solving
     const auto &comm = equation_systems->comm();
 
-    auto main_dof_map = this->elem_builder_misc_data.dof_maps[Globals::DOF_SOLUTION_SYSTEM];
+    auto main_dof_map = this->dof_maps[Globals::DOF_SOLUTION_SYSTEM];
     // A reference to the DofMap object for this system.  The DofMap
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the DofMap
@@ -298,12 +257,6 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
     std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
     // Handle renaming of rhs file if it exists
-    std::filesystem::path rhs_path = emat_folderpath / ("rhs_" + rank_str + ".temp");
-    if (std::filesystem::exists(rhs_path))
-    {
-        std::filesystem::path new_rhs_path = emat_folderpath / ("rhs_" + rank_str + "_prev.temp");
-        std::filesystem::rename(rhs_path, new_rhs_path);
-    }
 
     if (recompute_matrix)
     {
@@ -323,6 +276,7 @@ void ElementBuilder::build_write_element_matrices_rhs(bool recompute_matrix)
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
+            // this can be moved
             main_dof_map->dof_indices(elem, dof_indices);
             // Start logging the shape function initialization.
             // This is done through a simple function call with
@@ -544,10 +498,10 @@ void ElementBuilder::build_write_solution_vectors()
     // Close file streams
     solution_mtrx_input_file->close();
     // Close systems solutions
-    elem_builder_misc_data.systems[Globals::NODAL_SOLUTION]->solution->close();
-    elem_builder_misc_data.systems[Globals::ELEMENT_SOLUTION]->solution->close();
-    elem_builder_misc_data.systems[Globals::NODAL_SOLUTION]->update();
-    elem_builder_misc_data.systems[Globals::ELEMENT_SOLUTION]->update();
+    systems[Globals::NODAL_SOLUTION]->solution->close();
+    systems[Globals::ELEMENT_SOLUTION]->solution->close();
+    systems[Globals::NODAL_SOLUTION]->update();
+    systems[Globals::ELEMENT_SOLUTION]->update();
 }
 
 void ElementBuilder::build_solution_vectors()
@@ -586,10 +540,10 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     solution_vector_support.clear();
 
     // Check index validity
-    if (dof_map_index < 0 || dof_map_index >= static_cast<int>(elem_builder_misc_data.dof_maps.size()))
+    if (dof_map_index < 0 || dof_map_index >= static_cast<int>(dof_maps.size()))
         return;
 
-    DofMap *dof_map = elem_builder_misc_data.dof_maps[dof_map_index];
+    DofMap *dof_map = dof_maps[dof_map_index];
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
     auto sys_info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, sys_type);
@@ -622,8 +576,8 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
 void ElementBuilder::populate_systems_and_dofmaps()
 {
     // Clear vectors first
-    elem_builder_misc_data.systems.clear();
-    elem_builder_misc_data.dof_maps.clear();
+    systems.clear();
+    dof_maps.clear();
 
     EquationSystems *eq_sys = this->get_parent_object();
 
@@ -634,8 +588,8 @@ void ElementBuilder::populate_systems_and_dofmaps()
         System *base_sys = &eq_sys->get_system(sys_name);
         if (base_sys)
         {
-            elem_builder_misc_data.systems.push_back(base_sys);
-            elem_builder_misc_data.dof_maps.push_back(&base_sys->get_dof_map());
+            systems.push_back(base_sys);
+            dof_maps.push_back(&base_sys->get_dof_map());
         }
     }
 }

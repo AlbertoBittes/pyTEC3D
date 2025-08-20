@@ -52,6 +52,8 @@ public:
         system_info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, sys_type);
     }
 
+    static void ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector);
+
 private:
 };
 
@@ -68,8 +70,9 @@ public:
     {
         global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
         this->attach_constraint_object(*global_constraints_object);
-        this->add_vector("node_dof_constraints");
-        this->add_vector("old_node_dof_constraints");
+        this->add_vector("node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
+        this->add_vector("old_node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
+        this->add_vector("ramped_node_dof_constraints").set(std::numeric_limits<Real>::quiet_NaN());
         assembler = std::make_shared<AssemblerLinear>(this);
         this->attach_assemble_object(*assembler);
     }
@@ -93,6 +96,23 @@ private:
     std::shared_ptr<AssemblerLinear> assembler;
 };
 
-typedef ApecMSystem<ExplicitSystem> ApecMExplicitSystem;
+class ApecMExplicitSystem : public ApecMSystem<ExplicitSystem>
+{
+public:
+    using ContextView = TypedContextView<ElementTypesFactory>;
+
+    // Variadic template constructor: forwards all args to ExplicitSystem
+    template <typename... Args>
+    ApecMExplicitSystem(Args &&...args)
+        : ApecMSystem<ExplicitSystem>(
+              std::forward<Args>(args)...)
+    {
+        if (system_info.type == Globals::NODAL_LOADS || system_info.type == Globals::ELEMENT_LOADS)
+        {
+            this->add_vector("old_loads");
+            this->add_vector("ramped_loads");
+        }
+    }
+};
 
 #endif // APEC_M_SYSTEM_OBJECTS_H

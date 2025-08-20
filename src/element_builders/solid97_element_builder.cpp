@@ -66,8 +66,10 @@ void ElementBuilder::build_solid97()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
-    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
+    auto materials_object = this->context<MaterialsObject>();
+
+    materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = materials_object->get_mu_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ke_SOLID97];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ce_SOLID97];
@@ -107,8 +109,8 @@ void ElementBuilder::build_solid97()
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         Real CAV_value;
-        elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-        auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+        materials_object->fill_rs_matrix(this->elem_data.material_num);
+        auto &rs_matrix = materials_object->get_rs_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
@@ -147,10 +149,12 @@ void ElementBuilder::build_solid97()
     // side MUST live on a boundary of the domain.
     Real penalty_base;
     char cont = 0;
+    auto boundary_info = &this->get_parent_object()->get_mesh().get_boundary_info();
+
     for (auto s : elem_data.elem->side_index_range())
         if (elem_data.elem->neighbor_ptr(s) == nullptr)
         {
-            this->elem_builder_misc_data.boundary_info->boundary_ids(elem_data.elem, s, side_boundary_ids);
+            boundary_info->boundary_ids(elem_data.elem, s, side_boundary_ids);
             if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_PARALLEL_ID_BC) != side_boundary_ids.end())
             {
                 if (cont == 0)
@@ -289,11 +293,14 @@ void ElementBuilder::build_solid97_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *nodal_solution_system = elem_builder_misc_data.systems[Globals::NODAL_LOADS];
-    System *element_solution_system = elem_builder_misc_data.systems[Globals::ELEMENT_LOADS];
+    System *nodal_solution_system = systems[Globals::NODAL_LOADS];
+    System *element_solution_system = systems[Globals::ELEMENT_LOADS];
 
-    auto dof_map_nodal_loads = elem_builder_misc_data.dof_maps[Globals::NODAL_LOADS];
-    auto dof_map_element_loads = elem_builder_misc_data.dof_maps[Globals::ELEMENT_LOADS];
+    auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
+    auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
+
+    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(1);
+    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(1);
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -302,7 +309,7 @@ void ElementBuilder::build_solid97_rhs()
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
         dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        element_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
+        element_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int k = 0; k < 3; k++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -310,13 +317,14 @@ void ElementBuilder::build_solid97_rhs()
 
         // Apply nodal CSG loads
         dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        nodal_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
+        nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
-            Fe(dof_i) = loads_vec[dof_i];
+            if (loads_vec[dof_i] != 0)
+                Fe(dof_i) = loads_vec[dof_i];
 
         for (dof_id_type &dof_value : dof_indices_loads)
-            nodal_solution_system->current_local_solution->set(dof_value, 0);
+            nodal_loads_vector->set(dof_value, 0);
 
         break;
     }
@@ -327,13 +335,13 @@ void ElementBuilder::build_solid97_rhs()
 
         // Apply nodal AMPS loads
         dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        nodal_solution_system->current_local_solution->get(dof_indices_loads, loads_vec);
+        nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
 
         for (dof_id_type &dof_value : dof_indices_loads)
-            nodal_solution_system->current_local_solution->set(dof_value, 0);
+            nodal_loads_vector->set(dof_value, 0);
 
         break;
     }
@@ -357,12 +365,14 @@ void ElementBuilder::build_solid97_solution_vectors()
     auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
 
-    elem_builder_misc_data.materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = elem_builder_misc_data.materials_object->get_mu_matrix();
+    auto materials_object = this->context<MaterialsObject>();
 
-    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(elem_builder_misc_data.systems[Globals::DOF_SOLUTION_SYSTEM]);
-    System *nodal_solution_system = elem_builder_misc_data.systems[Globals::NODAL_SOLUTION];
-    System *element_solution_system = elem_builder_misc_data.systems[Globals::ELEMENT_SOLUTION];
+    materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = materials_object->get_mu_matrix();
+
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(systems[Globals::DOF_SOLUTION_SYSTEM]);
+    System *nodal_solution_system = systems[Globals::NODAL_SOLUTION];
+    System *element_solution_system = systems[Globals::ELEMENT_SOLUTION];
 
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
 
@@ -385,18 +395,7 @@ void ElementBuilder::build_solid97_solution_vectors()
     Hn.resize(Bn.size());
     for (unsigned int k = 0; k < 3; k++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * mu_matrix[k];
-
-    // Set B and H in nodes
-    this->elem_builder_misc_data.dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
-    Bn.append(Hn);
-    for (unsigned int i = 0; i < dof_indices.size(); i++)
-    {
-        dof_id_type dof_index = dof_indices[i];
-        if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
-            (dof_index < nodal_solution_system->solution->last_local_index()))
-            nodal_solution_system->solution->set(dof_index, Bn(i));
-    }
+            Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) / mu_matrix[k];
 
     // Compute B in elements
     DenseVector<Number> Bq;
@@ -425,19 +424,19 @@ void ElementBuilder::build_solid97_solution_vectors()
         {
             for (unsigned int qp = 0; qp < n_qp; qp++)
                 Je(k) += Jq(qp + k * n_qp);
-            Je(k) = Je(k) / mu_matrix[k] / n_qp;
+            Je(k) = Je(k) / n_qp;
         }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        if (elem_builder_misc_data.transient_effect)
+        if (this->context<TimeStep>()->get_transient_effect())
         {
             auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
             auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
 
-            elem_builder_misc_data.materials_object->fill_rs_matrix(this->elem_data.material_num);
-            auto &rs_matrix = elem_builder_misc_data.materials_object->get_rs_matrix();
+            materials_object->fill_rs_matrix(this->elem_data.material_num);
+            auto &rs_matrix = materials_object->get_rs_matrix();
             unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
 
             fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
@@ -474,8 +473,18 @@ void ElementBuilder::build_solid97_solution_vectors()
     default:
         libmesh_error_msg("Physical region not implemented");
     }
+    // Set B and H in nodes
+    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    Bn.append(Hn);
+    for (unsigned int i = 0; i < dof_indices.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
+            (dof_index < nodal_solution_system->solution->last_local_index()))
+            nodal_solution_system->solution->set(dof_index, Bn(i));
+    }
 
-    this->elem_builder_misc_data.dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
+    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, this->dof_indices);
     Je.append(Be);
     Je.append(He);
     for (unsigned int i = 0; i < dof_indices.size(); i++)

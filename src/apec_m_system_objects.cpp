@@ -1,6 +1,40 @@
 #include "apec_m_system_objects.h"
 #include "libmesh/numeric_vector.h"
 
+template <>
+void ApecMSystem<System>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
+{
+    if (time_substep.get_ramped_load())
+    {
+        Real substep_number = static_cast<Real>(time_substep.get_index()) + 1;
+        Real number_of_substeps = static_cast<Real>(time_substep.get_parent_object()->get_n_substeps());
+        for (numeric_index_type k = old_vector.first_local_index(); k < old_vector.last_local_index(); ++k)
+        {
+            Real old_val = old_vector(k);
+            Real curr_val = current_vector(k);
+
+            if (std::isnan(curr_val))
+            {
+                ramped_vector.set(k, std::numeric_limits<Real>::quiet_NaN());
+            }
+            else
+            {
+                Real start_val = std::isnan(old_val) ? 0.0 : old_val;
+                Real ramped_val = start_val + (curr_val - start_val) / number_of_substeps * substep_number;
+                ramped_vector.set(k, ramped_val);
+            }
+        }
+    }
+    else
+    {
+        for (numeric_index_type k = current_vector.first_local_index(); k < current_vector.last_local_index(); ++k)
+        {
+            Real curr_val = current_vector(k);
+            ramped_vector.set(k, curr_val);
+        }
+    }
+}
+
 void ApecMLinearSystem::release_subset_solve()
 {
     if (this->_subset != nullptr)
