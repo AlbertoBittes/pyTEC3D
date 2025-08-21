@@ -14,7 +14,11 @@ VARIABLES_GLOBAL_LIST = [
     "CURT",
     "Js",
     "B",
-    "J",
+    "H",
+    "Jt",
+    "Be",
+    "He",
+    "TREE"
 ]
 
 # Default solver settings
