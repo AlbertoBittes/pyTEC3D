@@ -4,7 +4,7 @@ import numpy as np
 from ansys.mapdl import reader as pymapdl_reader
 
 
-def process_mesh(file_path):
+def convert_mesh_from_cdb(file_path):
     """
     Processes the mesh file, modifies the grid, and saves it as a .vtu file.
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        process_mesh(input_file)
+        convert_mesh_from_cdb(input_file)
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
