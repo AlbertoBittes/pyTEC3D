@@ -15,7 +15,6 @@ class VTKGridHelper:
                 If None, uses VTK_ARRAYS_TO_INIT from constants.
         """
         if arrays_to_init is None:
-            from constants import VTK_ARRAYS_TO_INIT
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         cell_data = mesh.GetCellData()
@@ -61,6 +60,39 @@ class VTKGridHelper:
             }
         }
         VTKGridHelper.initialize_vtk_arrays(mesh, arrays_to_init)
+
+    @staticmethod
+    def reset_vtk_arrays_to_default(mesh, arrays_to_init=None):
+        """
+        Resets arrays specified in arrays_to_init to their default 'fill' values if present.
+
+        Parameters:
+            mesh: The VTK unstructured grid whose arrays will be reset.
+            arrays_to_init (dict, optional): Dictionary specifying arrays to reset.
+                If None, uses VTK_ARRAYS_TO_INIT from constants.
+        """
+        if arrays_to_init is None:
+            from constants import VTK_ARRAYS_TO_INIT
+            arrays_to_init = VTK_ARRAYS_TO_INIT
+
+        cell_data = mesh.GetCellData()
+        point_data = mesh.GetPointData()
+
+        for name, info in arrays_to_init.items():
+            data_obj = cell_data if info["location"] == "cell" else point_data
+            vtk_array = data_obj.GetArray(name)
+            if vtk_array is not None and "fill" in info:
+                num = (
+                    mesh.GetNumberOfCells()
+                    if info["location"] == "cell"
+                    else mesh.GetNumberOfPoints()
+                )
+                shape = (num, info["components"]) if info["components"] > 1 else num
+                arr = np.full(shape, info["fill"])
+                # Overwrite the VTK array with the default values
+                vtk_np = vtknp.vtk_to_numpy(vtk_array)
+                vtk_np[:] = arr
+                vtk_array.Modified()
 
     @staticmethod
     def safe_remove_array(mesh, array_name, location=None):
