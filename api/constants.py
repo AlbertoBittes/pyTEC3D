@@ -1,21 +1,21 @@
 import vtk
 import numpy as np
 
-# Global variable mappings
-VARIABLES_GLOBAL_NUMBERS = {
-    "A": 0,
-    "Az": 1,
-    "VOLT": 2,
-    "EMF": 3,
-    "CURR": 4,
-    "CSG": 5,
-    "AMPS": 6,
-    "VLTG": 7,
-    "CURT": 8,
-    "Js": 9,
-    "B": 10,
-    "J": 11,
-}
+# Global variable list, index is the number
+VARIABLES_GLOBAL_LIST = [
+    "A",
+    "Az",
+    "VOLT",
+    "EMF",
+    "CURR",
+    "CSG",
+    "AMPS",
+    "VLTG",
+    "CURT",
+    "Js",
+    "B",
+    "J",
+]
 
 # Default solver settings
 DEFAULT_SOLVER_SETTINGS = {
@@ -290,12 +290,23 @@ VTK_ARRAYS_TO_INIT = {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_INT,
+        "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
     "flux_parallel": {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_INT,
+        "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
 }
+
+ARRAYS_TO_REMOVE = ["selection_point", "selection_cell", "cell_centroids", ]
+
+# Labels to read for each load step from Excel
+EXCEL_LOAD_STEP_LABELS = [
+    "materials",
+    "real_constants",
+    "solver_settings",
+    "point_data",
+    "cell_data",
+]

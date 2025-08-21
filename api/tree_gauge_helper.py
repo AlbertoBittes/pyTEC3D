@@ -228,7 +228,7 @@ class TreeGaugeHelper:
     # Convenience: attach arrays to the grid
     # ------------------------------
     @staticmethod
-    def annotate_grid_with_tree_cotree(
+    def build_tree_cotree_on_grid(
         ugrid,
         constrained_point_ids=None,
         forced_cotree_mask=None,
@@ -260,7 +260,7 @@ class TreeGaugeHelper:
         return mask
 
     @staticmethod
-    def add_midside_mask_array(ugrid, array_name="MidsideNodes"):
+    def add_midside_nodes_mask_array(ugrid, array_name="MidsideNodes"):
         """
         Adds an array to the unstructured grid with 1 on midside nodes, 0 on corner nodes.
         The mask is determined by the cell types and VTK quadratic element conventions.
