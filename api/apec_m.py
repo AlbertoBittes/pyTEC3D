@@ -8,10 +8,10 @@ import vtk
 import vtk.util.numpy_support as vtknp
 
 from tree_gauge_helper import TreeGaugeHelper
-from api.ansys_helper import AnsysHelper
+from ansys_helper import AnsysHelper
 from selector import Selector
 from vtk_tables_helper import VTKTablesHelper
-from api.vtk_grid_helper import VTKGridHelper
+from vtk_grid_helper import VTKGridHelper
 from binary_helper import BinaryHelper
 from excel_io_helper import ExcelIOHelper
 from cli_object import CLIObject
@@ -28,11 +28,13 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     try:
         import openpyxl
+
         # print("openpyxl imported successfully.")
     except ImportError:
         print(
             "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
         )
+
 
 class APEC_M:
     """
@@ -276,7 +278,9 @@ class APEC_M:
         """
         Delegates to ExcelIOHelper static method to update VTK grid from Excel.
         """
-        ExcelIOHelper.update_vtk_grid_from_excel(self.mesh, excel_file, sheet_name, data_type)
+        ExcelIOHelper.update_vtk_grid_from_excel(
+            self.mesh, excel_file, sheet_name, data_type
+        )
 
     def read_excel_df(self, excel_file, sheet_name):
         """
@@ -294,7 +298,9 @@ class APEC_M:
         """
         Delegates writing cell/point data to ExcelIOHelper static method.
         """
-        ExcelIOHelper.write_excel_cell_point_data(self.mesh, output_excel_file, data_type)
+        ExcelIOHelper.write_excel_cell_point_data(
+            self.mesh, output_excel_file, data_type
+        )
 
     #
     #
@@ -415,6 +421,7 @@ class APEC_M:
 
     def _write_numpy_array_to_binary(self, mesh, binary_file, label):
         BinaryHelper.write_numpy_array_to_binary(mesh, binary_file, label)
+
     #
     #
     #
@@ -464,7 +471,10 @@ class APEC_M:
         """
         Delegates set_value_on_selection to Selector static method.
         """
-        Selector.set_value_on_selection(self.mesh, array_name, value, component, cell_or_point)
+        Selector.set_value_on_selection(
+            self.mesh, array_name, value, component, cell_or_point
+        )
+
     #
     #
     #
@@ -546,7 +556,9 @@ class APEC_M:
         and stores the result as a cell data array named `array_name`.
         """
         VTKGridHelper.store_cell_volumes(self.mesh, array_name=array_name)
-        print(f"Cell volumes/areas computed and stored in CellData array '{array_name}'.")
+        print(
+            f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
+        )
 
     def remove_array(self, array_name):
         """

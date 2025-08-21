@@ -1,9 +1,9 @@
 import os
 import pandas as pd
-from api.vtk_grid_helper import VTKGridHelper
-from api.constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES
-import os
-import pandas as pd
+from vtk_grid_helper import VTKGridHelper
+from binary_helper import BinaryHelper
+from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
+
 
 class ExcelIOHelper:
     @staticmethod
@@ -19,10 +19,6 @@ class ExcelIOHelper:
         Raises:
             ValueError: If the data_type is invalid.
         """
-        from api.binary_helper import BinaryHelper
-        from api.constants import VARIABLES_GLOBAL_NUMBERS
-        import pandas as pd
-        import os
 
         # Determine the VTK data and mapping based on the data_type
         if data_type == "cell_data":
@@ -30,9 +26,7 @@ class ExcelIOHelper:
         elif data_type == "point_data":
             vtk_data = mesh.GetPointData()
         else:
-            raise ValueError(
-                "Invalid data_type. Must be 'cell_data' or 'point_data'."
-            )
+            raise ValueError("Invalid data_type. Must be 'cell_data' or 'point_data'.")
 
         # Retrieve the final_data NumPy array
         final_data = BinaryHelper.create_numpy_array_for_binary(vtk_data)
@@ -41,7 +35,7 @@ class ExcelIOHelper:
         df = pd.DataFrame(final_data)
 
         # Replace the "load_bc_number" column with the corresponding "label"
-        reverse_mapping = {v: k for k, v in VARIABLES_GLOBAL_NUMBERS.items()}
+        reverse_mapping = {v: k for k, v in VARIABLES_GLOBAL_LIST.items()}
         df["label"] = df["load_bc_number"].map(reverse_mapping)
 
         # Reorder columns to make "label" the second column and remove "load_bc_number"
@@ -119,7 +113,6 @@ class ExcelIOHelper:
             result_dict[setting] = value
         print(f"Data from sheet '{sheet_name}' successfully loaded into dictionary.")
         return result_dict
-
 
     @staticmethod
     def read_excel_df(excel_file, sheet_name):

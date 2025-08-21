@@ -1,7 +1,11 @@
 import numpy as np
 import pandas as pd
+import os
 import re
 import vtk.util.numpy_support as vtknp
+from vtk_grid_helper import VTKGridHelper
+from excel_io_helper import ExcelIOHelper
+
 
 class AnsysHelper:
     @staticmethod
@@ -18,9 +22,10 @@ class AnsysHelper:
             Prints a summary message on completion.
         """
         df = AnsysHelper.read_parse_bfelist(file_path)
-        mapping_array = AnsysHelper.map_data_to_vtk(mesh.GetCellData(), "ansys_elem_num")
+        mapping_array = AnsysHelper.map_data_to_vtk(
+            mesh.GetCellData(), "ansys_elem_num"
+        )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_elem_num")
-        from api.vtk_grid_helper import VTKGridHelper
         VTKGridHelper.update_vtk_grid(mesh.GetCellData(), df)
         print(f"Grid updated with element loads from '{file_path}'.")
 
@@ -38,12 +43,14 @@ class AnsysHelper:
             Updates mesh CellData and writes loads to Excel.
             Prints a summary message on completion.
         """
-        import os
+
         if not os.path.exists(bfelist_file):
             raise FileNotFoundError(f"BFELIST file '{bfelist_file}' not found.")
         AnsysHelper.read_bfelist(mesh, bfelist_file)
-        from api.excel_io_helper import ExcelIOHelper
-        ExcelIOHelper.write_excel_cell_point_data(mesh, output_excel_file, data_type="cell_data")
+
+        ExcelIOHelper.write_excel_cell_point_data(
+            mesh, output_excel_file, data_type="cell_data"
+        )
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
     @staticmethod
@@ -60,9 +67,11 @@ class AnsysHelper:
             Prints a summary message on completion.
         """
         df = AnsysHelper.read_parse_dlist(file_path)
-        mapping_array = AnsysHelper.map_data_to_vtk(mesh.GetPointData(), "ansys_node_num")
+        mapping_array = AnsysHelper.map_data_to_vtk(
+            mesh.GetPointData(), "ansys_node_num"
+        )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_node_num")
-        from api.vtk_grid_helper import VTKGridHelper
+
         VTKGridHelper.update_vtk_grid(mesh.GetPointData(), df)
         print(f"Grid updated with node data from '{file_path}'.")
 
@@ -81,11 +90,14 @@ class AnsysHelper:
             Prints a summary message on completion.
         """
         import os
+
         if not os.path.exists(dlist_file):
             raise FileNotFoundError(f"DLIST file '{dlist_file}' not found.")
         AnsysHelper.read_dlist(mesh, dlist_file)
-        from api.excel_io_helper import ExcelIOHelper
-        ExcelIOHelper.write_excel_cell_point_data(mesh, output_excel_file, data_type="point_data")
+
+        ExcelIOHelper.write_excel_cell_point_data(
+            mesh, output_excel_file, data_type="point_data"
+        )
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
     @staticmethod
@@ -150,7 +162,9 @@ class AnsysHelper:
                 - value: The value of the load for the given component.
         """
         element_pattern = re.compile(r"ELEMENT\\s*=\\s*(\\d+)")
-        density_pattern = re.compile(r"\\s*([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)")
+        density_pattern = re.compile(
+            r"\\s*([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)"
+        )
         data = []
         current_element = None
         load_label = None
@@ -171,14 +185,18 @@ class AnsysHelper:
                         for component in range(3):
                             value = float(density_match.group(component + 1))
                             if value != 0.0:
-                                data.append({
-                                    "ansys_elem_num": current_element,
-                                    "label": load_label,
-                                    "component": component,
-                                    "value": value,
-                                })
+                                data.append(
+                                    {
+                                        "ansys_elem_num": current_element,
+                                        "label": load_label,
+                                        "component": component,
+                                        "value": value,
+                                    }
+                                )
                         current_element = None
-        df = pd.DataFrame(data, columns=["ansys_elem_num", "label", "component", "value"])
+        df = pd.DataFrame(
+            data, columns=["ansys_elem_num", "label", "component", "value"]
+        )
         return df
 
     @staticmethod
@@ -218,11 +236,15 @@ class AnsysHelper:
                         label = label[:-1]
                     else:
                         component = 0
-                    data.append({
-                        "ansys_node_num": node_num,
-                        "label": label,
-                        "component": component,
-                        "value": value,
-                    })
-        df = pd.DataFrame(data, columns=["ansys_node_num", "label", "component", "value"])
+                    data.append(
+                        {
+                            "ansys_node_num": node_num,
+                            "label": label,
+                            "component": component,
+                            "value": value,
+                        }
+                    )
+        df = pd.DataFrame(
+            data, columns=["ansys_node_num", "label", "component", "value"]
+        )
         return df
