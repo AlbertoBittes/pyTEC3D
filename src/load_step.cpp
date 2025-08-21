@@ -70,6 +70,7 @@ void LoadStep::read_from_file(const std::string &filename)
             auto node_loads_dof_constraints = std::make_shared<VTKDataMapFEDataObject>(eq_sys);
             node_loads_dof_constraints->add_dof_system();
             node_loads_dof_constraints->add_nodal_loads_system();
+            node_loads_dof_constraints->add_support_system();
             node_loads_dof_constraints->read_data(file);
             break;
         }

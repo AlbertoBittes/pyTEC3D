@@ -567,6 +567,7 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     if (dof_map_index < 0 || dof_map_index >= static_cast<int>(dof_maps.size()))
         return;
 
+    System *sys = systems[dof_map_index];
     DofMap *dof_map = dof_maps[dof_map_index];
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
@@ -576,7 +577,7 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
 
     for (const auto &var_enum : active_vars)
     {
-        unsigned int system_var_num = elem_data.element_type->get_variable_information()[var_enum].system_var_num;
+        unsigned int system_var_num = sys->variable_number(elem_data.element_type->get_variable_information()[var_enum].global_label);
         std::vector<dof_id_type> dof_indices_variable;
         if (dof_map)
         {

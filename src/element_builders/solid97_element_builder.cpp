@@ -330,15 +330,14 @@ void ElementBuilder::build_solid97_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-        unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+        unsigned int amp_var_num = nodal_solution_system->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
 
         // Apply nodal AMPS loads
         dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
         nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
+            Fe(dof_i + 3 * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
 
         for (dof_id_type &dof_value : dof_indices_loads)
             nodal_loads_vector->set(dof_value, 0);
@@ -443,7 +442,7 @@ void ElementBuilder::build_solid97_solution_vectors()
 
             materials_object->fill_rs_matrix(this->elem_data.material_num);
             auto &rs_matrix = materials_object->get_rs_matrix();
-            unsigned int volt_var_num = elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+            unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
 
             fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
 

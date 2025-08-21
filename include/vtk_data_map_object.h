@@ -63,6 +63,16 @@ public:
                            0});
     }
 
+    void add_support_system()
+    {
+        ApecMExplicitSystem *support_system = &data_map->get_system<ApecMExplicitSystem>("SupportSystem");
+        systems.push_back({support_system->number(),
+                           support_system->current_local_solution.get(),
+                           nullptr,
+                           &support_system->system_info,
+                           0});
+    }
+
     // User sets this before reading
     void set_is_element_data(bool flag) { is_element_data = flag; }
 

@@ -50,6 +50,7 @@ namespace Globals
         He_x,
         He_y,
         He_z,
+        TREE,
         UNKNOWN // Fallback for invalid strings
     };
 
@@ -71,6 +72,7 @@ namespace Globals
         Jt,
         Be,
         He,
+        TREE,
         UNKNOWN // Fallback for invalid strings
     };
 
@@ -80,7 +82,8 @@ namespace Globals
         NodalLoadsVariables,
         ElementLoadsVariables,
         NodalSolutionVariables,
-        ElementSolutionVariables
+        ElementSolutionVariables,
+        SupportVariables
     };
 
     struct VariableInfo
@@ -93,7 +96,6 @@ namespace Globals
         FEFamily fe_family;
         Order order;
         unsigned int component_index;
-        unsigned int system_var_num;
         // Add other fields as needed
     };
 
@@ -110,6 +112,7 @@ namespace Globals
         ELEMENT_LOADS,
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
+        SUPPORT_SYSTEM, // New system type for support elements
         NUM_SYSTEMS
     };
 

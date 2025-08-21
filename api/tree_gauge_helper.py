@@ -121,8 +121,8 @@ class TreeGaugeHelper:
         ugrid,
         constrained_point_ids=None,
         forced_cotree_mask=None,
-        tree_name="TreeEdges",
-        cotree_name="CotreeEdges",
+        tree_name="TREE",
+        cotree_name="COTREE",
     ):
         """
         Build a tree–cotree decomposition for second‑order cells, identifying edges by
@@ -232,8 +232,8 @@ class TreeGaugeHelper:
         ugrid,
         constrained_point_ids=None,
         forced_cotree_mask=None,
-        tree_name="TreeEdges",
-        cotree_name="CotreeEdges",
+        tree_name="TREE",
+        cotree_name="COTREE",
     ):
         tree_arr, cotree_arr, info = (
             TreeGaugeHelper.build_tree_cotree_for_midside_edges(

@@ -172,6 +172,7 @@ void ElementBuilder::build_solid236_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
+    System *main_sys = systems[Globals::DOF_SOLUTION_SYSTEM];
     System *nodal_solution_system = systems[Globals::NODAL_LOADS];
     System *element_solution_system = systems[Globals::ELEMENT_LOADS];
 
@@ -224,14 +225,14 @@ void ElementBuilder::build_solid236_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-        unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+        unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
+        unsigned int amp_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
 
         // Apply nodal AMPS loads
         dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
         nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-        unsigned int az_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::Az].system_var_num;
+        unsigned int az_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::Az].global_label);
 
         unsigned int n_dofs_A = elem_data.elem->n_dofs(az_var_num, Globals::DOF_SOLUTION_SYSTEM);
         unsigned int n_dofs_V = elem_data.elem->n_dofs(volt_var_num, Globals::DOF_SOLUTION_SYSTEM);

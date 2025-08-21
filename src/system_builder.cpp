@@ -85,31 +85,5 @@ void SystemBuilder::init_variables()
             data.fe_family,
             &subdomain_ids);
     }
-
-    std::vector<unsigned int> all_variable_numbers;
-    system->get_all_variable_numbers(all_variable_numbers);
-    for (unsigned int var_num : all_variable_numbers)
-    {
-        // Get the variable name from the system
-        const std::string &var_name = system->variable_name(var_num);
-
-        // Loop over all elements in the collector
-        for (const auto &elem_pair : *(element_types_collector->get_element_types_map()))
-        {
-            const auto &elem_type = elem_pair.second;
-            auto &var_info = elem_type->get_variable_information();
-
-            // Find the variable enum corresponding to var_name
-            for (auto &info_pair : var_info)
-            {
-                auto enum_name = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, info_pair.first).global_label;
-                if (enum_name == var_name)
-                {
-                    info_pair.second.system_var_num = var_num;
-                    break;
-                }
-            }
-        }
-    }
     // Add more conditions as needed for other combinations
 }

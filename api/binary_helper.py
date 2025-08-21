@@ -130,6 +130,7 @@ class BinaryHelper:
         for idx, load_bc_label in enumerate(VARIABLES_GLOBAL_LIST):
             load_bc_array = cell_point_data.GetArray(load_bc_label)
             if load_bc_array is None:
+                print(f"Warning: Array '{load_bc_label}' not found in cell/point data.")
                 continue
             load_bc_array_np = vtknp.vtk_to_numpy(load_bc_array)
             num_components = load_bc_array.GetNumberOfComponents()

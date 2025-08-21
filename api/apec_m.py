@@ -582,7 +582,7 @@ class APEC_M:
     #
     #
     def build_tree_cotree_gauge(
-        self, array_name="Az", tree_name="TreeEdges", cotree_name="CotreeEdges"
+        self, array_name="Az", tree_name="TREE", cotree_name="COTREE"
     ):
         """
         Build the tree–cotree decomposition for midside edges in the mesh using TreeGaugeHelper.
@@ -595,8 +595,8 @@ class APEC_M:
 
         Parameters:
             array_name (str): Name of the array in PointData to use for forced cotree mask (default "Az").
-            tree_name (str): Name for the output tree mask array (default "TreeEdges").
-            cotree_name (str): Name for the output cotree mask array (default "CotreeEdges").
+            tree_name (str): Name for the output tree mask array (default "TREE").
+            cotree_name (str): Name for the output cotree mask array (default "COTREE").
 
         Raises:
             ValueError: If the specified array is not found in PointData.
