@@ -28,9 +28,7 @@ void ElementType::set_variables_order()
     if (order != FIRST)
         for (auto &pair : variable_info)
         {
-            if (pair.second.category == VariableCategory::DOFVariables ||
-                pair.second.category == VariableCategory::NodalSolutionVariables ||
-                pair.second.category == VariableCategory::NodalLoadsVariables)
+            if (pair.second.fe_family == LAGRANGE || pair.second.fe_family == L2_LAGRANGE)
             {
                 pair.second.order = order;
             }
@@ -166,7 +164,7 @@ void AV3DElementType::set_fe_array()
     fe_array[0]->attach_quadrature_rule(qrule);
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof_matrix_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_dof_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
@@ -181,7 +179,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_dof
     return matrix_idx_size_map;
 };
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_solution_matrix_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
@@ -204,7 +202,7 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_sol
     return solution_matrix_idx_size_map;
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DElementType::get_vector_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_vector_idx_size_map()
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
@@ -296,26 +294,68 @@ void SOLID97Type::set_fe_array()
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(keyopts)
 {
-    // variable_info["DOFVariables"]["A"] =
-    //     std::make_tuple(true, 3, false, "A", 2, "NEDELEC_ONE", "FIRST");
-    // if (physical_region == 1 || physical_region == 2)
-    //     std::get<0>(variable_info["DOFVariables"]["VOLT"]) = true; // Modify the first member
-    // if (physical_region == 2)
-    //     std::get<0>(variable_info["DOFVariables"]["EMF"]) = true; // Modify the first member
+    set_variable_info();
+    set_fe_array();
+    set_active_dof_vars_size();
+    set_variables_order();
+}
 
-    libmesh_error_msg("SOLID236Type::SOLID236Type is not implemented.");
-    // FEType fe_type_vec(FIRST, NEDELEC_ONE);
-    // // Build a Finite Element object of the specified type.  Since the
-    // // FEBase::build() member dynamically creates memory we will
-    // // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // // of as a pointer that will clean up after itself.
-    // fe_vec = FEVectorBase::build(3, fe_type_vec);
-    // // A 2nd order Gauss quadrature rule for numerical integration.
-    // QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
-    // // Tell the finite element object to use our quadrature rule.
-    // fe_vec->attach_quadrature_rule(qrule_vec);
+void SOLID236Type::set_variable_info()
+{
+    variable_info[GlobalVariableName::Az] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Az);
+    variable_info[GlobalVariableName::Az].fe_family = NEDELEC_ONE;
+    // variable_info[GlobalVariableName::CSG_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_x);
+    // variable_info[GlobalVariableName::CSG_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_y);
+    // variable_info[GlobalVariableName::CSG_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CSG_z);
 
-    // auto sf_vec = this->get_vector_shape_functions();
+    if (physical_region == SOLID_CONDUCTOR || physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
+    {
+        variable_info[GlobalVariableName::VOLT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::VOLT);
+        variable_info[GlobalVariableName::AMPS] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::AMPS);
+    }
+    if (physical_region == STRANDED_COIL)
+    {
+        variable_info[GlobalVariableName::EMF] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::EMF);
+        variable_info[GlobalVariableName::CURT] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::CURT);
+    }
+    if (physical_region == STRANDED_CONDUCTOR)
+    {
+        variable_info[GlobalVariableName::Js_x] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_x);
+        variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y);
+        variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
+    }
+}
+
+void SOLID236Type::set_fe_array()
+{
+    FEType fe_type_vec(order, NEDELEC_ONE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEVectorBase> fe_vec = FEVectorBase::build(3, fe_type_vec);
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe_vec->attach_quadrature_rule(qrule_vec);
+
+    fe_array.push_back(std::move(fe_vec));
+
+    FEType fe_type_face(order, NEDELEC_ONE);
+
+    std::unique_ptr<FEBase> fe_face = FEBase::build(3, fe_type_face);
+
+    // Boundary integration requires another quadrature rule,
+    // with dimensionality one less than the dimensionality
+    // of the element.
+    // In 1D, the Clough and Gauss quadrature rules are identical.
+    QGauss *qface = new QGauss(2, fe_type_face.default_quadrature_order());
+
+    // Tell the finite element object to use our
+    // quadrature rule.
+    fe_face->attach_quadrature_rule(qface);
+
+    fe_array.push_back(std::move(fe_face));
 }
 
 PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)

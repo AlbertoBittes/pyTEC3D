@@ -159,12 +159,6 @@ public:
     // Constructor
     AV3DElementType(const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
-
     virtual void set_variable_info() override;
 
     virtual void set_fe_array() override;
@@ -191,6 +185,12 @@ class SOLID97Type : public AV3DElementType
 {
 public:
     SOLID97Type(const std::vector<unsigned int> &keyopts);
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
     virtual void set_variable_info() override;
 
