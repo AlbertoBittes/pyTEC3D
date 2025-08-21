@@ -259,6 +259,8 @@ void SOLID236Type::set_variable_info()
         variable_info[GlobalVariableName::Js_y] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_y);
         variable_info[GlobalVariableName::Js_z] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::Js_z);
     }
+
+    variable_info[GlobalVariableName::TREE] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, GlobalVariableName::TREE);
 }
 
 void SOLID236Type::set_fe_array()
@@ -283,6 +285,16 @@ void SOLID236Type::set_fe_array()
     fe_vec_copy->attach_quadrature_rule(qrule_vec_copy);
 
     fe_array.push_back(std::move(fe_vec_copy));
+
+    FEType fe_type_vec_lagrange(order, LAGRANGE_VEC);
+
+    std::unique_ptr<FEVectorBase> fe_vec_a_lagrange = FEVectorBase::build(3, fe_type_vec_lagrange);
+
+    QGauss *qrule_vec_a_lagrange = new QGauss(3, fe_type_vec_lagrange.default_quadrature_order());
+
+    fe_vec_a_lagrange->attach_quadrature_rule(qrule_vec_a_lagrange);
+
+    fe_array.push_back(std::move(fe_vec_a_lagrange));
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_solution_matrix_idx_size_map()
@@ -290,7 +302,8 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_soluti
     // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+    unsigned int n_sf_vec = 3 * n_sf;
+    unsigned int n_sf_edge = fe_array[1]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
@@ -298,13 +311,13 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_soluti
     // Me
     (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::Me_SOLID97] = {n_sf_vec, n_sf_vec};
     // AAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_edge};
     // JAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_edge};
     // JVe
     (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JVe_SOLID97] = {3 * n_qp, n_sf};
     // BAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_vec};
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_edge};
 
     return solution_matrix_idx_size_map;
 }

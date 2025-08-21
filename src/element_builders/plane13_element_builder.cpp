@@ -187,14 +187,14 @@ void ElementBuilder::build_plane13_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *nodal_solution_system = systems[Globals::NODAL_LOADS];
-    System *element_solution_system = systems[Globals::ELEMENT_LOADS];
+    System *nodal_loads_system = systems[Globals::NODAL_LOADS];
+    System *element_loads_system = systems[Globals::ELEMENT_LOADS];
 
     auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
     auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
 
-    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(2);
-    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(2);
+    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
+    NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
 
     switch (elem_data.element_type->get_physical_region())
     {

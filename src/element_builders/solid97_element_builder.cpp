@@ -85,7 +85,7 @@ void ElementBuilder::build_solid97()
             for (unsigned int k = 0; k < 3; k++)
                 for (unsigned int l = 0; l < 3; l++)
                 {
-                    BAe(qp + k * n_dofs_var, dof_i + l * n_dofs_var) += curl_phi_vec[dof_i * 3 + l][qp](k);
+                    BAe(qp + k * nq, dof_i + l * n_dofs_var) += curl_phi_vec[dof_i * 3 + l][qp](k);
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / mu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
@@ -116,8 +116,8 @@ void ElementBuilder::build_solid97()
             {
                 for (unsigned int k = 0; k < 3; k++)
                 {
-                    JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
-                    JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
+                    JVe(qp + k * nq, dof_i) += dphi[dof_i][qp](k);
+                    JAe(qp + k * nq, dof_i + k * n_dofs_var) += phi[dof_i][qp];
                 }
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
@@ -293,14 +293,14 @@ void ElementBuilder::build_solid97_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *nodal_solution_system = systems[Globals::NODAL_LOADS];
-    System *element_solution_system = systems[Globals::ELEMENT_LOADS];
+    System *nodal_loads_system = systems[Globals::NODAL_LOADS];
+    System *element_loads_system = systems[Globals::ELEMENT_LOADS];
 
     auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
     auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
 
-    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(2);
-    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(2);
+    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
+    NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -308,6 +308,7 @@ void ElementBuilder::build_solid97_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
+        // Pay attention here if you add other variables
         dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
         element_loads_vector->get(dof_indices_loads, loads_vec);
 
@@ -316,7 +317,8 @@ void ElementBuilder::build_solid97_rhs()
                 Fe(dof_i + k * n_dofs_var) *= loads_vec[k];
 
         // Apply nodal CSG loads
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        unsigned int amps_var_num = nodal_loads_system->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amps_var_num);
         nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
@@ -330,14 +332,14 @@ void ElementBuilder::build_solid97_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        unsigned int amp_var_num = nodal_solution_system->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
+        unsigned int amps_var_num = nodal_loads_system->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
 
         // Apply nodal AMPS loads
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amps_var_num);
         nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i + 3 * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
+            Fe(dof_i + 3 * n_dofs_var) = loads_vec[dof_i + amps_var_num * n_dofs_var];
 
         for (dof_id_type &dof_value : dof_indices_loads)
             nodal_loads_vector->set(dof_value, 0);

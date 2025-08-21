@@ -17,7 +17,7 @@ void GlobalConstraintsObject::constrain()
     // at system init
     DofMap &dof_map = this->parent_object->get_dof_map();
     MeshBase &mesh = this->parent_object->get_mesh();
-
+    EquationSystems &equation_systems = this->parent_object->get_equation_systems();
     if (!this->ctx_view)
     {
         return;
@@ -37,18 +37,27 @@ void GlobalConstraintsObject::constrain()
     }
 
     // apply tree-cotree gauge
-    System &tree_cotree_gauge_system = this->get_parent_object()->get_equation_systems().get_system<System>("SupportSystem");
-    unsigned int sys_num = tree_cotree_gauge_system.number();
-    unsigned int tree_var_num = tree_cotree_gauge_system.variable_number("TREE");
-    NumericVector<Number> &tree_cotree_gauge = *tree_cotree_gauge_system.current_local_solution;
-    for (auto node_ptr : mesh.local_node_ptr_range())
+    if (equation_systems.has_system("SupportSystem"))
     {
-        dof_id_type dof_id = node_ptr->dof_number(sys_num, tree_var_num, 0);
-        Real value = tree_cotree_gauge(dof_id);
-        if (value > 0.5)
+        System &tree_cotree_gauge_system = equation_systems.get_system<System>("SupportSystem");
+        if (tree_cotree_gauge_system.has_variable("TREE"))
         {
-            DofConstraintRow constraint_row;
-            dof_map.add_constraint_row(dof_id, constraint_row, true);
+            unsigned int az_var_num = this->get_parent_object()->variable_number("Az");
+            unsigned int main_sys_num = this->get_parent_object()->number();
+            unsigned int tree_sys_num = tree_cotree_gauge_system.number();
+            unsigned int tree_var_num = tree_cotree_gauge_system.variable_number("TREE");
+            NumericVector<Number> &tree_cotree_gauge = *tree_cotree_gauge_system.current_local_solution;
+            for (auto node_ptr : mesh.local_node_ptr_range())
+            {
+                dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
+                Real value = tree_cotree_gauge(tree_dof_id);
+                if (value > 0.5)
+                {
+                    dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
+                    DofConstraintRow constraint_row;
+                    dof_map.add_constraint_row(az_dof_id, constraint_row, true);
+                }
+            }
         }
     }
 }

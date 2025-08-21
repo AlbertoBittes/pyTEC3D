@@ -37,7 +37,8 @@ void ElementBuilder::build_solid236()
     //
     // Now start logging the element matrix computation
     FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
+    FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
+    FEVectorBase *fe_vec_lagrange = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[3].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
 
@@ -50,19 +51,21 @@ void ElementBuilder::build_solid236()
 
     // The velocity shape function gradients at interior
     // quadrature points.
-    const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
+    const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
 
-    const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
+    const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
 
-    const std::vector<std::vector<RealTensorValue>> &dphi_vec = fe_vec->get_dphi();
+    const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
+    // const std::vector<std::vector<RealTensorValue>> &dphi_vec = fe_vec->get_dphi();
 
     fe->reinit(elem_data.elem);
-    fe_vec->reinit(elem_data.elem);
+    fe_edge->reinit(elem_data.elem);
+    fe_vec_lagrange->reinit(elem_data.elem);
 
     this->prepare_element_matrix_building();
 
     // Get the scalar shape functions and vector shape functions
-    unsigned int n_dofs_A = fe_vec->n_shape_functions();
+    unsigned int n_dofs_A = fe_edge->n_shape_functions();
     unsigned int n_dofs_V = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
@@ -73,18 +76,36 @@ void ElementBuilder::build_solid236()
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ke_SOLID97];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ce_SOLID97];
-    // auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::Me_SOLID97];
-    // auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
-    // auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
-    // auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
-    // auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
+    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::Me_SOLID97];
+    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
+    auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
+    auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
+    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
     // auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 for (unsigned int k = 0; k < 3; k++)
-                    Ke(dof_i, dof_j) += JxW[qp] / mu_matrix[k] * (curl_phi_vec[dof_i][qp](k) * curl_phi_vec[dof_j][qp](k));
+                    Ke(dof_i, dof_j) += JxW[qp] / mu_matrix[k] * (curl_phi_edge[dof_i][qp](k) * curl_phi_edge[dof_j][qp](k));
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+            for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    AAe(dof_i + k * n_dofs_V, dof_j) += JxW[qp] * (phi_vec_lagrange[dof_i * 3 + k][qp] * curl_phi_edge[dof_j][qp]);
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+            for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Me(dof_i + k * n_dofs_V, dof_j + l * n_dofs_V) += JxW[qp] * (phi_vec_lagrange[dof_i * 3 + k][qp] * phi_vec_lagrange[dof_j * 3 + l][qp]);
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int k = 0; k < 3; k++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                BAe(qp + k * nq, dof_j) += curl_phi_edge[dof_j][qp](k);
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -103,19 +124,19 @@ void ElementBuilder::build_solid236()
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_i][qp](k) * phi_vec[dof_j][qp](k));
+                        Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[k] * (phi_edge[dof_i][qp](k) * phi_edge[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_i][qp](k) * dphi[dof_j][qp](k));
+                        Ce(dof_i, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (phi_edge[dof_i][qp](k) * dphi[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_j][qp](k) * dphi[dof_i][qp](k));
+                        Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] / rs_matrix[k] * (dphi[dof_i][qp](k) * phi_edge[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
@@ -123,15 +144,15 @@ void ElementBuilder::build_solid236()
                     for (unsigned int k = 0; k < 3; k++)
                         Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
 
-        // CAV_value = JxW[qp] / rs_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-        // Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
-        // Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-        // Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) / rs_matrix[l] * dphi[dof_j][qp](l);
-        // for (unsigned int k = 0; k < 3; k++)
-        // {
-        //     JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
-        //     JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
-        // }
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    JVe(qp + k * nq, dof_j) += dphi[dof_j][qp](k);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int k = 0; k < 3; k++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    JAe(qp + k * nq, dof_j) += phi_edge[dof_j][qp](k);
 
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
@@ -173,14 +194,15 @@ void ElementBuilder::build_solid236_rhs()
     std::vector<Real> loads_vec;
 
     System *main_sys = systems[Globals::DOF_SOLUTION_SYSTEM];
-    System *nodal_solution_system = systems[Globals::NODAL_LOADS];
-    System *element_solution_system = systems[Globals::ELEMENT_LOADS];
+    System *nodal_loads_sys = systems[Globals::NODAL_LOADS];
+    System *element_loads_sys = systems[Globals::ELEMENT_LOADS];
 
+    auto dof_map_main_system = dof_maps[Globals::DOF_SOLUTION_SYSTEM];
     auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
     auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
 
-    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(2);
-    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(2);
+    NumericVector<Number> *nodal_loads_vector = nodal_loads_sys->request_vector(2);
+    NumericVector<Number> *element_loads_vector = element_loads_sys->request_vector(2);
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -226,19 +248,23 @@ void ElementBuilder::build_solid236_rhs()
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
-        unsigned int amp_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
+        unsigned int amp_var_num = nodal_loads_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
 
         // Apply nodal AMPS loads
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amp_var_num);
         nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
         unsigned int az_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::Az].global_label);
 
-        unsigned int n_dofs_A = elem_data.elem->n_dofs(az_var_num, Globals::DOF_SOLUTION_SYSTEM);
-        unsigned int n_dofs_V = elem_data.elem->n_dofs(volt_var_num, Globals::DOF_SOLUTION_SYSTEM);
+        // do not know why but n_dofs on elem doesnt work
+        std::vector<dof_id_type> dof_indices_dummy;
+        dof_map_main_system->dof_indices(elem_data.elem, dof_indices_dummy, az_var_num);
+        unsigned int n_dofs_A = dof_indices_dummy.size();
+        dof_map_main_system->dof_indices(elem_data.elem, dof_indices_dummy, volt_var_num);
+        unsigned int n_dofs_V = dof_indices_dummy.size();
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-            Fe(dof_i + n_dofs_A) = loads_vec[dof_i + n_dofs_A];
+            Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
 
         for (dof_id_type &dof_value : dof_indices_loads)
             nodal_loads_vector->set(dof_value, 0);
@@ -254,5 +280,141 @@ void ElementBuilder::build_solid236_rhs()
 
 void ElementBuilder::build_solid236_solution_vectors()
 {
+    // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
+    DenseVector<Number> Bn;
+    DenseVector<Number> Hn;
+    DenseVector<Number> Be(3);
+    DenseVector<Number> He(3);
+    DenseVector<Number> Je(3);
+
+    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID236SolutionMatrices::Me_SOLID236];
+    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID236SolutionMatrices::AAe_SOLID236];
+    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID236SolutionMatrices::BAe_SOLID236];
+
+    std::vector<dof_id_type> dof_indices;
+
+    auto materials_object = this->context<MaterialsObject>();
+
+    materials_object->fill_mu_matrix(this->elem_data.material_num);
+    auto &mu_matrix = materials_object->get_mu_matrix();
+
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(systems[Globals::DOF_SOLUTION_SYSTEM]);
+    System *nodal_solution_system = systems[Globals::NODAL_SOLUTION];
+    System *element_solution_system = systems[Globals::ELEMENT_SOLUTION];
+
+    this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
+
+    unsigned int n_dofs_A = AAe.n();
+    unsigned int n_dofs_V = AAe.m() / 3;
+    unsigned int n_qp = BAe.m() / 3;
+
+    // Compute B in nodes
+    DenseVector<Number> Bn_x;
+    AAe.vector_mult(Bn_x, solution_vector_support.sol_vectors[0]);
+    Me.cholesky_solve(Bn_x, Bn);
+
+    // Compute H in nodes
+    Hn.resize(Bn.size());
+    for (unsigned int k = 0; k < 3; k++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+            Hn(dof_i + k * n_dofs_V) += Bn(dof_i + k * n_dofs_V) / mu_matrix[k];
+
+    // Compute B in elements
+    DenseVector<Number> Bq;
+    BAe.vector_mult(Bq, solution_vector_support.sol_vectors[0]);
+    for (unsigned int k = 0; k < 3; k++)
+    {
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            Be(k) += Bq(qp + k * n_qp);
+        Be(k) = Be(k) / n_qp;
+    }
+
+    // Compute H in elements
+    for (unsigned int k = 0; k < 3; k++)
+        He(k) = Be(k) / mu_matrix[k];
+
+    // Compute J in elements
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        dof_maps[Globals::ELEMENT_LOADS]->dof_indices(elem_data.elem, dof_indices);
+        NumericVector<Number> *element_loads_vector = systems[Globals::ELEMENT_LOADS]->request_vector(2);
+        element_loads_vector->get(dof_indices, Je.get_values());
+        // DenseVector<Number> Jq;
+        // BAe.vector_mult(Jq, Hn);
+        // for (unsigned int k = 0; k < 3; k++)
+        // {
+        //     for (unsigned int qp = 0; qp < n_qp; qp++)
+        //         Je(k) += Jq(qp + k * n_qp);
+        //     Je(k) = Je(k) / n_qp;
+        // }
+
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        if (this->context<TimeStep>()->get_transient_effect())
+        {
+            auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
+            auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
+
+            materials_object->fill_rs_matrix(this->elem_data.material_num);
+            auto &rs_matrix = materials_object->get_rs_matrix();
+            unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
+
+            // Get derivative of A DOF Solutions (dA/dt, dV/dt)
+            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
+
+            auto &A_dt = solution_vector_support.sol_vectors[0];
+            auto &Vn_dt = solution_vector_support.sol_vectors[volt_var_num];
+
+            // Compute dA/dt in quadrature points
+            DenseVector<Number> Jq_A;
+            JAe.vector_mult(Jq_A, A_dt);
+
+            // Compute dV/dt in quadrature points
+            DenseVector<Number> Jq_V;
+            JVe.vector_mult(Jq_V, Vn_dt);
+
+            // sum the two contributions
+            Jq_A += Jq_V;
+
+            // average on quadrature points and scale by conductivity
+            for (unsigned int k = 0; k < 3; k++)
+            {
+                for (unsigned int qp = 0; qp < n_qp; qp++)
+                    Je(k) -= Jq_A(qp + k * n_qp);
+                Je(k) = Je(k) / rs_matrix[k] / n_qp;
+            }
+        }
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
+    // Set B and H in nodes
+    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
+    Bn.append(Hn);
+    for (unsigned int i = 0; i < dof_indices.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
+            (dof_index < nodal_solution_system->solution->last_local_index()))
+            nodal_solution_system->solution->set(dof_index, Bn(i));
+    }
+
+    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
+    Je.append(Be);
+    Je.append(He);
+    for (unsigned int i = 0; i < dof_indices.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((element_solution_system->solution->first_local_index() <= dof_index) &&
+            (dof_index < element_solution_system->solution->last_local_index()))
+            element_solution_system->solution->set(dof_index, Je(i));
+    }
     return;
 }
