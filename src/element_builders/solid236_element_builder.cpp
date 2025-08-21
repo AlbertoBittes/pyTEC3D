@@ -54,15 +54,16 @@ void ElementBuilder::build_solid236()
 
     const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
 
-    // const std::vector<std::vector<RealVectorValue>> &div_phi_vec = fe_vec->get_div_phi();
+    const std::vector<std::vector<RealTensorValue>> &dphi_vec = fe_vec->get_dphi();
+
     fe->reinit(elem_data.elem);
     fe_vec->reinit(elem_data.elem);
 
     this->prepare_element_matrix_building();
 
     // Get the scalar shape functions and vector shape functions
-    unsigned int n_dofs_var = fe->n_shape_functions();
-    unsigned int n_dofs_A = n_dofs_var * 3;
+    unsigned int n_dofs_A = fe_vec->n_shape_functions();
+    unsigned int n_dofs_V = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
     auto materials_object = this->context<MaterialsObject>();
@@ -77,14 +78,13 @@ void ElementBuilder::build_solid236()
     // auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
     // auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
     // auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
-    auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
+    // auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     for (unsigned int qp = 0; qp < nq; qp++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-            {
-                Ke(dof_i, dof_j) += JxW[qp] / mu_matrix[0] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
-            }
+        for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                for (unsigned int k = 0; k < 3; k++)
+                    Ke(dof_i, dof_j) += JxW[qp] / mu_matrix[k] * (curl_phi_vec[dof_i][qp](k) * curl_phi_vec[dof_j][qp](k));
 
     switch (elem_data.element_type->get_physical_region())
     {
@@ -92,35 +92,47 @@ void ElementBuilder::build_solid236()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int k = 0; k < 3; k++)
-                    Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        Real CAV_value;
         materials_object->fill_rs_matrix(this->elem_data.material_num);
+
         auto &rs_matrix = materials_object->get_rs_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            {
-                for (unsigned int k = 0; k < 3; k++)
-                {
-                    JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
-                    JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
-                }
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                    {
-                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] / rs_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        CAV_value = JxW[qp] / rs_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
-                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) / rs_matrix[l] * dphi[dof_j][qp](l);
-                    }
-            }
+            for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_i][qp](k) * phi_vec[dof_j][qp](k));
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        Ce(dof_i, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_i][qp](k) * dphi[dof_j][qp](k));
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] / rs_matrix[k] * (phi_vec[dof_j][qp](k) * dphi[dof_i][qp](k));
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
+
+        // CAV_value = JxW[qp] / rs_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+        // Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
+        // Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
+        // Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) / rs_matrix[l] * dphi[dof_j][qp](l);
+        // for (unsigned int k = 0; k < 3; k++)
+        // {
+        //     JVe(qp + k * n_dofs_var, dof_i) += dphi[dof_i][qp](k);
+        //     JAe(qp + k * n_dofs_var, dof_i + k * n_dofs_var) += phi[dof_i][qp];
+        // }
+
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
         //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -131,135 +143,111 @@ void ElementBuilder::build_solid236()
         libmesh_error_msg("Physical region not implemented");
     }
     // The penalty values, for solution boundary trace and flux.
-
-    // Here use the formula for quadrature
-    std::vector<boundary_id_type> side_boundary_ids;
-    FEBase *fe_face = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
-
-    // The following loops over the sides of the element.
-    // If the element has no neighbor on a side then that
-    // side MUST live on a boundary of the domain.
-    Real penalty_base;
-    char cont = 0;
-    auto boundary_info = &this->get_parent_object()->get_mesh().get_boundary_info();
-
-    for (auto s : elem_data.elem->side_index_range())
-        if (elem_data.elem->neighbor_ptr(s) == nullptr)
-        {
-            boundary_info->boundary_ids(elem_data.elem, s, side_boundary_ids);
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_PARALLEL_ID_BC) != side_boundary_ids.end())
-            {
-                if (cont == 0)
-                {
-                    penalty_base = 1e7 * Ke.max() + 1e7 * Ce.max();
-                    cont++;
-                }
-                // The value of the shape functions at the quadrature
-                // points.
-                const std::vector<std::vector<Real>> &phi_face =
-                    fe_face->get_phi();
-
-                // The value of the shape function derivatives at the
-                // quadrature points.
-                const std::vector<std::vector<RealGradient>> &dphi_face =
-                    fe_face->get_dphi();
-
-                // The Jacobian * Quadrature Weight at the quadrature
-                // points on the face.
-                const std::vector<Real> &JxW_face = fe_face->get_JxW();
-
-                // The XYZ locations (in physical space) of the
-                // quadrature points on the face.  This is where
-                // we will interpolate the boundary value function.
-                const std::vector<Point> &qface_point = fe_face->get_xyz();
-                const std::vector<std::vector<Point>> &face_tangents = fe_face->get_tangents();
-
-                // Compute the shape function values on the element
-                // face.
-                fe_face->reinit(elem_data.elem, s);
-
-                // Loop over the face quadrature points for integration.
-                for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                {
-                    // Matrix contribution of the L2 projection.
-                    // Note that the basis function values are
-                    // integrated against test function values while
-                    // basis fluxes are integrated against test function
-                    // fluxes.
-                    for (unsigned int i = 0; i < n_dofs_var; i++)
-                        for (unsigned int j = 0; j < n_dofs_var; j++)
-                            for (unsigned int l = 0; l < 3; l++)
-                                for (unsigned int k = 0; k < 3; k++)
-                                    for (unsigned int h = 0; h < face_tangents[0].size(); h++)
-                                        Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
-                                                                                      (penalty_base * phi_face[i][qp] *
-                                                                                       phi_face[j][qp] * face_tangents[qp][h](k) *
-                                                                                       face_tangents[qp][h](l));
-                }
-            }
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_NORMAL_ID_BC) != side_boundary_ids.end())
-            {
-                // The value of the shape functions at the quadrature
-                // points.
-                const std::vector<std::vector<Real>> &phi_face =
-                    fe_face->get_phi();
-
-                // The value of the shape function derivatives at the
-                // quadrature points.
-                const std::vector<std::vector<RealGradient>> &dphi_face =
-                    fe_face->get_dphi();
-
-                // The Jacobian * Quadrature Weight at the quadrature
-                // points on the face.
-                const std::vector<Real> &JxW_face = fe_face->get_JxW();
-
-                // The XYZ locations (in physical space) of the
-                // quadrature points on the face.  This is where
-                // we will interpolate the boundary value function.
-                const std::vector<Point> &qface_point = fe_face->get_xyz();
-                const std::vector<Point> &face_normals = fe_face->get_normals();
-
-                // Compute the shape function values on the element
-                // face.
-                fe_face->reinit(elem_data.elem, s);
-
-                // Loop over the face quadrature points for integration.
-                for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                {
-                    // Matrix contribution of the L2 projection.
-                    // Note that the basis function values are
-                    // integrated against test function values while
-                    // basis fluxes are integrated against test function
-                    // fluxes.
-                    // Compute the shape function values on the element
-                    // face.
-                    fe_face->reinit(elem_data.elem, s);
-
-                    // Loop over the face quadrature points for integration.
-                    for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                    {
-                        // Matrix contribution of the L2 projection.
-                        // Note that the basis function values are
-                        // integrated against test function values while
-                        // basis fluxes are integrated against test function
-                        // fluxes.
-                        for (unsigned int i = 0; i < n_dofs_var; i++)
-                            for (unsigned int j = 0; j < n_dofs_var; j++)
-                                for (unsigned int l = 0; l < 3; l++)
-                                    for (unsigned int k = 0; k < 3; k++)
-                                        Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
-                                                                                      (penalty_base * phi_face[i][qp] *
-                                                                                       phi_face[j][qp] * face_normals[qp](k) *
-                                                                                       face_normals[qp](l));
-                    }
-                }
-            }
-        }
 }
 
 // Temporary placeholder for build_solid236
 void ElementBuilder::build_solid236_rhs()
 {
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    // Numeric ids corresponding to each variable in the system
+    // Now we will build the element matrix.  This involves
+    // a double loop to integrate the test functions (i) against
+    // the trial functions (j).
+    //
+    // We have split the numeric integration into two loops
+    // so that we can log the matrix and right-hand-side
+    // computation separately.
+    //
+    // Now start logging the element matrix computation
+    auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
+
+    std::vector<dof_id_type> dof_indices_loads;
+    std::vector<Real> loads_vec;
+
+    System *nodal_solution_system = systems[Globals::NODAL_LOADS];
+    System *element_solution_system = systems[Globals::ELEMENT_LOADS];
+
+    auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
+    auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
+
+    NumericVector<Number> *nodal_loads_vector = nodal_solution_system->request_vector(2);
+    NumericVector<Number> *element_loads_vector = element_solution_system->request_vector(2);
+
+    switch (elem_data.element_type->get_physical_region())
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
+
+        // The velocity shape function gradients at interior
+        // quadrature points.
+        const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
+
+        const std::vector<Real> &JxW = fe_vec->get_JxW();
+        fe_vec->reinit(elem_data.elem);
+
+        this->prepare_element_matrix_building();
+
+        // Get the scalar shape functions and vector shape functions
+        unsigned int n_dofs_A = fe_vec->n_shape_functions();
+        unsigned int nq = fe_vec->n_quadrature_points();
+
+        dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        element_loads_vector->get(dof_indices_loads, loads_vec);
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                for (unsigned int k = 0; k < 3; k++)
+                    Fe(dof_i) += JxW[qp] * phi_vec[dof_i][qp](k) * loads_vec[k];
+
+        // // Apply nodal CSG loads
+        // dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        // nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+        // for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //     if (loads_vec[dof_i] != 0)
+        //         Fe(dof_i) = loads_vec[dof_i];
+
+        // for (dof_id_type &dof_value : dof_indices_loads)
+        //     nodal_loads_vector->set(dof_value, 0);
+
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
+        unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+
+        // Apply nodal AMPS loads
+        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
+        nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+        unsigned int az_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::Az].system_var_num;
+
+        unsigned int n_dofs_A = elem_data.elem->n_dofs(az_var_num, Globals::DOF_SOLUTION_SYSTEM);
+        unsigned int n_dofs_V = elem_data.elem->n_dofs(volt_var_num, Globals::DOF_SOLUTION_SYSTEM);
+
+        for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+            Fe(dof_i + n_dofs_A) = loads_vec[dof_i + n_dofs_A];
+
+        for (dof_id_type &dof_value : dof_indices_loads)
+            nodal_loads_vector->set(dof_value, 0);
+
+        break;
+    }
+    default:
+        libmesh_error_msg("Physical region not implemented");
+    }
+
     return;
 }
 

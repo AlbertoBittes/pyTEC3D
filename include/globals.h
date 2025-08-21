@@ -22,8 +22,8 @@ namespace Globals
         A_x,
         A_y,
         A_z,
-        VOLT,
         Az,
+        VOLT,
         EMF,
         CURR,
         Js_x,
@@ -98,7 +98,7 @@ namespace Globals
     };
 
     // Global variable information map
-    extern const std::unordered_map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
+    extern const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
 
     //
     // System type globals
@@ -144,7 +144,7 @@ namespace Globals
     extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
     extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
     // Centralized boundary condition info map
-    extern const std::unordered_map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP;
+    extern const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP;
 
     // Declare physical constants
     extern const double MU_0;

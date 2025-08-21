@@ -9,13 +9,13 @@ using namespace libMesh;
 
 namespace Globals
 {
-    const std::unordered_map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP = {
+    const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP = {
         // DOF Variables
         {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, VariableCategory::DOFVariables, "A_x", "A", LAGRANGE, FIRST, 0, 0}},
         {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, VariableCategory::DOFVariables, "A_y", "A", LAGRANGE, FIRST, 1, 0}},
         {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, VariableCategory::DOFVariables, "A_z", "A", LAGRANGE, FIRST, 2, 0}},
-        {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, 0}},
         {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, VariableCategory::DOFVariables, "Az", "Az", LAGRANGE, FIRST, 0, 0}},
+        {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, VariableCategory::DOFVariables, "VOLT", "VOLT", LAGRANGE, FIRST, 0, 0}},
         {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, VariableCategory::DOFVariables, "EMF", "EMF", LAGRANGE, FIRST, 0, 0}},
         {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, VariableCategory::DOFVariables, "CURR", "CURR", LAGRANGE, FIRST, 0, 0}},
 
@@ -63,7 +63,7 @@ namespace Globals
         {ELEMENT_SOLUTION, {ELEMENT_SOLUTION, "ElementSolutionSystem", Globals::VariableCategory::ElementSolutionVariables}},
     };
 
-    const std::unordered_map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {
+    const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {
         {BoundaryConditionType::INFINITE_BOUNDARY, {BoundaryConditionType::INFINITE_BOUNDARY, "infinite_boundary", 0}},
         {BoundaryConditionType::FLUX_NORMAL, {BoundaryConditionType::FLUX_NORMAL, "flux_normal", FLUX_NORMAL_ID_BC}},
         {BoundaryConditionType::FLUX_PARALLEL, {BoundaryConditionType::FLUX_PARALLEL, "flux_parallel", FLUX_PARALLEL_ID_BC}},

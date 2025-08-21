@@ -12,17 +12,6 @@
 
 using namespace Globals;
 
-void ElementType::set_active_dof_vars_size()
-{
-    active_dof_vars_size = 0;
-    for (const auto &pair : variable_info)
-    {
-        const auto &var_data = pair.second;
-        if (var_data.category == VariableCategory::DOFVariables)
-            ++active_dof_vars_size;
-    }
-}
-
 void ElementType::set_variables_order()
 {
     if (order != FIRST)
@@ -85,21 +74,6 @@ void AV2DElementType::set_fe_array()
     fe_array[0]->attach_quadrature_rule(qrule);
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_dof_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
-
-    // Ke
-    (*matrix_idx_size_map)[ElementBuilder::PLANE13DOFMatrices::Ke_PLANE13] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    // Ce
-    (*matrix_idx_size_map)[ElementBuilder::PLANE13DOFMatrices::Ce_PLANE13] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-
-    return matrix_idx_size_map;
-}
-
 std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_solution_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
@@ -120,17 +94,6 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_sol
     (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::BAe_PLANE13] = {2 * n_qp, n_sf};
 
     return solution_matrix_idx_size_map;
-}
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DElementType::get_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
-
-    (*vector_idx_size_map)[ElementBuilder::VectorsSet::RHS_VECTORS] = {active_dof_vars_size * n_sf};
-
-    return vector_idx_size_map;
 }
 
 AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts) : AVElementType(keyopts) // Call the parent class constructor
@@ -164,55 +127,6 @@ void AV3DElementType::set_fe_array()
     fe_array[0]->attach_quadrature_rule(qrule);
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_dof_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(2, std::vector<unsigned int>(2, 0));
-
-    // Ke
-    (*matrix_idx_size_map)[ElementBuilder::SOLID97DOFMatrices::Ke_SOLID97] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-    // Ce
-    (*matrix_idx_size_map)[ElementBuilder::SOLID97DOFMatrices::Ce_SOLID97] = {active_dof_vars_size * n_sf, active_dof_vars_size * n_sf};
-
-    return matrix_idx_size_map;
-};
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map()
-{
-    // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
-
-    // Me
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::Me_SOLID97] = {n_sf_vec, n_sf_vec};
-    // AAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_vec};
-    // JAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_vec};
-    // JVe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JVe_SOLID97] = {3 * n_qp, n_sf};
-    // BAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_vec};
-
-    return solution_matrix_idx_size_map;
-}
-
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_vector_idx_size_map()
-{
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    std::unique_ptr<std::vector<std::vector<unsigned int>>> vector_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(1, std::vector<unsigned int>(1, 0));
-
-    (*vector_idx_size_map)[ElementBuilder::VectorsSet::RHS_VECTORS] = {active_dof_vars_size * n_sf};
-
-    return vector_idx_size_map;
-}
-
 // SOLID97
 
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
@@ -220,7 +134,6 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
 {
     set_variable_info();
     set_fe_array();
-    set_active_dof_vars_size();
     set_variables_order();
 }
 
@@ -289,6 +202,29 @@ void SOLID97Type::set_fe_array()
     fe_array.push_back(std::move(fe_face));
 }
 
+std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map()
+{
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
+
+    // Me
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::Me_SOLID97] = {n_sf_vec, n_sf_vec};
+    // AAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_vec};
+    // JAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_vec};
+    // JVe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JVe_SOLID97] = {3 * n_qp, n_sf};
+    // BAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_vec};
+
+    return solution_matrix_idx_size_map;
+}
+
 // SOLID 236
 
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
@@ -296,7 +232,6 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
 {
     set_variable_info();
     set_fe_array();
-    set_active_dof_vars_size();
     set_variables_order();
 }
 
@@ -328,7 +263,7 @@ void SOLID236Type::set_variable_info()
 
 void SOLID236Type::set_fe_array()
 {
-    FEType fe_type_vec(order, NEDELEC_ONE);
+    FEType fe_type_vec(FIRST, NEDELEC_ONE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
     // store the object as a std::unique_ptr<FEBase>.  This can be thought
@@ -341,21 +276,37 @@ void SOLID236Type::set_fe_array()
 
     fe_array.push_back(std::move(fe_vec));
 
-    FEType fe_type_face(order, NEDELEC_ONE);
+    std::unique_ptr<FEVectorBase> fe_vec_copy = FEVectorBase::build(3, fe_type_vec);
 
-    std::unique_ptr<FEBase> fe_face = FEBase::build(3, fe_type_face);
+    QGauss *qrule_vec_copy = new QGauss(3, fe_type_vec.default_quadrature_order());
 
-    // Boundary integration requires another quadrature rule,
-    // with dimensionality one less than the dimensionality
-    // of the element.
-    // In 1D, the Clough and Gauss quadrature rules are identical.
-    QGauss *qface = new QGauss(2, fe_type_face.default_quadrature_order());
+    fe_vec_copy->attach_quadrature_rule(qrule_vec_copy);
 
-    // Tell the finite element object to use our
-    // quadrature rule.
-    fe_face->attach_quadrature_rule(qface);
+    fe_array.push_back(std::move(fe_vec_copy));
+}
 
-    fe_array.push_back(std::move(fe_face));
+std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_solution_matrix_idx_size_map()
+{
+    // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
+    // Check this when you have periodic BCs
+    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
+    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
+
+    // Me
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::Me_SOLID97] = {n_sf_vec, n_sf_vec};
+    // AAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::AAe_SOLID97] = {n_sf_vec, n_sf_vec};
+    // JAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JAe_SOLID97] = {3 * n_qp, n_sf_vec};
+    // JVe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::JVe_SOLID97] = {3 * n_qp, n_sf};
+    // BAe
+    (*solution_matrix_idx_size_map)[ElementBuilder::SOLID97SolutionMatrices::BAe_SOLID97] = {3 * n_qp, n_sf_vec};
+
+    return solution_matrix_idx_size_map;
 }
 
 PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
@@ -387,7 +338,6 @@ PLANE13Type::PLANE13Type(const std::vector<unsigned int> &keyopts)
 {
     set_variable_info();
     set_fe_array();
-    set_active_dof_vars_size();
     set_variables_order();
 } // Default dimension for PLANE13 is 2
 
@@ -424,7 +374,6 @@ INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
 {
     set_variable_info();
     set_fe_array();
-    set_active_dof_vars_size();
     set_variables_order();
 }
 
@@ -457,7 +406,6 @@ INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
 {
     set_variable_info();
     set_fe_array();
-    set_active_dof_vars_size();
     set_variables_order();
 }
 

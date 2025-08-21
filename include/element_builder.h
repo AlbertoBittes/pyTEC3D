@@ -203,6 +203,7 @@ private:
     // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
     std::vector<System *> systems;
     std::vector<DofMap *> dof_maps;
+    std::vector<dof_id_type> dof_indices;
 
     bool update_matrix = true;
     // Helper function to populate systems and dof_maps vectors

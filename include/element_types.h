@@ -108,21 +108,13 @@ public:
     {
         return variable_info;
     }
-    inline unsigned int get_active_dof_vars_size() const
-    {
-        return active_dof_vars_size;
-    }
+
     inline PhysicalRegionEnum get_physical_region() const
     {
         return physical_region;
     }
 
-    // Virtual methods for populating maps
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() = 0;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
 
@@ -136,9 +128,7 @@ public:
 
 protected:
     VariableInformation variable_info;
-    unsigned int active_dof_vars_size;  // Number of active DOF variables
     PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
-    void set_active_dof_vars_size();
     Order order;
 };
 
@@ -170,11 +160,7 @@ public:
     // Constructor
     AV2DElementType(const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
     virtual void set_variable_info() override;
 
@@ -186,11 +172,7 @@ class SOLID97Type : public AV3DElementType
 public:
     SOLID97Type(const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_dof_matrix_idx_size_map() override;
-
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_vector_idx_size_map() override;
 
     virtual void set_variable_info() override;
 
@@ -202,9 +184,11 @@ class SOLID236Type : public AV3DElementType
 public:
     SOLID236Type(const std::vector<unsigned int> &keyopts);
 
-    virtual void set_variable_info() override {};
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 
-    virtual void set_fe_array() override {};
+    virtual void set_variable_info() override;
+
+    virtual void set_fe_array() override;
 };
 
 class PLANE13Type : public AV2DElementType
