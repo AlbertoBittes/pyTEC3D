@@ -219,8 +219,8 @@ class TreeGaugeHelper:
             "num_points": npts,
             "num_cells": ugrid.GetNumberOfCells(),
             "num_edges": len(edge_map),
-            "num_tree": int(tree_np.sum()),
-            "num_cotree": int(cotree_np.sum()),
+            "num_tree": int(np.nansum(tree_np)),
+            "num_cotree": int(np.nansum(cotree_np)),
             "skipped_unknown_cells": unknown_cells,
         }
         return tree_arr, cotree_arr, info
