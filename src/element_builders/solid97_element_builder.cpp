@@ -317,17 +317,19 @@ void ElementBuilder::build_solid97_rhs()
                 Fe(dof_i + k * n_dofs_var) *= loads_vec[k];
 
         // Apply nodal CSG loads
-        unsigned int amps_var_num = nodal_loads_system->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amps_var_num);
-        nodal_loads_vector->get(dof_indices_loads, loads_vec);
+        if (nodal_loads_system->has_variable("CSG"))
+        {
+            unsigned int csg_var_num = nodal_loads_system->variable_number("CSG");
+            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, csg_var_num);
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-        for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
-            if (loads_vec[dof_i] != 0)
-                Fe(dof_i) = loads_vec[dof_i];
+            for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
+                if (loads_vec[dof_i] != 0)
+                    Fe(dof_i) = loads_vec[dof_i];
 
-        for (dof_id_type &dof_value : dof_indices_loads)
-            nodal_loads_vector->set(dof_value, 0);
-
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:

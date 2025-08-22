@@ -51,7 +51,7 @@ namespace Globals
         {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, VariableCategory::ElementSolutionVariables, "He_y", "He", MONOMIAL, CONSTANT, 1}},
         {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, VariableCategory::ElementSolutionVariables, "He_z", "He", MONOMIAL, CONSTANT, 2}},
 
-        {GlobalVariableName::TREE, {GlobalVariableName::TREE, APIVariableName::TREE, VariableCategory::SupportVariables, "TREE", "TREE", LAGRANGE, FIRST, 0}},
+        {GlobalVariableName::TREE, {GlobalVariableName::TREE, APIVariableName::TREE, VariableCategory::SupportVariables, "TREE", "TREE", NEDELEC_ONE, FIRST, 0}},
     };
 
     const double MU_0 = pi * 4.0 * 1e-7;                // 4 * pi constant

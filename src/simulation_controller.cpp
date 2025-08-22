@@ -10,6 +10,7 @@
 #include "solver_configuration.h"
 #include "global_constraints_object.h"
 #include "apec_m_eq_system_object.h"
+#include "apec_m_subset_solve.h"
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/inf_elem_builder.h>
@@ -18,7 +19,6 @@
 #include <libmesh/mesh_modification.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/sparse_matrix.h>
-#include <libmesh/system_subset_by_subdomain.h>
 
 SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode, const std::string &mesh_filename)
     : apec_m_model_data(std::make_shared<FEMDataRepository>()),
@@ -39,39 +39,11 @@ SimulationController::SimulationController(libMesh::Parallel::Communicator &comm
 void SimulationController::set_transient_effects()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto time_step = load_stepper->context<LoadStep>()->get_object<TimeStep>();
-    auto element_type_factory = apec_m_model_data->get_object<ElementTypesFactory>();
     // Later, this will be a method of system, which will be a viewed object, I still have to think about it
     libMesh::out << "Setting transient effects..." << std::endl;
-    if (!time_step->get_transient_effect())
-    {
-        if (system.has_variable("VOLT"))
-        {
-            system.release_subset_solve();
-            std::set<subdomain_id_type> subdomains;
-            for (const auto &pair : *element_type_factory->get_element_types_map())
-            {
-                subdomains.insert(pair.first); // pair.first is the subdomain_id_type (element ID)
-            }
-            SystemSubsetBySubdomain::SubdomainSelectionByList selection(subdomains);
-            std::vector<unsigned int> all_var_nums;
-            system.get_all_variable_numbers(all_var_nums);
-            // Convert std::vector to set
-            std::set<unsigned int> all_var_nums_set(all_var_nums.begin(), all_var_nums.end());
-
-            all_var_nums_set.erase(system.variable_number("VOLT"));
-
-            SystemSubsetBySubdomain *subset_ptr = nullptr;
-            subset_ptr = new SystemSubsetBySubdomain(system, selection, &all_var_nums_set);
-            system.restrict_solve_to(subset_ptr, SUBSET_ZERO);
-        }
-    }
-    else
-    {
-        // If we have a transient effect, we do not restrict the solve to a subset
-        system.release_subset_solve();
-        system.restrict_solve_to(nullptr, SUBSET_ZERO);
-    }
+    ApecMSubset *subset_ptr = ApecMSubset::create(system);
+    system.release_subset_solve();
+    system.restrict_solve_to(subset_ptr, SUBSET_ZERO);
 }
 
 void SimulationController::check_constrained_dofs()

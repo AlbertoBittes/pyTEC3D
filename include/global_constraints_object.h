@@ -8,7 +8,6 @@
 #include "time_step.h"
 
 using namespace libMesh;
-
 // The boundary conditions object:
 // Checks if it is necessary to update the nodal degrees of freedom imposed by the user
 // updates the constraints if necessary. The assembler will then constrain element matrices before putting

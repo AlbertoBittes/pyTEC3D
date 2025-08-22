@@ -157,8 +157,9 @@ class TreeGaugeHelper:
                 "forced_cotree_mask must have length equal to number of points"
             )
 
-        tree_np = np.zeros(npts, dtype=np.int32)
-        cotree_np = np.zeros(npts, dtype=np.int32)
+        # Use np.nan for non-midside nodes
+        tree_np = np.full(npts, np.nan, dtype=np.float32)
+        cotree_np = np.full(npts, np.nan, dtype=np.float32)
 
         # Collect unique edges using midside node id as key
         edge_map = {}
@@ -187,31 +188,31 @@ class TreeGaugeHelper:
                         )
 
         # Forced cotree
-        cotree_np[forced_cotree_mask == 1] = 1
+        cotree_np[forced_cotree_mask == 1] = 1.0
 
         if len(constrained) > 0:
             # Constrained edges → cotree
             for mid, (a, b) in edge_map.items():
-                if cotree_np[mid]:
+                if cotree_np[mid] == 1.0:
                     continue
                 if (a in constrained) or (b in constrained):
-                    cotree_np[mid] = 1
+                    cotree_np[mid] = 1.0
 
         # Union–Find spanning tree
         dsu = DSU()
         for mid, (a, b) in edge_map.items():
-            if cotree_np[mid]:
+            if cotree_np[mid] == 1.0:
                 continue
             if (a in constrained) or (b in constrained):
                 continue
             if dsu.union(a, b):
-                tree_np[mid] = 1
+                tree_np[mid] = 1.0
             else:
-                cotree_np[mid] = 1
+                cotree_np[mid] = 1.0
 
-        tree_arr = vtknp.numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_INT)
+        tree_arr = vtknp.numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_FLOAT)
         tree_arr.SetName(tree_name)
-        cotree_arr = vtknp.numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_INT)
+        cotree_arr = vtknp.numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_FLOAT)
         cotree_arr.SetName(cotree_name)
 
         info = {

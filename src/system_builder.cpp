@@ -10,6 +10,7 @@
 #include <libmesh/sparse_matrix.h>
 
 #include "system_builder.h"
+#include "fem_service_abstract.h"
 #include "fe_parent_object.h"
 #include "assembler.h"
 #include "globals.h"
@@ -25,6 +26,17 @@ using namespace libMesh;
 void SystemBuilder::initialize()
 {
     System *system = this->get_parent_object();
+
+    // Pass the same context view to the main system as used by SystemBuilder
+    auto context_view = this->get_context_view();
+    if (context_view)
+    {
+        auto apec_m_system = dynamic_cast<ApecMLinearSystem *>(system);
+        if (apec_m_system)
+        {
+            apec_m_system->set_context_view(context_view);
+        }
+    }
 
     if (system->name() == "ApecMLinearSystem")
     {
