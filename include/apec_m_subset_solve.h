@@ -38,17 +38,20 @@ public:
                 std::vector<unsigned int> to_remove;
                 for (auto node_ptr : mesh.local_node_ptr_range())
                 {
-                    dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
-                    Real value = tree_cotree_gauge(tree_dof_id);
-                    if (value > 0.5)
+                    if (node_ptr->n_dofs(tree_sys_num, tree_var_num) > 0)
                     {
-                        dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
-                        to_remove.push_back(az_dof_id);
+                        dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
+                        Real value = tree_cotree_gauge(tree_dof_id);
+                        if (value > 0.5)
+                        {
+                            dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
+                            to_remove.push_back(az_dof_id);
+                        }
                     }
                 }
-
                 // Remove the constrained ids from _dof_ids
                 auto &dof_ids_vec = this->_dof_ids;
+                libMesh::out << "Setting tree gauge on " << to_remove.size() << " DOFs" << std::endl;
                 dof_ids_vec.erase(
                     std::remove_if(
                         dof_ids_vec.begin(),
@@ -61,7 +64,6 @@ public:
             }
         }
     }
-
     // Static factory method to create the subset if needed
     static ApecMSubset *create(ApecMLinearSystem &system)
     {
@@ -106,8 +108,8 @@ public:
         if (restrict_solve || apply_tree_gauge)
         {
             auto *subset_ptr = new ApecMSubset(system, selection, &all_var_nums_set);
-            if (apply_tree_gauge)
-                subset_ptr->set_tree_gauge();
+            // if (apply_tree_gauge)
+            //     subset_ptr->set_tree_gauge();
             return subset_ptr;
         }
         return nullptr;

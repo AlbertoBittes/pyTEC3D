@@ -115,16 +115,6 @@ void AV3DElementType::set_variable_info()
 
 void AV3DElementType::set_fe_array()
 {
-    FEType fe_type(order, LAGRANGE);
-    // Build a Finite Element object of the specified type.  Since the
-    // FEBase::build() member dynamically creates memory we will
-    // store the object as a std::unique_ptr<FEBase>.  This can be thought
-    // of as a pointer that will clean up after itself.
-    fe_array.push_back(FEBase::build(3, fe_type));
-    // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
-    // Tell the finite element object to use our quadrature rule.
-    fe_array[0]->attach_quadrature_rule(qrule);
 }
 
 // SOLID97
@@ -172,6 +162,23 @@ void SOLID97Type::set_variable_info()
 
 void SOLID97Type::set_fe_array()
 {
+    FEType fe_type(order, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe = FEBase::build(3, fe_type);
+
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe_array[0]->attach_quadrature_rule(qrule);
+
+    fe_array.push_back(std::move(fe));
+
+    //
+    //
+    //
     FEType fe_type_vec(order, LAGRANGE_VEC);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -265,6 +272,23 @@ void SOLID236Type::set_variable_info()
 
 void SOLID236Type::set_fe_array()
 {
+    FEType fe_type(order, LAGRANGE);
+    // Build a Finite Element object of the specified type.  Since the
+    // FEBase::build() member dynamically creates memory we will
+    // store the object as a std::unique_ptr<FEBase>.  This can be thought
+    // of as a pointer that will clean up after itself.
+    std::unique_ptr<FEBase> fe = FEBase::build(3, fe_type);
+
+    // A 2nd order Gauss quadrature rule for numerical integration.
+    QGauss *qrule = new QGauss(3, fe_type.default_quadrature_order());
+    // Tell the finite element object to use our quadrature rule.
+    fe->attach_quadrature_rule(qrule);
+
+    fe_array.push_back(std::move(fe));
+
+    //
+    //
+    //
     FEType fe_type_vec(FIRST, NEDELEC_ONE);
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -272,25 +296,31 @@ void SOLID236Type::set_fe_array()
     // of as a pointer that will clean up after itself.
     std::unique_ptr<FEVectorBase> fe_vec = FEVectorBase::build(3, fe_type_vec);
     // A 2nd order Gauss quadrature rule for numerical integration.
-    QGauss *qrule_vec = new QGauss(3, fe_type_vec.default_quadrature_order());
+    QGauss *qrule_vec = new QGauss(3, fe_type.default_quadrature_order());
     // Tell the finite element object to use our quadrature rule.
     fe_vec->attach_quadrature_rule(qrule_vec);
 
     fe_array.push_back(std::move(fe_vec));
 
+    //
+    //
+    //
     std::unique_ptr<FEVectorBase> fe_vec_copy = FEVectorBase::build(3, fe_type_vec);
 
-    QGauss *qrule_vec_copy = new QGauss(3, fe_type_vec.default_quadrature_order());
+    QGauss *qrule_vec_copy = new QGauss(3, fe_type.default_quadrature_order());
 
     fe_vec_copy->attach_quadrature_rule(qrule_vec_copy);
 
     fe_array.push_back(std::move(fe_vec_copy));
 
+    //
+    //
+    //
     FEType fe_type_vec_lagrange(order, LAGRANGE_VEC);
 
     std::unique_ptr<FEVectorBase> fe_vec_a_lagrange = FEVectorBase::build(3, fe_type_vec_lagrange);
 
-    QGauss *qrule_vec_a_lagrange = new QGauss(3, fe_type_vec_lagrange.default_quadrature_order());
+    QGauss *qrule_vec_a_lagrange = new QGauss(3, fe_type.default_quadrature_order());
 
     fe_vec_a_lagrange->attach_quadrature_rule(qrule_vec_a_lagrange);
 

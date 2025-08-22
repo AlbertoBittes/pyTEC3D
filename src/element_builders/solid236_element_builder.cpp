@@ -41,7 +41,8 @@ void ElementBuilder::build_solid236()
     FEVectorBase *fe_vec_lagrange = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[3].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
-
+    // const std::vector<Real> &JxW_edge = fe_edge->get_JxW();
+    // const std::vector<Real> &JxW_vec_lagrange = fe_vec_lagrange->get_JxW();
     // The element shape functions evaluated at the quadrature points.
     const std::vector<std::vector<Real>> &phi = fe->get_phi();
 
@@ -58,6 +59,10 @@ void ElementBuilder::build_solid236()
     const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
     // const std::vector<std::vector<RealTensorValue>> &dphi_vec = fe_vec->get_dphi();
 
+    // const auto &qp_lagr = fe->get_xyz();
+    // const auto &qp_edge = fe_edge->get_xyz();
+    // const auto &qp_vec_lagrange = fe_vec_lagrange->get_xyz();
+
     fe->reinit(elem_data.elem);
     fe_edge->reinit(elem_data.elem);
     fe_vec_lagrange->reinit(elem_data.elem);
@@ -68,6 +73,8 @@ void ElementBuilder::build_solid236()
     unsigned int n_dofs_A = fe_edge->n_shape_functions();
     unsigned int n_dofs_V = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
+    unsigned int nq_edge = fe_edge->n_quadrature_points();
+    unsigned int nq_lagrange = fe_vec_lagrange->n_quadrature_points();
 
     auto materials_object = this->context<MaterialsObject>();
 
@@ -83,7 +90,7 @@ void ElementBuilder::build_solid236()
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
     // auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
-    for (unsigned int qp = 0; qp < nq; qp++)
+    for (unsigned int qp = 0; qp < nq_edge; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 for (unsigned int k = 0; k < 3; k++)
@@ -210,20 +217,20 @@ void ElementBuilder::build_solid236_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
+        FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
 
         // The velocity shape function gradients at interior
         // quadrature points.
-        const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
+        const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_edge->get_phi();
 
-        const std::vector<Real> &JxW = fe_vec->get_JxW();
-        fe_vec->reinit(elem_data.elem);
+        const std::vector<Real> &JxW = fe_edge->get_JxW();
+        fe_edge->reinit(elem_data.elem);
 
         this->prepare_element_matrix_building();
 
         // Get the scalar shape functions and vector shape functions
-        unsigned int n_dofs_A = fe_vec->n_shape_functions();
-        unsigned int nq = fe_vec->n_quadrature_points();
+        unsigned int n_dofs_A = fe_edge->n_shape_functions();
+        unsigned int nq = fe_edge->n_quadrature_points();
 
         dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
         element_loads_vector->get(dof_indices_loads, loads_vec);
@@ -304,13 +311,14 @@ void ElementBuilder::build_solid236_solution_vectors()
 
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
 
+    auto &Az = solution_vector_support.sol_vectors[0];
     unsigned int n_dofs_A = AAe.n();
     unsigned int n_dofs_V = AAe.m() / 3;
     unsigned int n_qp = BAe.m() / 3;
 
     // Compute B in nodes
     DenseVector<Number> Bn_x;
-    AAe.vector_mult(Bn_x, solution_vector_support.sol_vectors[0]);
+    AAe.vector_mult(Bn_x, Az);
     Me.cholesky_solve(Bn_x, Bn);
 
     // Compute H in nodes
