@@ -157,9 +157,9 @@ class TreeGaugeHelper:
                 "forced_cotree_mask must have length equal to number of points"
             )
 
-        # Use np.nan for non-midside nodes
-        tree_np = np.full(npts, np.nan, dtype=np.float32)
-        cotree_np = np.full(npts, np.nan, dtype=np.float32)
+        # Use 0 for non-midside nodes, 1 for tree/cotree
+        tree_np = np.zeros(npts, dtype=np.int32)
+        cotree_np = np.zeros(npts, dtype=np.int32)
 
         # Collect unique edges using midside node id as key
         edge_map = {}
@@ -188,46 +188,43 @@ class TreeGaugeHelper:
                         )
 
         # Forced cotree
-        cotree_np[forced_cotree_mask == 1] = 1.0
+        cotree_np[forced_cotree_mask == 1] = 1
 
         if len(constrained) > 0:
             # Constrained edges → cotree
             for mid, (a, b) in edge_map.items():
-                if cotree_np[mid] == 1.0:
+                if cotree_np[mid] == 1:
                     continue
                 if (a in constrained) or (b in constrained):
-                    cotree_np[mid] = 1.0
+                    cotree_np[mid] = 1
 
         # Union–Find spanning tree
         dsu = DSU()
         for mid, (a, b) in edge_map.items():
-            if cotree_np[mid] == 1.0:
+            if cotree_np[mid] == 1:
                 continue
             if (a in constrained) or (b in constrained):
                 continue
             if dsu.union(a, b):
-                tree_np[mid] = 1.0
+                tree_np[mid] = 1
             else:
-                cotree_np[mid] = 1.0
+                cotree_np[mid] = 1
 
-        tree_arr = vtknp.numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_FLOAT)
+        tree_arr = vtknp.numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_INT)
         tree_arr.SetName(tree_name)
-        cotree_arr = vtknp.numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_FLOAT)
+        cotree_arr = vtknp.numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_INT)
         cotree_arr.SetName(cotree_name)
 
         info = {
             "num_points": npts,
             "num_cells": ugrid.GetNumberOfCells(),
             "num_edges": len(edge_map),
-            "num_tree": int(np.nansum(tree_np)),
-            "num_cotree": int(np.nansum(cotree_np)),
+            "num_tree": int(np.sum(tree_np)),
+            "num_cotree": int(np.sum(cotree_np)),
             "skipped_unknown_cells": unknown_cells,
         }
         return tree_arr, cotree_arr, info
 
-    # ------------------------------
-    # Convenience: attach arrays to the grid
-    # ------------------------------
     @staticmethod
     def build_tree_cotree_on_grid(
         ugrid,
