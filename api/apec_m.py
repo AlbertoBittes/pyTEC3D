@@ -620,8 +620,10 @@ class APEC_M:
         npts = self.mesh.GetNumberOfPoints()
 
         # Step 1: Find element type IDs with KEYOPT1 not in [1, 2, 3]
-        invalid_keyopt_mask = ~self.element_types["KEYOPT1"].isin([1, 2, 3])
-        invalid_elemtype_ids = set(self.element_types.loc[invalid_keyopt_mask, "ansys_etype"])
+        invalid_keyopt_mask = ~self.element_types["KEYOPT1"].isin([0, 1, 2, 3])
+        invalid_elemtype_ids = set(
+            self.element_types.loc[invalid_keyopt_mask, "ansys_etype"]
+        )
 
         # Step 2: Select cells with those element type IDs
         cell_data = self.mesh.GetCellData()
@@ -633,12 +635,20 @@ class APEC_M:
         selection_cell_array = cell_data.GetArray("selection_cell")
         selection_cell_backup = vtknp.vtk_to_numpy(selection_cell_array).copy()
         # Select cells
-        Selector.select(self.mesh, "ansys_etype", invalid_elemtype_ids, cell_or_point="cell_data", mode="s")
+        Selector.select(
+            self.mesh,
+            "ansys_etype",
+            invalid_elemtype_ids,
+            cell_or_point="cell_data",
+            mode="s",
+        )
 
         # Step 3: Extract selected cells and find midside nodes
-        selected_cell_ids = np.where(vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell")) == 1)[0]
+        selected_cell_ids = np.where(
+            vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell")) == 1
+        )[0]
         if len(selected_cell_ids) == 0:
-            print("No cells with KEYOPT1 not in [1,2,3] found.")
+            print("No cells with KEYOPT1 not in [0, 1,2,3] found.")
             forced_cotree_mask = np.zeros(npts, dtype=np.int32)
         else:
             # Extract selection
@@ -671,13 +681,17 @@ class APEC_M:
             forced_cotree_mask[midside_orig_ids] = 1
 
         # Restore previous selection
-        vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell"))[:] = selection_cell_backup
+        vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell"))[
+            :
+        ] = selection_cell_backup
         cell_data.GetArray("selection_cell").Modified()
 
         # Add forced cotree mask from array_name as before
         arr_mask = np.zeros(arr_np.shape, dtype=np.int32)
         arr_mask[~np.isnan(arr_np)] = 1
-        forced_cotree_mask = np.logical_or(forced_cotree_mask, arr_mask).astype(np.int32)
+        forced_cotree_mask = np.logical_or(forced_cotree_mask, arr_mask).astype(
+            np.int32
+        )
 
         info = TreeGaugeHelper.build_tree_cotree_on_grid(
             self.mesh,
