@@ -50,7 +50,6 @@ namespace Globals
         He_x,
         He_y,
         He_z,
-        TREE,
         UNKNOWN // Fallback for invalid strings
     };
 
@@ -72,35 +71,8 @@ namespace Globals
         Jt,
         Be,
         He,
-        TREE,
         UNKNOWN // Fallback for invalid strings
     };
-
-    enum class VariableCategory
-    {
-        DOFVariables,
-        NodalLoadsVariables,
-        ElementLoadsVariables,
-        NodalSolutionVariables,
-        ElementSolutionVariables,
-        SupportVariables
-    };
-
-    struct VariableInfo
-    {
-        GlobalVariableName global_name;
-        APIVariableName api_name;
-        VariableCategory category;
-        std::string global_label;
-        std::string api_label;
-        FEFamily fe_family;
-        Order order;
-        unsigned int component_index;
-        // Add other fields as needed
-    };
-
-    // Global variable information map
-    extern const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
 
     //
     // System type globals
@@ -116,11 +88,26 @@ namespace Globals
         NUM_SYSTEMS
     };
 
+    struct VariableInfo
+    {
+        GlobalVariableName global_name;
+        APIVariableName api_name;
+        std::string global_label;
+        std::string api_label;
+        unsigned int component_index;
+        SystemType system_type;
+        FEFamily fe_family;
+        Order order;
+        // Add other fields as needed
+    };
+
+    // Global variable information map
+    extern const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
+
     struct SystemInfo
     {
         SystemType type;
         std::string name;
-        Globals::VariableCategory category;
         // Add other fields as needed
     };
     // Global system info map

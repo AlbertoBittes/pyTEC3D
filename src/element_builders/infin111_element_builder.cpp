@@ -19,7 +19,7 @@
 
 void ElementBuilder::build_infin111()
 {
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[4].get());
     // The element Jacobian * quadrature weight at each integration point.
 
     // The element Jacobian * quadrature weight at each integration point.

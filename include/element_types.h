@@ -22,7 +22,6 @@ enum ElementTypeEnum : unsigned int
 {
     SOLID97 = 97,
     SOLID236 = 236,
-    PLANE13 = 13,
     PLANE233 = 233,
     INFIN110 = 110,
     INFIN111 = 111,
@@ -43,6 +42,16 @@ enum PhysicalRegionEnum : unsigned int
     UNKNOWN
 };
 
+struct FEDataShapeFunctions
+{
+    Order order;
+    FEFamily family;
+    unsigned int dimension;
+    Order quadrature_order;
+    unsigned int quadrature_dim; // If 0, use default quadrature
+    bool is_infinite;
+    bool is_vector; // NEW: true for FEVectorBase, false for FEBase
+};
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
 typedef std::map<Globals::GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 typedef std::map<Globals::GlobalVariableName, Globals::VariableInfo> VariableInformation;
@@ -60,190 +69,147 @@ typedef std::map<Globals::GlobalVariableName, Globals::VariableInfo> VariableInf
 class ElementType
 {
 public:
-    // Constructor
-    ElementType(const std::vector<unsigned int> &keyopts)
-        : keyopts(keyopts)
-    {
-        physical_region = keyopts.empty() ? PhysicalRegionEnum::UNKNOWN : static_cast<PhysicalRegionEnum>(keyopts[1]);
-        order = static_cast<Order>(keyopts[2]);
-    }
+    ElementType(const std::vector<unsigned int> &keyopts,
+                std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
+    void build_variable_information(std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector);
+
+    void set_variables_order();
     // Virtual methods to be implemented by derived classes
-    inline std::vector<Globals::GlobalVariableName> get_active_variables(Globals::VariableCategory variable_cat) const
-    {
-        std::vector<Globals::GlobalVariableName> active_vars;
-        for (const auto &pair : variable_info)
-        {
-            const Globals::GlobalVariableName &var_name = pair.first;
-            const Globals::VariableInfo &var_data = pair.second;
+    inline std::vector<Globals::GlobalVariableName> get_active_variables(Globals::SystemType variable_system_type) const;
 
-            if (var_data.category == variable_cat)
-            {
-                active_vars.push_back(var_name);
-            }
-        }
-        return active_vars;
-    }
-    // // Sets system_var_num for all variables in variable_info incrementally from 0
-    // void set_system_var_num()
-    // {
-    //     unsigned int idx = 0;
-    //     for (auto &pair : variable_info)
-    //     {
-    //         if (pair.second.is_active)
-    //         {
-    //             pair.second.system_var_num = idx++;
-    //         }
-    //     }
-    // }
-
+    void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
-    inline const VariableInformation &get_variable_information() const
-    {
-        return variable_info;
-    }
-    inline VariableInformation &get_variable_information()
-    {
-        return variable_info;
-    }
+    inline const VariableInformation &get_variable_information() const { return variable_info; }
 
-    inline PhysicalRegionEnum get_physical_region() const
-    {
-        return physical_region;
-    }
+    inline VariableInformation &get_variable_information() { return variable_info; }
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
 
-    std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element object
-
-    const std::vector<unsigned int> keyopts; // Element type keyopts
-
-    virtual void set_variable_info() = 0;
-
-    virtual void set_fe_array() = 0;
-
-    void set_variables_order();
+    std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
 protected:
     VariableInformation variable_info;
-    PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
-    Order order;
+    const std::vector<unsigned int> keyopts; // Element type keyopts
+
+    // PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
+    // Order order;
 };
 
 class AVElementType : public ElementType
 {
 public:
     // Constructor
-    AVElementType(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
+    AVElementType::AVElementType(const std::vector<unsigned int> &keyopts,
+                                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
 class AV3DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV3DElementType(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
+    AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts,
+                                     std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
 class AV2DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV2DElementType(const std::vector<unsigned int> &keyopts);
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
+    AV2DElementType(const std::vector<unsigned int> &keyopts,
+                    std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                    std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
+        : AVElementType(keyopts, variable_collector, fe_collector)
+    {
+        // Optionally call set_fe_array() or other initialization here
+    }
 };
 
 class SOLID97Type : public AV3DElementType
 {
 public:
+    // Direct constructor
     SOLID97Type(const std::vector<unsigned int> &keyopts);
 
+    // Chain-prolonging constructor for derived types
+    SOLID97Type(const std::vector<unsigned int> &keyopts,
+                std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+    // Helper to add SOLID97 variables
+    static void add_solid97_variables(const PhysicalRegionEnum physical_region,
+                                      std::vector<Globals::GlobalVariableName> &vars);
+
+    // Helper to add two FEDataShapeFunctions structs
+    static void add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+                                       const std::vector<unsigned int> &keyopts);
+
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
 };
 
 class SOLID236Type : public AV3DElementType
 {
 public:
+    // Direct constructor
     SOLID236Type(const std::vector<unsigned int> &keyopts);
 
+    // Chain-prolonging constructor for derived types
+    SOLID236Type(const std::vector<unsigned int> &keyopts,
+                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+
+    // Helper to add SOLID236 variables
+    static void add_solid236_variables(const PhysicalRegionEnum physical_region,
+                                       std::vector<Globals::GlobalVariableName> &vars);
+
+    // Helper to add two FEDataShapeFunctions structs
+    static void add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+                                        const std::vector<unsigned int> &keyopts);
+
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
-};
-
-class PLANE13Type : public AV2DElementType
-{
-public:
-    PLANE13Type(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
 };
 
 class PLANE233Type : public AV2DElementType
 {
 public:
+    // Direct constructor
     PLANE233Type(const std::vector<unsigned int> &keyopts);
 
-    virtual void set_variable_info() override {};
+    // Chain-prolonging constructor for derived types
+    PLANE233Type(const std::vector<unsigned int> &keyopts,
+                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
-    virtual void set_fe_array() override {};
+    // Helper to add PLANE233 variables
+    static void add_plane233_variables(const PhysicalRegionEnum physical_region,
+                                       std::vector<Globals::GlobalVariableName> &vars);
+
+    // Helper to add two FEDataShapeFunctions structs
+    static void add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+                                        const std::vector<unsigned int> &keyopts);
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 };
 
-// class InfFEBaseEtype
-// {
-// public:
-//     std::vector<std::unique_ptr<FEAbstract>> inf_fe_array;
-// };
-
-class INFIN110Type : public PLANE13Type
+class INFIN110Type : public PLANE233Type
 {
 public:
     INFIN110Type(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
 };
 
 class INFIN111Type : public SOLID97Type
 {
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override;
-
-    virtual void set_fe_array() override;
 };
 
 class INFIN112Type : public SOLID236Type
 {
 public:
     INFIN112Type(const std::vector<unsigned int> &keyopts);
-
-    virtual void set_variable_info() override { libmesh_error_msg("INFIN112Type::set_variable_info() not implemented yet."); };
-
-    virtual void set_fe_array() override { libmesh_error_msg("INFIN112Type::set_fe_array() not implemented yet."); };
 };
 #endif // ELEMENT_TYPES_H

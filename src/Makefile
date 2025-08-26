@@ -19,14 +19,18 @@ TARGET=$(BIN_DIR)/apec_m
 
 SOURCES=$(wildcard *.cpp)
 ELEMENT_BUILDERS_SOURCES := $(wildcard element_builders/*.cpp)
+ELEMENT_TYPES_SOURCES := $(wildcard element_types/*.cpp)
 
-OBJECTS=$(SOURCES:.cpp=.o) $(ELEMENT_BUILDERS_SOURCES:.cpp=.o)
-DEPS=$(SOURCES:.cpp=.d) $(ELEMENT_BUILDERS_SOURCES:.cpp=.d)
+OBJECTS=$(SOURCES:.cpp=.o) $(ELEMENT_BUILDERS_SOURCES:.cpp=.o) $(ELEMENT_TYPES_SOURCES:.cpp=.o)
+DEPS=$(SOURCES:.cpp=.d) $(ELEMENT_BUILDERS_SOURCES:.cpp=.d) $(ELEMENT_TYPES_SOURCES:.cpp=.d)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 element_builders/%.o: element_builders/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+element_types/%.o: element_types/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJECTS)
@@ -35,4 +39,4 @@ $(TARGET): $(OBJECTS)
 -include $(DEPS)
 
 clean:
-	rm -f *.o *.d element_builders/*.o element_builders/*.d ../apec_m
+	rm -f *.o *.d element_builders/*.o element_builders/*.d element_types/*.o element_types/*.d ../apec_m

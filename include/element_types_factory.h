@@ -19,7 +19,7 @@ public:
 
     void add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type);
 
-    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(Globals::VariableCategory variable_category) const;
+    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(Globals::SystemType system_type) const;
 
     inline ElementType *get_element_type(subdomain_id_type element_id)
     {

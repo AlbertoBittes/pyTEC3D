@@ -587,11 +587,15 @@ class APEC_M:
         """
         Build the tree–cotree decomposition for midside edges in the mesh using TreeGaugeHelper.
 
-        This method analyzes the specified array in PointData (default "Az") to determine which edges
-        should be forced into the cotree (where the array value is not NaN). It then computes and attaches
-        two arrays to the mesh PointData:
+        This method excludes all conducting regions (elements with KEYOPT1 not equal to 1, 2, or 3)
+        by forcing all midside nodes of those elements into the cotree. It also analyzes the specified
+        array in PointData (default "Az") to determine additional edges to force into the cotree
+        (where the array value is not NaN). The method computes and attaches two arrays to the mesh PointData:
             - tree_name: Boolean/int mask for tree edges
             - cotree_name: Boolean/int mask for cotree edges
+
+        After building the tree–cotree decomposition, all nodes with value 1 in the tree mask array
+        (tree_name, default "TREE") will have their value in the selected array (array_name, default "Az") set to 0.
 
         Parameters:
             array_name (str): Name of the array in PointData to use for forced cotree mask (default "Az").
@@ -603,6 +607,7 @@ class APEC_M:
 
         Side Effects:
             Adds/updates tree and cotree mask arrays in mesh PointData.
+            Sets values in array_name to 0 for all nodes with value 1 in tree_name.
             Prints summary information about the decomposition.
 
         Returns:
@@ -612,9 +617,68 @@ class APEC_M:
         if arr is None:
             raise ValueError(f"Array '{array_name}' not found in PointData.")
         arr_np = vtknp.vtk_to_numpy(arr)
-        # Build forced_cotree_mask: 1 where not NaN, 0 where NaN
-        forced_cotree_mask = np.zeros(arr_np.shape, dtype=np.int32)
-        forced_cotree_mask[~np.isnan(arr_np)] = 1
+        npts = self.mesh.GetNumberOfPoints()
+
+        # Step 1: Find element type IDs with KEYOPT1 not in [1, 2, 3]
+        invalid_keyopt_mask = ~self.element_types["KEYOPT1"].isin([1, 2, 3])
+        invalid_elemtype_ids = set(self.element_types.loc[invalid_keyopt_mask, "ansys_etype"])
+
+        # Step 2: Select cells with those element type IDs
+        cell_data = self.mesh.GetCellData()
+        ansys_elem_array = cell_data.GetArray("ansys_etype")
+        if ansys_elem_array is None:
+            raise ValueError("CellData array 'ansys_etype' not found.")
+        ansys_elem_np = vtknp.vtk_to_numpy(ansys_elem_array)
+        # Save current selection to restore later
+        selection_cell_array = cell_data.GetArray("selection_cell")
+        selection_cell_backup = vtknp.vtk_to_numpy(selection_cell_array).copy()
+        # Select cells
+        Selector.select(self.mesh, "ansys_etype", invalid_elemtype_ids, cell_or_point="cell_data", mode="s")
+
+        # Step 3: Extract selected cells and find midside nodes
+        selected_cell_ids = np.where(vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell")) == 1)[0]
+        if len(selected_cell_ids) == 0:
+            print("No cells with KEYOPT1 not in [1,2,3] found.")
+            forced_cotree_mask = np.zeros(npts, dtype=np.int32)
+        else:
+            # Extract selection
+            id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
+            selection_node = vtk.vtkSelectionNode()
+            selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+            selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+            selection_node.SetSelectionList(id_array)
+            selection = vtk.vtkSelection()
+            selection.AddNode(selection_node)
+            extract_selection = vtk.vtkExtractSelection()
+            extract_selection.SetInputData(0, self.mesh)
+            extract_selection.SetInputData(1, selection)
+            extract_selection.Update()
+            selected_mesh = extract_selection.GetOutput()
+
+            # Get MidsideNodes array from extracted mesh
+            midside_arr = selected_mesh.GetPointData().GetArray("MidsideNodes")
+            if midside_arr is None:
+                raise ValueError("Extracted mesh missing 'MidsideNodes' array.")
+            midside_np = vtknp.vtk_to_numpy(midside_arr)
+            # Map extracted mesh point IDs back to original mesh point IDs
+            orig_ids_arr = selected_mesh.GetPointData().GetArray("vtkOriginalPointIds")
+            if orig_ids_arr is None:
+                raise ValueError("Extracted mesh missing 'vtkOriginalPointIds' array.")
+            orig_ids_np = vtknp.vtk_to_numpy(orig_ids_arr)
+            # Build forced_cotree_mask: 1 at original midside node ids
+            forced_cotree_mask = np.zeros(npts, dtype=np.int32)
+            midside_orig_ids = orig_ids_np[midside_np == 1]
+            forced_cotree_mask[midside_orig_ids] = 1
+
+        # Restore previous selection
+        vtknp.vtk_to_numpy(cell_data.GetArray("selection_cell"))[:] = selection_cell_backup
+        cell_data.GetArray("selection_cell").Modified()
+
+        # Add forced cotree mask from array_name as before
+        arr_mask = np.zeros(arr_np.shape, dtype=np.int32)
+        arr_mask[~np.isnan(arr_np)] = 1
+        forced_cotree_mask = np.logical_or(forced_cotree_mask, arr_mask).astype(np.int32)
+
         info = TreeGaugeHelper.build_tree_cotree_on_grid(
             self.mesh,
             constrained_point_ids=None,
@@ -623,6 +687,14 @@ class APEC_M:
             cotree_name=cotree_name,
         )
         print(f"Tree–cotree gauge built. Info: {info}")
+
+        # Set value in array_name to 0 for all nodes with value 1 in tree_name
+        tree_arr = self.mesh.GetPointData().GetArray(tree_name)
+        if tree_arr is not None:
+            tree_np = vtknp.vtk_to_numpy(tree_arr)
+            arr_np[tree_np == 1] = 0
+            arr.Modified()
+
         return info
 
 

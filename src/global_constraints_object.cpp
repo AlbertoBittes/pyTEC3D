@@ -25,31 +25,7 @@ void GlobalConstraintsObject::constrain()
     libMesh::out << "Applying constraints to the system." << std::endl;
 
     NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("ramped_node_dof_constraints");
-    // std::string string_variable_label;
 
-    // if (equation_systems.has_system("SupportSystem"))
-    // {
-    //     System &tree_cotree_gauge_system = equation_systems.get_system<System>("SupportSystem");
-    //     if (tree_cotree_gauge_system.has_variable("TREE"))
-    //     {
-    //         unsigned int az_var_num = this->get_parent_object()->variable_number("Az");
-    //         unsigned int main_sys_num = this->get_parent_object()->number();
-    //         unsigned int tree_sys_num = tree_cotree_gauge_system.number();
-    //         unsigned int tree_var_num = tree_cotree_gauge_system.variable_number("TREE");
-    //         NumericVector<Number> &tree_cotree_gauge = *tree_cotree_gauge_system.current_local_solution;
-    //         for (auto node_ptr : mesh.local_node_ptr_range())
-    //         {
-    //             dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
-    //             Real value = tree_cotree_gauge(tree_dof_id);
-    //             if (value > 0.5)
-    //             {
-    //                 dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
-    //                 DofConstraintRow constraint_row;
-    //                 dof_map.add_constraint_row(az_dof_id, constraint_row, true);
-    //             }
-    //         }
-    //     }
-    // }
     for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
     {
         Real value = node_dof_constraints(k);
@@ -59,34 +35,6 @@ void GlobalConstraintsObject::constrain()
             dof_map.add_constraint_row(k, constraint_row, value, true);
         }
     }
-
-    // // apply tree-cotree gauge
-    // if (equation_systems.has_system("SupportSystem"))
-    // {
-    //     System &tree_cotree_gauge_system = equation_systems.get_system<System>("SupportSystem");
-    //     if (tree_cotree_gauge_system.has_variable("TREE"))
-    //     {
-    //         unsigned int az_var_num = this->get_parent_object()->variable_number("Az");
-    //         unsigned int main_sys_num = this->get_parent_object()->number();
-    //         unsigned int tree_sys_num = tree_cotree_gauge_system.number();
-    //         unsigned int tree_var_num = tree_cotree_gauge_system.variable_number("TREE");
-    //         NumericVector<Number> &tree_cotree_gauge = *tree_cotree_gauge_system.current_local_solution;
-    //         for (auto node_ptr : mesh.local_node_ptr_range())
-    //         {
-    //             if (node_ptr->n_dofs(tree_sys_num, tree_var_num) > 0)
-    //             {
-    //                 dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
-    //                 Real value = tree_cotree_gauge(tree_dof_id);
-    //                 if (value > 0.5)
-    //                 {
-    //                     dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
-    //                     DofConstraintRow constraint_row;
-    //                     dof_map.add_constraint_row(az_dof_id, constraint_row, true);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 void GlobalConstraintsObject::check_update_boundary_conditions()

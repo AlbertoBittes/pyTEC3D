@@ -18,7 +18,6 @@ VARIABLES_GLOBAL_LIST = [
     "Jt",
     "Be",
     "He",
-    "TREE"
 ]
 
 # Default solver settings
