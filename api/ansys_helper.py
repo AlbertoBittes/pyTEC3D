@@ -161,28 +161,38 @@ class AnsysHelper:
                 - component: The component index (0, 1, 2).
                 - value: The value of the load for the given component.
         """
-        element_pattern = re.compile(r"ELEMENT\\s*=\\s*(\\d+)")
+        # Regular expressions to match element and density lines
+        element_pattern = re.compile(r"ELEMENT\s*=\s*(\d+)")
         density_pattern = re.compile(
-            r"\\s*([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)\\s+([\\d.\-E]+)"
+            r"\s*([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)\s+([\d\.\-E]+)"
         )
+
+        # Initialize variables
         data = []
         current_element = None
         load_label = None
+
         with open(file_path, "r") as file:
+            # Skip empty lines and find the line with "CURRENT DENSITIES"
             for line in file:
-                if line.strip():
+                if line.strip():  # Skip empty lines
                     if "CURRENT DENSITIES" in line:
                         load_label = "Js"
-                    break
+                    break  # Exit the loop after finding the first non-empty line
+
+            # Parse the rest of the file
             for line in file:
+                # Match element line
                 element_match = element_pattern.search(line)
                 if element_match:
                     current_element = int(element_match.group(1))
                     continue
+
+                # Match density line
                 if current_element is not None:
                     density_match = density_pattern.match(line)
                     if density_match:
-                        for component in range(3):
+                        for component in range(3):  # Components 0, 1, 2
                             value = float(density_match.group(component + 1))
                             if value != 0.0:
                                 data.append(
@@ -193,7 +203,9 @@ class AnsysHelper:
                                         "value": value,
                                     }
                                 )
-                        current_element = None
+                        current_element = None  # Reset current element after processing
+
+        # Convert the data to a pandas DataFrame
         df = pd.DataFrame(
             data, columns=["ansys_elem_num", "label", "component", "value"]
         )
@@ -214,17 +226,26 @@ class AnsysHelper:
                 - component: The component index (0, 1, 2 for vector variables, 0 for scalar variables).
                 - value: The value of the variable for the given component.
         """
-        node_pattern = re.compile(r"^\\s*(\\d+)\\s+(\\S+)\\s+([\\d.\-E]+)")
+        # Regular expression to match node data lines
+        node_pattern = re.compile(r"^\s*(\d+)\s+(\S+)\s+([\d\.\-E]+)")
+
+        # List to store parsed data
         data = []
+
         with open(file_path, "r") as file:
             for line in file:
+                # Skip header lines
                 if line.startswith("NODE") or line.startswith("//"):
                     continue
+
+                # Match node data line
                 node_match = node_pattern.match(line)
                 if node_match:
                     node_num = int(node_match.group(1))
                     label = node_match.group(2)
                     value = float(node_match.group(3))
+
+                    # Determine the component based on the label
                     if label.endswith("X"):
                         component = 0
                         label = label[:-1]
@@ -235,7 +256,9 @@ class AnsysHelper:
                         component = 2
                         label = label[:-1]
                     else:
-                        component = 0
+                        component = 0  # Scalar variable
+
+                    # Append the parsed data to the list
                     data.append(
                         {
                             "ansys_node_num": node_num,
@@ -244,6 +267,8 @@ class AnsysHelper:
                             "value": value,
                         }
                     )
+
+        # Convert the data to a pandas DataFrame
         df = pd.DataFrame(
             data, columns=["ansys_node_num", "label", "component", "value"]
         )
