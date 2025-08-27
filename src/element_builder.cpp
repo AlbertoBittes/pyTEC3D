@@ -410,8 +410,8 @@ void ElementBuilder::build_element()
     case ElementTypeEnum::SOLID236:
         this->build_solid236();
         break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13();
+    case ElementTypeEnum::PLANE233:
+        this->build_plane233();
         break;
     case ElementTypeEnum::INFIN110:
         this->build_infin110();
@@ -439,8 +439,8 @@ void ElementBuilder::build_element_rhs()
     case ElementTypeEnum::SOLID236:
         this->build_solid236_rhs();
         break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13_rhs();
+    case ElementTypeEnum::PLANE233:
+        this->build_plane233_rhs();
         break;
     case ElementTypeEnum::INFIN110:
         this->build_infin110_rhs();
@@ -542,8 +542,8 @@ void ElementBuilder::build_solution_vectors()
     case ElementTypeEnum::SOLID236:
         this->build_solid236_solution_vectors();
         break;
-    case ElementTypeEnum::PLANE13:
-        this->build_plane13_solution_vectors();
+    case ElementTypeEnum::PLANE233:
+        this->build_plane233_solution_vectors();
         break;
     case ElementTypeEnum::INFIN110:
         this->build_infin110_solution_vectors();
@@ -571,9 +571,8 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     DofMap *dof_map = dof_maps[dof_map_index];
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
-    auto sys_info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, sys_type);
-    auto var_category = sys_info.category;
-    auto active_vars = elem_data.element_type->get_active_variables(var_category);
+
+    auto active_vars = elem_data.element_type->get_active_variables(sys_type);
 
     for (const auto &var_enum : active_vars)
     {

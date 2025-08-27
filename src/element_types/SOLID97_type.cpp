@@ -83,15 +83,15 @@ void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_s
                                          const std::vector<unsigned int> &keyopts)
 {
     // Example: add a scalar and a vector FE struct
-    fe_structs.push_back({
-        static_cast<Order>(keyopts[2]), // order
-        LAGRANGE,                       // family
-        3,                              // dimension
-        INVALID_ORDER,                  // quadrature_order
-        3,                              // quadrature_dim
-        false,                          // is_infinite
-        false                           // is_vector
-    });
+    // fe_structs.push_back({
+    //     static_cast<Order>(keyopts[2]), // order
+    //     LAGRANGE,                       // family
+    //     3,                              // dimension
+    //     INVALID_ORDER,                  // quadrature_order
+    //     3,                              // quadrature_dim
+    //     false,                          // is_infinite
+    //     false                           // is_vector
+    // });
     fe_structs.push_back({
         static_cast<Order>(keyopts[2]), // order
         LAGRANGE_VEC,                   // family
@@ -115,9 +115,9 @@ void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_s
 std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map()
 {
     // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
-    unsigned int n_sf_vec = fe_array[1]->n_shape_functions();
-    unsigned int n_qp = fe_array[0]->n_quadrature_points();
+    unsigned int n_sf = fe_array[2]->n_shape_functions();
+    unsigned int n_sf_vec = fe_array[0]->n_shape_functions();
+    unsigned int n_qp = fe_array[2]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
 

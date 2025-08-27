@@ -38,8 +38,8 @@ void ElementBuilder::build_solid97()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
+    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[0].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
 
@@ -94,7 +94,7 @@ void ElementBuilder::build_solid97()
                     }
                 }
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
@@ -142,7 +142,7 @@ void ElementBuilder::build_solid97()
 
     // Here use the formula for quadrature
     std::vector<boundary_id_type> side_boundary_ids;
-    FEBase *fe_face = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
+    FEBase *fe_face = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
 
     // The following loops over the sides of the element.
     // If the element has no neighbor on a side then that
@@ -169,8 +169,8 @@ void ElementBuilder::build_solid97()
 
                 // The value of the shape function derivatives at the
                 // quadrature points.
-                const std::vector<std::vector<RealGradient>> &dphi_face =
-                    fe_face->get_dphi();
+                // const std::vector<std::vector<RealGradient>> &dphi_face =
+                //     fe_face->get_dphi();
 
                 // The Jacobian * Quadrature Weight at the quadrature
                 // points on the face.
@@ -179,7 +179,7 @@ void ElementBuilder::build_solid97()
                 // The XYZ locations (in physical space) of the
                 // quadrature points on the face.  This is where
                 // we will interpolate the boundary value function.
-                const std::vector<Point> &qface_point = fe_face->get_xyz();
+                // const std::vector<Point> &qface_point = fe_face->get_xyz();
                 const std::vector<std::vector<Point>> &face_tangents = fe_face->get_tangents();
 
                 // Compute the shape function values on the element
@@ -214,8 +214,8 @@ void ElementBuilder::build_solid97()
 
                 // The value of the shape function derivatives at the
                 // quadrature points.
-                const std::vector<std::vector<RealGradient>> &dphi_face =
-                    fe_face->get_dphi();
+                // const std::vector<std::vector<RealGradient>> &dphi_face =
+                //     fe_face->get_dphi();
 
                 // The Jacobian * Quadrature Weight at the quadrature
                 // points on the face.
@@ -224,7 +224,7 @@ void ElementBuilder::build_solid97()
                 // The XYZ locations (in physical space) of the
                 // quadrature points on the face.  This is where
                 // we will interpolate the boundary value function.
-                const std::vector<Point> &qface_point = fe_face->get_xyz();
+                // const std::vector<Point> &qface_point = fe_face->get_xyz();
                 const std::vector<Point> &face_normals = fe_face->get_normals();
 
                 // Compute the shape function values on the element
@@ -302,7 +302,7 @@ void ElementBuilder::build_solid97_rhs()
     NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
     NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
@@ -417,7 +417,7 @@ void ElementBuilder::build_solid97_solution_vectors()
         He(k) = Be(k) / mu_matrix[k];
 
     // Compute J in elements
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;

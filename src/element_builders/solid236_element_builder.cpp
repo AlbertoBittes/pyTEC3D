@@ -36,9 +36,9 @@ void ElementBuilder::build_solid236()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
-    FEVectorBase *fe_vec_lagrange = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[3].get());
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[3].get());
+    FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[0].get());
+    FEVectorBase *fe_vec_lagrange = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();
     // const std::vector<Real> &JxW_edge = fe_edge->get_JxW();
@@ -114,7 +114,7 @@ void ElementBuilder::build_solid236()
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 BAe(qp + k * nq, dof_j) += curl_phi_edge[dof_j][qp](k);
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
@@ -211,13 +211,13 @@ void ElementBuilder::build_solid236_rhs()
     NumericVector<Number> *nodal_loads_vector = nodal_loads_sys->request_vector(2);
     NumericVector<Number> *element_loads_vector = element_loads_sys->request_vector(2);
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
+        FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
 
         // The velocity shape function gradients at interior
         // quadrature points.
@@ -342,7 +342,7 @@ void ElementBuilder::build_solid236_solution_vectors()
         He(k) = Be(k) / mu_matrix[k];
 
     // Compute J in elements
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;

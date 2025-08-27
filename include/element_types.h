@@ -77,9 +77,9 @@ public:
 
     void set_variables_order();
     // Virtual methods to be implemented by derived classes
-    inline std::vector<Globals::GlobalVariableName> get_active_variables(Globals::SystemType variable_system_type) const;
+    std::vector<Globals::GlobalVariableName> get_active_variables(Globals::SystemType variable_system_type) const;
 
-    void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+    void build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
@@ -103,18 +103,18 @@ class AVElementType : public ElementType
 {
 public:
     // Constructor
-    AVElementType::AVElementType(const std::vector<unsigned int> &keyopts,
-                                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
-                                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+    AVElementType(const std::vector<unsigned int> &keyopts,
+                  std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
 class AV3DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts,
-                                     std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
-                                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+    AV3DElementType(const std::vector<unsigned int> &keyopts,
+                    std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
+                    std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
 class AV2DElementType : public AVElementType

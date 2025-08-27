@@ -19,6 +19,7 @@ ElementType::ElementType(const std::vector<unsigned int> &keyopts,
 {
     build_variable_information(variable_collector);
     build_fe_array(fe_collector);
+    set_variables_order();
 }
 
 void ElementType::build_variable_information(std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector)

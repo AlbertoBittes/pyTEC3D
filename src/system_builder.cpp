@@ -66,15 +66,15 @@ void SystemBuilder::init_variables()
     // Do not do the loop here, attacht the initialization object to the other systems too
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
-    // Use new helper functions to map system name to SystemType and get category
+    // Use new helper functions to map system name to SystemType
     Globals::SystemType type = Globals::get_key_by_predicate_one(
         Globals::SYSTEM_INFO_MAP,
         [sys_name = system->name()](const Globals::SystemInfo &info)
         {
             return info.name == sys_name;
         });
-    Globals::VariableCategory category = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).category;
-    auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(category);
+
+    auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);
 
     for (const auto &pair : *vars_to_subdomain_ids)
     {

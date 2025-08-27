@@ -84,7 +84,6 @@ namespace Globals
         ELEMENT_LOADS,
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
-        SUPPORT_SYSTEM, // New system type for support elements
         NUM_SYSTEMS
     };
 

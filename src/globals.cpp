@@ -62,7 +62,6 @@ namespace Globals
         {ELEMENT_LOADS, {ELEMENT_LOADS, "ElementLoadsSystem"}},
         {NODAL_SOLUTION, {NODAL_SOLUTION, "NodalSolutionSystem"}},
         {ELEMENT_SOLUTION, {ELEMENT_SOLUTION, "ElementSolutionSystem"}},
-        {SUPPORT_SYSTEM, {SUPPORT_SYSTEM, "SupportSystem"}},
     };
 
     const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {

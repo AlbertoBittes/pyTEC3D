@@ -73,7 +73,7 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
         FIRST,       // order
         NEDELEC_ONE, // family
         3,           // dimension
-        THIRD,       // quadrature_order (use default)
+        FIFTH,       // quadrature_order (use default)
         3,           // quadrature_dim
         false,       // is_infinite
         true         // is_vector (scalar FE)
@@ -82,7 +82,7 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
         FIRST,       // order
         NEDELEC_ONE, // family
         3,           // dimension
-        THIRD,       // quadrature_order (use default)
+        FIFTH,       // quadrature_order (use default)
         3,           // quadrature_dim
         false,       // is_infinite
         true         // is_vector (scalar FE)
@@ -96,15 +96,24 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
         false,         // is_infinite
         true           // is_vector (vector FE)
     });
+    // fe_structs.push_back({
+    //     SECOND,        // order
+    //     LAGRANGE,      // family
+    //     3,             // dimension
+    //     INVALID_ORDER, // quadrature_order (use default)
+    //     3,             // quadrature_dim
+    //     false,         // is_infinite
+    //     false          // is_vector (vector FE)
+    // });
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_solution_matrix_idx_size_map()
 {
     // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
     // Check this when you have periodic BCs
-    unsigned int n_sf = fe_array[0]->n_shape_functions();
+    unsigned int n_sf = fe_array[3]->n_shape_functions();
     unsigned int n_sf_vec = 3 * n_sf;
-    unsigned int n_sf_edge = fe_array[1]->n_shape_functions();
+    unsigned int n_sf_edge = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));

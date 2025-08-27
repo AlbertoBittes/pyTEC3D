@@ -160,7 +160,7 @@ public:
     void build_element();
     void build_solid97();
     void build_solid236();
-    void build_plane13();
+    void build_plane233();
     void build_infin110();
     void build_infin111();
     void build_infin112();
@@ -169,7 +169,7 @@ public:
     void build_element_rhs();
     void build_solid97_rhs();
     void build_solid236_rhs();
-    void build_plane13_rhs();
+    void build_plane233_rhs();
     void build_infin110_rhs();
     void build_infin111_rhs();
     void build_infin112_rhs();
@@ -179,7 +179,7 @@ public:
 
     void build_solid97_solution_vectors();
     void build_solid236_solution_vectors();
-    void build_plane13_solution_vectors();
+    void build_plane233_solution_vectors();
     void build_infin110_solution_vectors();
     void build_infin111_solution_vectors();
     void build_infin112_solution_vectors();

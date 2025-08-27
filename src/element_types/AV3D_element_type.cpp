@@ -22,13 +22,13 @@ AV3DElementType::AV3DElementType(const std::vector<unsigned int> &keyopts,
           {
               fe_collector(fe_structs);
               fe_structs.push_back({
-                  SECOND,        // order
-                  LAGRANGE,      // family
-                  3,             // dimension
-                  INVALID_ORDER, // quadrature_order
-                  3,             // quadrature_dim
-                  false,         // is_infinite
-                  false          // is_vector
+                  static_cast<Order>(keyopts[2]), // order
+                  LAGRANGE,                       // family
+                  3,                              // dimension
+                  INVALID_ORDER,                  // quadrature_order
+                  3,                              // quadrature_dim
+                  false,                          // is_infinite
+                  false                           // is_vector
               });
           })
 {

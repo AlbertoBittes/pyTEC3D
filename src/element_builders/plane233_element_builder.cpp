@@ -12,8 +12,8 @@
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
-// Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13()
+// Temporary placeholder for build_plane233
+void ElementBuilder::build_plane233()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -82,7 +82,7 @@ void ElementBuilder::build_plane13()
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::BAe_PLANE13];
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
-    unsigned int axisymm = elem_data.element_type->keyopts[3];
+    unsigned int axisymm = elem_data.element_type->get_keyopts()[3];
 
     Real r_sign = pow(-1, axisymm);
 
@@ -113,7 +113,7 @@ void ElementBuilder::build_plane13()
                 Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r_sq) * r_mult;
     }
     Ke.scale(1.0 / mu_matrix[0]);
-    PhysicalRegionEnum physical_region = elem_data.element_type->get_physical_region();
+    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
 
     switch (physical_region)
     {
@@ -157,8 +157,8 @@ void ElementBuilder::build_plane13()
     }
 }
 
-// Temporary placeholder for build_plane13
-void ElementBuilder::build_plane13_rhs()
+// Temporary placeholder for build_plane233
+void ElementBuilder::build_plane233_rhs()
 {
 
     // Now we will build the element matrix.  This involves
@@ -196,7 +196,7 @@ void ElementBuilder::build_plane13_rhs()
     NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
     NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;
@@ -256,7 +256,7 @@ void ElementBuilder::build_plane13_rhs()
     return;
 }
 
-void ElementBuilder::build_plane13_solution_vectors()
+void ElementBuilder::build_plane233_solution_vectors()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
     DenseVector<Number> Bn;
@@ -313,7 +313,7 @@ void ElementBuilder::build_plane13_solution_vectors()
 
     // Compute J in elements
 
-    switch (elem_data.element_type->get_physical_region())
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
         break;

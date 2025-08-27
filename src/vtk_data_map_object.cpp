@@ -32,7 +32,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
     dof_id_type prev_label_number = static_cast<dof_id_type>(-1);
     dof_id_type prev_component_number = static_cast<dof_id_type>(-1);
-    Globals::VariableCategory cached_category;
+    Globals::SystemType cached_sys_type;
     std::string cached_variable_label;
     unsigned int cached_var_num = 0;
     unsigned int cached_sys_number = 0;
@@ -73,17 +73,15 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
                     return info.api_name == api_var_enum && info.component_index == static_cast<unsigned int>(component_number);
                 });
 
-            cached_category = Globals::get_info_by_key(
-                                  Globals::GLOBAL_VARIABLE_INFO_MAP, global_label)
-                                  .category;
+            auto var_info = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, global_label);
 
-            cached_variable_label = Globals::get_info_by_key(
-                                        Globals::GLOBAL_VARIABLE_INFO_MAP, global_label)
-                                        .global_label;
+            cached_sys_type = var_info.system_type;
+
+            cached_variable_label = var_info.global_label;
 
             for (auto &ctx : systems)
             {
-                if (cached_category == ctx.system_info->category)
+                if (cached_sys_type == ctx.system_info->type)
                 {
                     cached_var_num = data_map->get_system(ctx.sys_number).variable_number(cached_variable_label);
                     cached_sys_number = ctx.sys_number;
@@ -97,7 +95,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
         for (auto &ctx : systems)
         {
-            if (cached_category == ctx.system_info->category)
+            if (cached_sys_type == ctx.system_info->type)
             {
                 dof_id_type dof_id = is_element_data ? elem_ptr->dof_number(cached_sys_number, cached_var_num, 0) : node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
                 ctx.vec->set(dof_id, value);
