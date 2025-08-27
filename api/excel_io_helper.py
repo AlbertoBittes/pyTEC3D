@@ -35,7 +35,7 @@ class ExcelIOHelper:
         df = pd.DataFrame(final_data)
 
         # Replace the "load_bc_number" column with the corresponding "label"
-        reverse_mapping = {v: k for k, v in VARIABLES_GLOBAL_LIST.items()}
+        reverse_mapping = {i: v for i, v in enumerate(VARIABLES_GLOBAL_LIST)}
         df["label"] = df["load_bc_number"].map(reverse_mapping)
 
         # Reorder columns to make "label" the second column and remove "load_bc_number"
