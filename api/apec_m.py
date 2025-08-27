@@ -589,16 +589,14 @@ class APEC_M:
 
         This method excludes all conducting regions (elements with KEYOPT1 not equal to 1, 2, or 3)
         by forcing all midside nodes of those elements into the cotree. It also analyzes the specified
-        array in PointData (default "Az") to determine additional edges to force into the cotree
-        (where the array value is not NaN). The method computes and attaches two arrays to the mesh PointData:
-            - tree_name: Boolean/int mask for tree edges
-            - cotree_name: Boolean/int mask for cotree edges
+        array in PointData (default "Az") to determine constrained edges (where the array value is not NaN).
+        These are used to generate a set of constrained corner nodes, which are passed to the tree-cotree builder.
 
         After building the tree–cotree decomposition, all nodes with value 1 in the tree mask array
         (tree_name, default "TREE") will have their value in the selected array (array_name, default "Az") set to 0.
 
         Parameters:
-            array_name (str): Name of the array in PointData to use for forced cotree mask (default "Az").
+            array_name (str): Name of the array in PointData to use for constrained edges (default "Az").
             tree_name (str): Name for the output tree mask array (default "TREE").
             cotree_name (str): Name for the output cotree mask array (default "COTREE").
 
@@ -686,16 +684,23 @@ class APEC_M:
         ] = selection_cell_backup
         cell_data.GetArray("selection_cell").Modified()
 
-        # Add forced cotree mask from array_name as before
-        arr_mask = np.zeros(arr_np.shape, dtype=np.int32)
-        arr_mask[~np.isnan(arr_np)] = 1
-        forced_cotree_mask = np.logical_or(forced_cotree_mask, arr_mask).astype(
-            np.int32
+        # Instead of adding constrained Az to forced_cotree_mask,
+        # generate constrained corner node set from Az and pass to tree-cotree builder
+        constrained_corners = TreeGaugeHelper.constrained_corners_from_midside_array(
+            self.mesh, array_name
         )
+
+        # constrained_corners_mask = np.zeros(npts, dtype=np.int32)
+        # constrained_corners_mask[list(constrained_corners)] = 1
+        # constrained_corners_arr = vtknp.numpy_to_vtk(
+        #     constrained_corners_mask, deep=1, array_type=vtk.VTK_INT
+        # )
+        # constrained_corners_arr.SetName("ConstrainedCornerNodes")
+        # self.mesh.GetPointData().AddArray(constrained_corners_arr)
 
         info = TreeGaugeHelper.build_tree_cotree_on_grid(
             self.mesh,
-            constrained_point_ids=None,
+            constrained_point_ids=constrained_corners,
             forced_cotree_mask=forced_cotree_mask,
             tree_name=tree_name,
             cotree_name=cotree_name,
