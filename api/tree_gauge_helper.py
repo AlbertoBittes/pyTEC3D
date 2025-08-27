@@ -282,3 +282,58 @@ class TreeGaugeHelper:
         arr.SetName(array_name)
         ugrid.GetPointData().AddArray(arr)
         return arr
+
+    @staticmethod
+    def constrained_corners_from_midside_array(ugrid, array_name):
+        """
+        Given an array in PointData (array_name) with NaN at unconstrained midside nodes or corner nodes,
+        and a value at constrained midside nodes, return a set of corner node ids to be used as constrained_point_ids
+        for build_tree_cotree_for_midside_edges.
+
+        The set will include:
+        - All corner nodes connected to any constrained midside node.
+
+        Parameters
+        ----------
+        ugrid : vtkUnstructuredGrid
+        array_name : str
+
+        Returns
+        -------
+        constrained_set : set[int]
+            Set of point ids (corner nodes only).
+        """
+        arr = ugrid.GetPointData().GetArray(array_name)
+        if arr is None:
+            raise ValueError(f"Array '{array_name}' not found in PointData.")
+        arr_np = vtknp.vtk_to_numpy(arr)
+
+        midside_mask_arr = ugrid.GetPointData().GetArray("MidsideNodes")
+        if midside_mask_arr is None:
+            raise ValueError("Mesh missing 'MidsideNodes' array.")
+        midside_mask_np = vtknp.vtk_to_numpy(midside_mask_arr)
+
+        # Find constrained midside node ids
+        constrained_midside_ids = np.where(
+            (midside_mask_np == 1) & (~np.isnan(arr_np))
+        )[0]
+
+        constrained_set = set()
+
+        # For each constrained midside node, add its connected corner nodes
+        for ci in range(ugrid.GetNumberOfCells()):
+            cell = ugrid.GetCell(ci)
+            ctype = cell.GetCellType()
+            if ctype not in EDGE_TABLES:
+                continue
+            corner_pairs, midside_locals = EDGE_TABLES[ctype]
+            ids = cell.GetPointIds()
+            for (v0_local, v1_local), mid_local in zip(corner_pairs, midside_locals):
+                mid = ids.GetId(mid_local)
+                if mid in constrained_midside_ids:
+                    v0 = ids.GetId(v0_local)
+                    v1 = ids.GetId(v1_local)
+                    constrained_set.add(v0)
+                    constrained_set.add(v1)
+
+        return constrained_set
