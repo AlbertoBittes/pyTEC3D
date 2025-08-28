@@ -268,7 +268,6 @@ void ElementBuilder::build_solid236_rhs()
                     dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amp_var_num, 0));
 
             // Apply nodal AMPS loads
-            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amp_var_num);
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
             unsigned int az_var_num = main_sys->variable_number("Az");

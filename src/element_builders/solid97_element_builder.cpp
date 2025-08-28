@@ -327,7 +327,6 @@ void ElementBuilder::build_solid97_rhs()
                 if (node.processor_id() == proc_id)
                     dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
 
-            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, csg_var_num);
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
             for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
@@ -352,7 +351,6 @@ void ElementBuilder::build_solid97_rhs()
                     dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amps_var_num, 0));
 
             // Apply nodal AMPS loads
-            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amps_var_num);
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)

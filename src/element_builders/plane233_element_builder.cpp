@@ -202,23 +202,24 @@ void ElementBuilder::build_plane233_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        element_loads_vector->get(dof_indices_loads, loads_vec);
+        if (element_loads_system->has_variable("Js_x"))
+        {
+            dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
+            element_loads_vector->get(dof_indices_loads, loads_vec);
 
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Fe(dof_i) *= loads_vec[0];
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i) *= loads_vec[0];
 
-        // Apply nodal CSG loads
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        nodal_loads_vector->get(dof_indices_loads, loads_vec);
+            // Apply nodal CSG loads
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            if (loads_vec[dof_i] != 0)
-                Fe(dof_i) = loads_vec[dof_i];
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                if (loads_vec[dof_i] != 0)
+                    Fe(dof_i) = loads_vec[dof_i];
 
-        for (dof_id_type &dof_value : dof_indices_loads)
-            nodal_loads_vector->set(dof_value, 0);
-
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
@@ -234,7 +235,6 @@ void ElementBuilder::build_plane233_rhs()
                 if (node.processor_id() == proc_id)
                     dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
 
-            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, csg_var_num);
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
             for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
