@@ -410,7 +410,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
         data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
         for (const auto &elem : mesh.element_ptr_range())
         {
-            elem->set_extra_integer(i, data_array->GetTuple1(elem->id()));
+            elem->set_extra_integer(i, static_cast<dof_id_type>(data_array->GetTuple1(elem->id())));
         }
     }
     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
@@ -418,7 +418,7 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
         data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
         for (const auto &node : mesh.node_ptr_range())
         {
-            node->set_extra_integer(i, data_array->GetTuple1(node->id()));
+            node->set_extra_integer(i, static_cast<dof_id_type>(data_array->GetTuple1(node->id())));
         }
     }
 }

@@ -3,7 +3,7 @@
   <UnstructuredGrid>
     <FieldData>
       <Array type="String" Name="_PYVISTA_BITARRAY_POINT_" NumberOfTuples="7" format="binary">
-        AQAAAACAAABRAAAAPQAAAA==eJyLinfyD/VzYXCM8AyO9/N3cQ1m8PRz8/TzDImEyDgGRcZ7+vm5BjFEQJUG+bvEG2KqAosbMQAAsQIWjg==
+        AQAAAACAAABRAAAAPAAAAA==eJxzjPAMjvfzd3ENZvD0c/P08wyJjHfyD/VzcQyKjPf083MNYgjyd4k3BJNGmGoYoiBMhggoDQCudRaO
       </Array>
       <DataArray type="Int32" Name="ansys_etype" NumberOfTuples="4" format="binary" RangeMin="21" RangeMax="111">
         AQAAAACAAAAQAAAAEwAAAA==eJwTZWBgEAdiCSDOB2IABPAAtA==
@@ -102,11 +102,11 @@
         <DataArray type="Int32" Name="infinite_boundary" format="binary" RangeMin="0" RangeMax="111">
           AQAAAACAAAC0BgAAKwAAAA==eJxjYMAP8qGYGDWk4FEwCoYrGK5pfqDyODnly2DC1PIvtcBQT58A3Y4oVA==
         </DataArray>
-        <DataArray type="UInt8" Name="flux_normal" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAACtAQAADgAAAA==eJxjYBgFQwYAAAGtAAE=
+        <DataArray type="Int32" Name="flux_normal" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
-        <DataArray type="UInt8" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAACtAQAADgAAAA==eJxjYBgFQwYAAAGtAAE=
+        <DataArray type="Int32" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
