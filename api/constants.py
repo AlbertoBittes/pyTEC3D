@@ -267,7 +267,7 @@ VTK_ARRAYS_TO_INIT = {
     },
     "VLTG": {
         "location": "point",
-        "components":  1,
+        "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
@@ -293,17 +293,21 @@ VTK_ARRAYS_TO_INIT = {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_INT,
+        "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
     "flux_parallel": {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_INT,
+        "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
 }
 
-ARRAYS_TO_REMOVE = ["selection_point", "selection_cell", "cell_centroids", ]
+ARRAYS_TO_REMOVE = [
+    "selection_point",
+    "selection_cell",
+    "cell_centroids",
+]
 
 # Labels to read for each load step from Excel
 EXCEL_LOAD_STEP_LABELS = [
