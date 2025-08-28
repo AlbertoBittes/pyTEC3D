@@ -202,14 +202,16 @@ void ElementBuilder::build_plane233_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        if (element_loads_system->has_variable("Js_x"))
+        if (element_loads_system->has_variable("Js_z"))
         {
             dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
             element_loads_vector->get(dof_indices_loads, loads_vec);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 Fe(dof_i) *= loads_vec[0];
-
+        }
+        if (element_loads_system->has_variable("CSG_z"))
+        {
             // Apply nodal CSG loads
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 

@@ -35,9 +35,9 @@ public:
     {
         const std::vector<Real> &mat_properties = dataframe_map->at(mat_id);
 
-        nu_matrix[0] = 1 / Globals::MU_0 * mat_properties[0];
-        nu_matrix[1] = 1 / Globals::MU_0 * mat_properties[1];
-        nu_matrix[2] = 1 / Globals::MU_0 * mat_properties[2];
+        nu_matrix[0] = 1 / (Globals::MU_0 * mat_properties[0]);
+        nu_matrix[1] = 1 / (Globals::MU_0 * mat_properties[1]);
+        nu_matrix[2] = 1 / (Globals::MU_0 * mat_properties[2]);
     }
 
     // Fill the sigma_matrix for a given material ID
