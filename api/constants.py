@@ -293,13 +293,13 @@ VTK_ARRAYS_TO_INIT = {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_UNSIGNED_CHAR,
+        "dtype": vtk.VTK_INT,
     },
     "flux_parallel": {
         "location": "point",
         "components": 1,
         "fill": 0,
-        "dtype": vtk.VTK_UNSIGNED_CHAR,
+        "dtype": vtk.VTK_INT,
     },
 }
 
