@@ -66,3 +66,9 @@ api/__pycache__/
 
 api/local_packages/*
 bin/plasma_arc
+**/emat_files/
+**/emat_files/*
+**/output/
+**/output/*
+**/temp/
+**/temp/*
