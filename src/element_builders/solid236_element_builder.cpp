@@ -78,8 +78,8 @@ void ElementBuilder::build_solid236()
 
     auto materials_object = this->context<MaterialsObject>();
 
-    materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = materials_object->get_mu_matrix();
+    materials_object->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object->get_nu_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ke_SOLID97];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ce_SOLID97];
@@ -94,7 +94,7 @@ void ElementBuilder::build_solid236()
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 for (unsigned int k = 0; k < 3; k++)
-                    Ke(dof_i, dof_j) += JxW[qp] / mu_matrix[k] * (curl_phi_edge[dof_i][qp](k) * curl_phi_edge[dof_j][qp](k));
+                    Ke(dof_i, dof_j) += JxW[qp] * nu_matrix[k] * (curl_phi_edge[dof_i][qp](k) * curl_phi_edge[dof_j][qp](k));
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
@@ -124,32 +124,32 @@ void ElementBuilder::build_solid236()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        materials_object->fill_rs_matrix(this->elem_data.material_num);
+        materials_object->fill_sigma_matrix(this->elem_data.material_num);
 
-        auto &rs_matrix = materials_object->get_rs_matrix();
+        auto &sigma_matrix = materials_object->get_sigma_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i, dof_j) += JxW[qp] / rs_matrix[k] * (phi_edge[dof_i][qp](k) * phi_edge[dof_j][qp](k));
+                        Ce(dof_i, dof_j) += JxW[qp] * sigma_matrix[k] * (phi_edge[dof_i][qp](k) * phi_edge[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (phi_edge[dof_i][qp](k) * dphi[dof_j][qp](k));
+                        Ce(dof_i, dof_j + n_dofs_A) += JxW[qp] * sigma_matrix[k] * (phi_edge[dof_i][qp](k) * dphi[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] / rs_matrix[k] * (dphi[dof_i][qp](k) * phi_edge[dof_j][qp](k));
+                        Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] * sigma_matrix[k] * (dphi[dof_i][qp](k) * phi_edge[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
-                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += JxW[qp] / rs_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += JxW[qp] * sigma_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
 
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int k = 0; k < 3; k++)
@@ -304,8 +304,8 @@ void ElementBuilder::build_solid236_solution_vectors()
 
     auto materials_object = this->context<MaterialsObject>();
 
-    materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = materials_object->get_mu_matrix();
+    materials_object->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object->get_nu_matrix();
 
     ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(systems[Globals::DOF_SOLUTION_SYSTEM]);
     System *nodal_solution_system = systems[Globals::NODAL_SOLUTION];
@@ -327,7 +327,7 @@ void ElementBuilder::build_solid236_solution_vectors()
     Hn.resize(Bn.size());
     for (unsigned int k = 0; k < 3; k++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-            Hn(dof_i + k * n_dofs_V) += Bn(dof_i + k * n_dofs_V) / mu_matrix[k];
+            Hn(dof_i + k * n_dofs_V) += Bn(dof_i + k * n_dofs_V) * nu_matrix[k];
 
     // Compute B in elements
     DenseVector<Number> Bq;
@@ -341,7 +341,7 @@ void ElementBuilder::build_solid236_solution_vectors()
 
     // Compute H in elements
     for (unsigned int k = 0; k < 3; k++)
-        He(k) = Be(k) / mu_matrix[k];
+        He(k) = Be(k) * nu_matrix[k];
 
     // Compute J in elements
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
@@ -371,8 +371,8 @@ void ElementBuilder::build_solid236_solution_vectors()
             auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
             auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
 
-            materials_object->fill_rs_matrix(this->elem_data.material_num);
-            auto &rs_matrix = materials_object->get_rs_matrix();
+            materials_object->fill_sigma_matrix(this->elem_data.material_num);
+            auto &sigma_matrix = materials_object->get_sigma_matrix();
             unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
@@ -397,7 +397,7 @@ void ElementBuilder::build_solid236_solution_vectors()
             {
                 for (unsigned int qp = 0; qp < n_qp; qp++)
                     Je(k) -= Jq_A(qp + k * n_qp);
-                Je(k) = Je(k) / rs_matrix[k] / n_qp;
+                Je(k) = Je(k) * sigma_matrix[k] / n_qp;
             }
         }
         break;

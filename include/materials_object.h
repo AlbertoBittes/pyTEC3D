@@ -18,8 +18,8 @@ public:
     // Default constructor
     explicit MaterialsObject(std::ifstream &file)
         : DataframeMapFEDataObject<Real>(file),
-          mu_matrix(3, 0.0),
-          rs_matrix(3, 0.0) {}
+          nu_matrix(3, 0.0),
+          sigma_matrix(3, 0.0) {}
 
     // Check if a material ID exists in the map
     bool has_material(dof_id_type mat_id) const { return dataframe_map->find(mat_id) != dataframe_map->end(); }
@@ -30,43 +30,43 @@ public:
         return dataframe_map->at(mat_id);
     }
 
-    // Fill the mu_matrix for a given material ID
-    inline void fill_mu_matrix(dof_id_type mat_id)
+    // Fill the nu_matrix for a given material ID
+    inline void fill_nu_matrix(dof_id_type mat_id)
     {
         const std::vector<Real> &mat_properties = dataframe_map->at(mat_id);
 
-        mu_matrix[0] = Globals::MU_0 * mat_properties[0];
-        mu_matrix[1] = Globals::MU_0 * mat_properties[1];
-        mu_matrix[2] = Globals::MU_0 * mat_properties[2];
+        nu_matrix[0] = 1 / Globals::MU_0 * mat_properties[0];
+        nu_matrix[1] = 1 / Globals::MU_0 * mat_properties[1];
+        nu_matrix[2] = 1 / Globals::MU_0 * mat_properties[2];
     }
 
-    // Fill the rs_matrix for a given material ID
-    inline void fill_rs_matrix(dof_id_type mat_id)
+    // Fill the sigma_matrix for a given material ID
+    inline void fill_sigma_matrix(dof_id_type mat_id)
     {
         const std::vector<Real> &mat_properties = dataframe_map->at(mat_id);
 
-        rs_matrix[0] = mat_properties[3];
-        rs_matrix[1] = mat_properties[4];
-        rs_matrix[2] = mat_properties[5];
+        sigma_matrix[0] = 1 / mat_properties[3];
+        sigma_matrix[1] = 1 / mat_properties[4];
+        sigma_matrix[2] = 1 / mat_properties[5];
     }
 
     // Compute material properties for a given material ID
     inline void compute_material_properties(dof_id_type mat_id, bool conductive)
     {
-        fill_mu_matrix(mat_id);
+        fill_nu_matrix(mat_id);
         if (conductive)
-            fill_rs_matrix(mat_id);
+            fill_sigma_matrix(mat_id);
     }
 
-    // Get the mu_matrix
-    const std::vector<Real> &get_mu_matrix() const { return mu_matrix; }
+    // Get the nu_matrix
+    const std::vector<Real> &get_nu_matrix() const { return nu_matrix; }
 
-    // Get the rs_matrix
-    const std::vector<Real> &get_rs_matrix() const { return rs_matrix; }
+    // Get the sigma_matrix
+    const std::vector<Real> &get_sigma_matrix() const { return sigma_matrix; }
 
 private:
-    std::vector<Real> mu_matrix; // Magnetic permeability matrix
-    std::vector<Real> rs_matrix; // Resistivity matrix
+    std::vector<Real> nu_matrix;    // Magnetic permeability matrix
+    std::vector<Real> sigma_matrix; // Resistivity matrix
 };
 
 #endif // MATERIALS_OBJECT_H

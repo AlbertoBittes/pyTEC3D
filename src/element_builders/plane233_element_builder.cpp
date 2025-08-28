@@ -70,8 +70,8 @@ void ElementBuilder::build_plane233()
 
     auto materials_object = this->context<MaterialsObject>();
 
-    materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = materials_object->get_mu_matrix();
+    materials_object->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object->get_nu_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][PLANE13DOFMatrices::Ke_PLANE13];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][PLANE13DOFMatrices::Ce_PLANE13];
@@ -112,7 +112,7 @@ void ElementBuilder::build_plane233()
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                 Ke(dof_i, dof_j) += JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r_sq) * r_mult;
     }
-    Ke.scale(1.0 / mu_matrix[0]);
+    Ke.scale(nu_matrix[0]);
     PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
 
     switch (physical_region)
@@ -131,8 +131,8 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        materials_object->fill_rs_matrix(this->elem_data.material_num);
-        auto &rs_matrix = materials_object->get_rs_matrix();
+        materials_object->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object->get_sigma_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
@@ -145,7 +145,7 @@ void ElementBuilder::build_plane233()
                     Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp] * pow(r, axisymm));
             }
         }
-        Ce.scale(1.0 / rs_matrix[0]);
+        Ce.scale(sigma_matrix[0]);
         break;
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
@@ -291,8 +291,8 @@ void ElementBuilder::build_plane233_solution_vectors()
 
     auto materials_object = this->context<MaterialsObject>();
 
-    materials_object->fill_mu_matrix(this->elem_data.material_num);
-    auto &mu_matrix = materials_object->get_mu_matrix();
+    materials_object->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object->get_nu_matrix();
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
     unsigned int n_qp = BAe.m() / 2;
@@ -307,7 +307,7 @@ void ElementBuilder::build_plane233_solution_vectors()
     // Compute H in nodes
     Hn.resize(Bn.size());
     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        Hn(dof_i) += Bn(dof_i) / mu_matrix[0];
+        Hn(dof_i) += Bn(dof_i) * nu_matrix[0];
 
     // Compute B in elements
     DenseVector<Number> Bq(2 * n_qp);
@@ -321,7 +321,7 @@ void ElementBuilder::build_plane233_solution_vectors()
 
     // Compute H in elements
     for (unsigned int k = 0; k < 2; k++)
-        He(k) = Be(k) / mu_matrix[0];
+        He(k) = Be(k) * nu_matrix[0];
 
     // Compute J in elements
 
@@ -351,8 +351,8 @@ void ElementBuilder::build_plane233_solution_vectors()
         {
             auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JAe_PLANE13];
 
-            materials_object->fill_rs_matrix(this->elem_data.material_num);
-            auto &rs_matrix = materials_object->get_rs_matrix();
+            materials_object->fill_sigma_matrix(this->elem_data.material_num);
+            auto &sigma_matrix = materials_object->get_sigma_matrix();
 
             fill_solution_vector_support(main_sys->older_local_solution, Globals::DOF_SOLUTION_SYSTEM); // solution_derivative
 
@@ -366,7 +366,7 @@ void ElementBuilder::build_plane233_solution_vectors()
             // average on quadrature points and scale by conductivity
             for (unsigned int qp = 0; qp < n_qp; qp++)
                 Je(0) -= Jq_A(qp);
-            Je(0) = Je(0) / rs_matrix[0] / n_qp;
+            Je(0) = Je(0) * sigma_matrix[0] / n_qp;
         }
         break;
     }
