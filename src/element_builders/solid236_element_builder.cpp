@@ -254,28 +254,31 @@ void ElementBuilder::build_solid236_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
-        unsigned int amp_var_num = nodal_loads_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].global_label);
+        if (nodal_loads_sys->has_variable("AMPS"))
+        {
+            unsigned int n_dofs_A = elem_data.elem->n_edges();
+            unsigned int n_dofs_V = elem_data.elem->n_nodes();
 
-        // Apply nodal AMPS loads
-        dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amp_var_num);
-        nodal_loads_vector->get(dof_indices_loads, loads_vec);
+            unsigned int amp_var_num = nodal_loads_sys->variable_number("AMPS");
 
-        unsigned int az_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::Az].global_label);
+            unsigned int proc_id = main_sys->comm().rank();
+            dof_indices_loads.clear();
+            for (const auto &node : elem_data.elem->node_ref_range())
+                if (node.processor_id() == proc_id)
+                    dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amp_var_num, 0));
 
-        // do not know why but n_dofs on elem doesnt work
-        std::vector<dof_id_type> dof_indices_dummy;
-        dof_map_main_system->dof_indices(elem_data.elem, dof_indices_dummy, az_var_num);
-        unsigned int n_dofs_A = dof_indices_dummy.size();
-        dof_map_main_system->dof_indices(elem_data.elem, dof_indices_dummy, volt_var_num);
-        unsigned int n_dofs_V = dof_indices_dummy.size();
+            // Apply nodal AMPS loads
+            dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads, amp_var_num);
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-        for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-            Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
+            unsigned int az_var_num = main_sys->variable_number("Az");
 
-        for (dof_id_type &dof_value : dof_indices_loads)
-            nodal_loads_vector->set(dof_value, 0);
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
 
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
         break;
     }
     default:
