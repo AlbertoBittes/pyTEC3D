@@ -404,21 +404,30 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
         }
     }
     mesh.add_elem_integers(cell_data_int_array_names);
-    vtkDataArray *data_array;
     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
     {
-        data_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+        // Retrieve as vtkIntArray
+        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(cell_data->GetArray(cell_data_int_array_names[i].c_str()));
+        if (!int_data_array)
+            continue; // or handle error
+
         for (const auto &elem : mesh.element_ptr_range())
         {
-            elem->set_extra_integer(i, static_cast<dof_id_type>(data_array->GetTuple1(elem->id())));
+            int val = int_data_array->GetValue(elem->id());
+            elem->set_extra_integer(i, static_cast<dof_id_type>(val));
         }
     }
     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
     {
-        data_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+        // Retrieve as vtkIntArray
+        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(point_data->GetArray(point_data_int_array_names[i].c_str()));
+        if (!int_data_array)
+            continue; // or handle error
+
         for (const auto &node : mesh.node_ptr_range())
         {
-            node->set_extra_integer(i, static_cast<dof_id_type>(data_array->GetTuple1(node->id())));
+            int val = int_data_array->GetValue(node->id());
+            node->set_extra_integer(i, static_cast<dof_id_type>(val));
         }
     }
 }

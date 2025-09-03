@@ -160,8 +160,9 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
         // for (const Node *node_ptr : mesh->local_node_ptr_range())
         for (const Node *node_ptr : mesh->node_ptr_range())
         {
-            boundary_id_type boundary_id_mesh = static_cast<boundary_id_type>(node_ptr->get_extra_integer(node_array_index));
-            if (boundary_id_mesh != 0)
+            auto boundary_id_mesh_int = node_ptr->get_extra_integer(node_array_index);
+            boundary_id_type boundary_id_mesh = static_cast<boundary_id_type>(boundary_id_mesh_int);
+            if (boundary_id_mesh > 0)
             {
                 switch (bc_enum)
                 {

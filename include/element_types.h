@@ -205,6 +205,8 @@ class INFIN111Type : public SOLID97Type
 {
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
+
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
 };
 
 class INFIN112Type : public SOLID236Type
