@@ -53,7 +53,6 @@ void AssemblerLinear::assemble()
 
     Real dt = time_substep->get_dt();
     Real theta = time_substep->get_theta();
-    Real _theta_dt = 1 / theta / dt;
     // if (this->check_compute_matrix())
     // {
     //     this->build_write_element_matrices();
@@ -150,7 +149,7 @@ void AssemblerLinear::assemble()
         auto &Ke = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
 
-        Ce.scale(_theta_dt);
+        Ce.scale(1 / (time_substep->get_dt() * theta));
 
         if (update_matrix)
         {

@@ -56,6 +56,9 @@ void ElementBuilder::build_solid97()
 
     const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
 
+    const std::vector<std::vector<Real>> &div_phi_vec = fe_vec->get_div_phi();
+
+    const std::vector<std::vector<RealTensor>> &dphi_vec = fe_vec->get_dphi();
     fe->reinit(elem_data.elem);
     fe_vec->reinit(elem_data.elem);
 
@@ -93,6 +96,40 @@ void ElementBuilder::build_solid97()
                         Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
                     }
                 }
+
+    // for (unsigned int qp = 0; qp < nq; qp++)
+    //     for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+    //         for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+    //             for (unsigned int k = 0; k < 3; k++)
+    //                 Ke(dof_i, dof_j) += JxW[qp] * nu_matrix[k] * (curl_phi_vec[dof_i / 3 + (dof_i % 3) * n_dofs_var][qp](k) * curl_phi_vec[dof_j / 3 + (dof_j % 3) * n_dofs_var][qp](k));
+
+    // Real avg_nu = (nu_matrix[0] + nu_matrix[1] + nu_matrix[2]) / 3.0;
+    // for (unsigned int qp = 0; qp < nq; qp++)
+    //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+    //         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+    //             for (unsigned int k = 0; k < 3; k++)
+    //                 for (unsigned int l = 0; l < 3; l++)
+    //                 {
+    //                     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * nu_matrix[k] * (curl_phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
+    //                     // for (unsigned int m = 0; m < 3; m++)
+    //                     //     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * nu_matrix[m] * dphi_vec[dof_i * 3 + k][qp](m, m) * dphi_vec[dof_j * 3 + l][qp](m, m);
+    //                     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * avg_nu * (div_phi_vec[dof_i * 3 + k][qp] * div_phi_vec[dof_j * 3 + l][qp]);
+    //                 }
+
+    // switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+    // {
+    // case PhysicalRegionEnum::NON_MAGNETIC:
+    // case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    // {
+    //     Real avg_nu = (nu_matrix[0] + nu_matrix[1] + nu_matrix[2]) / 3.0;
+    //     for (unsigned int qp = 0; qp < nq; qp++)
+    //         for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+    //             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+    //                 Ke(dof_i, dof_j) += JxW[qp] * avg_nu * (div_phi_vec[dof_i / 3 + (dof_i % 3) * n_dofs_var][qp] * div_phi_vec[dof_j / 3 + (dof_j % 3) * n_dofs_var][qp]);
+
+    //     break;
+    // }
+    // }
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
