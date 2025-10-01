@@ -3,7 +3,7 @@
   <UnstructuredGrid>
     <FieldData>
       <Array type="String" Name="_PYVISTA_BITARRAY_POINT_" NumberOfTuples="6" format="binary">
-        AQAAAACAAAA/AAAAOgAAAA==eJxzjPAMjvfzd3ENZvD0c/P08wyJjHfyD/VzcQyKjPf083MNYgjyd4k3ApOGDFEQSYYIKA0APjARYQ==
+        AQAAAACAAAA/AAAAPAAAAA==eJwL8neJN2RwjPAMjvfzd3ENZvD0c/P08wyJjHfyD/VzcQyKjPf083MNYoiCCDBEQOkgoEYjBgA3ixFh
       </Array>
       <DataArray type="Int32" Name="ansys_etype" NumberOfTuples="3" format="binary" RangeMin="21" RangeMax="24">
         AQAAAACAAAAMAAAAEQAAAA==eJwTZWBgEAdiCSAGAAIgAEU=

@@ -210,42 +210,42 @@ void ElementBuilder::build_plane233_rhs()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 Fe(dof_i) *= loads_vec[0];
         }
-        if (element_loads_system->has_variable("CSG_z"))
-        {
-            // Apply nodal CSG loads
-            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+        // if (nodal_loads_system->has_variable("CSG_z"))
+        // {
+        //     // Apply nodal CSG loads
+        //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                if (loads_vec[dof_i] != 0)
-                    Fe(dof_i) = loads_vec[dof_i];
+        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //         if (loads_vec[dof_i] != 0)
+        //             Fe(dof_i) = loads_vec[dof_i];
 
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
-        }
+        //     for (dof_id_type &dof_value : dof_indices_loads)
+        //         nodal_loads_vector->set(dof_value, 0);
+        // }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        // Apply nodal CSG loads
-        if (nodal_loads_system->has_variable("CSG"))
-        {
-            unsigned int csg_var_num = nodal_loads_system->variable_number("CSG");
+        // Apply nodal CSG loads+
+        // if (nodal_loads_system->has_variable("CSG_z"))
+        // {
+        //     unsigned int csg_var_num = nodal_loads_system->variable_number("CSG_z");
 
-            unsigned int proc_id = nodal_loads_system->comm().rank();
-            dof_indices_loads.clear();
-            for (const auto &node : elem_data.elem->node_ref_range())
-                if (node.processor_id() == proc_id)
-                    dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
+        //     unsigned int proc_id = nodal_loads_system->comm().rank();
+        //     dof_indices_loads.clear();
+        //     for (const auto &node : elem_data.elem->node_ref_range())
+        //         if (node.processor_id() == proc_id)
+        //             dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
 
-            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+        //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-            for (unsigned int dof_i = 0; dof_i < 3 * n_dofs_var; dof_i++)
-                if (loads_vec[dof_i] != 0)
-                    Fe(dof_i) = loads_vec[dof_i];
+        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //         if (loads_vec[dof_i] != 0)
+        //             Fe(dof_i) = loads_vec[dof_i];
 
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
-        }
+        //     for (dof_id_type &dof_value : dof_indices_loads)
+        //         nodal_loads_vector->set(dof_value, 0);
+        // }
 
         break;
         // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
@@ -356,7 +356,7 @@ void ElementBuilder::build_plane233_solution_vectors()
             materials_object->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object->get_sigma_matrix();
 
-            fill_solution_vector_support(main_sys->older_local_solution, Globals::DOF_SOLUTION_SYSTEM); // solution_derivative
+            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), Globals::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
             auto &An_dt = solution_vector_support.sol_vectors[0];

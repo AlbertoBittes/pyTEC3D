@@ -254,29 +254,37 @@ void ElementBuilder::build_solid236_rhs()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        if (nodal_loads_sys->has_variable("AMPS"))
+        if (nodal_loads_sys->has_variable("AMPS") && main_sys->has_variable("VOLT"))
         {
-            unsigned int n_dofs_A = elem_data.elem->n_edges();
-            unsigned int n_dofs_V = elem_data.elem->n_nodes();
 
             unsigned int amp_var_num = nodal_loads_sys->variable_number("AMPS");
+            unsigned int volt_var_num = main_sys->variable_number("VOLT");
+            unsigned int az_var_num = main_sys->variable_number("Az");
+
+            unsigned int n_dofs_A = elem_data.elem->n_dofs(Globals::DOF_SOLUTION_SYSTEM, az_var_num);
+            unsigned int n_dofs_AMPS = elem_data.elem->n_dofs(Globals::NODAL_LOADS, amp_var_num);
+            unsigned int n_dofs_V = elem_data.elem->n_dofs(Globals::NODAL_LOADS, volt_var_num);
+
+            if (n_dofs_V != n_dofs_AMPS)
+                libmesh_error_msg("Number of DOFs for VOLT and AMPS do not match in solid conductor elements");
 
             unsigned int proc_id = main_sys->comm().rank();
             dof_indices_loads.clear();
             for (const auto &node : elem_data.elem->node_ref_range())
                 if (node.processor_id() == proc_id)
-                    dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amp_var_num, 0));
+                    if (node.n_dofs(Globals::NODAL_LOADS, amp_var_num))
+                        dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amp_var_num, 0));
 
             // Apply nodal AMPS loads
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
-            unsigned int az_var_num = main_sys->variable_number("Az");
+            // unsigned int az_var_num = main_sys->variable_number("Az");
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
 
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
+            // for (dof_id_type &dof_value : dof_indices_loads)
+            //     nodal_loads_vector->set(dof_value, 0);
         }
         break;
     }

@@ -70,31 +70,31 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
                                            const std::vector<unsigned int> &keyopts)
 {
     fe_structs.push_back({
-        FIRST,       // order
-        NEDELEC_ONE, // family
-        3,           // dimension
-        FIFTH,       // quadrature_order (use default)
-        3,           // quadrature_dim
-        false,       // is_infinite
-        true         // is_vector (scalar FE)
+        FIRST,                                  // order
+        NEDELEC_ONE,                            // family
+        3,                                      // dimension
+        static_cast<Order>(2 * keyopts[2] + 1), // quadrature_order (use default)
+        3,                                      // quadrature_dim
+        false,                                  // is_infinite
+        true                                    // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        FIRST,       // order
-        NEDELEC_ONE, // family
-        3,           // dimension
-        FIFTH,       // quadrature_order (use default)
-        3,           // quadrature_dim
-        false,       // is_infinite
-        true         // is_vector (scalar FE)
+        FIRST,                                  // order
+        NEDELEC_ONE,                            // family
+        3,                                      // dimension
+        static_cast<Order>(2 * keyopts[2] + 1), // quadrature_order (use default)
+        3,                                      // quadrature_dim
+        false,                                  // is_infinite
+        true                                    // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        SECOND,        // order
-        LAGRANGE_VEC,  // family
-        3,             // dimension
-        INVALID_ORDER, // quadrature_order (use default)
-        3,             // quadrature_dim
-        false,         // is_infinite
-        true           // is_vector (vector FE)
+        static_cast<Order>(keyopts[2]), // order
+        LAGRANGE_VEC,                   // family
+        3,                              // dimension
+        INVALID_ORDER,                  // quadrature_order (use default)
+        3,                              // quadrature_dim
+        false,                          // is_infinite
+        true                            // is_vector (vector FE)
     });
     // fe_structs.push_back({
     //     SECOND,        // order

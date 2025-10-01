@@ -73,6 +73,7 @@ public:
         this->add_vector("node_dof_constraints");
         this->add_vector("old_node_dof_constraints");
         this->add_vector("ramped_node_dof_constraints");
+        this->add_vector("solution_time_derivative", true, GHOSTED);
         assembler = std::make_shared<AssemblerLinear>(this);
         this->attach_assemble_object(*assembler);
     }
