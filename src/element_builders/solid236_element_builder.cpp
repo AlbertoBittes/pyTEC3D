@@ -263,7 +263,7 @@ void ElementBuilder::build_solid236_rhs()
 
             unsigned int n_dofs_A = elem_data.elem->n_dofs(Globals::DOF_SOLUTION_SYSTEM, az_var_num);
             unsigned int n_dofs_AMPS = elem_data.elem->n_dofs(Globals::NODAL_LOADS, amp_var_num);
-            unsigned int n_dofs_V = elem_data.elem->n_dofs(Globals::NODAL_LOADS, volt_var_num);
+            unsigned int n_dofs_V = elem_data.elem->n_dofs(Globals::DOF_SOLUTION_SYSTEM, volt_var_num);
 
             if (n_dofs_V != n_dofs_AMPS)
                 libmesh_error_msg("Number of DOFs for VOLT and AMPS do not match in solid conductor elements");
@@ -384,7 +384,7 @@ void ElementBuilder::build_solid236_solution_vectors()
             unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
-            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
+            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), 0); // solution_derivative
 
             auto &A_dt = solution_vector_support.sol_vectors[0];
             auto &Vn_dt = solution_vector_support.sol_vectors[volt_var_num];

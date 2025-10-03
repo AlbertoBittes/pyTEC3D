@@ -502,7 +502,7 @@ void ElementBuilder::build_solid97_solution_vectors()
             auto &sigma_matrix = materials_object->get_sigma_matrix();
             unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
 
-            fill_solution_vector_support(main_sys->older_local_solution, 0); // solution_derivative
+            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), 0); // solution_derivative
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
             DenseVector<Number> An_dt;
