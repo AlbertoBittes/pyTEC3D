@@ -173,6 +173,15 @@ analysis_cases = [
                 "is_point": True,
             },
             {
+                "timestep": 9,
+                "array": "A_z",
+                "component": 0,
+                "libmesh_id": 57,
+                "expected": 0.25668E-009,
+                "tol": 1e-4,
+                "is_point": True,
+            },
+            {
                 "timestep": 11,
                 "array": "A_z",
                 "component": 0,
@@ -180,6 +189,15 @@ analysis_cases = [
                 "expected": 0.25667E-009,
                 "tol": 1e-4,
                 "is_point": True,
+            },
+            {
+                "timestep": 8,
+                "array": "Jt_z",
+                "component": 0,
+                "libmesh_id": 331,
+                "expected": 0.41180E-001,
+                "tol": 1e-4,
+                "is_point": False,
             },
             {
                 "timestep": 3,
@@ -218,6 +236,24 @@ analysis_cases = [
                 "is_point": False,
             },
             {
+                "timestep": 2,
+                "array": "Be_x",
+                "component": 0,
+                "libmesh_id": 181,
+                "expected": -0.93335E-009,
+                "tol": 1e-4,
+                "is_point": False,
+            },
+            {           # Here I get small discrepancy not detected by the test, to investigate
+                "timestep": 2,
+                "array": "Be_y",
+                "component": 0,
+                "libmesh_id": 231,
+                "expected": 0.15646E-007,
+                "tol": 1e-4,
+                "is_point": False,
+            },
+            {           # Here I get small discrepancy not detected by the test, to investigate - By not exactly equal for axisymm elements
                 "timestep": 12,
                 "array": "Be_y",
                 "component": 0,
@@ -227,6 +263,7 @@ analysis_cases = [
                 "is_point": False,
             },
             {           # Here I get small discrepancy not detected by the test, to investigate
+                # Assumption: being only Bz, it can be due to the 1/r term of the curl, computed slightly differently by ANSYS.
                 "timestep": 14,
                 "array": "Be_y",
                 "component": 0,
@@ -259,15 +296,15 @@ analysis_cases = [
                 "tol": 1e-4,
                 "is_point": False,
             },
-            # {                        # In conducting elements A_z is not exactly the same
-            #     "timestep": 1,
-            #     "array": "A_z",
-            #     "component": 0,
-            #     "libmesh_id": 68,
-            #     "expected":  0.22258E-006,
-            #     "tol": 1e-4,
-            #     "is_point": True,
-            # },
+            {                        # In conducting elements A_z is not exactly the same, not detected by test, investigate -> Because of 2nd order quadrature rule difference
+                "timestep": 1,
+                "array": "A_z",
+                "component": 0,
+                "libmesh_id": 68,
+                "expected":  0.22258E-006,
+                "tol": 1e-4,
+                "is_point": True,
+            },
             {
                 "timestep": 2,
                 "array": "A_z",
@@ -385,8 +422,8 @@ analysis_cases = [
         ],
     },
     # Add more cases as needed
-    # 3D with theta != 1 fails diverging, for sure is related to volt, fails only in transient
-    # now it works with theta = 0.75 but not perfectly
+    # For some reason, materials/theta are leading to slightly different results wrt ANSYS, to investigate
+    # However, theta seems working perfectly for edge elements
     {
         "analysis_name": "ITER_coil_3D",
         "nproc": 4,
@@ -401,15 +438,16 @@ analysis_cases = [
                 "tol": 1e-4,
                 "is_point": False,
             },
-            # {
-            #     "timestep": 15,
-            #     "array": "A",
-            #     "component": 0,
-            #     "libmesh_id": 179,
-            #     "expected": -0.16116E-004,
-            #     "tol": 1e-4,
-            #     "is_point": True,
-            # },
+            {   # This test shows that the issue is probably due to the mat props, at time step 1 test fails where theta doesn't come into play
+                # The same model with mu = 1 works perfectly
+                "timestep": 0,
+                "array": "A",
+                "component": 2,
+                "libmesh_id": 4,
+                "expected": -0.16828E-008,
+                "tol": 1e-4,
+                "is_point": True,
+            },
             {
                 "timestep": 0,
                 "array": "A",
@@ -468,6 +506,11 @@ analysis_cases = [
     },
     # Add more cases as needed
     {
+        # This test is working very well
+        # Basic 3D, 1st order test with all element cell shapes (tets, hexas, pyramids, wedges)
+        # No inf elems, flux normal or flux parallel BCs
+        # basic material properties, mu = 1, sigma =
+        # Tested with theta = 1
         "analysis_name": "ITER_coil_3D_test_1",
         "nproc": 4,
         "checks": [
@@ -517,19 +560,23 @@ analysis_cases = [
                 "tol": 1e-4,
                 "is_point": False,
             },
-            # {
-            #     "timestep": 1,
-            #     "array": "Be",
-            #     "component": 1,
-            #     "libmesh_id": 2,
-            #     "expected": 0.12896E-006,
-            #     "tol": 1e-1,
-            #     "is_point": False,
-            # },
-            
+            {
+                "timestep": 1,
+                "array": "Be",
+                "component": 1,
+                "libmesh_id": 2,
+                "expected": 0.12896E-006,
+                "tol": 1e-1,
+                "is_point": False,
+            },        
         ],
     },
     {
+        # This test is working very well for derived quantities
+        # 3D, 1st order test with edge elems - only hexa cubes
+        # No inf elems, flux normal or flux parallel BCs
+        # basic material properties, mu = 1, sigma =
+        # Tested with theta = 0.5
         "analysis_name": "two_wires_3D_edge_el",  
         "nproc": 4,
         "checks": [
@@ -543,33 +590,6 @@ analysis_cases = [
                 "is_point": False,
             },
             # VOLT DOFs and Az DOFs cannot be checked because of the different tree-cotree gauge
-            # {
-            #     "timestep": 4,
-            #     "array": "VOLT",
-            #     "component": 0,
-            #     "libmesh_id": 1292,
-            #     "expected": 0.88142E-010,
-            #     "tol": 1e-4,
-            #     "is_point": True,
-            # },
-            # {
-            #     "timestep": 10,
-            #     "array": "A",
-            #     "component": 0,
-            #     "libmesh_id": 256480,
-            #     "expected": 0.15476E-05,
-            #     "tol": 1e-2,
-            #     "is_point": True,
-            # },
-            # {
-            #     "timestep": 3,
-            #     "array": "VOLT",
-            #     "component": 0,
-            #     "libmesh_id": 1307,
-            #     "expected": 0.63448E-009,
-            #     "tol": 1e-4,
-            #     "is_point": True,
-            # },
             {
                 "timestep": 4,  # 0.44348E-007
                 "array": "Jt",
@@ -618,6 +638,11 @@ analysis_cases = [
         ],
     },
     {
+        # This test is working very well for derived quantities
+        # 3D, 1st order test with edge elems - only hexa cubes
+        # No inf elems, flux normal or flux parallel BCs
+        # non isotropic material properties, mu != 1, sigma =
+        # Tested with theta = 0.75, 0.65
         "analysis_name": "two_wires_3D_edge_el_2order",  
         "nproc": 4,
         "checks": [

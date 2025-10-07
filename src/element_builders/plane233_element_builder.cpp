@@ -96,7 +96,7 @@ void ElementBuilder::build_plane233()
             // Here I should modify the matrices someway for axisymm elements
             // Also, the pow here is not always needed, is not there when you dont integrate
             BAe(qp, dof_i) += r_sign * dphi[dof_i][qp](1);
-            BAe(qp + nq, dof_i) -= (r_sign * dphi[dof_i][qp](0) - axisymm * phi[dof_i][qp] / r);
+            BAe(qp + nq, dof_i) -= r_sign * (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
             // JHe(qp, dof_i) += dphi[dof_i][qp](0);
             // JHe(qp, dof_i + n_dofs_var) += (pow(-1, axisymm) * dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)

@@ -244,6 +244,11 @@ void ElementBuilder::build_solid97()
             }
             if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_NORMAL_ID_BC) != side_boundary_ids.end())
             {
+                if (cont == 0)
+                {
+                    penalty_base = 1e7 * Ke.max() + 1e7 * Ce.max();
+                    cont++;
+                }
                 // The value of the shape functions at the quadrature
                 // points.
                 const std::vector<std::vector<Real>> &phi_face =
@@ -276,27 +281,14 @@ void ElementBuilder::build_solid97()
                     // integrated against test function values while
                     // basis fluxes are integrated against test function
                     // fluxes.
-                    // Compute the shape function values on the element
-                    // face.
-                    fe_face->reinit(elem_data.elem, s);
-
-                    // Loop over the face quadrature points for integration.
-                    for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                    {
-                        // Matrix contribution of the L2 projection.
-                        // Note that the basis function values are
-                        // integrated against test function values while
-                        // basis fluxes are integrated against test function
-                        // fluxes.
-                        for (unsigned int i = 0; i < n_dofs_var; i++)
-                            for (unsigned int j = 0; j < n_dofs_var; j++)
-                                for (unsigned int l = 0; l < 3; l++)
-                                    for (unsigned int k = 0; k < 3; k++)
-                                        Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
-                                                                                      (penalty_base * phi_face[i][qp] *
-                                                                                       phi_face[j][qp] * face_normals[qp](k) *
-                                                                                       face_normals[qp](l));
-                    }
+                    for (unsigned int i = 0; i < n_dofs_var; i++)
+                        for (unsigned int j = 0; j < n_dofs_var; j++)
+                            for (unsigned int l = 0; l < 3; l++)
+                                for (unsigned int k = 0; k < 3; k++)
+                                    Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
+                                                                                  (penalty_base * phi_face[i][qp] *
+                                                                                   phi_face[j][qp] * face_normals[qp](k) *
+                                                                                   face_normals[qp](l));
                 }
             }
         }

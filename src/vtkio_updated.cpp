@@ -406,28 +406,58 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
     mesh.add_elem_integers(cell_data_int_array_names);
     for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
     {
-        // Retrieve as vtkIntArray
-        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(cell_data->GetArray(cell_data_int_array_names[i].c_str()));
-        if (!int_data_array)
-            continue; // or handle error
+        vtkAbstractArray *abstract_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
+        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(abstract_array);
+        vtkUnsignedCharArray *uchar_data_array = vtkUnsignedCharArray::SafeDownCast(abstract_array);
 
-        for (const auto &elem : mesh.element_ptr_range())
+        if (int_data_array)
         {
-            int val = int_data_array->GetValue(elem->id());
-            elem->set_extra_integer(i, static_cast<dof_id_type>(val));
+            for (const auto &elem : mesh.element_ptr_range())
+            {
+                int val = int_data_array->GetValue(elem->id());
+                elem->set_extra_integer(i, static_cast<dof_id_type>(val));
+            }
+        }
+        else if (uchar_data_array)
+        {
+            for (const auto &elem : mesh.element_ptr_range())
+            {
+                unsigned char val = uchar_data_array->GetValue(elem->id());
+                elem->set_extra_integer(i, static_cast<dof_id_type>(val));
+            }
+        }
+        else
+        {
+            // Handle other types or skip
+            continue;
         }
     }
     for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
     {
-        // Retrieve as vtkIntArray
-        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(point_data->GetArray(point_data_int_array_names[i].c_str()));
-        if (!int_data_array)
-            continue; // or handle error
+        vtkAbstractArray *abstract_array = point_data->GetArray(point_data_int_array_names[i].c_str());
+        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(abstract_array);
+        vtkUnsignedCharArray *uchar_data_array = vtkUnsignedCharArray::SafeDownCast(abstract_array);
 
-        for (const auto &node : mesh.node_ptr_range())
+        if (int_data_array)
         {
-            int val = int_data_array->GetValue(node->id());
-            node->set_extra_integer(i, static_cast<dof_id_type>(val));
+            for (const auto &node : mesh.node_ptr_range())
+            {
+                int val = int_data_array->GetValue(node->id());
+                node->set_extra_integer(i, static_cast<dof_id_type>(val));
+            }
+        }
+        else if (uchar_data_array)
+        {
+            for (const auto &node : mesh.node_ptr_range())
+            {
+                unsigned char val = uchar_data_array->GetValue(node->id());
+                node->set_extra_integer(i, static_cast<dof_id_type>(val));
+            }
+        }
+        else
+        {
+            // Handle other types or skip
+            continue;
         }
     }
 }
