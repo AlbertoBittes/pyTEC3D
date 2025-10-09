@@ -4,49 +4,87 @@ import vtk.util.numpy_support as vtknp
 import pandas as pd
 from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
 
+
 class BinaryHelper:
+    @staticmethod
+    def _write_single_value(binary_file, value):
+        if isinstance(value, int):
+            binary_file.write(struct.pack("i", 0))  # type code for int
+            binary_file.write(struct.pack("i", value))
+        elif isinstance(value, float):
+            binary_file.write(struct.pack("i", 1))  # type code for float
+            binary_file.write(struct.pack("d", value))
+        elif isinstance(value, str):
+            binary_file.write(struct.pack("i", 2))  # type code for str
+            encoded = value.encode("utf-8")
+            binary_file.write(struct.pack("I", len(encoded)))
+            binary_file.write(encoded)
+        else:
+            raise ValueError(f"Unsupported single value type: {type(value)}")
+
+    @staticmethod
+    def _write_numpy_array(binary_file, arr):
+        # Write type code for numpy array
+        binary_file.write(struct.pack("i", 3))
+        # Write dtype as string
+        dtype_str = str(arr.dtype)
+        dtype_bytes = dtype_str.encode("utf-8")
+        binary_file.write(struct.pack("I", len(dtype_bytes)))
+        binary_file.write(dtype_bytes)
+        # Write number of dimensions
+        binary_file.write(struct.pack("I", arr.ndim))
+        # Write shape
+        for dim in arr.shape:
+            binary_file.write(struct.pack("I", dim))
+        # Write array data
+        if arr.dtype.kind in {"i", "u"}:  # int, uint
+            binary_file.write(struct.pack("i", 0))
+            binary_file.write(arr.astype(np.int64).tobytes())
+        elif arr.dtype.kind == "f":  # float
+            binary_file.write(struct.pack("i", 1))
+            binary_file.write(arr.astype(np.float64).tobytes())
+        elif arr.dtype.kind == "U" or arr.dtype.kind == "S":  # unicode or bytes
+            binary_file.write(struct.pack("i", 2))
+            # For string arrays, write each string's length and bytes
+            flat_arr = arr.flatten()
+            binary_file.write(struct.pack("I", len(flat_arr)))
+            for s in flat_arr:
+                s_bytes = str(s).encode("utf-8")
+                binary_file.write(struct.pack("I", len(s_bytes)))
+                binary_file.write(s_bytes)
+        else:
+            raise ValueError(f"Unsupported numpy array dtype: {arr.dtype}")
+
     @staticmethod
     def write_settings_to_binary(settings, binary_file, label):
         """
         Writes a settings dictionary to an open binary file stream.
-
-        Parameters:
-            settings (dict): The settings dictionary to write.
-            binary_file (file object): An open binary file stream.
-            label (str): The label for the settings type.
-
-        Raises:
-            ValueError: If a value in the settings dictionary has an unsupported type.
+        Supports int, float, str, and numpy arrays as values.
         """
         if label not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
             raise ValueError(
                 f"Invalid label '{label}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
             )
         expected_types = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[label]
-        for key, value in settings.items():
-            expected_type = expected_types[key]
-            if expected_type == int and not isinstance(value, int):
-                raise TypeError(f"Key '{key}' is expected to be of type int, but got {type(value).__name__}.")
-            elif expected_type == float and not isinstance(value, float):
-                raise TypeError(f"Key '{key}' is expected to be of type float, but got {type(value).__name__}.")
-            elif expected_type == str and not isinstance(value, str):
-                raise TypeError(f"Key '{key}' is expected to be of type str, but got {type(value).__name__}.")
         binary_file.write(struct.pack("I", len(settings)))
         for key, value in settings.items():
             binary_file.write(struct.pack("I", len(key)))
             binary_file.write(key.encode("utf-8"))
-            if isinstance(value, int):
-                binary_file.write(struct.pack("i", 0))
-                binary_file.write(struct.pack("i", value))
-            elif isinstance(value, float):
-                binary_file.write(struct.pack("i", 1))
-                binary_file.write(struct.pack("d", value))
-            elif isinstance(value, str):
-                binary_file.write(struct.pack("i", 2))
-                binary_file.write(struct.pack("I", len(value)))
-                binary_file.write(value.encode("utf-8"))
+            expected_type = expected_types[key]
+            # Validate type
+            if isinstance(value, np.ndarray):
+                # Optionally check dtype matches expected_type
+                BinaryHelper._write_numpy_array(binary_file, value)
+            elif expected_type == int and isinstance(value, int):
+                BinaryHelper._write_single_value(binary_file, value)
+            elif expected_type == float and isinstance(value, float):
+                BinaryHelper._write_single_value(binary_file, value)
+            elif expected_type == str and isinstance(value, str):
+                BinaryHelper._write_single_value(binary_file, value)
             else:
-                raise ValueError(f"Unsupported value type: {type(value)}")
+                raise TypeError(
+                    f"Key '{key}' is expected to be of type {expected_type.__name__} or numpy.ndarray, but got {type(value).__name__}."
+                )
 
     @staticmethod
     def write_dataframe_to_binary(df, binary_file, key):
@@ -68,14 +106,26 @@ class BinaryHelper:
         column_types = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[key]
         for column in df.columns:
             if column not in column_types:
-                raise ValueError(f"Column '{column}' does not have a predefined type in column_types.")
+                raise ValueError(
+                    f"Column '{column}' does not have a predefined type in column_types."
+                )
             expected_type = column_types[column]
             if expected_type == int and not np.issubdtype(df[column].dtype, np.integer):
-                raise TypeError(f"Column '{column}' is expected to be of type int, but got {df[column].dtype}.")
-            elif expected_type == float and not np.issubdtype(df[column].dtype, np.floating):
-                raise TypeError(f"Column '{column}' is expected to be of type float, but got {df[column].dtype}.")
-            elif expected_type == str and not np.issubdtype(df[column].dtype, np.object_):
-                raise TypeError(f"Column '{column}' is expected to be of type str, but got {df[column].dtype}.")
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type int, but got {df[column].dtype}."
+                )
+            elif expected_type == float and not np.issubdtype(
+                df[column].dtype, np.floating
+            ):
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type float, but got {df[column].dtype}."
+                )
+            elif expected_type == str and not np.issubdtype(
+                df[column].dtype, np.object_
+            ):
+                raise TypeError(
+                    f"Column '{column}' is expected to be of type str, but got {df[column].dtype}."
+                )
         num_rows = len(df)
         num_columns = len(df.columns)
         binary_file.write(struct.pack("I", num_rows))
@@ -92,7 +142,9 @@ class BinaryHelper:
             elif column_type == str:
                 binary_file.write(struct.pack("i", 2))
             else:
-                raise ValueError(f"Unsupported column type '{column_type}' for column '{column}'.")
+                raise ValueError(
+                    f"Unsupported column type '{column_type}' for column '{column}'."
+                )
         for _, row in df.iterrows():
             for column in df.columns:
                 value = row[column]
@@ -106,7 +158,38 @@ class BinaryHelper:
                     binary_file.write(struct.pack("I", len(encoded_value)))
                     binary_file.write(encoded_value)
                 else:
-                    raise ValueError(f"Unsupported column type '{column_type}' for column '{column}'.")
+                    raise ValueError(
+                        f"Unsupported column type '{column_type}' for column '{column}'."
+                    )
+
+    def write_any_to_binary(obj, binary_file, label):
+        """
+        Writes a dict, DataFrame, or an iterable of dicts/DataFrames to a binary file.
+
+        Parameters:
+            obj: dict, pd.DataFrame, or iterable of dicts/DataFrames
+            binary_file: open binary file stream
+            label: str, used for type validation (dicts) or column types (DataFrames)
+        """
+        if isinstance(obj, dict):
+            BinaryHelper.write_settings_to_binary(obj, binary_file, label)
+        elif isinstance(obj, pd.DataFrame):
+            BinaryHelper.write_dataframe_to_binary(obj, binary_file, label)
+        elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
+            obj_list = list(obj)
+            binary_file.write(struct.pack("I", len(obj_list)))
+            if not obj_list:
+                return
+            if all(isinstance(item, dict) for item in obj_list):
+                for settings in obj_list:
+                    BinaryHelper.write_settings_to_binary(settings, binary_file, label)
+            elif all(isinstance(item, pd.DataFrame) for item in obj_list):
+                for df in obj_list:
+                    BinaryHelper.write_dataframe_to_binary(df, binary_file, label)
+            else:
+                raise TypeError("Iterable must contain only dicts or only DataFrames.")
+        else:
+            raise TypeError("Object must be a dict, DataFrame, or iterable of those.")
 
     @staticmethod
     def create_numpy_array_for_binary(cell_point_data):
@@ -121,12 +204,14 @@ class BinaryHelper:
         """
         total_rows = 0
         all_stacked_data = []
-        dtype = np.dtype([
-            ("vtk_id", np.uint32),
-            ("load_bc_number", np.uint32),
-            ("component", np.uint32),
-            ("value", np.float64),
-        ])
+        dtype = np.dtype(
+            [
+                ("vtk_id", np.uint32),
+                ("load_bc_number", np.uint32),
+                ("component", np.uint32),
+                ("value", np.float64),
+            ]
+        )
         for idx, load_bc_label in enumerate(VARIABLES_GLOBAL_LIST):
             load_bc_array = cell_point_data.GetArray(load_bc_label)
             if load_bc_array is None:
@@ -163,7 +248,6 @@ class BinaryHelper:
             return final_data
         return np.zeros(0, dtype=dtype)
 
-
     @staticmethod
     def write_numpy_array_to_binary(mesh, binary_file, label):
         """
@@ -180,7 +264,9 @@ class BinaryHelper:
         if label == "cell_data":
             numpy_array = BinaryHelper.create_numpy_array_for_binary(mesh.GetCellData())
         elif label == "point_data":
-            numpy_array = BinaryHelper.create_numpy_array_for_binary(mesh.GetPointData())
+            numpy_array = BinaryHelper.create_numpy_array_for_binary(
+                mesh.GetPointData()
+            )
         else:
             raise ValueError(f"Unsupported label for numpy array binary write: {label}")
         if not isinstance(numpy_array, np.ndarray):
