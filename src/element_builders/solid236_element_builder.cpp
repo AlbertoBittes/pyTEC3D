@@ -283,8 +283,8 @@ void ElementBuilder::build_solid236_rhs()
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
 
-            // for (dof_id_type &dof_value : dof_indices_loads)
-            //     nodal_loads_vector->set(dof_value, 0);
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
         }
         break;
     }

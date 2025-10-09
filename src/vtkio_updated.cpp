@@ -735,14 +735,14 @@ void VTKIO_Updated::cells_to_vtk()
             // I have actually enters this section of code...
             if (!_local_node_map.count(conn[i]))
             {
-                dof_id_type global_node_id = elem->node_id(i);
+                dof_id_type global_node_id = conn[i];
 
                 const Point &the_node = mesh.point(global_node_id);
 
                 // InsertNextPoint accepts either a double or float array of length 3.
                 double pt[3] = {0., 0., 0.};
                 for (unsigned int d = 0; d < LIBMESH_DIM; ++d)
-                    pt[d] = the_node(d);
+                    pt[d] = double(the_node(d));
 
                 // Insert the point into the _vtk_grid
                 vtkIdType local = _vtk_grid->GetPoints()->InsertNextPoint(pt);
@@ -767,7 +767,6 @@ void VTKIO_Updated::cells_to_vtk()
         elem_proc_id->InsertTuple1(vtkcellid, elem->processor_id());
         for (unsigned int i = 0; i < num_elem_data_vars; ++i)
         {
-
             dof_map.dof_indices(elem, dof_indices, i);
             _sys->current_local_solution->get(dof_indices, tuple_values);
             for (unsigned int j = 0; j < tuple_values.size(); ++j)

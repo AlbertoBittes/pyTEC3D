@@ -127,7 +127,7 @@ void AssemblerLinear::assemble()
         // // This is done through a simple function call with
         // // the name of the event to log.
         // conductive = elem_type->is_conductive();
-
+        // auto elem_id = elem->id();
         // this can be done at the beginning only
         dof_map.dof_indices(elem, dof_indices);
         // Cache the number of degrees of freedom on this element, for
@@ -182,13 +182,21 @@ void AssemblerLinear::assemble()
                 system->older_local_solution->get(dof_indices, old_time_derivative_values);
                 Ce.vector_mult_add(rhs, dt * (1 - theta), old_time_derivative_values);
             }
-            // if (elem_id == 969)
+            // auto elem_id = elem->id();
+            // if (elem_id == 169)
             // {
-            //     std::ofstream ffe_file("../simulations/two_wires_3D/matrix/FFe_matrix" + std::to_string(time_step.get_step()) + ".txt");
+            //     std::ofstream ffe_file("rhs_parallel_" + std::to_string(elem_id) + "_" + std::to_string(time_substep->get_index()) + ".txt");
             //     if (ffe_file.is_open())
             //     {
-            //         FFe.print_scientific(ffe_file);
+            //         rhs.print_scientific(ffe_file);
             //     }
+            //     ffe_file.close();
+            //     std::ofstream Ke_file("matrix_parallel_" + std::to_string(elem_id) + "_" + std::to_string(time_substep->get_index()) + ".txt");
+            //     if (Ke_file.is_open())
+            //     {
+            //         Ke.print_scientific(Ke_file);
+            //     }
+            //     Ke_file.close();
             // }
         }
 

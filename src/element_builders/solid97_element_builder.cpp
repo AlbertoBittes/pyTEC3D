@@ -196,7 +196,7 @@ void ElementBuilder::build_solid97()
             {
                 if (cont == 0)
                 {
-                    penalty_base = 1e7 * Ke.max() + 1e7 * Ce.max();
+                    penalty_base = 1e20 * Ke.max() + 1e20 * Ce.max();
                     cont++;
                 }
                 // The value of the shape functions at the quadrature
@@ -246,7 +246,7 @@ void ElementBuilder::build_solid97()
             {
                 if (cont == 0)
                 {
-                    penalty_base = 1e7 * Ke.max() + 1e7 * Ce.max();
+                    penalty_base = 1e20 * Ke.max() + 1e20 * Ce.max();
                     cont++;
                 }
                 // The value of the shape functions at the quadrature
@@ -389,8 +389,8 @@ void ElementBuilder::build_solid97_rhs()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i];
 
-            // for (dof_id_type &dof_value : dof_indices_loads)
-            //     nodal_loads_vector->set(dof_value, 0);
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
         }
         break;
     }
