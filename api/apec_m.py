@@ -65,6 +65,7 @@ class APEC_M:
         )
         self.process = None
         self.num_processors = 1
+        self.periodic_boundaries = {}
 
     #
     #
@@ -177,12 +178,14 @@ class APEC_M:
                 point_data, element_types_infin, "infinite_boundary"
             )
 
-        # Convert the element_types DataFrame to a vtkTable
-        vtk_table = VTKTablesHelper.dataframe_to_vtk_table(self.element_types)
-
         # Attach the vtkTable as field data to the mesh
-        VTKTablesHelper.add_table_to_mesh(self.mesh, vtk_table)
+        VTKTablesHelper.add_table_to_mesh(
+            self.mesh, VTKTablesHelper.dataframe_to_vtk_table(self.element_types)
+        )
 
+        VTKTablesHelper.add_table_to_mesh(
+            self.mesh, VTKTablesHelper.dicts_to_vtk_table(self.periodic_boundaries)
+        )
         # Define the output file name
         output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 

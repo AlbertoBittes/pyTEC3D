@@ -301,6 +301,12 @@ VTK_ARRAYS_TO_INIT = {
         "fill": 0,
         "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
+    "periodic_boundary": {
+        "location": "point",
+        "components": 1,
+        "fill": 0,
+        "dtype": vtk.VTK_UNSIGNED_CHAR,
+    },
 }
 
 ARRAYS_TO_REMOVE = [
