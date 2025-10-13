@@ -40,6 +40,7 @@
 #include "globals.h"
 #include "fe_data_object.h"        // for SettingsFEDataObject
 #include "element_types_factory.h" // for ElementTypesFactory
+#include "apec_m_periodic_boundary_factory.h"
 
 using namespace libMesh;
 // Forward declarations
@@ -80,9 +81,9 @@ public:
 
     void populate_element_types_from_vtk();
 
-    std::shared_ptr<ElementTypesFactory> get_element_types_factory()
+    std::shared_ptr<FEMDataRepository> get_field_data_repo()
     {
-        return element_types_factory;
+        return field_data_repository;
     }
 
     void read_apec_m_model(const std::string &mesh_filepath);
@@ -140,7 +141,11 @@ private:
 
     static std::map<ElemMappingType, ElementMaps> build_element_maps();
 
-    std::shared_ptr<ElementTypesFactory> element_types_factory;
+    void populate_all_fe_data_objects_from_vtk_field_data();
+
+    void broadcast_all_fe_data_objects();
+
+    std::shared_ptr<FEMDataRepository> field_data_repository;
 #endif
 };
 

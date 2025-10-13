@@ -38,31 +38,6 @@ class VTKTablesHelper:
         return vtk_table
 
     @staticmethod
-    def dict_to_vtk_table(data_dict):
-        """
-        Converts a dictionary (keys: str, values: int/float/str) into a vtkTable.
-        Each key becomes a column with a single value.
-
-        Parameters:
-            data_dict (dict): The input dictionary.
-
-        Returns:
-            vtk.vtkTable: The resulting vtkTable.
-        """
-        vtk_table = vtk.vtkTable()
-        for key, value in data_dict.items():
-            if isinstance(value, int):
-                vtk_array = vtk.vtkIntArray()
-            elif isinstance(value, float):
-                vtk_array = vtk.vtkDoubleArray()
-            else:
-                vtk_array = vtk.vtkStringArray()
-            vtk_array.SetName(str(key))
-            vtk_array.InsertNextValue(value)
-            vtk_table.AddColumn(vtk_array)
-        return vtk_table
-
-    @staticmethod
     def dicts_to_vtk_table(dicts):
         """
         Converts a list (or single) of dictionaries into a vtkTable.

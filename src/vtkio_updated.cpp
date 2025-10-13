@@ -90,7 +90,7 @@ VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_pa
 #ifdef LIBMESH_HAVE_VTK
                                                ,
                                                _compress(false), _sys(nullptr),
-                                               element_types_factory(std::make_shared<ElementTypesFactory>())
+                                               field_data_repository(std::make_shared<FEMDataRepository>())
 #endif
 {
 }
@@ -345,7 +345,10 @@ void VTKIO_Updated::read(const std::string &name)
 
     this->add_integers_vtk(mesh);
 
-    this->element_types_factory->populate_data_map_from_vtk(_vtk_grid->GetFieldData());
+    field_data_repository->set_object(std::make_shared<ElementTypesFactory>());
+    field_data_repository->set_object(std::make_shared<ApecMPeriodicBoundaryFactory>());
+
+    this->populate_all_fe_data_objects_from_vtk_field_data();
 
 #if LIBMESH_DIM < 3
     libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
@@ -811,8 +814,8 @@ void VTKIO_Updated::read_apec_m_model(const std::string &mesh_filepath)
     {
         this->read(mesh_filepath);
     }
-    auto df_map = this->element_types_factory->get_dataframe_map();
-    mesh.comm().broadcast<std::unordered_map<int, std::vector<int>>>(*df_map);
+
+    broadcast_all_fe_data_objects();
 }
 
 void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
@@ -890,6 +893,37 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
 //         }
 //     }
 // }
+void VTKIO_Updated::broadcast_all_fe_data_objects()
+{
+    MeshBase &mesh = MeshInput<MeshBase>::mesh();
+    const libMesh::Parallel::Communicator &comm = mesh.comm();
+    const auto &objects = field_data_repository->get_all_objects();
+    for (const auto &[type_idx, obj_ptr] : objects)
+    {
+        obj_ptr->broadcast(comm);
+    }
+}
+
+void VTKIO_Updated::populate_all_fe_data_objects_from_vtk_field_data()
+{
+    if (!field_data_repository)
+        libmesh_error_msg("No field_data_repository available.");
+
+    vtkFieldData *field_data = _vtk_grid->GetFieldData();
+    if (!field_data)
+        libmesh_error_msg("No vtkFieldData available in VTK grid.");
+
+    const auto &objects = field_data_repository->get_all_objects();
+    for (const auto &[type_idx, obj_ptr] : objects)
+    {
+        auto *vtk_obj = dynamic_cast<vtkFieldDataFEDataObjectBase *>(obj_ptr.get());
+        if (vtk_obj)
+        {
+            vtk_obj->populate_intermediate_map_from_vtk(field_data);
+        }
+    }
+}
+
 void VTKIO_Updated::merge_vector_components(bool is_point_data)
 {
     vtkDataSetAttributes *data = is_point_data ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())

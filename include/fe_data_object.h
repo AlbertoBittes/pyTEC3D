@@ -15,7 +15,6 @@
 #include <vtkIntArray.h>
 #include <vtkDoubleArray.h>
 
-#include <vtkTable.h>
 #include <vtkAbstractArray.h>
 #include <unordered_map>
 #include <tuple>
@@ -30,6 +29,7 @@ class LoadStep;
 typedef std::vector<std::vector<std::variant<int, Real, std::string>>> DataframeMap;
 typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
 
+class FEMDataRepository;
 // FE data object classes are the basic data repositories of the program.
 // They store information into a map (dict) that can be later retrieved when needed
 // Each type of data e.g. Materials, Real Constants, Solver Settings, Time Steps, etc. is stored into a unordered map.
@@ -40,9 +40,18 @@ class FEDataObjectAbstract
 public:
     // Virtual destructor for proper cleanup of derived classes
     virtual ~FEDataObjectAbstract() = 0;
+    virtual void broadcast(const libMesh::Parallel::Communicator &comm) = 0;
 };
 
 inline FEDataObjectAbstract::~FEDataObjectAbstract() {}
+
+class vtkFieldDataFEDataObjectBase : public FEDataObjectAbstract
+{
+public:
+    virtual void populate_intermediate_map_from_vtk(vtkFieldData *field_data) = 0;
+    virtual ~vtkFieldDataFEDataObjectBase() = default;
+    virtual void register_in_repository(FEMDataRepository &repo) const = 0;
+};
 
 class ApecMMesh : public Mesh, public FEDataObjectAbstract
 {
@@ -73,6 +82,11 @@ public:
     T1 *get_data_map()
     {
         return data_map.get();
+    }
+
+    void broadcast(const libMesh::Parallel::Communicator &comm) override
+    {
+        comm.broadcast<T1>(*get_data_map());
     }
 
 protected:
@@ -180,223 +194,39 @@ public:
 template class DataframeMapFEDataObject<int>;
 template class DataframeMapFEDataObject<Real>;
 
-#include "FEDataObjectMap.h"
-#include "libmesh/libmesh_common.h"
-#include "libmesh/libmesh_logging.h"
-#include <vtkTable.h>
-#include <vtkAbstractArray.h>
-#include <vtkIntArray.h>
-#include <vtkDoubleArray.h>
-#include <vtkStringArray.h>
-#include <unordered_map>
-#include <tuple>
-#include <string>
-#include <vector>
-#include <memory>
-
 template <typename TMap>
-class vtkTableFEDataObject : public FEDataObjectMap<TMap>
+class vtkFieldDataFEDataObject : public FEDataObjectMap<TMap>, public vtkFieldDataFEDataObjectBase
 {
 public:
-    vtkTableFEDataObject() = default;
-    virtual ~vtkTableFEDataObject() = default;
+    vtkFieldDataFEDataObject() = default;
+    virtual ~vtkFieldDataFEDataObject() = default;
 
-    /**
-     * Reads selected arrays from a vtkTable and populates the data_map.
-     *
-     * Each key in field_names can represent:
-     *   - a scalar array (no "_shape" / "_offset")
-     *   - an iterable array, accompanied by "<name>_shape" and "<name>_offset"
-     *
-     * The function supports:
-     *   - int, double, string scalars
-     *   - iterables (1D–ND) of ints, doubles, or strings
-     *
-     * Throws a libMesh error message if inconsistencies are found.
-     */
-    void read_from_vtk_table(vtkTable *table, const std::vector<std::string> &field_names)
-    {
-        if (!table)
-            libmesh_error_msg("vtkTableFEDataObject::read_from_vtk_table: null vtkTable.");
+    void read_from_vtk_field_data(vtkFieldData *field_data, const std::vector<std::string> &field_names);
 
-        vtkIdType num_rows = 0;
-        if (!field_names.empty())
-        {
-            auto *arr = table->GetColumnByName(field_names.front().c_str());
-            if (arr)
-                num_rows = arr->GetNumberOfTuples();
-        }
-
-        auto &data_map = *(this->data_map);
-        data_map.clear();
-
-        for (vtkIdType irow = 0; irow < num_rows; ++irow)
-            data_map[irow] = std::tuple<>();
-
-        for (const auto &base_name : field_names)
-        {
-            vtkAbstractArray *val_array = table->GetColumnByName(base_name.c_str());
-            vtkIntArray *shape_array = vtkIntArray::SafeDownCast(table->GetColumnByName((base_name + "_shape").c_str()));
-            vtkIntArray *offset_array = vtkIntArray::SafeDownCast(table->GetColumnByName((base_name + "_offset").c_str()));
-
-            if (!val_array)
-            {
-                libmesh_warning("Field '" << base_name << "' not found — skipping.");
-                continue;
-            }
-
-            // ────────────────────────────────
-            // SCALAR FIELD
-            // ────────────────────────────────
-            if (!shape_array || !offset_array)
-            {
-                if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
-                {
-                    for (vtkIdType i = 0; i < num_rows; ++i)
-                        append_to_tuple(data_map[i], int_arr->GetValue(i));
-                }
-                else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
-                {
-                    for (vtkIdType i = 0; i < num_rows; ++i)
-                        append_to_tuple(data_map[i], dbl_arr->GetValue(i));
-                }
-                else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
-                {
-                    for (vtkIdType i = 0; i < num_rows; ++i)
-                        append_to_tuple(data_map[i], std::string(str_arr->GetValue(i)));
-                }
-                else
-                {
-                    libmesh_error_msg("Unsupported scalar array type for field '" << base_name << "'.");
-                }
-                continue;
-            }
-
-            // ────────────────────────────────
-            // ITERABLE FIELD
-            // ────────────────────────────────
-            const int *shape_data = shape_array->GetPointer(0);
-            const int *offset_data = offset_array->GetPointer(0);
-
-            // integers
-            if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
-            {
-                const int *vals = int_arr->GetPointer(0);
-                vtkIdType cursor = 0;
-
-                for (vtkIdType irow = 0; irow < num_rows; ++irow)
-                {
-                    int shape_start = offset_data[irow];
-                    int ndim = shape_data[shape_start];
-
-                    std::vector<int> dims(ndim);
-                    vtkIdType total_elems = 1;
-                    for (int j = 0; j < ndim; ++j)
-                    {
-                        dims[j] = shape_data[shape_start + 1 + j];
-                        total_elems *= dims[j];
-                    }
-
-                    std::vector<int> flattened(vals + cursor, vals + cursor + total_elems);
-                    cursor += total_elems;
-
-                    append_to_tuple(data_map[irow], reshape(flattened, dims));
-                }
-            }
-            // doubles
-            else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
-            {
-                const double *vals = dbl_arr->GetPointer(0);
-                vtkIdType cursor = 0;
-
-                for (vtkIdType irow = 0; irow < num_rows; ++irow)
-                {
-                    int shape_start = offset_data[irow];
-                    int ndim = shape_data[shape_start];
-
-                    std::vector<int> dims(ndim);
-                    vtkIdType total_elems = 1;
-                    for (int j = 0; j < ndim; ++j)
-                    {
-                        dims[j] = shape_data[shape_start + 1 + j];
-                        total_elems *= dims[j];
-                    }
-
-                    std::vector<double> flattened(vals + cursor, vals + cursor + total_elems);
-                    cursor += total_elems;
-
-                    append_to_tuple(data_map[irow], reshape(flattened, dims));
-                }
-            }
-            // strings
-            else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
-            {
-                vtkIdType cursor = 0;
-                for (vtkIdType irow = 0; irow < num_rows; ++irow)
-                {
-                    int shape_start = offset_data[irow];
-                    int ndim = shape_data[shape_start];
-
-                    std::vector<int> dims(ndim);
-                    vtkIdType total_elems = 1;
-                    for (int j = 0; j < ndim; ++j)
-                    {
-                        dims[j] = shape_data[shape_start + 1 + j];
-                        total_elems *= dims[j];
-                    }
-
-                    std::vector<std::string> flat;
-                    flat.reserve(total_elems);
-                    for (vtkIdType k = 0; k < total_elems; ++k)
-                        flat.emplace_back(str_arr->GetValue(cursor++));
-
-                    append_to_tuple(data_map[irow], reshape(flat, dims));
-                }
-            }
-            else
-            {
-                libmesh_error_msg("Unsupported iterable array type for field '" << base_name << "'.");
-            }
-        }
-    }
+    virtual void populate_final_map() = 0;
 
 private:
-    // append a new element to an existing tuple
+    // Append a new element to a tuple
     template <typename Tuple, typename T>
-    static void append_to_tuple(Tuple &t, T &&value)
-    {
-        t = std::tuple_cat(t, std::make_tuple(std::forward<T>(value)));
-    }
+    static void append_to_tuple(Tuple &t, T &&value);
 
-    // Recursive reshape for flattened vectors (supports ndim ≥ 1)
+    // --------------------------
+    // Helper: read iterable fields
+    // --------------------------
+    void read_iterable_field(std::unordered_map<unsigned int, std::tuple<...>> &data_map,
+                             vtkAbstractArray *val_array,
+                             vtkIntArray *shape_array,
+                             vtkIntArray *offset_array,
+                             vtkIdType num_rows,
+                             const std::string &base_name);
+    // --------------------------
+    // Reshape flattened vector to nested vector
+    // --------------------------
     template <typename T>
     static std::vector<std::vector<T>> reshape(const std::vector<T> &flat,
                                                const std::vector<int> &dims,
                                                size_t level = 0,
-                                               size_t offset = 0)
-    {
-        if (dims.empty())
-            return {};
-
-        if (level == dims.size() - 1)
-        {
-            std::vector<std::vector<T>> leaf;
-            size_t chunk = flat.size() / dims[level];
-            for (int i = 0; i < dims[level]; ++i)
-                leaf.push_back(std::vector<T>(flat.begin() + offset + i * chunk,
-                                              flat.begin() + offset + (i + 1) * chunk));
-            return leaf;
-        }
-
-        size_t stride = flat.size() / dims[level];
-        std::vector<std::vector<T>> result;
-        for (int i = 0; i < dims[level]; ++i)
-        {
-            auto sub = reshape(flat, dims, level + 1, offset + i * stride);
-            result.insert(result.end(), sub.begin(), sub.end());
-        }
-        return result;
-    }
+                                               size_t offset = 0);
 };
 // class InfiniteElementsOptionsObject : public DataframeMatLikeFEDataObject
 // {

@@ -120,6 +120,7 @@ namespace Globals
         INFINITE_BOUNDARY,
         FLUX_NORMAL,
         FLUX_PARALLEL,
+        PERIODIC_BOUNDARY,
         UNKNOWN // Fallback for invalid strings
     };
 

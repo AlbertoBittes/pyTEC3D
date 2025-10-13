@@ -11,6 +11,7 @@
 #include "global_constraints_object.h"
 #include "apec_m_eq_system_object.h"
 #include "apec_m_subset_solve.h"
+#include "apec_m_periodic_boundary_factory.h"
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/inf_elem_builder.h>
@@ -167,6 +168,7 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
                 switch (bc_enum)
                 {
                 case Globals::BoundaryConditionType::INFINITE_BOUNDARY:
+                case Globals::BoundaryConditionType::PERIODIC_BOUNDARY:
                     boundary_info.add_node(node_ptr, boundary_id_mesh);
                     break;
                 case Globals::BoundaryConditionType::FLUX_NORMAL:
@@ -186,16 +188,28 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
         // boundary_info.parallel_sync_side_ids();
         // boundary_info.clear_boundary_node_ids();
     }
-
     boundary_info.print_info();
     boundary_info.print_summary();
 
     return;
 }
 
+void SimulationController::set_model_data(std::shared_ptr<FEMDataRepository> field_data_repo)
+{
+    const auto &objects = field_data_repo->get_all_objects();
+    for (const auto &[type_idx, obj_ptr] : objects)
+    {
+        // Deduce the actual type of the object
+        using ThisType = std::remove_cv_t<std::remove_reference_t<decltype(*obj_ptr)>>;
+        apec_m_model_data->set_object<ThisType>(
+            std::static_pointer_cast<ThisType>(obj_ptr));
+    }
+}
+
 void SimulationController::generate_infinite_elements()
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+    this->set_boundary_info({"infinite_boundary"});
     auto &boundary_info = mesh->get_boundary_info();
     // In the future change this by looping over the elementtypes
     if (mesh->has_node_integer("infinite_boundary"))
@@ -231,47 +245,11 @@ void SimulationController::generate_infinite_elements()
     return;
 }
 
-void SimulationController::read_mesh()
-{
-
-    libMesh::out << "Reading mesh..." << std::endl;
-    const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
-    // mesh.clear();
-    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-
-    VTKIO_Updated vtkio(*mesh, mesh_filepath);
-
-    auto element_types_factory = vtkio.get_element_types_factory();
-
-    element_types_factory->populate_element_types_map_from_dataframe();
-
-    apec_m_model_data->set_object<ElementTypesFactory>(element_types_factory);
-
-    MeshCommunication().broadcast(*mesh);
-
-    // orient before generating infinite elems
-    MeshTools::Modification::orient_elements(*mesh);
-
-    this->set_boundary_info({"infinite_boundary"});
-
-    this->generate_infinite_elements();
-
-    this->set_boundary_info({"flux_parallel", "flux_normal"});
-    // Partition after generating infinite elems
-    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
-    mesh->prepare_for_use(true);
-
-    // Print information about the mesh to the screen.
-    std::cout << "Mesh Information: " << std::endl;
-    mesh->print_info();
-
-    return;
-}
-
-void SimulationController::physics()
+void SimulationController::set_systems()
 {
     libMesh::out << "Building system of equations..." << std::endl;
 
+    equation_systems->clear();
     System *systems[Globals::NUM_SYSTEMS] = {nullptr};
 
     libMesh::out << "Checking system options..." << std::endl;
@@ -294,7 +272,39 @@ void SimulationController::physics()
         builder->init_variables();
         systems[i]->attach_init_object(*builder);
     }
+}
 
+void SimulationController::read_mesh()
+{
+    libMesh::out << "Reading mesh..." << std::endl;
+    const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
+    // mesh.clear();
+    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+
+    VTKIO_Updated vtkio(*mesh, mesh_filepath);
+    MeshCommunication().broadcast(*mesh);
+    MeshTools::Modification::orient_elements(*mesh);
+
+    this->set_model_data(vtkio.get_field_data_repo());
+
+    this->generate_infinite_elements();
+
+    this->set_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
+
+    this->set_systems();
+    // Partition after generating infinite elems
+    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
+    mesh->prepare_for_use(true);
+
+    // Print information about the mesh to the screen.
+    libMesh::out << "Mesh Information: " << std::endl;
+    mesh->print_info();
+
+    return;
+}
+
+void SimulationController::physics()
+{
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     equation_systems->init();
     equation_systems->print_info();
@@ -339,6 +349,7 @@ void SimulationController::solve()
         element_builder->check_compute_matrix();
 
         element_builder->build_write_element_matrices_rhs();
+
         substep.print_solve_msg();
         // update time in element data object
         // Assemble & solve the linear system

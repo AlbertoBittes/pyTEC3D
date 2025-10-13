@@ -68,5 +68,6 @@ namespace Globals
         {BoundaryConditionType::INFINITE_BOUNDARY, {BoundaryConditionType::INFINITE_BOUNDARY, "infinite_boundary", 0}},
         {BoundaryConditionType::FLUX_NORMAL, {BoundaryConditionType::FLUX_NORMAL, "flux_normal", FLUX_NORMAL_ID_BC}},
         {BoundaryConditionType::FLUX_PARALLEL, {BoundaryConditionType::FLUX_PARALLEL, "flux_parallel", FLUX_PARALLEL_ID_BC}},
+        {BoundaryConditionType::PERIODIC_BOUNDARY, {BoundaryConditionType::PERIODIC_BOUNDARY, "periodic_boundary", 0}},
         {BoundaryConditionType::UNKNOWN, {BoundaryConditionType::UNKNOWN, "UNKNOWN", 0}}};
 }

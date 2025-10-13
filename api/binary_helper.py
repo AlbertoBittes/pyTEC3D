@@ -162,7 +162,8 @@ class BinaryHelper:
                         f"Unsupported column type '{column_type}' for column '{column}'."
                     )
 
-    def write_any_to_binary(obj, binary_file, label):
+    @staticmethod
+    def write_to_binary(obj, binary_file, label):
         """
         Writes a dict, DataFrame, or an iterable of dicts/DataFrames to a binary file.
 
