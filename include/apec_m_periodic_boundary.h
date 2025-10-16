@@ -12,6 +12,7 @@
 #include "libmesh/dense_matrix.h"
 #include "libmesh/point.h"
 #include "libmesh/dense_vector.h"
+#include "globals.h"
 #include <vector>
 #include <string>
 

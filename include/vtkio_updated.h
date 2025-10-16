@@ -60,7 +60,8 @@ public:
     VTKIO_Updated(MeshBase &mesh, const std::string &mesh_filepath)
         : VTKIO_Updated(mesh)
     {
-        read_apec_m_model(mesh_filepath);
+        // read_apec_m_model(mesh_filepath);
+        this->read(mesh_filepath);
     }
 
     using MeshOutput<MeshBase>::write_nodal_data;
@@ -86,7 +87,7 @@ public:
         return field_data_repository;
     }
 
-    void read_apec_m_model(const std::string &mesh_filepath);
+    // void read_apec_m_model(const std::string &mesh_filepath);
 
     void add_integers_vtk(MeshBase &mesh);
 
@@ -143,7 +144,7 @@ private:
 
     void populate_all_fe_data_objects_from_vtk_field_data();
 
-    void broadcast_all_fe_data_objects();
+    // void broadcast_all_fe_data_objects();
 
     std::shared_ptr<FEMDataRepository> field_data_repository;
 #endif

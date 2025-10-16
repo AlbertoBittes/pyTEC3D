@@ -23,7 +23,7 @@ public:
     void set_object(std::shared_ptr<T> obj)
     {
         static_assert(std::is_base_of<FEDataObjectAbstract, T>::value, "T must derive from FEDataObjectAbstract");
-        data_objects[typeid(T)] = obj;
+        data_objects[typeid(T)] = std::dynamic_pointer_cast<FEDataObjectAbstract>(obj);
     }
 
     // Get object by type

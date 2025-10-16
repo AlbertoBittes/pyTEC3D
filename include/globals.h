@@ -137,7 +137,7 @@ namespace Globals
     extern const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP;
 
     // Declare physical constants
-    extern const double MU_0;
+    extern const Real MU_0;
 
     template <typename MapType>
     const typename MapType::mapped_type &get_info_by_key(const MapType &map, const typename MapType::key_type &key)
