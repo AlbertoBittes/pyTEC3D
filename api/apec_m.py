@@ -65,7 +65,7 @@ class APEC_M:
         )
         self.process = None
         self.num_processors = 1
-        self.periodic_boundaries = {}
+        self.periodic_boundaries = []
 
     #
     #
@@ -106,6 +106,12 @@ class APEC_M:
             os.makedirs(self.load_steps_folder)
 
         VTKGridHelper.initialize_vtk_arrays(self.mesh)
+
+        self.mesh.SetFieldData(vtk.vtkFieldData())
+        # vtk_array_dummy = vtk.vtkIntArray()
+        # vtk_array_dummy.SetName("_dummy_array_")
+        # vtk_array_dummy.SetNumberOfTuples(2000)
+        # self.mesh.GetFieldData().AddArray(vtk_array_dummy)
 
         Selector.ensure_selection_arrays(self.mesh)
 
@@ -178,14 +184,11 @@ class APEC_M:
                 point_data, element_types_infin, "infinite_boundary"
             )
 
-        # Attach the vtkTable as field data to the mesh
-        VTKTablesHelper.add_table_to_mesh(
-            self.mesh, VTKTablesHelper.dataframe_to_vtk_table(self.element_types)
-        )
+        # # Attach the vtkTable as field data to the mesh
+        VTKTablesHelper.update_mesh_field_data(self.mesh, self.element_types)
 
-        VTKTablesHelper.add_table_to_mesh(
-            self.mesh, VTKTablesHelper.dicts_to_vtk_table(self.periodic_boundaries)
-        )
+        VTKTablesHelper.update_mesh_field_data(self.mesh, self.periodic_boundaries)
+
         # Define the output file name
         output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 

@@ -8,67 +8,56 @@ import warnings
 
 class VTKTablesHelper:
     @staticmethod
-    def dataframe_to_vtk_table(df):
+    def dataframe_to_vtk_field_arrays(mesh, df, overwrite=True):
         """
-        Converts a Pandas DataFrame into a vtkTable.
+        Converts a Pandas DataFrame into vtkArrays and adds them to the mesh's field data.
 
         Parameters:
+            mesh (vtk.vtkUnstructuredGrid): The mesh to add field data to.
             df (pd.DataFrame): The input DataFrame.
+            overwrite (bool): If True, overwrite arrays with the same name.
 
         Returns:
-            vtk.vtkTable: The converted vtkTable.
+            None
         """
-        vtk_table = vtk.vtkTable()
+        arrays = []
         for column_name in df.columns:
-            if pd.api.types.is_integer_dtype(df[column_name]):
+            col = df[column_name]
+            if pd.api.types.is_integer_dtype(col):
                 vtk_array = vtk.vtkIntArray()
-            elif pd.api.types.is_float_dtype(df[column_name]):
+            elif pd.api.types.is_float_dtype(col):
                 vtk_array = vtk.vtkDoubleArray()
             else:
                 vtk_array = vtk.vtkStringArray()
             vtk_array.SetName(column_name)
-            for value in df[column_name]:
+            for value in col:
                 if isinstance(vtk_array, vtk.vtkIntArray):
                     vtk_array.InsertNextValue(int(value))
                 elif isinstance(vtk_array, vtk.vtkDoubleArray):
                     vtk_array.InsertNextValue(float(value))
                 else:
                     vtk_array.InsertNextValue(str(value))
-            vtk_table.AddColumn(vtk_array)
-        return vtk_table
+            arrays.append(vtk_array)
+        VTKTablesHelper.add_field_arrays_to_mesh(mesh, arrays, overwrite=overwrite)
 
     @staticmethod
-    def dicts_to_vtk_table(dicts):
+    def dicts_to_vtk_field_arrays(mesh, dicts, overwrite=True):
         """
-        Converts a list (or single) of dictionaries into a vtkTable.
-        Scalars are stored directly.
-        Iterables (lists, tuples, numpy arrays) are flattened and stored with companion
-        <key>_shape and <key>_offset arrays for reconstruction.
+        Converts a list (or single) of dictionaries into vtkArrays and adds them to the mesh's field data.
 
-        Shape encoding (per iterable):
-          [type_code, ndim, dim1, dim2, ..., optional element sizes for strings]
+        Parameters:
+            mesh (vtk.vtkUnstructuredGrid): The mesh to add field data to.
+            dicts (dict or list of dict): The input data.
+            overwrite (bool): If True, overwrite arrays with the same name.
 
-        Type codes:
-            0 = int
-            1 = float
-            2 = str
-
-        Parameters
-        ----------
-        dicts : Iterable[dict] or dict
-            Input data dictionaries (all must share same keys).
-
-        Returns
-        -------
-        vtk.vtkTable
-            Resulting VTK table.
+        Returns:
+            None
         """
         if isinstance(dicts, dict):
             dicts = [dicts]
 
-        vtk_table = vtk.vtkTable()
+        arrays = []
         keys = dicts[0].keys()
-
         for key in keys:
             first_value = dicts[0][key]
 
@@ -84,7 +73,7 @@ class VTKTablesHelper:
                 vtk_array.SetName(str(key))
                 for d in dicts:
                     vtk_array.InsertNextValue(d[key])
-                vtk_table.AddColumn(vtk_array)
+                arrays.append(vtk_array)
                 continue
 
             # ---- ITERABLE FIELDS ----
@@ -131,11 +120,14 @@ class VTKTablesHelper:
                     cursor_shape += len(shape_entry)
 
                 # ---- CREATE VTK ARRAYS ----
-                # Values
                 if not flat_values:
                     continue
 
-                if type_code in (0, 1):
+                if type_code == 0:
+                    vtk_flat = vtk.vtkIntArray()
+                    for v in flat_values:
+                        vtk_flat.InsertNextValue(int(v))
+                elif type_code == 1:
                     vtk_flat = vtk.vtkDoubleArray()
                     for v in flat_values:
                         vtk_flat.InsertNextValue(float(v))
@@ -148,46 +140,33 @@ class VTKTablesHelper:
                     continue
 
                 vtk_flat.SetName(str(key))
-
-                # Shape array
                 vtk_shape = vtk.vtkIntArray()
                 vtk_shape.SetName(f"{key}_shape")
                 for s in shape_values:
                     vtk_shape.InsertNextValue(int(s))
-
-                # Offset array
                 vtk_offset = vtk.vtkIntArray()
                 vtk_offset.SetName(f"{key}_offset")
                 for o in offset_values:
                     vtk_offset.InsertNextValue(int(o))
 
-                vtk_table.AddColumn(vtk_flat)
-                vtk_table.AddColumn(vtk_shape)
-                vtk_table.AddColumn(vtk_offset)
+                arrays.extend([vtk_flat, vtk_shape, vtk_offset])
                 continue
 
             warnings.warn(f"Unsupported type for key '{key}': {type(first_value)}")
 
-        return vtk_table
+        VTKTablesHelper.add_field_arrays_to_mesh(mesh, arrays, overwrite=overwrite)
 
     @staticmethod
-    def add_table_to_mesh(mesh, vtk_table, overwrite=True):
+    def add_field_arrays_to_mesh(mesh, vtk_arrays, overwrite=True):
         """
-        Adds a vtkTable as field data to the given mesh.
+        Adds a list of vtkArrays to the mesh's field data.
+        If an array with the same name exists, it is overwritten (remove + add) if overwrite=True,
+        otherwise it is skipped.
 
         Parameters:
             mesh (vtk.vtkUnstructuredGrid): The mesh to add field data to.
-            vtk_table (vtk.vtkTable): The vtkTable whose columns will be added as field data arrays.
-            overwrite (bool, optional):
-                - If True (default), removes any existing field data arrays with names matching
-                the vtkTable columns before adding new ones (preserves previous behavior).
-                - If False, retains existing arrays and only adds new ones if they
-                do not already exist.
-
-        Behavior:
-            - Each column in vtk_table becomes a vtkAbstractArray in mesh.FieldData.
-            - If overwrite=True, arrays with the same name are removed first (a warning is issued).
-            - If overwrite=False, existing arrays are kept (a warning is issued and the column is skipped).
+            vtk_arrays (list): List of vtkArrays to add.
+            overwrite (bool): If True, overwrite arrays with the same name.
 
         Returns:
             None
@@ -197,23 +176,16 @@ class VTKTablesHelper:
             field_data = vtk.vtkFieldData()
             mesh.SetFieldData(field_data)
 
-        for i in range(vtk_table.GetNumberOfColumns()):
-            column_name = vtk_table.GetColumnName(i)
-            vtk_array = vtk_table.GetColumn(i)
-
-            if field_data.HasArray(column_name):
+        for arr in vtk_arrays:
+            name = arr.GetName()
+            if field_data.HasArray(name):
                 if overwrite:
-                    print(
-                        f"Overwriting existing field data array '{column_name}'.",
-                    )
-                    field_data.RemoveArray(column_name)
-                    field_data.AddArray(vtk_array)
+                    field_data.RemoveArray(name)
+                    field_data.AddArray(arr)
                 else:
-                    print(
-                        f"Field data array '{column_name}' already exists — skipping (overwrite=False).",
-                    )
+                    continue
             else:
-                field_data.AddArray(vtk_array)
+                field_data.AddArray(arr)
 
     @staticmethod
     def get_dataframe_from_field_data(mesh):
@@ -239,3 +211,29 @@ class VTKTablesHelper:
             data[column_name] = vtknp.vtk_to_numpy(vtk_array)
         df = pd.DataFrame(data)
         return df
+
+    @staticmethod
+    def update_mesh_field_data(mesh, data, overwrite=True):
+        """
+        Updates the mesh field data using input data (dict(s) or DataFrame).
+
+        Parameters:
+            mesh (vtk.vtkUnstructuredGrid): The mesh to update.
+            data (dict, list of dict, or pd.DataFrame): The input data.
+            overwrite (bool): If True, overwrite arrays with the same name.
+
+        Returns:
+            None
+        """
+        if isinstance(data, pd.DataFrame):
+            VTKTablesHelper.dataframe_to_vtk_field_arrays(
+                mesh, data, overwrite=overwrite
+            )
+        elif isinstance(data, dict) or (
+            isinstance(data, list) and all(isinstance(d, dict) for d in data)
+        ):
+            VTKTablesHelper.dicts_to_vtk_field_arrays(mesh, data, overwrite=overwrite)
+        else:
+            raise TypeError(
+                "Input data must be a pandas DataFrame, a dict, or a list of dicts."
+            )
