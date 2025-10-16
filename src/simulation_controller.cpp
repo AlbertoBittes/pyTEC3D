@@ -292,6 +292,7 @@ void SimulationController::read_mesh()
     this->set_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
 
     this->set_systems();
+
     // Partition after generating infinite elems
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
