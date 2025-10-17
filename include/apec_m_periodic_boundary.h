@@ -12,6 +12,7 @@
 #include "libmesh/dense_matrix.h"
 #include "libmesh/point.h"
 #include "libmesh/dense_vector.h"
+#include "globals.h"
 #include <vector>
 #include <string>
 
@@ -86,8 +87,21 @@ public:
         variables.clear();
         for (const auto &var_str : vars)
         {
-            unsigned int var_index = this->get_parent_object()->get_system(0).variable_number(var_str);
-            set_variable(var_index);
+            auto keys = Globals::get_keys_by_predicate(
+                Globals::GLOBAL_VARIABLE_INFO_MAP,
+                [var_str](const Globals::VariableInfo &info)
+                {
+                    return info.api_label == var_str;
+                });
+            for (const auto &key : keys)
+            {
+                auto &var_string_name = Globals::GLOBAL_VARIABLE_INFO_MAP.at(key).global_label;
+                if (this->get_parent_object()->get_system(0).has_variable(var_string_name))
+                {
+                    unsigned int var_index = this->get_parent_object()->get_system(0).variable_number(var_string_name);
+                    set_variable(var_index);
+                }
+            }
         }
     }
 
