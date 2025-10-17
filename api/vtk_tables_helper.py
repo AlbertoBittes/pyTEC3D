@@ -44,6 +44,7 @@ class VTKTablesHelper:
     def dicts_to_vtk_field_arrays(mesh, dicts, overwrite=True):
         """
         Converts a list (or single) of dictionaries into vtkArrays and adds them to the mesh's field data.
+        The _size array contains only the total number of values for each entry.
 
         Parameters:
             mesh (vtk.vtkUnstructuredGrid): The mesh to add field data to.
@@ -81,14 +82,12 @@ class VTKTablesHelper:
                 first_value, (str, bytes)
             ):
                 flat_values = []
-                shape_values = []
+                size_values = []
                 offset_values = []
 
-                cursor_shape = 0
+                cursor_offset = 0
                 for d in dicts:
                     arr = np.asarray(d[key], dtype=object)
-                    ndim = arr.ndim
-                    shape = list(arr.shape)
                     elem0 = arr.flat[0] if arr.size > 0 else ""
 
                     # Determine type code
@@ -108,16 +107,9 @@ class VTKTablesHelper:
                         continue
 
                     flat_values.extend(arr_flat)
-
-                    # Store offset for this row
-                    offset_values.append(cursor_shape)
-
-                    # Shape encoding: [type_code, ndim, dim1, dim2, ..., optional string lengths]
-                    shape_entry = [type_code, ndim] + shape
-                    if type_code == 2:
-                        shape_entry += [len(s) for s in arr_flat]
-                    shape_values.extend(shape_entry)
-                    cursor_shape += len(shape_entry)
+                    size_values.append(len(arr_flat))
+                    offset_values.append(cursor_offset)
+                    cursor_offset += len(arr_flat)
 
                 # ---- CREATE VTK ARRAYS ----
                 if not flat_values:
@@ -140,16 +132,16 @@ class VTKTablesHelper:
                     continue
 
                 vtk_flat.SetName(str(key))
-                vtk_shape = vtk.vtkIntArray()
-                vtk_shape.SetName(f"{key}_shape")
-                for s in shape_values:
-                    vtk_shape.InsertNextValue(int(s))
+                vtk_size = vtk.vtkIntArray()
+                vtk_size.SetName(f"{key}_size")
+                for s in size_values:
+                    vtk_size.InsertNextValue(int(s))
                 vtk_offset = vtk.vtkIntArray()
                 vtk_offset.SetName(f"{key}_offset")
                 for o in offset_values:
                     vtk_offset.InsertNextValue(int(o))
 
-                arrays.extend([vtk_flat, vtk_shape, vtk_offset])
+                arrays.extend([vtk_flat, vtk_size, vtk_offset])
                 continue
 
             warnings.warn(f"Unsupported type for key '{key}': {type(first_value)}")
