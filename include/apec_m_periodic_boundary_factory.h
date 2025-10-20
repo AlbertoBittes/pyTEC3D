@@ -17,23 +17,17 @@ using namespace libMesh;
 // Factory to build ApecMPeriodicBoundary from vtkFieldData
 // ------------------------------------------------------
 class ApecMPeriodicBoundaryFactory
-    : public vtkFieldDataFEDataObject<
-          std::unordered_map<unsigned int,
-                             std::vector<std::variant<
-                                 int, Real, std::string,
-                                 std::vector<std::vector<int>>,
-                                 std::vector<std::vector<Real>>,
-                                 std::vector<std::vector<std::string>>>>>>,
+    : public FEDataObjectMap<vtkFieldData>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    explicit ApecMPeriodicBoundaryFactory(EquationSystems *eq_sys = nullptr);
-
-    void populate_intermediate_map_from_vtk(vtkFieldData *field_data) override;
-    void populate_final_map() override;
-    // void broadcast(const libMesh::Parallel::Communicator &comm) override;
+    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFieldData> field_data, EquationSystems *eq_sys = nullptr);
+    // NEW: Populate periodic boundaries directly from stored vtkFieldData
+    void populate_periodic_boundaries_from_map();
 
     const std::vector<ApecMPeriodicBoundary> &get_periodic_boundaries() const;
+
+    void apply_periodic_boundaries();
 
 private:
     std::vector<ApecMPeriodicBoundary> periodic_boundaries;

@@ -80,8 +80,6 @@ public:
 
     vtkUnstructuredGrid *get_vtk_grid();
 
-    void populate_element_types_from_vtk();
-
     std::shared_ptr<FEMDataRepository> get_field_data_repo()
     {
         return field_data_repository;
@@ -141,8 +139,6 @@ private:
     static std::map<ElemMappingType, ElementMaps> _element_maps;
 
     static std::map<ElemMappingType, ElementMaps> build_element_maps();
-
-    void populate_all_fe_data_objects_from_vtk_field_data();
 
     // void broadcast_all_fe_data_objects();
 

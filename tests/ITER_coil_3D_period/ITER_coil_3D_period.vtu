@@ -2,9 +2,6 @@
 <VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
   <UnstructuredGrid>
     <FieldData>
-      <DataArray type="Int32" Name="_dummy_array_" NumberOfTuples="2000" format="binary" RangeMin="0" RangeMax="2000775200">
-        AQAAAACAAABAHwAACgIAAA==eJzt1blOlFEYgOEfbVT2VVSMEzrWYd8Z9k32nVbDwIAxY2ASKtZbMd6CtZ1XIFtlvAYTK6MZlajxuQJz3uY733PKU5x3b/ZX3+dEUSw1dJCd59HPcqLfXcAuYVewa1huzr+WB8uHFcAKYUWwYlgJrBRWBiuHVcBqYLWwOlg9rAHWCIvDmmDNsBZYK6wN1g7rgHXCumDdsB5YL6wP1g9LwAZgg7Ah2DBsBDYKG4ONwyZgk7Ap2FPYNGwGNgubg83DFmCLsCXYMmwFtgpbg63DNmBJ2BZsG5aC7cB2YYewI9gx7AR2CjuD3fk1b/1hd2H3YLmwPFg+rABWCCuCFcNKYKWwMlg5rAJ2H1YJewB7CHsEq4I9hn2AncMuYJewK9g17OY//+vNYfmwAlghrAhWDCuBlcLKYOWwClgNrBZWB6uHNcAaYXFYE6wZ1gJrhbXB2mEdsE5YF6wb1gPrhfXB+mEJ2ABsEDYEG4aNwEZhY7Bx2ARsEjYFewqbhs3AZmFzsHnYAmwRtgRbhq3AVmFrsHXYBiwJ24Jtw1KwHdgu7BB2BDuGncBOYWewaDs5W3U7evLt9dfo46cvlW+zl5uff8zqpsbO6lgm/ao/e2qvjj1PZzLplzdbKvlsM7mX3VqrY1vpdOZmiSf64gfpvRf7qWQyk4hCoVAoFAqFQqFQKBQKhf7bvgM8IVOb
-      </DataArray>
       <DataArray type="Int32" Name="ansys_etype" NumberOfTuples="3" format="binary" RangeMin="21" RangeMax="24">
         AQAAAACAAAAMAAAAEQAAAA==eJwTZWBgEAdiCSAGAAIgAEU=
       </DataArray>
@@ -26,23 +23,23 @@
       <DataArray type="Int32" Name="KEYOPT5" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="0">
         AQAAAACAAAAMAAAACwAAAA==eJxjYEAAAAAMAAE=
       </DataArray>
-      <DataArray type="Int32" Name="main_boundary" NumberOfTuples="3" format="binary" RangeMin="2" RangeMax="4">
-        AQAAAACAAAAMAAAADgAAAA==eJxjYmBgYIFiAABUAAs=
+      <DataArray type="Int32" Name="main_boundary" NumberOfTuples="1" format="binary" RangeMin="3" RangeMax="3">
+        AQAAAACAAAAEAAAADAAAAA==eJxjZmBgAAAAEAAE
       </DataArray>
-      <DataArray type="Int32" Name="paired_boundary" NumberOfTuples="3" format="binary" RangeMin="3" RangeMax="5">
-        AQAAAACAAAAMAAAADgAAAA==eJxjZmBgYIViAABsAA4=
+      <DataArray type="Int32" Name="paired_boundary" NumberOfTuples="1" format="binary" RangeMin="2" RangeMax="2">
+        AQAAAACAAAAEAAAADAAAAA==eJxjYmBgAAAADAAD
       </DataArray>
-      <DataArray type="Float64" Name="periodic_matrix" NumberOfTuples="48" format="binary" RangeMin="-1" RangeMax="1">
-        AQAAAACAAACAAQAAHAAAAA==eJxjYMAGPthjFcYtvh+7OCFAsj3Dzn4An0kPtQ==
+      <DataArray type="Float64" Name="periodic_matrix" NumberOfTuples="16" format="binary" RangeMin="-1" RangeMax="1">
+        AQAAAACAAACAAAAAGQAAAA==eJxjYMAGPthjFcYtvh+7OCHwwR4AQZsFPQ==
       </DataArray>
-      <DataArray type="Int32" Name="periodic_matrix_shape" NumberOfTuples="12" format="binary" RangeMin="0" RangeMax="4">
-        AQAAAACAAAAwAAAAFAAAAA==eJxjYGBgYAJiFihmIMAHAALoAB8=
+      <DataArray type="Int32" Name="periodic_matrix_size" NumberOfTuples="1" format="binary" RangeMin="16" RangeMax="16">
+        AQAAAACAAAAEAAAADAAAAA==eJwTYGBgAAAARAAR
       </DataArray>
-      <DataArray type="Int32" Name="periodic_matrix_offset" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="8">
-        AQAAAACAAAAMAAAAEQAAAA==eJxjYGBgYAFiDiAGAABMAA0=
+      <DataArray type="Int32" Name="periodic_matrix_offset" NumberOfTuples="1" format="binary" RangeMin="0" RangeMax="0">
+        AQAAAACAAAAEAAAADAAAAA==eJxjYGBgAAAABAAB
       </DataArray>
-      <Array type="String" Name="variables" NumberOfTuples="3" format="binary">
-        AQAAAACAAAAJAAAAEQAAAA==eJxzZHBkCPP3CWEAAAiPAcg=
+      <Array type="String" Name="variables" NumberOfTuples="1" format="binary">
+        AQAAAACAAAACAAAACgAAAA==eJxzZAAAAIQAQg==
       </Array>
     </FieldData>
     <Piece NumberOfPoints="429" NumberOfCells="672">
@@ -85,8 +82,8 @@
         <DataArray type="Float64" Name="Az" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
         </DataArray>
-        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
-          AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
+        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAABoDQAALgAAAA==eJztyyEOACAQA8H+nG8jCQLLycsls2ZMm9z2yteq6k9O8jV1T5IkyW4PZHxo0g==
         </DataArray>
         <DataArray type="Float64" Name="EMF" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
@@ -123,8 +120,8 @@
         <DataArray type="UInt8" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAACtAQAADgAAAA==eJxjYBgFQwYAAAGtAAE=
         </DataArray>
-        <DataArray type="UInt8" Name="periodic_boundary" format="binary" RangeMin="0" RangeMax="5">
-          AQAAAACAAACtAQAALQAAAA==eJxjYmJiYgECBqyAiTgAVsuMg2TFQeJSTy2SgQJduPSSCohxDwnuBAATQQD8
+        <DataArray type="UInt8" Name="periodic_boundary" format="binary" RangeMin="0" RangeMax="3">
+          AQAAAACAAACtAQAAIwAAAA==eJxjYoIABqyAiTgAVss8yEgGCnTh0ksqIMY9JLgTAPvmAOw=
         </DataArray>
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==

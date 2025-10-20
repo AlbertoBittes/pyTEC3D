@@ -25,7 +25,7 @@ public:
     ApecMPeriodicBoundary(const boundary_id_type main_b, const boundary_id_type paired_b,
                           const std::vector<std::vector<Real>> &periodic_mtx,
                           TransformationType t = FORWARD,
-                          const std::vector<std::string> &vars = {},
+                          const std::string &var = std::string(),
                           EquationSystems *eq_sys = nullptr
                           //   const std::vector<std::vector<Real>> &vars_trans_mtx,
                           )
@@ -43,6 +43,7 @@ public:
 
         myboundary = main_b;
         pairedboundary = paired_b;
+        variable_cp = var;
 
         if (t == INVERSE)
         {
@@ -51,13 +52,10 @@ public:
             translation_vector = -rotation_matrix * translation_vector;
         }
 
-        if (vars.size() >= 0)
-        {
-            this->set_variables(vars);
-        }
+        this->set_variables();
 
         if (variables.size() == 3)
-            this->set_transformation_matrix(DenseMatrix<Real>(3, 3, {rotation_matrix(0, 0), rotation_matrix(0, 1), rotation_matrix(0, 2), rotation_matrix(1, 0), rotation_matrix(1, 1), rotation_matrix(1, 2), rotation_matrix(2, 0), rotation_matrix(2, 1), rotation_matrix(2, 2)}));
+            this->set_transformation_matrix(DenseMatrix<Real>(3, 3, {rotation_matrix(0, 0), rotation_matrix(1, 0), rotation_matrix(2, 0), rotation_matrix(0, 1), rotation_matrix(1, 1), rotation_matrix(2, 1), rotation_matrix(0, 2), rotation_matrix(1, 2), rotation_matrix(2, 2)}));
     }
 
     ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, TransformationType t = FORWARD)
@@ -67,7 +65,7 @@ public:
                                  {o.rotation_matrix(2, 0), o.rotation_matrix(2, 1), o.rotation_matrix(2, 2), o.translation_vector(2)},
                                  {0, 0, 0, 1}},
                                 t,
-                                {}, // vars
+                                o.variable_cp, // vars
                                 o.get_parent_object())
     {
     }
@@ -82,25 +80,23 @@ public:
         return pt_prime;
     }
 
-    void set_variables(const std::vector<std::string> &vars)
+    void set_variables()
     {
         variables.clear();
-        for (const auto &var_str : vars)
-        {
-            auto keys = Globals::get_keys_by_predicate(
-                Globals::GLOBAL_VARIABLE_INFO_MAP,
-                [var_str](const Globals::VariableInfo &info)
-                {
-                    return info.api_label == var_str;
-                });
-            for (const auto &key : keys)
+
+        auto keys = Globals::get_keys_by_predicate(
+            Globals::GLOBAL_VARIABLE_INFO_MAP,
+            [this](const Globals::VariableInfo &info)
             {
-                auto &var_string_name = Globals::GLOBAL_VARIABLE_INFO_MAP.at(key).global_label;
-                if (this->get_parent_object()->get_system(0).has_variable(var_string_name))
-                {
-                    unsigned int var_index = this->get_parent_object()->get_system(0).variable_number(var_string_name);
-                    set_variable(var_index);
-                }
+                return info.api_label == this->variable_cp;
+            });
+        for (const auto &key : keys)
+        {
+            auto &var_string_name = Globals::GLOBAL_VARIABLE_INFO_MAP.at(key).global_label;
+            if (this->get_parent_object()->get_system(0).has_variable(var_string_name))
+            {
+                unsigned int var_index = this->get_parent_object()->get_system(0).variable_number(var_string_name);
+                set_variable(var_index);
             }
         }
     }
@@ -113,6 +109,7 @@ public:
 private:
     TensorValue<Real> rotation_matrix;
     VectorValue<Real> translation_vector;
+    std::string variable_cp;
 };
 
 #endif // APEC_M_PERIODIC_BOUNDARY_H

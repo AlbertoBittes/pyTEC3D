@@ -288,6 +288,7 @@ void ElementBuilder::build_write_element_matrices_rhs()
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             // this can be moved
+            auto el_id = elem->id();
             main_dof_map->dof_indices(elem, dof_indices);
             // Start logging the shape function initialization.
             // This is done through a simple function call with

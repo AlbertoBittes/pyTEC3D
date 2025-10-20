@@ -3,53 +3,61 @@
 #include <regex>
 #include <iostream>
 
-ElementTypesFactory::ElementTypesFactory()
-    : element_types_map(std::make_shared<ElementTypesMap>())
+ElementTypesFactory::ElementTypesFactory(std::shared_ptr<vtkFieldData> field_data)
+    : FEDataObjectMap<vtkFieldData>(field_data),
+      element_types_map(std::make_shared<ElementTypesMap>())
 {
+    populate_element_types_map();
 }
-
-// --------------------------------------------------------
-// Stage 1: Read field_data arrays
-// --------------------------------------------------------
-void ElementTypesFactory::populate_intermediate_map_from_vtk(vtkFieldData *field_data)
+void ElementTypesFactory::populate_element_types_map()
 {
+    vtkFieldData *field_data = this->get_data_map();
     if (!field_data)
-        libmesh_error_msg("No vtkFieldData provided.");
+        libmesh_error_msg("No vtkFieldData available.");
 
-    std::vector<std::string> array_names = {
-        "ansys_etype",
-        "element_type",
-        "KEYOPT1", "KEYOPT2", "KEYOPT3", "KEYOPT4", "KEYOPT5"};
+    // Get ansys_etype and element_type arrays
+    vtkIntArray *ansys_etype_arr = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
+    vtkStringArray *element_type_arr = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
 
-    this->read_from_vtk_field_data(field_data, array_names);
-}
+    // Collect all KEYOPT arrays and sort them numerically
+    std::vector<std::pair<int, vtkIntArray *>> keyopt_arrays;
+    int num_field_arrays = field_data->GetNumberOfArrays();
+    for (int i = 0; i < num_field_arrays; ++i)
+    {
+        std::string arr_name = field_data->GetArrayName(i);
+        std::smatch match;
+        if (std::regex_match(arr_name, match, std::regex(R"(KEYOPT(\d+))")))
+        {
+            int keyopt_num = std::stoi(match.str(1));
+            vtkIntArray *keyopt_arr = vtkIntArray::SafeDownCast(field_data->GetArray(arr_name.c_str()));
+            if (keyopt_arr)
+                keyopt_arrays.emplace_back(keyopt_num, keyopt_arr);
+        }
+    }
+    std::sort(keyopt_arrays.begin(), keyopt_arrays.end(),
+              [](const auto &a, const auto &b)
+              { return a.first < b.first; });
 
-// --------------------------------------------------------
-// Stage 2: Build final element_types_map
-// --------------------------------------------------------
-void ElementTypesFactory::populate_final_map()
-{
-    auto *intermediate_map = this->get_data_map();
-    if (!intermediate_map)
-        libmesh_error_msg("Intermediate map is empty. Call populate_intermediate_map_from_vtk first.");
+    if (!ansys_etype_arr || !element_type_arr)
+        libmesh_error_msg("Required arrays not found in vtkFieldData.");
+
+    vtkIdType num_rows = ansys_etype_arr->GetNumberOfTuples();
+    if (element_type_arr->GetNumberOfTuples() != num_rows)
+        libmesh_error_msg("Mismatch in number of tuples between ansys_etype and element_type arrays.");
+
+    for (const auto &pair : keyopt_arrays)
+    {
+        if (pair.second->GetNumberOfTuples() != num_rows)
+            libmesh_error_msg("Mismatch in number of tuples in KEYOPT arrays.");
+    }
 
     element_types_map->clear();
 
-    for (const auto &[row_id, fields] : *intermediate_map)
+    for (vtkIdType i = 0; i < num_rows; ++i)
     {
-        if (fields.size() < 2)
-        {
-            libmesh_warning("Row " << row_id << " has too few fields; skipping.");
-            continue;
-        }
+        int ansys_type = ansys_etype_arr->GetValue(i);
+        std::string elem_type_str = element_type_arr->GetValue(i);
 
-        // --- Extract ansys_type ---
-        int ansys_type = std::get<int>(fields[0]);
-
-        // --- Extract element_type string ---
-        std::string elem_type_str = std::get<std::string>(fields[1]);
-
-        // --- Parse numeric element type ---
         std::smatch match;
         int elem_type_number = 0;
         if (std::regex_search(elem_type_str, match, std::regex(R"(\d+)")))
@@ -57,38 +65,17 @@ void ElementTypesFactory::populate_final_map()
         else
             libmesh_warning("Failed to extract element type number from: " << elem_type_str);
 
-        // --- Build KEYOPT vector ---
         std::vector<unsigned int> keyopts;
         keyopts.push_back(static_cast<unsigned int>(elem_type_number));
+        for (const auto &pair : keyopt_arrays)
+            keyopts.push_back(static_cast<unsigned int>(pair.second->GetValue(i)));
 
-        for (size_t i = 2; i < fields.size(); ++i)
-        {
-            if (std::holds_alternative<int>(fields[i]))
-                keyopts.push_back(static_cast<unsigned int>(std::get<int>(fields[i])));
-            else
-                keyopts.push_back(0);
-        }
-
-        // --- Construct and store ElementType ---
         element_types_map->emplace(ansys_type,
                                    ElementTypesFactory::create_element_type(
                                        static_cast<ElementTypeEnum>(elem_type_number),
                                        keyopts));
     }
 }
-
-// --------------------------------------------------------
-// Broadcast intermediate data map
-// --------------------------------------------------------
-// void ElementTypesFactory::broadcast(const libMesh::Parallel::Communicator &comm)
-// {
-//     comm.broadcast<std::unordered_map<unsigned int,
-//                                       std::vector<std::variant<
-//                                           int, Real, std::string,
-//                                           std::vector<std::vector<int>>,
-//                                           std::vector<std::vector<Real>>,
-//                                           std::vector<std::vector<std::string>>>>>>(*get_data_map());
-// }
 
 // --------------------------------------------------------
 // ElementType lookup
@@ -149,13 +136,3 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
         libmesh_error_msg("Unknown element type");
     }
 }
-
-template class vtkFieldDataFEDataObject<
-    std::unordered_map<unsigned int,
-                       std::vector<std::variant<
-                           int,
-                           Real,
-                           std::string,
-                           std::vector<std::vector<int>>,
-                           std::vector<std::vector<Real>>,
-                           std::vector<std::vector<std::string>>>>>>;

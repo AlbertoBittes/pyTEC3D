@@ -31,7 +31,6 @@ public:
 
     void set_transient_effects();
     void set_systems();
-    void set_model_data(std::shared_ptr<FEMDataRepository> field_data_repo);
     void check_constrained_dofs();
     void set_load_step_data();
     void set_solver_settings();

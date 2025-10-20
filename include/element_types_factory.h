@@ -5,30 +5,16 @@
 #include "fe_data_object.h"
 #include <regex>
 #include <variant>
+#include <vtkFieldData.h>
 
 // -----------------------------
 // Factory to build ElementTypes from vtkFieldData
 // -----------------------------
-class ElementTypesFactory
-    : public vtkFieldDataFEDataObject<
-          std::unordered_map<unsigned int,
-                             std::vector<std::variant<
-                                 int, Real, std::string,
-                                 std::vector<std::vector<int>>,
-                                 std::vector<std::vector<Real>>,
-                                 std::vector<std::vector<std::string>>>>>>
+class ElementTypesFactory : public FEDataObjectMap<vtkFieldData>
 {
 public:
-    ElementTypesFactory();
-
-    // Stage 1 — populate intermediate data_map
-    void populate_intermediate_map_from_vtk(vtkFieldData *field_data) override;
-
-    // Stage 2 — populate final element_types_map
-    void populate_final_map() override;
-
-    // Broadcast intermediate map
-    // void broadcast(const libMesh::Parallel::Communicator &comm) override;
+    // Constructor: copies field data and populates element_types_map
+    explicit ElementTypesFactory(std::shared_ptr<vtkFieldData> field_data);
 
     // Accessors
     inline ElementTypesMap *get_element_types_map() const { return element_types_map.get(); }
@@ -44,6 +30,9 @@ public:
 
 private:
     std::shared_ptr<ElementTypesMap> element_types_map;
+
+    // Populates element_types_map from the copied data_map
+    void populate_element_types_map();
 };
 
 #endif // ELEMENT_TYPES_FACTORY_H

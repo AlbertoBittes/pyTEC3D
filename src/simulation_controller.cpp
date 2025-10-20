@@ -194,18 +194,6 @@ void SimulationController::set_boundary_info(const std::set<std::string> &bc_arr
     return;
 }
 
-void SimulationController::set_model_data(std::shared_ptr<FEMDataRepository> field_data_repo)
-{
-    const auto &objects = field_data_repo->get_all_objects();
-    for (const auto &[type_idx, obj_ptr] : objects)
-    {
-        // Deduce the actual type of the object
-        using ThisType = std::remove_cv_t<std::remove_reference_t<decltype(*obj_ptr)>>;
-        apec_m_model_data->set_object<ThisType>(
-            std::static_pointer_cast<ThisType>(obj_ptr));
-    }
-}
-
 void SimulationController::generate_infinite_elements()
 {
     auto mesh = apec_m_model_data->get_object<ApecMMesh>();
@@ -249,7 +237,11 @@ void SimulationController::set_systems()
 {
     libMesh::out << "Building system of equations..." << std::endl;
 
+    Real tol = equation_systems->parameters.get<Real>("linear solver tolerance");
+    unsigned int max_iter = equation_systems->parameters.get<unsigned int>("linear solver maximum iterations");
     equation_systems->clear();
+    equation_systems->parameters.set<Real>("linear solver tolerance") = tol;
+    equation_systems->parameters.set<unsigned int>("linear solver maximum iterations") = max_iter;
     System *systems[Globals::NUM_SYSTEMS] = {nullptr};
 
     libMesh::out << "Checking system options..." << std::endl;
@@ -285,13 +277,17 @@ void SimulationController::read_mesh()
     MeshCommunication().broadcast(*mesh);
     MeshTools::Modification::orient_elements(*mesh);
 
-    this->set_model_data(vtkio.get_field_data_repo());
+    apec_m_model_data->add_all_from(vtkio.get_field_data_repo());
 
     this->generate_infinite_elements();
 
     this->set_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
 
     this->set_systems();
+
+    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->set_parent_object(equation_systems.get());
+    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->populate_periodic_boundaries_from_map();
+    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->apply_periodic_boundaries();
 
     // Partition after generating infinite elems
     libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
@@ -361,6 +357,7 @@ void SimulationController::solve()
 
         system.compute_solution_time_derivative(substep);
 
+        system.get_dof_map().enforce_constraints_exactly(system);
         system.rhs->zero();
 
         // system.get_linear_solver()->print_converged_reason();

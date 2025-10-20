@@ -45,14 +45,6 @@ public:
 
 inline FEDataObjectAbstract::~FEDataObjectAbstract() {}
 
-class vtkFieldDataFEDataObjectBase : public virtual FEDataObjectAbstract
-{
-public:
-    virtual void populate_intermediate_map_from_vtk(vtkFieldData *field_data) {};
-    virtual void populate_final_map() {};
-    virtual ~vtkFieldDataFEDataObjectBase() = default;
-};
-
 class ApecMMesh : public Mesh, public FEDataObjectAbstract
 {
 public:
@@ -64,7 +56,7 @@ public:
 };
 
 template <typename T1>
-class FEDataObjectMap : public virtual FEDataObjectAbstract
+class FEDataObjectMap : public FEDataObjectAbstract
 {
 public:
     // Virtual destructor for proper cleanup of derived classes
@@ -101,6 +93,9 @@ protected:
     FEDataObjectMap(std::shared_ptr<T1> external_map)
         : data_map(external_map) {}
 
+    // NEW: Constructor that copies from an external map
+    FEDataObjectMap(const T1 &external_map)
+        : data_map(std::make_shared<T1>(external_map)) {}
     // // NEW: Constructor that receives an external map and a file, sets the map and calls read_data
     // FEDataObjectMap(std::ifstream &file, std::shared_ptr<T1> external_map)
     //     : data_map(external_map)
@@ -193,214 +188,214 @@ public:
 template class DataframeMapFEDataObject<int>;
 template class DataframeMapFEDataObject<Real>;
 
-template <typename TMap>
-class vtkFieldDataFEDataObject : public FEDataObjectMap<TMap>, public vtkFieldDataFEDataObjectBase
-{
-public:
-    using VariantType = std::variant<
-        int,
-        Real,
-        std::string,
-        std::vector<int>,
-        std::vector<Real>,
-        std::vector<std::string>>;
+// template <typename TMap>
+// class vtkFieldDataFEDataObject : public FEDataObjectMap<TMap>, public vtkFieldDataFEDataObjectBase
+// {
+// public:
+//     using VariantType = std::variant<
+//         int,
+//         Real,
+//         std::string,
+//         std::vector<int>,
+//         std::vector<Real>,
+//         std::vector<std::string>>;
 
-    vtkFieldDataFEDataObject() = default;
-    virtual ~vtkFieldDataFEDataObject() = default;
+//     vtkFieldDataFEDataObject() = default;
+//     virtual ~vtkFieldDataFEDataObject() = default;
 
-    void read_from_vtk_field_data(
-        vtkFieldData *field_data, const std::vector<std::string> &field_names)
-    {
-        if (!field_data)
-            libmesh_error_msg("vtkFieldDataFEDataObject::read_from_vtk_field_data: null vtkFieldData.");
+//     void read_from_vtk_field_data(
+//         vtkFieldData *field_data, const std::vector<std::string> &field_names)
+//     {
+//         if (!field_data)
+//             libmesh_error_msg("vtkFieldDataFEDataObject::read_from_vtk_field_data: null vtkFieldData.");
 
-        vtkIdType num_rows = 0;
-        if (!field_names.empty())
-        {
-            auto *arr = field_data->GetAbstractArray(field_names.front().c_str());
-            if (arr)
-                num_rows = arr->GetNumberOfTuples();
-        }
+//         vtkIdType num_rows = 0;
+//         if (!field_names.empty())
+//         {
+//             auto *arr = field_data->GetAbstractArray(field_names.front().c_str());
+//             if (arr)
+//                 num_rows = arr->GetNumberOfTuples();
+//         }
 
-        auto &data_map = *(this->data_map);
-        data_map.clear();
-        data_map.reserve(static_cast<size_t>(num_rows));
+//         auto &data_map = *(this->data_map);
+//         data_map.clear();
+//         data_map.reserve(static_cast<size_t>(num_rows));
 
-        for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-            data_map.emplace(irow, typename TMap::mapped_type{});
+//         for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//             data_map.emplace(irow, typename TMap::mapped_type{});
 
-        for (const auto &base_name : field_names)
-        {
-            vtkAbstractArray *val_array = field_data->GetAbstractArray(base_name.c_str());
-            vtkIntArray *shape_array = vtkIntArray::SafeDownCast(
-                field_data->GetAbstractArray((base_name + "_shape").c_str()));
-            vtkIntArray *offset_array = vtkIntArray::SafeDownCast(
-                field_data->GetAbstractArray((base_name + "_offset").c_str()));
+//         for (const auto &base_name : field_names)
+//         {
+//             vtkAbstractArray *val_array = field_data->GetAbstractArray(base_name.c_str());
+//             vtkIntArray *shape_array = vtkIntArray::SafeDownCast(
+//                 field_data->GetAbstractArray((base_name + "_shape").c_str()));
+//             vtkIntArray *offset_array = vtkIntArray::SafeDownCast(
+//                 field_data->GetAbstractArray((base_name + "_offset").c_str()));
 
-            if (!val_array)
-            {
-                libmesh_warning("Field '" << base_name << "' not found — skipping.");
-                continue;
-            }
+//             if (!val_array)
+//             {
+//                 libmesh_warning("Field '" << base_name << "' not found — skipping.");
+//                 continue;
+//             }
 
-            // --------------------------
-            // SCALAR FIELDS
-            // --------------------------
-            if (!shape_array || !offset_array)
-            {
-                if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
-                {
-                    for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-                        data_map[irow].emplace_back(int_arr->GetValue(irow));
-                }
-                else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
-                {
-                    for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-                        data_map[irow].emplace_back(dbl_arr->GetValue(irow));
-                }
-                else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
-                {
-                    for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-                        data_map[irow].emplace_back(std::string(str_arr->GetValue(irow)));
-                }
-                else
-                {
-                    libmesh_error_msg("Unsupported scalar array type for field '" << base_name << "'.");
-                }
-                continue;
-            }
+//             // --------------------------
+//             // SCALAR FIELDS
+//             // --------------------------
+//             if (!shape_array || !offset_array)
+//             {
+//                 if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
+//                 {
+//                     for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//                         data_map[irow].emplace_back(int_arr->GetValue(irow));
+//                 }
+//                 else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
+//                 {
+//                     for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//                         data_map[irow].emplace_back(dbl_arr->GetValue(irow));
+//                 }
+//                 else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
+//                 {
+//                     for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//                         data_map[irow].emplace_back(std::string(str_arr->GetValue(irow)));
+//                 }
+//                 else
+//                 {
+//                     libmesh_error_msg("Unsupported scalar array type for field '" << base_name << "'.");
+//                 }
+//                 continue;
+//             }
 
-            // --------------------------
-            // ITERABLE FIELDS
-            // --------------------------
-            read_iterable_field(data_map, val_array, shape_array, offset_array, num_rows, base_name);
-        }
-    }
+//             // --------------------------
+//             // ITERABLE FIELDS
+//             // --------------------------
+//             read_iterable_field(data_map, val_array, shape_array, offset_array, num_rows, base_name);
+//         }
+//     }
 
-    virtual void populate_final_map() {};
+//     virtual void populate_final_map() {};
 
-private:
-    // Helper: read iterable fields
-    void read_iterable_field(
-        TMap &data_map,
-        vtkAbstractArray *val_array,
-        vtkIntArray *shape_array,
-        vtkIntArray *offset_array,
-        vtkIdType num_rows,
-        const std::string &base_name)
-    {
-        const int *shape_data = shape_array->GetPointer(0);
-        const int *offset_data = offset_array->GetPointer(0);
+// private:
+//     // Helper: read iterable fields
+//     void read_iterable_field(
+//         TMap &data_map,
+//         vtkAbstractArray *val_array,
+//         vtkIntArray *shape_array,
+//         vtkIntArray *offset_array,
+//         vtkIdType num_rows,
+//         const std::string &base_name)
+//     {
+//         const int *shape_data = shape_array->GetPointer(0);
+//         const int *offset_data = offset_array->GetPointer(0);
 
-        // Integers
-        if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
-        {
-            const int *vals = int_arr->GetPointer(0);
-            vtkIdType cursor = 0;
-            for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-            {
-                int shape_start = offset_data[irow];
-                int ndim = shape_data[shape_start];
+//         // Integers
+//         if (auto *int_arr = vtkIntArray::SafeDownCast(val_array))
+//         {
+//             const int *vals = int_arr->GetPointer(0);
+//             vtkIdType cursor = 0;
+//             for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//             {
+//                 int shape_start = offset_data[irow];
+//                 int ndim = shape_data[shape_start];
 
-                std::vector<int> dims(ndim);
-                vtkIdType total_elems = 1;
-                for (int j = 0; j < ndim; ++j)
-                {
-                    dims[j] = shape_data[shape_start + 1 + j];
-                    total_elems *= dims[j];
-                }
+//                 std::vector<int> dims(ndim);
+//                 vtkIdType total_elems = 1;
+//                 for (int j = 0; j < ndim; ++j)
+//                 {
+//                     dims[j] = shape_data[shape_start + 1 + j];
+//                     total_elems *= dims[j];
+//                 }
 
-                std::vector<int> flat(vals + cursor, vals + cursor + total_elems);
-                cursor += total_elems;
-                // FIX: wrap flat in a vector of vectors
-                data_map[irow].emplace_back(std::vector<std::vector<int>>{flat});
-            }
-        }
-        // Doubles
-        else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
-        {
-            const double *vals = dbl_arr->GetPointer(0);
-            vtkIdType cursor = 0;
-            for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-            {
-                int shape_start = offset_data[irow];
-                int ndim = shape_data[shape_start];
+//                 std::vector<int> flat(vals + cursor, vals + cursor + total_elems);
+//                 cursor += total_elems;
+//                 // FIX: wrap flat in a vector of vectors
+//                 data_map[irow].emplace_back(std::vector<std::vector<int>>{flat});
+//             }
+//         }
+//         // Doubles
+//         else if (auto *dbl_arr = vtkDoubleArray::SafeDownCast(val_array))
+//         {
+//             const double *vals = dbl_arr->GetPointer(0);
+//             vtkIdType cursor = 0;
+//             for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//             {
+//                 int shape_start = offset_data[irow];
+//                 int ndim = shape_data[shape_start];
 
-                std::vector<int> dims(ndim);
-                vtkIdType total_elems = 1;
-                for (int j = 0; j < ndim; ++j)
-                {
-                    dims[j] = shape_data[shape_start + 1 + j];
-                    total_elems *= dims[j];
-                }
+//                 std::vector<int> dims(ndim);
+//                 vtkIdType total_elems = 1;
+//                 for (int j = 0; j < ndim; ++j)
+//                 {
+//                     dims[j] = shape_data[shape_start + 1 + j];
+//                     total_elems *= dims[j];
+//                 }
 
-                std::vector<double> flat(vals + cursor, vals + cursor + total_elems);
-                cursor += total_elems;
-                // FIX: wrap flat in a vector of vectors
-                data_map[irow].emplace_back(std::vector<std::vector<Real>>{flat});
-            }
-        }
-        // Strings
-        else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
-        {
-            vtkIdType cursor = 0;
-            for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
-            {
-                int shape_start = offset_data[irow];
-                int ndim = shape_data[shape_start];
+//                 std::vector<double> flat(vals + cursor, vals + cursor + total_elems);
+//                 cursor += total_elems;
+//                 // FIX: wrap flat in a vector of vectors
+//                 data_map[irow].emplace_back(std::vector<std::vector<Real>>{flat});
+//             }
+//         }
+//         // Strings
+//         else if (auto *str_arr = vtkStringArray::SafeDownCast(val_array))
+//         {
+//             vtkIdType cursor = 0;
+//             for (unsigned int irow = 0; irow < static_cast<unsigned int>(num_rows); ++irow)
+//             {
+//                 int shape_start = offset_data[irow];
+//                 int ndim = shape_data[shape_start];
 
-                std::vector<int> dims(ndim);
-                vtkIdType total_elems = 1;
-                for (int j = 0; j < ndim; ++j)
-                {
-                    dims[j] = shape_data[shape_start + 1 + j];
-                    total_elems *= dims[j];
-                }
+//                 std::vector<int> dims(ndim);
+//                 vtkIdType total_elems = 1;
+//                 for (int j = 0; j < ndim; ++j)
+//                 {
+//                     dims[j] = shape_data[shape_start + 1 + j];
+//                     total_elems *= dims[j];
+//                 }
 
-                std::vector<std::string> flat;
-                flat.reserve(total_elems);
-                for (vtkIdType k = 0; k < total_elems; ++k)
-                    flat.emplace_back(str_arr->GetValue(cursor++));
-                // FIX: wrap flat in a vector of vectors
-                data_map[irow].emplace_back(std::vector<std::vector<std::string>>{flat});
-            }
-        }
-        else
-        {
-            libmesh_error_msg("Unsupported iterable array type for field '" + base_name + "'.");
-        }
-    }
+//                 std::vector<std::string> flat;
+//                 flat.reserve(total_elems);
+//                 for (vtkIdType k = 0; k < total_elems; ++k)
+//                     flat.emplace_back(str_arr->GetValue(cursor++));
+//                 // FIX: wrap flat in a vector of vectors
+//                 data_map[irow].emplace_back(std::vector<std::vector<std::string>>{flat});
+//             }
+//         }
+//         else
+//         {
+//             libmesh_error_msg("Unsupported iterable array type for field '" + base_name + "'.");
+//         }
+//     }
 
-    // Helper: flatten reshaping (currently unused but can be extended)
-    template <typename T>
-    static std::vector<std::vector<T>> reshape(
-        const std::vector<T> &flat,
-        const std::vector<int> &dims,
-        size_t level,
-        size_t offset)
-    {
-        if (dims.empty())
-            return {};
+//     // Helper: flatten reshaping (currently unused but can be extended)
+//     template <typename T>
+//     static std::vector<std::vector<T>> reshape(
+//         const std::vector<T> &flat,
+//         const std::vector<int> &dims,
+//         size_t level,
+//         size_t offset)
+//     {
+//         if (dims.empty())
+//             return {};
 
-        if (level == dims.size() - 1)
-        {
-            std::vector<std::vector<T>> leaf;
-            size_t chunk = flat.size() / dims[level];
-            for (int i = 0; i < dims[level]; ++i)
-                leaf.emplace_back(flat.begin() + offset + i * chunk,
-                                  flat.begin() + offset + (i + 1) * chunk);
-            return leaf;
-        }
+//         if (level == dims.size() - 1)
+//         {
+//             std::vector<std::vector<T>> leaf;
+//             size_t chunk = flat.size() / dims[level];
+//             for (int i = 0; i < dims[level]; ++i)
+//                 leaf.emplace_back(flat.begin() + offset + i * chunk,
+//                                   flat.begin() + offset + (i + 1) * chunk);
+//             return leaf;
+//         }
 
-        size_t stride = flat.size() / dims[level];
-        std::vector<std::vector<T>> result;
-        for (int i = 0; i < dims[level]; ++i)
-        {
-            auto sub = reshape(flat, dims, level + 1, offset + i * stride);
-            result.insert(result.end(), sub.begin(), sub.end());
-        }
-        return result;
-    }
-};
+//         size_t stride = flat.size() / dims[level];
+//         std::vector<std::vector<T>> result;
+//         for (int i = 0; i < dims[level]; ++i)
+//         {
+//             auto sub = reshape(flat, dims, level + 1, offset + i * stride);
+//             result.insert(result.end(), sub.begin(), sub.end());
+//         }
+//         return result;
+//     }
+// };
 
 #endif // FE_DATA_OBJECT_H

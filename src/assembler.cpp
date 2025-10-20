@@ -156,8 +156,9 @@ void AssemblerLinear::assemble()
             if (time_substep->get_transient_effect())
                 Ke += Ce;
 
-            dof_map.constrain_element_matrix(Ke, dof_indices);
-            matrix.add_matrix(Ke, dof_indices);
+            auto dof_indices_buf = dof_indices;
+            dof_map.constrain_element_matrix(Ke, dof_indices_buf);
+            matrix.add_matrix(Ke, dof_indices_buf);
         }
 
         elem_builder->read_element_vectors(*rhs_input_file, 0);

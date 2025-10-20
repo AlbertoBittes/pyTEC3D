@@ -50,6 +50,16 @@ public:
         return data_objects;
     }
 
+    void add_all_from(std::shared_ptr<FEMDataRepository> other)
+    {
+        if (!other)
+            return;
+        for (const auto &pair : other->get_all_objects())
+        {
+            data_objects[pair.first] = pair.second;
+        }
+    }
+
 protected:
     std::unordered_map<std::type_index, std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };

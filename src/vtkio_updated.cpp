@@ -355,10 +355,12 @@ void VTKIO_Updated::read(const std::string &name)
                                  << "D support.");
 #endif // LIBMESH_DIM < 3
     }
-    field_data_repository->set_object(std::make_shared<ElementTypesFactory>());
-    field_data_repository->set_object(std::make_shared<ApecMPeriodicBoundaryFactory>());
+    auto field_data_ptr = std::shared_ptr<vtkFieldData>(_vtk_grid->GetFieldData(), [](vtkFieldData *) { /* no-op deleter */ });
 
-    this->populate_all_fe_data_objects_from_vtk_field_data();
+    auto element_types_factory = std::make_shared<ElementTypesFactory>(field_data_ptr);
+    auto periodic_boundary_factory = std::make_shared<ApecMPeriodicBoundaryFactory>(field_data_ptr);
+    field_data_repository->set_object<ElementTypesFactory>(element_types_factory);
+    field_data_repository->set_object<ApecMPeriodicBoundaryFactory>(periodic_boundary_factory);
 }
 
 // Add the integers from the VTK file to the mesh
@@ -904,27 +906,6 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
 //         obj_ptr->broadcast(comm);
 //     }
 // }
-
-void VTKIO_Updated::populate_all_fe_data_objects_from_vtk_field_data()
-{
-    if (!field_data_repository)
-        libmesh_error_msg("No field_data_repository available.");
-
-    vtkFieldData *field_data = _vtk_grid->GetFieldData();
-    if (!field_data)
-        libmesh_error_msg("No vtkFieldData available in VTK grid.");
-
-    const auto &objects = field_data_repository->get_all_objects();
-    for (const auto &[type_idx, obj_ptr] : objects)
-    {
-        auto *vtk_obj = dynamic_cast<vtkFieldDataFEDataObjectBase *>(obj_ptr.get());
-        if (vtk_obj)
-        {
-            vtk_obj->populate_intermediate_map_from_vtk(field_data);
-            vtk_obj->populate_final_map();
-        }
-    }
-}
 
 void VTKIO_Updated::merge_vector_components(bool is_point_data)
 {

@@ -1,92 +1,78 @@
 #include "apec_m_periodic_boundary_factory.h"
 #include "globals.h"
+#include "libmesh/dof_map.h"
 
-ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(EquationSystems *eq_sys)
-    : FEParentObjectBase<EquationSystems>(eq_sys)
+ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFieldData> field_data, EquationSystems *eq_sys)
+    : FEDataObjectMap<vtkFieldData>(field_data),
+      FEParentObjectBase<EquationSystems>(eq_sys)
 {
+    if (eq_sys)
+        this->populate_periodic_boundaries_from_map();
 }
 
-// --------------------------------------------------------
-// Stage 1: Populate intermediate map
-// --------------------------------------------------------
-void ApecMPeriodicBoundaryFactory::populate_intermediate_map_from_vtk(vtkFieldData *field_data)
+void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
 {
+    vtkFieldData *field_data = this->get_data_map();
     if (!field_data)
-        libmesh_error_msg("No vtkFieldData provided.");
-
-    std::vector<std::string> array_names = {
-        "main_boundary",
-        "paired_boundary",
-        "periodic_matrix",
-        "variables",
-        "variables_transformation_matrix"};
-
-    this->read_from_vtk_field_data(field_data, array_names);
-}
-
-// --------------------------------------------------------
-// Stage 2: Populate final periodic boundary objects
-// --------------------------------------------------------
-void ApecMPeriodicBoundaryFactory::populate_final_map()
-{
-    auto *intermediate_map = this->get_data_map();
-    if (!intermediate_map)
-        libmesh_error_msg("Intermediate map is empty. Call populate_intermediate_map_from_vtk first.");
+        libmesh_error_msg("No vtkFieldData stored in the factory.");
 
     periodic_boundaries.clear();
 
-    for (const auto &[row_id, fields] : *intermediate_map)
+    // Arrays for boundaries
+    auto *main_boundary_arr = field_data->GetAbstractArray("main_boundary");
+    auto *paired_boundary_arr = field_data->GetAbstractArray("paired_boundary");
+
+    // Arrays for periodic matrix (flattened)
+    auto *periodic_matrix_arr = vtkDoubleArray::SafeDownCast(field_data->GetAbstractArray("periodic_matrix"));
+    auto *periodic_matrix_size = vtkIntArray::SafeDownCast(field_data->GetAbstractArray("periodic_matrix_size"));
+    auto *periodic_matrix_offset = vtkIntArray::SafeDownCast(field_data->GetAbstractArray("periodic_matrix_offset"));
+
+    // Array for variables (single string per row)
+    auto *variables_arr = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("variables"));
+
+    if (!main_boundary_arr || !paired_boundary_arr ||
+        !periodic_matrix_arr || !periodic_matrix_size || !periodic_matrix_offset ||
+        !variables_arr)
+        libmesh_error_msg("Required arrays not found in vtkFieldData.");
+
+    vtkIdType num_rows = main_boundary_arr->GetNumberOfTuples();
+
+    for (vtkIdType i = 0; i < num_rows; ++i)
     {
-        if (fields.size() < 4)
-        {
-            libmesh_warning("Row " << row_id << " incomplete, skipping.");
-            continue;
-        }
+        boundary_id_type main_boundary = static_cast<boundary_id_type>(main_boundary_arr->GetVariantValue(i).ToInt());
+        boundary_id_type paired_boundary = static_cast<boundary_id_type>(paired_boundary_arr->GetVariantValue(i).ToInt());
 
-        boundary_id_type main_boundary = static_cast<boundary_id_type>(std::get<int>(fields[0]));
-        boundary_id_type paired_boundary = static_cast<boundary_id_type>(std::get<int>(fields[1]));
-        const auto &periodic_matrix = std::get<std::vector<std::vector<Real>>>(fields[2]);
-        const auto &variables = std::get<std::vector<std::vector<std::string>>>(fields[3])[0];
-        std::vector<std::vector<Real>> variables_transformation_matrix;
+        // --- PERIODIC MATRIX (flattened, with size/offset) ---
+        int pm_size = periodic_matrix_size->GetValue(i); // should be 16 for 4x4
+        int pm_offset = periodic_matrix_offset->GetValue(i);
 
-        if (fields.size() > 4 && std::holds_alternative<std::vector<std::vector<Real>>>(fields[4]))
-            variables_transformation_matrix = std::get<std::vector<std::vector<Real>>>(fields[4]);
+        std::vector<std::vector<Real>> periodic_matrix(4, std::vector<Real>(4));
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                periodic_matrix[r][c] = periodic_matrix_arr->GetValue(pm_offset + r * 4 + c);
 
-        ApecMPeriodicBoundary boundary(main_boundary, paired_boundary, periodic_matrix,
-                                       PeriodicBoundaryBase::FORWARD,
-                                       variables, this->get_parent_object());
+        // --- VARIABLES (single string per row) ---
+        std::string variable = variables_arr->GetValue(i);
 
-        periodic_boundaries.push_back(std::move(boundary));
+        // Construct boundary
+        periodic_boundaries.emplace_back(
+            main_boundary, paired_boundary, periodic_matrix,
+            PeriodicBoundaryBase::FORWARD,
+            variable,
+            this->get_parent_object());
     }
 }
 
-// --------------------------------------------------------
-// Broadcast data
-// --------------------------------------------------------
-// void ApecMPeriodicBoundaryFactory::broadcast(const libMesh::Parallel::Communicator &comm)
-// {
-//     comm.broadcast<std::unordered_map<unsigned int,
-//                                       std::vector<std::variant<
-//                                           int, Real, std::string,
-//                                           std::vector<std::vector<int>>,
-//                                           std::vector<std::vector<Real>>,
-//                                           std::vector<std::vector<std::string>>>>>>(*get_data_map());
-// }
-
-// --------------------------------------------------------
-// Getter
-// --------------------------------------------------------
-const std::vector<ApecMPeriodicBoundary> &ApecMPeriodicBoundaryFactory::get_periodic_boundaries() const
+void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
 {
-    return periodic_boundaries;
-}
+    EquationSystems *eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        libmesh_error_msg("No EquationSystems associated with ApecMPeriodicBoundaryFactory.");
 
-template class vtkFieldDataFEDataObject<
-    std::unordered_map<unsigned int,
-                       std::vector<std::variant<
-                           int,
-                           Real,
-                           std::string,
-                           std::vector<std::vector<int>>,
-                           std::vector<std::vector<Real>>,
-                           std::vector<std::vector<std::string>>>>>>;
+    DofMap &dof_map = eq_sys->get_system(0).get_dof_map();
+
+    for (const auto &pb : periodic_boundaries)
+    {
+        dof_map.add_periodic_boundary(pb);
+    }
+}
