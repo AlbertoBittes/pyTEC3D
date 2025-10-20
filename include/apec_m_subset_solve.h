@@ -1,4 +1,5 @@
-
+#ifndef APEC_M_SUBSET_SOLVE_H
+#define APEC_M_SUBSET_SOLVE_H
 
 #include <libmesh/system.h>
 #include <libmesh/equation_systems.h>
@@ -11,108 +12,119 @@
 #include "time_step.h"
 
 using namespace libMesh;
+// Local Includes
+#include "libmesh/system_subset.h"
+#include "libmesh/id_types.h"
+#include "libmesh/parallel_object.h"
 
-class ApecMSubset : public SystemSubsetBySubdomain
+// C++ includes
+#include <cstddef>
+#include <set>
+
+// Forward Declarations
+
+class ApecMSubset : public SystemSubset,
+                    public ParallelObject
 {
 public:
-    using SystemSubsetBySubdomain::SystemSubsetBySubdomain; // Inherit constructors
-
-    // void set_tree_gauge()
-    // {
-    //     // apply tree-cotree gauge
-    //     const EquationSystems &equation_systems = this->get_system().get_equation_systems();
-    //     const MeshBase &mesh = equation_systems.get_mesh();
-
-    //     if (equation_systems.has_system("SupportSystem"))
-    //     {
-    //         const System &tree_cotree_gauge_system = equation_systems.get_system<System>("SupportSystem");
-    //         if (tree_cotree_gauge_system.has_variable("TREE"))
-    //         {
-    //             unsigned int az_var_num = this->get_system().variable_number("Az");
-    //             unsigned int main_sys_num = this->get_system().number();
-    //             unsigned int tree_sys_num = tree_cotree_gauge_system.number();
-    //             unsigned int tree_var_num = tree_cotree_gauge_system.variable_number("TREE");
-    //             NumericVector<Number> &tree_cotree_gauge = *tree_cotree_gauge_system.current_local_solution;
-
-    //             // Collect DOF ids to remove
-    //             std::vector<unsigned int> to_remove;
-    //             for (auto node_ptr : mesh.local_node_ptr_range())
-    //             {
-    //                 if (node_ptr->n_dofs(tree_sys_num, tree_var_num) > 0)
-    //                 {
-    //                     dof_id_type tree_dof_id = node_ptr->dof_number(tree_sys_num, tree_var_num, 0);
-    //                     Real value = tree_cotree_gauge(tree_dof_id);
-    //                     if (value > 0.5)
-    //                     {
-    //                         dof_id_type az_dof_id = node_ptr->dof_number(main_sys_num, az_var_num, 0);
-    //                         to_remove.push_back(az_dof_id);
-    //                     }
-    //                 }
-    //             }
-    //             // Remove the constrained ids from _dof_ids
-    //             auto &dof_ids_vec = this->_dof_ids;
-    //             libMesh::out << "Setting tree gauge on " << to_remove.size() << " DOFs" << std::endl;
-    //             dof_ids_vec.erase(
-    //                 std::remove_if(
-    //                     dof_ids_vec.begin(),
-    //                     dof_ids_vec.end(),
-    //                     [&to_remove](unsigned int id)
-    //                     {
-    //                         return std::find(to_remove.begin(), to_remove.end(), id) != to_remove.end();
-    //                     }),
-    //                 dof_ids_vec.end());
-    //         }
-    //     }
-    // }
-    // Static factory method to create the subset if needed
-    static ApecMSubset *create(ApecMLinearSystem &system)
+    ApecMSubset(const System &system) : SystemSubset(system),
+                                        ParallelObject(system),
+                                        _dof_ids()
     {
-        // Get mesh and equation systems from system
-        EquationSystems &equation_systems = system.get_equation_systems();
+        this->init();
+    };
 
-        bool has_volt = system.has_variable("VOLT");
-        bool transient_effect = system.get_assembler()->context<TimeStep>()->get_transient_effect();
+    virtual ~ApecMSubset() = default;
 
-        // Retrieve ElementTypesFactory from system context
-        auto element_type_factory = system.context<ElementTypesFactory>();
-        if (!element_type_factory)
-            return nullptr;
+    inline virtual const std::vector<unsigned int> &dof_ids() const override
+    {
+        return _dof_ids;
+    };
 
-        // Collect subdomains from element_type_factory
-        std::set<subdomain_id_type> subdomains;
-        for (const auto &pair : *element_type_factory->get_element_types_map())
+    void init()
+    {
+        _dof_ids.clear();
+
+        std::vector<std::vector<dof_id_type>> dof_ids_per_processor(this->n_processors());
+        std::vector<std::vector<dof_id_type>> constrained_dof_ids_per_processor(this->n_processors());
+
+        const DofMap &dof_map = _system.get_dof_map();
+        // std::vector<dof_id_type> dof_indices;
+
+        for (auto it = dof_map.constraint_rows_begin(); it != dof_map.constraint_rows_end(); ++it)
         {
-            subdomains.insert(pair.first);
+            // 'it' is a DofConstraints::const_iterator
+            // If _dof_constraints is a std::map, then:
+            // *it is a std::pair<const dof_id_type, DofConstraintRow>
+            dof_id_type constrained_dof = it->first;  // key
+            const DofConstraintRow &row = it->second; // value
+
+            for (auto proc : make_range(this->n_processors()))
+                if ((constrained_dof >= dof_map.first_dof(proc)) && (constrained_dof < dof_map.end_dof(proc)))
+                    constrained_dof_ids_per_processor[proc].push_back(constrained_dof);
         }
-        SubdomainSelectionByList selection(subdomains);
 
-        // Collect all variable numbers except VOLT
-        std::vector<unsigned int> all_var_nums;
-        system.get_all_variable_numbers(all_var_nums);
-        std::set<unsigned int> all_var_nums_set(all_var_nums.begin(), all_var_nums.end());
-        if (has_volt)
-            all_var_nums_set.erase(system.variable_number("VOLT"));
-
-        // Check if we need to restrict solve (non-transient and has VOLT variable)
-        bool restrict_solve = !transient_effect && has_volt;
-
-        // // Check if tree gauge should be applied
-        // bool apply_tree_gauge = false;
-        // if (equation_systems.has_system("SupportSystem"))
-        // {
-        //     const System &tree_cotree_gauge_system = equation_systems.get_system<System>("SupportSystem");
-        //     if (tree_cotree_gauge_system.has_variable("TREE"))
-        //         apply_tree_gauge = true;
-        // }
-
-        // if (restrict_solve || apply_tree_gauge)
-        if (restrict_solve)
+        // For each processor, compute unconstrained DOFs
+        for (auto proc : make_range(this->n_processors()))
         {
-            auto *subset_ptr = new ApecMSubset(system, selection, &all_var_nums_set);
-            // if (apply_tree_gauge)
-            //     subset_ptr->set_tree_gauge();
-            return subset_ptr;
+            dof_id_type first = dof_map.first_dof(proc);
+            dof_id_type last = dof_map.end_dof(proc);
+
+            // Efficiently fill all_dofs with pre-sizing
+            std::vector<dof_id_type> all_dofs(last - first);
+            for (dof_id_type dof = first; dof < last; ++dof)
+                all_dofs[dof - first] = dof;
+
+            // Get the constrained DOFs for this processor
+            std::vector<dof_id_type> &constrained_dofs = constrained_dof_ids_per_processor[proc];
+            std::sort(constrained_dofs.begin(), constrained_dofs.end());
+
+            // Compute unconstrained DOFs: all_dofs - constrained_dofs, move result directly
+            std::vector<dof_id_type> unconstrained_dofs;
+            std::set_difference(
+                all_dofs.begin(), all_dofs.end(),
+                constrained_dofs.begin(), constrained_dofs.end(),
+                std::back_inserter(unconstrained_dofs));
+
+            dof_ids_per_processor[proc] = std::move(unconstrained_dofs); // move instead of copy
+            // Now unconstrained_dofs contains the indices of unconstrained DOFs for this processor
+            // (You can store or use unconstrained_dofs as needed here)
+            // Example: print the number of unconstrained DOFs for this processor
+            // std::cout << "Processor " << proc << " has " << unconstrained_dofs.size() << " unconstrained DOFs." << std::endl;
         }
-        return nullptr;
+        /* Distribute information among processors.  */
+        std::vector<Parallel::Request> request_per_processor(this->n_processors());
+        for (auto proc : make_range(this->n_processors()))
+            if (proc != this->processor_id())
+                this->comm().send(proc, dof_ids_per_processor[proc], request_per_processor[proc]);
+        for (auto proc : make_range(this->n_processors()))
+        {
+            std::vector<dof_id_type> received_dofs;
+            if (proc == this->processor_id())
+                received_dofs = dof_ids_per_processor[proc];
+            else
+                this->comm().receive(proc, received_dofs);
+            _dof_ids.insert(_dof_ids.end(), received_dofs.begin(), received_dofs.end());
+        }
+
+        /* Sort and unique the vector (using the same mechanism as in \p
+           DofMap::prepare_send_list()).  */
+        std::sort(_dof_ids.begin(), _dof_ids.end());
+        std::vector<unsigned int>::iterator new_end = std::unique(_dof_ids.begin(), _dof_ids.end());
+        std::vector<unsigned int>(_dof_ids.begin(), new_end).swap(_dof_ids);
+
+        /* Wait for sends to be complete.  */
+        for (auto proc : make_range(this->n_processors()))
+        {
+            if (proc != this->processor_id())
+            {
+                request_per_processor[proc].wait();
+            }
+        }
     }
-};
+
+protected:
+    std::vector<unsigned int> _dof_ids;
+
+}; // class SystemSubset
+#endif // APEC_M_SUBSET_SOLVE_H

@@ -37,12 +37,12 @@ SimulationController::SimulationController(libMesh::Parallel::Communicator &comm
     }
 }
 
-void SimulationController::set_transient_effects()
+void SimulationController::delete_rows_cols_constrained_dofs()
 {
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     // Later, this will be a method of system, which will be a viewed object, I still have to think about it
-    libMesh::out << "Setting transient effects..." << std::endl;
-    ApecMSubset *subset_ptr = ApecMSubset::create(system);
+    libMesh::out << "Removing constrained DOFs from the system..." << std::endl;
+    ApecMSubset *subset_ptr = new ApecMSubset(system);
     system.release_subset_solve();
     system.restrict_solve_to(subset_ptr, SUBSET_ZERO);
 }
@@ -330,9 +330,6 @@ void SimulationController::solve()
 
     this->set_load_step_data();
 
-    this->set_transient_effects();
-
-    this->check_constrained_dofs();
     // system.get_dof_map().print_dof_constraints();
     // Iterate through the substeps of the current time step
     system.get_system_matrix().zero();
@@ -342,6 +339,12 @@ void SimulationController::solve()
         equation_systems->apply_ramped_effects(substep);
 
         system.reinit_constraints();
+
+        if (substep.get_index() == 0)
+        {
+            this->delete_rows_cols_constrained_dofs();
+            this->check_constrained_dofs();
+        }
 
         element_builder->check_compute_matrix();
 
@@ -358,6 +361,7 @@ void SimulationController::solve()
         system.compute_solution_time_derivative(substep);
 
         system.get_dof_map().enforce_constraints_exactly(system);
+
         system.rhs->zero();
 
         // system.get_linear_solver()->print_converged_reason();

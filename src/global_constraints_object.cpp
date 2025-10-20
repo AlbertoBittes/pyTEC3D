@@ -16,13 +16,32 @@ void GlobalConstraintsObject::constrain()
     // Retrieve the system by name
     // at system init
     DofMap &dof_map = this->parent_object->get_dof_map();
-    MeshBase &mesh = this->parent_object->get_mesh();
-    EquationSystems &equation_systems = this->parent_object->get_equation_systems();
+    System &system = *this->parent_object;
+    // MeshBase &mesh = this->parent_object->get_mesh();
+    EquationSystems &equation_systems = system.get_equation_systems();
     if (!this->ctx_view)
     {
         return;
     }
     libMesh::out << "Applying constraints to the system." << std::endl;
+
+    const MeshBase &mesh = equation_systems.get_mesh();
+    libMesh::out << "Setting transient effects constraints..." << std::endl;
+    auto &time_step = *this->context<TimeStep>();
+    // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
+    if (time_step.get_active_substep()->get_index() == 0 && !time_step.get_transient_effect() && system.has_variable("VOLT"))
+    {
+        // Apply the constraint for the time derivative of the magnetic vector potential
+        std::vector<dof_id_type> dof_indices;
+        dof_map.local_variable_indices(dof_indices, mesh, system.variable_number("VOLT"));
+        for (const auto &dof : dof_indices)
+        {
+            // Apply the constraint
+            DofConstraintRow constraint_row;
+            if (!dof_map.is_constrained_dof(dof))
+                dof_map.add_constraint_row(dof, constraint_row, true);
+        }
+    }
 
     NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("ramped_node_dof_constraints");
 
@@ -32,44 +51,34 @@ void GlobalConstraintsObject::constrain()
         if (!std::isnan(value))
         {
             DofConstraintRow constraint_row;
-            dof_map.add_constraint_row(k, constraint_row, value, true);
+            if (!dof_map.is_constrained_dof(k))
+                dof_map.add_constraint_row(k, constraint_row, value, true);
         }
     }
 }
 
 void GlobalConstraintsObject::check_update_boundary_conditions()
 {
-    DofMap &dof_map = this->parent_object->get_dof_map();
-
-    // dof_map.swap_dof_constraints();
-
     this->update_boundary_conditions = false;
+    DofMap &dof_map = this->parent_object->get_dof_map();
+    const auto &comm = dof_map.comm();
 
-    // if (!this->ctx_view)
-    // {
-    //     libmesh_error_msg("Context view is not set in GlobalConstraintsObject.");
-    // }
-    // if (!old_ctx_view)
-    // {
-    //     this->update_boundary_conditions = true;
-    //     libMesh::out << "Boundary conditions update required" << std::endl;
-    //     return;
-    // }
+    // Swap to bring the old constraints to the front
+    dof_map.swap_dof_constraints();
+    const auto constraints_map_old = dof_map.get_dof_constraints();
 
-    NumericVector<Number> &node_dof_constraints = *this->get_parent_object()->request_vector("node_dof_constraints");
-    NumericVector<Number> &old_node_dof_constraints = *this->get_parent_object()->request_vector("old_node_dof_constraints");
+    // Swap back to bring the new constraints to the front
+    dof_map.swap_dof_constraints();
+    const auto &constraints_map_new = dof_map.get_dof_constraints();
 
-    for (numeric_index_type k = node_dof_constraints.first_local_index(); k < node_dof_constraints.last_local_index(); ++k)
+    // Now you can compare the maps via the pointers
+    if (constraints_map_new != constraints_map_old)
     {
-        Real new_val = node_dof_constraints(k);
-        Real old_val = old_node_dof_constraints(k);
-        // If one is NaN and the other is not,
-        if ((std::isnan(new_val) != std::isnan(old_val))) //|| (!std::isnan(new_val) && !std::isnan(old_val) && new_val != old_val))
-        {
-            this->update_boundary_conditions = true;
-            libMesh::out << "New DOF constraints: Matrix update required" << std::endl;
-            break;
-        }
+        this->update_boundary_conditions = true;
+        libMesh::out << "Boundary conditions update required: different constrained DOFs" << std::endl;
     }
+
+    comm.max(this->update_boundary_conditions);
+
     return;
 }

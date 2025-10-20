@@ -29,7 +29,7 @@ public:
     void finish();
     void exit();
 
-    void set_transient_effects();
+    void delete_rows_cols_constrained_dofs();
     void set_systems();
     void check_constrained_dofs();
     void set_load_step_data();
