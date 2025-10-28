@@ -9,6 +9,8 @@
 #include <vtkDoubleArray.h>
 #include <vtkIntArray.h>
 #include <vtkStringArray.h>
+#include <map>
+#include <set>
 
 ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFieldData> field_data, EquationSystems *eq_sys)
     : FEDataObjectMap<vtkFieldData>(field_data),
@@ -16,6 +18,11 @@ ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFi
 {
     if (eq_sys)
         this->initialize(eq_sys);
+}
+
+const std::vector<ApecMPeriodicBoundary> &ApecMPeriodicBoundaryFactory::get_periodic_boundaries() const
+{
+    return periodic_boundaries;
 }
 
 void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
@@ -109,14 +116,92 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
 
         // --- VARIABLES (single string per row) ---
         std::string variable = variables_arr->GetValue(i);
+        std::vector<std::string> variable_labels = {variable};
 
         // Construct boundary
         periodic_boundaries.emplace_back(
             main_boundary, paired_boundary, periodic_matrix,
             PeriodicBoundaryBase::FORWARD,
-            variable,
+            variable_labels,
             this->get_parent_object());
     }
+
+    this->compress_periodic_boundaries();
+}
+
+void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
+{
+    if (periodic_boundaries.empty())
+        return;
+
+    EquationSystems *eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return;
+
+    std::map<std::pair<boundary_id_type, boundary_id_type>, std::vector<ApecMPeriodicBoundary>> grouped;
+    for (const auto &pb : periodic_boundaries)
+        grouped[{pb.myboundary, pb.pairedboundary}].push_back(pb);
+
+    std::vector<ApecMPeriodicBoundary> compressed;
+    compressed.reserve(grouped.size());
+
+    for (auto &entry : grouped)
+    {
+        auto &group = entry.second;
+        const ApecMPeriodicBoundary &base = group.front();
+
+        const TensorValue<Real> &base_rotation = base.get_rotation_matrix();
+        const VectorValue<Real> &base_translation = base.get_translation_vector();
+
+        std::set<unsigned int> combined_vars = base.get_variables();
+        std::set<std::string> combined_labels(base.get_variable_labels().begin(), base.get_variable_labels().end());
+
+        for (std::size_t idx = 1; idx < group.size(); ++idx)
+        {
+            const auto &candidate = group[idx];
+
+            const TensorValue<Real> &rot_candidate = candidate.get_rotation_matrix();
+            const VectorValue<Real> &trans_candidate = candidate.get_translation_vector();
+
+            for (unsigned int r = 0; r < 3; ++r)
+                for (unsigned int c = 0; c < 3; ++c)
+                    if (base_rotation(r, c) != rot_candidate(r, c))
+                        libmesh_error_msg("Periodic boundary rotation mismatch while compressing.");
+
+            for (unsigned int comp = 0; comp < 3; ++comp)
+                if (base_translation(comp) != trans_candidate(comp))
+                    libmesh_error_msg("Periodic boundary translation mismatch while compressing.");
+
+            const auto &candidate_vars = candidate.get_variables();
+            for (unsigned int var : candidate_vars)
+            {
+                if (!combined_vars.insert(var).second)
+                    libmesh_error_msg("Periodic boundary variables overlap detected while compressing.");
+            }
+
+            const auto &candidate_labels = candidate.get_variable_labels();
+            combined_labels.insert(candidate_labels.begin(), candidate_labels.end());
+        }
+
+        std::vector<std::vector<Real>> periodic_matrix = {
+            {base_rotation(0, 0), base_rotation(0, 1), base_rotation(0, 2), base_translation(0)},
+            {base_rotation(1, 0), base_rotation(1, 1), base_rotation(1, 2), base_translation(1)},
+            {base_rotation(2, 0), base_rotation(2, 1), base_rotation(2, 2), base_translation(2)},
+            {0.0, 0.0, 0.0, 1.0}};
+
+        std::vector<std::string> merged_labels(combined_labels.begin(), combined_labels.end());
+
+        ApecMPeriodicBoundary merged_boundary(entry.first.first,
+                                              entry.first.second,
+                                              periodic_matrix,
+                                              PeriodicBoundaryBase::FORWARD,
+                                              merged_labels,
+                                              eq_sys);
+
+        compressed.push_back(std::move(merged_boundary));
+    }
+
+    periodic_boundaries.swap(compressed);
 }
 
 void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()

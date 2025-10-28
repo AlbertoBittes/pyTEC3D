@@ -58,17 +58,21 @@ class Selector:
         """
         Selector.ensure_selection_arrays(mesh)
         data = mesh.GetCellData() if cell_or_point == "cell_data" else mesh.GetPointData()
-        vtk_array = data.GetArray(array_name)
-        if vtk_array is None:
-            raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
-        arr_np = vtknp.vtk_to_numpy(vtk_array)
-        if component == "magnitude":
-            if arr_np.ndim == 1:
-                arr = np.abs(arr_np)
-            else:
-                arr = np.linalg.norm(arr_np, axis=1)
+        if array_name == "ID":
+            count = mesh.GetNumberOfCells() if cell_or_point == "cell_data" else mesh.GetNumberOfPoints()
+            arr = np.arange(count, dtype=np.int64)
         else:
-            arr = arr_np if arr_np.ndim == 1 else arr_np[:, component]
+            vtk_array = data.GetArray(array_name)
+            if vtk_array is None:
+                raise ValueError(f"Array '{array_name}' not found in {cell_or_point}.")
+            arr_np = vtknp.vtk_to_numpy(vtk_array)
+            if component == "magnitude":
+                if arr_np.ndim == 1:
+                    arr = np.abs(arr_np)
+                else:
+                    arr = np.linalg.norm(arr_np, axis=1)
+            else:
+                arr = arr_np if arr_np.ndim == 1 else arr_np[:, component]
         Selector.apply_selection_mask(arr, value, data, cell_or_point, mode)
 
     @staticmethod
@@ -128,6 +132,79 @@ class Selector:
         else:
             raise ValueError(f"Unknown selection mode '{mode}'.")
         sel_array.Modified()
+
+    @staticmethod
+    def nsle(mesh, mode="s"):
+        """Select nodes attached to the currently selected cells."""
+        Selector.ensure_selection_arrays(mesh)
+
+        cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
+        if cell_sel_array is None:
+            raise ValueError("Cell selection array 'selection_cell' not found.")
+        cell_sel = vtknp.vtk_to_numpy(cell_sel_array).astype(bool)
+        if not cell_sel.any():
+            return
+
+        cell_array = vtknp.vtk_to_numpy(mesh.GetCells().GetData())
+        cell_offsets = vtknp.vtk_to_numpy(mesh.GetCellLocationsArray())
+        cell_sizes = cell_array[cell_offsets]
+
+        selected_ids = np.nonzero(cell_sel)[0]
+        if selected_ids.size == 0:
+            return
+
+        node_lists = [
+            cell_array[offset + 1 : offset + 1 + npts]
+            for offset, npts in zip(cell_offsets[selected_ids], cell_sizes[selected_ids])
+        ]
+        if not node_lists:
+            return
+        attached_nodes = np.unique(np.concatenate(node_lists))
+        Selector.select(
+            mesh,
+            "ID",
+            set(attached_nodes.tolist()),
+            cell_or_point="point_data",
+            mode=mode,
+        )
+
+    @staticmethod
+    def esln(mesh, all_nodes=True, mode="s"):
+        """Select cells based on currently selected nodes."""
+        Selector.ensure_selection_arrays(mesh)
+
+        point_sel_array = mesh.GetPointData().GetArray("selection_point")
+        if point_sel_array is None:
+            raise ValueError("Point selection array 'selection_point' not found.")
+        point_sel = vtknp.vtk_to_numpy(point_sel_array).astype(bool)
+        if not point_sel.any():
+            return
+
+        cell_array = vtknp.vtk_to_numpy(mesh.GetCells().GetData())
+        cell_offsets = vtknp.vtk_to_numpy(mesh.GetCellLocationsArray())
+        cell_sizes = cell_array[cell_offsets]
+
+        selected_cells = []
+        for cid, (offset, npts) in enumerate(zip(cell_offsets, cell_sizes)):
+            pts = cell_array[offset + 1 : offset + 1 + npts]
+            node_mask = point_sel[pts]
+            if all_nodes:
+                if node_mask.all():
+                    selected_cells.append(cid)
+            else:
+                if node_mask.any():
+                    selected_cells.append(cid)
+
+        if not selected_cells:
+            return
+
+        Selector.select(
+            mesh,
+            "ID",
+            set(selected_cells),
+            cell_or_point="cell_data",
+            mode=mode,
+        )
 
     @staticmethod
     def select_all(mesh, cell_or_point=None):

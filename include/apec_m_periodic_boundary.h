@@ -13,6 +13,8 @@
 #include "libmesh/point.h"
 #include "libmesh/dense_vector.h"
 #include "globals.h"
+#include <memory>
+#include <set>
 #include <vector>
 #include <string>
 
@@ -25,91 +27,25 @@ public:
     ApecMPeriodicBoundary(const boundary_id_type main_b, const boundary_id_type paired_b,
                           const std::vector<std::vector<Real>> &periodic_mtx,
                           TransformationType t = FORWARD,
-                          const std::string &var = std::string(),
-                          EquationSystems *eq_sys = nullptr
-                          //   const std::vector<std::vector<Real>> &vars_trans_mtx,
-                          )
-        : PeriodicBoundaryBase(),
-          FEParentObjectBase<EquationSystems>(eq_sys)
-    //   periodic_matrix(periodic_mtx),
-    //   variables_transformation_matrix
-    {
+                          const std::vector<std::string> &variable_labels = {},
+                          EquationSystems *eq_sys = nullptr);
 
-        rotation_matrix = TensorValue<Real>(periodic_mtx[0][0], periodic_mtx[0][1], periodic_mtx[0][2],
-                                            periodic_mtx[1][0], periodic_mtx[1][1], periodic_mtx[1][2],
-                                            periodic_mtx[2][0], periodic_mtx[2][1], periodic_mtx[2][2]);
+    ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, TransformationType t = FORWARD);
+    virtual Point get_corresponding_pos(const Point &pt) const override;
+    void set_variables();
 
-        translation_vector = VectorValue<Real>(periodic_mtx[0][3], periodic_mtx[1][3], periodic_mtx[2][3]);
+    virtual std::unique_ptr<PeriodicBoundaryBase> clone(TransformationType t = FORWARD) const override;
 
-        myboundary = main_b;
-        pairedboundary = paired_b;
-        variable_cp = var;
-
-        if (t == INVERSE)
-        {
-            std::swap(myboundary, pairedboundary);
-            rotation_matrix = rotation_matrix.transpose();
-            translation_vector = -rotation_matrix * translation_vector;
-        }
-
-        this->set_variables();
-
-        if (variables.size() == 3)
-            this->set_transformation_matrix(DenseMatrix<Real>(3, 3, {rotation_matrix(0, 0), rotation_matrix(1, 0), rotation_matrix(2, 0), rotation_matrix(0, 1), rotation_matrix(1, 1), rotation_matrix(2, 1), rotation_matrix(0, 2), rotation_matrix(1, 2), rotation_matrix(2, 2)}));
-    }
-
-    ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, TransformationType t = FORWARD)
-        : ApecMPeriodicBoundary(o.myboundary, o.pairedboundary,
-                                {{o.rotation_matrix(0, 0), o.rotation_matrix(0, 1), o.rotation_matrix(0, 2), o.translation_vector(0)},
-                                 {o.rotation_matrix(1, 0), o.rotation_matrix(1, 1), o.rotation_matrix(1, 2), o.translation_vector(1)},
-                                 {o.rotation_matrix(2, 0), o.rotation_matrix(2, 1), o.rotation_matrix(2, 2), o.translation_vector(2)},
-                                 {0, 0, 0, 1}},
-                                t,
-                                o.variable_cp, // vars
-                                o.get_parent_object())
-    {
-    }
-    // // Getters (optional, for testing)
-    virtual Point get_corresponding_pos(const Point &pt) const override
-    {
-        // Note that since _theta defines the angle from "paired boundary" to
-        // "my boundary", and we want the inverse of that here, we multiply
-        // by the transpose of the transformation matrix below.
-        Point pt_prime;
-        pt_prime = rotation_matrix * pt + translation_vector;
-        return pt_prime;
-    }
-
-    void set_variables()
-    {
-        variables.clear();
-
-        auto keys = Globals::get_keys_by_predicate(
-            Globals::GLOBAL_VARIABLE_INFO_MAP,
-            [this](const Globals::VariableInfo &info)
-            {
-                return info.api_label == this->variable_cp;
-            });
-        for (const auto &key : keys)
-        {
-            auto &var_string_name = Globals::GLOBAL_VARIABLE_INFO_MAP.at(key).global_label;
-            if (this->get_parent_object()->get_system(0).has_variable(var_string_name))
-            {
-                unsigned int var_index = this->get_parent_object()->get_system(0).variable_number(var_string_name);
-                set_variable(var_index);
-            }
-        }
-    }
-
-    virtual std::unique_ptr<PeriodicBoundaryBase> clone(TransformationType t = FORWARD) const override
-    {
-        return std::make_unique<ApecMPeriodicBoundary>(*this, t);
-    }
+    const TensorValue<Real> &get_rotation_matrix() const;
+    const VectorValue<Real> &get_translation_vector() const;
+    const std::vector<std::string> &get_variable_labels() const;
 
 private:
+    DenseMatrix<Real> build_transformation_matrix() const;
+
     TensorValue<Real> rotation_matrix;
     VectorValue<Real> translation_vector;
-    std::string variable_cp;
+    std::vector<std::string> variable_labels;
 };
 
 #endif // APEC_M_PERIODIC_BOUNDARY_H
