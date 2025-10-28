@@ -48,6 +48,7 @@
 #include "vtkGenericCell.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
+#include "vtkFieldData.h"
 #include "vtkSmartPointer.h"
 #include "vtkMergeVectorComponents.h"
 #include "vtkStringArray.h"
@@ -355,7 +356,18 @@ void VTKIO_Updated::read(const std::string &name)
                                  << "D support.");
 #endif // LIBMESH_DIM < 3
     }
-    auto field_data_ptr = std::shared_ptr<vtkFieldData>(_vtk_grid->GetFieldData(), [](vtkFieldData *) { /* no-op deleter */ });
+    vtkFieldData *raw_field_data = _vtk_grid->GetFieldData();
+    std::shared_ptr<vtkFieldData> field_data_ptr;
+    if (raw_field_data)
+    {
+        raw_field_data->Register(nullptr);
+        field_data_ptr.reset(raw_field_data, [](vtkFieldData *fd)
+                             { fd->UnRegister(nullptr); });
+    }
+    else
+    {
+        field_data_ptr = std::shared_ptr<vtkFieldData>();
+    }
 
     auto element_types_factory = std::make_shared<ElementTypesFactory>(field_data_ptr);
     auto periodic_boundary_factory = std::make_shared<ApecMPeriodicBoundaryFactory>(field_data_ptr);

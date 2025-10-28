@@ -1,4 +1,7 @@
 #include "apec_m_system_objects.h"
+#include "apec_m_subset_solve.h"
+#include "global_constraints_object.h"
+#include "libmesh/libmesh.h"
 #include "libmesh/numeric_vector.h"
 
 template <>
@@ -73,4 +76,19 @@ void ApecMLinearSystem::compute_solution_time_derivative(const Substep &time_sub
     }
     this->older_local_solution->close();
     time_derivative_vector->close();
+}
+
+void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
+{
+    libMesh::out << "Removing constrained DOFs from the system..." << std::endl;
+    ApecMSubset *subset_ptr = new ApecMSubset(*this);
+    this->release_subset_solve();
+    this->restrict_solve_to(subset_ptr, SUBSET_ZERO);
+}
+
+void ApecMLinearSystem::check_constrained_dofs()
+{
+    libMesh::out << "Checking constrained DOFs..." << std::endl;
+    auto global_constraints = this->get_global_constraints_object();
+    global_constraints->check_update_boundary_conditions();
 }

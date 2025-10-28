@@ -28,6 +28,7 @@ public:
     const std::vector<ApecMPeriodicBoundary> &get_periodic_boundaries() const;
 
     void apply_periodic_boundaries();
+    void initialize(EquationSystems *eq_sys);
 
 private:
     std::vector<ApecMPeriodicBoundary> periodic_boundaries;

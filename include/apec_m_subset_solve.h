@@ -16,6 +16,7 @@ using namespace libMesh;
 #include "libmesh/system_subset.h"
 #include "libmesh/id_types.h"
 #include "libmesh/parallel_object.h"
+#include "libmesh/dof_map.h"
 
 // C++ includes
 #include <cstddef>

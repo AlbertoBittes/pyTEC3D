@@ -9,6 +9,7 @@ ElementTypesFactory::ElementTypesFactory(std::shared_ptr<vtkFieldData> field_dat
 {
     populate_element_types_map();
 }
+
 void ElementTypesFactory::populate_element_types_map()
 {
     vtkFieldData *field_data = this->get_data_map();

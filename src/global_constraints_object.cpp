@@ -28,8 +28,9 @@ void GlobalConstraintsObject::constrain()
     const MeshBase &mesh = equation_systems.get_mesh();
     libMesh::out << "Setting transient effects constraints..." << std::endl;
     auto &time_step = *this->context<TimeStep>();
+
     // If we have VOLT but transient effects are not active, bound V to 0 to avoid crash of the solver
-    if (time_step.get_active_substep()->get_index() == 0 && !time_step.get_transient_effect() && system.has_variable("VOLT"))
+    if (!time_step.get_transient_effect() && system.has_variable("VOLT"))
     {
         // Apply the constraint for the time derivative of the magnetic vector potential
         std::vector<dof_id_type> dof_indices;

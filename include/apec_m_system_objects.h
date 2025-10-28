@@ -81,6 +81,8 @@ public:
     void release_subset_solve();
 
     void compute_solution_time_derivative(const Substep &time_substep);
+    void delete_rows_cols_constrained_dofs();
+    void check_constrained_dofs();
 
     std::shared_ptr<AssemblerLinear> get_assembler() const
     {

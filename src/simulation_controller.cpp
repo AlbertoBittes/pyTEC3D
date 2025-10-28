@@ -1,23 +1,16 @@
 #include "simulation_controller.h"
-#include "vtkio_updated.h"
+#include "apec_m_mesh.h"
 #include "globals.h"
 #include "element_types.h"
 #include "element_builder.h"
-#include "system_builder.h"
 #include "load_stepper.h"
-#include "inf_elem_builder_updated.h"
 #include "element_types_factory.h"
 #include "solver_configuration.h"
 #include "global_constraints_object.h"
 #include "apec_m_eq_system_object.h"
-#include "apec_m_subset_solve.h"
 #include "apec_m_periodic_boundary_factory.h"
+#include "vtkio_updated.h"
 
-#include <libmesh/boundary_info.h>
-#include <libmesh/inf_elem_builder.h>
-#include <libmesh/string_to_enum.h>
-#include <libmesh/mesh_communication.h>
-#include <libmesh/mesh_modification.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/sparse_matrix.h>
 
@@ -27,33 +20,10 @@ SimulationController::SimulationController(libMesh::Parallel::Communicator &comm
 {
     // Initialize the session and mesh
     apec_m_model_data->set_object<Session>(std::make_shared<Session>());
-    apec_m_model_data->set_object<ApecMMesh>(std::make_shared<ApecMMesh>(comm));
-    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-    equation_systems = std::make_shared<ApecMEquationSystems>(*mesh);
-    load_stepper = std::make_shared<LoadStepper>(equation_systems.get());
     if (!mesh_filename.empty())
     {
         this->apec_m_model_data->get_object<Session>()->set_input_mesh_filepath(mesh_filename);
     }
-}
-
-void SimulationController::delete_rows_cols_constrained_dofs()
-{
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    // Later, this will be a method of system, which will be a viewed object, I still have to think about it
-    libMesh::out << "Removing constrained DOFs from the system..." << std::endl;
-    ApecMSubset *subset_ptr = new ApecMSubset(system);
-    system.release_subset_solve();
-    system.restrict_solve_to(subset_ptr, SUBSET_ZERO);
-}
-
-void SimulationController::check_constrained_dofs()
-{
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto global_constraints_object = system.get_global_constraints_object();
-    libMesh::out << "Checking constrained DOFs..." << std::endl;
-    // 3. Prepare context view for boundary conditions object and reinit constraints
-    global_constraints_object->check_update_boundary_conditions();
 }
 
 void SimulationController::set_load_step_data()
@@ -124,6 +94,11 @@ void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
             break;
         case Command::SOLVE:
         {
+            if (!load_stepper)
+            {
+                libMesh::out << "Load stepper not initialized. Please read a mesh first.\n";
+                break;
+            }
             std::string step = extract_argument(input);
             load_stepper->read_new_load_step(step);
             solve();
@@ -141,175 +116,45 @@ void SimulationController::run_cli(libMesh::Parallel::Communicator &comm)
     }
 }
 
-void SimulationController::set_boundary_info(const std::set<std::string> &bc_arrays)
-{
-    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-
-    BoundaryInfo &boundary_info = mesh->get_boundary_info();
-
-    boundary_info.clear();
-
-    for (auto &array : bc_arrays)
-    {
-        unsigned int node_array_index = mesh->get_node_integer_index(array);
-        Globals::BoundaryConditionType bc_enum = Globals::get_key_by_predicate_one(
-            Globals::BOUNDARY_CONDITION_INFO_MAP,
-            [array](const Globals::BoundaryConditionInfo &info)
-            {
-                return info.label == array;
-            });
-        // for (const Node *node_ptr : mesh->local_node_ptr_range())
-        for (const Node *node_ptr : mesh->node_ptr_range())
-        {
-            unsigned int boundary_id_mesh_int = node_ptr->get_extra_integer(node_array_index);
-            boundary_id_type boundary_id_mesh = static_cast<boundary_id_type>(boundary_id_mesh_int);
-            if (boundary_id_mesh > 0)
-            {
-                switch (bc_enum)
-                {
-                case Globals::BoundaryConditionType::INFINITE_BOUNDARY:
-                case Globals::BoundaryConditionType::PERIODIC_BOUNDARY:
-                    boundary_info.add_node(node_ptr, boundary_id_mesh);
-                    break;
-                case Globals::BoundaryConditionType::FLUX_NORMAL:
-                    boundary_info.add_node(node_ptr, Globals::FLUX_NORMAL_ID_BC);
-                    break;
-                case Globals::BoundaryConditionType::FLUX_PARALLEL:
-                    boundary_info.add_node(node_ptr, Globals::FLUX_PARALLEL_ID_BC);
-                    break;
-                default:
-                    // Handle unknown
-                    break;
-                }
-            }
-        }
-        boundary_info.build_side_list_from_node_list();
-        // boundary_info.parallel_sync_node_ids();
-        // boundary_info.parallel_sync_side_ids();
-        // boundary_info.clear_boundary_node_ids();
-    }
-    boundary_info.print_info();
-    boundary_info.print_summary();
-
-    return;
-}
-
-void SimulationController::generate_infinite_elements()
-{
-    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
-    this->set_boundary_info({"infinite_boundary"});
-    auto &boundary_info = mesh->get_boundary_info();
-    // In the future change this by looping over the elementtypes
-    if (mesh->has_node_integer("infinite_boundary"))
-    {
-
-        const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
-        unsigned int etype_num_index = mesh->get_elem_integer_index("ansys_etype");
-        unsigned int material_num_index = mesh->get_elem_integer_index("ansys_material_type");
-        unsigned int real_constants_num_index = mesh->get_elem_integer_index("ansys_real_constant");
-        for (const auto &id : side_boundary_ids)
-        {
-            // The infinite elements are attached to all elements that build the outer surface of the FEM-region.
-            InfElemBuilderUpdated builder(*mesh);
-            builder.set_infinite_elem_side_boundary_id(id);
-            const Point origin(0.0, 0.0, 0.0);
-            builder.build_inf_elem(origin);
-            // find the neighbours; for correct linking the two areas
-            // mesh->find_neighbors();
-            // Reassign subdomain_id() of all infinite elements.
-            // and their neighbours. This makes finding the surface
-            // between these elemests much easier.
-            for (auto &elem : mesh->element_ptr_range())
-                if (elem->infinite())
-                {
-                    elem->subdomain_id() = id;
-                    elem->set_extra_integer(etype_num_index, id);
-                    elem->set_extra_integer(material_num_index, 0);
-                    elem->set_extra_integer(real_constants_num_index, 0);
-                }
-        }
-    }
-
-    return;
-}
-
-void SimulationController::set_systems()
-{
-    libMesh::out << "Building system of equations..." << std::endl;
-
-    Real tol = equation_systems->parameters.get<Real>("linear solver tolerance");
-    unsigned int max_iter = equation_systems->parameters.get<unsigned int>("linear solver maximum iterations");
-    equation_systems->clear();
-    equation_systems->parameters.set<Real>("linear solver tolerance") = tol;
-    equation_systems->parameters.set<unsigned int>("linear solver maximum iterations") = max_iter;
-    System *systems[Globals::NUM_SYSTEMS] = {nullptr};
-
-    libMesh::out << "Checking system options..." << std::endl;
-
-    auto system_builder_view = std::make_shared<
-        TypedContextView<ElementTypesFactory>>(
-        TypedContextView<ElementTypesFactory>::from(
-            apec_m_model_data));
-    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
-    {
-        Globals::SystemType type = static_cast<Globals::SystemType>(i);
-        const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
-
-        if (type == Globals::DOF_SOLUTION_SYSTEM)
-            systems[i] = &equation_systems->add_system<ApecMLinearSystem>(sys_name);
-        else
-            systems[i] = &equation_systems->add_system<ApecMExplicitSystem>(sys_name);
-
-        SystemBuilder *builder = new SystemBuilder(systems[i], system_builder_view);
-        builder->init_variables();
-        systems[i]->attach_init_object(*builder);
-    }
-}
-
 void SimulationController::read_mesh()
 {
-    libMesh::out << "Reading mesh..." << std::endl;
-    const std::string &mesh_filepath = apec_m_model_data->get_object<Session>()->get_input_mesh_filepath();
-    // mesh.clear();
-    auto mesh = apec_m_model_data->get_object<ApecMMesh>();
+    auto session = apec_m_model_data->get_object<Session>();
+    const std::string &mesh_filepath = session->get_input_mesh_filepath();
 
-    VTKIO_Updated vtkio(*mesh, mesh_filepath);
-    MeshCommunication().broadcast(*mesh);
-    MeshTools::Modification::orient_elements(*mesh);
+    auto mesh = ApecMMesh::read(comm, *apec_m_model_data, mesh_filepath);
+    mesh->generate_infinite_elements();
+    mesh->apply_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
 
-    apec_m_model_data->add_all_from(vtkio.get_field_data_repo());
+    equation_systems = ApecMEquationSystems::build(*mesh, apec_m_model_data);
+    load_stepper = std::make_shared<LoadStepper>(equation_systems.get());
 
-    this->generate_infinite_elements();
+    auto periodic_factory = apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>();
+    periodic_factory->initialize(equation_systems.get());
 
-    this->set_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
-
-    this->set_systems();
-
-    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->set_parent_object(equation_systems.get());
-    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->populate_periodic_boundaries_from_map();
-    apec_m_model_data->get_object<ApecMPeriodicBoundaryFactory>()->apply_periodic_boundaries();
-
-    // Partition after generating infinite elems
-    libMesh::out << "Finding elements' neighbors and partitioning mesh..." << std::endl;
     mesh->prepare_for_use(true);
 
-    // Print information about the mesh to the screen.
     libMesh::out << "Mesh Information: " << std::endl;
     mesh->print_info();
-
-    return;
 }
 
 void SimulationController::physics()
 {
-    libMesh::out << "Distributing degrees of freedom..." << std::endl;
-    equation_systems->init();
-    equation_systems->print_info();
-    equation_systems->get_element_builder()->init();
+    if (!equation_systems)
+    {
+        libMesh::out << "Equation systems not initialized. Please read a mesh first.\n";
+        return;
+    }
+    equation_systems->initialize_physics();
 }
 
 void SimulationController::solve()
 {
+    if (!equation_systems || !load_stepper)
+    {
+        libMesh::out << "Solver prerequisites missing. Please read a mesh first.\n";
+        return;
+    }
+
     auto load_step = load_stepper->context<LoadStep>();
 
     auto time_step = load_step->get_object<TimeStep>();
@@ -342,8 +187,8 @@ void SimulationController::solve()
 
         if (substep.get_index() == 0)
         {
-            this->delete_rows_cols_constrained_dofs();
-            this->check_constrained_dofs();
+            system.delete_rows_cols_constrained_dofs();
+            system.check_constrained_dofs();
         }
 
         element_builder->check_compute_matrix();

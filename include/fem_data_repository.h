@@ -60,6 +60,27 @@ public:
         }
     }
 
+    void move_all_from(const std::shared_ptr<FEMDataRepository> &other)
+    {
+        if (!other)
+            return;
+
+        for (auto &pair : other->data_objects)
+        {
+            data_objects[pair.first] = std::move(pair.second);
+        }
+        other->data_objects.clear();
+    }
+
+    void move_all_from(FEMDataRepository &other)
+    {
+        for (auto &pair : other.data_objects)
+        {
+            data_objects[pair.first] = std::move(pair.second);
+        }
+        other.data_objects.clear();
+    }
+
 protected:
     std::unordered_map<std::type_index, std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
