@@ -481,6 +481,14 @@ class APEC_M:
             self.mesh, array_name, value, component, cell_or_point
         )
 
+    def nsle(self, mode="s"):
+        """Select nodes attached to currently selected elements."""
+        Selector.nsle(self.mesh, mode=mode)
+
+    def esln(self, all_nodes=True, mode="s"):
+        """Select elements based on current node selection."""
+        Selector.esln(self.mesh, all_nodes=all_nodes, mode=mode)
+
     #
     #
     #
@@ -575,6 +583,10 @@ class APEC_M:
         """
         VTKGridHelper.safe_remove_array(self.mesh, array_name)
 
+
+    def add_boundary_array(self):
+        """Add a new boundary_id_N array to the mesh and return its name."""
+        return VTKGridHelper.add_boundary_array(self.mesh)
     #
     #
     #
@@ -721,10 +733,6 @@ class APEC_M:
             arr.Modified()
 
         return info
-
-    def add_boundary_array(self):
-        """Add a new boundary_id_N array to the mesh and return its name."""
-        return VTKGridHelper.add_boundary_array(self.mesh)
 
 
 # Only execute this block if the script is run directly
