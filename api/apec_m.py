@@ -722,6 +722,10 @@ class APEC_M:
 
         return info
 
+    def add_boundary_array(self):
+        """Add a new boundary_id_N array to the mesh and return its name."""
+        return VTKGridHelper.add_boundary_array(self.mesh)
+
 
 # Only execute this block if the script is run directly
 if __name__ == "__main__":

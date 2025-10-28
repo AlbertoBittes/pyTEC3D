@@ -22,8 +22,8 @@ public:
                                            FEMDataRepository &model_data,
                                            const std::string &mesh_filepath);
 
-    void apply_boundary_info(const std::set<std::string> &bc_arrays);
-    void generate_infinite_elements();
+    void apply_boundary_info();
+    void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
 };
 
 #endif // APEC_M_MESH_H

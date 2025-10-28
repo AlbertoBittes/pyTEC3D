@@ -17,6 +17,7 @@
 
 // Local includes
 #include "libmesh/libmesh_config.h"
+#include "libmesh/libmesh_common.h"
 #include "libmesh/vtk_io.h"
 #include "libmesh/mesh_base.h"
 #include "libmesh/equation_systems.h"
@@ -41,6 +42,7 @@
 #include "vtkXMLUnstructuredGridWriter.h"
 #include "vtkXMLPUnstructuredGridWriter.h"
 #include "vtkUnstructuredGrid.h"
+#include "vtkDataArray.h"
 #include "vtkIntArray.h"
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
@@ -66,7 +68,9 @@
 #include "apec_m_system_objects.h"
 // C++ includes
 #include <fstream>
+#include <map>
 #include <regex>
+#include <set>
 
 using namespace libMesh;
 // A convenient macro for comparing VTK versions.  Returns 1 if the
@@ -378,106 +382,134 @@ void VTKIO_Updated::read(const std::string &name)
 // Add the integers from the VTK file to the mesh
 void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
 {
-    std::vector<std::string> point_data_int_array_names;
-    std::string array_name;
-    vtkPointData *point_data = _vtk_grid->GetPointData();
-    for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+    auto process_dataset = [&](vtkDataSetAttributes *data, bool is_point_data)
     {
-        array_name = point_data->GetArrayName(i);
+        if (!data)
+            return;
 
-        bool is_api_label = false;
-        for (const auto &pair : Globals::GLOBAL_VARIABLE_INFO_MAP)
+        std::map<std::string, vtkDataArray *> available_arrays;
+        for (int i = 0; i < data->GetNumberOfArrays(); ++i)
         {
-            if (pair.second.api_label == array_name)
-            {
-                is_api_label = true;
-                break;
-            }
+            vtkDataArray *vtk_array = vtkDataArray::SafeDownCast(data->GetArray(i));
+            if (!vtk_array)
+                continue;
+            const char *name = vtk_array->GetName();
+            if (!name || *name == '\0')
+                continue;
+            available_arrays[name] = vtk_array;
         }
-        if (!is_api_label)
-        {
-            point_data_int_array_names.push_back(array_name);
-        }
-    }
-    mesh.add_node_integers(point_data_int_array_names);
 
-    std::vector<std::string> cell_data_int_array_names;
-    vtkCellData *cell_data = _vtk_grid->GetCellData();
-    for (int i = 0; i < cell_data->GetNumberOfArrays(); ++i)
-    {
-        array_name = cell_data->GetArrayName(i);
+        std::set<std::string> processed_names;
 
-        bool is_api_label = false;
-        for (const auto &pair : Globals::GLOBAL_VARIABLE_INFO_MAP)
+        for (const auto &base_name : Globals::VTK_DATA_ARRAY_NAMES)
         {
-            if (pair.second.api_label == array_name)
-            {
-                is_api_label = true;
-                break;
-            }
-        }
-        if (!is_api_label)
-        {
-            cell_data_int_array_names.push_back(array_name);
-        }
-    }
-    mesh.add_elem_integers(cell_data_int_array_names);
-    for (unsigned int i = 0; i < cell_data_int_array_names.size(); ++i)
-    {
-        vtkAbstractArray *abstract_array = cell_data->GetArray(cell_data_int_array_names[i].c_str());
-        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(abstract_array);
-        vtkUnsignedCharArray *uchar_data_array = vtkUnsignedCharArray::SafeDownCast(abstract_array);
+            if (base_name.empty())
+                continue;
 
-        if (int_data_array)
-        {
-            for (const auto &elem : mesh.element_ptr_range())
+            std::vector<std::string> candidate_names;
+            if (base_name.back() == '_')
             {
-                int val = int_data_array->GetValue(elem->id());
-                elem->set_extra_integer(i, static_cast<dof_id_type>(val));
+                const std::string prefix = base_name;
+                for (const auto &pair : available_arrays)
+                    if (pair.first.rfind(prefix, 0) == 0)
+                        candidate_names.push_back(pair.first);
             }
-        }
-        else if (uchar_data_array)
-        {
-            for (const auto &elem : mesh.element_ptr_range())
+            else
             {
-                unsigned char val = uchar_data_array->GetValue(elem->id());
-                elem->set_extra_integer(i, static_cast<dof_id_type>(val));
+                auto it = available_arrays.find(base_name);
+                if (it != available_arrays.end())
+                    candidate_names.push_back(it->first);
             }
-        }
-        else
-        {
-            // Handle other types or skip
-            continue;
-        }
-    }
-    for (unsigned int i = 0; i < point_data_int_array_names.size(); ++i)
-    {
-        vtkAbstractArray *abstract_array = point_data->GetArray(point_data_int_array_names[i].c_str());
-        vtkIntArray *int_data_array = vtkIntArray::SafeDownCast(abstract_array);
-        vtkUnsignedCharArray *uchar_data_array = vtkUnsignedCharArray::SafeDownCast(abstract_array);
 
-        if (int_data_array)
-        {
-            for (const auto &node : mesh.node_ptr_range())
+            for (const auto &array_name : candidate_names)
             {
-                int val = int_data_array->GetValue(node->id());
-                node->set_extra_integer(i, static_cast<dof_id_type>(val));
+                std::string signature = (is_point_data ? "P:" : "C:") + array_name;
+                if (!processed_names.insert(signature).second)
+                    continue;
+
+                vtkDataArray *vtk_array = available_arrays[array_name];
+                if (!vtk_array)
+                    continue;
+
+                const int num_components = vtk_array->GetNumberOfComponents();
+                if (num_components <= 0)
+                    continue;
+
+                const bool is_real_array = (vtk_array->GetDataType() == VTK_DOUBLE || vtk_array->GetDataType() == VTK_FLOAT);
+
+                for (int comp = 0; comp < num_components; ++comp)
+                {
+                std::string component_name = (num_components == 1) ? array_name : array_name + "-" + std::to_string(comp);
+
+                    if (is_point_data)
+                    {
+                        unsigned int data_index = libMesh::invalid_uint;
+                        unsigned int existing_index = mesh.get_node_integer_index(component_name);
+                        if (existing_index != libMesh::invalid_uint)
+                            data_index = existing_index;
+                        else
+                        {
+                            data_index = is_real_array ?
+                                            mesh.add_node_datum<Real>(component_name) :
+                                            mesh.add_node_datum<dof_id_type>(component_name);
+                        }
+
+                        for (const auto &node : mesh.node_ptr_range())
+                        {
+                            const vtkIdType tuple_id = node->id();
+                            if (tuple_id < 0 || tuple_id >= vtk_array->GetNumberOfTuples())
+                                continue;
+
+                            if (is_real_array)
+                            {
+                                const Real value = static_cast<Real>(vtk_array->GetComponent(tuple_id, comp));
+                                node->set_extra_datum<Real>(data_index, value);
+                            }
+                            else
+                            {
+                                const dof_id_type value = static_cast<dof_id_type>(vtk_array->GetComponent(tuple_id, comp));
+                                node->set_extra_datum<dof_id_type>(data_index, value);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        unsigned int data_index = libMesh::invalid_uint;
+                        unsigned int existing_index = mesh.get_elem_integer_index(component_name);
+                        if (existing_index != libMesh::invalid_uint)
+                            data_index = existing_index;
+                        else
+                        {
+                            data_index = is_real_array ?
+                                            mesh.add_elem_datum<Real>(component_name) :
+                                            mesh.add_elem_datum<dof_id_type>(component_name);
+                        }
+
+                        for (const auto &elem : mesh.element_ptr_range())
+                        {
+                            const dof_id_type elem_id = elem->id();
+                            if (elem_id < 0 || elem_id >= vtk_array->GetNumberOfTuples())
+                                continue;
+
+                            if (is_real_array)
+                            {
+                                const Real value = static_cast<Real>(vtk_array->GetComponent(elem_id, comp));
+                                elem->set_extra_datum<Real>(data_index, value);
+                            }
+                            else
+                            {
+                                const dof_id_type value = static_cast<dof_id_type>(vtk_array->GetComponent(elem_id, comp));
+                                elem->set_extra_datum<dof_id_type>(data_index, value);
+                            }
+                        }
+                    }
+                }
             }
         }
-        else if (uchar_data_array)
-        {
-            for (const auto &node : mesh.node_ptr_range())
-            {
-                unsigned char val = uchar_data_array->GetValue(node->id());
-                node->set_extra_integer(i, static_cast<dof_id_type>(val));
-            }
-        }
-        else
-        {
-            // Handle other types or skip
-            continue;
-        }
-    }
+    };
+
+    process_dataset(_vtk_grid->GetPointData(), true);
+    process_dataset(_vtk_grid->GetCellData(), false);
 }
 
 void VTKIO_Updated::write_nodal_data(const std::string &fname,

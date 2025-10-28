@@ -122,8 +122,9 @@ void SimulationController::read_mesh()
     const std::string &mesh_filepath = session->get_input_mesh_filepath();
 
     auto mesh = ApecMMesh::read(comm, *apec_m_model_data, mesh_filepath);
-    mesh->generate_infinite_elements();
-    mesh->apply_boundary_info({"flux_parallel", "flux_normal", "periodic_boundary"});
+    auto elem_types_factory = apec_m_model_data->get_object<ElementTypesFactory>();
+    mesh->generate_infinite_elements(elem_types_factory);
+    mesh->apply_boundary_info();
 
     equation_systems = ApecMEquationSystems::build(*mesh, apec_m_model_data);
     load_stepper = std::make_shared<LoadStepper>(equation_systems.get());

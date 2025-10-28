@@ -64,10 +64,16 @@ namespace Globals
         {ELEMENT_SOLUTION, {ELEMENT_SOLUTION, "ElementSolutionSystem"}},
     };
 
-    const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP = {
-        {BoundaryConditionType::INFINITE_BOUNDARY, {BoundaryConditionType::INFINITE_BOUNDARY, "infinite_boundary", 0}},
-        {BoundaryConditionType::FLUX_NORMAL, {BoundaryConditionType::FLUX_NORMAL, "flux_normal", FLUX_NORMAL_ID_BC}},
-        {BoundaryConditionType::FLUX_PARALLEL, {BoundaryConditionType::FLUX_PARALLEL, "flux_parallel", FLUX_PARALLEL_ID_BC}},
-        {BoundaryConditionType::PERIODIC_BOUNDARY, {BoundaryConditionType::PERIODIC_BOUNDARY, "periodic_boundary", 0}},
-        {BoundaryConditionType::UNKNOWN, {BoundaryConditionType::UNKNOWN, "UNKNOWN", 0}}};
+    const std::vector<std::string> VTK_DATA_ARRAY_NAMES = {
+        // "ansys_node_num",
+        // "ansys_elem_num",
+        "ansys_material_type",
+        "ansys_real_constant",
+        "ansys_etype",
+        // "infinite_boundary",
+        // "flux_normal",
+        // "flux_parallel",
+        // "periodic_boundary",
+        // "MidsideNodes",
+        "boundary_id_"};
 }

@@ -3,6 +3,7 @@
 #include "globals.h"
 #include "inf_elem_builder_updated.h"
 #include "vtkio_updated.h"
+#include "element_types_factory.h"
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
@@ -41,22 +42,31 @@ std::shared_ptr<ApecMMesh> ApecMMesh::read(libMesh::Parallel::Communicator &comm
     return mesh;
 }
 
-void ApecMMesh::apply_boundary_info(const std::set<std::string> &bc_arrays)
+void ApecMMesh::apply_boundary_info()
 {
     libMesh::out << "Assigning boundary information..." << std::endl;
 
     BoundaryInfo &boundary_info = this->get_boundary_info();
     boundary_info.clear();
 
-    for (const auto &array : bc_arrays)
+    std::vector<std::string> boundary_arrays;
+    for (const auto &name : Globals::VTK_DATA_ARRAY_NAMES)
+    {
+        if (name.find("boundary_id_") == 0)
+        {
+            for (unsigned int idx = 0;; ++idx)
+            {
+                std::string generated = name + std::to_string(idx);
+                if (!this->has_node_integer(generated))
+                    break;
+                boundary_arrays.push_back(generated);
+            }
+        }
+    }
+
+    for (const auto &array : boundary_arrays)
     {
         unsigned int node_array_index = this->get_node_integer_index(array);
-        Globals::BoundaryConditionType bc_enum = Globals::get_key_by_predicate_one(
-            Globals::BOUNDARY_CONDITION_INFO_MAP,
-            [array](const Globals::BoundaryConditionInfo &info)
-            {
-                return info.label == array;
-            });
 
         for (const Node *node_ptr : this->node_ptr_range())
         {
@@ -64,22 +74,7 @@ void ApecMMesh::apply_boundary_info(const std::set<std::string> &bc_arrays)
             boundary_id_type boundary_id_mesh = static_cast<boundary_id_type>(boundary_id_mesh_int);
             if (boundary_id_mesh == 0)
                 continue;
-
-            switch (bc_enum)
-            {
-            case Globals::BoundaryConditionType::INFINITE_BOUNDARY:
-            case Globals::BoundaryConditionType::PERIODIC_BOUNDARY:
-                boundary_info.add_node(node_ptr, boundary_id_mesh);
-                break;
-            case Globals::BoundaryConditionType::FLUX_NORMAL:
-                boundary_info.add_node(node_ptr, Globals::FLUX_NORMAL_ID_BC);
-                break;
-            case Globals::BoundaryConditionType::FLUX_PARALLEL:
-                boundary_info.add_node(node_ptr, Globals::FLUX_PARALLEL_ID_BC);
-                break;
-            default:
-                break;
-            }
+            boundary_info.add_node(node_ptr, boundary_id_mesh);
         }
 
         boundary_info.build_side_list_from_node_list();
@@ -89,36 +84,44 @@ void ApecMMesh::apply_boundary_info(const std::set<std::string> &bc_arrays)
     boundary_info.print_summary();
 }
 
-void ApecMMesh::generate_infinite_elements()
+void ApecMMesh::generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory)
 {
     libMesh::out << "Generating infinite elements..." << std::endl;
 
-    this->apply_boundary_info({"infinite_boundary"});
-
-    if (!this->has_node_integer("infinite_boundary"))
+    if (!element_types_factory)
+    {
+        libMesh::out << "No ElementTypesFactory attached; skipping infinite element generation." << std::endl;
         return;
+    }
+
+    this->apply_boundary_info();
 
     BoundaryInfo &boundary_info = this->get_boundary_info();
+    boundary_info.clear();
+
     const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
+    if (side_boundary_ids.empty())
+        return;
 
-    unsigned int etype_num_index = this->get_elem_integer_index("ansys_etype");
-    unsigned int material_num_index = this->get_elem_integer_index("ansys_material_type");
-    unsigned int real_constants_num_index = this->get_elem_integer_index("ansys_real_constant");
-
+    ElementTypesMap *types_map = element_types_factory->get_element_types_map();
     for (const auto &id : side_boundary_ids)
     {
+        auto it = types_map->find(id);
+        if (it == types_map->end())
+            continue;
+
+        ElementTypeEnum elem_enum = static_cast<ElementTypeEnum>(it->second->get_keyopts().front());
+        if (elem_enum != ElementTypeEnum::INFIN110 &&
+            elem_enum != ElementTypeEnum::INFIN111 &&
+            elem_enum != ElementTypeEnum::INFIN112)
+            continue;
+
         InfElemBuilderUpdated builder(*this);
         builder.set_infinite_elem_side_boundary_id(id);
-        const libMesh::Point origin(0.0, 0.0, 0.0);
-        builder.build_inf_elem(origin);
+        builder.build_inf_elem(Point(0.0, 0.0, 0.0));
 
         for (auto &elem : this->element_ptr_range())
             if (elem->infinite())
-            {
                 elem->subdomain_id() = id;
-                elem->set_extra_integer(etype_num_index, id);
-                elem->set_extra_integer(material_num_index, 0);
-                elem->set_extra_integer(real_constants_num_index, 0);
-            }
     }
 }

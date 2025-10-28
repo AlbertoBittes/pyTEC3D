@@ -283,29 +283,11 @@ VTK_ARRAYS_TO_INIT = {
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
-    "infinite_boundary": {
+    "boundary_id_0": {
         "location": "point",
         "components": 1,
         "fill": 0,
         "dtype": vtk.VTK_INT,
-    },
-    "flux_normal": {
-        "location": "point",
-        "components": 1,
-        "fill": 0,
-        "dtype": vtk.VTK_UNSIGNED_CHAR,
-    },
-    "flux_parallel": {
-        "location": "point",
-        "components": 1,
-        "fill": 0,
-        "dtype": vtk.VTK_UNSIGNED_CHAR,
-    },
-    "periodic_boundary": {
-        "location": "point",
-        "components": 1,
-        "fill": 0,
-        "dtype": vtk.VTK_UNSIGNED_CHAR,
     },
 }
 

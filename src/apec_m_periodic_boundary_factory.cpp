@@ -126,7 +126,7 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
             this->get_parent_object());
     }
 
-    this->compress_periodic_boundaries();
+    // this->compress_periodic_boundaries();
 }
 
 void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()

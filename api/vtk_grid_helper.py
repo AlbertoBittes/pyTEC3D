@@ -129,6 +129,34 @@ class VTKGridHelper:
         if data.HasArray(array_name):
             data.RemoveArray(array_name)
 
+    @staticmethod
+    def add_boundary_array(mesh):
+        """Adds a new boundary_id_N array to point data with default zeros."""
+        point_data = mesh.GetPointData()
+        existing = []
+        for i in range(point_data.GetNumberOfArrays()):
+            name = point_data.GetArrayName(i)
+            if name and name.startswith("boundary_id_"):
+                try:
+                    existing.append(int(name[len("boundary_id_"):]))
+                except ValueError:
+                    continue
+
+        next_index = 0
+        if existing:
+            next_index = max(existing) + 1
+
+        array_name = f"boundary_id_{next_index}"
+        if point_data.GetArray(array_name) is not None:
+            return array_name
+
+        num_points = mesh.GetNumberOfPoints()
+        arr = np.zeros(num_points, dtype=np.int32)
+        vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=vtk.VTK_INT)
+        vtk_arr.SetName(array_name)
+        point_data.AddArray(vtk_arr)
+        return array_name
+
 
     @staticmethod
     def validate_dataframe_with_vtk_data(vtk_data, df, array_name):

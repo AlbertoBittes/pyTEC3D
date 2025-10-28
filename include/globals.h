@@ -133,8 +133,6 @@ namespace Globals
     };
     extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
     extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
-    // Centralized boundary condition info map
-    extern const std::map<BoundaryConditionType, BoundaryConditionInfo> BOUNDARY_CONDITION_INFO_MAP;
 
     // Declare physical constants
     extern const Real MU_0;
@@ -191,6 +189,7 @@ namespace Globals
     //         return info.api_label == "A" && info.component_index == 2;
     //     });
 
+    extern const std::vector<std::string> VTK_DATA_ARRAY_NAMES;
 }
 
 #endif // GLOBALS_H
