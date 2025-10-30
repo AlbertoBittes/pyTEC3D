@@ -21,60 +21,39 @@ enum FileMode
 class Session : public FEDataObjectMap<PathMap>
 {
 public:
-    Session()
-        : input_mesh_filepath(""),
-          mesh_filename_without_extension(""),
-          output_filename(""),
-          n_load_steps(0)
-    {
-        auto &paths_map = *this->get_data_map();
-        // Initialize default paths in the map
-        paths_map["output_folderpath"] = "output";
-        paths_map["temp_folderpath"] = "temp";
-        paths_map["load_steps_folderpath"] = "load_steps";
-        paths_map["emat_folderpath"] = "emat_files";
-    }
+    Session();
 
-    void initialize_folder_paths()
-    {
-        auto &paths_map = *this->get_data_map();
+    void initialize_folder_paths();
 
-        std::filesystem::path input_path = std::filesystem::path(input_mesh_filepath);
-        paths_map["input_directory"] = input_path.parent_path();
-
-        // Prepend the extracted directory to the folder paths
-        paths_map["output_folderpath"] = paths_map["input_directory"] / "output";
-        paths_map["temp_folderpath"] = paths_map["input_directory"] / "temp";
-        paths_map["load_steps_folderpath"] = paths_map["input_directory"] / "load_steps";
-        paths_map["emat_folderpath"] = paths_map["input_directory"] / "emat_files";
-
-        create_temp_folder();
-        create_output_folder();
-        create_emat_folder();
-        check_load_steps_folder();
-    }
-
-    // Setters
-    void set_input_mesh_filepath(const std::string &filepath)
-    {
-        input_mesh_filepath = filepath;
-        std::filesystem::path input_path = std::filesystem::path(filepath);
-        mesh_filename_without_extension = input_path.stem().string();
-        initialize_folder_paths();
-    }
-    void set_path(const std::string &key, const std::filesystem::path &path) { (*data_map)[key] = path; }
-    void set_mesh_filename_without_extension(const std::string &filename) { mesh_filename_without_extension = filename; }
-    void set_output_filename(const std::string &filename) { output_filename = filename; }
-    void set_n_load_steps(unsigned int n) { n_load_steps = n; }
-
-    // Getters
+    void set_input_mesh_filepath(const std::string &filepath);
     const std::string &get_input_mesh_filepath() const { return input_mesh_filepath; }
-    const std::filesystem::path &get_path(const std::string &key) const { return data_map->at(key); }
+
+    void set_active_mesh(const std::string &mesh_name);
+    const std::string &get_active_mesh() const { return active_mesh; }
+    bool has_active_mesh() const { return !active_mesh.empty(); }
+
+    void set_active_analysis(const std::string &analysis_name);
+    const std::string &get_active_analysis() const { return active_analysis; }
+    void clear_active_analysis();
+    bool has_active_analysis() const { return analysis_defined && !active_analysis.empty(); }
+
+    void set_working_directory(const std::filesystem::path &directory);
+    const std::filesystem::path &get_working_directory() const { return working_directory; }
+
+    void set_model_data_filepath(const std::filesystem::path &filepath);
+    const std::filesystem::path &get_model_data_filepath() const { return model_data_filepath; }
+
+    void set_path(const std::string &key, const std::filesystem::path &path);
+    const std::filesystem::path &get_path(const std::string &key) const;
+
     const std::string &get_mesh_filename_without_extension() const { return mesh_filename_without_extension; }
+
+    void set_output_filename(const std::string &filename);
     const std::string &get_output_filename() const { return output_filename; }
+
+    void set_n_load_steps(unsigned int n) { n_load_steps = n; }
     unsigned int get_n_load_steps() const { return n_load_steps; }
 
-    // Methods
     void set_output_filepath(unsigned int output_label);
     void create_temp_folder();
     void create_output_folder();
@@ -93,10 +72,20 @@ public:
     void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
 private:
+    void update_dynamic_paths();
+    static std::string sanitize_token(const std::string &value);
+
     std::string input_mesh_filepath;
     std::string mesh_filename_without_extension;
     std::string output_filename;
     unsigned int n_load_steps;
+
+    std::string active_mesh;
+    std::string active_analysis;
+    bool analysis_defined;
+    std::filesystem::path working_directory;
+    std::filesystem::path model_data_filepath;
+    bool custom_working_directory;
 };
 
 #endif // SESSION_H

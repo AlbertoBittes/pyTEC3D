@@ -36,7 +36,7 @@ def convert_mesh_from_cdb(file_path):
             del archive.grid.cell_data[array_name]
 
     # Check and remove from point data
-    for array_name in ["angles", "origid", "VTKorigID"]:
+    for array_name in ["VTKorigID"]:
         if array_name in archive.grid.point_data:
             del archive.grid.point_data[array_name]
 

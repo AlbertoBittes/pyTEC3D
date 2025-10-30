@@ -16,6 +16,7 @@ from binary_helper import BinaryHelper
 from excel_io_helper import ExcelIOHelper
 from cli_object import CLIObject
 from constants import *
+from dof_coupling_helper import DOFCouplingHelper, CouplingForest
 
 
 # Add the current directory to the Python path to ensure imports work
@@ -66,6 +67,7 @@ class APEC_M:
         self.process = None
         self.num_processors = 1
         self.periodic_boundaries = []
+        self.coupling_forests = []
 
     #
     #
@@ -132,6 +134,26 @@ class APEC_M:
         print(
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
+
+    def build_coupling_forests(self, print_summary: bool = False):
+        """
+        Construct and cache DOF coupling forests from CP_* point-data arrays.
+
+        Parameters
+        ----------
+        print_summary : bool, optional
+            When True, print a human-readable summary of the computed forests.
+
+        Returns
+        -------
+        list[CouplingForest]
+            The cached list of coupling forests, one per coupling set.
+        """
+        forests = DOFCouplingHelper.build_coupling_forests(self.mesh)
+        self.coupling_forests = forests
+        if print_summary:
+            DOFCouplingHelper.print_coupling_forests(forests)
+        return forests
 
     def save_mesh(self):
         """
