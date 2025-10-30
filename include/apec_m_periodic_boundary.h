@@ -40,6 +40,8 @@ public:
     const VectorValue<Real> &get_translation_vector() const;
     const std::vector<std::string> &get_variable_labels() const;
 
+    void clear_transformation_matrix();
+
 private:
     DenseMatrix<Real> build_transformation_matrix() const;
 

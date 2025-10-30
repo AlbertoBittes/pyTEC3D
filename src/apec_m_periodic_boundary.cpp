@@ -31,7 +31,10 @@ ApecMPeriodicBoundary::ApecMPeriodicBoundary(const boundary_id_type main_b,
 
     auto transform = build_transformation_matrix();
     if (transform.m() > 0)
-        this->set_transformation_matrix(transform);
+    {
+        if (!(transform.m() == 1 && transform.n() == 1))
+            this->set_transformation_matrix(transform);
+    }
 }
 
 ApecMPeriodicBoundary::ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, TransformationType t)
@@ -44,6 +47,14 @@ ApecMPeriodicBoundary::ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, Tra
                             o.variable_labels,
                             o.get_parent_object())
 {
+    // if (!o.has_transformation_matrix())
+    // {
+    //     this->clear_transformation_matrix();
+    // }
+    // else
+    // {
+    //     this->set_transformation_matrix(o.get_transformation_matrix());
+    // }
 }
 
 Point ApecMPeriodicBoundary::get_corresponding_pos(const Point &pt) const
@@ -99,6 +110,11 @@ const VectorValue<Real> &ApecMPeriodicBoundary::get_translation_vector() const
 const std::vector<std::string> &ApecMPeriodicBoundary::get_variable_labels() const
 {
     return variable_labels;
+}
+
+void ApecMPeriodicBoundary::clear_transformation_matrix()
+{
+    this->_transformation_matrix.reset();
 }
 
 DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const

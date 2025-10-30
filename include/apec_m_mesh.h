@@ -12,6 +12,7 @@
 #include "fe_data_object.h"
 
 class FEMDataRepository;
+class ElementTypesFactory;
 
 class ApecMMesh : public libMesh::Mesh, public FEDataObjectAbstract
 {

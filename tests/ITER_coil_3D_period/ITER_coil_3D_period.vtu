@@ -126,6 +126,21 @@
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
+        <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="3">
+          AQAAAACAAAC0BgAANAAAAA==eJxjYmBgYMKDaQXw2TnQGBtgHhUfFadAHBcYbO6klr9wgYGyd7CBwZZ+aG0+NcUB78UA7A==
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_1" format="binary" RangeMin="0" RangeMax="5">
+          AQAAAACAAAC0BgAAHgAAAA==eJxjYEAFLGh4FNAHsNJYfBSMglEwCoYDAADVNAAl
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_2" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_3" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_4" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
+        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="672">

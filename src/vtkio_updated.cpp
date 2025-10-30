@@ -437,70 +437,53 @@ void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
 
                 const bool is_real_array = (vtk_array->GetDataType() == VTK_DOUBLE || vtk_array->GetDataType() == VTK_FLOAT);
 
+                std::vector<std::string> component_names(num_components);
+                std::vector<unsigned int> data_indices(num_components, libMesh::invalid_uint);
+
                 for (int comp = 0; comp < num_components; ++comp)
                 {
-                std::string component_name = (num_components == 1) ? array_name : array_name + "-" + std::to_string(comp);
-
+                    component_names[comp] = (num_components == 1) ? array_name : array_name + "-" + std::to_string(comp);
                     if (is_point_data)
                     {
-                        unsigned int data_index = libMesh::invalid_uint;
-                        unsigned int existing_index = mesh.get_node_integer_index(component_name);
-                        if (existing_index != libMesh::invalid_uint)
-                            data_index = existing_index;
-                        else
-                        {
-                            data_index = is_real_array ?
-                                            mesh.add_node_datum<Real>(component_name) :
-                                            mesh.add_node_datum<dof_id_type>(component_name);
-                        }
-
-                        for (const auto &node : mesh.node_ptr_range())
-                        {
-                            const vtkIdType tuple_id = node->id();
-                            if (tuple_id < 0 || tuple_id >= vtk_array->GetNumberOfTuples())
-                                continue;
-
-                            if (is_real_array)
-                            {
-                                const Real value = static_cast<Real>(vtk_array->GetComponent(tuple_id, comp));
-                                node->set_extra_datum<Real>(data_index, value);
-                            }
-                            else
-                            {
-                                const dof_id_type value = static_cast<dof_id_type>(vtk_array->GetComponent(tuple_id, comp));
-                                node->set_extra_datum<dof_id_type>(data_index, value);
-                            }
-                        }
+                        data_indices[comp] = is_real_array ? mesh.add_node_datum<Real>(component_names[comp]) : mesh.add_node_datum<dof_id_type>(component_names[comp]);
                     }
                     else
                     {
-                        unsigned int data_index = libMesh::invalid_uint;
-                        unsigned int existing_index = mesh.get_elem_integer_index(component_name);
-                        if (existing_index != libMesh::invalid_uint)
-                            data_index = existing_index;
-                        else
-                        {
-                            data_index = is_real_array ?
-                                            mesh.add_elem_datum<Real>(component_name) :
-                                            mesh.add_elem_datum<dof_id_type>(component_name);
-                        }
+                        data_indices[comp] = is_real_array ? mesh.add_elem_datum<Real>(component_names[comp]) : mesh.add_elem_datum<dof_id_type>(component_names[comp]);
+                    }
+                }
 
-                        for (const auto &elem : mesh.element_ptr_range())
-                        {
-                            const dof_id_type elem_id = elem->id();
-                            if (elem_id < 0 || elem_id >= vtk_array->GetNumberOfTuples())
-                                continue;
+                if (is_point_data)
+                {
+                    for (const auto &node : mesh.node_ptr_range())
+                    {
+                        const vtkIdType tuple_id = node->id();
+                        if (tuple_id < 0 || tuple_id >= vtk_array->GetNumberOfTuples())
+                            continue;
 
+                        for (int comp = 0; comp < num_components; ++comp)
+                        {
                             if (is_real_array)
-                            {
-                                const Real value = static_cast<Real>(vtk_array->GetComponent(elem_id, comp));
-                                elem->set_extra_datum<Real>(data_index, value);
-                            }
+                                node->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(tuple_id, comp)));
                             else
-                            {
-                                const dof_id_type value = static_cast<dof_id_type>(vtk_array->GetComponent(elem_id, comp));
-                                elem->set_extra_datum<dof_id_type>(data_index, value);
-                            }
+                                node->set_extra_datum<dof_id_type>(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(tuple_id, comp)));
+                        }
+                    }
+                }
+                else
+                {
+                    for (const auto &elem : mesh.element_ptr_range())
+                    {
+                        const dof_id_type elem_id = elem->id();
+                        if (elem_id < 0 || elem_id >= vtk_array->GetNumberOfTuples())
+                            continue;
+
+                        for (int comp = 0; comp < num_components; ++comp)
+                        {
+                            if (is_real_array)
+                                elem->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(elem_id, comp)));
+                            else
+                                elem->set_extra_datum<dof_id_type>(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(elem_id, comp)));
                         }
                     }
                 }

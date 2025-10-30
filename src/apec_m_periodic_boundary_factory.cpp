@@ -126,7 +126,7 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
             this->get_parent_object());
     }
 
-    // this->compress_periodic_boundaries();
+    this->compress_periodic_boundaries();
 }
 
 void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
@@ -202,6 +202,16 @@ void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
     }
 
     periodic_boundaries.swap(compressed);
+
+    // for (auto &pb : periodic_boundaries)
+    // {
+    //     if (pb.has_transformation_matrix())
+    //     {
+    //         const DenseMatrix<Real> &matrix = pb.get_transformation_matrix();
+    //         if (matrix.m() == 1 && matrix.n() == 1)
+    //             pb.clear_transformation_matrix();
+    //     }
+    // }
 }
 
 void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
