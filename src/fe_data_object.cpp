@@ -181,6 +181,88 @@ void SettingsFEDataObject::read_data(std::ifstream &file)
             file.read(&string_value[0], string_size);
             (*data_map)[key] = string_value;
         }
+        else if (value_type == 3)
+        { // numpy array
+            // Read dtype string (ignored for now but consumed)
+            std::uint32_t dtype_len = 0;
+            file.read(reinterpret_cast<char *>(&dtype_len), sizeof(dtype_len));
+            std::string dtype(dtype_len, '\0');
+            file.read(&dtype[0], dtype_len);
+
+            // Read shape information
+            std::uint32_t ndim = 0;
+            file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
+
+            Globals::NDArray array_value;
+            array_value.shape.resize(ndim);
+
+            std::size_t total_elements = 1;
+            for (std::uint32_t dim = 0; dim < ndim; ++dim)
+            {
+                std::uint32_t extent = 0;
+                file.read(reinterpret_cast<char *>(&extent), sizeof(extent));
+                array_value.shape[dim] = extent;
+                total_elements *= static_cast<std::size_t>(extent);
+            }
+
+            // Element kind: 0 -> int64, 1 -> float64, 2 -> string
+            int32_t element_kind = 0;
+            file.read(reinterpret_cast<char *>(&element_kind), sizeof(element_kind));
+
+            switch (element_kind)
+            {
+            case 0:
+            {
+                std::vector<std::int64_t> buffer(total_elements);
+                if (total_elements)
+                    file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(std::int64_t));
+
+                std::vector<int> values(buffer.size());
+                for (std::size_t idx = 0; idx < buffer.size(); ++idx)
+                    values[idx] = static_cast<int>(buffer[idx]);
+
+                array_value.values = std::move(values);
+                break;
+            }
+            case 1:
+            {
+                std::vector<double> buffer(total_elements);
+                if (total_elements)
+                    file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(double));
+
+                std::vector<Real> values(buffer.size());
+                for (std::size_t idx = 0; idx < buffer.size(); ++idx)
+                    values[idx] = static_cast<Real>(buffer[idx]);
+
+                array_value.values = std::move(values);
+                break;
+            }
+            case 2:
+            {
+                std::uint32_t count = 0;
+                file.read(reinterpret_cast<char *>(&count), sizeof(count));
+
+                std::vector<std::string> values(count);
+                for (std::uint32_t idx = 0; idx < count; ++idx)
+                {
+                    std::uint32_t str_len = 0;
+                    file.read(reinterpret_cast<char *>(&str_len), sizeof(str_len));
+
+                    std::string value(str_len, '\0');
+                    if (str_len)
+                        file.read(&value[0], str_len);
+                    values[idx] = std::move(value);
+                }
+
+                array_value.values = std::move(values);
+                break;
+            }
+            default:
+                libmesh_error_msg("Unsupported numpy array element type encountered in binary file.");
+            }
+
+            (*data_map)[key] = std::move(array_value);
+        }
         else
         {
             libmesh_error_msg("Unsupported value type encountered in binary file.");

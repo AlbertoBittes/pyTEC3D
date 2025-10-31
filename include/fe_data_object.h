@@ -1,33 +1,36 @@
 #ifndef FE_DATA_OBJECT_H
 #define FE_DATA_OBJECT_H
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <variant>
-#include <unordered_map>
+#include <cstdint>
 #include <fstream>
+#include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
-#include <vtkFieldData.h>
-#include <vtkStringArray.h>
-#include <vtkIntArray.h>
-#include <vtkDoubleArray.h>
 
 #include <vtkAbstractArray.h>
-#include <unordered_map>
-#include <tuple>
-#include <string>
-#include <vector>
-#include <memory>
+#include <vtkDoubleArray.h>
+#include <vtkIntArray.h>
+#include <vtkStringArray.h>
+
+#include "globals.h"
+
+#include "globals.h"
 
 using namespace libMesh;
 
 class LoadStep;
 
 typedef std::vector<std::vector<std::variant<int, Real, std::string>>> DataframeMap;
-typedef std::unordered_map<std::string, std::variant<int, Real, std::string>> SettingsMap;
+
+typedef std::variant<int, Real, std::string, Globals::NDArray> SettingsValue;
+typedef std::unordered_map<std::string, SettingsValue> SettingsMap;
 
 class FEMDataRepository;
 // FE data object classes are the basic data repositories of the program.

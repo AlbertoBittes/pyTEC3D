@@ -109,12 +109,6 @@ class APEC_M:
 
         VTKGridHelper.initialize_vtk_arrays(self.mesh)
 
-        self.mesh.SetFieldData(vtk.vtkFieldData())
-        # vtk_array_dummy = vtk.vtkIntArray()
-        # vtk_array_dummy.SetName("_dummy_array_")
-        # vtk_array_dummy.SetNumberOfTuples(2000)
-        # self.mesh.GetFieldData().AddArray(vtk_array_dummy)
-
         Selector.ensure_selection_arrays(self.mesh)
 
         self.compute_and_store_cell_centroids()

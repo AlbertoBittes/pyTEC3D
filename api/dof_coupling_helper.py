@@ -4,6 +4,8 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class CouplingForest:
@@ -11,13 +13,13 @@ class CouplingForest:
 
     array_name: str
     cp_id: int
-    pairs: Tuple[Tuple[int, int], ...]
-    roots: Tuple[int, ...]
-    isolated: Tuple[int, ...] = ()
+    pairs: np.ndarray
+    roots: np.ndarray
+    isolated: np.ndarray
 
     def has_edges(self) -> bool:
         """True when the forest contains at least one coupling edge."""
-        return bool(self.pairs)
+        return self.pairs.size > 0
 
 
 class DOFCouplingHelper:
@@ -127,12 +129,20 @@ class DOFCouplingHelper:
             if leftovers:
                 isolated.extend(sorted(leftovers))
 
+        pairs_array = (
+            np.array(edges, dtype=np.int64).reshape(-1, 2)
+            if edges
+            else np.zeros((0, 2), dtype=np.int64)
+        )
+        roots_array = np.array(roots, dtype=np.int64)
+        isolated_array = np.array(isolated, dtype=np.int64)
+
         return CouplingForest(
             array_name=array_name,
             cp_id=cp_id,
-            pairs=tuple(edges),
-            roots=tuple(roots),
-            isolated=tuple(isolated),
+            pairs=pairs_array,
+            roots=roots_array,
+            isolated=isolated_array,
         )
 
     @staticmethod
