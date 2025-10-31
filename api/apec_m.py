@@ -16,7 +16,7 @@ from binary_helper import BinaryHelper
 from excel_io_helper import ExcelIOHelper
 from cli_object import CLIObject
 from constants import *
-from dof_coupling_helper import DOFCouplingHelper, CouplingForest
+from dof_coupling_helper import DOFCouplingHelper
 
 
 # Add the current directory to the Python path to ensure imports work
@@ -67,7 +67,7 @@ class APEC_M:
         self.process = None
         self.num_processors = 1
         self.periodic_boundaries = []
-        self.coupling_forests = []
+        self.dof_couplings = []
 
     #
     #
@@ -99,13 +99,15 @@ class APEC_M:
         self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
         self.folderpath = os.path.dirname(vtk_file_path)
 
-        # Set the current working directory
-        os.chdir(self.folderpath)
+        # Prepare per-mesh folders inside the project directory
+        mesh_root = os.path.join(self.folderpath, self.jobname)
+        os.makedirs(mesh_root, exist_ok=True)
 
-        # Create a folder named 'loads_steps' in the current working directory
-        self.load_steps_folder = os.path.join(os.getcwd(), "load_steps")
-        if not os.path.exists(self.load_steps_folder):
-            os.makedirs(self.load_steps_folder)
+        self.load_steps_folder = os.path.join(mesh_root, "load_steps")
+        os.makedirs(self.load_steps_folder, exist_ok=True)
+
+        # Ensure relative paths resolve from the mesh directory
+        os.chdir(self.folderpath)
 
         VTKGridHelper.initialize_vtk_arrays(self.mesh)
 
@@ -129,7 +131,7 @@ class APEC_M:
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
 
-    def build_coupling_forests(self, print_summary: bool = False):
+    def build_dof_couplings(self, print_summary: bool = False):
         """
         Construct and cache DOF coupling forests from CP_* point-data arrays.
 
@@ -140,13 +142,16 @@ class APEC_M:
 
         Returns
         -------
-        list[CouplingForest]
+        list[dict]
             The cached list of coupling forests, one per coupling set.
         """
-        forests = DOFCouplingHelper.build_coupling_forests(self.mesh)
-        self.coupling_forests = forests
+        return self.refresh_dof_couplings(print_summary=print_summary)
+
+    def refresh_dof_couplings(self, print_summary: bool = False):
+        forests = DOFCouplingHelper.build_dof_couplings(self.mesh)
+        self.dof_couplings = forests
         if print_summary:
-            DOFCouplingHelper.print_coupling_forests(forests)
+            DOFCouplingHelper.print_dof_couplings(forests)
         return forests
 
     def save_mesh(self):
@@ -173,37 +178,6 @@ class APEC_M:
         # Remove arrays listed in ARRAYS_TO_REMOVE using safe_remove_array
         for arr in ARRAYS_TO_REMOVE:
             VTKGridHelper.safe_remove_array(self.mesh, arr)
-        # Validate the element_types DataFrame against the 'ansys_elem_num' array in cell data
-        infin_mask = (
-            self.element_types["element_type"].astype(str).str.match(r"INFIN\d+")
-        )
-        element_types_infin = self.element_types[infin_mask].copy()
-        element_types_normal = self.element_types[~infin_mask].copy()
-        if not element_types_infin.empty:
-            new_row = {col: 0 for col in element_types_infin.columns}
-            new_row["ansys_etype"] = 0
-            element_types_infin = pd.concat(
-                [element_types_infin, pd.DataFrame([new_row])], ignore_index=True
-            )
-
-        cell_data = self.mesh.GetCellData()
-        # Validate normal elements with 'ansys_etype'
-        if not element_types_normal.empty:
-            VTKGridHelper.validate_dataframe_with_vtk_data(
-                cell_data, element_types_normal, "ansys_etype"
-            )
-
-        point_data = self.mesh.GetPointData()
-        # Validate INFIN elements with 'infinite_boundary'
-        if not element_types_infin.empty:
-            VTKGridHelper.validate_dataframe_with_vtk_data(
-                point_data, element_types_infin, "infinite_boundary"
-            )
-
-        # # Attach the vtkTable as field data to the mesh
-        VTKTablesHelper.update_mesh_field_data(self.mesh, self.element_types)
-
-        VTKTablesHelper.update_mesh_field_data(self.mesh, self.periodic_boundaries)
 
         # Define the output file name
         output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
@@ -335,7 +309,7 @@ class APEC_M:
     #
     #
     #
-    def write_load_step(self, output_file, labels_to_write=None):
+    def write_to_binary(self, output_file, labels_to_write=None):
         """
         Writes the current load step data to a single binary file based on the provided labels.
 
@@ -346,22 +320,69 @@ class APEC_M:
 
         # Default labels to write if none are provided
         if labels_to_write is None:
-            labels_to_write = list(WRITING_FUNCTIONS_MAP.keys())
+            labels_to_write = list(WRITING_LABELS)
 
         # Open the file in write mode to overwrite if it already exists
         with open(output_file, "wb") as binary_file:
             binary_file.write(struct.pack("I", len(labels_to_write)))
 
-            for k, label in enumerate(labels_to_write):
+            for label in labels_to_write:
                 try:
-                    # Call the appropriate function based on the label
-                    binary_file.write(struct.pack("I", k))
+                    if label not in WRITING_LABEL_TO_ID:
+                        raise ValueError(f"Unrecognized label '{label}'.")
+
+                    label_id = WRITING_LABEL_TO_ID[label]
+                    binary_file.write(struct.pack("I", label_id))
                     self._write_label_to_binary(binary_file, label)
                     print(f"{label.replace('_', ' ').capitalize()} written.")
                 except ValueError as e:
                     print(f"Warning: {e}")
 
-        print(f"Load step written to '{output_file}'.")
+        print(f"Binary written to '{output_file}'.")
+
+    def write_load_step(self, load_step_number: int):
+        if not self.jobname:
+            raise ValueError("Job name is not set. Cannot write load step binaries.")
+
+        if not self.folderpath:
+            raise ValueError("Folder path is not set. Cannot write load step binaries.")
+
+        load_steps_folder = os.path.join(self.folderpath, self.jobname, "load_steps")
+        os.makedirs(load_steps_folder, exist_ok=True)
+
+        timestep_path = os.path.join(
+            load_steps_folder, f"{self.jobname}_timestep_{load_step_number}.bin"
+        )
+        grid_data_path = os.path.join(
+            load_steps_folder, f"{self.jobname}_grid_data_{load_step_number}.bin"
+        )
+
+        self.write_to_binary(timestep_path, labels_to_write=["time_parameters"])
+        self.write_to_binary(
+            grid_data_path,
+            labels_to_write=["point_data", "cell_data"],
+        )
+
+    def write_model_data(self):
+        if not self.jobname:
+            raise ValueError("Job name is not set. Cannot write model data.")
+
+        if not self.folderpath:
+            raise ValueError("Folder path is not set. Cannot write model data.")
+
+        os.makedirs(self.folderpath, exist_ok=True)
+
+        output_path = os.path.join(self.folderpath, "model_data.bin")
+        self.write_to_binary(
+            output_path,
+            labels_to_write=[
+                "element_types",
+                "materials",
+                "real_constants",
+                "periodic_boundaries",
+                "dof_couplings",
+            ],
+        )
 
     def generate_transient_analysis(self):
         """
@@ -403,10 +424,7 @@ class APEC_M:
                     f"Skipping Excel read for load step {idx + 1}: no input file provided."
                 )
 
-            self.write_load_step(
-                os.path.join(self.load_steps_folder, f"load_step_{idx + 1}.bin")
-            )
-            print(f"Load step {idx + 1} written to binary file.")
+            self.write_load_step(idx + 1)
 
     def _write_label_to_binary(self, binary_file, label):
         """

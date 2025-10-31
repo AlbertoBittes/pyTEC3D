@@ -14,6 +14,8 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/sparse_matrix.h>
 
+#include <filesystem>
+
 SimulationController::SimulationController(libMesh::Parallel::Communicator &comm, bool batch_mode, const std::string &mesh_filename)
     : apec_m_model_data(std::make_shared<FEMDataRepository>()),
       batch_mode(batch_mode), comm(comm)
@@ -256,13 +258,17 @@ void SimulationController::run_batch_mode()
 
     // Solve the system for each time step
     auto session = apec_m_model_data->get_object<Session>();
-    for (unsigned int n = 0; n < session->get_n_load_steps(); n++)
+    unsigned int step_index = 1;
+    while (true)
     {
-        // Create a new load step
-        const std::string load_step_filename = session->get_path("load_steps_folderpath") / ("load_step_" + std::to_string(n + 1) + ".bin");
-        load_stepper->read_new_load_step(load_step_filename);
-        // Solve the system for the current load step
+        const auto load_step_path = session->get_path("load_steps_folderpath") /
+                                    ("load_step_" + std::to_string(step_index) + ".bin");
+        if (!std::filesystem::exists(load_step_path))
+            break;
+
+        load_stepper->read_new_load_step(load_step_path);
         solve();
+        ++step_index;
     }
 }
 

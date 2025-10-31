@@ -50,7 +50,6 @@
 #include "vtkGenericCell.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
-#include "vtkFieldData.h"
 #include "vtkSmartPointer.h"
 #include "vtkMergeVectorComponents.h"
 #include "vtkStringArray.h"
@@ -64,8 +63,6 @@
 #include "libmesh/restore_warnings.h"
 #include "vtkio_updated.h"
 #include "globals.h"
-#include "fe_data_object.h"
-#include "apec_m_system_objects.h"
 // C++ includes
 #include <fstream>
 #include <map>
@@ -94,8 +91,7 @@ VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_pa
                                                MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
                                                ,
-                                               _compress(false), _sys(nullptr),
-                                               field_data_repository(std::make_shared<FEMDataRepository>())
+                                               _compress(false), _sys(nullptr)
 #endif
 {
 }
@@ -349,7 +345,7 @@ void VTKIO_Updated::read(const std::string &name)
             if (elems_of_dimension[i])
                 mesh.set_mesh_dimension(i);
 
-        this->add_integers_vtk(mesh);
+        this->add_ugrid_data_vtk(mesh);
 
 #if LIBMESH_DIM < 3
         libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
@@ -360,27 +356,10 @@ void VTKIO_Updated::read(const std::string &name)
                                  << "D support.");
 #endif // LIBMESH_DIM < 3
     }
-    vtkFieldData *raw_field_data = _vtk_grid->GetFieldData();
-    std::shared_ptr<vtkFieldData> field_data_ptr;
-    if (raw_field_data)
-    {
-        raw_field_data->Register(nullptr);
-        field_data_ptr.reset(raw_field_data, [](vtkFieldData *fd)
-                             { fd->UnRegister(nullptr); });
-    }
-    else
-    {
-        field_data_ptr = std::shared_ptr<vtkFieldData>();
-    }
-
-    auto element_types_factory = std::make_shared<ElementTypesFactory>(field_data_ptr);
-    auto periodic_boundary_factory = std::make_shared<ApecMPeriodicBoundaryFactory>(field_data_ptr);
-    field_data_repository->set_object<ElementTypesFactory>(element_types_factory);
-    field_data_repository->set_object<ApecMPeriodicBoundaryFactory>(periodic_boundary_factory);
 }
 
 // Add the integers from the VTK file to the mesh
-void VTKIO_Updated::add_integers_vtk(MeshBase &mesh)
+void VTKIO_Updated::add_ugrid_data_vtk(MeshBase &mesh)
 {
     auto process_dataset = [&](vtkDataSetAttributes *data, bool is_point_data)
     {
@@ -927,7 +906,6 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
 // {
 //     MeshBase &mesh = MeshInput<MeshBase>::mesh();
 //     const libMesh::Parallel::Communicator &comm = mesh.comm();
-//     const auto &objects = field_data_repository->get_all_objects();
 //     for (const auto &[type_idx, obj_ptr] : objects)
 //     {
 //         obj_ptr->broadcast(comm);

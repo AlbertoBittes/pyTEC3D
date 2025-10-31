@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -170,12 +171,81 @@ public:
     }
 
     template <typename T>
+    T get_scalar_setting(const std::string &key) const
+    {
+        auto it = data_map->find(key);
+        if (it == data_map->end())
+        {
+            libmesh_error_msg("Setting not found: " + key);
+        }
+
+        if (std::holds_alternative<T>(it->second))
+            return std::get<T>(it->second);
+
+        if (std::holds_alternative<Globals::NDArray>(it->second))
+            return extract_scalar_from_ndarray<T>(key, std::get<Globals::NDArray>(it->second));
+
+        libmesh_error_msg("Setting '" + key + "' cannot be converted to requested scalar type.");
+        return T{};
+    }
+
+    template <typename T>
     void set_setting(const std::string &key, T value)
     {
         (*data_map)[key] = value;
     }
     // Implement the read_data method
     void read_data(std::ifstream &file);
+
+private:
+    template <typename T>
+    static T extract_scalar_from_ndarray(const std::string &key, const Globals::NDArray &array)
+    {
+        std::size_t total_elements = 1;
+        for (auto extent : array.shape)
+            total_elements *= static_cast<std::size_t>(extent);
+
+        if (total_elements == 0)
+            libmesh_error_msg("Setting '" + key + "' is empty; cannot convert to scalar.");
+        if (total_elements != 1)
+            libmesh_error_msg("Setting '" + key + "' contains multiple values; cannot convert to scalar.");
+
+        return std::visit(
+            [&](const auto &vec) -> T
+            {
+                using VecType = std::decay_t<decltype(vec)>;
+                using ElemType = typename VecType::value_type;
+
+                if (vec.size() != total_elements || vec.empty())
+                    libmesh_error_msg("NDArray payload for setting '" + key + "' has unexpected size.");
+
+                const auto &value = vec.front();
+
+                if constexpr (std::is_same_v<T, int>)
+                {
+                    if constexpr (std::is_same_v<ElemType, int>)
+                        return value;
+                    if constexpr (std::is_same_v<ElemType, Real>)
+                        return static_cast<int>(value);
+                }
+                else if constexpr (std::is_same_v<T, Real>)
+                {
+                    if constexpr (std::is_same_v<ElemType, Real>)
+                        return value;
+                    if constexpr (std::is_same_v<ElemType, int>)
+                        return static_cast<Real>(value);
+                }
+                else if constexpr (std::is_same_v<T, std::string>)
+                {
+                    if constexpr (std::is_same_v<ElemType, std::string>)
+                        return value;
+                }
+
+                libmesh_error_msg("Unsupported NDArray to scalar conversion for setting '" + key + "'.");
+                return T{};
+            },
+            array.values);
+    }
 };
 
 template class DataframeMapFEDataObject<int>;

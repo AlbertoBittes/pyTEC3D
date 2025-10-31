@@ -1,25 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Set, Tuple
 
 import numpy as np
-
-
-@dataclass(frozen=True)
-class CouplingForest:
-    """Describes the parent -> child edges that couple a single CP set."""
-
-    array_name: str
-    cp_id: int
-    pairs: np.ndarray
-    roots: np.ndarray
-    isolated: np.ndarray
-
-    def has_edges(self) -> bool:
-        """True when the forest contains at least one coupling edge."""
-        return self.pairs.size > 0
 
 
 class DOFCouplingHelper:
@@ -28,7 +12,7 @@ class DOFCouplingHelper:
     CP_PREFIX = "CP_"
 
     @staticmethod
-    def build_coupling_forests(grid) -> List[CouplingForest]:
+    def build_dof_couplings(grid) -> List[Dict[str, Any]]:
         """Return shallow spanning forests for every CP_* coupling set in *grid*.
 
         Parameters
@@ -38,9 +22,12 @@ class DOFCouplingHelper:
 
         Returns
         -------
-        List[CouplingForest]
+        List[Dict[str, Any]]
             One forest per CP_* array / CP id combination. Forests are acyclic by
-            construction and promote sparsity by pairing adjacent nodes first.
+            construction and promote sparsity by pairing adjacent nodes first. Each
+            forest dictionary exposes the keys 'array_name' (string), 'cp_id' (int),
+            'pairs' (shape [N, 2] int64 array), 'roots' (shape [R] int64 array), and
+            'isolated' (shape [K] int64 array).
         """
         if grid is None:
             raise ValueError("grid must be a vtk.vtkUnstructuredGrid instance.")
@@ -56,7 +43,7 @@ class DOFCouplingHelper:
         adjacency = DOFCouplingHelper._build_node_adjacency(grid, npoints)
         coords = DOFCouplingHelper._collect_point_coordinates(grid, npoints)
 
-        forests: List[CouplingForest] = []
+        forests: List[Dict[str, Any]] = []
         for array_name, groups in cp_sets.items():
             for cp_id, nodes in groups.items():
                 forests.append(
@@ -71,27 +58,32 @@ class DOFCouplingHelper:
         return forests
 
     @staticmethod
-    def print_coupling_forests(forests: Iterable[CouplingForest]) -> None:
-        """Pretty-print the couplings produced by build_coupling_forests."""
+    def print_dof_couplings(forests: Iterable[Dict[str, Any]]) -> None:
+        """Pretty-print the couplings produced by build_dof_couplings."""
         forests = list(forests)
         if not forests:
             print("No coupling forests computed.")
             return
 
         for forest in forests:
-            header = f"[{forest.array_name}] cp={forest.cp_id}"
-            if forest.roots:
-                header += f" roots={', '.join(str(root) for root in forest.roots)}"
+            header = f"[{forest['array_name']}] cp={forest['cp_id']}"
+            if forest["roots"].size:
+                header += " roots=" + ", ".join(
+                    str(root) for root in forest["roots"].tolist()
+                )
             print(header)
 
-            if forest.pairs:
-                for parent, child in forest.pairs:
+            if forest["pairs"].size:
+                for parent, child in forest["pairs"].tolist():
                     print(f"  {parent} -> {child}")
             else:
                 print("  (no coupling edges)")
 
-            if forest.isolated:
-                print(f"  isolated: {', '.join(str(idx) for idx in forest.isolated)}")
+            if forest["isolated"].size:
+                isolated_str = ", ".join(
+                    str(idx) for idx in forest["isolated"].tolist()
+                )
+                print(f"  isolated: {isolated_str}")
 
     @staticmethod
     def _build_forest_for_nodes(
@@ -100,7 +92,7 @@ class DOFCouplingHelper:
         nodes: Sequence[int],
         adjacency: Sequence[Set[int]],
         coords: Sequence[Tuple[float, float, float]],
-    ) -> CouplingForest:
+    ) -> Dict[str, Any]:
         nodes_set = set(nodes)
         remaining = set(nodes)
         edges: List[Tuple[int, int]] = []
@@ -130,20 +122,20 @@ class DOFCouplingHelper:
                 isolated.extend(sorted(leftovers))
 
         pairs_array = (
-            np.array(edges, dtype=np.int64).reshape(-1, 2)
+            np.asarray(edges, dtype=np.int64).reshape(-1, 2)
             if edges
-            else np.zeros((0, 2), dtype=np.int64)
+            else np.empty((0, 2), dtype=np.int64)
         )
-        roots_array = np.array(roots, dtype=np.int64)
-        isolated_array = np.array(isolated, dtype=np.int64)
+        roots_array = np.asarray(roots, dtype=np.int64)
+        isolated_array = np.asarray(isolated, dtype=np.int64)
 
-        return CouplingForest(
-            array_name=array_name,
-            cp_id=cp_id,
-            pairs=pairs_array,
-            roots=roots_array,
-            isolated=isolated_array,
-        )
+        return {
+            "array_name": array_name,
+            "cp_id": int(cp_id),
+            "pairs": pairs_array,
+            "roots": roots_array,
+            "isolated": isolated_array,
+        }
 
     @staticmethod
     def _collect_cp_sets(grid, npoints: int) -> Dict[str, Dict[int, List[int]]]:
@@ -199,7 +191,11 @@ class DOFCouplingHelper:
 
     @staticmethod
     def _collect_point_coordinates(grid, npoints: int) -> List[Tuple[float, float, float]]:
-        return [tuple(map(float, grid.GetPoint(pid))) for pid in range(npoints)]
+        coords: List[Tuple[float, float, float]] = []
+        for pid in range(npoints):
+            x, y, z = grid.GetPoint(pid)
+            coords.append((float(x), float(y), float(z)))
+        return coords
 
     @staticmethod
     def _collect_component(

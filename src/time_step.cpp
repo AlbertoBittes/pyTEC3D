@@ -47,13 +47,13 @@ void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
     // Populate attributes from the data_map
     int n_substep;
 
-    step = this->get_setting<int>("time_step_number");
-    time = this->get_setting<Real>("time");
-    n_substep = this->get_setting<int>("number_of_substeps");
-    transient_effect = this->get_setting<int>("transient_effects");
-    ramped_load = this->get_setting<int>("ramped_loads");
-    theta = this->get_setting<Real>("theta");
-    write_results = this->get_setting<int>("write_substep_results");
+    step = this->get_scalar_setting<int>("time_step_number");
+    time = this->get_scalar_setting<Real>("time");
+    n_substep = this->get_scalar_setting<int>("number_of_substeps");
+    transient_effect = this->get_scalar_setting<int>("transient_effects");
+    ramped_load = this->get_scalar_setting<int>("ramped_loads");
+    theta = this->get_scalar_setting<Real>("theta");
+    write_results = this->get_scalar_setting<int>("write_substep_results");
 
     this->set_beginning_time(prev_load_step);
     // Populate substeps if they exist in the data_map

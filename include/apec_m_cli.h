@@ -9,24 +9,29 @@
 class BasicCommandLineInterface : public CommandLineInterface
 {
 public:
-    BasicCommandLineInterface() = default;
-
-    void run_interactive(APEC_M &program) override;
-    void run_batch(APEC_M &program, const std::string &batch_file) override;
-
-private:
     enum class Command
     {
         READ_MESH,
         CLEAR_MESH,
         SET_WORKDIR,
         SET_ACTIVE_MESH,
-        SET_ACTIVE_ANALYSIS,
         READ_MODEL_DATA,
+        DISTRIBUTE_BOUNDARIES,
+        GENERATE_INFINITE_ELEMENTS,
+        GENERATE_NODAL_COUPLINGS,
+        GENERATE_PERIODIC_BCS,
+        SET_MODE,
         HELP,
         EXIT,
         INVALID
     };
+
+    BasicCommandLineInterface() = default;
+
+    void run_interactive(APEC_M &program) override;
+    void run_batch(APEC_M &program, const std::string &batch_file) override;
+
+private:
 
     Command parse_command(const std::string &input) const;
     std::string extract_argument(const std::string &input) const;

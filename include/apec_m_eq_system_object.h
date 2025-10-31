@@ -2,7 +2,6 @@
 #define APEC_M_EQ_SYSTEM_OBJECT_H
 
 #include <memory>
-#include <optional>
 #include <vector>
 #include <libmesh/equation_systems.h>
 #include "globals.h"
@@ -25,13 +24,6 @@ class ApecMEquationSystems
 {
 public:
     using ContextView = TypedContextView<ElementTypesFactory>;
-    enum class AnalysisActivationState
-    {
-        Created,
-        ActivatedExisting,
-        AlreadyActive
-    };
-
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>
     ApecMEquationSystems(Args &&...args)
@@ -51,21 +43,15 @@ public:
     void clear_preserving_solver_settings();
     static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh,
                                                        const std::shared_ptr<FEMDataRepository> &model_data);
-
-    AnalysisActivationState activate_analysis(const std::string &analysis_name);
-    void clear_active_analysis();
-    bool has_analysis(const std::string &analysis_name) const;
-    const std::optional<std::string> &get_active_analysis() const { return active_analysis_name; }
-    const std::vector<ApecMAnalysis> &get_analyses() const { return analyses; }
-    bool has_active_analysis() const { return active_analysis_name.has_value(); }
+    void set_analysis(std::shared_ptr<ApecMAnalysis> analysis_object);
+    std::shared_ptr<ApecMAnalysis> get_analysis() const { return analysis; }
 
 private:
     using RampVectorTuple = std::tuple<NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
     std::vector<RampVectorTuple> collect_ramp_vectors();
 
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
-    std::vector<ApecMAnalysis> analyses;
-    std::optional<std::string> active_analysis_name;
+    std::shared_ptr<ApecMAnalysis> analysis;
 };
 
 #endif // APEC_M_EQ_SYSTEM_OBJECT_H

@@ -193,21 +193,23 @@ void SettingsFEDataObject::read_data(std::ifstream &file)
             std::uint32_t ndim = 0;
             file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
 
-            Globals::NDArray array_value;
-            array_value.shape.resize(ndim);
+            std::vector<std::uint32_t> shape(ndim);
 
             std::size_t total_elements = 1;
             for (std::uint32_t dim = 0; dim < ndim; ++dim)
             {
                 std::uint32_t extent = 0;
                 file.read(reinterpret_cast<char *>(&extent), sizeof(extent));
-                array_value.shape[dim] = extent;
+                shape[dim] = extent;
                 total_elements *= static_cast<std::size_t>(extent);
             }
 
             // Element kind: 0 -> int64, 1 -> float64, 2 -> string
             int32_t element_kind = 0;
             file.read(reinterpret_cast<char *>(&element_kind), sizeof(element_kind));
+
+            Globals::NDArray array_value;
+            array_value.shape = std::move(shape);
 
             switch (element_kind)
             {
@@ -242,6 +244,8 @@ void SettingsFEDataObject::read_data(std::ifstream &file)
                 std::uint32_t count = 0;
                 file.read(reinterpret_cast<char *>(&count), sizeof(count));
 
+                if (count != total_elements)
+                    libmesh_error_msg("String NDArray payload size mismatch in binary file.");
                 std::vector<std::string> values(count);
                 for (std::uint32_t idx = 0; idx < count; ++idx)
                 {

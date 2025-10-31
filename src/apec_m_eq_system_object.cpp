@@ -5,7 +5,7 @@
 #include "system_builder.h"
 #include "time_step.h"
 
-#include <algorithm>
+#include <utility>
 
 void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
 {
@@ -72,50 +72,9 @@ std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mes
     return equation_systems;
 }
 
-ApecMEquationSystems::AnalysisActivationState ApecMEquationSystems::activate_analysis(const std::string &analysis_name)
+void ApecMEquationSystems::set_analysis(std::shared_ptr<ApecMAnalysis> analysis_object)
 {
-    if (analysis_name.empty())
-        return AnalysisActivationState::AlreadyActive;
-
-    const auto previous_active = active_analysis_name;
-
-    auto it = std::find_if(analyses.begin(), analyses.end(),
-                           [&analysis_name](const ApecMAnalysis &analysis)
-                           { return analysis.get_name() == analysis_name; });
-
-    AnalysisActivationState result = AnalysisActivationState::AlreadyActive;
-
-    if (it == analyses.end())
-    {
-        analyses.emplace_back(analysis_name);
-        result = AnalysisActivationState::Created;
-    }
-    else if (!previous_active || *previous_active != analysis_name)
-    {
-        result = AnalysisActivationState::ActivatedExisting;
-    }
-
-    active_analysis_name = analysis_name;
-
-    if (result == AnalysisActivationState::AlreadyActive &&
-        (!previous_active || *previous_active != analysis_name))
-    {
-        result = AnalysisActivationState::ActivatedExisting;
-    }
-
-    return result;
-}
-
-void ApecMEquationSystems::clear_active_analysis()
-{
-    active_analysis_name.reset();
-}
-
-bool ApecMEquationSystems::has_analysis(const std::string &analysis_name) const
-{
-    return std::any_of(analyses.begin(), analyses.end(),
-                       [&analysis_name](const ApecMAnalysis &analysis)
-                       { return analysis.get_name() == analysis_name; });
+    analysis = std::move(analysis_object);
 }
 
 std::vector<ApecMEquationSystems::RampVectorTuple> ApecMEquationSystems::collect_ramp_vectors()

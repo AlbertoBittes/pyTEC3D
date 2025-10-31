@@ -2,7 +2,6 @@
 #define APEC_M_H
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -32,12 +31,20 @@ public:
     const Session &session() const;
 
     std::shared_ptr<ApecMMesh> get_mesh(const std::string &name) const;
+    std::shared_ptr<ApecMMesh> get_active_mesh() const;
     std::shared_ptr<ApecMEquationSystems> get_equation_system(const std::string &name) const;
+    std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
 
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
-    std::optional<ApecMEquationSystems::AnalysisActivationState> activate_analysis(const std::string &mesh_name, const std::string &analysis_name);
     bool load_model_data(const std::string &filepath);
+    bool set_mode(Session::Mode mode);
+    Session::Mode get_mode() const { return session_object->get_mode(); }
+
+    bool distribute_boundary_ids();
+    bool generate_infinite_elements();
+    bool generate_nodal_couplings();
+    bool generate_periodic_boundaries();
 
     void read_mesh(const std::string &name, const std::string &filepath);
     void clear_mesh(const std::string &name);
@@ -62,6 +69,9 @@ private:
     std::shared_ptr<Session> session_object;
     std::unordered_map<std::string, MeshContext> mesh_registry;
     std::unique_ptr<CommandLineInterface> cli;
+
+    bool enter_analysis_mode();
+    void enter_preprocessing_mode();
 };
 
 #endif // APEC_M_H

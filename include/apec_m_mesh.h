@@ -10,14 +10,19 @@
 #include <libmesh/mesh.h>
 
 #include "fe_data_object.h"
+#include "fe_parent_object.h"
 
 class FEMDataRepository;
 class ElementTypesFactory;
+class APEC_M;
 
-class ApecMMesh : public libMesh::Mesh, public FEDataObjectAbstract
+class ApecMMesh : public libMesh::Mesh,
+                  public FEDataObjectAbstract,
+                  public FEParentObjectBase<APEC_M>
 {
 public:
-    using Mesh::Mesh;
+    using libMesh::Mesh::Mesh;
+    using FEParentObjectBase<APEC_M>::FEParentObjectBase;
 
     static std::shared_ptr<ApecMMesh> read(libMesh::Parallel::Communicator &comm,
                                            FEMDataRepository &model_data,

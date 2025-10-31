@@ -38,9 +38,6 @@
 #include <map>
 #include "element_types.h"
 #include "globals.h"
-#include "fe_data_object.h"        // for SettingsFEDataObject
-#include "element_types_factory.h" // for ElementTypesFactory
-#include "apec_m_periodic_boundary_factory.h"
 
 using namespace libMesh;
 // Forward declarations
@@ -80,14 +77,9 @@ public:
 
     vtkUnstructuredGrid *get_vtk_grid();
 
-    std::shared_ptr<FEMDataRepository> get_field_data_repo()
-    {
-        return field_data_repository;
-    }
-
     // void read_apec_m_model(const std::string &mesh_filepath);
 
-    void add_integers_vtk(MeshBase &mesh);
+    void add_ugrid_data_vtk(MeshBase &mesh);
 
 private:
     void nodes_to_vtk();
@@ -142,7 +134,6 @@ private:
 
     // void broadcast_all_fe_data_objects();
 
-    std::shared_ptr<FEMDataRepository> field_data_repository;
 #endif
 };
 

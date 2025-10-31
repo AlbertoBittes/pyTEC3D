@@ -180,6 +180,14 @@ namespace Globals
             libmesh_error_msg("NDArray: unsupported value type");
             return std::variant<int, Real, std::string>{};
         }
+
+        template <typename T>
+        const std::vector<T> &view() const
+        {
+            if (!std::holds_alternative<std::vector<T>>(values))
+                libmesh_error_msg("NDArray: requested view type does not match stored type.");
+            return std::get<std::vector<T>>(values);
+        }
     };
     // Declare physical constants
     extern const Real MU_0;

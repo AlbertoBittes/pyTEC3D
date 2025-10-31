@@ -3,18 +3,18 @@
 
 #include "element_types.h"
 #include "fe_data_object.h"
+#include <memory>
 #include <regex>
-#include <variant>
-#include <vtkFieldData.h>
+#include <vector>
 
 // -----------------------------
-// Factory to build ElementTypes from vtkFieldData
+// Factory to build ElementTypes from serialized dataframe data
 // -----------------------------
-class ElementTypesFactory : public FEDataObjectMap<vtkFieldData>
+class ElementTypesFactory : public FEDataObjectMap<DataframeMap>
 {
 public:
-    // Constructor: copies field data and populates element_types_map
-    explicit ElementTypesFactory(std::shared_ptr<vtkFieldData> field_data);
+    explicit ElementTypesFactory(std::shared_ptr<DataframeMap> table);
+    ElementTypesFactory();
 
     // Accessors
     inline ElementTypesMap *get_element_types_map() const { return element_types_map.get(); }

@@ -4,24 +4,24 @@
 #include "apec_m_periodic_boundary.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
-#include "libmesh/periodic_boundary_base.h"
+#include "globals.h"
 #include "libmesh/equation_systems.h"
-#include <vector>
+#include "libmesh/periodic_boundary_base.h"
+#include <memory>
 #include <string>
-#include <unordered_map>
-#include <variant>
+#include <vector>
 
 using namespace libMesh;
 
 // ------------------------------------------------------
-// Factory to build ApecMPeriodicBoundary from vtkFieldData
+// Factory to build ApecMPeriodicBoundary instances from serialized settings data
 // ------------------------------------------------------
 class ApecMPeriodicBoundaryFactory
-    : public FEDataObjectMap<vtkFieldData>,
+    : public FEDataObjectMap<SettingsMap>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFieldData> field_data, EquationSystems *eq_sys = nullptr);
+    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<SettingsMap> settings, EquationSystems *eq_sys = nullptr);
     // NEW: Populate periodic boundaries directly from stored vtkFieldData
     void populate_periodic_boundaries_from_map();
 

@@ -3,17 +3,35 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/libmesh.h"
 
-#include <cmath>
-#include <vtkAbstractArray.h>
-#include <vtkDataArray.h>
-#include <vtkDoubleArray.h>
-#include <vtkIntArray.h>
-#include <vtkStringArray.h>
 #include <map>
 #include <set>
 
-ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<vtkFieldData> field_data, EquationSystems *eq_sys)
-    : FEDataObjectMap<vtkFieldData>(field_data),
+namespace
+{
+const std::vector<int> &extract_int_array(const Globals::NDArray &array)
+{
+    if (!std::holds_alternative<std::vector<int>>(array.values))
+        libmesh_error_msg("Periodic boundary factory expected integer array.");
+    return std::get<std::vector<int>>(array.values);
+}
+
+const std::vector<Real> &extract_real_array(const Globals::NDArray &array)
+{
+    if (!std::holds_alternative<std::vector<Real>>(array.values))
+        libmesh_error_msg("Periodic boundary factory expected real array.");
+    return std::get<std::vector<Real>>(array.values);
+}
+
+const std::vector<std::string> &extract_string_array(const Globals::NDArray &array)
+{
+    if (!std::holds_alternative<std::vector<std::string>>(array.values))
+        libmesh_error_msg("Periodic boundary factory expected string array.");
+    return std::get<std::vector<std::string>>(array.values);
+}
+}
+
+ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<SettingsMap> settings, EquationSystems *eq_sys)
+    : FEDataObjectMap<SettingsMap>(settings ? settings : std::make_shared<SettingsMap>()),
       FEParentObjectBase<EquationSystems>(eq_sys)
 {
     if (eq_sys)
@@ -27,98 +45,90 @@ const std::vector<ApecMPeriodicBoundary> &ApecMPeriodicBoundaryFactory::get_peri
 
 void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
 {
-    vtkFieldData *field_data = this->get_data_map();
-    if (!field_data)
-    {
-        libMesh::out << "No vtkFieldData stored in the factory. Skipping periodic boundary creation." << std::endl;
-        return;
-    }
+    const SettingsMap *settings = this->get_data_map();
+    if (!settings)
+        libmesh_error_msg("Periodic boundary factory requires settings map.");
 
     periodic_boundaries.clear();
 
-    // Arrays for boundaries
-    auto *main_boundary_arr = vtkDataArray::SafeDownCast(field_data->GetAbstractArray("main_boundary"));
-    auto *paired_boundary_arr = vtkDataArray::SafeDownCast(field_data->GetAbstractArray("paired_boundary"));
+    auto main_it = settings->find("main_boundary");
+    auto paired_it = settings->find("paired_boundary");
+    auto matrix_it = settings->find("periodic_matrix");
+    auto variables_it = settings->find("variables");
 
-    // Arrays for periodic matrix (flattened)
-    auto *periodic_matrix_base = field_data->GetAbstractArray("periodic_matrix");
-    auto *periodic_matrix_size = vtkIntArray::SafeDownCast(field_data->GetAbstractArray("periodic_matrix_size"));
-    auto *periodic_matrix_offset = vtkIntArray::SafeDownCast(field_data->GetAbstractArray("periodic_matrix_offset"));
+    if (main_it == settings->end() || paired_it == settings->end() ||
+        matrix_it == settings->end() || variables_it == settings->end())
+        libmesh_error_msg("Periodic boundary factory: required keys missing from settings map.");
 
-    // Array for variables (single string per row)
-    auto *variables_arr = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("variables"));
+    const auto &main_array = std::get<Globals::NDArray>(main_it->second);
+    const auto &paired_array = std::get<Globals::NDArray>(paired_it->second);
+    const auto &matrix_array = std::get<Globals::NDArray>(matrix_it->second);
+    const auto &variables_array = std::get<Globals::NDArray>(variables_it->second);
 
-    if (!main_boundary_arr || !paired_boundary_arr ||
-        !periodic_matrix_base || !periodic_matrix_size || !periodic_matrix_offset ||
-        !variables_arr)
-    {
-        libMesh::out << "Periodic boundary arrays not found in field data. Skipping periodic boundary creation." << std::endl;
+    const auto &main_values = extract_int_array(main_array);
+    const auto &paired_values = extract_int_array(paired_array);
+    const auto &matrix_values = extract_real_array(matrix_array);
+    const auto &variable_values = extract_string_array(variables_array);
+
+    if (main_values.size() != paired_values.size())
+        libmesh_error_msg("Periodic boundary factory: boundary array size mismatch.");
+
+    std::size_t count = main_values.size();
+    if (count == 0)
         return;
+
+    std::size_t matrix_stride = 0;
+    if (matrix_array.shape.size() < 2)
+        libmesh_error_msg("Periodic boundary factory: periodic matrix must have at least 2 dimensions.");
+
+    if (matrix_array.shape[0] != count)
+        libmesh_error_msg("Periodic boundary factory: periodic matrix first dimension mismatch.");
+
+    std::size_t rows = matrix_array.shape[matrix_array.shape.size() - 2];
+    std::size_t cols = matrix_array.shape.back();
+    matrix_stride = rows * cols;
+
+    if (matrix_values.size() != count * matrix_stride)
+        libmesh_error_msg("Periodic boundary factory: periodic matrix flattened size mismatch.");
+
+    std::size_t variable_stride = 1;
+    if (!variables_array.shape.empty())
+    {
+        if (variables_array.shape[0] != count)
+            libmesh_error_msg("Periodic boundary factory: variables first dimension mismatch.");
+        variable_stride = 1;
+        for (std::size_t dim = 1; dim < variables_array.shape.size(); ++dim)
+            variable_stride *= variables_array.shape[dim];
     }
+    if (variable_values.size() != count * variable_stride)
+        libmesh_error_msg("Periodic boundary factory: variables flattened size mismatch.");
 
-    vtkIdType num_rows = main_boundary_arr->GetNumberOfTuples();
-    if (num_rows == 0)
-        return;
+    periodic_boundaries.reserve(count);
 
-    vtkIdType paired_rows = paired_boundary_arr->GetNumberOfTuples();
-    vtkIdType variables_rows = variables_arr->GetNumberOfTuples();
-    vtkIdType size_rows = periodic_matrix_size->GetNumberOfTuples();
-    vtkIdType offset_rows = periodic_matrix_offset->GetNumberOfTuples();
-
-    if (paired_rows != num_rows || variables_rows != num_rows ||
-        size_rows != num_rows || offset_rows != num_rows)
+    for (std::size_t i = 0; i < count; ++i)
     {
-        libMesh::out << "Mismatch in periodic boundary array sizes. Skipping periodic boundary creation." << std::endl;
-        return;
-    }
-
-    auto *periodic_matrix_arr_double = vtkDoubleArray::SafeDownCast(periodic_matrix_base);
-    auto *periodic_matrix_arr_int = vtkIntArray::SafeDownCast(periodic_matrix_base);
-    if (!periodic_matrix_arr_double && !periodic_matrix_arr_int)
-    {
-        libMesh::out << "Unsupported periodic matrix array type. Skipping periodic boundary creation." << std::endl;
-        return;
-    }
-
-    for (vtkIdType i = 0; i < num_rows; ++i)
-    {
-        boundary_id_type main_boundary = static_cast<boundary_id_type>(main_boundary_arr->GetComponent(i, 0));
-        boundary_id_type paired_boundary = static_cast<boundary_id_type>(paired_boundary_arr->GetComponent(i, 0));
-
-        // --- PERIODIC MATRIX (flattened, with size/offset) ---
-        int pm_size = periodic_matrix_size->GetValue(i);
-        if (pm_size <= 0)
-            continue;
-
-        int pm_offset = periodic_matrix_offset->GetValue(i);
-
-        std::vector<Real> flattened(pm_size);
-        for (int k = 0; k < pm_size; ++k)
-        {
-            if (periodic_matrix_arr_double)
-                flattened[k] = periodic_matrix_arr_double->GetValue(pm_offset + k);
-            else
-                flattened[k] = static_cast<Real>(periodic_matrix_arr_int->GetValue(pm_offset + k));
-        }
-
-        int rows = static_cast<int>(std::sqrt(static_cast<double>(pm_size)));
-        int cols = rows > 0 ? pm_size / rows : pm_size;
-        if (rows * cols != pm_size || rows == 0)
-        {
-            rows = 1;
-            cols = pm_size;
-        }
+        boundary_id_type main_boundary = static_cast<boundary_id_type>(main_values[i]);
+        boundary_id_type paired_boundary = static_cast<boundary_id_type>(paired_values[i]);
 
         std::vector<std::vector<Real>> periodic_matrix(rows, std::vector<Real>(cols));
-        for (int r = 0; r < rows; ++r)
-            for (int c = 0; c < cols; ++c)
-                periodic_matrix[r][c] = flattened[r * cols + c];
+        for (std::size_t r = 0; r < rows; ++r)
+            for (std::size_t c = 0; c < cols; ++c)
+            {
+                std::size_t flat = i * matrix_stride + r * cols + c;
+                periodic_matrix[r][c] = matrix_values[flat];
+            }
 
-        // --- VARIABLES (single string per row) ---
-        std::string variable = variables_arr->GetValue(i);
-        std::vector<std::string> variable_labels = {variable};
+        std::vector<std::string> variable_labels;
+        variable_labels.reserve(variable_stride);
+        for (std::size_t v = 0; v < variable_stride; ++v)
+        {
+            std::size_t flat = i * variable_stride + v;
+            if (flat < variable_values.size())
+                variable_labels.push_back(variable_values[flat]);
+        }
+        if (variable_labels.empty())
+            variable_labels.emplace_back("A");
 
-        // Construct boundary
         periodic_boundaries.emplace_back(
             main_boundary, paired_boundary, periodic_matrix,
             PeriodicBoundaryBase::FORWARD,

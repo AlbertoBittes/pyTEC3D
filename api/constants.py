@@ -220,7 +220,13 @@ WRITING_FUNCTIONS_MAP = {
     "real_constants": "_write_dataframe_to_binary",
     "point_data": "_write_numpy_array_to_binary",
     "cell_data": "_write_numpy_array_to_binary",
+    "periodic_boundaries": "_write_settings_to_binary",
+    "dof_couplings": "_write_settings_to_binary",
+    "apec_parameters": "_write_settings_to_binary"
 }
+
+WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())
+WRITING_LABEL_TO_ID = {label: idx for idx, label in enumerate(WRITING_LABELS)}
 
 VTK_ARRAYS_TO_INIT = {
     "A": {
@@ -299,9 +305,6 @@ ARRAYS_TO_REMOVE = [
 
 # Labels to read for each load step from Excel
 EXCEL_LOAD_STEP_LABELS = [
-    "materials",
-    "real_constants",
-    "solver_settings",
     "point_data",
     "cell_data",
 ]

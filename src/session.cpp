@@ -12,13 +12,11 @@ Session::Session()
     : input_mesh_filepath(""),
       mesh_filename_without_extension(""),
       output_filename(""),
-      n_load_steps(0),
       active_mesh(""),
-      active_analysis(""),
-      analysis_defined(false),
       working_directory(std::filesystem::current_path()),
       model_data_filepath(),
-      custom_working_directory(false)
+      custom_working_directory(false),
+      program_mode(Mode::PreProcessing)
 {
     initialize_folder_paths();
 }
@@ -29,14 +27,19 @@ void Session::initialize_folder_paths()
 
     auto &paths_map = *this->get_data_map();
 
-    if (!paths_map["mesh_folderpath"].empty())
-        std::filesystem::create_directories(paths_map["mesh_folderpath"]);
-
-    if (!analysis_defined)
+    const auto &mesh_folder = paths_map["mesh_folderpath"];
+    if (mesh_folder.empty())
         return;
 
-    if (!paths_map["analysis_folderpath"].empty())
-        std::filesystem::create_directories(paths_map["analysis_folderpath"]);
+    std::filesystem::create_directories(mesh_folder);
+
+    const auto &input_folder = paths_map["input_folderpath"];
+    if (!input_folder.empty())
+        std::filesystem::create_directories(input_folder);
+
+    const auto &load_steps_folder = paths_map["load_steps_folderpath"];
+    if (!load_steps_folder.empty())
+        std::filesystem::create_directories(load_steps_folder);
 
     create_temp_folder();
     create_output_folder();
@@ -71,31 +74,11 @@ void Session::set_active_mesh(const std::string &mesh_name)
     active_mesh = mesh_name;
     if (!mesh_name.empty())
         mesh_filename_without_extension = mesh_name;
-    clear_active_analysis();
-    initialize_folder_paths();
-}
+    else
+        mesh_filename_without_extension.clear();
 
-void Session::set_active_analysis(const std::string &analysis_name)
-{
-    if (analysis_name.empty())
-    {
-        clear_active_analysis();
-        return;
-    }
-
-    active_analysis = analysis_name;
-    analysis_defined = true;
-    n_load_steps = 0;
-    initialize_folder_paths();
-}
-
-void Session::clear_active_analysis()
-{
-    analysis_defined = false;
-    active_analysis.clear();
-    n_load_steps = 0;
     output_filename.clear();
-    update_dynamic_paths();
+    initialize_folder_paths();
 }
 
 void Session::set_working_directory(const std::filesystem::path &directory)
@@ -120,6 +103,25 @@ void Session::set_model_data_filepath(const std::filesystem::path &filepath)
     update_dynamic_paths();
 }
 
+void Session::set_mode(Mode mode)
+{
+    program_mode = mode;
+}
+
+std::string Session::mode_to_string(Mode mode)
+{
+    switch (mode)
+    {
+    case Mode::PreProcessing:
+        return "PreProcessing";
+    case Mode::Analysis:
+        return "Analysis";
+    case Mode::Other:
+        return "Other";
+    }
+    return "Unknown";
+}
+
 void Session::set_path(const std::string &key, const std::filesystem::path &path)
 {
     (*data_map)[key] = path;
@@ -138,9 +140,9 @@ void Session::set_output_filename(const std::string &filename)
 
 void Session::set_output_filepath(unsigned int output_label)
 {
-    if (!analysis_defined)
+    if (!has_active_mesh())
     {
-        libMesh::out << "No active analysis. Skipping output filepath assignment." << std::endl;
+        libMesh::out << "No active mesh. Skipping output filepath assignment." << std::endl;
         output_filename.clear();
         update_dynamic_paths();
         return;
@@ -224,23 +226,8 @@ void Session::check_load_steps_folder()
     if (!std::filesystem::exists(load_steps_folderpath))
     {
         std::filesystem::create_directories(load_steps_folderpath);
-        n_load_steps = 0;
         libMesh::out << "Load steps folder created at " << load_steps_folderpath << std::endl;
-        return;
     }
-
-    unsigned int load_step_count = 0;
-    for (unsigned int i = 1;; ++i)
-    {
-        std::filesystem::path load_step_file = load_steps_folderpath / ("load_step_" + std::to_string(i) + ".bin");
-        if (std::filesystem::exists(load_step_file))
-            ++load_step_count;
-        else
-            break;
-    }
-
-    n_load_steps = load_step_count;
-    libMesh::out << "Number of load steps: " << n_load_steps << std::endl;
 }
 
 void Session::update_dynamic_paths()
@@ -249,7 +236,6 @@ void Session::update_dynamic_paths()
 
     const auto effective_working_directory = working_directory.empty() ? std::filesystem::current_path() : working_directory;
     const auto mesh_token = sanitize_token(active_mesh.empty() ? mesh_filename_without_extension : active_mesh);
-    const auto analysis_token = sanitize_token(active_analysis);
 
     std::filesystem::path mesh_root;
     if (!mesh_token.empty())
@@ -258,14 +244,12 @@ void Session::update_dynamic_paths()
     paths_map["working_folderpath"] = effective_working_directory;
     paths_map["mesh_folderpath"] = mesh_root;
 
-    if (analysis_defined && !analysis_token.empty() && !mesh_root.empty())
+    if (!mesh_root.empty())
     {
-        const std::filesystem::path analysis_root = mesh_root / analysis_token;
-        paths_map["analysis_folderpath"] = analysis_root;
-        paths_map["input_folderpath"] = analysis_root / "input";
-        paths_map["output_folderpath"] = analysis_root / "output";
-        paths_map["emat_folderpath"] = analysis_root / "emat";
-        paths_map["temp_folderpath"] = analysis_root / "temp";
+        paths_map["input_folderpath"] = mesh_root / "input";
+        paths_map["output_folderpath"] = mesh_root / "output";
+        paths_map["emat_folderpath"] = mesh_root / "emat";
+        paths_map["temp_folderpath"] = mesh_root / "temp";
         paths_map["load_steps_folderpath"] = paths_map["input_folderpath"] / "load_steps";
 
         if (!output_filename.empty())
@@ -275,7 +259,6 @@ void Session::update_dynamic_paths()
     }
     else
     {
-        paths_map["analysis_folderpath"] = std::filesystem::path();
         paths_map["input_folderpath"] = std::filesystem::path();
         paths_map["output_folderpath"] = std::filesystem::path();
         paths_map["emat_folderpath"] = std::filesystem::path();
@@ -288,6 +271,8 @@ void Session::update_dynamic_paths()
         paths_map["model_data_filepath"] = model_data_filepath;
     else
         paths_map.erase("model_data_filepath");
+
+    paths_map.erase("analysis_folderpath");
 }
 
 std::string Session::sanitize_token(const std::string &value)

@@ -21,6 +21,13 @@ enum FileMode
 class Session : public FEDataObjectMap<PathMap>
 {
 public:
+    enum class Mode
+    {
+        PreProcessing,
+        Analysis,
+        Other
+    };
+
     Session();
 
     void initialize_folder_paths();
@@ -32,16 +39,15 @@ public:
     const std::string &get_active_mesh() const { return active_mesh; }
     bool has_active_mesh() const { return !active_mesh.empty(); }
 
-    void set_active_analysis(const std::string &analysis_name);
-    const std::string &get_active_analysis() const { return active_analysis; }
-    void clear_active_analysis();
-    bool has_active_analysis() const { return analysis_defined && !active_analysis.empty(); }
-
     void set_working_directory(const std::filesystem::path &directory);
     const std::filesystem::path &get_working_directory() const { return working_directory; }
 
     void set_model_data_filepath(const std::filesystem::path &filepath);
     const std::filesystem::path &get_model_data_filepath() const { return model_data_filepath; }
+
+    void set_mode(Mode mode);
+    Mode get_mode() const { return program_mode; }
+    static std::string mode_to_string(Mode mode);
 
     void set_path(const std::string &key, const std::filesystem::path &path);
     const std::filesystem::path &get_path(const std::string &key) const;
@@ -50,9 +56,6 @@ public:
 
     void set_output_filename(const std::string &filename);
     const std::string &get_output_filename() const { return output_filename; }
-
-    void set_n_load_steps(unsigned int n) { n_load_steps = n; }
-    unsigned int get_n_load_steps() const { return n_load_steps; }
 
     void set_output_filepath(unsigned int output_label);
     void create_temp_folder();
@@ -78,14 +81,12 @@ private:
     std::string input_mesh_filepath;
     std::string mesh_filename_without_extension;
     std::string output_filename;
-    unsigned int n_load_steps;
 
     std::string active_mesh;
-    std::string active_analysis;
-    bool analysis_defined;
     std::filesystem::path working_directory;
     std::filesystem::path model_data_filepath;
     bool custom_working_directory;
+    Mode program_mode;
 };
 
 #endif // SESSION_H

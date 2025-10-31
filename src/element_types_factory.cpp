@@ -1,10 +1,40 @@
 #include "element_types_factory.h"
 #include "globals.h"
-#include <regex>
-#include <iostream>
 
-ElementTypesFactory::ElementTypesFactory(std::shared_ptr<vtkFieldData> field_data)
-    : FEDataObjectMap<vtkFieldData>(field_data),
+#include <cmath>
+#include <regex>
+
+namespace
+{
+unsigned int parse_element_type_number(const std::string &label)
+{
+    std::smatch match;
+    if (std::regex_search(label, match, std::regex(R"(\d+)")))
+        return static_cast<unsigned int>(std::stoul(match.str()));
+
+    libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
+}
+
+unsigned int coerce_to_unsigned(const std::variant<int, Real, std::string> &value)
+{
+    if (std::holds_alternative<int>(value))
+        return static_cast<unsigned int>(std::get<int>(value));
+    if (std::holds_alternative<Real>(value))
+        return static_cast<unsigned int>(std::llround(std::get<Real>(value)));
+    if (std::holds_alternative<std::string>(value))
+        return static_cast<unsigned int>(std::stoul(std::get<std::string>(value)));
+    return 0u;
+}
+}
+
+ElementTypesFactory::ElementTypesFactory()
+    : FEDataObjectMap<DataframeMap>(std::make_shared<DataframeMap>()),
+      element_types_map(std::make_shared<ElementTypesMap>())
+{
+}
+
+ElementTypesFactory::ElementTypesFactory(std::shared_ptr<DataframeMap> table)
+    : FEDataObjectMap<DataframeMap>(table ? table : std::make_shared<DataframeMap>()),
       element_types_map(std::make_shared<ElementTypesMap>())
 {
     populate_element_types_map();
@@ -12,69 +42,33 @@ ElementTypesFactory::ElementTypesFactory(std::shared_ptr<vtkFieldData> field_dat
 
 void ElementTypesFactory::populate_element_types_map()
 {
-    vtkFieldData *field_data = this->get_data_map();
-    if (!field_data)
-        libmesh_error_msg("No vtkFieldData available.");
+    const DataframeMap *table = this->get_data_map();
+    if (!table)
+        libmesh_error_msg("ElementTypesFactory: data table not set.");
 
-    // Get ansys_etype and element_type arrays
-    vtkIntArray *ansys_etype_arr = vtkIntArray::SafeDownCast(field_data->GetArray("ansys_etype"));
-    vtkStringArray *element_type_arr = vtkStringArray::SafeDownCast(field_data->GetAbstractArray("element_type"));
-
-    // Collect all KEYOPT arrays and sort them numerically
-    std::vector<std::pair<int, vtkIntArray *>> keyopt_arrays;
-    int num_field_arrays = field_data->GetNumberOfArrays();
-    for (int i = 0; i < num_field_arrays; ++i)
+    for (const auto &row : *table)
     {
-        std::string arr_name = field_data->GetArrayName(i);
-        std::smatch match;
-        if (std::regex_match(arr_name, match, std::regex(R"(KEYOPT(\d+))")))
-        {
-            int keyopt_num = std::stoi(match.str(1));
-            vtkIntArray *keyopt_arr = vtkIntArray::SafeDownCast(field_data->GetArray(arr_name.c_str()));
-            if (keyopt_arr)
-                keyopt_arrays.emplace_back(keyopt_num, keyopt_arr);
-        }
-    }
-    std::sort(keyopt_arrays.begin(), keyopt_arrays.end(),
-              [](const auto &a, const auto &b)
-              { return a.first < b.first; });
+        if (row.size() < 2)
+            libmesh_error_msg("ElementTypesFactory: expected at least two columns per row.");
 
-    if (!ansys_etype_arr || !element_type_arr)
-        libmesh_error_msg("Required arrays not found in vtkFieldData.");
+        if (!std::holds_alternative<int>(row[0]))
+            libmesh_error_msg("ElementTypesFactory: ansys_etype column must be integer.");
+        if (!std::holds_alternative<std::string>(row[1]))
+            libmesh_error_msg("ElementTypesFactory: element_type column must be string.");
 
-    vtkIdType num_rows = ansys_etype_arr->GetNumberOfTuples();
-    if (element_type_arr->GetNumberOfTuples() != num_rows)
-        libmesh_error_msg("Mismatch in number of tuples between ansys_etype and element_type arrays.");
-
-    for (const auto &pair : keyopt_arrays)
-    {
-        if (pair.second->GetNumberOfTuples() != num_rows)
-            libmesh_error_msg("Mismatch in number of tuples in KEYOPT arrays.");
-    }
-
-    element_types_map->clear();
-
-    for (vtkIdType i = 0; i < num_rows; ++i)
-    {
-        int ansys_type = ansys_etype_arr->GetValue(i);
-        std::string elem_type_str = element_type_arr->GetValue(i);
-
-        std::smatch match;
-        int elem_type_number = 0;
-        if (std::regex_search(elem_type_str, match, std::regex(R"(\d+)")))
-            elem_type_number = std::stoi(match.str());
-        else
-            libmesh_warning("Failed to extract element type number from: " << elem_type_str);
+        int ansys_type = std::get<int>(row[0]);
+        unsigned int element_number = parse_element_type_number(std::get<std::string>(row[1]));
 
         std::vector<unsigned int> keyopts;
-        keyopts.push_back(static_cast<unsigned int>(elem_type_number));
-        for (const auto &pair : keyopt_arrays)
-            keyopts.push_back(static_cast<unsigned int>(pair.second->GetValue(i)));
+        keyopts.reserve(row.size());
+        keyopts.push_back(element_number);
 
-        element_types_map->emplace(ansys_type,
-                                   ElementTypesFactory::create_element_type(
-                                       static_cast<ElementTypeEnum>(elem_type_number),
-                                       keyopts));
+        for (std::size_t col = 2; col < row.size(); ++col)
+            keyopts.push_back(coerce_to_unsigned(row[col]));
+
+        (*element_types_map)[ansys_type] = create_element_type(
+            static_cast<ElementTypeEnum>(element_number),
+            keyopts);
     }
 }
 
