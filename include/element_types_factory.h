@@ -8,13 +8,15 @@
 #include <vector>
 
 // -----------------------------
-// Factory to build ElementTypes from serialized dataframe data
+// Factory to build ElementTypes from serialized columnar data
 // -----------------------------
-class ElementTypesFactory : public FEDataObjectMap<DataframeMap>
+class ElementTypesFactory : public BinaryDataFEDataObject
 {
 public:
-    explicit ElementTypesFactory(std::shared_ptr<DataframeMap> table);
+    explicit ElementTypesFactory(std::shared_ptr<BinaryColumnarData> table = nullptr);
     ElementTypesFactory();
+
+    void read_data(std::ifstream &file) override;
 
     // Accessors
     inline ElementTypesMap *get_element_types_map() const { return element_types_map.get(); }

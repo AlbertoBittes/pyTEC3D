@@ -15,6 +15,7 @@
 #include "assembler.h"
 #include "globals.h"
 #include "global_constraints_object.h"
+#include "solver_configuration.h"
 
 using namespace libMesh;
 
@@ -25,10 +26,10 @@ class ElementBuilder;
 template <typename SysLike>
 class ApecMSystem
     : public SysLike,
-      public FEMServiceAbstract<ElementTypesFactory>
+      public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory>;
+    using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
 
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
@@ -37,9 +38,9 @@ public:
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
-    ApecMSystem(Args &&...args)
+    ApecMSystem(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
         : SysLike(std::forward<Args>(args)...),
-          FEMServiceAbstract<ElementTypesFactory>(nullptr)
+          FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>(ctx_view)
     {
         // Fetch SystemInfo from Globals using the system name
         std::string sys_name = this->name();
@@ -54,14 +55,16 @@ public:
 
     static void ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector);
 
+    void init_variables();
+
+    virtual void post_init() {};
+
 private:
 };
 
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory>;
-
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
     ApecMLinearSystem(Args &&...args)
@@ -94,6 +97,16 @@ public:
         return global_constraints_object;
     }
 
+    void post_init() override
+    {
+        this->zero_out_matrix_and_rhs = false;
+        this->current_local_solution->zero();
+        this->current_local_solution->close();
+        auto solver_config = this->context<PetscSolverConfiguration>();
+        if (solver_config)
+            solver_config->configure_solver();
+    }
+
 private:
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
     std::shared_ptr<AssemblerLinear> assembler;
@@ -102,8 +115,6 @@ private:
 class ApecMExplicitSystem : public ApecMSystem<ExplicitSystem>
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory>;
-
     // Variadic template constructor: forwards all args to ExplicitSystem
     template <typename... Args>
     ApecMExplicitSystem(Args &&...args)

@@ -14,8 +14,7 @@
 #include "time_step.h"
 #include "vtk_data_map_object.h"
 #include "apec_m_periodic_boundary_factory.h"
-
-BinaryReader::BinaryReader(Session &session) : session(session) {}
+#include "apec_m_system_objects.h"
 
 std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::path &folder,
                                                          const std::string &filename,
@@ -58,10 +57,8 @@ void BinaryReader::close_file_streams(std::vector<std::unique_ptr<std::ios>> &st
 }
 
 void BinaryReader::read_binary_fem_data(const std::filesystem::path &filepath,
-                                        FEMDataRepository &repository,
-                                        const std::shared_ptr<ApecMEquationSystems> &equation_systems,
-                                        libMesh::PetscLinearSolver<Number> *solver,
-                                        const std::shared_ptr<LoadStep> &previous_load_step)
+                                        const std::shared_ptr<FEMDataRepository> &repository,
+                                        const std::shared_ptr<ApecMEquationSystems> &equation_systems)
 {
     std::ifstream file(filepath, std::ios::binary);
     if (!file)
@@ -80,60 +77,63 @@ void BinaryReader::read_binary_fem_data(const std::filesystem::path &filepath,
             libmesh_error_msg("BinaryReader: failed to read section label from '" + filepath.string() + "'.");
 
         const auto label = BinaryLabelTraits::from_raw(raw_label);
-        dispatch_read(label, file, repository, equation_systems, solver, previous_load_step);
+        dispatch_read(label, file, repository, equation_systems);
     }
 }
 
 void BinaryReader::dispatch_read(BinaryLabelId label,
                                  std::ifstream &file,
-                       FEMDataRepository &repository,
-                       const std::shared_ptr<ApecMEquationSystems> &equation_systems,
-                       libMesh::PetscLinearSolver<Number> *solver,
-                       const std::shared_ptr<LoadStep> &previous_load_step)
+                                 const std::shared_ptr<FEMDataRepository> &repository,
+                                 const std::shared_ptr<ApecMEquationSystems> &equation_systems)
 {
     switch (label)
     {
     case BinaryLabelId::TIME_PARAMETERS:
     {
-        auto time_step = std::make_shared<TimeStep>(file, previous_load_step);
-        repository.set_object(time_step);
-        break;
-    }
-    case BinaryLabelId::SOLVER_SETTINGS:
-    {
-        if (!solver)
-            libmesh_error_msg("BinaryReader: solver settings section encountered without a valid solver.");
-        auto solver_cfg = std::make_shared<PetscSolverConfiguration>(file, solver);
-        repository.set_object(solver_cfg);
+        auto time_step = std::make_shared<TimeStep>(file);
+        repository->set_object(time_step);
         break;
     }
     case BinaryLabelId::MATERIALS:
     {
         auto materials = std::make_shared<MaterialsObject>(file);
-        repository.set_object(materials);
+        repository->set_object(materials);
         break;
     }
     case BinaryLabelId::REAL_CONSTANTS:
     {
         auto reals = std::make_shared<RealConstantsObject>(file);
-        repository.set_object(reals);
+        repository->set_object(reals);
         break;
     }
     case BinaryLabelId::ELEMENT_TYPES:
     {
-        auto element_types = std::make_shared<ElementTypesFactory>();
-        element_types->read_data(file);
-        repository.set_object(element_types);
+        auto element_types = std::make_shared<ElementTypesFactory>(file);
+        repository->set_object(element_types);
         break;
     }
     case BinaryLabelId::PERIODIC_BOUNDARIES:
     {
-        if (!equation_systems)
-            libmesh_error_msg("BinaryReader: periodic boundaries section encountered without an equation system.");
-        auto factory = std::make_shared<ApecMPeriodicBoundaryFactory>(nullptr, equation_systems.get());
-        factory->read_data(file);
-        factory->populate_periodic_boundaries_from_map();
-        repository.set_object(factory);
+        auto factory = std::make_shared<ApecMPeriodicBoundaryFactory>(file);
+        repository->set_object(factory);
+        break;
+    }
+    case BinaryLabelId::SOLVER_SETTINGS:
+    {
+        PetscLinearSolver<Number> *petsc_linear_solver = nullptr;
+        if (equation_systems)
+        {
+            auto &linear_system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+            petsc_linear_solver = cast_ptr<PetscLinearSolver<Number> *>(linear_system.get_linear_solver());
+        }
+
+        if (!petsc_linear_solver)
+        {
+            libMesh::out << "Warning: Petsc linear solver unavailable while reading solver settings." << std::endl;
+        }
+
+        auto solver_config = std::make_shared<PetscSolverConfiguration>(file, petsc_linear_solver);
+        repository->set_object(solver_config);
         break;
     }
     case BinaryLabelId::POINT_DATA:
@@ -161,60 +161,8 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
     case BinaryLabelId::DOF_COUPLINGS:
     case BinaryLabelId::APEC_PARAMETERS:
     {
-        // Sections recognised but not yet mapped to concrete C++ objects
-        libMesh::out << "BinaryReader: skipping unsupported section '" << BinaryLabelTraits::to_string(label) << "'." << std::endl;
-
-        // Consume payload generically to advance stream
-        std::uint32_t entry_count = 0;
-        file.read(reinterpret_cast<char *>(&entry_count), sizeof(entry_count));
-
-        std::uint32_t num_keys = 0;
-        file.read(reinterpret_cast<char *>(&num_keys), sizeof(num_keys));
-
-        for (std::uint32_t k = 0; k < num_keys; ++k)
-        {
-            std::uint32_t key_size = 0;
-            file.read(reinterpret_cast<char *>(&key_size), sizeof(key_size));
-            file.ignore(static_cast<std::streamsize>(key_size));
-
-            int32_t payload_type = 0;
-            file.read(reinterpret_cast<char *>(&payload_type), sizeof(payload_type));
-
-            std::uint32_t dtype_len = 0;
-            file.read(reinterpret_cast<char *>(&dtype_len), sizeof(dtype_len));
-            file.ignore(static_cast<std::streamsize>(dtype_len));
-
-            std::uint32_t ndim = 0;
-            file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
-            std::size_t total_elements = 1;
-            for (std::uint32_t d = 0; d < ndim; ++d)
-            {
-                std::uint32_t extent = 0;
-                file.read(reinterpret_cast<char *>(&extent), sizeof(extent));
-                total_elements *= static_cast<std::size_t>(extent);
-            }
-
-            int32_t element_kind = 0;
-            file.read(reinterpret_cast<char *>(&element_kind), sizeof(element_kind));
-
-            if (element_kind == 0)
-                file.ignore(static_cast<std::streamsize>(total_elements * sizeof(std::int64_t)));
-            else if (element_kind == 1)
-                file.ignore(static_cast<std::streamsize>(total_elements * sizeof(double)));
-            else if (element_kind == 2)
-            {
-                std::uint32_t count = 0;
-                file.read(reinterpret_cast<char *>(&count), sizeof(count));
-                for (std::uint32_t c = 0; c < count; ++c)
-                {
-                    std::uint32_t strlen = 0;
-                    file.read(reinterpret_cast<char *>(&strlen), sizeof(strlen));
-                    file.ignore(static_cast<std::streamsize>(strlen));
-                }
-            }
-            else
-                libmesh_error_msg("BinaryReader: unsupported payload encountered while skipping section.");
-        }
+        auto binary_data = std::make_shared<BinaryDataFEDataObject>(file);
+        repository->set_object(binary_data);
         break;
     }
     default:

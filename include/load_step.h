@@ -6,13 +6,13 @@
 #include "fe_parent_object.h"
 #include "fem_data_repository.h"
 
-class LoadStepper;
+class LoadStepAnalysis;
 
 using namespace libMesh;
 
 // LoadStep is a repository that holds all information regarding the LoadStep to be solved.
 // The various services (e.g. ElementBuilder, Assembler) will use this data to perform their tasks
-class LoadStep : public FEParentObjectBase<LoadStepper>, public FEMDataRepository, public FEDataObjectAbstract
+class LoadStep : public FEParentObjectBase<LoadStepAnalysis>, public FEMDataRepository, public FEDataObjectAbstract
 {
 public:
     enum class LoadStepObjectType : uint32_t
@@ -25,15 +25,13 @@ public:
         VTK_CELL_DATA
     };
     // Default constructor
-    LoadStep(LoadStepper *load_stepper = nullptr)
-        : FEParentObjectBase<LoadStepper>(load_stepper)
+    LoadStep(LoadStepAnalysis *load_stepper = nullptr)
+        : FEParentObjectBase<LoadStepAnalysis>(load_stepper)
     {
     }
 
     // Implement abstract destructor
     virtual ~LoadStep() override = default;
-
-    void read_from_file(const std::string &filename);
     // // Add a FEDataObject to the array
     // void add_data_object(const std::shared_ptr<FEParentObjectBase<LoadStepper>> &obj)
     // {

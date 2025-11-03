@@ -18,6 +18,7 @@
 #include "element_types.h"
 #include "global_constraints_object.h"
 #include "system_builder.h"
+#include "binary_reader.h"
 
 using namespace libMesh;
 
@@ -92,7 +93,8 @@ void AssemblerLinear::assemble()
         "rhs_" + rank_str + ".temp"};
 
     // Open the main files
-    auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Read);
+    BinaryReader reader(*session);
+    auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Read);
 
     // Downcast to use as ifstream
     std::ifstream *mtrx_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
@@ -204,7 +206,7 @@ void AssemblerLinear::assemble()
         dof_map.constrain_element_vector(rhs, dof_indices);
         system->rhs->add_vector(rhs, dof_indices);
     }
-    session->close_file_streams(streams);
+    reader.close_file_streams(streams);
     this->prev_substep = time_substep;
     libMesh::out << "Finished building system global matrix and RHS" << std::endl;
     libMesh::out << "Solving linear system..." << std::endl;

@@ -92,3 +92,50 @@ void ApecMLinearSystem::check_constrained_dofs()
     auto global_constraints = this->get_global_constraints_object();
     global_constraints->check_update_boundary_conditions();
 }
+
+void ApecMSystem<System>::init_variables()
+{
+    std::string fe_fam;
+    std::string order;
+
+    std::string vars_set;
+
+    auto element_types_collector = context<ElementTypesFactory>();
+    // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
+
+    // Do not do the loop here, attacht the initialization object to the other systems too
+    // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
+    // {
+    // Use new helper functions to map system name to SystemType
+    Globals::SystemType type = Globals::get_key_by_predicate_one(
+        Globals::SYSTEM_INFO_MAP,
+        [sys_name = this->name()](const Globals::SystemInfo &info)
+        {
+            return info.name == sys_name;
+        });
+
+    auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);
+
+    for (const auto &pair : *vars_to_subdomain_ids)
+    {
+        const auto &variable_string = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, pair.first).global_label;
+        const std::set<subdomain_id_type> &subdomain_ids = pair.second;
+        auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
+
+        // Get variable info for this variable
+        auto &var_info = elem_type->get_variable_information();
+        auto it = var_info.find(pair.first);
+        if (it == var_info.end())
+            continue; // Skip if variable info not found
+
+        Globals::VariableInfo &data = it->second;
+
+        // Add the variable to the system, specifying subdomains
+        this->add_variable(
+            variable_string,
+            data.order,
+            data.fe_family,
+            &subdomain_ids);
+    }
+    // Add more conditions as needed for other combinations
+}

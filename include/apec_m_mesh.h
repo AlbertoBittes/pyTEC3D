@@ -25,7 +25,7 @@ public:
     using FEParentObjectBase<APEC_M>::FEParentObjectBase;
 
     static std::shared_ptr<ApecMMesh> read(libMesh::Parallel::Communicator &comm,
-                                           FEMDataRepository &model_data,
+                                           FEMDataRepository &mesh_repository,
                                            const std::string &mesh_filepath);
 
     void apply_boundary_info();

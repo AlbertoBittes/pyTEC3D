@@ -7,6 +7,7 @@
 #include "globals.h"
 #include "libmesh/equation_systems.h"
 #include "libmesh/periodic_boundary_base.h"
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,7 +22,7 @@ class ApecMPeriodicBoundaryFactory
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<BinaryColumnarData> settings = nullptr, EquationSystems *eq_sys = nullptr);
+    explicit ApecMPeriodicBoundaryFactory(std::ifstream &file, EquationSystems *eq_sys = nullptr);
     // NEW: Populate periodic boundaries directly from stored vtkFieldData
     void populate_periodic_boundaries_from_map();
 

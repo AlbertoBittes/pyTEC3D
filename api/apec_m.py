@@ -350,18 +350,11 @@ class APEC_M:
         load_steps_folder = os.path.join(self.folderpath, self.jobname, "load_steps")
         os.makedirs(load_steps_folder, exist_ok=True)
 
-        timestep_path = os.path.join(
-            load_steps_folder, f"{self.jobname}_timestep_{load_step_number}.bin"
-        )
-        grid_data_path = os.path.join(
-            load_steps_folder, f"{self.jobname}_grid_data_{load_step_number}.bin"
+        loadstep_path = os.path.join(
+            load_steps_folder, f"{self.jobname}_loadstep_{load_step_number}.bin"
         )
 
-        self.write_to_binary(timestep_path, labels_to_write=["time_parameters"])
-        self.write_to_binary(
-            grid_data_path,
-            labels_to_write=["point_data", "cell_data"],
-        )
+        self.write_to_binary(loadstep_path, labels_to_write=["time_parameters", "point_data", "cell_data"])
 
     def write_model_data(self):
         if not self.jobname:
@@ -453,11 +446,8 @@ class APEC_M:
             getattr(self, function_name)(data, binary_file, label)
 
     # Wrapper methods for binary output functions to match WRITING_FUNCTIONS_MAP
-    def _write_settings_to_binary(self, settings, binary_file, label):
-        BinaryHelper.write_settings_to_binary(settings, binary_file, label)
-
-    def _write_dataframe_to_binary(self, df, binary_file, label):
-        BinaryHelper.write_dataframe_to_binary(df, binary_file, label)
+    def _write_to_binary(self, settings, binary_file, label):
+        BinaryHelper.write_to_binary(settings, binary_file, label)
 
     def _write_numpy_array_to_binary(self, mesh, binary_file, label):
         BinaryHelper.write_numpy_array_to_binary(mesh, binary_file, label)

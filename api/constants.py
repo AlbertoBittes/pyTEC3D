@@ -214,15 +214,16 @@ SHEET_PROCESSING_MAP = {
 }
 
 WRITING_FUNCTIONS_MAP = {
-    "time_parameters": "_write_settings_to_binary",
-    "solver_settings": "_write_settings_to_binary",
-    "materials": "_write_dataframe_to_binary",
-    "real_constants": "_write_dataframe_to_binary",
+    "element_types": "_write_to_binary",
+    "time_parameters": "_write_to_binary",
+    "solver_settings": "_write_to_binary",
+    "materials": "_write_to_binary",
+    "real_constants": "_write_to_binary",
     "point_data": "_write_numpy_array_to_binary",
     "cell_data": "_write_numpy_array_to_binary",
-    "periodic_boundaries": "_write_settings_to_binary",
-    "dof_couplings": "_write_settings_to_binary",
-    "apec_parameters": "_write_settings_to_binary"
+    "periodic_boundaries": "_write_to_binary",
+    "dof_couplings": "_write_to_binary",
+    "apec_parameters": "_write_to_binary"
 }
 
 WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())

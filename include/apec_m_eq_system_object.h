@@ -19,15 +19,14 @@ class ApecMMesh;
 
 class ApecMEquationSystems
     : public EquationSystems,
-      public FEMServiceAbstract<ElementTypesFactory>
+      public FEDataObjectAbstract
 
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory>;
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>
     ApecMEquationSystems(Args &&...args)
-        : EquationSystems(std::forward<Args>(args)...), FEMServiceAbstract<ElementTypesFactory>(nullptr)
+        : EquationSystems(std::forward<Args>(args)...)
     {
         element_builder = std::make_shared<ElementBuilder>(this, nullptr, nullptr);
     }
@@ -39,6 +38,8 @@ public:
 
     void apply_ramped_effects(const Substep &time_substep);
     void configure_systems(const std::shared_ptr<FEMDataRepository> &model_data);
+    void initialize_system_contexts();
+    void post_initialize_systems();
     void initialize_physics();
     void clear_preserving_solver_settings();
     static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh,
@@ -52,6 +53,7 @@ private:
 
     std::shared_ptr<ElementBuilder> element_builder = nullptr;
     std::shared_ptr<ApecMAnalysis> analysis;
+    std::weak_ptr<FEMDataRepository> model_data_handle;
 };
 
 #endif // APEC_M_EQ_SYSTEM_OBJECT_H

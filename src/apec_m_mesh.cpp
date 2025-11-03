@@ -15,7 +15,7 @@
 #include "fem_data_repository.h"
 
 std::shared_ptr<ApecMMesh> ApecMMesh::read(libMesh::Parallel::Communicator &comm,
-                                           FEMDataRepository &model_data,
+                                           FEMDataRepository &mesh_repository,
                                            const std::string &mesh_filepath)
 {
     libMesh::out << "Reading mesh and importing field data..." << std::endl;
@@ -23,21 +23,16 @@ std::shared_ptr<ApecMMesh> ApecMMesh::read(libMesh::Parallel::Communicator &comm
     if (mesh_filepath.empty())
         libmesh_error_msg("Mesh filepath not provided for ApecMMesh::read.");
 
-    auto mesh = model_data.get_object<ApecMMesh>();
+    auto mesh = mesh_repository.get_object<ApecMMesh>();
     if (!mesh)
     {
         mesh = std::make_shared<ApecMMesh>(comm);
-        model_data.set_object<ApecMMesh>(mesh);
+        mesh_repository.set_object<ApecMMesh>(mesh);
     }
 
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
     MeshCommunication().broadcast(*mesh);
     MeshTools::Modification::orient_elements(*mesh);
-
-    if (auto source_repo = vtkio.get_field_data_repo())
-    {
-        model_data.move_all_from(source_repo);
-    }
 
     return mesh;
 }

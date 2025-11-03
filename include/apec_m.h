@@ -1,15 +1,19 @@
 #ifndef APEC_M_H
 #define APEC_M_H
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <libmesh/libmesh.h>
 
 #include "apec_m_eq_system_object.h"
 #include "apec_m_mesh.h"
 #include "fem_data_repository.h"
+#include "load_step_analysis.h"
 #include "session.h"
 
 class CommandLineInterface
@@ -34,6 +38,8 @@ public:
     std::shared_ptr<ApecMMesh> get_active_mesh() const;
     std::shared_ptr<ApecMEquationSystems> get_equation_system(const std::string &name) const;
     std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
+    std::shared_ptr<LoadStepAnalysis> get_analysis(const std::string &name) const;
+    std::shared_ptr<LoadStepAnalysis> get_active_analysis() const;
 
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
@@ -46,6 +52,11 @@ public:
     bool generate_nodal_couplings();
     bool generate_periodic_boundaries();
 
+    std::size_t load_step_file_count() const;
+    std::vector<std::filesystem::path> list_load_step_files() const;
+    bool solve_load_step(const std::string &filename);
+    bool solve_transient_load_steps(const std::string &base_name);
+
     void read_mesh(const std::string &name, const std::string &filepath);
     void clear_mesh(const std::string &name);
 
@@ -56,18 +67,16 @@ public:
     libMesh::Parallel::Communicator &communicator() { return comm; }
 
 private:
-    struct MeshContext
-    {
-        std::shared_ptr<ApecMMesh> mesh;
-        std::shared_ptr<ApecMEquationSystems> equation_system;
-    };
-
-    MeshContext &ensure_context(const std::string &name);
+    FEMDataRepository &ensure_mesh_repository(const std::string &name);
+    std::shared_ptr<FEMDataRepository> find_mesh_repository(const std::string &name) const;
+    bool generate_nodal_couplings_for_mesh(const std::string &name,
+                                           const std::shared_ptr<ApecMMesh> &mesh);
 
     libMesh::Parallel::Communicator &comm;
     std::shared_ptr<FEMDataRepository> model_data_repository;
     std::shared_ptr<Session> session_object;
-    std::unordered_map<std::string, MeshContext> mesh_registry;
+    std::vector<std::pair<std::string, std::shared_ptr<FEMDataRepository>>> mesh_repositories;
+    std::unordered_map<std::string, std::size_t> mesh_repository_lookup;
     std::unique_ptr<CommandLineInterface> cli;
 
     bool enter_analysis_mode();

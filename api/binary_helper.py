@@ -2,7 +2,7 @@ import struct
 import numpy as np
 import vtk.util.numpy_support as vtknp
 import pandas as pd
-from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
+from constants import VARIABLES_GLOBAL_LIST
 
 
 class BinaryHelper:
@@ -34,21 +34,19 @@ class BinaryHelper:
         return first_keys
 
     @staticmethod
-    def _validate_series_type(values, expected_type, key):
-        if expected_type == int:
-            ok = all(isinstance(v, (int, np.integer)) for v in values)
-        elif expected_type == float:
-            ok = all(
-                isinstance(v, (float, int, np.floating, np.integer)) for v in values
-            )
-        elif expected_type == str:
-            ok = all(isinstance(v, str) for v in values)
-        else:
-            ok = True
-        if not ok:
-            raise TypeError(
-                f"Values for key '{key}' do not match expected type {expected_type.__name__}."
-            )
+    def _dataframe_to_column_dict(df):
+        column_dict = {}
+        for column_name in df.columns:
+            series = df[column_name]
+            if pd.api.types.is_integer_dtype(series):
+                column_dict[column_name] = series.to_numpy(dtype=np.int64, copy=True)
+            elif pd.api.types.is_float_dtype(series):
+                column_dict[column_name] = series.to_numpy(dtype=np.float64, copy=True)
+            elif pd.api.types.is_bool_dtype(series):
+                column_dict[column_name] = series.astype(np.int64).to_numpy(copy=True)
+            else:
+                column_dict[column_name] = series.astype(str).tolist()
+        return column_dict
 
     @staticmethod
     def _write_flattened_series(binary_file, values, key):
@@ -158,11 +156,10 @@ class BinaryHelper:
             binary_file.write(encoded)
 
     @staticmethod
-    def write_settings_to_binary(settings, binary_file, label):
+    def write_data_to_binary(settings, binary_file, label=None):
         """
         Writes one or many settings dictionaries to an open binary file stream.
-        For labels without predefined column types, values are flattened across the
-        list into NDArray payloads so they can be reconstructed later.
+        Values are flattened into NDArray payloads so they can be reconstructed later.
         """
         settings_list = BinaryHelper._ensure_settings_list(settings)
         if not settings_list:
@@ -171,91 +168,12 @@ class BinaryHelper:
 
         keys = BinaryHelper._validate_settings_keys(settings_list)
         binary_file.write(struct.pack("I", len(keys)))
-        expected_types = DEFAULT_COLUMNS_ATTRIBUTES_TYPES.get(label)
 
         for key in keys:
             binary_file.write(struct.pack("I", len(key)))
             binary_file.write(key.encode("utf-8"))
             values = [settings[key] for settings in settings_list]
-            if expected_types is not None and key in expected_types:
-                BinaryHelper._validate_series_type(values, expected_types[key], key)
             BinaryHelper._write_flattened_series(binary_file, values, key)
-
-    @staticmethod
-    def write_dataframe_to_binary(df, binary_file, key):
-        """
-        Writes a pandas DataFrame to an open binary file stream using predefined types for each column.
-
-        Parameters:
-            df (pd.DataFrame): The DataFrame to write.
-            binary_file (file object): An open binary file stream.
-            key (str): The key to retrieve the column types from DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
-
-        Raises:
-            ValueError: If the key is invalid or if a column in the DataFrame does not have a predefined type.
-        """
-        if key not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
-            raise ValueError(
-                f"Invalid key '{key}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
-            )
-        column_types = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[key]
-        for column in df.columns:
-            if column not in column_types:
-                raise ValueError(
-                    f"Column '{column}' does not have a predefined type in column_types."
-                )
-            expected_type = column_types[column]
-            if expected_type == int and not np.issubdtype(df[column].dtype, np.integer):
-                raise TypeError(
-                    f"Column '{column}' is expected to be of type int, but got {df[column].dtype}."
-                )
-            elif expected_type == float and not np.issubdtype(
-                df[column].dtype, np.floating
-            ):
-                raise TypeError(
-                    f"Column '{column}' is expected to be of type float, but got {df[column].dtype}."
-                )
-            elif expected_type == str and not np.issubdtype(
-                df[column].dtype, np.object_
-            ):
-                raise TypeError(
-                    f"Column '{column}' is expected to be of type str, but got {df[column].dtype}."
-                )
-        num_rows = len(df)
-        num_columns = len(df.columns)
-        binary_file.write(struct.pack("I", num_rows))
-        binary_file.write(struct.pack("I", num_columns))
-        for column in df.columns:
-            column_name = column
-            column_type = column_types[column]
-            binary_file.write(struct.pack("I", len(column_name)))
-            binary_file.write(column_name.encode("utf-8"))
-            if column_type == int:
-                binary_file.write(struct.pack("i", 0))
-            elif column_type == float:
-                binary_file.write(struct.pack("i", 1))
-            elif column_type == str:
-                binary_file.write(struct.pack("i", 2))
-            else:
-                raise ValueError(
-                    f"Unsupported column type '{column_type}' for column '{column}'."
-                )
-        for _, row in df.iterrows():
-            for column in df.columns:
-                value = row[column]
-                column_type = column_types[column]
-                if column_type == int:
-                    binary_file.write(struct.pack("i", int(value)))
-                elif column_type == float:
-                    binary_file.write(struct.pack("d", float(value)))
-                elif column_type == str:
-                    encoded_value = value.encode("utf-8")
-                    binary_file.write(struct.pack("I", len(encoded_value)))
-                    binary_file.write(encoded_value)
-                else:
-                    raise ValueError(
-                        f"Unsupported column type '{column_type}' for column '{column}'."
-                    )
 
     @staticmethod
     def write_to_binary(obj, binary_file, label):
@@ -271,9 +189,16 @@ class BinaryHelper:
         if isinstance(obj, dict):
             obj_list = [obj]
         elif isinstance(obj, pd.DataFrame):
-            obj_list = [obj]
+            obj_list = [BinaryHelper._dataframe_to_column_dict(obj)]
         elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
-            obj_list = list(obj)
+            obj_list = []
+            for item in obj:
+                if isinstance(item, dict):
+                    obj_list.append(item)
+                elif isinstance(item, pd.DataFrame):
+                    obj_list.append(BinaryHelper._dataframe_to_column_dict(item))
+                else:
+                    raise TypeError("Iterable must contain only dicts or DataFrames.")
         else:
             raise TypeError("Object must be a dict, DataFrame, or iterable of those.")
 
@@ -281,13 +206,7 @@ class BinaryHelper:
         if not obj_list:
             return
 
-        if all(isinstance(item, dict) for item in obj_list):
-            BinaryHelper.write_settings_to_binary(obj_list, binary_file, label)
-        elif all(isinstance(item, pd.DataFrame) for item in obj_list):
-            for df in obj_list:
-                BinaryHelper.write_dataframe_to_binary(df, binary_file, label)
-        else:
-            raise TypeError("Iterable must contain only dicts or only DataFrames.")
+        BinaryHelper.write_data_to_binary(obj_list, binary_file, label)
 
     @staticmethod
     def create_numpy_array_for_binary(cell_point_data):

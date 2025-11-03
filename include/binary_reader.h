@@ -9,10 +9,8 @@
 
 #include "binary_labels.h"
 #include "fem_data_repository.h"
-#include "session.h"
 
 #include <libmesh/libmesh.h>
-#include <libmesh/petsc_linear_solver.h>
 
 class ApecMEquationSystems;
 class LoadStep;
@@ -20,7 +18,7 @@ class LoadStep;
 class BinaryReader
 {
 public:
-    explicit BinaryReader(Session &session);
+    explicit BinaryReader() = default;
 
     std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &folder,
                                                const std::string &filename,
@@ -33,20 +31,14 @@ public:
     void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
     void read_binary_fem_data(const std::filesystem::path &filepath,
-                              FEMDataRepository &repository,
-                              const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr,
-                              libMesh::PetscLinearSolver<Number> *solver = nullptr,
-                              const std::shared_ptr<LoadStep> &previous_load_step = nullptr);
+                              const std::shared_ptr<FEMDataRepository> &repository = nullptr,
+                              const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr);
 
 private:
-    Session &session;
-
     void dispatch_read(BinaryLabelId label,
                        std::ifstream &file,
-                       FEMDataRepository &repository,
-                       const std::shared_ptr<ApecMEquationSystems> &equation_systems,
-                       libMesh::PetscLinearSolver<Number> *solver,
-                       const std::shared_ptr<LoadStep> &previous_load_step);
+                       const std::shared_ptr<FEMDataRepository> &repository,
+                       const std::shared_ptr<ApecMEquationSystems> &equation_systems);
 };
 
 #endif // BINARY_READER_H

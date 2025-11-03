@@ -30,8 +30,8 @@ const std::vector<std::string> &extract_string_array(const Globals::NDArray &arr
 }
 }
 
-ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::shared_ptr<SettingsMap> settings, EquationSystems *eq_sys)
-    : FEDataObjectMap<SettingsMap>(settings ? settings : std::make_shared<SettingsMap>()),
+ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::ifstream &file, EquationSystems *eq_sys)
+    : BinaryDataFEDataObject(file),
       FEParentObjectBase<EquationSystems>(eq_sys)
 {
     if (eq_sys)
@@ -45,25 +45,16 @@ const std::vector<ApecMPeriodicBoundary> &ApecMPeriodicBoundaryFactory::get_peri
 
 void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
 {
-    const SettingsMap *settings = this->get_data_map();
-    if (!settings)
-        libmesh_error_msg("Periodic boundary factory requires settings map.");
-
     periodic_boundaries.clear();
 
-    auto main_it = settings->find("main_boundary");
-    auto paired_it = settings->find("paired_boundary");
-    auto matrix_it = settings->find("periodic_matrix");
-    auto variables_it = settings->find("variables");
+    if (!has_column("main_boundary") || !has_column("paired_boundary") ||
+        !has_column("periodic_matrix") || !has_column("variables"))
+        libmesh_error_msg("Periodic boundary factory: required keys missing from settings data.");
 
-    if (main_it == settings->end() || paired_it == settings->end() ||
-        matrix_it == settings->end() || variables_it == settings->end())
-        libmesh_error_msg("Periodic boundary factory: required keys missing from settings map.");
-
-    const auto &main_array = std::get<Globals::NDArray>(main_it->second);
-    const auto &paired_array = std::get<Globals::NDArray>(paired_it->second);
-    const auto &matrix_array = std::get<Globals::NDArray>(matrix_it->second);
-    const auto &variables_array = std::get<Globals::NDArray>(variables_it->second);
+    const auto &main_array = get_column("main_boundary");
+    const auto &paired_array = get_column("paired_boundary");
+    const auto &matrix_array = get_column("periodic_matrix");
+    const auto &variables_array = get_column("variables");
 
     const auto &main_values = extract_int_array(main_array);
     const auto &paired_values = extract_int_array(paired_array);

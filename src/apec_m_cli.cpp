@@ -140,12 +140,12 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::READ_MODEL_DATA;
     if (input == "-distribute_boundary_ids")
         return Command::DISTRIBUTE_BOUNDARIES;
-    if (input == "-generate_infinite_elements")
-        return Command::GENERATE_INFINITE_ELEMENTS;
-    if (input == "-generate_nodal_couplings")
-        return Command::GENERATE_NODAL_COUPLINGS;
-    if (input == "-generate_periodic_bcs")
-        return Command::GENERATE_PERIODIC_BCS;
+    if (input == "-list_load_steps")
+        return Command::LIST_LOAD_STEPS;
+    if (input.rfind("-solve_transient", 0) == 0)
+        return Command::SOLVE_TRANSIENT;
+    if (input.rfind("-solve", 0) == 0)
+        return Command::SOLVE;
     if (input.rfind("-mode", 0) == 0)
         return Command::SET_MODE;
     if (input == "-help" || input == "help")
@@ -287,32 +287,50 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             libMesh::out << "Boundary distribution failed." << std::endl;
         return true;
     }
-    case Command::GENERATE_INFINITE_ELEMENTS:
+    case Command::LIST_LOAD_STEPS:
     {
         auto &session = program.session();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-generate_infinite_elements"))
+        if (!require_mode(session, Session::Mode::Analysis, "-list_load_steps"))
             return true;
 
-        program.generate_infinite_elements();
+        const auto files = program.list_load_step_files();
+        if (files.empty())
+        {
+            libMesh::out << "No load step binaries found for the active mesh." << std::endl;
+            return true;
+        }
+
+        libMesh::out << files.size() << " load step file(s) available:" << std::endl;
+        for (const auto &path : files)
+            libMesh::out << "  - " << path.filename().string() << std::endl;
         return true;
     }
-    case Command::GENERATE_NODAL_COUPLINGS:
+    case Command::SOLVE:
     {
         auto &session = program.session();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-generate_nodal_couplings"))
+        if (!require_mode(session, Session::Mode::Analysis, "-solve"))
             return true;
 
-        program.generate_nodal_couplings();
+        auto argument = extract_argument(input);
+        if (argument.empty())
+        {
+            libMesh::out << "Usage: -solve <load_step_filename>" << std::endl;
+            return true;
+        }
+
+        if (!program.solve_load_step(argument))
+            libMesh::out << "Load step solve failed." << std::endl;
         return true;
     }
-    case Command::GENERATE_PERIODIC_BCS:
+    case Command::SOLVE_TRANSIENT:
     {
         auto &session = program.session();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-generate_periodic_bcs"))
+        if (!require_mode(session, Session::Mode::Analysis, "-solve_transient"))
             return true;
 
-        if (!program.generate_periodic_boundaries())
-            libMesh::out << "Periodic boundary generation failed." << std::endl;
+        auto argument = extract_argument(input);
+        if (!program.solve_transient_load_steps(argument))
+            libMesh::out << "Transient solve failed." << std::endl;
         return true;
     }
     case Command::SET_MODE:
@@ -353,9 +371,9 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
                      << "  -distribute_boundary_ids\n"
-                     << "  -generate_infinite_elements\n"
-                     << "  -generate_nodal_couplings\n"
-                     << "  -generate_periodic_bcs\n"
+                     << "  -list_load_steps\n"
+                     << "  -solve <load_step_filename>\n"
+                     << "  -solve_transient [base_name]\n"
                      << "  -mode <preprocessing|analysis|other>\n"
                      << "  -read_model_data <model_file>\n"
                      << "  -clear\n"

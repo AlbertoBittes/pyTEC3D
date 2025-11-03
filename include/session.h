@@ -63,17 +63,6 @@ public:
     void create_emat_folder();
     void check_load_steps_folder();
 
-    std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &folder,
-                                               const std::string &filename,
-                                               FileMode mode);
-
-    std::vector<std::unique_ptr<std::ios>> open_file_streams(
-        const std::filesystem::path &folder,
-        const std::vector<std::string> &filenames,
-        FileMode mode);
-
-    void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
-
 private:
     void update_dynamic_paths();
     static std::string sanitize_token(const std::string &value);

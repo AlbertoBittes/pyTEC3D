@@ -1,4 +1,5 @@
 #include "element_builder.h"
+#include "binary_reader.h"
 // #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
@@ -278,7 +279,8 @@ void ElementBuilder::build_write_element_matrices_rhs()
             "base_rhs_" + rank_str + ".temp"};
 
         // Open all files using the session method
-        auto streams = session->open_file_streams(emat_folderpath, filenames, FileMode::Write);
+        BinaryReader reader(*session);
+        auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Write);
 
         // Downcast to use as ofstream
         std::ofstream *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
@@ -308,7 +310,7 @@ void ElementBuilder::build_write_element_matrices_rhs()
             this->write_element_vectors(*base_rhs_output_file, VectorsSet::RHS_VECTORS);
         }
 
-        session->close_file_streams(streams);
+        reader.close_file_streams(streams);
     }
     else
         libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
@@ -319,8 +321,8 @@ void ElementBuilder::build_write_element_matrices_rhs()
         "rhs_" + rank_str + ".temp",
     };
 
-    auto streams_in = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
-    auto streams_out = session->open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
+    auto streams_in = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+    auto streams_out = reader.open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
     // Downcast to use as ifstream
     std::ifstream *base_rhs_input_file = dynamic_cast<std::ifstream *>(streams_in[0].get());
     std::ofstream *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
@@ -342,8 +344,8 @@ void ElementBuilder::build_write_element_matrices_rhs()
 
         this->write_element_vectors(*rhs_output_file, VectorsSet::RHS_VECTORS);
     }
-    session->close_file_streams(streams_in);
-    session->close_file_streams(streams_out);
+    reader.close_file_streams(streams_in);
+    reader.close_file_streams(streams_out);
 }
 
 void ElementBuilder::check_compute_matrix()
@@ -384,8 +386,8 @@ void ElementBuilder::check_compute_matrix()
 
     // Check if material properties/real constants have changed
     else if (
-        *(current_material_object->get_dataframe_map()) != *(old_material_object->get_dataframe_map()) ||
-        *(current_real_constant_object->get_dataframe_map()) != *(old_real_constant_object->get_dataframe_map()))
+        current_material_object->get_materials_map() != old_material_object->get_materials_map() ||
+        current_real_constant_object->get_constants_map() != old_real_constant_object->get_constants_map())
     {
         update_matrix = true;
         solver->reuse_preconditioner(false);
@@ -504,7 +506,7 @@ void ElementBuilder::build_write_solution_vectors()
     //         return info.name == sys_name;
     //     });
 
-    auto inp_streams = session->open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+    auto inp_streams = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
     std::ifstream *solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
 

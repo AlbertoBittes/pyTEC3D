@@ -1,6 +1,7 @@
 #include "element_types_factory.h"
 #include "globals.h"
 
+#include <algorithm>
 #include <cmath>
 #include <regex>
 
@@ -15,56 +16,74 @@ unsigned int parse_element_type_number(const std::string &label)
     libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
 }
 
-unsigned int coerce_to_unsigned(const std::variant<int, Real, std::string> &value)
-{
-    if (std::holds_alternative<int>(value))
-        return static_cast<unsigned int>(std::get<int>(value));
-    if (std::holds_alternative<Real>(value))
-        return static_cast<unsigned int>(std::llround(std::get<Real>(value)));
-    if (std::holds_alternative<std::string>(value))
-        return static_cast<unsigned int>(std::stoul(std::get<std::string>(value)));
-    return 0u;
-}
 }
 
 ElementTypesFactory::ElementTypesFactory()
-    : FEDataObjectMap<DataframeMap>(std::make_shared<DataframeMap>()),
-      element_types_map(std::make_shared<ElementTypesMap>())
-{
-}
-
-ElementTypesFactory::ElementTypesFactory(std::shared_ptr<DataframeMap> table)
-    : FEDataObjectMap<DataframeMap>(table ? table : std::make_shared<DataframeMap>()),
+    : BinaryDataFEDataObject(),
       element_types_map(std::make_shared<ElementTypesMap>())
 {
     populate_element_types_map();
 }
 
+ElementTypesFactory::ElementTypesFactory(std::shared_ptr<BinaryColumnarData> table)
+    : BinaryDataFEDataObject(table ? table : std::make_shared<BinaryColumnarData>()),
+      element_types_map(std::make_shared<ElementTypesMap>())
+{
+    populate_element_types_map();
+}
+
+void ElementTypesFactory::read_data(std::ifstream &file)
+{
+    BinaryDataFEDataObject::read_data(file);
+    populate_element_types_map();
+}
+
 void ElementTypesFactory::populate_element_types_map()
 {
-    const DataframeMap *table = this->get_data_map();
-    if (!table)
-        libmesh_error_msg("ElementTypesFactory: data table not set.");
+    element_types_map->clear();
 
-    for (const auto &row : *table)
+    if (empty())
+        return;
+
+    if (!has_column("ansys_etype"))
+        libmesh_error_msg("ElementTypesFactory: missing 'ansys_etype' column.");
+    if (!has_column("element_type"))
+        libmesh_error_msg("ElementTypesFactory: missing 'element_type' column.");
+
+    const auto &ansys_ids = get_int_column("ansys_etype");
+    const auto &element_labels = get_string_column("element_type");
+    const std::size_t count = entry_count();
+
+    if (ansys_ids.size() < count || element_labels.size() < count)
+        libmesh_error_msg("ElementTypesFactory: inconsistent element type data size.");
+
+    std::vector<std::string> keyopt_columns;
+    keyopt_columns.reserve(this->get_data_map()->columns.size());
+    for (const auto &pair : this->get_data_map()->columns)
     {
-        if (row.size() < 2)
-            libmesh_error_msg("ElementTypesFactory: expected at least two columns per row.");
+        if (pair.first.rfind("KEYOPT", 0) == 0)
+            keyopt_columns.push_back(pair.first);
+    }
 
-        if (!std::holds_alternative<int>(row[0]))
-            libmesh_error_msg("ElementTypesFactory: ansys_etype column must be integer.");
-        if (!std::holds_alternative<std::string>(row[1]))
-            libmesh_error_msg("ElementTypesFactory: element_type column must be string.");
+    std::sort(keyopt_columns.begin(), keyopt_columns.end(), [](const std::string &a, const std::string &b) {
+        auto extract_index = [](const std::string &name) {
+            auto pos = name.find_first_of("0123456789");
+            return pos == std::string::npos ? 0 : std::stoul(name.substr(pos));
+        };
+        return extract_index(a) < extract_index(b);
+    });
 
-        int ansys_type = std::get<int>(row[0]);
-        unsigned int element_number = parse_element_type_number(std::get<std::string>(row[1]));
+    for (std::size_t row = 0; row < count; ++row)
+    {
+        int ansys_type = ansys_ids[row];
+        unsigned int element_number = parse_element_type_number(element_labels[row]);
 
         std::vector<unsigned int> keyopts;
-        keyopts.reserve(row.size());
+        keyopts.reserve(1 + keyopt_columns.size());
         keyopts.push_back(element_number);
 
-        for (std::size_t col = 2; col < row.size(); ++col)
-            keyopts.push_back(coerce_to_unsigned(row[col]));
+        for (const auto &column_name : keyopt_columns)
+            keyopts.push_back(static_cast<unsigned int>(get_int(column_name, row)));
 
         (*element_types_map)[ansys_type] = create_element_type(
             static_cast<ElementTypeEnum>(element_number),

@@ -2,8 +2,9 @@
 #include "apec_m_system_objects.h"
 #include "apec_m_mesh.h"
 #include "element_builder.h"
-#include "system_builder.h"
 #include "time_step.h"
+#include <libmesh/solver_configuration.h>
+#include "solver_configuration.h"
 
 #include <utility>
 
@@ -23,32 +24,77 @@ void ApecMEquationSystems::configure_systems(const std::shared_ptr<FEMDataReposi
 
     libMesh::out << "Checking system options..." << std::endl;
 
-    auto system_builder_view = std::make_shared<
-        TypedContextView<ElementTypesFactory>>(
-        TypedContextView<ElementTypesFactory>::from(
-            model_data));
+    model_data_handle = model_data;
 
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
         Globals::SystemType type = static_cast<Globals::SystemType>(i);
         const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
 
-        System *system = nullptr;
         if (type == Globals::DOF_SOLUTION_SYSTEM)
-            system = &this->add_system<ApecMLinearSystem>(sys_name);
+            this->add_system<ApecMLinearSystem>(sys_name);
         else
-            system = &this->add_system<ApecMExplicitSystem>(sys_name);
+            this->add_system<ApecMExplicitSystem>(sys_name);
+    }
+}
 
-        SystemBuilder *builder = new SystemBuilder(system, system_builder_view);
-        builder->init_variables();
-        system->attach_init_object(*builder);
+void ApecMEquationSystems::initialize_system_contexts()
+{
+    auto model_data = model_data_handle.lock();
+    if (!model_data)
+        return;
+
+    auto system_builder_view = std::make_shared<ApecMSystem<System>::ContextView>(
+        ApecMSystem<System>::ContextView::from(model_data));
+
+    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<Globals::SystemType>(i);
+        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        auto &base_system = this->get_system<System>(info.name);
+
+        if (type == Globals::DOF_SOLUTION_SYSTEM)
+        {
+            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
+            {
+                system->set_context_view(system_builder_view);
+                system->init_variables();
+            }
+        }
+        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
+        {
+            system->set_context_view(system_builder_view);
+            system->init_variables();
+        }
+    }
+}
+
+void ApecMEquationSystems::post_initialize_systems()
+{
+    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<Globals::SystemType>(i);
+        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        auto &base_system = this->get_system<System>(info.name);
+
+        if (type == Globals::DOF_SOLUTION_SYSTEM)
+        {
+            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
+                system->post_init();
+        }
+        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
+        {
+            system->post_init();
+        }
     }
 }
 
 void ApecMEquationSystems::initialize_physics()
 {
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
+    initialize_system_contexts();
     this->init();
+    post_initialize_systems();
     this->print_info();
     this->get_element_builder()->init();
 }

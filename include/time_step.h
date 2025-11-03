@@ -64,14 +64,18 @@ private:
 class TimeStep : public BinaryDataFEDataObject
 {
 public:
-    // Constructor with binary file stream
-    TimeStep(std::ifstream &file, std::shared_ptr<LoadStep> prev_load_step = nullptr)
+    TimeStep(std::ifstream &file)
         : BinaryDataFEDataObject(file)
     {
-        this->populate_time_step(prev_load_step);
-        // *this = TimeStep(step, time, load_step, write_results, num_substeps,
-        //                  transient_effect, ramped_load, prev_load_step);
     }
+    // Constructor with binary file stream
+    // TimeStep(std::ifstream &file, std::shared_ptr<LoadStep> prev_load_step = nullptr)
+    //     : BinaryDataFEDataObject(file)
+    // {
+    //     this->populate_time_step(prev_load_step);
+    //     // *this = TimeStep(step, time, load_step, write_results, num_substeps,
+    //     //                  transient_effect, ramped_load, prev_load_step);
+    // }
 
     int get_step() const { return step; }
     Real get_time() const { return time; }
