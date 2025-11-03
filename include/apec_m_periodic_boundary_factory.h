@@ -17,11 +17,11 @@ using namespace libMesh;
 // Factory to build ApecMPeriodicBoundary instances from serialized settings data
 // ------------------------------------------------------
 class ApecMPeriodicBoundaryFactory
-    : public FEDataObjectMap<SettingsMap>,
+    : public BinaryDataFEDataObject,
       public FEParentObjectBase<EquationSystems>
 {
 public:
-    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<SettingsMap> settings, EquationSystems *eq_sys = nullptr);
+    explicit ApecMPeriodicBoundaryFactory(std::shared_ptr<BinaryColumnarData> settings = nullptr, EquationSystems *eq_sys = nullptr);
     // NEW: Populate periodic boundaries directly from stored vtkFieldData
     void populate_periodic_boundaries_from_map();
 

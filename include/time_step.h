@@ -61,12 +61,12 @@ private:
     bool solved;
 };
 
-class TimeStep : public SettingsFEDataObject
+class TimeStep : public BinaryDataFEDataObject
 {
 public:
     // Constructor with binary file stream
     TimeStep(std::ifstream &file, std::shared_ptr<LoadStep> prev_load_step = nullptr)
-        : SettingsFEDataObject(file)
+        : BinaryDataFEDataObject(file)
     {
         this->populate_time_step(prev_load_step);
         // *this = TimeStep(step, time, load_step, write_results, num_substeps,

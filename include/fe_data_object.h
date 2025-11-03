@@ -15,23 +15,11 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 
-#include <vtkAbstractArray.h>
-#include <vtkDoubleArray.h>
-#include <vtkIntArray.h>
-#include <vtkStringArray.h>
-
-#include "globals.h"
-
 #include "globals.h"
 
 using namespace libMesh;
 
 class LoadStep;
-
-typedef std::vector<std::vector<std::variant<int, Real, std::string>>> DataframeMap;
-
-typedef std::variant<int, Real, std::string, Globals::NDArray> SettingsValue;
-typedef std::unordered_map<std::string, SettingsValue> SettingsMap;
 
 class FEMDataRepository;
 // FE data object classes are the basic data repositories of the program.
@@ -101,154 +89,72 @@ protected:
     std::shared_ptr<T1> data_map; // Stores the data map (type-specific)
 };
 
-class DataframeFEDataObject : public FEDataObjectMap<DataframeMap>
+template <typename>
+struct AlwaysFalse : std::false_type
+{
+};
+
+struct BinaryColumnarData
+{
+    std::size_t entry_count = 0;
+    std::unordered_map<std::string, Globals::NDArray> columns;
+};
+
+class BinaryDataFEDataObject : public FEDataObjectMap<BinaryColumnarData>
 {
 public:
-    // Constructor
-    DataframeFEDataObject()
-        : FEDataObjectMap<DataframeMap>() // Call base default constructor (does NOT read data)
+    BinaryDataFEDataObject()
+        : FEDataObjectMap<BinaryColumnarData>(std::make_shared<BinaryColumnarData>())
     {
     }
-    DataframeFEDataObject(std::ifstream &file)
-        : FEDataObjectMap<DataframeMap>() // Call base default constructor (does NOT read data)
+
+    explicit BinaryDataFEDataObject(std::shared_ptr<BinaryColumnarData> external_map)
+        : FEDataObjectMap<BinaryColumnarData>(external_map ? external_map : std::make_shared<BinaryColumnarData>())
     {
-        this->read_data(file); // Now call the child’s read_data
     }
-    // Implement the read_data method
+
+    explicit BinaryDataFEDataObject(std::ifstream &file)
+        : FEDataObjectMap<BinaryColumnarData>(std::make_shared<BinaryColumnarData>())
+    {
+        this->read_data(file);
+    }
+
+    template <typename T>
+    T get_scalar(const std::string &key, std::size_t index = 0) const;
+
+    int get_int(const std::string &key, std::size_t index = 0) const;
+    Real get_real(const std::string &key, std::size_t index = 0) const;
+    std::string get_string(const std::string &key, std::size_t index = 0) const;
+
+    const std::vector<int> &get_int_column(const std::string &key) const;
+    const std::vector<Real> &get_real_column(const std::string &key) const;
+    const std::vector<std::string> &get_string_column(const std::string &key) const;
+
+    bool has_column(const std::string &key) const;
+    std::size_t entry_count() const;
+    bool empty() const { return entry_count() == 0; }
+
     void read_data(std::ifstream &file);
+
+protected:
+    const Globals::NDArray &get_column(const std::string &key) const;
+    static std::size_t flattened_size(const Globals::NDArray &array);
+    static void ensure_index_in_bounds(const std::string &key, std::size_t index, std::size_t size);
 };
 
 template <typename T>
-class DataframeMapFEDataObject : public DataframeFEDataObject
+T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) const
 {
-public:
-    // Constructor
-    DataframeMapFEDataObject(std::ifstream &file)
-        : DataframeFEDataObject(file), // parent constructor
-          dataframe_map(std::make_shared<std::unordered_map<int, std::vector<T>>>())
+    if constexpr (std::is_same_v<T, int>)
+        return static_cast<T>(get_int(key, index));
+    else if constexpr (std::is_same_v<T, Real>)
+        return static_cast<T>(get_real(key, index));
+    else if constexpr (std::is_same_v<T, std::string>)
+        return get_string(key, index);
+    else
     {
-        populate_dataframe_map();
+        static_assert(AlwaysFalse<T>::value, "Unsupported scalar type requested from BinaryDataFEDataObject.");
     }
-
-    DataframeMapFEDataObject()
-        : DataframeFEDataObject(),
-          dataframe_map(std::make_shared<std::unordered_map<int, std::vector<T>>>())
-    {
-    }
-
-    // Method to populate dataframe_map from data_map
-    void populate_dataframe_map();
-
-    // Getter for dataframe_map
-    std::unordered_map<int, std::vector<T>> *get_dataframe_map() const
-    {
-        return dataframe_map.get();
-    }
-
-protected:
-    std::shared_ptr<std::unordered_map<int, std::vector<T>>> dataframe_map; // Shared pointer to the map
-};
-
-class SettingsFEDataObject : public FEDataObjectMap<SettingsMap>
-{
-public:
-    // Constructor
-    SettingsFEDataObject(std::ifstream &file)
-        : FEDataObjectMap<SettingsMap>() // Call base default constructor (does NOT read data)
-    {
-        this->read_data(file); // Now call the child’s read_data
-    };
-
-    template <typename T>
-    T get_setting(const std::string &key) const
-    {
-        auto it = data_map->find(key);
-        if (it == data_map->end())
-        {
-            libmesh_error_msg("Setting not found: " + key);
-        }
-        return std::get<T>(it->second);
-    }
-
-    template <typename T>
-    T get_scalar_setting(const std::string &key) const
-    {
-        auto it = data_map->find(key);
-        if (it == data_map->end())
-        {
-            libmesh_error_msg("Setting not found: " + key);
-        }
-
-        if (std::holds_alternative<T>(it->second))
-            return std::get<T>(it->second);
-
-        if (std::holds_alternative<Globals::NDArray>(it->second))
-            return extract_scalar_from_ndarray<T>(key, std::get<Globals::NDArray>(it->second));
-
-        libmesh_error_msg("Setting '" + key + "' cannot be converted to requested scalar type.");
-        return T{};
-    }
-
-    template <typename T>
-    void set_setting(const std::string &key, T value)
-    {
-        (*data_map)[key] = value;
-    }
-    // Implement the read_data method
-    void read_data(std::ifstream &file);
-
-private:
-    template <typename T>
-    static T extract_scalar_from_ndarray(const std::string &key, const Globals::NDArray &array)
-    {
-        std::size_t total_elements = 1;
-        for (auto extent : array.shape)
-            total_elements *= static_cast<std::size_t>(extent);
-
-        if (total_elements == 0)
-            libmesh_error_msg("Setting '" + key + "' is empty; cannot convert to scalar.");
-        if (total_elements != 1)
-            libmesh_error_msg("Setting '" + key + "' contains multiple values; cannot convert to scalar.");
-
-        return std::visit(
-            [&](const auto &vec) -> T
-            {
-                using VecType = std::decay_t<decltype(vec)>;
-                using ElemType = typename VecType::value_type;
-
-                if (vec.size() != total_elements || vec.empty())
-                    libmesh_error_msg("NDArray payload for setting '" + key + "' has unexpected size.");
-
-                const auto &value = vec.front();
-
-                if constexpr (std::is_same_v<T, int>)
-                {
-                    if constexpr (std::is_same_v<ElemType, int>)
-                        return value;
-                    if constexpr (std::is_same_v<ElemType, Real>)
-                        return static_cast<int>(value);
-                }
-                else if constexpr (std::is_same_v<T, Real>)
-                {
-                    if constexpr (std::is_same_v<ElemType, Real>)
-                        return value;
-                    if constexpr (std::is_same_v<ElemType, int>)
-                        return static_cast<Real>(value);
-                }
-                else if constexpr (std::is_same_v<T, std::string>)
-                {
-                    if constexpr (std::is_same_v<ElemType, std::string>)
-                        return value;
-                }
-
-                libmesh_error_msg("Unsupported NDArray to scalar conversion for setting '" + key + "'.");
-                return T{};
-            },
-            array.values);
-    }
-};
-
-template class DataframeMapFEDataObject<int>;
-template class DataframeMapFEDataObject<Real>;
+}
 
 #endif // FE_DATA_OBJECT_H

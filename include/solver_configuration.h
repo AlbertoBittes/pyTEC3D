@@ -11,12 +11,12 @@ class LoadStep;
 
 // This repository stores all data relate to mathematical solver settings, non-linear options (not iplemented yet),
 // The user can choose the solver type (direct, iterative), the solver tolerances, and other similar parameters.
-class PetscSolverConfiguration : public SolverConfiguration, public SettingsFEDataObject
+class PetscSolverConfiguration : public SolverConfiguration, public BinaryDataFEDataObject
 {
 public:
   // Default constructor
   PetscSolverConfiguration(std::ifstream &file, PetscLinearSolver<Number> *petsc_linear_solver = nullptr)
-      : SettingsFEDataObject(file),
+      : BinaryDataFEDataObject(file),
         _petsc_linear_solver(petsc_linear_solver)
   {
     // PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());

@@ -1,275 +1,260 @@
 #include "fe_data_object.h"
-#include <vtkIntArray.h>
-#include <vtkDoubleArray.h>
-#include <vtkStringArray.h>
 
-void DataframeFEDataObject::read_data(std::ifstream &file)
+#include <algorithm>
+#include <cmath>
+
+namespace
 {
-    if (!file.is_open())
-    {
-        libmesh_error_msg("Failed to open file stream.");
-    }
-
-    data_map->clear();
-
-    // Read the number of rows and columns
-    dof_id_type num_rows, num_columns;
-    file.read(reinterpret_cast<char *>(&num_rows), sizeof(num_rows));
-    file.read(reinterpret_cast<char *>(&num_columns), sizeof(num_columns));
-
-    // Read column metadata (name and type)
-    std::vector<std::string> column_names(num_columns);
-    std::vector<int32_t> column_types(num_columns); // Use int32_t for type indicator
-
-    for (dof_id_type i = 0; i < num_columns; ++i)
-    {
-        // Read the column name
-        dof_id_type name_length;
-        file.read(reinterpret_cast<char *>(&name_length), sizeof(name_length));
-
-        std::string column_name(name_length, '\0');
-        file.read(&column_name[0], name_length);
-
-        // Read the column type
-        int32_t column_type;
-        file.read(reinterpret_cast<char *>(&column_type), sizeof(column_type));
-
-        column_names[i] = column_name;
-        column_types[i] = column_type;
-    }
-
-    // Read the data row by row
-    for (dof_id_type row = 0; row < num_rows; ++row)
-    {
-        std::vector<std::variant<int, Real, std::string>> row_data;
-
-        for (dof_id_type col = 0; col < num_columns; ++col)
-        {
-            switch (static_cast<int>(column_types[col]))
-            {
-            case 0: // int
-            {
-                int32_t value;
-                file.read(reinterpret_cast<char *>(&value), sizeof(value));
-                row_data.push_back(static_cast<int>(value)); // If your variant expects int
-                break;
-            }
-            case 1: // double
-            {
-                Real value;
-                file.read(reinterpret_cast<char *>(&value), sizeof(value));
-                row_data.push_back(value);
-                break;
-            }
-            case 2: // string
-            {
-                dof_id_type string_length;
-                file.read(reinterpret_cast<char *>(&string_length), sizeof(string_length));
-
-                std::string value(string_length, '\0');
-                file.read(&value[0], string_length);
-                row_data.push_back(value);
-                break;
-            }
-            default:
-                libmesh_error_msg("Unsupported column type encountered in binary file.");
-            }
-        }
-
-        data_map->push_back(std::move(row_data));
-    }
+template <typename Vec>
+std::size_t vector_size(const Vec &vec)
+{
+    return vec.size();
+}
 }
 
-template <typename T>
-void DataframeMapFEDataObject<T>::populate_dataframe_map()
+void BinaryDataFEDataObject::read_data(std::ifstream &file)
 {
-    dataframe_map->clear();
+    if (!file.is_open())
+        libmesh_error_msg("Failed to open file stream.");
 
-    if (data_map->empty())
+    data_map->columns.clear();
+    data_map->entry_count = 0;
+
+    std::uint32_t entry_count = 0;
+    file.read(reinterpret_cast<char *>(&entry_count), sizeof(entry_count));
+    if (entry_count == 0)
+    {
+        data_map->entry_count = 0;
         return;
-
-    for (const auto &row : *data_map)
-    {
-        if (row.empty())
-            libmesh_error_msg("Encountered an empty row in the data map.");
-
-        // First column is always int
-        int id = std::get<int>(row[0]);
-
-        // Remaining columns are of type T
-        std::vector<T> values;
-        for (size_t col = 1; col < row.size(); ++col)
-        {
-            if constexpr (std::is_same<T, Real>::value)
-            {
-                if (std::holds_alternative<Real>(row[col]))
-                    values.push_back(std::get<Real>(row[col]));
-                else
-                    libmesh_error_msg("Expected Real in data map row.");
-            }
-            else if constexpr (std::is_same<T, int>::value)
-            {
-                if (std::holds_alternative<int>(row[col]))
-                    values.push_back(std::get<int>(row[col]));
-                else
-                    libmesh_error_msg("Expected int in data map row.");
-            }
-            else if constexpr (std::is_same<T, std::string>::value)
-            {
-                if (std::holds_alternative<std::string>(row[col]))
-                    values.push_back(std::get<std::string>(row[col]));
-                else
-                    libmesh_error_msg("Expected string in data map row.");
-            }
-            else
-            {
-                static_assert(sizeof(T) == 0, "Unsupported type for DataframeMapFEDataObject");
-            }
-        }
-
-        // Store the vector<T> in the map with int key
-        (*dataframe_map)[id] = std::move(values);
-    }
-}
-
-void SettingsFEDataObject::read_data(std::ifstream &file)
-{
-    this->data_map->clear();
-
-    if (!file.is_open())
-    {
-        libmesh_error_msg("Failed to open file stream.");
     }
 
-    // Read the number of settings
-    dof_id_type num_settings;
-    file.read(reinterpret_cast<char *>(&num_settings), sizeof(num_settings));
+    std::uint32_t num_keys = 0;
+    file.read(reinterpret_cast<char *>(&num_keys), sizeof(num_keys));
 
-    // Read each setting
-    for (dof_id_type i = 0; i < num_settings; ++i)
+    std::size_t deduced_entry_count = entry_count > 1 ? entry_count : 0;
+
+    for (std::uint32_t i = 0; i < num_keys; ++i)
     {
-        // Read the size of the key (string label)
-        dof_id_type key_size;
+        std::uint32_t key_size = 0;
         file.read(reinterpret_cast<char *>(&key_size), sizeof(key_size));
 
-        // Read the key (string label)
         std::string key(key_size, '\0');
         file.read(&key[0], key_size);
 
-        // Read the type of the value
-        int32_t value_type;
-        file.read(reinterpret_cast<char *>(&value_type), sizeof(value_type));
+        int32_t payload_type = 0;
+        file.read(reinterpret_cast<char *>(&payload_type), sizeof(payload_type));
+        if (payload_type != 3)
+            libmesh_error_msg("BinaryDataFEDataObject: unexpected payload type while reading key '" + key + "'.");
 
-        // Read the value based on its type
-        if (value_type == 0)
-        { // int
-            int32_t int_value;
-            file.read(reinterpret_cast<char *>(&int_value), sizeof(int_value));
-            (*data_map)[key] = int_value;
-        }
-        else if (value_type == 1)
-        { // double
-            double double_value;
-            file.read(reinterpret_cast<char *>(&double_value), sizeof(double_value));
-            (*data_map)[key] = double_value;
-        }
-        else if (value_type == 2)
-        { // string
-            dof_id_type string_size;
-            file.read(reinterpret_cast<char *>(&string_size), sizeof(string_size));
-            std::string string_value(string_size, '\0');
-            file.read(&string_value[0], string_size);
-            (*data_map)[key] = string_value;
-        }
-        else if (value_type == 3)
-        { // numpy array
-            // Read dtype string (ignored for now but consumed)
-            std::uint32_t dtype_len = 0;
-            file.read(reinterpret_cast<char *>(&dtype_len), sizeof(dtype_len));
-            std::string dtype(dtype_len, '\0');
-            file.read(&dtype[0], dtype_len);
+        std::uint32_t dtype_len = 0;
+        file.read(reinterpret_cast<char *>(&dtype_len), sizeof(dtype_len));
+        std::string dtype(dtype_len, '\0');
+        file.read(&dtype[0], dtype_len);
 
-            // Read shape information
-            std::uint32_t ndim = 0;
-            file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
+        std::uint32_t ndim = 0;
+        file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
 
-            std::vector<std::uint32_t> shape(ndim);
+        Globals::NDArray array_value;
+        array_value.shape.resize(ndim);
 
-            std::size_t total_elements = 1;
-            for (std::uint32_t dim = 0; dim < ndim; ++dim)
-            {
-                std::uint32_t extent = 0;
-                file.read(reinterpret_cast<char *>(&extent), sizeof(extent));
-                shape[dim] = extent;
-                total_elements *= static_cast<std::size_t>(extent);
-            }
-
-            // Element kind: 0 -> int64, 1 -> float64, 2 -> string
-            int32_t element_kind = 0;
-            file.read(reinterpret_cast<char *>(&element_kind), sizeof(element_kind));
-
-            Globals::NDArray array_value;
-            array_value.shape = std::move(shape);
-
-            switch (element_kind)
-            {
-            case 0:
-            {
-                std::vector<std::int64_t> buffer(total_elements);
-                if (total_elements)
-                    file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(std::int64_t));
-
-                std::vector<int> values(buffer.size());
-                for (std::size_t idx = 0; idx < buffer.size(); ++idx)
-                    values[idx] = static_cast<int>(buffer[idx]);
-
-                array_value.values = std::move(values);
-                break;
-            }
-            case 1:
-            {
-                std::vector<double> buffer(total_elements);
-                if (total_elements)
-                    file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(double));
-
-                std::vector<Real> values(buffer.size());
-                for (std::size_t idx = 0; idx < buffer.size(); ++idx)
-                    values[idx] = static_cast<Real>(buffer[idx]);
-
-                array_value.values = std::move(values);
-                break;
-            }
-            case 2:
-            {
-                std::uint32_t count = 0;
-                file.read(reinterpret_cast<char *>(&count), sizeof(count));
-
-                if (count != total_elements)
-                    libmesh_error_msg("String NDArray payload size mismatch in binary file.");
-                std::vector<std::string> values(count);
-                for (std::uint32_t idx = 0; idx < count; ++idx)
-                {
-                    std::uint32_t str_len = 0;
-                    file.read(reinterpret_cast<char *>(&str_len), sizeof(str_len));
-
-                    std::string value(str_len, '\0');
-                    if (str_len)
-                        file.read(&value[0], str_len);
-                    values[idx] = std::move(value);
-                }
-
-                array_value.values = std::move(values);
-                break;
-            }
-            default:
-                libmesh_error_msg("Unsupported numpy array element type encountered in binary file.");
-            }
-
-            (*data_map)[key] = std::move(array_value);
-        }
-        else
+        std::size_t expected_elements = 1;
+        for (std::uint32_t dim = 0; dim < ndim; ++dim)
         {
-            libmesh_error_msg("Unsupported value type encountered in binary file.");
+            std::uint32_t extent = 0;
+            file.read(reinterpret_cast<char *>(&extent), sizeof(extent));
+            array_value.shape[dim] = extent;
+            expected_elements *= static_cast<std::size_t>(extent);
         }
+
+        int32_t element_kind = 0;
+        file.read(reinterpret_cast<char *>(&element_kind), sizeof(element_kind));
+
+        switch (element_kind)
+        {
+        case 0:
+        {
+            std::vector<std::int64_t> buffer(expected_elements);
+            if (expected_elements)
+                file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(std::int64_t));
+
+            std::vector<int> values(buffer.size());
+            for (std::size_t idx = 0; idx < buffer.size(); ++idx)
+                values[idx] = static_cast<int>(buffer[idx]);
+
+            array_value.values = std::move(values);
+            break;
+        }
+        case 1:
+        {
+            std::vector<double> buffer(expected_elements);
+            if (expected_elements)
+                file.read(reinterpret_cast<char *>(buffer.data()), buffer.size() * sizeof(double));
+
+            std::vector<Real> values(buffer.size());
+            for (std::size_t idx = 0; idx < buffer.size(); ++idx)
+                values[idx] = static_cast<Real>(buffer[idx]);
+
+            array_value.values = std::move(values);
+            break;
+        }
+        case 2:
+        {
+            std::uint32_t count = 0;
+            file.read(reinterpret_cast<char *>(&count), sizeof(count));
+
+            if (count != expected_elements)
+                libmesh_error_msg("BinaryDataFEDataObject: string array size mismatch for key '" + key + "'.");
+
+            std::vector<std::string> values(count);
+            for (std::uint32_t idx = 0; idx < count; ++idx)
+            {
+                std::uint32_t str_len = 0;
+                file.read(reinterpret_cast<char *>(&str_len), sizeof(str_len));
+
+                std::string value(str_len, '\0');
+                if (str_len)
+                    file.read(&value[0], str_len);
+                values[idx] = std::move(value);
+            }
+
+            array_value.values = std::move(values);
+            break;
+        }
+        default:
+            libmesh_error_msg("BinaryDataFEDataObject: unsupported element kind encountered for key '" + key + "'.");
+        }
+
+        const std::size_t value_count = std::visit([](const auto &vec) { return vector_size(vec); }, array_value.values);
+        if (value_count != expected_elements)
+            libmesh_error_msg("BinaryDataFEDataObject: flattened size mismatch while reading key '" + key + "'.");
+
+        const std::size_t leading_dim = array_value.shape.empty() ? value_count : array_value.shape[0];
+        if (entry_count > 1 && !array_value.shape.empty() && leading_dim != entry_count)
+            libmesh_error_msg("BinaryDataFEDataObject: leading dimension of key '" + key + "' does not match entry count.");
+        if (entry_count <= 1)
+            deduced_entry_count = std::max(deduced_entry_count, leading_dim);
+
+        data_map->columns.emplace(std::move(key), std::move(array_value));
     }
+
+    data_map->entry_count = (entry_count > 1) ? entry_count : deduced_entry_count;
+}
+
+const Globals::NDArray &BinaryDataFEDataObject::get_column(const std::string &key) const
+{
+    auto it = data_map->columns.find(key);
+    if (it == data_map->columns.end())
+        libmesh_error_msg("BinaryDataFEDataObject: column '" + key + "' not found.");
+    return it->second;
+}
+
+bool BinaryDataFEDataObject::has_column(const std::string &key) const
+{
+    return data_map->columns.find(key) != data_map->columns.end();
+}
+
+std::size_t BinaryDataFEDataObject::entry_count() const
+{
+    return data_map->entry_count;
+}
+
+std::size_t BinaryDataFEDataObject::flattened_size(const Globals::NDArray &array)
+{
+    return std::visit([](const auto &vec) { return vector_size(vec); }, array.values);
+}
+
+void BinaryDataFEDataObject::ensure_index_in_bounds(const std::string &key, std::size_t index, std::size_t size)
+{
+    if (index >= size)
+        libmesh_error_msg("BinaryDataFEDataObject: index " + std::to_string(index) + " out of bounds for column '" + key + "'.");
+}
+
+int BinaryDataFEDataObject::get_int(const std::string &key, std::size_t index) const
+{
+    const auto &column = get_column(key);
+    const std::size_t size = flattened_size(column);
+    ensure_index_in_bounds(key, index, size);
+
+    return std::visit(
+        [&](const auto &vec) -> int
+        {
+            using VecType = std::decay_t<decltype(vec)>;
+            using ElemType = typename VecType::value_type;
+
+            if constexpr (std::is_same_v<ElemType, int>)
+                return vec[index];
+            else if constexpr (std::is_same_v<ElemType, Real>)
+                return static_cast<int>(std::llround(vec[index]));
+            else if constexpr (std::is_same_v<ElemType, std::string>)
+                return std::stoi(vec[index]);
+        },
+        column.values);
+}
+
+Real BinaryDataFEDataObject::get_real(const std::string &key, std::size_t index) const
+{
+    const auto &column = get_column(key);
+    const std::size_t size = flattened_size(column);
+    ensure_index_in_bounds(key, index, size);
+
+    return std::visit(
+        [&](const auto &vec) -> Real
+        {
+            using VecType = std::decay_t<decltype(vec)>;
+            using ElemType = typename VecType::value_type;
+
+            if constexpr (std::is_same_v<ElemType, int>)
+                return static_cast<Real>(vec[index]);
+            else if constexpr (std::is_same_v<ElemType, Real>)
+                return vec[index];
+            else if constexpr (std::is_same_v<ElemType, std::string>)
+                return static_cast<Real>(std::stod(vec[index]));
+        },
+        column.values);
+}
+
+std::string BinaryDataFEDataObject::get_string(const std::string &key, std::size_t index) const
+{
+    const auto &column = get_column(key);
+    const std::size_t size = flattened_size(column);
+    ensure_index_in_bounds(key, index, size);
+
+    return std::visit(
+        [&](const auto &vec) -> std::string
+        {
+            using VecType = std::decay_t<decltype(vec)>;
+            using ElemType = typename VecType::value_type;
+
+            if constexpr (std::is_same_v<ElemType, int>)
+                return std::to_string(vec[index]);
+            else if constexpr (std::is_same_v<ElemType, Real>)
+                return std::to_string(vec[index]);
+            else if constexpr (std::is_same_v<ElemType, std::string>)
+                return vec[index];
+        },
+        column.values);
+}
+
+const std::vector<int> &BinaryDataFEDataObject::get_int_column(const std::string &key) const
+{
+    const auto &column = get_column(key);
+    if (!std::holds_alternative<std::vector<int>>(column.values))
+        libmesh_error_msg("BinaryDataFEDataObject: column '" + key + "' does not store integers.");
+    return std::get<std::vector<int>>(column.values);
+}
+
+const std::vector<Real> &BinaryDataFEDataObject::get_real_column(const std::string &key) const
+{
+    const auto &column = get_column(key);
+    if (!std::holds_alternative<std::vector<Real>>(column.values))
+        libmesh_error_msg("BinaryDataFEDataObject: column '" + key + "' does not store real values.");
+    return std::get<std::vector<Real>>(column.values);
+}
+
+const std::vector<std::string> &BinaryDataFEDataObject::get_string_column(const std::string &key) const
+{
+    const auto &column = get_column(key);
+    if (!std::holds_alternative<std::vector<std::string>>(column.values))
+        libmesh_error_msg("BinaryDataFEDataObject: column '" + key + "' does not store strings.");
+    return std::get<std::vector<std::string>>(column.values);
 }
