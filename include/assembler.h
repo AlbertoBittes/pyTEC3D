@@ -12,6 +12,8 @@
 
 using namespace libMesh;
 
+class ElementBuilder;
+
 // The AssemblerLinear:
 // Reads the element matrices/vectors written to file by an element builder
 // Builds the main system (DOFS: Ax, Ay, etc.) matrix and rhs according to the chosen time integration scheme/ramping/etc.
@@ -34,6 +36,9 @@ public:
     void assemble() override;
 
     bool check_update_matrix(Substep *time_substep);
+
+    void write_element_matrices_and_rhs(ElementBuilder &builder);
+    void write_solution_vectors(ElementBuilder &builder);
 
 private:
     Substep *prev_substep = nullptr; // Pointer to the previous substep

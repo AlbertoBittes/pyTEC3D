@@ -11,13 +11,16 @@
 #include <libmesh/dense_vector.h>
 #include <libmesh/perf_log.h>
 
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+
 #include "assembler.h"
 #include "apec_m_system_objects.h"
 #include "apec_m_eq_system_object.h"
 #include "element_builder.h"
 #include "element_types.h"
 #include "global_constraints_object.h"
-#include "system_builder.h"
 #include "binary_reader.h"
 
 using namespace libMesh;
@@ -49,6 +52,8 @@ void AssemblerLinear::assemble()
     auto session = this->context<Session>();
 
     std::shared_ptr<ElementBuilder> elem_builder = eq_sys->get_element_builder();
+    if (!elem_builder)
+        return;
 
     auto time_substep = this->context<TimeStep>()->get_active_substep();
 
@@ -93,7 +98,7 @@ void AssemblerLinear::assemble()
         "rhs_" + rank_str + ".temp"};
 
     // Open the main files
-    BinaryReader reader(*session);
+    BinaryReader reader;
     auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Read);
 
     // Downcast to use as ifstream
@@ -146,7 +151,7 @@ void AssemblerLinear::assemble()
         //     libMesh::out << "Computing new system matrix" << std::endl;
         // }
 
-        elem_builder->read_element_matrices(*mtrx_input_file, 0);
+        BinaryReader::read_element_matrices(*elem_builder, *mtrx_input_file, 0);
 
         auto &Ke = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = elem_builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
@@ -163,7 +168,7 @@ void AssemblerLinear::assemble()
             matrix.add_matrix(Ke, dof_indices_buf);
         }
 
-        elem_builder->read_element_vectors(*rhs_input_file, 0);
+        BinaryReader::read_element_vectors(*elem_builder, *rhs_input_file, 0);
         auto &rhs = elem_builder->get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
 
         // elem_builder->apply_load();
@@ -242,51 +247,172 @@ bool AssemblerLinear::check_update_matrix(Substep *time_substep)
 {
     bool update_matrix = false;
 
-    TransientSystem<LinearImplicitSystem> *system = dynamic_cast<TransientSystem<LinearImplicitSystem> *>(this->get_parent_object());
+    auto *system = dynamic_cast<TransientSystem<LinearImplicitSystem> *>(this->get_parent_object());
+    if (!system)
+        return false;
 
-    PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
-
-    GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&system->get_constraint_object());
-
+    auto *solver = dynamic_cast<PetscLinearSolver<Number> *>(system->get_linear_solver());
     const Real rel_eps = 1e-9;
 
     if (prev_substep == nullptr)
     {
         update_matrix = true;
-        solver->reuse_preconditioner(false);
+        if (solver)
+            solver->reuse_preconditioner(false);
     }
-    // in a new time step we could have a different dt, different bcs, different time integration effects
-    // Or if element matrices have changed
+    else if (time_substep->get_index() > 0)
+    {
+        update_matrix = false;
+        if (solver)
+            solver->reuse_preconditioner(true);
+    }
     else
     {
-
-        if (time_substep->get_index() > 0)
+        Real diff_dt = std::abs(time_substep->get_dt() - prev_substep->get_dt());
+        Real max_old_new_dt = std::max(std::abs(time_substep->get_dt()), std::abs(prev_substep->get_dt()));
+        if (diff_dt > rel_eps * max_old_new_dt ||
+            time_substep->get_transient_effect() != prev_substep->get_transient_effect() ||
+            time_substep->get_theta() != prev_substep->get_theta())
         {
-            update_matrix = false;
-            solver->reuse_preconditioner(true);
+            update_matrix = true;
+            if (solver)
+                solver->reuse_preconditioner(false);
         }
         else
         {
-            Real diff_dt = std::abs(time_substep->get_dt() - prev_substep->get_dt());
-            Real max_old_new_dt = std::max(std::abs(time_substep->get_dt()), std::abs(prev_substep->get_dt()));
-            if (diff_dt > rel_eps * max_old_new_dt ||
-                bc_object->get_update_boundary_conditions() ||
-                time_substep->get_transient_effect() != prev_substep->get_transient_effect() ||
-                time_substep->get_theta() != prev_substep->get_theta())
-            {
-                update_matrix = true;
-                solver->reuse_preconditioner(false);
-            }
-            else
-            {
-                update_matrix = false;
+            update_matrix = false;
+            if (solver)
                 solver->reuse_preconditioner(true);
-            }
         }
     }
+
+    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
+    if (auto builder = equation_systems ? equation_systems->get_element_builder() : nullptr)
+        builder->update_matrix = update_matrix;
+
     if (update_matrix)
         libMesh::out << "Updating system matrix for current time step" << std::endl;
     else
         libMesh::out << "Reusing system matrix from previous time step" << std::endl;
+
+    prev_substep = time_substep;
     return update_matrix;
+}
+
+void AssemblerLinear::write_element_matrices_and_rhs(ElementBuilder &builder)
+{
+    auto equation_systems = builder.get_parent_object();
+    if (!equation_systems)
+        return;
+
+    const MeshBase &mesh = equation_systems->get_mesh();
+    const auto &comm = equation_systems->comm();
+    auto session = this->context<Session>();
+    if (!session)
+        return;
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+
+    BinaryReader reader;
+
+    if (builder.needs_matrix_update())
+    {
+        libMesh::out << "Recomputing element matrices and vectors for current time step" << std::endl;
+        const std::vector<std::string> filenames = {
+            "mtrx_" + rank_str + ".temp",
+            "sol_mtrx_" + rank_str + ".temp",
+            "base_rhs_" + rank_str + ".temp"};
+
+        auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Write);
+        auto *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
+        auto *sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
+        auto *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+
+        auto *main_dof_map = builder.dof_maps[Globals::DOF_SOLUTION_SYSTEM];
+
+        for (const auto &elem : mesh.active_local_element_ptr_range())
+        {
+            if (main_dof_map)
+                main_dof_map->dof_indices(elem, builder.dof_indices);
+
+            builder.set_element_data(elem);
+            builder.build_element();
+
+            BinaryReader::write_element_matrices(builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
+            BinaryReader::write_element_matrices(builder, *sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES);
+            BinaryReader::write_element_vectors(builder, *base_rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+        }
+
+        reader.close_file_streams(streams);
+    }
+    else
+    {
+        libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
+    }
+
+    const std::vector<std::string> inp_filenames = {"base_rhs_" + rank_str + ".temp"};
+    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".temp"};
+
+    auto streams_in = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+    auto streams_out = reader.open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
+
+    auto *base_rhs_input_file = dynamic_cast<std::ifstream *>(streams_in[0].get());
+    auto *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
+
+    libMesh::out << "Applying loads to RHS" << std::endl;
+
+    auto *main_dof_map = builder.dof_maps[Globals::DOF_SOLUTION_SYSTEM];
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        if (main_dof_map)
+            main_dof_map->dof_indices(elem, builder.dof_indices);
+
+        builder.set_element_data(elem);
+
+        BinaryReader::read_element_vectors(builder, *base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+        builder.build_element_rhs();
+        BinaryReader::write_element_vectors(builder, *rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+    }
+
+    reader.close_file_streams(streams_in);
+    reader.close_file_streams(streams_out);
+}
+
+void AssemblerLinear::write_solution_vectors(ElementBuilder &builder)
+{
+    auto equation_systems = builder.get_parent_object();
+    if (!equation_systems)
+        return;
+
+    const MeshBase &mesh = equation_systems->get_mesh();
+    const auto &comm = mesh.comm();
+    auto session = this->context<Session>();
+    if (!session)
+        return;
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+
+    BinaryReader reader;
+    const std::vector<std::string> inp_filenames = {"sol_mtrx_" + rank_str + ".temp"};
+    auto inp_streams = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+
+    auto *solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        builder.set_element_data(elem);
+        BinaryReader::read_element_matrices(builder, *solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES);
+        builder.build_solution_vectors();
+    }
+
+    solution_mtrx_input_file->close();
+    reader.close_file_streams(inp_streams);
+
+    builder.systems[Globals::NODAL_SOLUTION]->solution->close();
+    builder.systems[Globals::ELEMENT_SOLUTION]->solution->close();
+    builder.systems[Globals::NODAL_SOLUTION]->update();
+    builder.systems[Globals::ELEMENT_SOLUTION]->update();
 }
