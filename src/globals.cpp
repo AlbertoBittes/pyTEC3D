@@ -67,9 +67,9 @@ namespace Globals
     const std::vector<std::string> VTK_DATA_ARRAY_NAMES = {
         // "ansys_node_num",
         // "ansys_elem_num",
+        "ansys_etype",
         "ansys_material_type",
         "ansys_real_constant",
-        "ansys_etype",
         // "infinite_boundary",
         // "flux_normal",
         // "flux_parallel",

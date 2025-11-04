@@ -1,6 +1,7 @@
 #ifndef TIME_STEP_H
 #define TIME_STEP_H
 
+#include <memory>
 #include <stdexcept>
 #include <iostream>
 #include <regex>
@@ -19,7 +20,6 @@ using namespace libMesh;
 // Integration scheme parameter theta
 // Ramping of loads, to be used together with time substeps
 // Transient effects: when OFF, a static analysis load step is made
-class LoadStep;
 
 class TimeStep; // Forward declaration
 
@@ -64,17 +64,19 @@ private:
 class TimeStep : public BinaryDataFEDataObject
 {
 public:
-    TimeStep(std::ifstream &file)
+    TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
         : BinaryDataFEDataObject(file)
     {
+        if (previous_time_step)
+            this->populate_time_step(previous_time_step);
+        else
+            this->populate_time_step(nullptr);
     }
     // Constructor with binary file stream
-    // TimeStep(std::ifstream &file, std::shared_ptr<LoadStep> prev_load_step = nullptr)
+    // TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
     //     : BinaryDataFEDataObject(file)
     // {
-    //     this->populate_time_step(prev_load_step);
-    //     // *this = TimeStep(step, time, load_step, write_results, num_substeps,
-    //     //                  transient_effect, ramped_load, prev_load_step);
+    //     this->populate_time_step(previous_time_step);
     // }
 
     int get_step() const { return step; }
@@ -106,7 +108,7 @@ public:
     void set_substeps(int);
     // Custom substep iterator for TimeStep
 
-    void populate_time_step(std::shared_ptr<LoadStep> prev_load_step);
+    void populate_time_step(const std::shared_ptr<TimeStep> &previous_time_step);
 
     void print_solve_msg() const
     {
@@ -118,7 +120,7 @@ public:
     Iterator begin();
     Iterator end();
 
-    void set_beginning_time(std::shared_ptr<LoadStep> prev_load_step);
+    void set_beginning_time(const std::shared_ptr<TimeStep> &previous_time_step);
 
     void set_dt();
 

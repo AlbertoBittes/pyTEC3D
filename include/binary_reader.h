@@ -12,9 +12,8 @@
 
 #include <libmesh/libmesh.h>
 
+class ElementBuilder;
 class ApecMEquationSystems;
-class LoadStep;
-
 class BinaryReader
 {
 public:
@@ -33,6 +32,11 @@ public:
     void read_binary_fem_data(const std::filesystem::path &filepath,
                               const std::shared_ptr<FEMDataRepository> &repository = nullptr,
                               const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr);
+
+    static void write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set);
+    static void read_element_matrices(ElementBuilder &builder, std::ifstream &inFile, unsigned int matrices_set);
+    static void write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set);
+    static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
 
 private:
     void dispatch_read(BinaryLabelId label,

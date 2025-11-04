@@ -32,7 +32,11 @@ void ApecMEquationSystems::configure_systems(const std::shared_ptr<FEMDataReposi
         const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
 
         if (type == Globals::DOF_SOLUTION_SYSTEM)
-            this->add_system<ApecMLinearSystem>(sys_name);
+        {
+            auto &linear_system = this->add_system<ApecMLinearSystem>(sys_name);
+            if (auto assembler = linear_system.get_assembler())
+                assembler->set_parent_object(this);
+        }
         else
             this->add_system<ApecMExplicitSystem>(sys_name);
     }
@@ -96,7 +100,6 @@ void ApecMEquationSystems::initialize_physics()
     this->init();
     post_initialize_systems();
     this->print_info();
-    this->get_element_builder()->init();
 }
 
 void ApecMEquationSystems::clear_preserving_solver_settings()

@@ -45,7 +45,7 @@ public:
     bool set_active_mesh(const std::string &name);
     bool load_model_data(const std::string &filepath);
     bool set_mode(Session::Mode mode);
-    Session::Mode get_mode() const { return session_object->get_mode(); }
+    Session::Mode get_mode() const { return session().get_mode(); }
 
     bool distribute_boundary_ids();
     bool generate_infinite_elements();
@@ -74,7 +74,6 @@ private:
 
     libMesh::Parallel::Communicator &comm;
     std::shared_ptr<FEMDataRepository> model_data_repository;
-    std::shared_ptr<Session> session_object;
     std::vector<std::pair<std::string, std::shared_ptr<FEMDataRepository>>> mesh_repositories;
     std::unordered_map<std::string, std::size_t> mesh_repository_lookup;
     std::unique_ptr<CommandLineInterface> cli;

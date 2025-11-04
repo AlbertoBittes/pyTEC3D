@@ -7,8 +7,6 @@
 
 using namespace libMesh;
 
-class LoadStep;
-
 // This repository stores all data relate to mathematical solver settings, non-linear options (not iplemented yet),
 // The user can choose the solver type (direct, iterative), the solver tolerances, and other similar parameters.
 class PetscSolverConfiguration : public SolverConfiguration, public BinaryDataFEDataObject
@@ -19,12 +17,8 @@ public:
       : BinaryDataFEDataObject(file),
         _petsc_linear_solver(petsc_linear_solver)
   {
-    // PetscLinearSolver<Number> *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
-    // SolverType solver_type = Utility::string_to_enum<SolverType>("GMRES");
-    // solver->set_solver_type(GMRES);
-    // PetscSolverConfiguration solver_configuration(*solver);
-    // solver_configuration.configure_solver();
-    petsc_linear_solver->set_solver_configuration(*this);
+    if (_petsc_linear_solver)
+      _petsc_linear_solver->set_solver_configuration(*this);
   }
 
   // Getters and setters for solver settings

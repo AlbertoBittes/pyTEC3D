@@ -19,8 +19,6 @@
 
 using namespace libMesh;
 
-class LoadStep;
-
 class FEMDataRepository;
 // FE data object classes are the basic data repositories of the program.
 // They store information into a map (dict) that can be later retrieved when needed

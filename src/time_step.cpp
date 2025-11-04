@@ -1,14 +1,7 @@
 #include <fstream>
 #include "time_step.h"
-#include "load_step.h" // Include the header for LoadStep
 #include "fem_data_repository.h"
 #include "fe_parent_object.h"
-// Method to update the old solution
-// This should go before a solve, but in solve
-// void LoadStepper::update_old_solution(TransientLinearImplicitSystem &system)
-// {
-//     *system.old_local_solution = *system.current_local_solution;
-// }
 Substep::Substep(unsigned int index, Real dt, TimeStep *parent)
     : FEParentObjectBase<TimeStep>(parent),
       index(index),
@@ -24,14 +17,13 @@ bool Substep::get_transient_effect() const { return this->get_parent_object()->g
 bool Substep::get_ramped_load() const { return this->get_parent_object()->get_ramped_load(); };
 Real Substep::get_theta() const { return this->get_parent_object()->get_theta(); };
 
-void TimeStep::set_beginning_time(std::shared_ptr<LoadStep> prev_load_step)
+void TimeStep::set_beginning_time(const std::shared_ptr<TimeStep> &previous_time_step)
 {
-    if (prev_load_step == nullptr)
+    if (!previous_time_step)
         time_beginning = 0.0;
     else
     {
-        std::shared_ptr<TimeStep> time_step_ptr = prev_load_step->get_object<TimeStep>();
-        time_beginning = time_step_ptr->get_time();
+        time_beginning = previous_time_step->get_time();
     }
 }
 void TimeStep::set_dt()
@@ -42,7 +34,7 @@ void TimeStep::set_dt()
         libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
     }
 }
-void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
+void TimeStep::populate_time_step(const std::shared_ptr<TimeStep> &previous_time_step)
 {
     // Populate attributes from the data_map
     int n_substep;
@@ -55,7 +47,7 @@ void TimeStep::populate_time_step(std::shared_ptr<LoadStep> prev_load_step)
     theta = this->get_real("theta");
     write_results = this->get_int("write_substep_results");
 
-    this->set_beginning_time(prev_load_step);
+    this->set_beginning_time(previous_time_step);
     // Populate substeps if they exist in the data_map
     this->set_dt();
 

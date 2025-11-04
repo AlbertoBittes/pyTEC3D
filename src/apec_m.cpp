@@ -10,10 +10,9 @@
 
 APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
     : comm(comm),
-      model_data_repository(std::make_shared<FEMDataRepository>()),
-      session_object(std::make_shared<Session>())
+      model_data_repository(std::make_shared<FEMDataRepository>())
 {
-    model_data_repository->set_object<Session>(session_object);
+    model_data_repository->set_object(std::make_shared<Session>());
 }
 
 FEMDataRepository &APEC_M::ensure_mesh_repository(const std::string &name)
@@ -39,12 +38,18 @@ std::shared_ptr<FEMDataRepository> APEC_M::find_mesh_repository(const std::strin
 
 Session &APEC_M::session()
 {
-    return *session_object;
+    auto session_ptr = model_data_repository->get_object<Session>();
+    if (!session_ptr)
+    {
+        session_ptr = std::make_shared<Session>();
+        model_data_repository->set_object(session_ptr);
+    }
+    return *session_ptr;
 }
 
 const Session &APEC_M::session() const
 {
-    return *session_object;
+    return const_cast<APEC_M *>(this)->session();
 }
 
 std::shared_ptr<ApecMMesh> APEC_M::get_mesh(const std::string &name) const
@@ -57,9 +62,10 @@ std::shared_ptr<ApecMMesh> APEC_M::get_mesh(const std::string &name) const
 
 std::shared_ptr<ApecMMesh> APEC_M::get_active_mesh() const
 {
-    if (!session_object->has_active_mesh())
+    const Session &session_ref = session();
+    if (!session_ref.has_active_mesh())
         return nullptr;
-    return get_mesh(session_object->get_active_mesh());
+    return get_mesh(session_ref.get_active_mesh());
 }
 
 std::shared_ptr<ApecMEquationSystems> APEC_M::get_equation_system(const std::string &name) const
@@ -72,9 +78,10 @@ std::shared_ptr<ApecMEquationSystems> APEC_M::get_equation_system(const std::str
 
 std::shared_ptr<ApecMEquationSystems> APEC_M::get_active_equation_system() const
 {
-    if (!session_object->has_active_mesh())
+    const Session &session_ref = session();
+    if (!session_ref.has_active_mesh())
         return nullptr;
-    return get_equation_system(session_object->get_active_mesh());
+    return get_equation_system(session_ref.get_active_mesh());
 }
 
 std::shared_ptr<LoadStepAnalysis> APEC_M::get_analysis(const std::string &name) const
@@ -87,9 +94,10 @@ std::shared_ptr<LoadStepAnalysis> APEC_M::get_analysis(const std::string &name) 
 
 std::shared_ptr<LoadStepAnalysis> APEC_M::get_active_analysis() const
 {
-    if (!session_object->has_active_mesh())
+    const Session &session_ref = session();
+    if (!session_ref.has_active_mesh())
         return nullptr;
-    return get_analysis(session_object->get_active_mesh());
+    return get_analysis(session_ref.get_active_mesh());
 }
 
 bool APEC_M::has_mesh(const std::string &name) const
@@ -104,7 +112,8 @@ bool APEC_M::set_active_mesh(const std::string &name)
     if (!repository || !repository->get_object<ApecMMesh>())
         return false;
 
-    session_object->set_active_mesh(name);
+    Session &session_ref = session();
+    session_ref.set_active_mesh(name);
 
     return true;
 }
@@ -114,7 +123,8 @@ bool APEC_M::load_model_data(const std::string &filepath)
     if (filepath.empty())
         return false;
 
-    std::filesystem::path model_path = session_object->get_working_directory() / filepath;
+    auto &session_ref = session();
+    std::filesystem::path model_path = session_ref.get_working_directory() / filepath;
 
     if (!std::filesystem::exists(model_path))
         return false;
@@ -135,14 +145,15 @@ bool APEC_M::load_model_data(const std::string &filepath)
         return false;
     }
 
-    session_object->set_model_data_filepath(model_path);
-    session_object->check_load_steps_folder();
+    session_ref.set_model_data_filepath(model_path);
+    session_ref.check_load_steps_folder();
 
     return true;
 }
 
 bool APEC_M::distribute_boundary_ids()
 {
+    Session &session_ref = session();
     auto mesh = get_active_mesh();
     if (!mesh)
     {
@@ -151,12 +162,13 @@ bool APEC_M::distribute_boundary_ids()
     }
 
     mesh->apply_boundary_info();
-    libMesh::out << "Boundary IDs distributed for mesh '" << session_object->get_active_mesh() << "'." << std::endl;
+    libMesh::out << "Boundary IDs distributed for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
     return true;
 }
 
 bool APEC_M::generate_infinite_elements()
 {
+    Session &session_ref = session();
     auto mesh = get_active_mesh();
     if (!mesh)
     {
@@ -204,7 +216,7 @@ bool APEC_M::generate_infinite_elements()
 
     mesh->generate_infinite_elements(element_factory);
     // mesh->apply_boundary_info();
-    libMesh::out << "Generated infinite elements for mesh '" << session_object->get_active_mesh() << "'." << std::endl;
+    libMesh::out << "Generated infinite elements for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
     return true;
 }
 
@@ -223,21 +235,23 @@ bool APEC_M::generate_nodal_couplings_for_mesh(const std::string &name,
 
 bool APEC_M::generate_nodal_couplings()
 {
-    if (!session_object->has_active_mesh())
+    auto &session_ref = session();
+    if (!session_ref.has_active_mesh())
     {
         libMesh::out << "No active mesh selected." << std::endl;
         return false;
     }
 
     auto mesh = get_active_mesh();
-    return generate_nodal_couplings_for_mesh(session_object->get_active_mesh(), mesh);
+    return generate_nodal_couplings_for_mesh(session_ref.get_active_mesh(), mesh);
 }
 
 bool APEC_M::generate_periodic_boundaries()
 {
     auto equation_system = get_active_equation_system();
 
-    if (!session_object->has_active_mesh())
+    auto &session_ref = session();
+    if (!session_ref.has_active_mesh())
     {
         libMesh::out << "No active mesh selected." << std::endl;
         return false;
@@ -257,7 +271,7 @@ bool APEC_M::generate_periodic_boundaries()
     }
 
     periodic_factory->initialize(equation_system.get());
-    libMesh::out << "Periodic boundaries generated for mesh '" << session_object->get_active_mesh() << "'." << std::endl;
+    libMesh::out << "Periodic boundaries generated for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
     return true;
 }
 
@@ -292,6 +306,9 @@ bool APEC_M::solve_load_step(const std::string &filename)
         return false;
     }
 
+    analysis->set_model_repository(model_data_repository);
+    if (auto session_ptr = model_data_repository->get_object<Session>())
+        analysis->set_session(session_ptr);
     return analysis->solve(filename);
 }
 
@@ -304,12 +321,16 @@ bool APEC_M::solve_transient_load_steps(const std::string &base_name)
         return false;
     }
 
+    analysis->set_model_repository(model_data_repository);
+    if (auto session_ptr = model_data_repository->get_object<Session>())
+        analysis->set_session(session_ptr);
     return analysis->solve_transient(base_name);
 }
 
 bool APEC_M::set_mode(Session::Mode mode)
 {
-    auto current = session_object->get_mode();
+    Session &session_ref = session();
+    auto current = session_ref.get_mode();
     if (current == mode)
         return true;
 
@@ -327,14 +348,15 @@ bool APEC_M::set_mode(Session::Mode mode)
     if (!transition_ok)
         return false;
 
-    session_object->set_mode(mode);
+    session_ref.set_mode(mode);
     libMesh::out << "Program mode set to " << Session::mode_to_string(mode) << std::endl;
     return true;
 }
 
 void APEC_M::read_mesh(const std::string &name, const std::string &filepath)
 {
-    session_object->set_input_mesh_filepath(filepath);
+    Session &session_ref = session();
+    session_ref.set_input_mesh_filepath(filepath);
 
     auto &repository = ensure_mesh_repository(name);
 
@@ -365,16 +387,17 @@ void APEC_M::clear_mesh(const std::string &name)
         if (entry.second > removed_index)
             --entry.second;
 
-    if (session_object->has_active_mesh() && session_object->get_active_mesh() == name)
+    Session &session_ref = session();
+    if (session_ref.has_active_mesh() && session_ref.get_active_mesh() == name)
     {
         if (!mesh_repositories.empty())
         {
             const auto &next_mesh = mesh_repositories.front().first;
             if (!set_active_mesh(next_mesh))
-                session_object->set_active_mesh("");
+                session_ref.set_active_mesh("");
         }
         else
-            session_object->set_active_mesh("");
+            session_ref.set_active_mesh("");
     }
 }
 
@@ -449,8 +472,10 @@ bool APEC_M::enter_analysis_mode()
         else
         {
             analysis->set_parent_object(equation_system.get());
-            analysis->set_model_data(model_data_repository);
         }
+        analysis->set_model_repository(model_data_repository);
+        if (auto session_ptr = model_data_repository->get_object<Session>())
+            analysis->set_session(session_ptr);
         equation_system->set_analysis(analysis);
 
         initialized_any = true;
@@ -469,7 +494,8 @@ void APEC_M::enter_preprocessing_mode()
 {
     mesh_repositories.clear();
     mesh_repository_lookup.clear();
-    session_object->set_active_mesh("");
+    Session &session_ref = session();
+    session_ref.set_active_mesh("");
 }
 
 void APEC_M::set_cli(std::unique_ptr<CommandLineInterface> cli_instance)

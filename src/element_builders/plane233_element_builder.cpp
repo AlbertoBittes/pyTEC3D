@@ -187,11 +187,11 @@ void ElementBuilder::build_plane233_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *nodal_loads_system = systems[Globals::NODAL_LOADS];
-    System *element_loads_system = systems[Globals::ELEMENT_LOADS];
+    System *nodal_loads_system = &this->get_parent_object()->get_system(Globals::NODAL_LOADS);
+    System *element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
 
-    auto dof_map_nodal_loads = dof_maps[Globals::NODAL_LOADS];
-    auto dof_map_element_loads = dof_maps[Globals::ELEMENT_LOADS];
+    DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
+    DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
 
     NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
     NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
@@ -285,9 +285,9 @@ void ElementBuilder::build_plane233_solution_vectors()
     auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::AAe_PLANE13];
     auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::BAe_PLANE13];
 
-    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(systems[Globals::DOF_SOLUTION_SYSTEM]);
-    System *nodal_solution_system = systems[Globals::NODAL_SOLUTION];
-    System *element_solution_system = systems[Globals::ELEMENT_SOLUTION];
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM));
+    System *nodal_solution_system = &this->get_parent_object()->get_system(Globals::NODAL_SOLUTION);
+    System *element_solution_system = &this->get_parent_object()->get_system(Globals::ELEMENT_SOLUTION);
 
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
 
@@ -341,8 +341,10 @@ void ElementBuilder::build_plane233_solution_vectors()
         // for (unsigned int qp = 0; qp < n_qp; qp++)
         //     Je(0) += Jq(qp);
         // Je(0) = Je(0) / n_qp;
-        dof_maps[Globals::ELEMENT_LOADS]->dof_indices(elem_data.elem, dof_indices);
-        NumericVector<Number> *element_loads_vector = systems[Globals::ELEMENT_LOADS]->request_vector(2);
+        auto element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
+        auto element_loads_dof_map = &element_loads_system->get_dof_map();
+        element_loads_dof_map->dof_indices(elem_data.elem, dof_indices);
+        NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
         element_loads_vector->get(dof_indices, Je.get_values());
 
         break;
@@ -376,7 +378,8 @@ void ElementBuilder::build_plane233_solution_vectors()
         libmesh_error_msg("Physical region not implemented");
     }
     // Set B and H in nodes
-    this->dof_maps[Globals::NODAL_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
+    DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
+    dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
     Bn.append(Hn);
     for (unsigned int i = 0; i < dof_indices.size(); i++)
     {
@@ -386,7 +389,8 @@ void ElementBuilder::build_plane233_solution_vectors()
             nodal_solution_system->solution->set(dof_index, Bn(i));
     }
 
-    this->dof_maps[Globals::ELEMENT_SOLUTION]->dof_indices(elem_data.elem, dof_indices);
+    DofMap *dof_map_element_solution = &element_solution_system->get_dof_map();
+    dof_map_element_solution->dof_indices(elem_data.elem, dof_indices);
     Je.append(Be);
     Je.append(He);
     for (unsigned int i = 0; i < dof_indices.size(); i++)

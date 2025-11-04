@@ -6,13 +6,13 @@
 #include "fe_parent_object.h"
 #include "time_step.h"
 #include "session.h"
-#include "element_types.h"
-#include "element_types_factory.h"
 #include <libmesh/system.h>
 
 using namespace libMesh;
 
 class ElementBuilder;
+class ApecMEquationSystems;
+class ApecMLinearSystem;
 
 // The AssemblerLinear:
 // Reads the element matrices/vectors written to file by an element builder
@@ -20,28 +20,23 @@ class ElementBuilder;
 // Once the system matrix is built, the libMesh solver will take care of solving it
 class AssemblerLinear
     : public System::Assembly,
-      public FEMServiceAbstract<TimeStep, Session>,
-      public FEParentObjectBase<System>
+      public FEMServiceWithOldContext<TimeStep, Session>,
+      public FEParentObjectBase<ApecMEquationSystems>
 {
 public:
     using ContextView = TypedContextView<TimeStep, Session>;
-    using FEParentObjectBase<System>::FEParentObjectBase;
+    using FEParentObjectBase<ApecMEquationSystems>::FEParentObjectBase;
 
-    // Constructor accepting a shared_ptr to a context view
-    AssemblerLinear(std::shared_ptr<ContextView> ctx_view = nullptr)
-        : FEMServiceAbstract<TimeStep, Session>(ctx_view)
-    {
-    }
+    AssemblerLinear(ApecMEquationSystems *equation_systems = nullptr,
+                    std::shared_ptr<ContextView> ctx_view = nullptr);
 
     void assemble() override;
 
-    bool check_update_matrix(Substep *time_substep);
+    bool check_update_system_matrix();
+    bool check_update_element_matrices();
 
-    void write_element_matrices_and_rhs(ElementBuilder &builder);
-    void write_solution_vectors(ElementBuilder &builder);
-
-private:
-    Substep *prev_substep = nullptr; // Pointer to the previous substep
+    void write_element_matrices_and_rhs();
+    void write_solution_vectors();
 };
 
 #endif // ASSEMBLER_H
