@@ -21,21 +21,30 @@ std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::
                                                          const std::string &filename,
                                                          FileMode mode)
 {
-    if (!std::filesystem::exists(folder))
-        std::filesystem::create_directories(folder);
-
     auto filepath = folder / filename;
-    std::ios::openmode openmode = std::ios::binary;
-    if (mode == FileMode::Read)
-        openmode |= std::ios::in;
-    else
-        openmode |= std::ios::out | std::ios::trunc;
+    switch (mode)
+    {
+    case FileMode::Read:
+    {
+        auto stream = std::make_unique<std::ifstream>(filepath, std::ios::binary);
+        if (!stream->is_open())
+            libmesh_error_msg("BinaryReader: failed to open file for reading '" + filepath.string() + "'.");
+        return stream;
+    }
+    case FileMode::Write:
+    {
+        if (!std::filesystem::exists(folder))
+            std::filesystem::create_directories(folder);
 
-    auto stream = std::make_unique<std::fstream>(filepath, openmode);
-    if (!stream->good())
-        libmesh_error_msg("BinaryReader: failed to open file '" + filepath.string() + "'.");
-
-    return stream;
+        auto stream = std::make_unique<std::ofstream>(filepath, std::ios::binary | std::ios::trunc);
+        if (!stream->is_open())
+            libmesh_error_msg("BinaryReader: failed to open file for writing '" + filepath.string() + "'.");
+        return stream;
+    }
+    default:
+        libmesh_error_msg("BinaryReader: unsupported file mode.");
+    }
+    return nullptr;
 }
 
 std::vector<std::unique_ptr<std::ios>> BinaryReader::open_file_streams(
@@ -61,21 +70,42 @@ void BinaryReader::read_binary_fem_data(const std::filesystem::path &filepath,
                                         const std::shared_ptr<FEMDataRepository> &repository,
                                         const std::shared_ptr<ApecMEquationSystems> &equation_systems)
 {
-    std::ifstream file(filepath, std::ios::binary);
+    const auto folder = filepath.has_parent_path() ? filepath.parent_path() : std::filesystem::path(".");
+    const auto filename = filepath.filename();
+    if (filename.empty())
+        libmesh_error_msg("BinaryReader: invalid fem data filepath '" + filepath.string() + "'.");
+
+    auto streams = open_file_streams(folder, {filename.string()}, FileMode::Read);
+    if (streams.empty())
+        libmesh_error_msg("BinaryReader: failed to create fem data stream for '" + filepath.string() + "'.");
+
+    auto *file_stream = dynamic_cast<std::ifstream *>(streams.front().get());
+    if (!file_stream)
+        libmesh_error_msg("BinaryReader: unexpected stream type when opening '" + filepath.string() + "'.");
+
+    read_binary_fem_data_from_stream(*file_stream, filepath.string(), repository, equation_systems);
+    close_file_streams(streams);
+}
+
+void BinaryReader::read_binary_fem_data_from_stream(std::ifstream &file,
+                                                    const std::string &source_label,
+                                                    const std::shared_ptr<FEMDataRepository> &repository,
+                                                    const std::shared_ptr<ApecMEquationSystems> &equation_systems)
+{
     if (!file)
-        libmesh_error_msg("BinaryReader: failed to open fem data binary '" + filepath.string() + "'.");
+        libmesh_error_msg("BinaryReader: fem data stream '" + source_label + "' is not valid.");
 
     std::uint32_t section_count = 0;
     file.read(reinterpret_cast<char *>(&section_count), sizeof(section_count));
     if (!file)
-        libmesh_error_msg("BinaryReader: failed to read section count from '" + filepath.string() + "'.");
+        libmesh_error_msg("BinaryReader: failed to read section count from '" + source_label + "'.");
 
     for (std::uint32_t idx = 0; idx < section_count; ++idx)
     {
         std::uint32_t raw_label = 0;
         file.read(reinterpret_cast<char *>(&raw_label), sizeof(raw_label));
         if (!file)
-            libmesh_error_msg("BinaryReader: failed to read section label from '" + filepath.string() + "'.");
+            libmesh_error_msg("BinaryReader: failed to read section label from '" + source_label + "'.");
 
         const auto label = BinaryLabelTraits::from_raw(raw_label);
         dispatch_read(label, file, repository, equation_systems);

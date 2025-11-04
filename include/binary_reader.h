@@ -14,6 +14,12 @@
 
 class ElementBuilder;
 class ApecMEquationSystems;
+
+enum class FileMode
+{
+    Read,
+    Write
+};
 class BinaryReader
 {
 public:
@@ -39,6 +45,10 @@ public:
     static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
 
 private:
+    void read_binary_fem_data_from_stream(std::ifstream &file,
+                                          const std::string &source_label,
+                                          const std::shared_ptr<FEMDataRepository> &repository,
+                                          const std::shared_ptr<ApecMEquationSystems> &equation_systems);
     void dispatch_read(BinaryLabelId label,
                        std::ifstream &file,
                        const std::shared_ptr<FEMDataRepository> &repository,
