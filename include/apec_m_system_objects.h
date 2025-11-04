@@ -8,6 +8,7 @@
 #include <libmesh/transient_system.h>
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/system_subset.h>
+#include <libmesh/numeric_vector.h>
 
 #include "fem_service_abstract.h"
 #include "element_types.h"

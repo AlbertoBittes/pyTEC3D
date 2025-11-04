@@ -14,14 +14,14 @@
 
 #include "fem_data_repository.h"
 
-std::shared_ptr<ApecMMesh> ApecMMesh::read(libMesh::Parallel::Communicator &comm,
+std::shared_ptr<ApecMMesh> ApecMMesh::read_mesh(libMesh::Parallel::Communicator &comm,
                                            FEMDataRepository &mesh_repository,
                                            const std::string &mesh_filepath)
 {
     libMesh::out << "Reading mesh and importing field data..." << std::endl;
 
     if (mesh_filepath.empty())
-        libmesh_error_msg("Mesh filepath not provided for ApecMMesh::read.");
+        libmesh_error_msg("Mesh filepath not provided for ApecMMesh::read_mesh.");
 
     auto mesh = mesh_repository.get_object<ApecMMesh>();
     if (!mesh)

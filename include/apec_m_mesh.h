@@ -24,9 +24,9 @@ public:
     using libMesh::Mesh::Mesh;
     using FEParentObjectBase<APEC_M>::FEParentObjectBase;
 
-    static std::shared_ptr<ApecMMesh> read(libMesh::Parallel::Communicator &comm,
-                                           FEMDataRepository &mesh_repository,
-                                           const std::string &mesh_filepath);
+    static std::shared_ptr<ApecMMesh> read_mesh(libMesh::Parallel::Communicator &comm,
+                                                FEMDataRepository &mesh_repository,
+                                                const std::string &mesh_filepath);
 
     void apply_boundary_info();
     void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);

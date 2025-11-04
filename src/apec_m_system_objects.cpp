@@ -93,6 +93,7 @@ void ApecMLinearSystem::check_constrained_dofs()
     global_constraints->check_update_boundary_conditions();
 }
 
+template <>
 void ApecMSystem<System>::init_variables()
 {
     std::string fe_fam;

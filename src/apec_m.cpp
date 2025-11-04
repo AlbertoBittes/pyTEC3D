@@ -360,7 +360,7 @@ void APEC_M::read_mesh(const std::string &name, const std::string &filepath)
 
     auto &repository = ensure_mesh_repository(name);
 
-    auto mesh = ApecMMesh::read(comm, repository, filepath);
+    auto mesh = ApecMMesh::read_mesh(comm, repository, filepath);
     if (!mesh)
         return;
 

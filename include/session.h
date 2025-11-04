@@ -10,12 +10,6 @@
 
 typedef std::unordered_map<std::string, std::filesystem::path> PathMap;
 
-enum FileMode
-{
-    Read,
-    Write
-};
-
 // The session class takes care of interacting with data files, by properly storing the filepaths
 // of important files, such as the element matrices file, the output folder, the temporary files folder, etc.
 class Session : public FEDataObjectMap<PathMap>

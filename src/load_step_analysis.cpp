@@ -274,7 +274,6 @@ bool LoadStepAnalysis::execute_solve()
             system.check_constrained_dofs();
         }
 
-        assembler->check_update_system_matrix(&substep);
         assembler->write_element_matrices_and_rhs();
 
         substep.print_solve_msg();

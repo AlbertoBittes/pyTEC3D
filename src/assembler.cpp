@@ -138,6 +138,10 @@ void AssemblerLinear::assemble()
 // Here add the flag for ferromagnetic
 bool AssemblerLinear::check_update_system_matrix()
 {
+    ApecMSystem<System> *main_sys = dynamic_cast<ApecMSystem<System> *>(&this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM));
+
+    GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&main_sys->get_constraint_object());
+
     auto current_time_step = this->context<TimeStep>();
 
     auto current_time_substep = current_time_step ? current_time_step->get_active_substep() : nullptr;
@@ -155,36 +159,38 @@ bool AssemblerLinear::check_update_system_matrix()
     const Real rel_eps = 1e-9;
 
     bool update_matrix = false;
+    if (solver)
+        solver->reuse_preconditioner(true);
 
-    if (old_time_substep == nullptr)
+    if (current_time_substep->get_index() > 0)
     {
-        update_matrix = true;
-        if (solver)
-            solver->reuse_preconditioner(false);
-    }
-    else if (current_time_substep->get_index() > 0)
-    {
-        update_matrix = false;
-        if (solver)
-            solver->reuse_preconditioner(true);
-    }
-    else
-    {
-        Real diff_dt = std::abs(current_time_substep->get_dt() - old_time_substep->get_dt());
-        Real max_old_new_dt = std::max(std::abs(current_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
-        if (diff_dt > rel_eps * max_old_new_dt ||
-            current_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
-            current_time_substep->get_theta() != old_time_substep->get_theta())
+        // If very first substep, we have to build the matrix
+        if (old_time_substep == nullptr)
         {
             update_matrix = true;
             if (solver)
                 solver->reuse_preconditioner(false);
         }
+        // If first substep and BCs have changed, we need to update the matrix
+        else if (bc_object->get_update_boundary_conditions())
+        {
+            update_matrix = true;
+            if (solver)
+                solver->reuse_preconditioner(false);
+        }
+        // If first substep but time integration parameters have changed, we need to update the matrix
         else
         {
-            update_matrix = false;
-            if (solver)
-                solver->reuse_preconditioner(true);
+            Real diff_dt = std::abs(current_time_substep->get_dt() - old_time_substep->get_dt());
+            Real max_old_new_dt = std::max(std::abs(current_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
+            if (diff_dt > rel_eps * max_old_new_dt ||
+                current_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
+                current_time_substep->get_theta() != old_time_substep->get_theta())
+            {
+                update_matrix = true;
+                if (solver)
+                    solver->reuse_preconditioner(false);
+            }
         }
     }
 

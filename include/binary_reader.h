@@ -25,8 +25,7 @@ class BinaryReader
 public:
     explicit BinaryReader() = default;
 
-    std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &folder,
-                                               const std::string &filename,
+    std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &filepath,
                                                FileMode mode);
 
     std::vector<std::unique_ptr<std::ios>> open_file_streams(const std::filesystem::path &folder,
@@ -35,7 +34,7 @@ public:
 
     void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
-    void read_binary_fem_data(const std::filesystem::path &filepath,
+    void read_binary_fem_data(const std::string &filepath,
                               const std::shared_ptr<FEMDataRepository> &repository = nullptr,
                               const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr);
 
@@ -46,7 +45,6 @@ public:
 
 private:
     void read_binary_fem_data_from_stream(std::ifstream &file,
-                                          const std::string &source_label,
                                           const std::shared_ptr<FEMDataRepository> &repository,
                                           const std::shared_ptr<ApecMEquationSystems> &equation_systems);
     void dispatch_read(BinaryLabelId label,
