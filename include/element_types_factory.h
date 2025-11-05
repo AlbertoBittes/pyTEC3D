@@ -13,8 +13,9 @@
 class ElementTypesFactory : public BinaryDataFEDataObject
 {
 public:
-    explicit ElementTypesFactory(std::shared_ptr<BinaryColumnarData> table = nullptr);
-    ElementTypesFactory();
+    explicit ElementTypesFactory() = default;
+
+    explicit ElementTypesFactory(std::ifstream &file) { this->read_data(file); }
 
     void read_data(std::ifstream &file) override;
 

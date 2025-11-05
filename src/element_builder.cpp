@@ -22,9 +22,8 @@
 //
 
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
-                               std::shared_ptr<ContextView> ctx_view,
-                               std::shared_ptr<ContextView> old_ctx_view)
-    : FEMServiceWithOldContext<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>(ctx_view, old_ctx_view),
+                               std::shared_ptr<ContextView> ctx_view)
+    : FEMServiceAbstract<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>(ctx_view),
       FEParentObjectBase<EquationSystems>(equation_systems),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
@@ -94,7 +93,7 @@ void ElementBuilder::set_element_data(Elem *elem)
 {
     auto element_types = this->context<ElementTypesFactory>();
 
-    auto mesh = this->get_parent_object()->get_mesh();
+    const auto &mesh = this->get_parent_object()->get_mesh();
     elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(0));
     elem_data.material_num = elem->get_extra_integer(1);
     elem_data.real_constant_num = elem->get_extra_integer(2);

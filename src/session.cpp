@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <utility>
+#include <system_error>
 
 #include <libmesh/libmesh.h>
 
@@ -83,14 +84,28 @@ void Session::set_active_mesh(const std::string &mesh_name)
 
 void Session::set_working_directory(const std::filesystem::path &directory)
 {
+    std::filesystem::path target_directory;
+    if (!directory.empty())
+        target_directory = std::filesystem::absolute(directory);
+    else
+        target_directory = std::filesystem::current_path();
+
+    if (!std::filesystem::exists(target_directory))
+        std::filesystem::create_directories(target_directory);
+
+    std::error_code change_dir_ec;
+    std::filesystem::current_path(target_directory, change_dir_ec);
+    if (change_dir_ec)
+        libMesh::out << "Warning: failed to change working directory to " << target_directory << ": " << change_dir_ec.message() << std::endl;
+
     if (!directory.empty())
     {
-        working_directory = directory;
+        working_directory = target_directory;
         custom_working_directory = true;
     }
     else
     {
-        working_directory = std::filesystem::current_path();
+        working_directory = target_directory;
         custom_working_directory = false;
     }
 
@@ -226,7 +241,7 @@ void Session::check_load_steps_folder()
     if (!std::filesystem::exists(load_steps_folderpath))
     {
         std::filesystem::create_directories(load_steps_folderpath);
-        libMesh::out << "Load steps folder created at " << load_steps_folderpath << std::endl;
+        libMesh::out << "Input folder created at " << load_steps_folderpath << std::endl;
     }
 }
 
@@ -250,7 +265,7 @@ void Session::update_dynamic_paths()
         paths_map["output_folderpath"] = mesh_root / "output";
         paths_map["emat_folderpath"] = mesh_root / "emat";
         paths_map["temp_folderpath"] = mesh_root / "temp";
-        paths_map["load_steps_folderpath"] = paths_map["input_folderpath"] / "load_steps";
+        paths_map["load_steps_folderpath"] = paths_map["input_folderpath"];
 
         if (!output_filename.empty())
             paths_map["final_output_path"] = paths_map["output_folderpath"] / output_filename;

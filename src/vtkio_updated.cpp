@@ -183,28 +183,28 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
 
 void VTKIO_Updated::read(const std::string &name)
 {
-    // This is a serial-only process for now;
-    // the Mesh should be read on processor 0 and
-    // broadcast later
-    // libmesh_assert_equal_to(MeshOutput<MeshBase>::mesh().processor_id(), 0);
-
-    // Use a typedef, because these names are just crazy
-    // typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
-    typedef vtkSmartPointer<vtkXMLUnstructuredGridReader> MyReader;
-    MyReader reader = MyReader::New();
-
-    // Pass the filename along to the reader
-    reader->SetFileName(name.c_str());
-
-    // Force reading
-    reader->Update();
-
-    // read in the grid
-    _vtk_grid = reader->GetOutput();
 
     // Keep track of what kinds of elements this file contains
     if (MeshOutput<MeshBase>::mesh().processor_id() == 0)
     {
+        // This is a serial-only process for now;
+        // the Mesh should be read on processor 0 and
+        // broadcast later
+        // libmesh_assert_equal_to(MeshOutput<MeshBase>::mesh().processor_id(), 0);
+
+        // Use a typedef, because these names are just crazy
+        // typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
+        typedef vtkSmartPointer<vtkXMLUnstructuredGridReader> MyReader;
+        MyReader reader = MyReader::New();
+
+        // Pass the filename along to the reader
+        reader->SetFileName(name.c_str());
+
+        // Force reading
+        reader->Update();
+
+        // read in the grid
+        _vtk_grid = reader->GetOutput();
         elems_of_dimension.clear();
         elems_of_dimension.resize(4, false);
         // Get a reference to the mesh

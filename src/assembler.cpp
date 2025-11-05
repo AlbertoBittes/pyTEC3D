@@ -18,6 +18,7 @@
 #include "assembler.h"
 #include "apec_m_system_objects.h"
 #include "apec_m_eq_system_object.h"
+#include "load_step_analysis.h"
 #include "element_builder.h"
 #include "element_types.h"
 #include "global_constraints_object.h"
@@ -32,6 +33,27 @@ AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems,
 {
 }
 
+std::unique_ptr<ElementBuilder> AssemblerLinear::make_element_builder() const
+{
+    auto eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return nullptr;
+
+    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(eq_sys->get_analysis());
+    if (!analysis)
+        return nullptr;
+
+    auto model_repo = analysis->model_repository();
+    auto load_repo = analysis->active_load_step_repository_ptr();
+    if (!model_repo || !load_repo)
+        return nullptr;
+
+    auto builder_view = std::make_shared<ElementBuilder::ContextView>(
+        ElementBuilder::ContextView::from(model_repo, load_repo));
+
+    return std::make_unique<ElementBuilder>(eq_sys, builder_view);
+}
+
 void AssemblerLinear::assemble()
 {
     PerfLog perf_log("Matrix Assembly");
@@ -40,9 +62,12 @@ void AssemblerLinear::assemble()
     if (!eq_sys)
         return;
 
-    auto builder = eq_sys->get_element_builder();
+    auto builder = make_element_builder();
     if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for assembly." << std::endl;
         return;
+    }
 
     auto session = this->context<Session>();
     if (!session)
@@ -208,9 +233,12 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     if (!eq_sys)
         return;
 
-    auto builder = eq_sys->get_element_builder();
+    auto builder = make_element_builder();
     if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for writing element matrices." << std::endl;
         return;
+    }
 
     auto session = this->context<Session>();
     if (!session)
@@ -291,9 +319,12 @@ void AssemblerLinear::write_solution_vectors()
     if (!eq_sys)
         return;
 
-    auto builder = eq_sys->get_element_builder();
+    auto builder = make_element_builder();
     if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
         return;
+    }
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();

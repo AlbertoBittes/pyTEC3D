@@ -101,10 +101,10 @@ class APEC_M:
 
         # Prepare per-mesh folders inside the project directory
         mesh_root = os.path.join(self.folderpath, self.jobname)
-        os.makedirs(mesh_root, exist_ok=True)
+        input_folder = os.path.join(mesh_root, "input")
+        os.makedirs(input_folder, exist_ok=True)
 
-        self.load_steps_folder = os.path.join(mesh_root, "load_steps")
-        os.makedirs(self.load_steps_folder, exist_ok=True)
+        self.load_steps_folder = input_folder
 
         # Ensure relative paths resolve from the mesh directory
         os.chdir(self.folderpath)
@@ -347,7 +347,7 @@ class APEC_M:
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write load step binaries.")
 
-        load_steps_folder = os.path.join(self.folderpath, self.jobname, "load_steps")
+        load_steps_folder = os.path.join(self.folderpath, self.jobname, "input")
         os.makedirs(load_steps_folder, exist_ok=True)
 
         loadstep_path = os.path.join(
@@ -363,9 +363,12 @@ class APEC_M:
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write model data.")
 
-        os.makedirs(self.folderpath, exist_ok=True)
+        input_folder = self.load_steps_folder or os.path.join(
+            self.folderpath, self.jobname, "input"
+        )
+        os.makedirs(input_folder, exist_ok=True)
 
-        output_path = os.path.join(self.folderpath, "model_data.bin")
+        output_path = os.path.join(input_folder, "model_data.bin")
         self.write_to_binary(
             output_path,
             labels_to_write=[
@@ -385,13 +388,13 @@ class APEC_M:
             - Updates self.time_parameters with the values from the current row.
             - If a valid 'load_step_input_file' is provided, reads the corresponding Excel file and updates
               materials, real_constants, solver_settings, point_data, and cell_data using EXCEL_LOAD_STEP_LABELS.
-            - Writes the current load step data to a binary file in the load_steps_folder.
+            - Writes the current load step data to a binary file inside the input folder.
             - Prints progress and warnings for missing input files.
 
         Side Effects:
             - Updates self.time_parameters for each load step.
             - Reads and processes Excel files for each load step if provided.
-            - Writes binary files for each load step in the load_steps_folder.
+            - Writes binary files for each load step inside the input folder.
             - Prints progress information to the console.
         """
         for idx, row in self.transient_analysis.iterrows():

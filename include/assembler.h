@@ -1,6 +1,8 @@
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 
+#include <memory>
+
 #include "fem_service_abstract.h"
 #include "fem_data_repository.h"
 #include "fe_parent_object.h"
@@ -37,6 +39,9 @@ public:
 
     void write_element_matrices_and_rhs();
     void write_solution_vectors();
+
+private:
+    std::unique_ptr<ElementBuilder> make_element_builder() const;
 };
 
 #endif // ASSEMBLER_H

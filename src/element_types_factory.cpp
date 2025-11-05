@@ -7,29 +7,15 @@
 
 namespace
 {
-unsigned int parse_element_type_number(const std::string &label)
-{
-    std::smatch match;
-    if (std::regex_search(label, match, std::regex(R"(\d+)")))
-        return static_cast<unsigned int>(std::stoul(match.str()));
+    unsigned int parse_element_type_number(const std::string &label)
+    {
+        std::smatch match;
+        if (std::regex_search(label, match, std::regex(R"(\d+)")))
+            return static_cast<unsigned int>(std::stoul(match.str()));
 
-    libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
-}
+        libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
+    }
 
-}
-
-ElementTypesFactory::ElementTypesFactory()
-    : BinaryDataFEDataObject(),
-      element_types_map(std::make_shared<ElementTypesMap>())
-{
-    populate_element_types_map();
-}
-
-ElementTypesFactory::ElementTypesFactory(std::shared_ptr<BinaryColumnarData> table)
-    : BinaryDataFEDataObject(table ? table : std::make_shared<BinaryColumnarData>()),
-      element_types_map(std::make_shared<ElementTypesMap>())
-{
-    populate_element_types_map();
 }
 
 void ElementTypesFactory::read_data(std::ifstream &file)
@@ -65,13 +51,13 @@ void ElementTypesFactory::populate_element_types_map()
             keyopt_columns.push_back(pair.first);
     }
 
-    std::sort(keyopt_columns.begin(), keyopt_columns.end(), [](const std::string &a, const std::string &b) {
+    std::sort(keyopt_columns.begin(), keyopt_columns.end(), [](const std::string &a, const std::string &b)
+              {
         auto extract_index = [](const std::string &name) {
             auto pos = name.find_first_of("0123456789");
             return pos == std::string::npos ? 0 : std::stoul(name.substr(pos));
         };
-        return extract_index(a) < extract_index(b);
-    });
+        return extract_index(a) < extract_index(b); });
 
     for (std::size_t row = 0; row < count; ++row)
     {

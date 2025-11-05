@@ -11,6 +11,7 @@
 #include "fem_data_repository.h"
 #include "fem_service_abstract.h"
 #include "session.h"
+#include "time_step.h"
 
 class ApecMEquationSystems;
 class ApecMLinearSystem;
@@ -40,10 +41,12 @@ public:
     bool solve(const std::string &filename);
     bool solve_transient(const std::string &base_name);
 
+    std::shared_ptr<FEMDataRepository> model_repository() const;
+    std::shared_ptr<FEMDataRepository> active_load_step_repository_ptr() const;
+
 private:
     std::shared_ptr<ApecMEquationSystems> equation_systems_ptr() const;
     void set_active_load_step_repository(const std::shared_ptr<FEMDataRepository> &repo);
-    std::shared_ptr<FEMDataRepository> model_repository() const;
     std::shared_ptr<Session> session_ptr() const;
     void configure_services();
     bool execute_solve();

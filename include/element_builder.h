@@ -56,7 +56,7 @@ struct SolutionVectorSupport
 class BinaryReader;
 
 class ElementBuilder
-    : public FEMServiceWithOldContext<ElementTypesFactory, MaterialsObject, RealConstantsObject>,
+    : public FEMServiceAbstract<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
@@ -123,12 +123,11 @@ public:
         NUM_PLANE13_SOLUTION_MATRICES
     };
 
-    using ContextView = TypedContextView<Session, ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
+    using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
     using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
 
     ElementBuilder(EquationSystems *equation_systems = nullptr,
-                   std::shared_ptr<ContextView> ctx_view = nullptr,
-                   std::shared_ptr<ContextView> old_ctx_view = nullptr);
+                   std::shared_ptr<ContextView> ctx_view = nullptr);
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);

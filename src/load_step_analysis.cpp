@@ -7,11 +7,11 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/sparse_matrix.h>
+#include <libmesh/dof_map.h>
 
 #include "apec_m_eq_system_object.h"
 #include "apec_m_system_objects.h"
 #include "binary_reader.h"
-#include "element_builder.h"
 #include "element_types_factory.h"
 #include "globals.h"
 #include "materials_object.h"
@@ -54,6 +54,11 @@ void LoadStepAnalysis::set_session(const std::shared_ptr<Session> &session_ptr)
 std::shared_ptr<FEMDataRepository> LoadStepAnalysis::model_repository() const
 {
     return model_data_handle.lock();
+}
+
+std::shared_ptr<FEMDataRepository> LoadStepAnalysis::active_load_step_repository_ptr() const
+{
+    return active_load_step_repository;
 }
 
 std::shared_ptr<Session> LoadStepAnalysis::session_ptr() const
@@ -196,16 +201,7 @@ void LoadStepAnalysis::configure_services()
     if (!time_step)
         return;
 
-    auto element_builder_view = std::make_shared<
-        TypedContextView<ElementTypesFactory, MaterialsObject, RealConstantsObject>>(
-        TypedContextView<ElementTypesFactory, MaterialsObject, RealConstantsObject>::from(
-            model_repo,
-            active_load_step_repository));
-
-    auto element_builder = equation_systems->get_element_builder();
-    element_builder->update_context_views(element_builder_view);
-
-    auto system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
     auto bc_view = std::make_shared<TypedContextView<TimeStep>>(
         TypedContextView<TimeStep>::from(

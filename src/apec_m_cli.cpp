@@ -10,6 +10,7 @@
 #include <unordered_map>
 
 #include <libmesh/libmesh.h>
+#include <libmesh/parallel.h>
 
 namespace
 {
@@ -84,45 +85,90 @@ typedef BasicCommandLineInterface::Command Command;
 
 void BasicCommandLineInterface::run_interactive(APEC_M &program)
 {
-    std::string input;
-    while (true)
-    {
-        std::cout << "apec_m> " << std::flush;
-        if (!std::getline(std::cin, input))
-            break;
+    auto &comm = program.communicator();
+    const unsigned int root = 0;
 
-        auto cleaned = trim(input);
-        if (cleaned.empty())
+    bool keep_running = true;
+    while (keep_running)
+    {
+        std::string input;
+
+        if (comm.rank() == static_cast<int>(root))
+        {
+            std::cout << "apec_m> " << std::flush;
+            if (!std::getline(std::cin, input))
+                input = "-exit";
+            input = trim(input);
+        }
+
+        comm.broadcast(input, root);
+
+        if (input.empty())
             continue;
 
-        if (!execute_command(program, cleaned, true))
-            break;
+        bool continue_loop = execute_command(program, input, comm.rank() == static_cast<int>(root));
+        comm.broadcast(continue_loop, root);
+        keep_running = continue_loop;
     }
 }
 
 void BasicCommandLineInterface::run_batch(APEC_M &program, const std::string &batch_file)
 {
-    std::ifstream file(batch_file);
-    if (!file)
+    auto &comm = program.communicator();
+    const unsigned int root = 0;
+
+    std::ifstream file;
+    bool file_ok = true;
+    if (comm.rank() == static_cast<int>(root))
     {
-        libMesh::out << "Unable to open batch file: " << batch_file << std::endl;
-        return;
+        file.open(batch_file);
+        if (!file)
+        {
+            libMesh::out << "Unable to open batch file: " << batch_file << std::endl;
+            file_ok = false;
+        }
     }
 
-    std::string line;
+    comm.broadcast(file_ok, root);
+    if (!file_ok)
+        return;
+
     unsigned int line_number = 0;
-    while (std::getline(file, line))
+    bool keep_running = true;
+    while (keep_running)
     {
-        ++line_number;
-        auto cleaned = trim(line);
-        if (cleaned.empty() || cleaned[0] == '#')
+        std::string command;
+
+        if (comm.rank() == static_cast<int>(root))
+        {
+            std::string line;
+            bool found_command = false;
+            while (std::getline(file, line))
+            {
+                ++line_number;
+                auto cleaned = trim(line);
+                if (cleaned.empty() || cleaned[0] == '#')
+                    continue;
+                command = cleaned;
+                found_command = true;
+                break;
+            }
+
+            if (!found_command)
+                command = "-exit";
+        }
+
+        comm.broadcast(command, root);
+
+        if (command.empty())
             continue;
 
-        if (!execute_command(program, cleaned, false))
-        {
+        bool continue_loop = execute_command(program, command, comm.rank() == static_cast<int>(root));
+        comm.broadcast(continue_loop, root);
+        keep_running = continue_loop;
+
+        if (!keep_running && comm.rank() == static_cast<int>(root) && command != "-exit")
             libMesh::out << "Batch execution stopped at line " << line_number << std::endl;
-            break;
-        }
     }
 }
 
@@ -181,8 +227,13 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!require_mode(session, Session::Mode::PreProcessing, "-read_mesh"))
             return true;
 
-        auto mesh_name = default_mesh_name();
         auto filepath = args;
+        std::filesystem::path mesh_path(filepath);
+        if (mesh_path.is_relative())
+            mesh_path = std::filesystem::path(session.get_working_directory()) / mesh_path;
+        auto mesh_name = mesh_path.stem().string();
+        if (mesh_name.empty())
+            mesh_name = default_mesh_name();
 
         if (interactive)
             libMesh::out << "Reading mesh '" << mesh_name << "' from " << filepath << std::endl;
@@ -197,7 +248,16 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!require_mode(session, Session::Mode::PreProcessing, "-clear"))
             return true;
 
-        auto mesh_name = default_mesh_name();
+        std::string mesh_name = session.has_active_mesh() ? session.get_active_mesh() : default_mesh_name();
+        if (mesh_name.empty())
+            mesh_name = default_mesh_name();
+
+        if (!program.has_mesh(mesh_name))
+        {
+            libMesh::out << "Mesh '" << mesh_name << "' is not loaded. Use -read_mesh first." << std::endl;
+            return true;
+        }
+
         program.clear_mesh(mesh_name);
         libMesh::out << "Cleared mesh context '" << mesh_name << "'." << std::endl;
         return true;

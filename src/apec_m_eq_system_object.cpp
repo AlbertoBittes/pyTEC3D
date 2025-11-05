@@ -1,7 +1,6 @@
 #include "apec_m_eq_system_object.h"
 #include "apec_m_system_objects.h"
 #include "apec_m_mesh.h"
-#include "element_builder.h"
 #include "time_step.h"
 #include <libmesh/solver_configuration.h>
 #include "solver_configuration.h"

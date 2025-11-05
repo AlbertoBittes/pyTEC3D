@@ -93,8 +93,8 @@ void ApecMLinearSystem::check_constrained_dofs()
     global_constraints->check_update_boundary_conditions();
 }
 
-template <>
-void ApecMSystem<System>::init_variables()
+template <typename SysType>
+void ApecMSystem<SysType>::init_variables()
 {
     std::string fe_fam;
     std::string order;
@@ -140,3 +140,7 @@ void ApecMSystem<System>::init_variables()
     }
     // Add more conditions as needed for other combinations
 }
+
+template class ApecMSystem<System>;
+template class ApecMSystem<libMesh::TransientSystem<libMesh::LinearImplicitSystem>>;
+template class ApecMSystem<libMesh::ExplicitSystem>;

@@ -13,8 +13,6 @@
 
 using namespace libMesh;
 
-// Forward declarations for any custom classes
-class ElementBuilder;
 class ApecMMesh;
 
 class ApecMEquationSystems
@@ -28,12 +26,6 @@ public:
     ApecMEquationSystems(Args &&...args)
         : EquationSystems(std::forward<Args>(args)...)
     {
-        element_builder = std::make_shared<ElementBuilder>(this, nullptr, nullptr);
-    }
-
-    std::shared_ptr<ElementBuilder> get_element_builder() const
-    {
-        return element_builder;
     }
 
     void apply_ramped_effects(const Substep &time_substep);
@@ -51,7 +43,6 @@ private:
     using RampVectorTuple = std::tuple<NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
     std::vector<RampVectorTuple> collect_ramp_vectors();
 
-    std::shared_ptr<ElementBuilder> element_builder = nullptr;
     std::shared_ptr<ApecMAnalysis> analysis;
     std::weak_ptr<FEMDataRepository> model_data_handle;
 };

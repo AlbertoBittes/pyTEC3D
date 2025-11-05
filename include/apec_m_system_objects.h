@@ -17,6 +17,7 @@
 #include "globals.h"
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
+#include "apec_m_eq_system_object.h"
 
 using namespace libMesh;
 
@@ -39,9 +40,8 @@ public:
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
-    ApecMSystem(Args &&...args, std::shared_ptr<ContextView> ctx_view = nullptr)
-        : SysLike(std::forward<Args>(args)...),
-          FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>(ctx_view)
+    ApecMSystem(Args &&...args)
+        : SysLike(std::forward<Args>(args)...)
     {
         // Fetch SystemInfo from Globals using the system name
         std::string sys_name = this->name();
@@ -78,7 +78,7 @@ public:
         this->add_vector("old_node_dof_constraints");
         this->add_vector("ramped_node_dof_constraints");
         this->add_vector("solution_time_derivative", true, GHOSTED);
-        assembler = std::make_shared<AssemblerLinear>(this->get_equation_systems());
+        assembler = std::make_shared<AssemblerLinear>(static_cast<ApecMEquationSystems *>(&this->get_equation_systems()));
         this->attach_assemble_object(*assembler);
     }
 
