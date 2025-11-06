@@ -1,6 +1,7 @@
 import os
 import sys
 from abc import ABC, abstractmethod
+from typing import Optional
 import numpy as np
 import struct
 import pandas as pd
@@ -340,35 +341,43 @@ class APEC_M:
 
         print(f"Binary written to '{output_file}'.")
 
-    def write_load_step(self, load_step_number: int):
-        if not self.jobname:
-            raise ValueError("Job name is not set. Cannot write load step binaries.")
+    def write_load_step(self, load_step_number: int, filename: Optional[str] = None):
 
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write load step binaries.")
 
-        load_steps_folder = os.path.join(self.folderpath, self.jobname, "input")
-        os.makedirs(load_steps_folder, exist_ok=True)
+        if filename:
+            loadstep_path = os.path.join(self.folderpath, filename)
+            target_dir = os.path.dirname(loadstep_path) or self.folderpath
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            if not self.jobname:
+                raise ValueError("Job name is not set. Cannot write load step binaries.")
 
-        loadstep_path = os.path.join(
-            load_steps_folder, f"{self.jobname}_loadstep_{load_step_number}.bin"
-        )
+            load_steps_folder = os.path.join(self.folderpath, self.jobname, "input")
+            os.makedirs(load_steps_folder, exist_ok=True)
+            loadstep_path = os.path.join(
+                load_steps_folder, f"{self.jobname}_loadstep_{load_step_number}.bin"
+            )
 
         self.write_to_binary(loadstep_path, labels_to_write=["time_parameters", "point_data", "cell_data"])
 
-    def write_model_data(self):
-        if not self.jobname:
-            raise ValueError("Job name is not set. Cannot write model data.")
+    def write_model_data(self, filename: Optional[str] = None):
 
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write model data.")
 
-        input_folder = self.load_steps_folder or os.path.join(
-            self.folderpath, self.jobname, "input"
-        )
-        os.makedirs(input_folder, exist_ok=True)
+        if filename:
+            output_path = os.path.join(self.folderpath, filename)
+            target_dir = os.path.dirname(output_path) or self.folderpath
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            if not self.jobname:
+                raise ValueError("Job name is not set. Cannot write model data.")
 
-        output_path = os.path.join(input_folder, "model_data.bin")
+            os.makedirs(self.folderpath, exist_ok=True)
+            output_path = os.path.join(self.folderpath, "model_data.bin")
+
         self.write_to_binary(
             output_path,
             labels_to_write=[

@@ -9,12 +9,12 @@
 
 namespace
 {
-void print_usage()
-{
-    std::cout << "Usage: apec_m [-i | -b <batch_file>]" << std::endl;
-    std::cout << "  -i                 Run in interactive mode" << std::endl;
-    std::cout << "  -b <batch_file>    Run commands from batch file" << std::endl;
-}
+    void print_usage()
+    {
+        std::cout << "Usage: apec_m [-i | -b <batch_file>]" << std::endl;
+        std::cout << "  -i                 Run in interactive mode" << std::endl;
+        std::cout << "  -b <batch_file>    Run commands from batch file" << std::endl;
+    }
 }
 
 int main(int argc, char **argv)
@@ -67,6 +67,15 @@ int main(int argc, char **argv)
         print_usage();
         return 1;
     }
+
+    // {
+    //     if (init.comm().rank() == 1)
+    //     {
+    //         int i = 0;
+    //         while (0 == i)
+    //             sleep(1);
+    //     }
+    // }
 
     APEC_M program(init.comm());
     program.set_cli(std::make_unique<BasicCommandLineInterface>());
