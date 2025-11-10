@@ -11,6 +11,8 @@
 #include <libmesh/enum_fe_family.h>
 #include <libmesh/enum_order.h>
 #include <libmesh/fe.h>
+
+#include "nd_array.h"
 // Some useful global variables
 using namespace libMesh;
 namespace Globals
@@ -136,59 +138,6 @@ namespace Globals
     extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
     extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
 
-    struct NDArray
-    {
-        std::vector<std::uint32_t> shape;
-        std::variant<std::vector<int>, std::vector<Real>, std::vector<std::string>> values;
-
-        NDArray() = default;
-
-        NDArray(std::vector<std::uint32_t> s,
-                std::variant<std::vector<int>, std::vector<Real>, std::vector<std::string>> v)
-            : shape(std::move(s)), values(std::move(v)) {}
-
-        std::size_t flattened_index(const std::vector<std::uint32_t> &indices) const
-        {
-            if (indices.size() != shape.size())
-                libmesh_error_msg("NDArray: index dimensionality mismatch");
-
-            std::size_t offset = 0;
-            std::size_t stride = 1;
-            for (std::size_t dim = shape.size(); dim-- > 0;)
-            {
-                if (indices[dim] >= shape[dim])
-                    libmesh_error_msg("NDArray: index out of bounds");
-                offset += indices[dim] * stride;
-                stride *= shape[dim];
-            }
-            return offset;
-        }
-
-        template <typename... Indices>
-        auto operator()(Indices... idxs) const -> std::variant<int, Real, std::string>
-        {
-            std::vector<std::uint32_t> indices{static_cast<std::uint32_t>(idxs)...};
-            auto flat = flattened_index(indices);
-
-            if (std::holds_alternative<std::vector<int>>(values))
-                return std::get<std::vector<int>>(values)[flat];
-            if (std::holds_alternative<std::vector<Real>>(values))
-                return std::get<std::vector<Real>>(values)[flat];
-            if (std::holds_alternative<std::vector<std::string>>(values))
-                return std::get<std::vector<std::string>>(values)[flat];
-
-            libmesh_error_msg("NDArray: unsupported value type");
-            return std::variant<int, Real, std::string>{};
-        }
-
-        template <typename T>
-        const std::vector<T> &view() const
-        {
-            if (!std::holds_alternative<std::vector<T>>(values))
-                libmesh_error_msg("NDArray: requested view type does not match stored type.");
-            return std::get<std::vector<T>>(values);
-        }
-    };
     // Declare physical constants
     extern const Real MU_0;
 

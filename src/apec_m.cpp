@@ -3,12 +3,17 @@
 #include "apec_m_periodic_boundary_factory.h"
 #include "element_types_factory.h"
 #include "binary_reader.h"
+#include "materials_object.h"
+#include "real_constants_object.h"
+#include "solver_configuration.h"
+#include "time_step.h"
 
 #include <filesystem>
 #include <exception>
 #include <utility>
-#include <vector>
 #include <system_error>
+#include <typeindex>
+#include <unordered_map>
 
 APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
     : comm(comm),
@@ -127,49 +132,41 @@ bool APEC_M::load_model_data(const std::string &filepath)
 
     auto &session_ref = session();
     std::filesystem::path input_path(filepath);
-    std::vector<std::filesystem::path> candidates;
+    std::filesystem::path base_dir = session_ref.get_working_directory();
+    std::error_code ec;
+    if (!base_dir.is_absolute())
+    {
+        auto absolute_base = std::filesystem::absolute(base_dir, ec);
+        if (!ec)
+            base_dir = absolute_base;
+    }
 
-    if (input_path.is_absolute())
+    std::filesystem::path candidate_path = input_path.is_absolute()
+                                               ? input_path
+                                               : base_dir / input_path;
+
+    candidate_path = candidate_path.lexically_normal();
+
+    if (!std::filesystem::exists(candidate_path, ec) || ec)
     {
-        candidates.push_back(input_path);
-    }
-    else if (input_path.has_parent_path())
-    {
-        candidates.push_back(std::filesystem::current_path() / input_path);
-        candidates.push_back(session_ref.get_working_directory() / input_path);
-    }
-    else
-    {
-        candidates.push_back(session_ref.get_working_directory() / input_path);
-        candidates.push_back(std::filesystem::current_path() / input_path);
+        auto message_path = candidate_path;
+        if (!message_path.is_absolute())
+        {
+            auto absolute_message = std::filesystem::absolute(message_path, ec);
+            if (!ec)
+                message_path = absolute_message;
+        }
+
+        libMesh::out << "Model data file must exist in the working directory: " << message_path.lexically_normal() << std::endl;
+        return false;
     }
 
     std::filesystem::path model_path;
-    std::error_code ec;
-    for (const auto &candidate : candidates)
-    {
-        ec.clear();
-        if (!candidate.empty() && std::filesystem::exists(candidate, ec) && !ec)
-        {
-            auto absolute_path = std::filesystem::absolute(candidate, ec);
-            model_path = ec ? candidate : absolute_path.lexically_normal();
-            break;
-        }
-    }
-
-    if (model_path.empty())
-    {
-        libMesh::out << "Model data file not found. Checked locations:" << std::endl;
-        for (const auto &candidate : candidates)
-        {
-            ec.clear();
-            auto display_path = std::filesystem::absolute(candidate, ec);
-            if (ec)
-                display_path = candidate;
-            libMesh::out << "  " << display_path.lexically_normal() << std::endl;
-        }
-        return false;
-    }
+    auto absolute_path = std::filesystem::absolute(candidate_path, ec);
+    if (!ec)
+        model_path = absolute_path.lexically_normal();
+    else
+        model_path = candidate_path;
 
     try
     {
@@ -188,9 +185,49 @@ bool APEC_M::load_model_data(const std::string &filepath)
     }
 
     session_ref.set_model_data_filepath(model_path);
-    session_ref.check_load_steps_folder();
+   session_ref.check_load_steps_folder();
 
     return true;
+}
+
+void APEC_M::print_model_data() const
+{
+    if (!model_data_repository)
+    {
+        libMesh::out << "Model data repository is not initialized." << std::endl;
+        return;
+    }
+
+    const auto &objects = model_data_repository->get_all_objects();
+    if (objects.empty())
+    {
+        libMesh::out << "Model data repository is empty." << std::endl;
+        return;
+    }
+
+    static const std::unordered_map<std::type_index, std::string> friendly_names = {
+        {typeid(Session), "Session"},
+        {typeid(MaterialsObject), "Materials"},
+        {typeid(RealConstantsObject), "Real Constants"},
+        {typeid(ElementTypesFactory), "Element Types"},
+        {typeid(TimeStep), "Time Parameters"},
+        {typeid(ApecMPeriodicBoundaryFactory), "Periodic Boundaries"},
+        {typeid(PetscSolverConfiguration), "Solver Settings"}};
+
+    libMesh::out << "Model data contents:" << std::endl;
+    for (const auto &entry : objects)
+    {
+        const auto &type_idx = entry.first;
+        const auto &object = entry.second;
+        const auto it = friendly_names.find(type_idx);
+        const std::string &name = (it != friendly_names.end()) ? it->second : type_idx.name();
+
+        libMesh::out << "- " << name << std::endl;
+        if (object)
+            object->print_data_info();
+        else
+            libMesh::out << "  (object not initialized)" << std::endl;
+    }
 }
 
 bool APEC_M::distribute_boundary_ids()

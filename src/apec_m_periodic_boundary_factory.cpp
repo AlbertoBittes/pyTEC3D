@@ -47,6 +47,9 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
 {
     periodic_boundaries.clear();
 
+    if (empty() || this->get_data_map()->columns.empty())
+        return;
+
     if (!has_column("main_boundary") || !has_column("paired_boundary") ||
         !has_column("periodic_matrix") || !has_column("variables"))
         libmesh_error_msg("Periodic boundary factory: required keys missing from settings data.");
@@ -232,7 +235,100 @@ void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
 void ApecMPeriodicBoundaryFactory::initialize(EquationSystems *eq_sys)
 {
     libMesh::out << "Applying periodic boundaries..." << std::endl;
-    this->set_parent_object(eq_sys);
+   this->set_parent_object(eq_sys);
     this->populate_periodic_boundaries_from_map();
     this->apply_periodic_boundaries();
+}
+
+void ApecMPeriodicBoundaryFactory::print_data_info() const
+{
+    if (empty() || this->get_data_map()->columns.empty())
+    {
+        libMesh::out << "  Periodic boundaries: none configured." << std::endl;
+        return;
+    }
+
+    if (!has_column("main_boundary") || !has_column("paired_boundary"))
+    {
+        libMesh::out << "  Periodic boundary data present but required columns are missing." << std::endl;
+        BinaryDataFEDataObject::print_data_info();
+        return;
+    }
+
+    const auto &main_array = get_column("main_boundary");
+    const auto &paired_array = get_column("paired_boundary");
+    const auto &matrix_array = get_column("periodic_matrix");
+
+    const auto &main_values = extract_int_array(main_array);
+    const auto &paired_values = extract_int_array(paired_array);
+    const auto &matrix_values = extract_real_array(matrix_array);
+
+    const std::size_t count = std::min(main_values.size(), paired_values.size());
+    libMesh::out << "  Periodic boundary pairs: " << count << std::endl;
+    if (!count)
+        return;
+
+    std::size_t rows = 0;
+    std::size_t cols = 0;
+    if (matrix_array.shape.size() >= 2)
+    {
+        rows = matrix_array.shape[matrix_array.shape.size() - 2];
+        cols = matrix_array.shape.back();
+    }
+    const std::size_t matrix_stride = rows && cols ? rows * cols : 0;
+
+    const std::vector<std::string> *variables_ptr = nullptr;
+    std::size_t variable_stride = 0;
+    if (has_column("variables"))
+    {
+        const auto &variables_array = get_column("variables");
+        variables_ptr = &extract_string_array(variables_array);
+        if (!variables_array.shape.empty())
+        {
+            variable_stride = 1;
+            for (std::size_t dim = 1; dim < variables_array.shape.size(); ++dim)
+                variable_stride *= variables_array.shape[dim];
+        }
+        else
+            variable_stride = variables_ptr->empty() ? 0 : 1;
+    }
+
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        libMesh::out << "    " << main_values[i] << " <-> " << paired_values[i];
+        if (matrix_stride && matrix_values.size() >= (i + 1) * matrix_stride)
+        {
+            libMesh::out << " translation=(";
+            for (std::size_t r = 0; r < rows; ++r)
+            {
+                if (r)
+                    libMesh::out << ", ";
+                const std::size_t idx = i * matrix_stride + r * cols + (cols ? cols - 1 : 0);
+                if (idx < matrix_values.size())
+                    libMesh::out << matrix_values[idx];
+                else
+                    libMesh::out << "?";
+            }
+            libMesh::out << ")";
+        }
+
+        if (variables_ptr && variable_stride)
+        {
+            const std::size_t start = i * variable_stride;
+            const std::size_t end = std::min(start + variable_stride, variables_ptr->size());
+            if (start < end)
+            {
+                libMesh::out << " variables=[";
+                for (std::size_t idx = start; idx < end; ++idx)
+                {
+                    if (idx > start)
+                        libMesh::out << ", ";
+                    libMesh::out << (*variables_ptr)[idx];
+                }
+                libMesh::out << "]";
+            }
+        }
+
+        libMesh::out << std::endl;
+    }
 }

@@ -2,15 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
-
-namespace
-{
-template <typename Vec>
-std::size_t vector_size(const Vec &vec)
-{
-    return vec.size();
-}
-}
+#include <type_traits>
 
 void BinaryDataFEDataObject::read_data(std::ifstream &file)
 {
@@ -30,6 +22,12 @@ void BinaryDataFEDataObject::read_data(std::ifstream &file)
 
     std::uint32_t num_keys = 0;
     file.read(reinterpret_cast<char *>(&num_keys), sizeof(num_keys));
+
+    if (num_keys == 0)
+    {
+        data_map->entry_count = 0;
+        return;
+    }
 
     std::size_t deduced_entry_count = entry_count > 1 ? entry_count : 0;
 
@@ -124,15 +122,23 @@ void BinaryDataFEDataObject::read_data(std::ifstream &file)
             libmesh_error_msg("BinaryDataFEDataObject: unsupported element kind encountered for key '" + key + "'.");
         }
 
-        const std::size_t value_count = std::visit([](const auto &vec) { return vector_size(vec); }, array_value.values);
+        const std::size_t value_count = std::visit([](const auto &vec) { return Globals::NDArray::vector_size(vec); }, array_value.values);
         if (value_count != expected_elements)
             libmesh_error_msg("BinaryDataFEDataObject: flattened size mismatch while reading key '" + key + "'.");
 
-        const std::size_t leading_dim = array_value.shape.empty() ? value_count : array_value.shape[0];
-        if (entry_count > 1 && !array_value.shape.empty() && leading_dim != entry_count)
-            libmesh_error_msg("BinaryDataFEDataObject: leading dimension of key '" + key + "' does not match entry count.");
-        if (entry_count <= 1)
-            deduced_entry_count = std::max(deduced_entry_count, leading_dim);
+        const std::size_t entry_span = Globals::NDArray::infer_entry_span(array_value.shape, value_count);
+        if (entry_count > 1)
+        {
+            const bool matches_shape = array_value.shape.empty()
+                                           ? (value_count == entry_count)
+                                           : std::any_of(array_value.shape.begin(),
+                                                         array_value.shape.end(),
+                                                         [&](std::uint32_t dim) { return dim == entry_count; });
+            if (!matches_shape)
+                libmesh_error_msg("BinaryDataFEDataObject: provided entry count does not match any dimension of key '" + key + "'.");
+        }
+        else
+            deduced_entry_count = std::max(deduced_entry_count, entry_span);
 
         data_map->columns.emplace(std::move(key), std::move(array_value));
     }
@@ -160,7 +166,7 @@ std::size_t BinaryDataFEDataObject::entry_count() const
 
 std::size_t BinaryDataFEDataObject::flattened_size(const Globals::NDArray &array)
 {
-    return std::visit([](const auto &vec) { return vector_size(vec); }, array.values);
+    return std::visit([](const auto &vec) { return Globals::NDArray::vector_size(vec); }, array.values);
 }
 
 void BinaryDataFEDataObject::ensure_index_in_bounds(const std::string &key, std::size_t index, std::size_t size)
@@ -257,4 +263,28 @@ const std::vector<std::string> &BinaryDataFEDataObject::get_string_column(const 
     if (!std::holds_alternative<std::vector<std::string>>(column.values))
         libmesh_error_msg("BinaryDataFEDataObject: column '" + key + "' does not store strings.");
     return std::get<std::vector<std::string>>(column.values);
+}
+
+void BinaryDataFEDataObject::print_data_info() const
+{
+    const auto *map = this->get_data_map();
+    if (!map || map->columns.empty())
+    {
+        libMesh::out << "  Binary data: no columns loaded." << std::endl;
+        return;
+    }
+
+    libMesh::out << "  Binary data entries: " << entry_count() << std::endl;
+    libMesh::out << "  Columns:" << std::endl;
+    for (const auto &column_pair : map->columns)
+    {
+        libMesh::out << "    " << column_pair.first << " shape=" << Globals::NDArray::format_shape(column_pair.second.shape) << " values=";
+        std::visit(
+            [&](const auto &vec)
+            {
+                Globals::NDArray::print_vector_contents(vec);
+            },
+            column_pair.second.values);
+        libMesh::out << std::endl;
+    }
 }

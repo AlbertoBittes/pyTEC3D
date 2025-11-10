@@ -57,6 +57,8 @@ public:
     void create_emat_folder();
     void check_load_steps_folder();
 
+    void print_data_info() const override;
+
 private:
     void update_dynamic_paths();
     static std::string sanitize_token(const std::string &value);

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
+#include <system_error>
 #include <unordered_map>
 
 #include <libmesh/libmesh.h>
@@ -25,42 +26,42 @@ namespace
 
     void report_session_paths(const Session &session)
     {
+        const auto normalize_path = [](const std::filesystem::path &path) -> std::filesystem::path
+        {
+            if (path.empty())
+                return path;
+
+            std::error_code ec;
+            auto absolute_path = std::filesystem::absolute(path, ec);
+            if (!ec)
+                return absolute_path.lexically_normal();
+
+            return path.lexically_normal();
+        };
+
+        const auto print_path = [&](const std::string &label, const std::filesystem::path &path)
+        {
+            if (path.empty())
+                return;
+            libMesh::out << label << normalize_path(path) << std::endl;
+        };
+
         libMesh::out << "Current mode: " << Session::mode_to_string(session.get_mode()) << std::endl;
-        libMesh::out << "Working folder: " << session.get_path("working_folderpath") << std::endl;
+        print_path("Working folder: ", session.get_path("working_folderpath"));
 
         if (!session.get_model_data_filepath().empty())
-            libMesh::out << "Model data file: " << session.get_model_data_filepath() << std::endl;
+            print_path("Model data file: ", session.get_model_data_filepath());
 
         if (session.has_active_mesh())
         {
             libMesh::out << "Active mesh: " << session.get_active_mesh() << std::endl;
-            const auto &mesh_folder = session.get_path("mesh_folderpath");
-            if (!mesh_folder.empty())
-                libMesh::out << "Mesh folder: " << mesh_folder << std::endl;
-
-            const auto &input_folder = session.get_path("input_folderpath");
-            if (!input_folder.empty())
-                libMesh::out << "Input folder: " << input_folder << std::endl;
-
-            const auto &output_folder = session.get_path("output_folderpath");
-            if (!output_folder.empty())
-                libMesh::out << "Output folder: " << output_folder << std::endl;
-
-            const auto &load_steps_folder = session.get_path("load_steps_folderpath");
-            if (!load_steps_folder.empty())
-                libMesh::out << "Load steps folder: " << load_steps_folder << std::endl;
-
-            const auto &final_output_path = session.get_path("final_output_path");
-            if (!final_output_path.empty())
-                libMesh::out << "Final output path: " << final_output_path << std::endl;
-
-            const auto &emat_folder = session.get_path("emat_folderpath");
-            if (!emat_folder.empty())
-                libMesh::out << "Emat folder: " << emat_folder << std::endl;
-
-            const auto &temp_folder = session.get_path("temp_folderpath");
-            if (!temp_folder.empty())
-                libMesh::out << "Temp folder: " << temp_folder << std::endl;
+            print_path("Mesh folder: ", session.get_path("mesh_folderpath"));
+            print_path("Input folder: ", session.get_path("input_folderpath"));
+            print_path("Output folder: ", session.get_path("output_folderpath"));
+            print_path("Load steps folder: ", session.get_path("load_steps_folderpath"));
+            print_path("Final output path: ", session.get_path("final_output_path"));
+            print_path("Emat folder: ", session.get_path("emat_folderpath"));
+            print_path("Temp folder: ", session.get_path("temp_folderpath"));
         }
         else
         {
@@ -184,6 +185,8 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::SET_ACTIVE_MESH;
     if (input.rfind("-read_model_data", 0) == 0)
         return Command::READ_MODEL_DATA;
+    if (input == "-print_model_data")
+        return Command::PRINT_MODEL_DATA;
     if (input == "-distribute_boundary_ids")
         return Command::DISTRIBUTE_BOUNDARIES;
     if (input == "-list_load_steps")
@@ -335,6 +338,16 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
 
         libMesh::out << "Model data loaded from '" << candidate << "'." << std::endl;
         report_session_paths(session);
+        program.print_model_data();
+        return true;
+    }
+    case Command::PRINT_MODEL_DATA:
+    {
+        auto &session = program.session();
+        if (!require_mode(session, Session::Mode::PreProcessing, "-print_model_data"))
+            return true;
+
+        program.print_model_data();
         return true;
     }
     case Command::DISTRIBUTE_BOUNDARIES:
@@ -436,6 +449,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -solve_transient [base_name]\n"
                      << "  -mode <preprocessing|analysis|other>\n"
                      << "  -read_model_data <model_file>\n"
+                     << "  -print_model_data\n"
                      << "  -clear\n"
                      << "  -exit" << std::endl;
         return true;

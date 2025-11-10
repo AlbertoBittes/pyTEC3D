@@ -1,0 +1,3 @@
+-read_mesh ./tests/3D_loop_cond_base/3D_loop_cond_base.vtu
+-read_model_data model_data.bin
+-mode analysis

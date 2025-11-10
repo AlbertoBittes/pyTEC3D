@@ -26,6 +26,8 @@ void ElementTypesFactory::read_data(std::ifstream &file)
 
 void ElementTypesFactory::populate_element_types_map()
 {
+    if (element_types_map == nullptr)
+        element_types_map = std::make_shared<ElementTypesMap>();
     element_types_map->clear();
 
     if (empty())
@@ -134,5 +136,39 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
         return std::make_unique<INFIN111Type>(keyopts);
     default:
         libmesh_error_msg("Unknown element type");
+    }
+}
+
+void ElementTypesFactory::print_data_info() const
+{
+    if (!element_types_map || element_types_map->empty())
+    {
+        libMesh::out << "  Element types: none loaded." << std::endl;
+        return;
+    }
+
+    libMesh::out << "  Element type definitions: " << element_types_map->size() << std::endl;
+    for (const auto &entry : *element_types_map)
+    {
+        libMesh::out << "    ANSYS etype " << entry.first;
+        const auto &element_type = entry.second;
+        if (element_type)
+        {
+            const auto &keyopts = element_type->get_keyopts();
+            if (!keyopts.empty())
+                libMesh::out << " (Element " << keyopts.front() << ")";
+            if (keyopts.size() > 1)
+            {
+                libMesh::out << " KEYOPTs=[";
+                for (std::size_t idx = 1; idx < keyopts.size(); ++idx)
+                {
+                    if (idx > 1)
+                        libMesh::out << ", ";
+                    libMesh::out << keyopts[idx];
+                }
+                libMesh::out << "]";
+            }
+        }
+        libMesh::out << std::endl;
     }
 }

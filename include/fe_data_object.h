@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <memory>
+#include <ostream>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -30,10 +31,16 @@ class FEDataObjectAbstract
 public:
     // Virtual destructor for proper cleanup of derived classes
     virtual ~FEDataObjectAbstract() = 0;
+    virtual void print_data_info() const;
     // virtual void broadcast(const libMesh::Parallel::Communicator &comm) {};
 };
 
 inline FEDataObjectAbstract::~FEDataObjectAbstract() {}
+
+inline void FEDataObjectAbstract::print_data_info() const
+{
+    libMesh::out << "  (no additional information available)" << std::endl;
+}
 
 template <typename T1>
 class FEDataObjectMap : public FEDataObjectAbstract
@@ -133,6 +140,7 @@ public:
     bool empty() const { return entry_count() == 0; }
 
     void read_data(std::ifstream &file);
+    void print_data_info() const override;
 
 protected:
     const Globals::NDArray &get_column(const std::string &key) const;

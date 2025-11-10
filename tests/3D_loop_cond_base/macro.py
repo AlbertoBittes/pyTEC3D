@@ -19,6 +19,8 @@ VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 
+apec.write_model_data()
+
 apec.select("Z_BOUNDS_1", 1)
 apec.select("Z_BOUNDS_2", 1, mode="a")
 apec.select("Y_BOUNDS_2", 1, mode="a")
@@ -62,6 +64,6 @@ for i in range(1, 3):
     apec.select("COIL_NOCOND_3", 1, cell_or_point="cell_data")
     apec.set_value_on_selection("Js", -b / i, 0, cell_or_point="cell_data")
     apec.set_value_on_selection("Js", b / i, 1, cell_or_point="cell_data")
-    apec.write_load_step(os.path.join(apec.load_steps_folder, f"load_step_{i}.bin"))
+    apec.write_load_step(i)
 
 apec.save_mesh()

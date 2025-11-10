@@ -57,6 +57,8 @@ public:
     bool solve_load_step(const std::string &filename);
     bool solve_transient_load_steps(const std::string &base_name);
 
+    void print_model_data() const;
+
     void read_mesh(const std::string &name, const std::string &filepath);
     void clear_mesh(const std::string &name);
 

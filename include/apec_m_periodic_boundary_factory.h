@@ -32,6 +32,8 @@ public:
     void initialize(EquationSystems *eq_sys);
     void compress_periodic_boundaries();
 
+    void print_data_info() const override;
+
 private:
     std::vector<ApecMPeriodicBoundary> periodic_boundaries;
 };

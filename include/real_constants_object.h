@@ -1,8 +1,11 @@
 #ifndef REAL_CONSTANTS_OBJECT_H
 #define REAL_CONSTANTS_OBJECT_H
 
+#include <algorithm>
 #include <array>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 #include "fe_data_object.h" // Include the base class
@@ -18,11 +21,11 @@ public:
         build_constants_map();
     }
 
-    void read_data(std::ifstream &file) override
-    {
-        BinaryDataFEDataObject::read_data(file);
-        build_constants_map();
-    }
+    // void read_data(std::ifstream &file) override
+    // {
+    //     BinaryDataFEDataObject::read_data(file);
+    //     build_constants_map();
+    // }
 
     // Check if a constant exists in the map
     bool has_constant(dof_id_type constant_id) const { return constants_map.find(constant_id) != constants_map.end(); }
@@ -40,18 +43,49 @@ public:
 
     const std::unordered_map<dof_id_type, std::vector<Real>> &get_constants_map() const { return constants_map; }
 
+    void print_data_info() const override
+    {
+        if (constants_map.empty())
+        {
+            libMesh::out << "  Real constants: none defined." << std::endl;
+            return;
+        }
+
+        const auto format_value = [](Real value)
+        {
+            std::ostringstream oss;
+            oss.setf(std::ios::scientific);
+            oss << std::setprecision(6) << value;
+            return oss.str();
+        };
+
+        libMesh::out << "  Real constants sets: " << constants_map.size() << std::endl;
+        for (const auto &entry : constants_map)
+        {
+            libMesh::out << "    Constant ID " << entry.first << ":" << std::endl;
+            const auto &values = entry.second;
+            const std::size_t printable = std::min(values.size(), PROPERTY_COLUMNS.size());
+            for (std::size_t i = 0; i < printable; ++i)
+            {
+                libMesh::out << "      " << PROPERTY_COLUMNS[i] << " = " << format_value(values[i]) << std::endl;
+            }
+            if (values.size() > PROPERTY_COLUMNS.size())
+                libMesh::out << "      +" << (values.size() - PROPERTY_COLUMNS.size()) << " extra values" << std::endl;
+        }
+    }
+
 private:
+    static constexpr std::array<const char *, 22> PROPERTY_COLUMNS = {
+        "CARE", "TURN", "LENG", "DIRZ", "FILL", "SC",
+        "NC", "RAD", "TX", "TY", "TZ", "R",
+        "SYM", "VELOX", "VELOY", "VELOZ", "OMEGAX", "OMEGAY",
+        "OMEGAZ", "XLOC", "YLOC", "ZLOC"};
+
     void build_constants_map()
     {
         constants_map.clear();
         if (empty())
             return;
-
-        static constexpr std::array<const char *, 22> PROPERTY_COLUMNS = {
-            "CARE",  "TURN",  "LENG",   "DIRZ",   "FILL",  "SC",
-            "NC",    "RAD",   "TX",     "TY",     "TZ",    "R",
-            "SYM",   "VELOX", "VELOY",  "VELOZ",  "OMEGAX", "OMEGAY",
-            "OMEGAZ","XLOC",  "YLOC",   "ZLOC"};
 
         if (!has_column("ansys_real_constant"))
             libmesh_error_msg("RealConstantsObject: missing 'ansys_real_constant' column.");

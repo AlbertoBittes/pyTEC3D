@@ -34,8 +34,52 @@ void TimeStep::set_dt()
         libmesh_error_msg("Error: Time step " + std::to_string(time) + " is not positive.");
     }
 }
+
+void TimeStep::print_data_info() const
+{
+    if (empty() || this->get_data_map()->columns.empty())
+    {
+        libMesh::out << "  Time step: no data loaded." << std::endl;
+        return;
+    }
+
+    libMesh::out << "  Step " << step << " at time " << time << " (start " << time_beginning << ", delta_t=" << delta_t << ")" << std::endl;
+    libMesh::out << "  Transient effect: " << (transient_effect ? "on" : "off")
+                 << ", ramped loads: " << (ramped_load ? "on" : "off")
+                 << ", theta=" << theta
+                 << ", write substep results: " << (write_results ? "yes" : "no") << std::endl;
+
+    libMesh::out << "  Substeps: " << substeps.size();
+    if (!substeps.empty())
+    {
+        libMesh::out << " (dt per substep ~ ";
+        Real dt_per = substeps.front().get_dt();
+        libMesh::out << dt_per << ")";
+        libMesh::out << "\n    Times:";
+        for (const auto &substep : substeps)
+            libMesh::out << " " << substep.get_time();
+    }
+    libMesh::out << std::endl;
+}
 void TimeStep::populate_time_step(const std::shared_ptr<TimeStep> &previous_time_step)
 {
+    substeps.clear();
+    active_substep = nullptr;
+    previous_substep = nullptr;
+
+    if (empty() || this->get_data_map()->columns.empty())
+    {
+        step = 0;
+        time = 0.0;
+        time_beginning = previous_time_step ? previous_time_step->get_time() : 0.0;
+        delta_t = 0.0;
+        write_results = 0;
+        transient_effect = 0;
+        ramped_load = 0;
+        theta = 1.0;
+        return;
+    }
+
     // Populate attributes from the data_map
     int n_substep;
 

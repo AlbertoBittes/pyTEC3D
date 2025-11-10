@@ -1,7 +1,10 @@
 #ifndef MATERIALS_OBJECT_H
 #define MATERIALS_OBJECT_H
 
+#include <algorithm>
 #include <array>
+#include <iomanip>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 #include <libmesh/libmesh.h>
@@ -78,16 +81,47 @@ public:
 
     const std::unordered_map<dof_id_type, std::vector<Real>> &get_materials_map() const { return materials_map; }
 
+    inline void print_data_info() const override
+    {
+        if (materials_map.empty())
+        {
+            libMesh::out << "  Materials: none loaded." << std::endl;
+            return;
+        }
+
+        const auto format_value = [](Real value)
+        {
+            std::ostringstream oss;
+            oss.setf(std::ios::scientific);
+            oss << std::setprecision(6) << value;
+            return oss.str();
+        };
+
+        libMesh::out << "  Materials loaded: " << materials_map.size() << std::endl;
+        for (const auto &entry : materials_map)
+        {
+            libMesh::out << "    Material ID " << entry.first << ":" << std::endl;
+            const auto &properties = entry.second;
+            const std::size_t printable = std::min(properties.size(), PROPERTY_COLUMNS.size());
+            for (std::size_t i = 0; i < printable; ++i)
+            {
+                libMesh::out << "      " << PROPERTY_COLUMNS[i] << " = " << format_value(properties[i]) << std::endl;
+            }
+            if (properties.size() > PROPERTY_COLUMNS.size())
+                libMesh::out << "      +" << (properties.size() - PROPERTY_COLUMNS.size()) << " extra values" << std::endl;
+        }
+    }
+
 private:
+    static constexpr std::array<const char *, 12> PROPERTY_COLUMNS = {
+        "MURX", "MURY", "MURZ", "RSVX", "RSVY", "RSVZ",
+        "PERX", "PERY", "PERZ", "MGXX", "MGYY", "MGZZ"};
+
     void build_materials_map()
     {
         materials_map.clear();
         if (empty())
             return;
-
-        static constexpr std::array<const char *, 12> PROPERTY_COLUMNS = {
-            "MURX", "MURY", "MURZ", "RSVX", "RSVY", "RSVZ",
-            "PERX", "PERY", "PERZ", "MGXX", "MGYY", "MGZZ"};
 
         if (!has_column("ansys_material_type"))
             libmesh_error_msg("MaterialsObject: missing 'ansys_material_type' column.");

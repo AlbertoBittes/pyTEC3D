@@ -27,6 +27,8 @@ public:
     // Add element type manually
     void add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type);
 
+    void print_data_info() const override;
+
     // Factory method
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
                                                             const std::vector<unsigned int> &keyopts);

@@ -64,7 +64,14 @@ void Session::set_input_mesh_filepath(const std::string &filepath)
     {
         auto parent = input_path.parent_path();
         if (!parent.empty())
-            working_directory = parent;
+        {
+            std::error_code ec;
+            auto absolute_parent = std::filesystem::absolute(parent, ec);
+            if (!ec)
+                working_directory = absolute_parent.lexically_normal();
+            else
+                working_directory = parent.lexically_normal();
+        }
     }
 
     update_dynamic_paths();
@@ -255,6 +262,25 @@ void Session::check_load_steps_folder()
         std::filesystem::create_directories(load_steps_folderpath);
         libMesh::out << "Input folder created at " << load_steps_folderpath << std::endl;
     }
+}
+
+void Session::print_data_info() const
+{
+    libMesh::out << "  Mode: " << mode_to_string(program_mode) << std::endl;
+    libMesh::out << "  Working directory: " << (working_directory.empty() ? "<unset>" : working_directory.string()) << std::endl;
+    libMesh::out << "  Model data file: " << (model_data_filepath.empty() ? "<unset>" : model_data_filepath.string()) << std::endl;
+    libMesh::out << "  Active mesh: " << (active_mesh.empty() ? "<none>" : active_mesh) << std::endl;
+    libMesh::out << "  Output filename: " << (output_filename.empty() ? "<unset>" : output_filename) << std::endl;
+
+    const auto *paths = this->get_data_map();
+    if (paths && !paths->empty())
+    {
+        libMesh::out << "  Registered paths:" << std::endl;
+        for (const auto &entry : *paths)
+            libMesh::out << "    " << entry.first << " -> " << entry.second << std::endl;
+    }
+    else
+        libMesh::out << "  Registered paths: none." << std::endl;
 }
 
 void Session::update_dynamic_paths()

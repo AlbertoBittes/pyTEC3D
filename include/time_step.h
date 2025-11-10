@@ -108,6 +108,8 @@ public:
     void set_substeps(int);
     // Custom substep iterator for TimeStep
 
+    void print_data_info() const override;
+
     void populate_time_step(const std::shared_ptr<TimeStep> &previous_time_step);
 
     void print_solve_msg() const
