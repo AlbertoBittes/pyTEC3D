@@ -384,6 +384,7 @@ class APEC_M:
                 "element_types",
                 "materials",
                 "real_constants",
+                "solver_settings",
                 "periodic_boundaries",
                 "dof_couplings",
             ],
