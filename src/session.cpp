@@ -114,7 +114,19 @@ void Session::set_working_directory(const std::filesystem::path &directory)
 
 void Session::set_model_data_filepath(const std::filesystem::path &filepath)
 {
-    model_data_filepath = filepath;
+    if (filepath.empty())
+    {
+        model_data_filepath.clear();
+    }
+    else
+    {
+        std::error_code ec;
+        auto absolute_path = std::filesystem::absolute(filepath, ec);
+        if (!ec)
+            model_data_filepath = absolute_path.lexically_normal();
+        else
+            model_data_filepath = filepath;
+    }
     update_dynamic_paths();
 }
 

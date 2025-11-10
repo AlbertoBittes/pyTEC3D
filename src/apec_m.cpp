@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <exception>
 #include <utility>
+#include <vector>
+#include <system_error>
 
 APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
     : comm(comm),
@@ -124,10 +126,50 @@ bool APEC_M::load_model_data(const std::string &filepath)
         return false;
 
     auto &session_ref = session();
-    std::filesystem::path model_path = session_ref.get_working_directory() / filepath;
+    std::filesystem::path input_path(filepath);
+    std::vector<std::filesystem::path> candidates;
 
-    if (!std::filesystem::exists(model_path))
+    if (input_path.is_absolute())
+    {
+        candidates.push_back(input_path);
+    }
+    else if (input_path.has_parent_path())
+    {
+        candidates.push_back(std::filesystem::current_path() / input_path);
+        candidates.push_back(session_ref.get_working_directory() / input_path);
+    }
+    else
+    {
+        candidates.push_back(session_ref.get_working_directory() / input_path);
+        candidates.push_back(std::filesystem::current_path() / input_path);
+    }
+
+    std::filesystem::path model_path;
+    std::error_code ec;
+    for (const auto &candidate : candidates)
+    {
+        ec.clear();
+        if (!candidate.empty() && std::filesystem::exists(candidate, ec) && !ec)
+        {
+            auto absolute_path = std::filesystem::absolute(candidate, ec);
+            model_path = ec ? candidate : absolute_path.lexically_normal();
+            break;
+        }
+    }
+
+    if (model_path.empty())
+    {
+        libMesh::out << "Model data file not found. Checked locations:" << std::endl;
+        for (const auto &candidate : candidates)
+        {
+            ec.clear();
+            auto display_path = std::filesystem::absolute(candidate, ec);
+            if (ec)
+                display_path = candidate;
+            libMesh::out << "  " << display_path.lexically_normal() << std::endl;
+        }
         return false;
+    }
 
     try
     {
