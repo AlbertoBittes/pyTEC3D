@@ -9,6 +9,7 @@
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/system_subset.h>
 #include <libmesh/numeric_vector.h>
+#include <libmesh/sparse_matrix.h>
 
 #include "fem_service_abstract.h"
 #include "element_types.h"
@@ -86,7 +87,6 @@ public:
 
     void compute_solution_time_derivative(const Substep &time_substep);
     void delete_rows_cols_constrained_dofs();
-    void check_constrained_dofs();
 
     std::shared_ptr<AssemblerLinear> get_assembler() const
     {
@@ -101,6 +101,8 @@ public:
     void post_init() override
     {
         this->zero_out_matrix_and_rhs = false;
+        this->get_system_matrix().zero();
+        this->rhs->zero();
         this->current_local_solution->zero();
         this->current_local_solution->close();
         auto solver_config = this->context<PetscSolverConfiguration>();

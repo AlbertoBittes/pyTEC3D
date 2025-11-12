@@ -86,13 +86,6 @@ void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
     this->restrict_solve_to(subset_ptr, SUBSET_ZERO);
 }
 
-void ApecMLinearSystem::check_constrained_dofs()
-{
-    libMesh::out << "Checking constrained DOFs..." << std::endl;
-    auto global_constraints = this->get_global_constraints_object();
-    global_constraints->check_update_boundary_conditions();
-}
-
 template <typename SysType>
 void ApecMSystem<SysType>::init_variables()
 {

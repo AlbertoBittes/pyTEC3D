@@ -58,9 +58,11 @@ void GlobalConstraintsObject::constrain()
     }
 }
 
-void GlobalConstraintsObject::check_update_boundary_conditions()
+bool GlobalConstraintsObject::check_update_boundary_conditions()
 {
-    this->update_boundary_conditions = false;
+    libMesh::out << "Checking constrained DOFs..." << std::endl;
+
+    bool update_boundary_conditions = false;
     DofMap &dof_map = this->parent_object->get_dof_map();
     const auto &comm = dof_map.comm();
 
@@ -98,11 +100,17 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
 
     if (keys_differ())
     {
-        this->update_boundary_conditions = true;
+        update_boundary_conditions = true;
         libMesh::out << "Boundary conditions update required: different constrained DOFs" << std::endl;
     }
 
-    comm.max(this->update_boundary_conditions);
+    comm.max(update_boundary_conditions);
 
-    return;
+    if (update_boundary_conditions)
+    {
+        ApecMLinearSystem &system = static_cast<ApecMLinearSystem &>(*this->get_parent_object());
+        system.delete_rows_cols_constrained_dofs();
+    }
+
+    return update_boundary_conditions;
 }

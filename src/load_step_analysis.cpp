@@ -176,11 +176,10 @@ bool LoadStepAnalysis::execute_solve()
 
         system.reinit_constraints();
 
-        if (substep.get_index() == 0)
-        {
-            // system.delete_rows_cols_constrained_dofs();
-            system.check_constrained_dofs();
-        }
+        // if (substep.get_index() == 0)
+        // {
+        // system.delete_rows_cols_constrained_dofs();
+        // }
 
         assembler->write_element_matrices_and_rhs();
 
@@ -191,7 +190,6 @@ bool LoadStepAnalysis::execute_solve()
 
         system.get_dof_map().enforce_constraints_exactly(system);
         system.compute_solution_time_derivative(substep);
-        system.rhs->zero();
 
         const bool should_write = substep.get_write_results() ||
                                   substep.get_index() == time_step->get_n_substeps() - 1;

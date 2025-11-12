@@ -80,6 +80,8 @@ void AssemblerLinear::assemble()
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     SparseMatrix<Number> &matrix = system.get_system_matrix();
+    system.rhs->zero();
+
     const DofMap &dof_map = system.get_dof_map();
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = system.comm();
@@ -180,27 +182,21 @@ bool AssemblerLinear::check_update_system_matrix()
     const Real rel_eps = 1e-9;
 
     bool update_matrix = false;
-    if (solver)
-        solver->reuse_preconditioner(true);
 
-    if (current_time_substep->get_index() > 0)
+    if (current_time_substep->get_index() == 0)
     {
-        // If very first substep, we have to build the matrix
-        if (old_time_substep == nullptr)
-        {
-            update_matrix = true;
-            system.get_system_matrix().zero();
-            if (solver)
-                solver->reuse_preconditioner(false);
-        }
+        // // If very first substep, we have to build the matrix
+        // if (old_time_substep == nullptr)
+        // {
+        //     update_matrix = true;
+        //     system.get_system_matrix().zero();
+        //     if (solver)
+        //         solver->reuse_preconditioner(false);
+        // }
         // If first substep and BCs have changed, we need to update the matrix
-        else if (bc_object->get_update_boundary_conditions())
-        {
+        if (bc_object->check_update_boundary_conditions())
             update_matrix = true;
-            system.get_system_matrix().zero();
-            if (solver)
-                solver->reuse_preconditioner(false);
-        }
+
         // If first substep but time integration parameters have changed, we need to update the matrix
         else
         {
@@ -211,17 +207,23 @@ bool AssemblerLinear::check_update_system_matrix()
                 current_time_substep->get_theta() != old_time_substep->get_theta())
             {
                 update_matrix = true;
-                system.get_system_matrix().zero();
-                if (solver)
-                    solver->reuse_preconditioner(false);
             }
         }
     }
 
     if (update_matrix)
+    {
         libMesh::out << "Updating system matrix for current time step" << std::endl;
+        system.get_system_matrix().zero();
+        if (solver)
+            solver->reuse_preconditioner(false);
+    }
     else
+    {
         libMesh::out << "Reusing system matrix from previous time step" << std::endl;
+        if (solver)
+            solver->reuse_preconditioner(true);
+    }
 
     return update_matrix;
 }

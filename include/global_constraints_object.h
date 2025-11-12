@@ -31,24 +31,8 @@ public:
 
     void constrain() override;
 
-    bool get_update_boundary_conditions() const
-    {
-        return update_boundary_conditions;
-    }
-
     // Now uses old context view for comparison
-    void check_update_boundary_conditions();
-
-    // Uses old context view to decide if constraints need to be reinitialized
-    void set_boundary_conditions();
-
-    // Example: access context objects as shared_ptrs
-    // std::shared_ptr<NodeLoadsDOFConstraints> node_bc_object() { return this->context<NodeLoadsDOFConstraints>(); }
-    std::shared_ptr<TimeStep> time_step() { return this->context<TimeStep>(); }
-
-private:
-    bool update_boundary_conditions = false;
-    // Other private members related to boundary conditions can be added here
+    bool check_update_boundary_conditions();
 };
 
 #endif // BOUNDARY_CONDITIONS_OBJECT_H
