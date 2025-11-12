@@ -69,7 +69,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -92,7 +92,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -123,6 +123,9 @@
         <DataArray type="Int32" Name="COTREE" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAACgXAAAnQEAAA==eJztlEGOhUAIBXvuf+lZ/I3pGIEGn7QWCcEFxQNEx/jZ3xSzdqw3187GqL4qenM8XtkTelq9cfLsrVfVZ6YHb/2jweiZK4t8G9Ytd7Sr/WTrVX+HUX1VXP033PnfQk+vN06evfWq+sz0cNVT1tDT62W8o93xnVjRm6vuHb26GPke1Le12r9lMPsx0Zt9o4+HojfXsuqe1DuzzJtXVUe9z2rNSG+eXMu4v9o6T+zzSe/Sa2SnK3t/E2Plj4Xclb4zvaG3px7MN5ideq2YL+OWneV4+lYx1jxVO+ow6wrDfthPhmE/7CfDsB/2k2HYT2w/il14c1fq78RY+dHYeVYYGDXjcauuN6Kn15stcwd3uWfeeQaYPsxuN+edLboHGB2z28112h3MGsPNwaiZ7h6ZY2XWNzFWfjRW3k9lT+j10/sCs+N7QS+mdbTMHdzlnnnnGWD6MNwcjJrh5mDUDDcHo2a6e2SOlVnfxFj50Vh5P5U9oddP7wvMju8FvZjW0TJ3cJd75p1ngOnDcHMwaoabg1Ez3ByMmunu/ztFDXY=
         </DataArray>
+        <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAACgXAAALQAAAA==eJztwQEBAAAAgiD/r25IQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAALwZcoAAB
+        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="1210">
@@ -147,7 +150,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>

@@ -1,6 +1,6 @@
 from apec_m import APEC_M
 from vtk_grid_helper import VTKGridHelper
-
+import os
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -8,14 +8,17 @@ apec = APEC_M()
 # convert_mesh_from_cdb(
 #     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
 # )
+filename = "two_wires_3D_edge_el_2order"
 
-apec.read_mesh(
-    r"D:\PlasmaArc\simulations\two_wires_3D_edge_el_2order\two_wires_3D_edge_el_2order.vtu"
-)
+filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
+
+apec.read_mesh(filepath)
 
 VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
+
+apec.write_model_data()
 
 apec.select_pos(0, (0.499, 0.50001))
 apec.select_pos(0, (-0.501, -0.49999), mode="a")
@@ -57,7 +60,7 @@ apec.time_parameters["transient_effects"] = 0
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["write_substep_results"] = 1
 
-apec.write_load_step("load_steps\\load_step_1.bin")
+apec.write_load_step(1)
 
 
 apec.select("ansys_material_type", 23, cell_or_point="cell_data")
@@ -71,7 +74,7 @@ apec.time_parameters["transient_effects"] = 1
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["write_substep_results"] = 1
 
-apec.write_load_step("load_steps\\load_step_2.bin")
+apec.write_load_step(2)
 
 apec.select("ansys_material_type", 23, cell_or_point="cell_data")
 apec.set_value_on_selection("Js", 0, 2, cell_or_point="cell_data")
@@ -84,6 +87,6 @@ apec.time_parameters["transient_effects"] = 1
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["write_substep_results"] = 1
 
-apec.write_load_step("load_steps\\load_step_3.bin")
+apec.write_load_step(3)
 
 apec.save_mesh()

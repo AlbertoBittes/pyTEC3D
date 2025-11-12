@@ -11,13 +11,15 @@ apec = APEC_M()
 # )
 filename = "two_wires_2D"
 
-filepath = os.path.join(r"D:\PlasmaArc\simulations", filename, filename + ".vtu")
+filepath = os.path.join(r"/home/bitteal/PlasmaArc/tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
 VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
+
+apec.write_model_data()
 
 apec.select("BOUNDARY_NODES", 1)
 apec.set_value_on_selection("A", 0, 2)
@@ -39,6 +41,6 @@ for i in range(1, 3):
 
     apec.select("ansys_material_type", 23, cell_or_point="cell_data")
     apec.set_value_on_selection("Js", i * 1000, 2, cell_or_point="cell_data")
-    apec.write_load_step(os.path.join(apec.load_steps_folder, f"load_step_{i}.bin"))
+    apec.write_load_step(i)
 
 apec.save_mesh()

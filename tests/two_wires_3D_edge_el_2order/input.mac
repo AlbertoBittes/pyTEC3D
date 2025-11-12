@@ -1,0 +1,4 @@
+-read_mesh two_wires_3D_edge_el_2order.vtu
+-read_model_data model_data.bin
+-mode analysis
+-solve_transient

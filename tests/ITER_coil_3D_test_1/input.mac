@@ -1,4 +1,4 @@
--read_mesh ./tests/ITER_coil_3D_test_1/ITER_coil_3D_test_1.vtu
+-read_mesh ITER_coil_3D_test_1.vtu
 -read_model_data model_data.bin
 -mode analysis
 -solve_transient

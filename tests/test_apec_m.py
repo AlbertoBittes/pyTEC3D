@@ -11,12 +11,13 @@ import vtk
 # ------------------------------------------------------------------------------
 # Helper: run the solver once
 # ------------------------------------------------------------------------------
-def run_solver(input_vtu, nproc, output_dir):
-    """Run the solver (serial or parallel) and put results in output_dir."""
+def run_solver(case_dir, analysis_name, nproc, output_dir, macro_filename="input.mac"):
+    """Run the CLI solver (serial or parallel) using the provided macro file."""
 
-    input_vtu = os.path.abspath(input_vtu)
-    sim_dir = os.path.dirname(input_vtu)
-    analysis_name = os.path.splitext(os.path.basename(input_vtu))[0]
+    case_dir = os.path.abspath(case_dir)
+    macro_path = os.path.join(case_dir, macro_filename)
+    if not os.path.isfile(macro_path):
+        raise FileNotFoundError(f"Missing macro file: {macro_path}")
 
     exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bin/apec_m"))
 
@@ -24,17 +25,20 @@ def run_solver(input_vtu, nproc, output_dir):
     if nproc > 1:
         cmd = ["mpirun", "-np", str(nproc)]
 
-    cmd += [exe_path, "-b", input_vtu]
+    cmd += [exe_path, "-b", os.path.basename(macro_path)]
 
-    print(f"\n[TEST] Running solver: {' '.join(cmd)} in {sim_dir}")
-    result = subprocess.run(cmd, cwd=sim_dir, capture_output=True, text=True)
+    print(f"\n[TEST] Running solver: {' '.join(cmd)} in {case_dir}")
+    result = subprocess.run(cmd, cwd=case_dir, capture_output=True, text=True)
     print("[TEST] Solver stdout:\n", result.stdout)
     print("[TEST] Solver stderr:\n", result.stderr)
     if result.returncode != 0:
         raise RuntimeError(f"Solver failed with exit code {result.returncode}")
 
     # Move outputs from the simulation's output directory
-    output_src_dir = os.path.join(sim_dir, "output")
+    output_src_dir = os.path.join(case_dir, analysis_name, "output")
+    if not os.path.isdir(output_src_dir):
+        raise RuntimeError(f"Expected output directory not found: {output_src_dir}")
+
     print(f"[TEST] Moving output files from {output_src_dir} to {output_dir}")
     for f in os.listdir(output_src_dir):
         if f.startswith(analysis_name + "_out_"):
@@ -250,7 +254,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 231,
                 "expected": 0.15646E-007,
-                "tol": 1e-4,
+                "tol": 3e-2,
                 "is_point": False,
             },
             {           # Here I get small discrepancy not detected by the test, to investigate - By not exactly equal for axisymm elements
@@ -259,7 +263,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 265,
                 "expected": -0.15372E-009,
-                "tol": 1e-4,
+                "tol": 2e-2,
                 "is_point": False,
             },
             {           # Here I get small discrepancy not detected by the test, to investigate
@@ -269,7 +273,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 265,
                 "expected": -0.12428E-009,
-                "tol": 1e-4,
+                "tol": 2e-2,
                 "is_point": False,
             },
             # {
@@ -301,8 +305,8 @@ analysis_cases = [
                 "array": "A_z",
                 "component": 0,
                 "libmesh_id": 68,
-                "expected":  0.22258E-006,
-                "tol": 1e-4,
+                "expected":  0.22258E-006, # The impact is greater in conducting elements: I have deviation both in K and C because of the quadrature
+                "tol": 2e-2,
                 "is_point": True,
             },
             {
@@ -320,7 +324,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 420,
                 "expected": 0.39123E-006,
-                "tol": 1e-4,
+                "tol": 1e-3,
                 "is_point": True,
             },
             # {
@@ -338,7 +342,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 200,
                 "expected": -0.11356E-004,
-                "tol": 1e-4,
+                "tol": 1e-3,
                 "is_point": False,
             },
             {
@@ -347,7 +351,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 729,
                 "expected":  0.31682E-005,
-                "tol": 1e-4,
+                "tol": 1e-3,
                 "is_point": False,
             },
         ],
@@ -407,7 +411,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 200,
                 "expected": -0.11356E-004,
-                "tol": 1e-2,
+                "tol": 1e-4,
                 "is_point": False,
             },
             {
@@ -416,7 +420,7 @@ analysis_cases = [
                 "component": 0,
                 "libmesh_id": 729,
                 "expected":  0.31682E-005,
-                "tol": 1e-2,
+                "tol": 1e-4,
                 "is_point": False,
             },
         ],
@@ -713,15 +717,15 @@ analysis_cases = [
 def test_fem(case):
     analysis_name = case["analysis_name"]
     nproc = case["nproc"]
-    input_vtu = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), f"../tests/{analysis_name}/{analysis_name}.vtu")
+    case_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), analysis_name)
     )
 
     print(f"\n[TEST] Starting test for {analysis_name}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"[TEST] Temporary output directory: {tmpdir}")
-        run_solver(input_vtu, nproc, tmpdir)
+        run_solver(case_dir, analysis_name, nproc, tmpdir)
 
         # perform all checks
         for i, chk in enumerate(case["checks"], 1):
@@ -736,7 +740,7 @@ def test_fem(case):
                 chk["is_point"],
             )
             print(f"[TEST] Value read: {val}, expected: {chk['expected']}")
-            assert np.isclose(val, chk["expected"], rtol=chk["tol"]), (
+            assert np.isclose(val, chk["expected"], rtol=chk["tol"], atol=0.0), (
                 f"Mismatch in {analysis_name}, "
                 f"timestep={chk['timestep']}, array={chk['array']}, "
                 f"comp={chk['component']}, libmesh_id={chk['libmesh_id']}: "

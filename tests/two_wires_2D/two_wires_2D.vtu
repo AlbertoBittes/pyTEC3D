@@ -45,7 +45,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -68,7 +68,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -92,6 +92,9 @@
         </DataArray>
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAABUKAAAPgAAAA==eJzt0DEKACAMBMHk/5+2sFeEhCDMwnCFYmHELhv3dpbD9+Jwr2r9gX3d6rcAAAAAAACAGZIkST+1AI8DB3k=
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAABUKAAAHwAAAA==eJztwQEBAAAAgJD+r+4ICgAAAAAAAAAAAKAGKFQAAQ==
         </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
@@ -117,7 +120,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
