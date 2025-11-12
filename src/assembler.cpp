@@ -18,7 +18,6 @@
 #include "assembler.h"
 #include "apec_m_system_objects.h"
 #include "apec_m_eq_system_object.h"
-#include "load_step_analysis.h"
 #include "element_builder.h"
 #include "element_types.h"
 #include "global_constraints_object.h"
@@ -39,17 +38,15 @@ std::unique_ptr<ElementBuilder> AssemblerLinear::make_element_builder() const
     if (!eq_sys)
         return nullptr;
 
-    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(eq_sys->get_analysis());
+    auto analysis = eq_sys->get_analysis();
     if (!analysis)
         return nullptr;
 
-    auto model_repo = analysis->model_repository();
-    auto load_repo = analysis->active_load_step_repository_ptr();
-    if (!model_repo || !load_repo)
+    auto analysis_ctx = analysis->get_context_view();
+    if (!analysis_ctx)
         return nullptr;
 
-    auto builder_view = std::make_shared<ElementBuilder::ContextView>(
-        ElementBuilder::ContextView::from(model_repo, load_repo));
+    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>();
 
     return std::make_unique<ElementBuilder>(eq_sys, builder_view);
 }
@@ -163,9 +160,13 @@ void AssemblerLinear::assemble()
 // Here add the flag for ferromagnetic
 bool AssemblerLinear::check_update_system_matrix()
 {
-    ApecMSystem<System> *main_sys = dynamic_cast<ApecMSystem<System> *>(&this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM));
+    auto eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return false;
 
-    GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&main_sys->get_constraint_object());
+    auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
+    GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&system.get_constraint_object());
 
     auto current_time_step = this->context<TimeStep>();
 
@@ -175,11 +176,6 @@ bool AssemblerLinear::check_update_system_matrix()
 
     auto old_time_substep = old_time_step ? old_time_step->get_active_substep() : nullptr;
 
-    auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return false;
-
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
     const Real rel_eps = 1e-9;
 
@@ -193,6 +189,7 @@ bool AssemblerLinear::check_update_system_matrix()
         if (old_time_substep == nullptr)
         {
             update_matrix = true;
+            system.get_system_matrix().zero();
             if (solver)
                 solver->reuse_preconditioner(false);
         }
@@ -200,6 +197,7 @@ bool AssemblerLinear::check_update_system_matrix()
         else if (bc_object->get_update_boundary_conditions())
         {
             update_matrix = true;
+            system.get_system_matrix().zero();
             if (solver)
                 solver->reuse_preconditioner(false);
         }
@@ -213,6 +211,7 @@ bool AssemblerLinear::check_update_system_matrix()
                 current_time_substep->get_theta() != old_time_substep->get_theta())
             {
                 update_matrix = true;
+                system.get_system_matrix().zero();
                 if (solver)
                     solver->reuse_preconditioner(false);
             }

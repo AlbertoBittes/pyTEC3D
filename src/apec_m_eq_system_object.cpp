@@ -15,15 +15,13 @@ void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
         ApecMSystem<System>::ramp_vectors(time_substep, *old_vec, *current_vec, *ramped_vec);
 }
 
-void ApecMEquationSystems::configure_systems(const std::shared_ptr<FEMDataRepository> &model_data)
+void ApecMEquationSystems::configure_systems()
 {
     libMesh::out << "Building system of equations..." << std::endl;
 
     this->clear_preserving_solver_settings();
 
     libMesh::out << "Checking system options..." << std::endl;
-
-    model_data_handle = model_data;
 
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
@@ -43,12 +41,9 @@ void ApecMEquationSystems::configure_systems(const std::shared_ptr<FEMDataReposi
 
 void ApecMEquationSystems::initialize_system_contexts()
 {
-    auto model_data = model_data_handle.lock();
-    if (!model_data)
+    auto system_builder_view = this->get_context_view();
+    if (!system_builder_view)
         return;
-
-    auto system_builder_view = std::make_shared<ApecMSystem<System>::ContextView>(
-        ApecMSystem<System>::ContextView::from(model_data));
 
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
@@ -92,8 +87,17 @@ void ApecMEquationSystems::post_initialize_systems()
     }
 }
 
-void ApecMEquationSystems::initialize_physics()
+void ApecMEquationSystems::initialize_physics(const std::shared_ptr<FEMDataRepository> &model_data)
 {
+    if (!model_data)
+    {
+        libMesh::out << "ApecMEquationSystems: model repository not provided for physics initialization." << std::endl;
+        return;
+    }
+
+    auto system_view = std::make_shared<ContextView>(ContextView::from(model_data));
+    this->set_context_view(system_view);
+
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     initialize_system_contexts();
     this->init();
@@ -112,15 +116,14 @@ void ApecMEquationSystems::clear_preserving_solver_settings()
     parameters.set<unsigned int>("linear solver maximum iterations") = max_iter;
 }
 
-std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh,
-                                                                  const std::shared_ptr<FEMDataRepository> &model_data)
+std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh)
 {
     auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
-    equation_systems->configure_systems(model_data);
+    equation_systems->configure_systems();
     return equation_systems;
 }
 
-void ApecMEquationSystems::set_analysis(std::shared_ptr<ApecMAnalysis> analysis_object)
+void ApecMEquationSystems::set_analysis(std::shared_ptr<AnalysisBase> analysis_object)
 {
     analysis = std::move(analysis_object);
 }

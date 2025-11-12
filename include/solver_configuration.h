@@ -24,6 +24,13 @@ public:
   // Getters and setters for solver settings
   void configure_solver() override;
 
+  void set_petsc_linear_solver(PetscLinearSolver<Number> *petsc_linear_solver)
+  {
+    _petsc_linear_solver = petsc_linear_solver;
+    if (_petsc_linear_solver)
+      _petsc_linear_solver->set_solver_configuration(*this);
+  }
+
 private:
   PetscLinearSolver<Number> *_petsc_linear_solver; // Pointer to the PetscLinearSolver
 };

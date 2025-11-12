@@ -13,13 +13,15 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_3D_test_1"
 
-filepath = os.path.join(r"D:\PlasmaArc\simulations", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
 VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
+
+apec.write_model_data()
 
 apec.select("X_BOUND", 1)
 apec.set_value_on_selection("A", 0, 1)
@@ -89,6 +91,6 @@ for i in range(1, 10):
         js_array[l, 0] = js_x
         js_array[l, 2] = js_z
 
-    apec.write_load_step(os.path.join(apec.load_steps_folder, f"load_step_{i}.bin"))
+    apec.write_load_step(i)
 
 apec.save_mesh()

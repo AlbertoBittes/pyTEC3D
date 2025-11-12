@@ -72,3 +72,8 @@ bin/plasma_arc
 **/output/*
 **/temp/
 **/temp/*
+
+# Ignore emat, input, output, temp subfolders anywhere under tests/
+tests/**/emat/
+tests/**/output/
+tests/**/temp/

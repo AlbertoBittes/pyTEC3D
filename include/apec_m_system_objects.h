@@ -104,8 +104,17 @@ public:
         this->current_local_solution->zero();
         this->current_local_solution->close();
         auto solver_config = this->context<PetscSolverConfiguration>();
+
         if (solver_config)
+        {
+            solver_config->set_petsc_linear_solver(
+                dynamic_cast<PetscLinearSolver<Number> *>(this->linear_solver.get()));
             solver_config->configure_solver();
+        }
+        else
+        {
+            libmesh_error_msg("ApecMLinearSystem: No PetscSolverConfiguration found in system context.");
+        }
     }
 
 private:

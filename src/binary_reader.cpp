@@ -165,10 +165,21 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
         break;
     }
     case BinaryLabelId::DOF_COUPLINGS:
-    case BinaryLabelId::APEC_PARAMETERS:
     {
         auto binary_data = std::make_shared<BinaryDataFEDataObject>(file);
         repository->set_object(binary_data);
+        break;
+    }
+    case BinaryLabelId::APEC_PARAMETERS:
+    {
+        auto settings = std::make_shared<ApecMSettingsObject>(file);
+        repository->set_object(settings);
+        break;
+    }
+    case BinaryLabelId::DOF_INTERPOLATION_SETTINGS:
+    {
+        auto interpolation_settings = std::make_shared<DofInterpolationSettingsObject>(file);
+        repository->set_object(interpolation_settings);
         break;
     }
     default:

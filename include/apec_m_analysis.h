@@ -1,24 +1,34 @@
 #ifndef APEC_M_ANALYSIS_H
 #define APEC_M_ANALYSIS_H
 
+#include <memory>
 #include <string>
 #include <utility>
 
-class ApecMAnalysis
+#include "analysis_base.h"
+
+class StaticAnalysis : public AnalysisBase
 {
 public:
-    ApecMAnalysis() = default;
+    explicit StaticAnalysis(ApecMEquationSystems *eq_systems = nullptr);
 
-    explicit ApecMAnalysis(std::string analysis_name)
-        : name(std::move(analysis_name)) {}
+    bool solve(const std::string &identifier) override;
+};
 
-    virtual ~ApecMAnalysis() = default;
+class APECMAnalysis : public AnalysisBase
+{
+public:
+    explicit APECMAnalysis(ApecMEquationSystems *eq_systems = nullptr);
 
-    const std::string &get_name() const { return name; }
-    void set_name(const std::string &analysis_name) { name = analysis_name; }
+    bool solve(const std::string &identifier) override;
+};
 
-private:
-    std::string name;
+class DOFInterpolationAnalysis : public AnalysisBase
+{
+public:
+    explicit DOFInterpolationAnalysis(ApecMEquationSystems *eq_systems = nullptr);
+
+    bool solve(const std::string &identifier) override;
 };
 
 #endif // APEC_M_ANALYSIS_H

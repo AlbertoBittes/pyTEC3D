@@ -30,22 +30,24 @@ public:
     explicit APEC_M(libMesh::Parallel::Communicator &comm);
 
     std::shared_ptr<FEMDataRepository> model_data() const { return model_data_repository; }
-
-    Session &session();
-    const Session &session() const;
+    std::shared_ptr<FEMDataRepository> model_data() { return model_data_repository; }
 
     std::shared_ptr<ApecMMesh> get_mesh(const std::string &name) const;
     std::shared_ptr<ApecMMesh> get_active_mesh() const;
     std::shared_ptr<ApecMEquationSystems> get_equation_system(const std::string &name) const;
     std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
-    std::shared_ptr<LoadStepAnalysis> get_analysis(const std::string &name) const;
-    std::shared_ptr<LoadStepAnalysis> get_active_analysis() const;
+    std::shared_ptr<AnalysisBase> get_analysis(const std::string &name) const;
+    std::shared_ptr<AnalysisBase> get_active_analysis() const;
 
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
     bool load_model_data(const std::string &filepath);
     bool set_mode(Session::Mode mode);
-    Session::Mode get_mode() const { return session().get_mode(); }
+    Session::Mode get_mode() const
+    {
+        auto session = model_data_repository->get_object<Session>();
+        return session ? session->get_mode() : Session::Mode::PreProcessing;
+    }
 
     bool distribute_boundary_ids();
     bool generate_infinite_elements();

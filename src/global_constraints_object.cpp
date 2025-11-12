@@ -72,8 +72,31 @@ void GlobalConstraintsObject::check_update_boundary_conditions()
     dof_map.swap_dof_constraints();
     const auto &constraints_map_new = dof_map.get_dof_constraints();
 
-    // Now you can compare the maps via the pointers
-    if (constraints_map_new != constraints_map_old)
+    const auto keys_differ = [constraints_map_new, constraints_map_old]() -> bool
+    {
+        const bool has_old = !constraints_map_old.empty();
+        const bool has_new = !constraints_map_new.empty();
+
+        if (!has_old && !has_new)
+            return false;
+
+        if (has_old != has_new)
+            return true;
+
+        auto size_1 = constraints_map_old.size();
+        auto size_2 = constraints_map_new.size();
+        if (constraints_map_old.size() != constraints_map_new.size())
+            return true;
+
+        for (const auto &entry : constraints_map_new)
+        {
+            if (!constraints_map_old.count(entry.first))
+                return true;
+        }
+        return false;
+    };
+
+    if (keys_differ())
     {
         this->update_boundary_conditions = true;
         libMesh::out << "Boundary conditions update required: different constrained DOFs" << std::endl;

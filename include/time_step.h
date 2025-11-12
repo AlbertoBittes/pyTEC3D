@@ -64,6 +64,19 @@ private:
 class TimeStep : public BinaryDataFEDataObject
 {
 public:
+    TimeStep()
+        : BinaryDataFEDataObject(),
+          step(0),
+          time(0.0),
+          time_beginning(0.0),
+          delta_t(0.0),
+          write_results(0),
+          transient_effect(0),
+          ramped_load(0),
+          theta(0.0)
+    {
+    }
+
     TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
         : BinaryDataFEDataObject(file)
     {

@@ -187,8 +187,6 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::READ_MODEL_DATA;
     if (input == "-print_model_data")
         return Command::PRINT_MODEL_DATA;
-    if (input == "-distribute_boundary_ids")
-        return Command::DISTRIBUTE_BOUNDARIES;
     if (input == "-list_load_steps")
         return Command::LIST_LOAD_STEPS;
     if (input.rfind("-solve_transient", 0) == 0)
@@ -226,7 +224,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::PreProcessing, "-read_mesh"))
             return true;
 
@@ -247,7 +245,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     }
     case Command::CLEAR_MESH:
     {
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::PreProcessing, "-clear"))
             return true;
 
@@ -274,7 +272,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        auto &session = program.session();
+        Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::PreProcessing, "-set_workdir"))
             return true;
 
@@ -305,7 +303,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         libMesh::out << "Active mesh set to '" << session.get_active_mesh() << "'." << std::endl;
         report_session_paths(session);
         return true;
@@ -319,7 +317,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::PreProcessing, "-read_model_data"))
             return true;
 
@@ -343,26 +341,16 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     }
     case Command::PRINT_MODEL_DATA:
     {
-        auto &session = program.session();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-print_model_data"))
-            return true;
+        const Session &session = *program.model_data()->get_object<Session>();
+        // if (!require_mode(session, Session::Mode::PreProcessing, "-print_model_data"))
+        //     return true;
 
         program.print_model_data();
         return true;
     }
-    case Command::DISTRIBUTE_BOUNDARIES:
-    {
-        auto &session = program.session();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-distribute_boundary_ids"))
-            return true;
-
-        if (!program.distribute_boundary_ids())
-            libMesh::out << "Boundary distribution failed." << std::endl;
-        return true;
-    }
     case Command::LIST_LOAD_STEPS:
     {
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::Analysis, "-list_load_steps"))
             return true;
 
@@ -380,7 +368,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     }
     case Command::SOLVE:
     {
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::Analysis, "-solve"))
             return true;
 
@@ -397,7 +385,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     }
     case Command::SOLVE_TRANSIENT:
     {
-        auto &session = program.session();
+        const Session &session = *program.model_data()->get_object<Session>();
         if (!require_mode(session, Session::Mode::Analysis, "-solve_transient"))
             return true;
 
@@ -435,7 +423,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!program.set_mode(it->second))
             return true;
 
-        report_session_paths(program.session());
+        report_session_paths(*program.model_data()->get_object<Session>());
         return true;
     }
     case Command::HELP:
@@ -443,7 +431,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -read_mesh <mesh_file>\n"
                      << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
-                     << "  -distribute_boundary_ids\n"
                      << "  -list_load_steps\n"
                      << "  -solve <load_step_filename>\n"
                      << "  -solve_transient [base_name]\n"

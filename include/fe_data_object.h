@@ -149,7 +149,7 @@ protected:
 };
 
 template <typename T>
-T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) const
+    T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) const
 {
     if constexpr (std::is_same_v<T, int>)
         return static_cast<T>(get_int(key, index));
@@ -162,5 +162,17 @@ T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) 
         static_assert(AlwaysFalse<T>::value, "Unsupported scalar type requested from BinaryDataFEDataObject.");
     }
 }
+
+class ApecMSettingsObject : public BinaryDataFEDataObject
+{
+public:
+    using BinaryDataFEDataObject::BinaryDataFEDataObject;
+};
+
+class DofInterpolationSettingsObject : public BinaryDataFEDataObject
+{
+public:
+    using BinaryDataFEDataObject::BinaryDataFEDataObject;
+};
 
 #endif // FE_DATA_OBJECT_H

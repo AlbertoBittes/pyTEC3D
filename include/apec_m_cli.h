@@ -17,7 +17,6 @@ public:
         SET_ACTIVE_MESH,
         READ_MODEL_DATA,
         PRINT_MODEL_DATA,
-        DISTRIBUTE_BOUNDARIES,
         LIST_LOAD_STEPS,
         SOLVE,
         SOLVE_TRANSIENT,

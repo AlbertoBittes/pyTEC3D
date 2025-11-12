@@ -21,12 +21,13 @@ enum class BinaryLabelId : std::uint32_t
     PERIODIC_BOUNDARIES = 7,
     DOF_COUPLINGS = 8,
     APEC_PARAMETERS = 9,
+    DOF_INTERPOLATION_SETTINGS = 10,
     UNKNOWN = std::numeric_limits<std::uint32_t>::max()
 };
 
 struct BinaryLabelTraits
 {
-    static constexpr std::array<std::pair<BinaryLabelId, std::string_view>, 10> LABEL_TABLE = {{
+    static constexpr std::array<std::pair<BinaryLabelId, std::string_view>, 11> LABEL_TABLE = {{
         {BinaryLabelId::ELEMENT_TYPES, "element_types"},
         {BinaryLabelId::TIME_PARAMETERS, "time_parameters"},
         {BinaryLabelId::SOLVER_SETTINGS, "solver_settings"},
@@ -37,6 +38,7 @@ struct BinaryLabelTraits
         {BinaryLabelId::PERIODIC_BOUNDARIES, "periodic_boundaries"},
         {BinaryLabelId::DOF_COUPLINGS, "dof_couplings"},
         {BinaryLabelId::APEC_PARAMETERS, "apec_parameters"},
+        {BinaryLabelId::DOF_INTERPOLATION_SETTINGS, "dof_interpolation_settings"},
     }};
 
     static constexpr std::string_view to_string(BinaryLabelId id)

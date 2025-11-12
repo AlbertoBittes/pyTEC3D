@@ -25,7 +25,16 @@ public:
 
     // Convenience: get a specific context by type
     template <typename T>
-    std::shared_ptr<T> context() { return ctx_view->template get<T>(); }
+    std::shared_ptr<T> context()
+    {
+        return static_cast<const FEMServiceAbstract *>(this)->template context<T>();
+    }
+
+    template <typename T>
+    std::shared_ptr<T> context() const
+    {
+        return this->ctx_view ? this->ctx_view->template get<T>() : nullptr;
+    }
 
 protected:
     FEMServiceAbstract(std::shared_ptr<ContextView> view = nullptr) : ctx_view(view) {}
@@ -49,7 +58,16 @@ public:
 
     // Convenience: get a specific context by type from old context
     template <typename T>
-    std::shared_ptr<T> old_context() { return old_ctx_view ? old_ctx_view->template get<T>() : nullptr; }
+    std::shared_ptr<T> old_context()
+    {
+        return static_cast<const FEMServiceWithOldContext *>(this)->template old_context<T>();
+    }
+
+    template <typename T>
+    std::shared_ptr<T> old_context() const
+    {
+        return old_ctx_view ? old_ctx_view->template get<T>() : nullptr;
+    }
 
     // Update both: current becomes old, new_view becomes current
     void update_context_views(std::shared_ptr<ContextView> new_view)

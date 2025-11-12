@@ -105,6 +105,29 @@ struct TypedContextView
     template <typename T>
     std::shared_ptr<T> get() const { return std::get<std::shared_ptr<T>>(ptrs); }
 
+    template <typename... QueryTypes>
+    TypedContextView<QueryTypes...> project() const
+    {
+        return TypedContextView<QueryTypes...>{std::make_tuple(get<QueryTypes>()...)};
+    }
+
+    template <typename... QueryTypes>
+    std::shared_ptr<TypedContextView<QueryTypes...>> project_view() const
+    {
+        auto view = std::make_shared<TypedContextView<QueryTypes...>>();
+        view->ptrs = std::make_tuple(get<QueryTypes>()...);
+
+        const bool has_nullptr = std::apply([](const auto &...ptrs) {
+            return ((ptrs == nullptr) || ...);
+        },
+                                            view->ptrs);
+
+        if (has_nullptr)
+            return nullptr;
+
+        return view;
+    }
+
 private:
     // Overload for reference
     template <typename T, typename Repo>

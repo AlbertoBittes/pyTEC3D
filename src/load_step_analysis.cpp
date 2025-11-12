@@ -33,7 +33,7 @@ LoadStepAnalysis::LoadStepAnalysis(ApecMEquationSystems *eq_systems)
 {
 }
 
-std::filesystem::path LoadStepAnalysis::load_steps_folder()
+std::filesystem::path LoadStepAnalysis::load_steps_folder() const
 {
     auto session = this->context<Session>();
     if (!session)
@@ -43,7 +43,7 @@ std::filesystem::path LoadStepAnalysis::load_steps_folder()
     return folder;
 }
 
-std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files()
+std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files() const
 {
     std::vector<std::filesystem::path> files;
     const auto folder = load_steps_folder();
@@ -121,7 +121,7 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
     return nullptr;
 }
 
-void LoadStepAnalysis::configure_services()
+void LoadStepAnalysis::configure_services() const
 {
     auto *equation_systems = this->get_parent_object();
 
@@ -168,17 +168,17 @@ bool LoadStepAnalysis::execute_solve()
         return false;
     }
 
-    system.get_system_matrix().zero();
-
     for (auto &substep : *time_step)
     {
         equation_systems->apply_ramped_effects(substep);
+
+        system.get_dof_map().swap_dof_constraints();
 
         system.reinit_constraints();
 
         if (substep.get_index() == 0)
         {
-            system.delete_rows_cols_constrained_dofs();
+            // system.delete_rows_cols_constrained_dofs();
             system.check_constrained_dofs();
         }
 
@@ -189,8 +189,8 @@ bool LoadStepAnalysis::execute_solve()
 
         system.solve();
 
-        system.compute_solution_time_derivative(substep);
         system.get_dof_map().enforce_constraints_exactly(system);
+        system.compute_solution_time_derivative(substep);
         system.rhs->zero();
 
         const bool should_write = substep.get_write_results() ||
@@ -222,7 +222,7 @@ bool LoadStepAnalysis::execute_solve()
     return true;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string &filename)
+std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string &filename) const
 {
     auto folder = load_steps_folder();
     if (folder.empty())
@@ -241,7 +241,7 @@ std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string
     return candidate;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_default_base_name()
+std::filesystem::path LoadStepAnalysis::resolve_default_base_name() const
 {
     auto session = this->context<Session>();
     if (!session)
