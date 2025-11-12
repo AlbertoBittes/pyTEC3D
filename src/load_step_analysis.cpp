@@ -13,6 +13,7 @@
 #include "apec_m_system_objects.h"
 #include "binary_reader.h"
 #include "element_types_factory.h"
+#include "fem_data_repository.h"
 #include "globals.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
@@ -27,60 +28,14 @@ namespace
     }
 }
 
-LoadStepAnalysis::LoadStepAnalysis(ApecMEquationSystems *eq_systems,
-                                   std::shared_ptr<FEMDataRepository> model_data_repo)
-    : ApecMAnalysis(),
-      FEParentObjectBase<ApecMEquationSystems>(eq_systems)
+LoadStepAnalysis::LoadStepAnalysis(ApecMEquationSystems *eq_systems)
+    : AnalysisBase(AnalysisBase::Type::LoadStep, eq_systems, "LoadStepAnalysis")
 {
-    if (model_data_repo)
-    {
-        model_data_handle = model_data_repo;
-        session_handle = model_data_repo->get_object<Session>();
-    }
 }
 
-void LoadStepAnalysis::set_model_repository(const std::shared_ptr<FEMDataRepository> &repo)
+std::filesystem::path LoadStepAnalysis::load_steps_folder()
 {
-    model_data_handle = repo;
-    if (repo)
-        session_handle = repo->get_object<Session>();
-}
-
-void LoadStepAnalysis::set_session(const std::shared_ptr<Session> &session_ptr)
-{
-    session_handle = session_ptr;
-}
-
-std::shared_ptr<FEMDataRepository> LoadStepAnalysis::model_repository() const
-{
-    return model_data_handle.lock();
-}
-
-std::shared_ptr<FEMDataRepository> LoadStepAnalysis::active_load_step_repository_ptr() const
-{
-    return active_load_step_repository;
-}
-
-std::shared_ptr<Session> LoadStepAnalysis::session_ptr() const
-{
-    if (auto session = session_handle.lock())
-        return session;
-    if (auto repo = model_repository())
-        return repo->get_object<Session>();
-    return nullptr;
-}
-
-std::shared_ptr<ApecMEquationSystems> LoadStepAnalysis::equation_systems_ptr() const
-{
-    auto *raw_ptr = this->get_parent_object();
-    if (!raw_ptr)
-        return nullptr;
-    return std::shared_ptr<ApecMEquationSystems>(raw_ptr, [](ApecMEquationSystems *) {});
-}
-
-std::filesystem::path LoadStepAnalysis::load_steps_folder() const
-{
-    auto session = session_ptr();
+    auto session = this->context<Session>();
     if (!session)
         return {};
 
@@ -88,7 +43,7 @@ std::filesystem::path LoadStepAnalysis::load_steps_folder() const
     return folder;
 }
 
-std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files() const
+std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files()
 {
     std::vector<std::filesystem::path> files;
     const auto folder = load_steps_folder();
@@ -122,19 +77,13 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
         return nullptr;
     }
 
-    if (!model_repository())
-    {
-        libMesh::out << "Model repository not available for load step analysis." << std::endl;
-        return nullptr;
-    }
-
     if (!std::filesystem::exists(filepath))
     {
         libMesh::out << "Load step file '" << filepath << "' not found." << std::endl;
         return nullptr;
     }
 
-    auto equation_systems = equation_systems_ptr();
+    auto *equation_systems = this->get_parent_object();
     if (!equation_systems)
     {
         libMesh::out << "Equation systems not available for load step analysis." << std::endl;
@@ -145,7 +94,7 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
     {
         auto load_step_repo = std::make_shared<FEMDataRepository>();
         BinaryReader reader;
-        reader.read_binary_fem_data(filepath, load_step_repo, equation_systems);
+        reader.read_binary_fem_data(filepath, load_step_repo, std::shared_ptr<ApecMEquationSystems>(equation_systems, [](ApecMEquationSystems *) {}));
         auto time_step = load_step_repo->get_object<TimeStep>();
         if (!time_step)
         {
@@ -153,12 +102,9 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
             return nullptr;
         }
 
-        std::shared_ptr<TimeStep> previous_time_step;
-        if (active_load_step_repository)
-            previous_time_step = active_load_step_repository->get_object<TimeStep>();
-
+        auto previous_time_step = this->context<TimeStep>();
         time_step->populate_time_step(previous_time_step);
-        set_active_load_step_repository(load_step_repo);
+        update_time_step_context(time_step);
         return time_step;
     }
     catch (const std::exception &ex)
@@ -175,45 +121,18 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
     return nullptr;
 }
 
-void LoadStepAnalysis::set_active_load_step_repository(const std::shared_ptr<FEMDataRepository> &repo)
-{
-    active_load_step_repository = repo;
-
-    auto model_repo = model_repository();
-    if (!model_repo || !repo)
-    {
-        this->ctx_view.reset();
-        return;
-    }
-
-    auto new_view = std::make_shared<ContextView>(ContextView::from(model_repo, repo));
-    this->update_context_views(new_view);
-}
-
 void LoadStepAnalysis::configure_services()
 {
-    auto equation_systems = equation_systems_ptr();
-    auto model_repo = model_repository();
-    if (!equation_systems || !model_repo || !active_load_step_repository)
-        return;
+    auto *equation_systems = this->get_parent_object();
 
-    auto time_step = active_load_step_repository->get_object<TimeStep>();
-    if (!time_step)
-        return;
+    auto analysis_ctx = this->get_context_view();
 
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
-    auto bc_view = std::make_shared<TypedContextView<TimeStep>>(
-        TypedContextView<TimeStep>::from(
-            active_load_step_repository));
+    auto bc_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
     auto global_constraints_object = system.get_global_constraints_object();
     global_constraints_object->update_context_views(bc_view);
 
-    auto assembler_view = std::make_shared<
-        TypedContextView<TimeStep, Session>>(
-        TypedContextView<TimeStep, Session>::from(
-            active_load_step_repository,
-            model_repo));
+    auto assembler_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep, Session>() : nullptr;
 
     auto assembler = system.get_assembler();
     assembler->update_context_views(assembler_view);
@@ -221,25 +140,18 @@ void LoadStepAnalysis::configure_services()
 
 bool LoadStepAnalysis::execute_solve()
 {
-    auto equation_systems = equation_systems_ptr();
+    auto *equation_systems = this->get_parent_object();
     if (!equation_systems)
         return false;
 
-    auto load_repo = active_load_step_repository;
-    if (!load_repo)
-    {
-        libMesh::out << "No active load step repository available for analysis." << std::endl;
-        return false;
-    }
-
-    auto time_step = load_repo->get_object<TimeStep>();
+    auto time_step = this->context<TimeStep>();
     if (!time_step)
     {
         libMesh::out << "Load step does not contain time stepping information." << std::endl;
         return false;
     }
 
-    auto session = session_ptr();
+    auto session = this->context<Session>();
     if (!session)
     {
         libMesh::out << "Session data not available for load step analysis." << std::endl;
@@ -310,7 +222,7 @@ bool LoadStepAnalysis::execute_solve()
     return true;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string &filename) const
+std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string &filename)
 {
     auto folder = load_steps_folder();
     if (folder.empty())
@@ -329,9 +241,9 @@ std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string
     return candidate;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_default_base_name() const
+std::filesystem::path LoadStepAnalysis::resolve_default_base_name()
 {
-    auto session = session_ptr();
+    auto session = this->context<Session>();
     if (!session)
         return {};
 
