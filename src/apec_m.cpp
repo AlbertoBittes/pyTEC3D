@@ -180,7 +180,7 @@ bool APEC_M::load_model_data(const std::string &filepath)
     }
 
     session_ref.set_model_data_filepath(model_path);
-   session_ref.check_load_steps_folder();
+    session_ref.check_load_steps_folder();
 
     return true;
 }
@@ -534,6 +534,8 @@ bool APEC_M::enter_analysis_mode()
             repository->set_object<ApecMEquationSystems>(equation_system);
         }
 
+        equation_system->initialize_systems(model_data_repository);
+
         if (periodic_factory)
         {
             periodic_factory->initialize(equation_system.get());
@@ -546,7 +548,9 @@ bool APEC_M::enter_analysis_mode()
 
         mesh->prepare_for_use(true);
 
-        equation_system->initialize_physics(model_data_repository);
+        mesh->print_info();
+
+        equation_system->initialize_physics();
 
         auto analysis = repository->get_object<AnalysisBase>();
         if (!analysis)

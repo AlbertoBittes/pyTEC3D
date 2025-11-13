@@ -1,4 +1,5 @@
 #include "apec_m_periodic_boundary_factory.h"
+#include "apec_m_system_objects.h"
 #include "globals.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/libmesh.h"
@@ -8,26 +9,26 @@
 
 namespace
 {
-const std::vector<int> &extract_int_array(const Globals::NDArray &array)
-{
-    if (!std::holds_alternative<std::vector<int>>(array.values))
-        libmesh_error_msg("Periodic boundary factory expected integer array.");
-    return std::get<std::vector<int>>(array.values);
-}
+    const std::vector<int> &extract_int_array(const Globals::NDArray &array)
+    {
+        if (!std::holds_alternative<std::vector<int>>(array.values))
+            libmesh_error_msg("Periodic boundary factory expected integer array.");
+        return std::get<std::vector<int>>(array.values);
+    }
 
-const std::vector<Real> &extract_real_array(const Globals::NDArray &array)
-{
-    if (!std::holds_alternative<std::vector<Real>>(array.values))
-        libmesh_error_msg("Periodic boundary factory expected real array.");
-    return std::get<std::vector<Real>>(array.values);
-}
+    const std::vector<Real> &extract_real_array(const Globals::NDArray &array)
+    {
+        if (!std::holds_alternative<std::vector<Real>>(array.values))
+            libmesh_error_msg("Periodic boundary factory expected real array.");
+        return std::get<std::vector<Real>>(array.values);
+    }
 
-const std::vector<std::string> &extract_string_array(const Globals::NDArray &array)
-{
-    if (!std::holds_alternative<std::vector<std::string>>(array.values))
-        libmesh_error_msg("Periodic boundary factory expected string array.");
-    return std::get<std::vector<std::string>>(array.values);
-}
+    const std::vector<std::string> &extract_string_array(const Globals::NDArray &array)
+    {
+        if (!std::holds_alternative<std::vector<std::string>>(array.values))
+            libmesh_error_msg("Periodic boundary factory expected string array.");
+        return std::get<std::vector<std::string>>(array.values);
+    }
 }
 
 ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::ifstream &file, EquationSystems *eq_sys)
@@ -51,13 +52,13 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
         return;
 
     if (!has_column("main_boundary") || !has_column("paired_boundary") ||
-        !has_column("periodic_matrix") || !has_column("variables"))
+        !has_column("periodic_matrix") || !has_column("variable"))
         libmesh_error_msg("Periodic boundary factory: required keys missing from settings data.");
 
     const auto &main_array = get_column("main_boundary");
     const auto &paired_array = get_column("paired_boundary");
     const auto &matrix_array = get_column("periodic_matrix");
-    const auto &variables_array = get_column("variables");
+    const auto &variables_array = get_column("variable");
 
     const auto &main_values = extract_int_array(main_array);
     const auto &paired_values = extract_int_array(paired_array);
@@ -235,7 +236,7 @@ void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
 void ApecMPeriodicBoundaryFactory::initialize(EquationSystems *eq_sys)
 {
     libMesh::out << "Applying periodic boundaries..." << std::endl;
-   this->set_parent_object(eq_sys);
+    this->set_parent_object(eq_sys);
     this->populate_periodic_boundaries_from_map();
     this->apply_periodic_boundaries();
 }
@@ -298,18 +299,22 @@ void ApecMPeriodicBoundaryFactory::print_data_info() const
         libMesh::out << "    " << main_values[i] << " <-> " << paired_values[i];
         if (matrix_stride && matrix_values.size() >= (i + 1) * matrix_stride)
         {
-            libMesh::out << " translation=(";
+            libMesh::out << " matrix=[";
             for (std::size_t r = 0; r < rows; ++r)
             {
                 if (r)
                     libMesh::out << ", ";
-                const std::size_t idx = i * matrix_stride + r * cols + (cols ? cols - 1 : 0);
-                if (idx < matrix_values.size())
-                    libMesh::out << matrix_values[idx];
-                else
-                    libMesh::out << "?";
+                libMesh::out << "[";
+                for (std::size_t c = 0; c < cols; ++c)
+                {
+                    const std::size_t idx = i * matrix_stride + r * cols + c;
+                    if (c)
+                        libMesh::out << ", ";
+                    libMesh::out << (idx < matrix_values.size() ? matrix_values[idx] : '?');
+                }
+                libMesh::out << "]";
             }
-            libMesh::out << ")";
+            libMesh::out << "]";
         }
 
         if (variables_ptr && variable_stride)

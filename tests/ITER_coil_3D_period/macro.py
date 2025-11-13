@@ -13,7 +13,7 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_3D_period"
 
-filepath = os.path.join(r"D:\PlasmaArc\simulations", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
@@ -24,18 +24,18 @@ apec.read_excel("input_template.xlsx")
 apec.select("X_BOUND", 1)
 apec.select("AXIS_NODES", 1, mode="u")
 apec.select("INFINITY_BOUNDARY_INNER", 1, mode="u")
-apec.set_value_on_selection("periodic_boundary", 3)
+apec.set_value_on_selection("boundary_id_0", 3)
 
 apec.select("Z_BOUND", 1)
 apec.select("AXIS_NODES", 1, mode="u")
 apec.select("INFINITY_BOUNDARY_INNER", 1, mode="u")
-apec.set_value_on_selection("periodic_boundary", 2)
+apec.set_value_on_selection("boundary_id_0", 2)
 
 apec.select("ROD_2", 1)
-apec.set_value_on_selection("periodic_boundary", 4)
+apec.set_value_on_selection("boundary_id_1", 4)
 
 apec.select("ROD_1", 1)
-apec.set_value_on_selection("periodic_boundary", 5)
+apec.set_value_on_selection("boundary_id_1", 5)
 
 apec.select("AXIS_NODES", 1)
 apec.set_value_on_selection("A", 0, 0)
@@ -43,32 +43,36 @@ apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 2)
 
 # periodic matrix of a 90 degrees rotation around Y axis
-matrix_90deg = [[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1]]
+matrix_90deg = [[0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
 
 apec.periodic_boundaries.append(
     {
-        "main_boundary": 2,
-        "paired_boundary": 3,
+        "main_boundary": 3,
+        "paired_boundary": 2,
         "periodic_matrix": matrix_90deg,
-        "variables": "A",
+        "variable": "A",
     }
 )
+# apec.periodic_boundaries.append(
+#     {
+#         "main_boundary": 4,
+#         "paired_boundary": 5,
+#         "periodic_matrix": matrix_90deg,
+#         "variable": "A",
+#     }
+# )
 apec.periodic_boundaries.append(
     {
-        "main_boundary": 4,
-        "paired_boundary": 5,
+        "main_boundary": 5,
+        "paired_boundary": 4,
         "periodic_matrix": matrix_90deg,
-        "variables": "A",
+        "variable": "VOLT",
     }
 )
-apec.periodic_boundaries.append(
-    {
-        "main_boundary": 4,
-        "paired_boundary": 5,
-        "periodic_matrix": matrix_90deg,
-        "variables": "VOLT",
-    }
-)
+
+
+apec.write_model_data()
+
 # apec.select("ROD_1", 1)
 # apec.set_value_on_selection("VOLT", 0)
 # apec.select("ROD_2", 1)
@@ -124,6 +128,6 @@ for i in range(1, 3):
         js_array[l, 0] = js_x
         js_array[l, 2] = js_z
 
-    apec.write_load_step(os.path.join(apec.load_steps_folder, f"load_step_{i}.bin"))
+    apec.write_load_step(i)
 
 apec.save_mesh()

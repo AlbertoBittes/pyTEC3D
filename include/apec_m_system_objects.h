@@ -9,7 +9,10 @@
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/system_subset.h>
 #include <libmesh/numeric_vector.h>
+#include <libmesh/periodic_boundaries.h>
 #include <libmesh/sparse_matrix.h>
+#include <libmesh/dof_map.h>
+#include <libmesh/petsc_matrix.h>
 
 #include "fem_service_abstract.h"
 #include "element_types.h"
@@ -79,6 +82,7 @@ public:
         this->add_vector("old_node_dof_constraints");
         this->add_vector("ramped_node_dof_constraints");
         this->add_vector("solution_time_derivative", true, GHOSTED);
+        this->add_matrix("hash_table_matrix").use_hash_table(true);
         assembler = std::make_shared<AssemblerLinear>(static_cast<ApecMEquationSystems *>(&this->get_equation_systems()));
         this->attach_assemble_object(*assembler);
     }
@@ -116,6 +120,16 @@ public:
         else
         {
             libmesh_error_msg("ApecMLinearSystem: No PetscSolverConfiguration found in system context.");
+        }
+        if (this->get_dof_map().get_periodic_boundaries()->size() > 0)
+        {
+            auto mat1 = dynamic_cast<PetscMatrix<Number> *>(&this->get_system_matrix());
+            auto mat2 = dynamic_cast<PetscMatrix<Number> *>(&this->get_matrix("hash_table_matrix"));
+            mat1->swap(*mat2);
+            mat1->use_hash_table(true);
+            mat2->use_hash_table(false);
+            mat2->clear();
+            // this->get_system_matrix().
         }
     }
 

@@ -82,8 +82,8 @@
         <DataArray type="Float64" Name="Az" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
         </DataArray>
-        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAABoDQAAKQAAAA==eJztzqERAEAIBLHrnLZfMggqeIHJmthNplcheex2/UGSJMlfGzTTcxM=
+        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
+          AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
         </DataArray>
         <DataArray type="Float64" Name="EMF" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
@@ -98,7 +98,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -120,9 +120,6 @@
         <DataArray type="UInt8" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAACtAQAADgAAAA==eJxjYBgFQwYAAAGtAAE=
         </DataArray>
-        <DataArray type="UInt8" Name="periodic_boundary" format="binary" RangeMin="0" RangeMax="5">
-          AQAAAACAAACtAQAALQAAAA==eJxjYmJiYgECBqyAiTgAVsuMg2TFQeJSTy2SgQJduPSSCohxDwnuBAATQQD8
-        </DataArray>
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
@@ -131,15 +128,6 @@
         </DataArray>
         <DataArray type="Int32" Name="boundary_id_1" format="binary" RangeMin="0" RangeMax="5">
           AQAAAACAAAC0BgAAHgAAAA==eJxjYEAFLGh4FNAHsNJYfBSMglEwCoYDAADVNAAl
-        </DataArray>
-        <DataArray type="Int32" Name="boundary_id_2" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
-        </DataArray>
-        <DataArray type="Int32" Name="boundary_id_3" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
-        </DataArray>
-        <DataArray type="Int32" Name="boundary_id_4" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
@@ -165,7 +153,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>

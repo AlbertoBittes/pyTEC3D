@@ -87,7 +87,7 @@ void ApecMEquationSystems::post_initialize_systems()
     }
 }
 
-void ApecMEquationSystems::initialize_physics(const std::shared_ptr<FEMDataRepository> &model_data)
+void ApecMEquationSystems::initialize_systems(const std::shared_ptr<FEMDataRepository> &model_data)
 {
     if (!model_data)
     {
@@ -100,6 +100,10 @@ void ApecMEquationSystems::initialize_physics(const std::shared_ptr<FEMDataRepos
 
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
     initialize_system_contexts();
+}
+
+void ApecMEquationSystems::initialize_physics()
+{
     this->init();
     post_initialize_systems();
     this->print_info();

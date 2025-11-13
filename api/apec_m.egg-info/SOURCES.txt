@@ -7,3 +7,4 @@ api/apec_m.egg-info/dependency_links.txt
 api/apec_m.egg-info/entry_points.txt
 api/apec_m.egg-info/requires.txt
 api/apec_m.egg-info/top_level.txt
+tests/test_apec_m.py

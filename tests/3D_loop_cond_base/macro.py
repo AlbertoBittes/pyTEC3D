@@ -11,7 +11,7 @@ apec = APEC_M()
 # )
 filename = "3D_loop_cond_base"
 
-filepath = os.path.join(r"/home/bitteal/PlasmaArc/tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 

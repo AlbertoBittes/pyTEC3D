@@ -1,0 +1,4 @@
+-read_mesh ITER_coil_3D_period.vtu
+-read_model_data model_data.bin
+-mode analysis
+-solve_transient
