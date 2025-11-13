@@ -706,6 +706,72 @@ analysis_cases = [
             },
         ],
     },
+    {
+        # This test is working very well
+        # Basic 3D, 1st order test with all element cell shapes (tets, hexas, pyramids, wedges)
+        # No inf elems, flux normal or flux parallel BCs
+        # basic material properties, mu = 1, sigma =
+        # Tested with theta = 1
+        "analysis_name": "ITER_coil_3D_period",
+        "nproc": 4,
+        "checks": [
+            {
+                "timestep": 3,
+                "array": "Jt",
+                "component": 2,
+                "libmesh_id": 112,
+                # "expected":  -0.35354E+006,
+                "expected": -44.577,
+                "tol": 1e-4,
+                "is_point": False,
+            },
+            {
+                "timestep": 4,
+                "array": "A",
+                "component": 2,
+                "libmesh_id": 204,
+                "expected": -0.34019E-008,
+                "tol": 1e-3,
+                "is_point": True,
+            },
+            {
+                "timestep": 2,
+                "array": "A",
+                "component": 0,
+                "libmesh_id": 281,
+                "expected": 0.30778E-008,
+                "tol": 2e-4,
+                "is_point": True,
+            },
+            {
+                "timestep": 2,
+                "array": "VOLT",
+                "component": 0,
+                "libmesh_id": 101,
+                "expected": -0.48525E-022,
+                "tol": 1e-4,
+                "is_point": True,
+            },
+            {
+                "timestep": 2,
+                "array": "Jt",
+                "component": 2,
+                "libmesh_id": 119,
+                "expected": 1.2448,
+                "tol": 2e-4,
+                "is_point": False,
+            },
+            {
+                "timestep": 2,
+                "array": "Be",
+                "component": 1,
+                "libmesh_id": 92,
+                "expected": -0.13869E-007,
+                "tol": 1e-3,
+                "is_point": False,
+            },        
+        ],
+    },
 ]
 
 
