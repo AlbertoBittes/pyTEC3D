@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apec_m"
+version = "0.1.0"
+description = "Tools for preparing APEC/PlasmaArc simulations"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+dependencies = [
+    "pandas",
+    "vtk",
+    "numpy",
+    "ansys-mapdl-reader",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+apec = "apec_m:main"
+convert_mesh = "convert_mesh:main"
+
+[tool.setuptools]
+package-dir = {"" = "api"}
+py-modules = [
+    "ansys_helper",
+    "apec_m",
+    "apec_m_paraview_plugin",
+    "apec_m_paraview_start",
+    "binary_helper",
+    "cli_object",
+    "constants",
+    "convert_mesh",
+    "coupling_helper",
+    "dof_coupling_helper",
+    "excel_io_helper",
+    "selector",
+    "tree_gauge_helper",
+    "vtk_grid_helper",
+    "vtk_tables_helper",
+]
+include-package-data = true
+
+[tool.setuptools.cmdclass]
+build_py = "build_helpers:BuildPyWithVendoredOpenpyxl"
