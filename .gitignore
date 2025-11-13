@@ -63,6 +63,8 @@ simulations
 utils/__pycache__
 debug
 api/__pycache__/
+tests/__pycache__/
+.pytest_cache/
 
 api/local_packages/*
 bin/plasma_arc

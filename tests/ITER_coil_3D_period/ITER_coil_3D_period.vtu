@@ -82,8 +82,8 @@
         <DataArray type="Float64" Name="Az" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
         </DataArray>
-        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
-          AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
+        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAABoDQAAKgAAAA==eJztzqENADAMBLHfPGsXVgXZoEqIj5he8joVkp/ttj9IkiQ57QXudHMT
         </DataArray>
         <DataArray type="Float64" Name="EMF" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK

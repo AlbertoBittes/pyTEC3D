@@ -73,8 +73,8 @@ apec.periodic_boundaries.append(
 
 apec.write_model_data()
 
-# apec.select("ID", 107)
-# apec.set_value_on_selection("VOLT", 0)
+apec.select("ID", 107)
+apec.set_value_on_selection("VOLT", 0)
 # apec.select("ROD_2", 1)
 # apec.set_value_on_selection("VOLT", 0)
 
