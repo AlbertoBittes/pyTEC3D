@@ -15,8 +15,8 @@
 #include "fem_data_repository.h"
 
 std::shared_ptr<ApecMMesh> ApecMMesh::read_mesh(libMesh::Parallel::Communicator &comm,
-                                           FEMDataRepository &mesh_repository,
-                                           const std::string &mesh_filepath)
+                                                FEMDataRepository &mesh_repository,
+                                                const std::string &mesh_filepath)
 {
     libMesh::out << "Reading mesh and importing field data..." << std::endl;
 
@@ -92,7 +92,7 @@ void ApecMMesh::generate_infinite_elements(const std::shared_ptr<ElementTypesFac
     this->apply_boundary_info();
 
     BoundaryInfo &boundary_info = this->get_boundary_info();
-    boundary_info.clear();
+    // boundary_info.clear();
 
     const std::set<libMesh::boundary_id_type> &side_boundary_ids = boundary_info.get_side_boundary_ids();
     if (side_boundary_ids.empty())

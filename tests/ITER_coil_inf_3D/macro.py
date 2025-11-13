@@ -13,13 +13,15 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_inf_3D"
 
-filepath = os.path.join(r"D:\PlasmaArc\simulations", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
 VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
+
+apec.write_model_data()
 
 apec.select("X_BOUND", 1)
 apec.set_value_on_selection("A", 0, 1)
@@ -39,8 +41,10 @@ apec.set_value_on_selection("VOLT", 0)
 apec.select("ROD_2", 1)
 apec.set_value_on_selection("VOLT", 0)
 
+# apec.remove_array("boundary_id_0")
+# apec.add_boundary_array()
 apec.select("INFINITY_BOUNDARY_INNER", 1)
-apec.set_value_on_selection("infinite_boundary", 111)
+apec.set_value_on_selection("boundary_id_0", 111)
 
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.75
@@ -111,6 +115,6 @@ for i in range(1, 10):
         js_array[l, 0] = js_x
         js_array[l, 2] = js_z
 
-    apec.write_load_step(os.path.join(apec.load_steps_folder, f"load_step_{i}.bin"))
+    apec.write_load_step(i)
 
 apec.save_mesh()

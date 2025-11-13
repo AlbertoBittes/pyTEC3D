@@ -86,7 +86,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
@@ -111,6 +111,15 @@
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
+        <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="111">
+          AQAAAACAAAC0BgAAKwAAAA==eJxjYMAP8qGYGDWk4FEwCoYrGK5pfqDyODnly2DC1PIvtcBQT58A3Y4oVA==
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_1" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
+        </DataArray>
+        <DataArray type="Int32" Name="boundary_id_2" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
+        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="686">
@@ -129,13 +138,13 @@
           AQAAAACAAAAAFQAAIgQAAA==eJw118MWGAYARcHYtm3btm3btm3btm3btpM2bGM76aKTt5lPeOcGCPD/AjIQAzMIgzIYgzMEQzIUQzMMwzIcwzMCIzISIzMKozIaozMGYzIWYzMO4zIe4zMBEzIREzMJkzIZkzMFUzIVUzMN0zId0zMDMzITMzMLszIbszMHczIXczMP8zIf87MAC7IQC7MIi7IYi7MES7IUS7MMy7Icy7MCK7ISK7MKq7Iaq7MGa7IWa7MO67Ie67MBG7IRG7MJm7IZm7MFW7IVW7MN27Id27Mf+3MAB3IQB3MIh3IYh3MER3IUR3MMx3Icx3MCJ3ISJ3MKp3Iap3MGZ3IWZ3MO53Ie53MBF3IRF3MJl3IZl3MFV3IVV3MN13Id13MDN3ITN3MLt3Ibt3MHd3IXd3MP93If9/MAD/IQD/MIj/IYj/MET/IUT/MMz/Icz/MCL/ISL/MKr/Iar/MGb/IWb/MO7/Ie7/MB/+LffMhHfMwnfMpn/If/8jlf8CVf8TXf8C3f8T0/8CM/8TO/8Cu/8Tt/8Cd/8Tf/HHFABmJgBmFQBmNwhmBIhmJohmFYhmN4RmBERmJkRmFURmN0xmBMxmJsxmFcxmN8JmBCJmJiJmFSJmNypmBKpmJqpmFapmN6ZmBGZmJmZmFWZmN25mBO5mJu5mFe5mN+FmBBFmJhFmFRFmNxlmBJlmJplmFZlmN5VmBFVmJlVmFVVmN11mBN1mJt1mFd1mN9NmBDNmJjNmFTNmNztmBLtmJrtmFbtmN7dmBHdmJndmFXdmN39mBP9mJv9mFf9mN/DuBADuJgDuFQDuNwjuBIjuJojuFYjuN4TuBETuJkTuFUTuN0zuBMzuJszuFczuN8LuBCLuJiLuFSLuNyruBKruJqruFaruN6buBGbuJmbuFWbuN27uBO7uJu7uFe7uN+HuBBHuJhHuFRHuNxnuBJnuJpnuFZnuN5XuBFXuJlXuFVXuN13uBN3uJt3uFd3uN9PuBf/JsP+YiP+YRP+Yz/8F8+5wu+5Cu+5hu+5Tu+5wd+5Cd+5hd+5Td+5w/+5C/+5p8AD8hADMwgDMpgDM4QDMlQDM0wDMtwDM8IjMhIjMwojMpojM4YjMlYjM04jMt4jM8ETMhETMwkTMpkTM4UTMlUTM00TMt0TM8MzMhMzMwszMpszM4czMlczM08zMt8zM8CLMhCLMwiLMpiLM4SLMlSLM0yLMtyLM8KrMhKrMwqrMpqrM4arMlarM06rMt6rM8GbMhGbMwmbMpmbM4WbMlWbM02bMt2bM8O7MhO7Mwu7Mpu7M4e7Mle7M0+7Mt+7M8BHMhBHMwhHMphHM4RHMlRHM0xHMtxHM8JnMhJnMwpnMppnM4ZnMlZnM05nMt5nM8FXMhFXMwlXMplXM4VXMlVXM01XMv/ANHoNbw=
         </DataArray>
         <DataArray type="Float64" Name="Js" NumberOfComponents="3" format="binary" RangeMin="3.1622776601683796e+149" RangeMax="NaN">
-          AQAAAACAAAAAPwAAoAAAAA==eJzt1rEKQWEUB3BluTuLongTnuGuXkEewSB5AK/BExj4VoMSC8NdZGZQ7qIUnztYLMry+5Zf5985X53tZJPxqH++tEvPlw/y9HjqVpvhXZMkSZK/dL++pb1t0nnXybR+mN0aYbhctcqLSpFf77t8M6+FaJHHvhDnOh//hnjPFnn2uneX/96bJEmSJEmSJEmSJEmSJEmSJEmS5HcfZfyvKg==
+          AQAAAACAAAAAPwAAqgAAAA==eJzt1q/OwWEUB3CbovsVwUZwGe9G4QL8SYKovOMOJF21KZrNFKIZzyWY5ALEd69GtPnxC4piUz5P+ex8d86znXampcmw938up+7vOqh156d2VAjPmiRJkvykP9Ff/feQqTzr5XhzXFzyoVftFNPbbJI3R63rfp0Ljdgk78d9YRXPVV7+DY97Nsln8b27+/beJEmSJEmSJEmSJEmSJEmSJEmSJN97AwXkpwg=
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
