@@ -94,10 +94,12 @@ void ElementBuilder::set_element_data(Elem *elem)
     auto element_types = this->context<ElementTypesFactory>();
 
     const auto &mesh = this->get_parent_object()->get_mesh();
-    elem_data.element_type = element_types->get_element_type(elem->get_extra_integer(0));
-    elem_data.material_num = elem->get_extra_integer(1);
-    elem_data.real_constant_num = elem->get_extra_integer(2);
-
+    elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
+    if (!elem->infinite())
+    {
+        elem_data.material_num = elem->get_extra_integer(1);
+        elem_data.real_constant_num = elem->get_extra_integer(2);
+    }
     elem_data.elem = elem;
 }
 
