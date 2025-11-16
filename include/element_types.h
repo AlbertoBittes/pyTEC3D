@@ -87,7 +87,7 @@ public:
 
     inline VariableInformation &get_variable_information() { return variable_info; }
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() = 0;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
@@ -148,7 +148,7 @@ public:
     static void add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                        const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
 class SOLID236Type : public AV3DElementType
@@ -170,7 +170,7 @@ public:
     static void add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                         const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
 class PLANE233Type : public AV2DElementType
@@ -192,7 +192,7 @@ public:
     static void add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                         const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
 class INFIN110Type : public PLANE233Type
@@ -206,7 +206,7 @@ class INFIN111Type : public SOLID97Type
 public:
     INFIN111Type(const std::vector<unsigned int> &keyopts);
 
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map() override;
+    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
 class INFIN112Type : public SOLID236Type

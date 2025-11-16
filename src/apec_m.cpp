@@ -363,7 +363,7 @@ bool APEC_M::generate_periodic_boundaries()
 
 std::size_t APEC_M::load_step_file_count() const
 {
-    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
     if (!analysis)
         return 0;
     return analysis->load_step_file_count();
@@ -371,7 +371,7 @@ std::size_t APEC_M::load_step_file_count() const
 
 std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
 {
-    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
     if (!analysis)
         return {};
     return analysis->list_load_step_files();
@@ -379,7 +379,7 @@ std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
 
 bool APEC_M::solve_load_step(const std::string &filename)
 {
-    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
     if (!analysis)
     {
         libMesh::out << "No load step analysis available for the active mesh." << std::endl;
@@ -397,7 +397,7 @@ bool APEC_M::solve_load_step(const std::string &filename)
 
 bool APEC_M::solve_transient_load_steps(const std::string &base_name)
 {
-    auto analysis = std::dynamic_pointer_cast<LoadStepAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
     if (!analysis)
     {
         libMesh::out << "No load step analysis available for the active mesh." << std::endl;
@@ -555,7 +555,7 @@ bool APEC_M::enter_analysis_mode()
         auto analysis = repository->get_object<AnalysisBase>();
         if (!analysis)
         {
-            auto legacy_load_step = repository->get_object<LoadStepAnalysis>();
+            auto legacy_load_step = repository->get_object<TransientAnalysis>();
             if (legacy_load_step)
             {
                 analysis = legacy_load_step;

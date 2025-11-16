@@ -1,10 +1,12 @@
+{% set name = "apec_m" %}
+{% set version = "0.1.0" %}
+
 package:
-  name: apec_m
-  version: "0.1.0"
+  name: {{ name }}
+  version: {{ version }}
 
 source:
-  git_url: https://github.com/yourusername/apec_m.git
-  git_tag: main  # or your desired branch/tag
+  path: ../..
 
 build:
   number: 0
@@ -12,25 +14,32 @@ build:
 
 requirements:
   build:
+    - {{ compiler('c') }}
     - {{ compiler('cxx') }}
+    - {{ compiler('fortran') }}
+    - cmake >=3.23
     - make
-    - cmake
+    - ninja
     - pkg-config
     - autoconf
     - automake
     - libtool
     - git
-    - mpi
+    - openmpi
   host:
-    - vtk
-    - petsc
-    - mpi
+    - python >=3.9
+    - pip
+    - setuptools
+    - wheel
+    - git
+    - petsc >=3.19
+    - vtk >=9.1
   run:
-    - vtk
-    - petsc
-    - mpi
+    - python >=3.9
+    - petsc >=3.19
+    - vtk >=9.1
 
 about:
-  home: https://github.com/yourusername/apec_m
-  summary: "APEC_M: Your program description here."
-  license: Your-License-Here
+  home: https://github.com/Plasma-Arc-Project/apec_m
+  summary: "Tools for preparing and running libMesh/PETSc based PlasmaArc simulations."
+  license: MIT

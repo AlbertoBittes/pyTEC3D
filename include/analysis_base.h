@@ -27,7 +27,7 @@ public:
     {
         Static,
         APECM,
-        LoadStep,
+        Transient,
         DOFInterpolation
     };
 

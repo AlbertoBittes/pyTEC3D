@@ -58,8 +58,6 @@ void ElementBuilder::build_infin110()
 
     fe->reinit(elem_data.elem);
 
-    this->prepare_element_matrix_building();
-
     // Get the scalar shape functions and vector shape functions
     //   const unsigned int n_sf =
     // FEInterface::n_dofs(cfe->get_fe_type(), elem);

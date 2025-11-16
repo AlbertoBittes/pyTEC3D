@@ -1,58 +1,88 @@
-cmake_minimum_required(VERSION 3.10)
-project(ApecM VERSION 1.0)
+cmake_minimum_required(VERSION 3.16)
+project(ApecM VERSION 1.0 LANGUAGES CXX)
 
-# Set the C++ standard and compiler flags
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pthread -g -fopenmp")
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Set the MPI C++ compiler
-set(CMAKE_CXX_COMPILER mpicxx)
-
-# Include directories
-# include_directories(${LIBMESH_DIR}/include)
-# include_directories(${PETSC_DIR}/include)
-# include_directories(/usr/include/vtk-9.1)
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/include/dependencies)
-
-# Source files
-file(GLOB SOURCES "*.cpp")
-
-# Library directories
-# link_directories(${LIBMESH_DIR}/lib)
-link_directories(/usr/lib/x86_64-linux-gnu)
-# link_directories(${CMAKE_SOURCE_DIR}/lib)
-
-# Libraries to link against
-set(LIBS
-    mesh_dbg
-    timpi_dbg
-    pthread
-    gomp
-    vtkCommonCore-9.1
-    vtkCommonDataModel-9.1
-    vtkFiltersCore-9.1
-    vtkIOXML-9.1
-    vtkCommonExecutionModel-9.1
+find_package(Threads REQUIRED)
+find_package(OpenMP REQUIRED COMPONENTS CXX)
+find_package(MPI REQUIRED)
+find_package(PETSc REQUIRED)
+find_package(VTK REQUIRED
+  COMPONENTS
+    CommonCore
+    CommonDataModel
+    CommonExecutionModel
+    FiltersCore
+    IOXML
+    IOParallelXML
+    ParallelMPI
 )
 
-# Add executable
+set(LIBMESH_DIR "${LIBMESH_DIR}" CACHE PATH "Path to the libMesh installation.")
+if(NOT LIBMESH_DIR AND DEFINED ENV{LIBMESH_DIR})
+  set(LIBMESH_DIR "$ENV{LIBMESH_DIR}")
+endif()
+if(NOT LIBMESH_DIR)
+  message(FATAL_ERROR "LIBMESH_DIR must be provided (e.g., -DLIBMESH_DIR=/path/to/libmesh).")
+endif()
+
+find_library(LIBMESH_LIB
+  NAMES mesh_opt mesh_dbg
+  HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
+  REQUIRED
+)
+find_library(TIMPI_LIB
+  NAMES timpi_opt timpi_dbg
+  HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
+  REQUIRED
+)
+
+file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+
 add_executable(apec_m ${SOURCES})
-
-# Set the output directory for the executable
-set_target_properties(apec_m PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../bin)
-
-# Link libraries
-target_link_libraries(apec_m ${LIBS})
-
-# Set RPATH
 set_target_properties(apec_m PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN/../lib"
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../bin"
+  BUILD_WITH_INSTALL_RPATH TRUE
+  INSTALL_RPATH "$ORIGIN/../lib"
 )
 
-# Add a custom target for cleaning up build files
-add_custom_target(clean
-    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/../bin/apec_m
+target_include_directories(apec_m
+  PRIVATE
+    "${LIBMESH_DIR}/include"
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/dependencies
+    ${PETSC_INCLUDES}
+)
+
+target_compile_definitions(apec_m PRIVATE ${PETSC_DEFINITIONS})
+
+target_link_libraries(apec_m
+  PRIVATE
+    ${LIBMESH_LIB}
+    ${TIMPI_LIB}
+    ${PETSC_LIBRARIES}
+    MPI::MPI_CXX
+    Threads::Threads
+    OpenMP::OpenMP_CXX
+    VTK::CommonCore
+    VTK::CommonDataModel
+    VTK::CommonExecutionModel
+    VTK::FiltersCore
+    VTK::IOXML
+    VTK::IOParallelXML
+    VTK::ParallelMPI
+)
+
+vtk_module_autoinit(
+  TARGETS apec_m
+  MODULES
+    VTK::CommonCore
+    VTK::CommonDataModel
+    VTK::CommonExecutionModel
+    VTK::FiltersCore
+    VTK::IOXML
+    VTK::IOParallelXML
+    VTK::ParallelMPI
 )

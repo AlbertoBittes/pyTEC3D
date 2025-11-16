@@ -63,7 +63,8 @@ public:
     enum MatricesSet
     {
         DOF_SOLUTION_MATRICES,
-        NODAL_ELEMENT_SOLUTION_MATRICES,
+        NODAL_SOLUTION_MATRICES,
+        ELEMENT_SOLUTION_MATRICES,
         NUM_MATRICES_SETS
     };
 
@@ -73,54 +74,26 @@ public:
         NUM_VECTORS_SETS
     };
 
-    enum SOLID97DOFMatrices
+    enum DOFMatrices
     {
-        Ke_SOLID97,
-        Ce_SOLID97,
-        NUM_SOLID97_DOF_MATRICES,
+        Ke,
+        Ce,
+        NUM_DOF_MATRICES,
     };
 
-    enum SOLID236DOFMatrices
+    enum NodalSolutionMatrices
     {
-        Ke_SOLID236,
-        Ce_SOLID236,
-        NUM_SOLID236_DOF_MATRICES
+        Me,
+        AAe,
+        NUM_NODAL_SOLUTION_MATRICES
     };
 
-    enum PLANE13DOFMatrices
+    enum ElementSolutionMatrices
     {
-        Ke_PLANE13,
-        Ce_PLANE13,
-        NUM_PLANE13_DOF_MATRICES
-    };
-
-    enum SOLID97SolutionMatrices
-    {
-        Me_SOLID97,
-        AAe_SOLID97,
-        JAe_SOLID97,
-        JVe_SOLID97,
-        BAe_SOLID97,
-        NUM_SOLID97_SOLUTION_MATRICES
-    };
-
-    enum SOLID236SolutionMatrices
-    {
-        Me_SOLID236,
-        AAe_SOLID236,
-        JAe_SOLID236,
-        JVe_SOLID236,
-        BAe_SOLID236,
-        NUM_SOLID236_SOLUTION_MATRICES
-    };
-
-    enum PLANE13SolutionMatrices
-    {
-        Me_PLANE13,
-        AAe_PLANE13,
-        JAe_PLANE13,
-        BAe_PLANE13,
-        NUM_PLANE13_SOLUTION_MATRICES
+        JAe,
+        JVe,
+        BAe,
+        NUM_ELEMENT_SOLUTION_MATRICES
     };
 
     using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
@@ -168,6 +141,9 @@ public:
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
     void fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index);
 
+    bool get_compute_nodal_solution_vectors() const { return compute_nodal_solution_vectors; }
+    void set_compute_nodal_solution_vectors(bool compute) { compute_nodal_solution_vectors = compute; }
+
 private:
     friend class BinaryReader;
     friend class AssemblerLinear;
@@ -182,9 +158,7 @@ private:
 
     ElemData elem_data; // Element data structure
     SolutionVectorSupport solution_vector_support;
-
-    // std::shared_ptr<ElementLoadsObject> element_loads_object = nullptr; // Pointer to ElementLoadsObject
-    std::vector<dof_id_type> dof_indices;
+    bool compute_nodal_solution_vectors = true;
 };
 
 #endif // ELEMENT_BUILDER_H

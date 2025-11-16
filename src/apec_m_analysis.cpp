@@ -2,7 +2,7 @@
 
 #include <libmesh/libmesh.h>
 
-#include "load_step_analysis.h"
+#include "transient_analysis.h"
 
 StaticAnalysis::StaticAnalysis(ApecMEquationSystems *eq_systems)
     : AnalysisBase(Type::Static, eq_systems, "StaticAnalysis")
@@ -48,7 +48,7 @@ AnalysisBase::Type AnalysisBase::determine_analysis_type(const std::shared_ptr<F
     if (model_repo && model_repo->get_object<ApecMSettingsObject>())
         return AnalysisBase::Type::APECM;
 
-    return AnalysisBase::Type::LoadStep;
+    return AnalysisBase::Type::Transient;
 }
 
 std::shared_ptr<AnalysisBase> AnalysisBase::build(ApecMEquationSystems *eq_systems,
@@ -62,8 +62,8 @@ std::shared_ptr<AnalysisBase> AnalysisBase::build(ApecMEquationSystems *eq_syste
         return std::make_shared<StaticAnalysis>(eq_systems);
     case AnalysisBase::Type::APECM:
         return std::make_shared<APECMAnalysis>(eq_systems);
-    case AnalysisBase::Type::LoadStep:
-        return std::make_shared<LoadStepAnalysis>(eq_systems);
+    case AnalysisBase::Type::Transient:
+        return std::make_shared<TransientAnalysis>(eq_systems);
     case AnalysisBase::Type::DOFInterpolation:
         return std::make_shared<DOFInterpolationAnalysis>(eq_systems);
     }

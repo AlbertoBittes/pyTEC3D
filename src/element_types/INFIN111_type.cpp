@@ -26,7 +26,7 @@ INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
 {
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> INFIN111Type::get_solution_matrix_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> INFIN111Type::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[2]->n_shape_functions();

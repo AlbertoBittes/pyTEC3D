@@ -74,13 +74,13 @@ void ElementBuilder::build_solid97()
     materials_object->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object->get_nu_matrix();
 
-    auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ke_SOLID97];
-    auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][SOLID97DOFMatrices::Ce_SOLID97];
-    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::Me_SOLID97];
-    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
-    auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
-    auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
-    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
+    auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
+    auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
+    auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
+    auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
+    auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
+    auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JVe];
+    auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     for (unsigned int qp = 0; qp < nq; qp++)
@@ -404,20 +404,9 @@ void ElementBuilder::build_solid97_rhs()
 void ElementBuilder::build_solid97_solution_vectors()
 {
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
-    DenseVector<Number> Bn;
-    DenseVector<Number> Hn;
-    DenseVector<Number> Be(3);
-    DenseVector<Number> He(3);
-    DenseVector<Number> Je(3);
-
-    auto &Me = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::Me_SOLID97];
-    auto &AAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::AAe_SOLID97];
-    auto &BAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::BAe_SOLID97];
-
     std::vector<dof_id_type> dof_indices;
 
     auto materials_object = this->context<MaterialsObject>();
-
     materials_object->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object->get_nu_matrix();
 
@@ -427,9 +416,6 @@ void ElementBuilder::build_solid97_solution_vectors()
 
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
-    unsigned int n_qp = BAe.m() / 3;
-
     // Get DOF Solutions in the nodes
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
@@ -437,16 +423,35 @@ void ElementBuilder::build_solid97_solution_vectors()
         An.append(solution_vector_support.sol_vectors[k]);
     }
 
-    // Compute B in nodes
-    DenseVector<Number> Bn_x;
-    AAe.vector_mult(Bn_x, An);
-    Me.cholesky_solve(Bn_x, Bn);
+    // Nodal solution
+    DenseVector<Number> Bn;
+    DenseVector<Number> Hn;
+    if (this->compute_nodal_solution_vectors)
+    {
+        unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    // Compute H in nodes
-    Hn.resize(Bn.size());
-    for (unsigned int k = 0; k < 3; k++)
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * nu_matrix[k];
+        auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
+        auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
+
+        // Compute B in nodes
+        DenseVector<Number> Bn_x;
+        AAe.vector_mult(Bn_x, An);
+        Me.cholesky_solve(Bn_x, Bn);
+
+        // Compute H in nodes
+        Hn.resize(Bn.size());
+        for (unsigned int k = 0; k < 3; k++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * nu_matrix[k];
+    }
+
+    // Elemental solution
+    DenseVector<Number> Be(3);
+    DenseVector<Number> He(3);
+    DenseVector<Number> Je(3);
+
+    auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
+    unsigned int n_qp = BAe.m() / 3;
 
     // Compute B in elements
     DenseVector<Number> Bq;
@@ -489,8 +494,8 @@ void ElementBuilder::build_solid97_solution_vectors()
     {
         if (this->context<TimeStep>()->get_transient_effect())
         {
-            auto &JAe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JAe_SOLID97];
-            auto &JVe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][SOLID97SolutionMatrices::JVe_SOLID97];
+            auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
+            auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JVe];
 
             materials_object->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object->get_sigma_matrix();
@@ -530,18 +535,21 @@ void ElementBuilder::build_solid97_solution_vectors()
     default:
         libmesh_error_msg("Physical region not implemented");
     }
-    // Set B and H in nodes
-    DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
-    dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
-    Bn.append(Hn);
-    for (unsigned int i = 0; i < dof_indices.size(); i++)
-    {
-        dof_id_type dof_index = dof_indices[i];
-        if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
-            (dof_index < nodal_solution_system->solution->last_local_index()))
-            nodal_solution_system->solution->set(dof_index, Bn(i));
-    }
 
+    if (this->compute_nodal_solution_vectors)
+    {
+        // Set B and H in nodes
+        DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
+        dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
+        Bn.append(Hn);
+        for (unsigned int i = 0; i < dof_indices.size(); i++)
+        {
+            dof_id_type dof_index = dof_indices[i];
+            if ((nodal_solution_system->solution->first_local_index() <= dof_index) &&
+                (dof_index < nodal_solution_system->solution->last_local_index()))
+                nodal_solution_system->solution->set(dof_index, Bn(i));
+        }
+    }
     DofMap *dof_map_element_solution = &element_solution_system->get_dof_map();
     dof_map_element_solution->dof_indices(elem_data.elem, dof_indices);
     Je.append(Be);

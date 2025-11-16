@@ -45,13 +45,9 @@ public:
 
     void print_solve_msg() const
     {
-        libMesh::out << "Substep: " << get_index() + 1 << std::endl
-                     << "Time: " << get_time() << std::endl
-                     << "dt: " << get_dt() << std::endl
-                     << "Write Results: " << get_write_results() << std::endl
-                     << "Transient Effect: " << get_transient_effect() << std::endl
-                     << "Ramped Load: " << get_ramped_load() << std::endl
-                     << "Theta: " << get_theta() << std::endl;
+        libMesh::out << "  Solving substep " << index
+                     << " at time " << time
+                     << " (dt=" << dt << ")" << std::endl;
     }
 
 private:
@@ -80,17 +76,8 @@ public:
     TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
         : BinaryDataFEDataObject(file)
     {
-        if (previous_time_step)
-            this->populate_time_step(previous_time_step);
-        else
-            this->populate_time_step(nullptr);
+        this->populate_time_step(nullptr);
     }
-    // Constructor with binary file stream
-    // TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
-    //     : BinaryDataFEDataObject(file)
-    // {
-    //     this->populate_time_step(previous_time_step);
-    // }
 
     int get_step() const { return step; }
     Real get_time() const { return time; }
@@ -125,12 +112,6 @@ public:
 
     void populate_time_step(const std::shared_ptr<TimeStep> &previous_time_step);
 
-    void print_solve_msg() const
-    {
-        libMesh::out << "Solving time step " << get_step() << std::endl;
-        libMesh::out << "Time increment at the end of time step: " << get_delta_t() << std::endl;
-        libMesh::out << "Number of time substeps: " << get_n_substeps() << std::endl;
-    }
     class Iterator;
     Iterator begin();
     Iterator end();
@@ -164,20 +145,28 @@ public:
     bool operator!=(const Iterator &other) const { return substep_index != other.substep_index; }
     const Substep &operator*()
     {
+        auto &subst = time_step->get_substeps()[substep_index];
         if (first)
         {
             // Update active_substep and previous_substep
             time_step->set_previous_substep(time_step->get_active_substep());
-            time_step->set_active_substep(&time_step->get_substeps()[substep_index]);
+            time_step->set_active_substep(&subst);
 
             // This should go after a solve
-            // time_stepper.get_system().rhs->zero();
+            subst.print_solve_msg();
             first = false;
         }
-        return time_step->get_substeps()[substep_index];
+        return subst;
     }
     Iterator &operator++()
     {
+        if (substep_index < time_step->get_substeps().size())
+        {
+            const auto &completed = time_step->get_substeps()[substep_index];
+            libMesh::out << "Time substep " << completed.get_index() + 1
+                         << " of " << time_step->get_n_substeps()
+                         << " completed." << std::endl;
+        }
         first = true;
         substep_index++;
         return *this;

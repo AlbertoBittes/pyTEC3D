@@ -82,24 +82,33 @@ void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe
     });
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE233Type::get_solution_matrix_idx_size_map()
+std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE233Type::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
+
+    unsigned int num_matrices = nodal_solution ? ElementBuilder::NUM_NODAL_SOLUTION_MATRICES
+                                               : ElementBuilder::NUM_ELEMENT_SOLUTION_MATRICES;
+
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(5, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(num_matrices, std::vector<unsigned int>(2, 0));
 
-    // Me
-    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::Me_PLANE13] = {2 * n_sf, 2 * n_sf};
-    // AAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::AAe_PLANE13] = {2 * n_sf, n_sf};
-    // JAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::JAe_PLANE13] = {n_qp, n_sf};
-    // JHe
-    // (*solution_matrix_idx_size_map)[3] = {n_qp, 2 * n_sf};
-    // BAe
-    (*solution_matrix_idx_size_map)[ElementBuilder::PLANE13SolutionMatrices::BAe_PLANE13] = {2 * n_qp, n_sf};
-
+    if (nodal_solution)
+    {
+        // Me
+        (*solution_matrix_idx_size_map)[ElementBuilder::NodalSolutionMatrices::Me] = {2 * n_sf, 2 * n_sf};
+        // AAe
+        (*solution_matrix_idx_size_map)[ElementBuilder::NodalSolutionMatrices::AAe] = {2 * n_sf, n_sf};
+    }
+    else
+    {
+        // JAe
+        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::JAe] = {n_qp, n_sf};
+        // JHe
+        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::JVe] = {1, 1};
+        // BAe
+        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::BAe] = {2 * n_qp, n_sf};
+    }
     return solution_matrix_idx_size_map;
 }

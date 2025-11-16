@@ -13,7 +13,7 @@
 #include "apec_m_eq_system_object.h"
 #include "apec_m_mesh.h"
 #include "fem_data_repository.h"
-#include "load_step_analysis.h"
+#include "transient_analysis.h"
 #include "session.h"
 
 class CommandLineInterface

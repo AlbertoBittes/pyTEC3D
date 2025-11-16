@@ -66,7 +66,7 @@ void ElementBuilder::prepare_element_matrix_building()
     // reinit to be done inside each element
     // as well as the reception of shape functions
     // this->elem_data.element_type->reinit_fe(this->elem);
-    unsigned int n_dofs = dof_indices.size();
+    unsigned int n_dofs = elem_data.elem->n_dofs(0);
 
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs},
@@ -79,7 +79,8 @@ void ElementBuilder::prepare_element_matrix_building()
     // Usage:
     this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
     this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
-    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map().get(), MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES);
+    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map(true).get(), MatricesSet::NODAL_SOLUTION_MATRICES);
+    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map(false).get(), MatricesSet::ELEMENT_SOLUTION_MATRICES);
     // this->build_vectors(vector_idx_size_map, 1);
 }
 
@@ -93,7 +94,6 @@ void ElementBuilder::set_element_data(Elem *elem)
 {
     auto element_types = this->context<ElementTypesFactory>();
 
-    const auto &mesh = this->get_parent_object()->get_mesh();
     elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
     if (!elem->infinite())
     {

@@ -98,8 +98,8 @@ void AssemblerLinear::assemble()
 
     BinaryReader reader;
     auto streams = reader.open_file_streams(emat_folderpath,
-                                            {"mtrx_" + rank_str + ".temp",
-                                             "rhs_" + rank_str + ".temp"},
+                                            {"mtrx_" + rank_str + ".emat",
+                                             "rhs_" + rank_str + ".emat"},
                                             FileMode::Read);
 
     auto *mtrx_input_file = dynamic_cast<std::ifstream *>(streams[0].get());
@@ -120,6 +120,7 @@ void AssemblerLinear::assemble()
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
         auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
+
         Ce.scale(1 / (dt * theta));
 
         if (update_matrix)
@@ -143,7 +144,7 @@ void AssemblerLinear::assemble()
             if (theta != 1.0)
             {
                 system.older_local_solution->get(dof_indices, old_time_derivative_values);
-                Ce.vector_mult_add(rhs, dt * (1 - theta), old_time_derivative_values);
+                Ce.vector_mult_add(rhs, dt * (1.0 - theta), old_time_derivative_values);
             }
         }
 
@@ -185,15 +186,8 @@ bool AssemblerLinear::check_update_system_matrix()
 
     if (current_time_substep->get_index() == 0)
     {
-        // // If very first substep, we have to build the matrix
-        // if (old_time_substep == nullptr)
-        // {
-        //     update_matrix = true;
-        //     system.get_system_matrix().zero();
-        //     if (solver)
-        //         solver->reuse_preconditioner(false);
-        // }
         // If first substep and BCs have changed, we need to update the matrix
+        // This will also include automatically the case of very first substep
         if (bc_object->check_update_boundary_conditions())
             update_matrix = true;
 
@@ -255,29 +249,33 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     BinaryReader reader;
 
+    std::vector<dof_id_type> dof_indices;
+
     if (this->check_update_element_matrices())
     {
         libMesh::out << "Recomputing element matrices and vectors for current time step" << std::endl;
         const std::vector<std::string> filenames = {
-            "mtrx_" + rank_str + ".temp",
-            "sol_mtrx_" + rank_str + ".temp",
-            "base_rhs_" + rank_str + ".temp"};
+            "mtrx_" + rank_str + ".emat",
+            "nodal_sol_mtrx_" + rank_str + ".emat",
+            "element_sol_mtrx_" + rank_str + ".emat",
+            "base_rhs_" + rank_str + ".emat"};
 
         auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Write);
         auto *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
-        auto *sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
-        auto *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+        auto *nodal_sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[1].get());
+        auto *element_sol_mtrx_output_file = dynamic_cast<std::ofstream *>(streams[2].get());
+        auto *base_rhs_output_file = dynamic_cast<std::ofstream *>(streams[3].get());
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            dof_map.dof_indices(elem, builder->dof_indices);
+            dof_map.dof_indices(elem, dof_indices);
 
             builder->set_element_data(elem);
-            builder->prepare_element_matrix_building();
             builder->build_element();
 
             BinaryReader::write_element_matrices(*builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
-            BinaryReader::write_element_matrices(*builder, *sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES);
+            BinaryReader::write_element_matrices(*builder, *nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
+            BinaryReader::write_element_matrices(*builder, *element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
             BinaryReader::write_element_vectors(*builder, *base_rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
         }
 
@@ -288,8 +286,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
         libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
     }
 
-    const std::vector<std::string> inp_filenames = {"base_rhs_" + rank_str + ".temp"};
-    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".temp"};
+    const std::vector<std::string> inp_filenames = {"base_rhs_" + rank_str + ".emat"};
+    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
 
     auto streams_in = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
     auto streams_out = reader.open_file_streams(emat_folderpath, out_filenames, FileMode::Write);
@@ -301,7 +299,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        dof_map.dof_indices(elem, builder->dof_indices);
+        dof_map.dof_indices(elem, dof_indices);
 
         builder->set_element_data(elem);
 
@@ -316,6 +314,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
 void AssemblerLinear::write_solution_vectors()
 {
+    libMesh::out << "Computing derived quantities..." << std::endl;
+
     auto eq_sys = this->get_parent_object();
     if (!eq_sys)
         return;
@@ -337,11 +337,14 @@ void AssemblerLinear::write_solution_vectors()
     const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
 
     BinaryReader reader;
-    const std::vector<std::string> inp_filenames = {"sol_mtrx_" + rank_str + ".temp"};
+    const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat",
+                                                    "element_sol_mtrx_" + rank_str + ".emat"};
     auto inp_streams = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
-    auto *solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
-    if (!solution_mtrx_input_file)
+    auto *nodal_solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
+    auto *element_solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[1].get());
+
+    if (!nodal_solution_mtrx_input_file || !element_solution_mtrx_input_file)
     {
         reader.close_file_streams(inp_streams);
         libMesh::out << "AssemblerLinear: failed to open solution matrix file." << std::endl;
@@ -351,15 +354,15 @@ void AssemblerLinear::write_solution_vectors()
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         builder->set_element_data(elem);
-        BinaryReader::read_element_matrices(*builder, *solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES);
+        BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
+        BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
         builder->build_solution_vectors();
     }
 
-    solution_mtrx_input_file->close();
     reader.close_file_streams(inp_streams);
 
-    const auto nodal_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::NODAL_SOLUTION).name;
-    const auto element_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::ELEMENT_SOLUTION).name;
+    const auto &nodal_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::NODAL_SOLUTION).name;
+    const auto &element_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, Globals::ELEMENT_SOLUTION).name;
 
     auto &nodal_system = eq_sys->get_system<System>(nodal_name);
     auto &element_system = eq_sys->get_system<System>(element_name);

@@ -1,4 +1,4 @@
-#include "load_step_analysis.h"
+#include "transient_analysis.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -28,12 +28,12 @@ namespace
     }
 }
 
-LoadStepAnalysis::LoadStepAnalysis(ApecMEquationSystems *eq_systems)
-    : AnalysisBase(AnalysisBase::Type::LoadStep, eq_systems, "LoadStepAnalysis")
+TransientAnalysis::TransientAnalysis(ApecMEquationSystems *eq_systems)
+    : AnalysisBase(AnalysisBase::Type::Transient, eq_systems, "TransientAnalysis")
 {
 }
 
-std::filesystem::path LoadStepAnalysis::load_steps_folder() const
+std::filesystem::path TransientAnalysis::load_steps_folder() const
 {
     auto session = this->context<Session>();
     if (!session)
@@ -43,7 +43,7 @@ std::filesystem::path LoadStepAnalysis::load_steps_folder() const
     return folder;
 }
 
-std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files() const
+std::vector<std::filesystem::path> TransientAnalysis::list_load_step_files() const
 {
     std::vector<std::filesystem::path> files;
     const auto folder = load_steps_folder();
@@ -64,12 +64,12 @@ std::vector<std::filesystem::path> LoadStepAnalysis::list_load_step_files() cons
     return files;
 }
 
-std::size_t LoadStepAnalysis::load_step_file_count() const
+std::size_t TransientAnalysis::load_step_file_count() const
 {
     return list_load_step_files().size();
 }
 
-std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem::path &filepath)
+std::shared_ptr<TimeStep> TransientAnalysis::read_time_step(const std::filesystem::path &filepath)
 {
     if (filepath.empty())
     {
@@ -121,7 +121,7 @@ std::shared_ptr<TimeStep> LoadStepAnalysis::read_time_step(const std::filesystem
     return nullptr;
 }
 
-void LoadStepAnalysis::configure_services() const
+void TransientAnalysis::configure_services() const
 {
     auto *equation_systems = this->get_parent_object();
 
@@ -138,7 +138,7 @@ void LoadStepAnalysis::configure_services() const
     assembler->update_context_views(assembler_view);
 }
 
-bool LoadStepAnalysis::execute_solve()
+bool TransientAnalysis::execute_solve()
 {
     auto *equation_systems = this->get_parent_object();
     if (!equation_systems)
@@ -148,13 +148,6 @@ bool LoadStepAnalysis::execute_solve()
     if (!time_step)
     {
         libMesh::out << "Load step does not contain time stepping information." << std::endl;
-        return false;
-    }
-
-    auto session = this->context<Session>();
-    if (!session)
-    {
-        libMesh::out << "Session data not available for load step analysis." << std::endl;
         return false;
     }
 
@@ -176,51 +169,52 @@ bool LoadStepAnalysis::execute_solve()
 
         system.reinit_constraints();
 
-        // if (substep.get_index() == 0)
-        // {
-        // system.delete_rows_cols_constrained_dofs();
-        // }
-
         assembler->write_element_matrices_and_rhs();
-
-        substep.print_solve_msg();
-        libMesh::out << "Solve begins..." << std::endl;
 
         system.solve();
 
         system.get_dof_map().enforce_constraints_exactly(system);
+
         system.compute_solution_time_derivative(substep);
 
-        const bool should_write = substep.get_write_results() ||
-                                  substep.get_index() == time_step->get_n_substeps() - 1;
+        assembler->write_solution_vectors();
 
-        if (should_write)
-        {
-            libMesh::out << "Computing derived quantities..." << std::endl;
-            assembler->write_solution_vectors();
-
-            std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
-
-            session->set_output_filepath(cumulative_substep_index);
-            VTKIO_Updated vtk_output(equation_systems->get_mesh(),
-                                     &equation_systems->get_system<ApecMExplicitSystem>("ElementSolutionSystem"));
-            vtk_output.write_equation_systems(session->get_path("final_output_path"),
-                                              *equation_systems,
-                                              &system_names);
-            ++cumulative_substep_index;
-        }
+        print_output(substep);
 
         *system.old_local_solution = *system.current_local_solution;
-
-        libMesh::out << "Time substep " << substep.get_index() + 1
-                     << " of " << time_step->get_n_substeps()
-                     << " completed." << std::endl;
     }
 
     return true;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string &filename) const
+void TransientAnalysis::print_output(const Substep &substep)
+{
+    auto *equation_systems = this->get_parent_object();
+
+    auto time_step = this->context<TimeStep>();
+
+    auto session = this->context<Session>();
+
+    auto assembler = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem").get_assembler();
+
+    const bool should_write = substep.get_write_results() ||
+                              substep.get_index() == substep.get_parent_object()->get_n_substeps() - 1;
+
+    if (!should_write || !session || !equation_systems || !assembler)
+        return;
+
+    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
+
+    session->set_output_filepath(cumulative_substep_index);
+    VTKIO_Updated vtk_output(equation_systems->get_mesh(),
+                             &equation_systems->get_system<ApecMExplicitSystem>("ElementSolutionSystem"));
+    vtk_output.write_equation_systems(session->get_path("final_output_path"),
+                                      *equation_systems,
+                                      &system_names);
+    ++cumulative_substep_index;
+}
+
+std::filesystem::path TransientAnalysis::resolve_load_step_path(const std::string &filename) const
 {
     auto folder = load_steps_folder();
     if (folder.empty())
@@ -239,7 +233,7 @@ std::filesystem::path LoadStepAnalysis::resolve_load_step_path(const std::string
     return candidate;
 }
 
-std::filesystem::path LoadStepAnalysis::resolve_default_base_name() const
+std::filesystem::path TransientAnalysis::resolve_default_base_name() const
 {
     auto session = this->context<Session>();
     if (!session)
@@ -257,7 +251,7 @@ std::filesystem::path LoadStepAnalysis::resolve_default_base_name() const
     return base;
 }
 
-bool LoadStepAnalysis::solve(const std::string &filename)
+bool TransientAnalysis::solve(const std::string &filename)
 {
     const auto path = resolve_load_step_path(filename);
     if (path.empty())
@@ -272,7 +266,7 @@ bool LoadStepAnalysis::solve(const std::string &filename)
     return execute_solve();
 }
 
-bool LoadStepAnalysis::solve_transient(const std::string &base_name)
+bool TransientAnalysis::solve_transient(const std::string &base_name)
 {
     std::filesystem::path base;
     if (base_name.empty())
