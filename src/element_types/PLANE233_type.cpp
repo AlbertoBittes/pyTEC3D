@@ -9,7 +9,7 @@ PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
     : AV2DElementType(
           keyopts,
           [keyopts](std::vector<Globals::GlobalVariableName> &vars)
-          { add_plane233_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars); },
+          { add_plane233_variables(keyopts, vars); },
           [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               add_plane233_fe_structs(fe_structs, keyopts);
@@ -26,7 +26,7 @@ PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts,
           [variable_collector, keyopts](std::vector<Globals::GlobalVariableName> &vars)
           {
               variable_collector(vars);
-              add_plane233_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars);
+              add_plane233_variables(keyopts, vars);
           },
           [fe_collector, keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
@@ -37,12 +37,13 @@ PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts,
 }
 
 // Helper to add PLANE233 variables
-void PLANE233Type::add_plane233_variables(const PhysicalRegionEnum physical_region,
+void PLANE233Type::add_plane233_variables(const std::vector<unsigned int> &keyopts,
                                           std::vector<Globals::GlobalVariableName> &vars)
 {
     vars.insert(vars.end(), {GlobalVariableName::A_z,
                              GlobalVariableName::CSG_z});
 
+    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(keyopts[1]);
     switch (physical_region)
     {
     case STRANDED_COIL:
@@ -63,6 +64,10 @@ void PLANE233Type::add_plane233_variables(const PhysicalRegionEnum physical_regi
         break;
     default:
         break;
+    }
+    if (keyopts[3] == 1) // PSI option
+    {
+        vars.insert(vars.end(), {GlobalVariableName::PSI});
     }
 }
 

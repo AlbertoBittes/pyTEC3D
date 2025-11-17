@@ -2,8 +2,6 @@
 
 #include <libmesh/libmesh.h>
 
-#include "transient_analysis.h"
-
 StaticAnalysis::StaticAnalysis(ApecMEquationSystems *eq_systems)
     : AnalysisBase(Type::Static, eq_systems, "StaticAnalysis")
 {
@@ -12,18 +10,6 @@ StaticAnalysis::StaticAnalysis(ApecMEquationSystems *eq_systems)
 bool StaticAnalysis::solve(const std::string &identifier)
 {
     libMesh::out << "StaticAnalysis is not implemented yet (requested identifier '"
-                 << identifier << "')." << std::endl;
-    return false;
-}
-
-APECMAnalysis::APECMAnalysis(ApecMEquationSystems *eq_systems)
-    : AnalysisBase(Type::APECM, eq_systems, "APECMAnalysis")
-{
-}
-
-bool APECMAnalysis::solve(const std::string &identifier)
-{
-    libMesh::out << "APECMAnalysis is not implemented yet (requested identifier '"
                  << identifier << "')." << std::endl;
     return false;
 }
@@ -61,7 +47,7 @@ std::shared_ptr<AnalysisBase> AnalysisBase::build(ApecMEquationSystems *eq_syste
     case AnalysisBase::Type::Static:
         return std::make_shared<StaticAnalysis>(eq_systems);
     case AnalysisBase::Type::APECM:
-        return std::make_shared<APECMAnalysis>(eq_systems);
+        return std::make_shared<APECMEquilibriumAnalysis>(eq_systems);
     case AnalysisBase::Type::Transient:
         return std::make_shared<TransientAnalysis>(eq_systems);
     case AnalysisBase::Type::DOFInterpolation:

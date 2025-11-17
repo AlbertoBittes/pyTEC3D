@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "apec_m_analysis.h"
+#include "analysis_base.h"
 
 class ApecMLinearSystem;
 class ApecMExplicitSystem;
@@ -24,6 +24,8 @@ public:
 
     bool solve(const std::string &filename) override;
     bool solve_transient(const std::string &base_name) override;
+    void solve_equation_systems(const Substep &substep);
+    void prepare_time_substep_solve(const Substep &substep);
 
 private:
     void configure_services() const;
@@ -34,6 +36,11 @@ private:
     std::filesystem::path resolve_default_base_name() const;
 
     unsigned int cumulative_substep_index = 0;
+
+protected:
+    TransientAnalysis(AnalysisBase::Type type,
+                      ApecMEquationSystems *eq_systems,
+                      std::string analysis_name);
 };
 
 #endif // TRANSIENT_ANALYSIS_H

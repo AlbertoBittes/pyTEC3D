@@ -288,10 +288,11 @@ void ElementBuilder::build_plane233_solution_vectors()
     auto &An = solution_vector_support.sol_vectors[0];
 
     // Nodal solution
-    DenseVector<Number> Bn;
-    DenseVector<Number> Hn;
     if (this->compute_nodal_solution_vectors)
     {
+        this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS].resize(NodalSolutionVectors::NUM_NODAL_SOLUTION_VECTORS);
+        auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
+        auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
         auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
         auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
         unsigned int n_dofs_var = elem_data.elem->n_nodes();
@@ -309,10 +310,13 @@ void ElementBuilder::build_plane233_solution_vectors()
     }
 
     // Element solution
-    DenseVector<Number> Be(2);
-    DenseVector<Number> He(2);
-    DenseVector<Number> Je(1);
-
+    this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS].resize(ElementSolutionVectors::NUM_ELEMENT_SOLUTION_VECTORS);
+    auto &Be = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Be];
+    auto &He = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::He];
+    auto &Je = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Je];
+    Be.resize(2);
+    He.resize(2);
+    Je.resize(1);
     // Compute B in elements
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
     unsigned int n_qp = BAe.m() / 2;
@@ -384,6 +388,8 @@ void ElementBuilder::build_plane233_solution_vectors()
     // Set B and H in nodes
     if (this->compute_nodal_solution_vectors)
     {
+        auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
+        auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
         DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
         dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
         Bn.append(Hn);
@@ -406,5 +412,26 @@ void ElementBuilder::build_plane233_solution_vectors()
         if ((element_solution_system->solution->first_local_index() <= dof_index) &&
             (dof_index < element_solution_system->solution->last_local_index()))
             element_solution_system->solution->set(dof_index, Je(i));
+    }
+
+    // Compute PSI
+    if (elem_data.element_type->get_keyopts()[3])
+    {
+        unsigned int a_var_num = main_sys->variable_number("A_z");
+        unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
+        for (unsigned int n_nod = 0; n_nod < elem_data.elem->n_nodes(); n_nod++)
+        {
+            auto node_ptr = elem_data.elem->node_ptr(n_nod);
+            unsigned int dof_A = node_ptr->dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+            unsigned int dof_PSI = node_ptr->dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+            if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
+                (dof_A < main_sys->current_local_solution->last_local_index()) &&
+                (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
+                (dof_PSI < nodal_solution_system->solution->last_local_index()))
+            {
+                Real psi_val = main_sys->current_local_solution->el(dof_A) * node_ptr->operator()(0); // r component
+                nodal_solution_system->solution->set(dof_PSI, psi_val);
+            }
+        }
     }
 }

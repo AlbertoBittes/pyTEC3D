@@ -6,19 +6,12 @@
 #include <utility>
 
 #include "analysis_base.h"
+#include "apec_m_equilibrium_analysis.h"
 
 class StaticAnalysis : public AnalysisBase
 {
 public:
     explicit StaticAnalysis(ApecMEquationSystems *eq_systems = nullptr);
-
-    bool solve(const std::string &identifier) override;
-};
-
-class APECMAnalysis : public AnalysisBase
-{
-public:
-    explicit APECMAnalysis(ApecMEquationSystems *eq_systems = nullptr);
 
     bool solve(const std::string &identifier) override;
 };

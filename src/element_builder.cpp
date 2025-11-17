@@ -66,8 +66,6 @@ void ElementBuilder::prepare_element_matrix_building()
     // reinit to be done inside each element
     // as well as the reception of shape functions
     // this->elem_data.element_type->reinit_fe(this->elem);
-    unsigned int n_dofs = elem_data.elem->n_dofs(0);
-
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs},
         {n_dofs, n_dofs}};

@@ -271,6 +271,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
             dof_map.dof_indices(elem, dof_indices);
 
             builder->set_element_data(elem);
+            builder->set_n_dofs(dof_indices.size());
             builder->build_element();
 
             BinaryReader::write_element_matrices(*builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -301,6 +302,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     {
         dof_map.dof_indices(elem, dof_indices);
 
+        builder->set_n_dofs(dof_indices.size());
         builder->set_element_data(elem);
 
         BinaryReader::read_element_vectors(*builder, *base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
@@ -312,7 +314,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     reader.close_file_streams(streams_out);
 }
 
-void AssemblerLinear::write_solution_vectors()
+void AssemblerLinear::write_solution_vectors(bool nodal_solution)
 {
     libMesh::out << "Computing derived quantities..." << std::endl;
 
@@ -326,6 +328,7 @@ void AssemblerLinear::write_solution_vectors()
         libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
         return;
     }
+    builder->set_compute_nodal_solution_vectors(nodal_solution);
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
@@ -354,7 +357,8 @@ void AssemblerLinear::write_solution_vectors()
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         builder->set_element_data(elem);
-        BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
+        if (nodal_solution)
+            BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
         BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
         builder->build_solution_vectors();
     }

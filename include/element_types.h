@@ -84,7 +84,6 @@ public:
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
     // Getter for ElementTypeData
     inline const VariableInformation &get_variable_information() const { return variable_info; }
-
     inline VariableInformation &get_variable_information() { return variable_info; }
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) = 0;
@@ -185,7 +184,7 @@ public:
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add PLANE233 variables
-    static void add_plane233_variables(const PhysicalRegionEnum physical_region,
+    static void add_plane233_variables(const std::vector<unsigned int> &keyopts,
                                        std::vector<Globals::GlobalVariableName> &vars);
 
     // Helper to add two FEDataShapeFunctions structs

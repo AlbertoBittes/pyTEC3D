@@ -71,6 +71,8 @@ public:
     enum VectorsSet
     {
         RHS_VECTORS,
+        NODAL_SOLUTION_VECTORS,
+        ELEMENT_SOLUTION_VECTORS,
         NUM_VECTORS_SETS
     };
 
@@ -94,6 +96,21 @@ public:
         JVe,
         BAe,
         NUM_ELEMENT_SOLUTION_MATRICES
+    };
+
+    enum NodalSolutionVectors
+    {
+        B,
+        H,
+        NUM_NODAL_SOLUTION_VECTORS
+    };
+
+    enum ElementSolutionVectors
+    {
+        Je,
+        Be,
+        He,
+        NUM_ELEMENT_SOLUTION_VECTORS
     };
 
     using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
@@ -144,6 +161,9 @@ public:
     bool get_compute_nodal_solution_vectors() const { return compute_nodal_solution_vectors; }
     void set_compute_nodal_solution_vectors(bool compute) { compute_nodal_solution_vectors = compute; }
 
+    void set_n_dofs(unsigned int n) { n_dofs = n; }
+    unsigned int get_n_dofs() const { return n_dofs; }
+
 private:
     friend class BinaryReader;
     friend class AssemblerLinear;
@@ -159,6 +179,7 @@ private:
     ElemData elem_data; // Element data structure
     SolutionVectorSupport solution_vector_support;
     bool compute_nodal_solution_vectors = true;
+    unsigned int n_dofs = 0;
 };
 
 #endif // ELEMENT_BUILDER_H

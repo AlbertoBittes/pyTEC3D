@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <set>
+#include <utility>
 
 #include <libmesh/libmesh.h>
 #include <libmesh/numeric_vector.h>
@@ -29,7 +30,14 @@ namespace
 }
 
 TransientAnalysis::TransientAnalysis(ApecMEquationSystems *eq_systems)
-    : AnalysisBase(AnalysisBase::Type::Transient, eq_systems, "TransientAnalysis")
+    : TransientAnalysis(AnalysisBase::Type::Transient, eq_systems, "TransientAnalysis")
+{
+}
+
+TransientAnalysis::TransientAnalysis(AnalysisBase::Type type,
+                                     ApecMEquationSystems *eq_systems,
+                                     std::string analysis_name)
+    : AnalysisBase(type, eq_systems, std::move(analysis_name))
 {
 }
 
@@ -154,30 +162,12 @@ bool TransientAnalysis::execute_solve()
     configure_services();
 
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto assembler = system.get_assembler();
-    if (!assembler)
-    {
-        libMesh::out << "Assembler not available for linear system." << std::endl;
-        return false;
-    }
 
     for (auto &substep : *time_step)
     {
-        equation_systems->apply_ramped_effects(substep);
+        prepare_time_substep_solve(substep);
 
-        system.get_dof_map().swap_dof_constraints();
-
-        system.reinit_constraints();
-
-        assembler->write_element_matrices_and_rhs();
-
-        system.solve();
-
-        system.get_dof_map().enforce_constraints_exactly(system);
-
-        system.compute_solution_time_derivative(substep);
-
-        assembler->write_solution_vectors();
+        solve_equation_systems(substep);
 
         print_output(substep);
 
@@ -185,6 +175,49 @@ bool TransientAnalysis::execute_solve()
     }
 
     return true;
+}
+
+void TransientAnalysis::prepare_time_substep_solve(const Substep &substep)
+{
+    auto *equation_systems = this->get_parent_object();
+    if (!equation_systems)
+        return;
+
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto assembler = system.get_assembler();
+    if (!assembler)
+    {
+        libMesh::out << "Assembler not available for linear system." << std::endl;
+        return;
+    }
+
+    equation_systems->apply_ramped_effects(substep);
+
+    system.get_dof_map().swap_dof_constraints();
+
+    system.reinit_constraints();
+
+    assembler->write_element_matrices_and_rhs();
+}
+
+void TransientAnalysis::solve_equation_systems(const Substep &substep)
+{
+    auto *equation_systems = this->get_parent_object();
+    if (!equation_systems)
+        return;
+
+    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto assembler = system.get_assembler();
+    if (!assembler)
+    {
+        libMesh::out << "Assembler not available for linear system." << std::endl;
+        return;
+    }
+
+    system.solve();
+    system.get_dof_map().enforce_constraints_exactly(system);
+    system.compute_solution_time_derivative(substep);
+    assembler->write_solution_vectors(true);
 }
 
 void TransientAnalysis::print_output(const Substep &substep)

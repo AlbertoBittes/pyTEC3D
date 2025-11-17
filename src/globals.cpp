@@ -39,6 +39,7 @@ namespace Globals
         {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0, SystemType::NODAL_SOLUTION, L2_LAGRANGE, FIRST}},
         {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1, SystemType::NODAL_SOLUTION, L2_LAGRANGE, FIRST}},
         {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2, SystemType::NODAL_SOLUTION, L2_LAGRANGE, FIRST}},
+        {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, SystemType::NODAL_SOLUTION, LAGRANGE, FIRST}},
 
         // Element Solution Variables
         {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, SystemType::ELEMENT_SOLUTION, MONOMIAL, CONSTANT}},

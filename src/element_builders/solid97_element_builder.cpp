@@ -424,15 +424,15 @@ void ElementBuilder::build_solid97_solution_vectors()
     }
 
     // Nodal solution
-    DenseVector<Number> Bn;
-    DenseVector<Number> Hn;
     if (this->compute_nodal_solution_vectors)
     {
         unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
         auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
         auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
-
+        this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS].resize(NodalSolutionVectors::NUM_NODAL_SOLUTION_VECTORS);
+        auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
+        auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
         // Compute B in nodes
         DenseVector<Number> Bn_x;
         AAe.vector_mult(Bn_x, An);
@@ -446,9 +446,13 @@ void ElementBuilder::build_solid97_solution_vectors()
     }
 
     // Elemental solution
-    DenseVector<Number> Be(3);
-    DenseVector<Number> He(3);
-    DenseVector<Number> Je(3);
+    this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS].resize(ElementSolutionVectors::NUM_ELEMENT_SOLUTION_VECTORS);
+    auto &Be = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Be];
+    auto &He = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::He];
+    auto &Je = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Je];
+    Be.resize(3);
+    He.resize(3);
+    Je.resize(3);
 
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
     unsigned int n_qp = BAe.m() / 3;
@@ -541,6 +545,8 @@ void ElementBuilder::build_solid97_solution_vectors()
         // Set B and H in nodes
         DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
         dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
+        auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
+        auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
         Bn.append(Hn);
         for (unsigned int i = 0; i < dof_indices.size(); i++)
         {
