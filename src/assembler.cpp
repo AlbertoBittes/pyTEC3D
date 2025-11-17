@@ -34,21 +34,7 @@ AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems,
 
 std::unique_ptr<ElementBuilder> AssemblerLinear::make_element_builder() const
 {
-    auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return nullptr;
-
-    auto analysis = eq_sys->get_analysis();
-    if (!analysis)
-        return nullptr;
-
-    auto analysis_ctx = analysis->get_context_view();
-    if (!analysis_ctx)
-        return nullptr;
-
-    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>();
-
-    return std::make_unique<ElementBuilder>(eq_sys, builder_view);
+    return ElementBuilder::make_element_builder(this->get_parent_object());
 }
 
 void AssemblerLinear::assemble()

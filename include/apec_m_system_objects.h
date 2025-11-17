@@ -25,7 +25,6 @@
 
 using namespace libMesh;
 
-class ElementBuilder;
 // class GlobalConstraintsObject;
 
 // The basic libMesh class (System, EquationSystems, see libMesh guide) are extendend to meet APEC-M code structure requirements

@@ -1,6 +1,8 @@
 #ifndef ELEMENT_BUILDER_H
 #define ELEMENT_BUILDER_H
 
+#include <filesystem>
+#include <memory>
 #include <vector>
 
 #include <libmesh/elem.h>
@@ -25,6 +27,7 @@
 using namespace libMesh;
 
 class ApecMLinearSystem;
+class ApecMEquationSystems;
 
 struct ElemData
 {
@@ -147,6 +150,8 @@ public:
     void build_infin112_rhs();
 
     void build_solution_vectors();
+    bool build_solution_vectors_from_emat_files(dof_id_type element_id,
+                                                const std::filesystem::path &emat_folderpath);
 
     void build_solid97_solution_vectors();
     void build_solid236_solution_vectors();
@@ -163,6 +168,8 @@ public:
 
     void set_n_dofs(unsigned int n) { n_dofs = n; }
     unsigned int get_n_dofs() const { return n_dofs; }
+
+    static std::unique_ptr<ElementBuilder> make_element_builder(ApecMEquationSystems *eq_sys);
 
 private:
     friend class BinaryReader;

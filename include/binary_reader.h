@@ -43,6 +43,11 @@ public:
     static void write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set);
     static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
 
+    bool read_solution_matrices_for_element(ElementBuilder &builder,
+                                            dof_id_type element_id,
+                                            const std::filesystem::path &emat_folderpath,
+                                            bool include_nodal_matrices);
+
 private:
     void read_binary_fem_data_from_stream(std::ifstream &file,
                                           const std::shared_ptr<FEMDataRepository> &repository,

@@ -30,6 +30,24 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
 {
 }
 
+std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
+{
+    if (!eq_sys)
+        return nullptr;
+
+    auto analysis = eq_sys->get_analysis();
+    if (!analysis)
+        return nullptr;
+
+    auto analysis_ctx = analysis->get_context_view();
+    if (!analysis_ctx)
+        return nullptr;
+
+    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>();
+
+    return std::make_unique<ElementBuilder>(eq_sys, builder_view);
+}
+
 //
 //
 // Methods to size element matrices and vectors
@@ -200,6 +218,28 @@ void ElementBuilder::build_solution_vectors()
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
+}
+
+bool ElementBuilder::build_solution_vectors_from_emat_files(dof_id_type element_id,
+                                                            const std::filesystem::path &emat_folderpath)
+{
+    auto eq_sys = this->get_parent_object();
+    libmesh_error_msg_if(!eq_sys, "ElementBuilder: no equation systems associated with builder.");
+
+    const auto elem_id_uint = static_cast<unsigned int>(element_id);
+    auto &mesh = eq_sys->get_mesh();
+    Elem *elem_ptr = mesh.query_elem_ptr(elem_id_uint);
+    if (!elem_ptr)
+        return false;
+
+    this->set_element_data(elem_ptr);
+
+    BinaryReader reader;
+    if (!reader.read_solution_matrices_for_element(*this, element_id, emat_folderpath, this->compute_nodal_solution_vectors))
+        return false;
+
+    this->build_solution_vectors();
+    return true;
 }
 
 void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index)

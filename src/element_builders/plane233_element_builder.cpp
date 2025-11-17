@@ -419,17 +419,16 @@ void ElementBuilder::build_plane233_solution_vectors()
     {
         unsigned int a_var_num = main_sys->variable_number("A_z");
         unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
-        for (unsigned int n_nod = 0; n_nod < elem_data.elem->n_nodes(); n_nod++)
+        for (auto &node : elem_data.elem->node_ref_range())
         {
-            auto node_ptr = elem_data.elem->node_ptr(n_nod);
-            unsigned int dof_A = node_ptr->dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
-            unsigned int dof_PSI = node_ptr->dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+            unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+            unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
             if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
                 (dof_A < main_sys->current_local_solution->last_local_index()) &&
                 (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
                 (dof_PSI < nodal_solution_system->solution->last_local_index()))
             {
-                Real psi_val = main_sys->current_local_solution->el(dof_A) * node_ptr->operator()(0); // r component
+                Real psi_val = main_sys->current_local_solution->el(dof_A) * node(0); // r component
                 nodal_solution_system->solution->set(dof_PSI, psi_val);
             }
         }
