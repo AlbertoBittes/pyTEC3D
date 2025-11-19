@@ -163,12 +163,6 @@ template <typename T>
     }
 }
 
-class ApecMSettingsObject : public BinaryDataFEDataObject
-{
-public:
-    using BinaryDataFEDataObject::BinaryDataFEDataObject;
-};
-
 class DofInterpolationSettingsObject : public BinaryDataFEDataObject
 {
 public:

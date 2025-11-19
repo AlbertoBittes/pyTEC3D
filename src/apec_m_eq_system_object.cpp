@@ -120,6 +120,19 @@ void ApecMEquationSystems::clear_preserving_solver_settings()
     parameters.set<unsigned int>("linear solver maximum iterations") = max_iter;
 }
 
+void ApecMEquationSystems::zero_all_systems()
+{
+    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<Globals::SystemType>(i);
+        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        auto &base_system = this->get_system<System>(info.name);
+
+        if (auto *zeroable = dynamic_cast<ApecMSystemBase *>(&base_system))
+            zeroable->zero_all();
+    }
+}
+
 std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh)
 {
     auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);

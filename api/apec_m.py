@@ -60,7 +60,7 @@ class APEC_M:
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
         self.time_parameters = DEFAULT_TIME_PARAMETERS
-        self.apec_parameters = {}
+        self.apec_settings = {}
         self.solver_settings = DEFAULT_SOLVER_SETTINGS
         self.transient_analysis = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
@@ -387,6 +387,7 @@ class APEC_M:
                 "solver_settings",
                 "periodic_boundaries",
                 "dof_couplings",
+                "apec_settings"
             ],
         )
 

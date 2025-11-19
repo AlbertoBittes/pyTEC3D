@@ -1,6 +1,7 @@
 #include "apec_m.h"
 
 #include "apec_m_periodic_boundary_factory.h"
+#include "apec_m_settings.h"
 #include "element_types_factory.h"
 #include "binary_reader.h"
 #include "materials_object.h"
@@ -379,16 +380,10 @@ std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
 
 bool APEC_M::solve_load_step(const std::string &filename)
 {
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
+    auto analysis = get_active_analysis();
     if (!analysis)
     {
-        libMesh::out << "No load step analysis available for the active mesh." << std::endl;
-        return false;
-    }
-
-    if (filename.empty())
-    {
-        libMesh::out << "Please provide a load step filename with -solve." << std::endl;
+        libMesh::out << "No analysis available for the active mesh." << std::endl;
         return false;
     }
 
@@ -405,6 +400,18 @@ bool APEC_M::solve_transient_load_steps(const std::string &base_name)
     }
 
     return analysis->solve_transient(base_name);
+}
+
+bool APEC_M::finish_analysis()
+{
+    auto analysis = get_active_analysis();
+    if (!analysis)
+    {
+        libMesh::out << "No analysis available for the active mesh." << std::endl;
+        return false;
+    }
+
+    return analysis->finish();
 }
 
 bool APEC_M::set_mode(Session::Mode mode)

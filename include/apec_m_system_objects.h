@@ -25,12 +25,18 @@
 
 using namespace libMesh;
 
-// class GlobalConstraintsObject;
+class ApecMSystemBase
+{
+public:
+    virtual ~ApecMSystemBase() = default;
+    virtual void zero_all() = 0;
+};
 
 // The basic libMesh class (System, EquationSystems, see libMesh guide) are extendend to meet APEC-M code structure requirements
 template <typename SysLike>
 class ApecMSystem
     : public SysLike,
+      public ApecMSystemBase,
       public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>
 {
 public:
@@ -63,6 +69,25 @@ public:
 
     virtual void post_init() {};
 
+    void zero_all() override
+    {
+        for (auto it = this->vectors_begin(); it != this->vectors_end(); ++it)
+            if (it->second)
+                it->second->zero();
+
+        auto zero_optional = [](NumericVector<Number> *vec)
+        {
+            if (vec)
+                vec->zero();
+        };
+
+        zero_optional(this->solution.get());
+        zero_optional(this->current_local_solution.get());
+        // zero_optional(this->old_local_solution.get());
+        // zero_optional(this->older_local_solution.get());
+        // zero_optional(this->rhs.get());
+    }
+
 private:
 };
 
@@ -89,6 +114,7 @@ public:
 
     void compute_solution_time_derivative(const Substep &time_substep);
     void delete_rows_cols_constrained_dofs();
+    void zero_all() override;
 
     std::shared_ptr<AssemblerLinear> get_assembler() const
     {

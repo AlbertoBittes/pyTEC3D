@@ -86,6 +86,12 @@ void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
     this->restrict_solve_to(subset_ptr, SUBSET_ZERO);
 }
 
+void ApecMLinearSystem::zero_all()
+{
+    ApecMSystem<TransientSystem<LinearImplicitSystem>>::zero_all();
+    this->get_system_matrix().zero();
+}
+
 template <typename SysType>
 void ApecMSystem<SysType>::init_variables()
 {

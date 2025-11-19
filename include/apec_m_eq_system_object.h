@@ -39,6 +39,7 @@ public:
     void initialize_systems(const std::shared_ptr<FEMDataRepository> &model_data);
     void initialize_physics();
     void clear_preserving_solver_settings();
+    void zero_all_systems();
     static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh);
     void set_analysis(std::shared_ptr<AnalysisBase> analysis_object);
     std::shared_ptr<AnalysisBase> get_analysis() const { return analysis; }

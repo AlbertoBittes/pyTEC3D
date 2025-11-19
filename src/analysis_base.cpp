@@ -1,4 +1,5 @@
 #include "analysis_base.h"
+#include "apec_m_eq_system_object.h"
 
 #include <libmesh/libmesh.h>
 
@@ -35,8 +36,11 @@ bool AnalysisBase::initialize_model_context(const std::shared_ptr<FEMDataReposit
     auto materials = context->template get<MaterialsObject>();
     auto real_constants = context->template get<RealConstantsObject>();
     auto session = context->template get<Session>();
+    auto settings = context->template get<ApecMSettingsObject>();
 
-    const bool ready = static_cast<bool>(element_factory && materials && real_constants && session);
+    const bool needs_settings = (analysis_type == Type::APECM_EQUILIBRIUM || analysis_type == Type::APECM_EVOLUTION);
+    const bool ready = static_cast<bool>(element_factory && materials && real_constants && session &&
+                                         (!needs_settings || (settings && !settings->empty())));
     if (!ready)
         libMesh::out << "AnalysisBase: incomplete model context detected." << std::endl;
     return ready;
@@ -59,4 +63,22 @@ void AnalysisBase::update_time_step_context(const std::shared_ptr<TimeStep> &tim
     auto new_view = std::make_shared<ContextView>(*current);
     std::get<std::shared_ptr<TimeStep>>(new_view->ptrs) = time_step;
     this->update_context_views(new_view);
+}
+
+bool AnalysisBase::finish()
+{
+    reset_load_step_counter();
+    if (auto *equation_systems = this->get_parent_object())
+        equation_systems->zero_all_systems();
+    return true;
+}
+
+void AnalysisBase::mark_load_step_completed()
+{
+    ++load_steps_completed_count;
+}
+
+void AnalysisBase::reset_load_step_counter()
+{
+    load_steps_completed_count = 0;
 }

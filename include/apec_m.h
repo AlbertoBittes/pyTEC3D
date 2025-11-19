@@ -58,6 +58,7 @@ public:
     std::vector<std::filesystem::path> list_load_step_files() const;
     bool solve_load_step(const std::string &filename);
     bool solve_transient_load_steps(const std::string &base_name);
+    bool finish_analysis();
 
     void print_model_data() const;
 

@@ -7,6 +7,7 @@
 
 #include "analysis_base.h"
 #include "apec_m_equilibrium_analysis.h"
+#include "apec_m_evolution_analysis.h"
 
 class StaticAnalysis : public AnalysisBase
 {

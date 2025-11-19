@@ -20,6 +20,7 @@ public:
         LIST_LOAD_STEPS,
         SOLVE,
         SOLVE_TRANSIENT,
+        FINISH,
         SET_MODE,
         HELP,
         EXIT,

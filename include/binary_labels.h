@@ -20,7 +20,7 @@ enum class BinaryLabelId : std::uint32_t
     CELL_DATA = 6,
     PERIODIC_BOUNDARIES = 7,
     DOF_COUPLINGS = 8,
-    APEC_PARAMETERS = 9,
+    APEC_SETTINGS = 9,
     DOF_INTERPOLATION_SETTINGS = 10,
     UNKNOWN = std::numeric_limits<std::uint32_t>::max()
 };
@@ -37,7 +37,7 @@ struct BinaryLabelTraits
         {BinaryLabelId::CELL_DATA, "cell_data"},
         {BinaryLabelId::PERIODIC_BOUNDARIES, "periodic_boundaries"},
         {BinaryLabelId::DOF_COUPLINGS, "dof_couplings"},
-        {BinaryLabelId::APEC_PARAMETERS, "apec_parameters"},
+        {BinaryLabelId::APEC_SETTINGS, "apec_settings"},
         {BinaryLabelId::DOF_INTERPOLATION_SETTINGS, "dof_interpolation_settings"},
     }};
 

@@ -11,6 +11,10 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/petsc_linear_solver.h>
 
+#include "apec_m_eq_system_object.h"
+#include "apec_m_periodic_boundary_factory.h"
+#include "apec_m_settings.h"
+#include "apec_m_system_objects.h"
 #include "element_builder.h"
 #include "element_types_factory.h"
 #include "materials_object.h"
@@ -18,93 +22,91 @@
 #include "solver_configuration.h"
 #include "time_step.h"
 #include "vtk_data_map_object.h"
-#include "apec_m_periodic_boundary_factory.h"
-#include "apec_m_system_objects.h"
 
 namespace
 {
-struct EmatRecordLocation
-{
-    bool found = false;
-    std::streampos offset = std::streampos(-1);
-};
-
-bool try_extract_rank(const std::string &filename, const std::string &prefix, unsigned int &rank)
-{
-    if (filename.compare(0, prefix.size(), prefix) != 0)
-        return false;
-
-    const auto start = prefix.size();
-    const auto dot_pos = filename.find('.', start);
-    const auto number_str = filename.substr(start, dot_pos == std::string::npos ? std::string::npos : dot_pos - start);
-    if (number_str.empty())
-        return false;
-
-    try
+    struct EmatRecordLocation
     {
-        size_t consumed = 0;
-        const auto parsed_rank = std::stoul(number_str, &consumed);
-        if (consumed != number_str.size())
+        bool found = false;
+        std::streampos offset = std::streampos(-1);
+    };
+
+    bool try_extract_rank(const std::string &filename, const std::string &prefix, unsigned int &rank)
+    {
+        if (filename.compare(0, prefix.size(), prefix) != 0)
             return false;
-        rank = static_cast<unsigned int>(parsed_rank);
-        return true;
-    }
-    catch (const std::exception &)
-    {
-        return false;
-    }
-}
 
-void skip_matrix_entry(std::ifstream &stream, unsigned int num_containers)
-{
-    for (unsigned int container_idx = 0; container_idx < num_containers; ++container_idx)
-    {
-        unsigned int rows = 0, cols = 0;
-        stream.read(reinterpret_cast<char *>(&rows), sizeof(rows));
-        stream.read(reinterpret_cast<char *>(&cols), sizeof(cols));
-        if (!stream)
-            libmesh_error_msg("BinaryReader: corrupt emat file while skipping matrix metadata.");
+        const auto start = prefix.size();
+        const auto dot_pos = filename.find('.', start);
+        const auto number_str = filename.substr(start, dot_pos == std::string::npos ? std::string::npos : dot_pos - start);
+        if (number_str.empty())
+            return false;
 
-        const auto value_count = static_cast<std::size_t>(rows) * static_cast<std::size_t>(cols);
-        const auto bytes_to_skip = static_cast<std::streamoff>(value_count * sizeof(Number));
-        stream.seekg(bytes_to_skip, std::ios::cur);
-        if (!stream)
-            libmesh_error_msg("BinaryReader: corrupt emat file while skipping matrix data.");
-    }
-}
-
-EmatRecordLocation locate_element_record(std::ifstream &stream, unsigned int target_elem_id)
-{
-    EmatRecordLocation result;
-    stream.clear();
-    stream.seekg(0, std::ios::beg);
-
-    while (stream)
-    {
-        const auto entry_start = stream.tellg();
-        unsigned int elem_id = 0;
-        stream.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
-        if (!stream)
-            break;
-
-        unsigned int num_containers = 0;
-        stream.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers));
-        if (!stream)
-            libmesh_error_msg("BinaryReader: corrupt emat file while reading container count.");
-
-        if (elem_id == target_elem_id)
+        try
         {
-            result.found = true;
-            result.offset = entry_start;
-            return result;
+            size_t consumed = 0;
+            const auto parsed_rank = std::stoul(number_str, &consumed);
+            if (consumed != number_str.size())
+                return false;
+            rank = static_cast<unsigned int>(parsed_rank);
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            return false;
+        }
+    }
+
+    void skip_matrix_entry(std::ifstream &stream, unsigned int num_containers)
+    {
+        for (unsigned int container_idx = 0; container_idx < num_containers; ++container_idx)
+        {
+            unsigned int rows = 0, cols = 0;
+            stream.read(reinterpret_cast<char *>(&rows), sizeof(rows));
+            stream.read(reinterpret_cast<char *>(&cols), sizeof(cols));
+            if (!stream)
+                libmesh_error_msg("BinaryReader: corrupt emat file while skipping matrix metadata.");
+
+            const auto value_count = static_cast<std::size_t>(rows) * static_cast<std::size_t>(cols);
+            const auto bytes_to_skip = static_cast<std::streamoff>(value_count * sizeof(Number));
+            stream.seekg(bytes_to_skip, std::ios::cur);
+            if (!stream)
+                libmesh_error_msg("BinaryReader: corrupt emat file while skipping matrix data.");
+        }
+    }
+
+    EmatRecordLocation locate_element_record(std::ifstream &stream, unsigned int target_elem_id)
+    {
+        EmatRecordLocation result;
+        stream.clear();
+        stream.seekg(0, std::ios::beg);
+
+        while (stream)
+        {
+            const auto entry_start = stream.tellg();
+            unsigned int elem_id = 0;
+            stream.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
+            if (!stream)
+                break;
+
+            unsigned int num_containers = 0;
+            stream.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers));
+            if (!stream)
+                libmesh_error_msg("BinaryReader: corrupt emat file while reading container count.");
+
+            if (elem_id == target_elem_id)
+            {
+                result.found = true;
+                result.offset = entry_start;
+                return result;
+            }
+
+            skip_matrix_entry(stream, num_containers);
         }
 
-        skip_matrix_entry(stream, num_containers);
+        stream.clear();
+        return result;
     }
-
-    stream.clear();
-    return result;
-}
 } // namespace
 
 std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::path &filepath,
@@ -260,7 +262,7 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
         repository->set_object(binary_data);
         break;
     }
-    case BinaryLabelId::APEC_PARAMETERS:
+    case BinaryLabelId::APEC_SETTINGS:
     {
         auto settings = std::make_shared<ApecMSettingsObject>(file);
         repository->set_object(settings);

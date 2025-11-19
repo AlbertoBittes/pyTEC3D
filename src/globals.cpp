@@ -51,6 +51,7 @@ namespace Globals
         {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0, SystemType::ELEMENT_SOLUTION, MONOMIAL, CONSTANT}},
         {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1, SystemType::ELEMENT_SOLUTION, MONOMIAL, CONSTANT}},
         {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2, SystemType::ELEMENT_SOLUTION, MONOMIAL, CONSTANT}},
+        {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0, SystemType::ELEMENT_SOLUTION, MONOMIAL, CONSTANT}},
     };
 
     const double MU_0 = pi * 4.0 * 1e-7;                // 4 * pi constant

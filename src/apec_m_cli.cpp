@@ -193,6 +193,8 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::SOLVE_TRANSIENT;
     if (input.rfind("-solve", 0) == 0)
         return Command::SOLVE;
+    if (input == "-finish")
+        return Command::FINISH;
     if (input.rfind("-mode", 0) == 0)
         return Command::SET_MODE;
     if (input == "-help" || input == "help")
@@ -373,12 +375,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
 
         auto argument = extract_argument(input);
-        if (argument.empty())
-        {
-            libMesh::out << "Usage: -solve <load_step_filename>" << std::endl;
-            return true;
-        }
-
         if (!program.solve_load_step(argument))
             libMesh::out << "Load step solve failed." << std::endl;
         return true;
@@ -392,6 +388,18 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         auto argument = extract_argument(input);
         if (!program.solve_transient_load_steps(argument))
             libMesh::out << "Transient solve failed." << std::endl;
+        return true;
+    }
+    case Command::FINISH:
+    {
+        const Session &session = *program.model_data()->get_object<Session>();
+        if (!require_mode(session, Session::Mode::Analysis, "-finish"))
+            return true;
+
+        if (!program.finish_analysis())
+            libMesh::out << "Failed to reset analysis state." << std::endl;
+        else
+            libMesh::out << "Analysis state cleared." << std::endl;
         return true;
     }
     case Command::SET_MODE:
@@ -432,8 +440,9 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
                      << "  -list_load_steps\n"
-                     << "  -solve <load_step_filename>\n"
+                     << "  -solve [load_step_filename]\n"
                      << "  -solve_transient [base_name]\n"
+                     << "  -finish\n"
                      << "  -mode <preprocessing|analysis|other>\n"
                      << "  -read_model_data <model_file>\n"
                      << "  -print_model_data\n"

@@ -24,17 +24,20 @@ public:
 
     bool solve(const std::string &filename) override;
     bool solve_transient(const std::string &base_name) override;
+    bool finish() override;
     void solve_equation_systems(const Substep &substep);
     void prepare_time_substep_solve(const Substep &substep);
 
 private:
     void configure_services() const;
-    bool execute_solve();
+    virtual bool execute_solve() override;
     void print_output(const Substep &substep);
 
+protected:
     std::filesystem::path resolve_load_step_path(const std::string &filename) const;
     std::filesystem::path resolve_default_base_name() const;
 
+private:
     unsigned int cumulative_substep_index = 0;
 
 protected:

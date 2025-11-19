@@ -223,7 +223,7 @@ WRITING_FUNCTIONS_MAP = {
     "cell_data": "_write_numpy_array_to_binary",
     "periodic_boundaries": "_write_to_binary",
     "dof_couplings": "_write_to_binary",
-    "apec_parameters": "_write_to_binary"
+    "apec_settings": "_write_to_binary"
 }
 
 WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())

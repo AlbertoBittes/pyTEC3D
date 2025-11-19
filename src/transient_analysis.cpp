@@ -30,7 +30,7 @@ namespace
 }
 
 TransientAnalysis::TransientAnalysis(ApecMEquationSystems *eq_systems)
-    : TransientAnalysis(AnalysisBase::Type::Transient, eq_systems, "TransientAnalysis")
+    : TransientAnalysis(AnalysisBase::Type::TRANSIENT, eq_systems, "TransientAnalysis")
 {
 }
 
@@ -286,28 +286,69 @@ std::filesystem::path TransientAnalysis::resolve_default_base_name() const
 
 bool TransientAnalysis::solve(const std::string &filename)
 {
-    const auto path = resolve_load_step_path(filename);
+    std::filesystem::path path;
+    if (filename.empty())
+    {
+        auto base = resolve_default_base_name();
+        if (base.empty())
+        {
+            libMesh::out << "Unable to determine default load step base name." << std::endl;
+            return false;
+        }
+
+        const auto next_index = load_steps_completed() + 1;
+        path = base;
+        path.replace_filename(base.stem().string() + "_" + std::to_string(next_index));
+        path.replace_extension(".bin");
+    }
+    else
+        path = resolve_load_step_path(filename);
+
     if (path.empty())
     {
-        libMesh::out << "Provide a load step filename to solve." << std::endl;
+        libMesh::out << "Unable to resolve load step filename for solve request." << std::endl;
+        return false;
+    }
+
+    if (!std::filesystem::exists(path))
+    {
+        libMesh::out << "Load step file '" << path << "' not found." << std::endl;
         return false;
     }
 
     if (!read_time_step(path))
         return false;
 
-    return execute_solve();
+    if (!execute_solve())
+        return false;
+
+    mark_load_step_completed();
+    return true;
 }
 
 bool TransientAnalysis::solve_transient(const std::string &base_name)
 {
     std::filesystem::path base;
+    unsigned int step_index = 1;
     if (base_name.empty())
+    {
         base = resolve_default_base_name();
+        if (base.empty())
+        {
+            libMesh::out << "Unable to determine base name for transient solve." << std::endl;
+            return false;
+        }
+        step_index = static_cast<unsigned int>(load_steps_completed() + 1);
+    }
     else
     {
-        base = resolve_load_step_path(base_name);
-        base = base.parent_path() / base.stem();
+        auto resolved_path = resolve_load_step_path(base_name);
+        if (resolved_path.empty())
+        {
+            libMesh::out << "Unable to resolve load step path for '" << base_name << "'." << std::endl;
+            return false;
+        }
+        base = resolved_path.parent_path() / resolved_path.stem();
     }
 
     if (base.empty())
@@ -316,9 +357,8 @@ bool TransientAnalysis::solve_transient(const std::string &base_name)
         return false;
     }
 
-    unsigned int step_index = 1;
     bool solved_any = false;
-    while (true)
+    for (; true; ++step_index)
     {
         auto next_path = base;
         next_path.replace_filename(base.stem().string() + "_" + std::to_string(step_index));
@@ -334,8 +374,8 @@ bool TransientAnalysis::solve_transient(const std::string &base_name)
         if (!execute_solve())
             return false;
 
+        mark_load_step_completed();
         solved_any = true;
-        ++step_index;
     }
 
     if (!solved_any)
@@ -345,4 +385,10 @@ bool TransientAnalysis::solve_transient(const std::string &base_name)
     }
 
     return true;
+}
+
+bool TransientAnalysis::finish()
+{
+    cumulative_substep_index = 0;
+    return AnalysisBase::finish();
 }

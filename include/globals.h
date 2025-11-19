@@ -45,6 +45,7 @@ namespace Globals
         H_x,
         H_y,
         H_z,
+        PSI,
         Jt_x,
         Jt_y,
         Jt_z,
@@ -54,7 +55,7 @@ namespace Globals
         He_x,
         He_y,
         He_z,
-        PSI,
+        PSIe,
         UNKNOWN // Fallback for invalid strings
     };
 
@@ -73,10 +74,11 @@ namespace Globals
         Js,
         B,
         H,
+        PSI,
         Jt,
         Be,
         He,
-        PSI,
+        PSIe,
         UNKNOWN // Fallback for invalid strings
     };
 

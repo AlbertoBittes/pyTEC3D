@@ -14,15 +14,16 @@
 #include "real_constants_object.h"
 #include "session.h"
 #include "time_step.h"
+#include "apec_m_settings.h"
 
 class ApecMEquationSystems;
 
 class AnalysisBase : public FEDataObjectAbstract,
                      public FEParentObjectBase<ApecMEquationSystems>,
-                     public FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session>
+                     public FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session>;
+    using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>;
 
     enum class Type
     {
@@ -43,7 +44,7 @@ public:
 
     Type type() const { return analysis_type; }
 
-    bool initialize_model_context(const std::shared_ptr<FEMDataRepository> &model_repo);
+    virtual bool initialize_model_context(const std::shared_ptr<FEMDataRepository> &model_repo);
 
     virtual bool solve(const std::string &identifier) = 0;
     virtual bool solve_transient(const std::string &base_name);
