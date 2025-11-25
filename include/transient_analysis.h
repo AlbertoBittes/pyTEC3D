@@ -14,7 +14,8 @@ class ApecMExplicitSystem;
 class TransientAnalysis : public AnalysisBase
 {
 public:
-    explicit TransientAnalysis(ApecMEquationSystems *eq_systems = nullptr);
+    explicit TransientAnalysis(ApecMEquationSystems *eq_systems = nullptr,
+                               std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 
     std::filesystem::path load_steps_folder() const;
     std::vector<std::filesystem::path> list_load_step_files() const;
@@ -24,15 +25,15 @@ public:
 
     bool solve(const std::string &filename) override;
     bool solve_transient(const std::string &base_name) override;
+    virtual bool run_picard_iterations(Substep &substep);
     bool finish() override;
-    void solve_equation_systems(const Substep &substep);
-    void prepare_time_substep_solve(const Substep &substep);
+    void solve_equation_systems(Substep &substep);
+    void prepare_time_substep_solve(Substep &substep);
+    virtual bool execute_solve() override;
+    void print_output(Substep &substep);
+    void configure_services() const;
 
 private:
-    void configure_services() const;
-    virtual bool execute_solve() override;
-    void print_output(const Substep &substep);
-
 protected:
     std::filesystem::path resolve_load_step_path(const std::string &filename) const;
     std::filesystem::path resolve_default_base_name() const;
@@ -43,7 +44,8 @@ private:
 protected:
     TransientAnalysis(AnalysisBase::Type type,
                       ApecMEquationSystems *eq_systems,
-                      std::string analysis_name);
+                      std::string analysis_name,
+                      std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 };
 
 #endif // TRANSIENT_ANALYSIS_H

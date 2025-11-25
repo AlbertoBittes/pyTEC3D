@@ -2,8 +2,9 @@
 
 #include <libmesh/libmesh.h>
 
-StaticAnalysis::StaticAnalysis(ApecMEquationSystems *eq_systems)
-    : AnalysisBase(Type::STATIC, eq_systems, "StaticAnalysis")
+StaticAnalysis::StaticAnalysis(ApecMEquationSystems *eq_systems,
+                               std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : AnalysisBase(Type::STATIC, eq_systems, "StaticAnalysis", std::move(context_view))
 {
 }
 
@@ -14,8 +15,9 @@ bool StaticAnalysis::solve(const std::string &identifier)
     return false;
 }
 
-DOFInterpolationAnalysis::DOFInterpolationAnalysis(ApecMEquationSystems *eq_systems)
-    : AnalysisBase(Type::DOF_INTERPOLATION, eq_systems, "DOFInterpolationAnalysis")
+DOFInterpolationAnalysis::DOFInterpolationAnalysis(ApecMEquationSystems *eq_systems,
+                                                   std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : AnalysisBase(Type::DOF_INTERPOLATION, eq_systems, "DOFInterpolationAnalysis", std::move(context_view))
 {
 }
 
@@ -47,23 +49,40 @@ AnalysisBase::Type AnalysisBase::determine_analysis_type(const std::shared_ptr<F
 }
 
 std::shared_ptr<AnalysisBase> AnalysisBase::build(ApecMEquationSystems *eq_systems,
-                                                  const std::shared_ptr<FEMDataRepository> &model_repo)
+                                                  const std::shared_ptr<FEMDataRepository> &model_repo,
+                                                  std::shared_ptr<ContextView> context_view)
 {
     const auto type = determine_analysis_type(model_repo);
+
+    if (!context_view)
+        context_view = create_context_view(model_repo);
+
+    std::shared_ptr<AnalysisBase> analysis;
 
     switch (type)
     {
     case AnalysisBase::Type::STATIC:
-        return std::make_shared<StaticAnalysis>(eq_systems);
+        analysis = std::make_shared<StaticAnalysis>(eq_systems, context_view);
+        break;
     case AnalysisBase::Type::APECM_EQUILIBRIUM:
-        return std::make_shared<APECMEquilibriumAnalysis>(eq_systems);
+        analysis = std::make_shared<APECMEquilibriumAnalysis>(eq_systems, context_view);
+        break;
     case AnalysisBase::Type::APECM_EVOLUTION:
-        return std::make_shared<APECMEvolutionAnalysis>(eq_systems);
+        analysis = std::make_shared<APECMEvolutionAnalysis>(eq_systems, context_view);
+        break;
     case AnalysisBase::Type::TRANSIENT:
-        return std::make_shared<TransientAnalysis>(eq_systems);
+        analysis = std::make_shared<TransientAnalysis>(eq_systems, context_view);
+        break;
     case AnalysisBase::Type::DOF_INTERPOLATION:
-        return std::make_shared<DOFInterpolationAnalysis>(eq_systems);
+        analysis = std::make_shared<DOFInterpolationAnalysis>(eq_systems, context_view);
+        break;
     }
 
-    return nullptr;
+    if (analysis && context_view && !analysis->has_valid_context())
+    {
+        libMesh::out << "Failed to initialize analysis context for '" << analysis->get_name() << "'." << std::endl;
+        return nullptr;
+    }
+
+    return analysis;
 }

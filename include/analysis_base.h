@@ -36,7 +36,8 @@ public:
 
     AnalysisBase(Type type = Type::STATIC,
                  ApecMEquationSystems *eq_systems = nullptr,
-                 std::string analysis_name = "");
+                 std::string analysis_name = "",
+                 std::shared_ptr<ContextView> context_view = nullptr);
     virtual ~AnalysisBase() = default;
 
     const std::string &get_name() const { return name; }
@@ -44,7 +45,9 @@ public:
 
     Type type() const { return analysis_type; }
 
-    virtual bool initialize_model_context(const std::shared_ptr<FEMDataRepository> &model_repo);
+    bool initialize_context(std::shared_ptr<ContextView> context_view);
+    bool has_valid_context() const { return context_initialized; }
+    static std::shared_ptr<ContextView> create_context_view(const std::shared_ptr<FEMDataRepository> &model_repo);
 
     virtual bool solve(const std::string &identifier) = 0;
     virtual bool solve_transient(const std::string &base_name);
@@ -56,17 +59,19 @@ public:
 
     static Type determine_analysis_type(const std::shared_ptr<FEMDataRepository> &model_repo);
     static std::shared_ptr<AnalysisBase> build(ApecMEquationSystems *eq_systems,
-                                               const std::shared_ptr<FEMDataRepository> &model_repo);
+                                               const std::shared_ptr<FEMDataRepository> &model_repo,
+                                               std::shared_ptr<ContextView> context_view);
 
 protected:
     void mark_load_step_completed();
     void reset_load_step_counter();
+    std::size_t load_steps_completed_count = 0;
+    bool context_initialized = false;
 
 private:
     virtual bool execute_solve() = 0;
     Type analysis_type;
     std::string name;
-    std::size_t load_steps_completed_count = 0;
 };
 
 #endif // ANALYSIS_BASE_H

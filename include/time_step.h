@@ -91,7 +91,7 @@ public:
     Substep *get_active_substep() { return active_substep; }
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
-    const std::vector<Substep> &get_substeps() const { return substeps; }
+    std::vector<Substep> &get_substeps() { return substeps; }
 
     void set_step(int s) { step = s; }
     void set_time(Real t) { time = t; }
@@ -104,7 +104,7 @@ public:
     void set_theta(Real th) { theta = th; } // Not used in this context, but kept for compatibility
     void set_active_substep(Substep *substep) { active_substep = substep; }
     void set_previous_substep(Substep *substep) { previous_substep = substep; }
-    void add_substep(const Substep &substep) { substeps.push_back(substep); }
+    void add_substep(Substep &substep) { substeps.push_back(substep); }
     void set_substeps(int);
     // Custom substep iterator for TimeStep
 
@@ -143,7 +143,7 @@ public:
         : time_step(time_step), substep_index(substep_index), first(true) {}
 
     bool operator!=(const Iterator &other) const { return substep_index != other.substep_index; }
-    const Substep &operator*()
+    Substep &operator*()
     {
         auto &subst = time_step->get_substeps()[substep_index];
         if (first)

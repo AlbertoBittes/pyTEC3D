@@ -56,7 +56,7 @@ void ApecMSettingsObject::parse_columns()
         int iteration_count = get_int("max_iterations");
         if (iteration_count < 1)
             iteration_count = 1;
-        max_iterations = static_cast<unsigned int>(iteration_count);
+        max_picard_iterations_ = static_cast<unsigned int>(iteration_count);
     }
 
     if (has_column("min_distance_to_axis"))

@@ -29,15 +29,17 @@ namespace
     }
 }
 
-TransientAnalysis::TransientAnalysis(ApecMEquationSystems *eq_systems)
-    : TransientAnalysis(AnalysisBase::Type::TRANSIENT, eq_systems, "TransientAnalysis")
+TransientAnalysis::TransientAnalysis(ApecMEquationSystems *eq_systems,
+                                     std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : TransientAnalysis(AnalysisBase::Type::TRANSIENT, eq_systems, "TransientAnalysis", std::move(context_view))
 {
 }
 
 TransientAnalysis::TransientAnalysis(AnalysisBase::Type type,
                                      ApecMEquationSystems *eq_systems,
-                                     std::string analysis_name)
-    : AnalysisBase(type, eq_systems, std::move(analysis_name))
+                                     std::string analysis_name,
+                                     std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : AnalysisBase(type, eq_systems, std::move(analysis_name), std::move(context_view))
 {
 }
 
@@ -167,7 +169,8 @@ bool TransientAnalysis::execute_solve()
     {
         prepare_time_substep_solve(substep);
 
-        solve_equation_systems(substep);
+        if (!run_picard_iterations(substep))
+            return false;
 
         print_output(substep);
 
@@ -177,7 +180,7 @@ bool TransientAnalysis::execute_solve()
     return true;
 }
 
-void TransientAnalysis::prepare_time_substep_solve(const Substep &substep)
+void TransientAnalysis::prepare_time_substep_solve(Substep &substep)
 {
     auto *equation_systems = this->get_parent_object();
     if (!equation_systems)
@@ -200,7 +203,14 @@ void TransientAnalysis::prepare_time_substep_solve(const Substep &substep)
     assembler->write_element_matrices_and_rhs();
 }
 
-void TransientAnalysis::solve_equation_systems(const Substep &substep)
+bool TransientAnalysis::run_picard_iterations(Substep &substep)
+{
+    // Normal transient analysis does not use Picard iterations, always converges in one step
+    solve_equation_systems(substep);
+    return true;
+}
+
+void TransientAnalysis::solve_equation_systems(Substep &substep)
 {
     auto *equation_systems = this->get_parent_object();
     if (!equation_systems)
@@ -220,7 +230,7 @@ void TransientAnalysis::solve_equation_systems(const Substep &substep)
     assembler->write_solution_vectors(true);
 }
 
-void TransientAnalysis::print_output(const Substep &substep)
+void TransientAnalysis::print_output(Substep &substep)
 {
     auto *equation_systems = this->get_parent_object();
 

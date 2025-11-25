@@ -6,7 +6,8 @@
 class APECMEvolutionAnalysis : public APECMEquilibriumAnalysis
 {
 public:
-    explicit APECMEvolutionAnalysis(ApecMEquationSystems *eq_systems = nullptr);
+    explicit APECMEvolutionAnalysis(ApecMEquationSystems *eq_systems = nullptr,
+                                    std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 
     bool solve(const std::string &filename) override;
     bool solve_transient(const std::string &base_name) override;

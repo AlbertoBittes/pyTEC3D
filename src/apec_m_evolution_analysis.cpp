@@ -4,8 +4,9 @@
 
 #include <libmesh/libmesh.h>
 
-APECMEvolutionAnalysis::APECMEvolutionAnalysis(ApecMEquationSystems *eq_systems)
-    : APECMEquilibriumAnalysis(eq_systems)
+APECMEvolutionAnalysis::APECMEvolutionAnalysis(ApecMEquationSystems *eq_systems,
+                                               std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : APECMEquilibriumAnalysis(eq_systems, std::move(context_view))
 {
     set_name("APECMEvolutionAnalysis");
 }
@@ -62,7 +63,7 @@ bool APECMEvolutionAnalysis::solve(const std::string &filename)
         return false;
     mark_load_step_completed();
 
-    if (plasma_current_profile.size() <= 1)
+    if (plasma_current_profile().size() <= 1)
         return true;
 
     const Real base_dt = time_step->get_delta_t();
@@ -74,7 +75,7 @@ bool APECMEvolutionAnalysis::solve(const std::string &filename)
     Real current_time = time_step->get_time();
     int step_number = time_step->get_step();
 
-    for (std::size_t idx = 1; idx < plasma_current_profile.size(); ++idx)
+    for (std::size_t idx = 1; idx < plasma_current_profile().size(); ++idx)
     {
         auto new_step = std::make_shared<TimeStep>();
         new_step->set_step(++step_number);

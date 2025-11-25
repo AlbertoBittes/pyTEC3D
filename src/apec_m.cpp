@@ -559,19 +559,17 @@ bool APEC_M::enter_analysis_mode()
 
         equation_system->initialize_physics();
 
+        auto analysis_context = AnalysisBase::create_context_view(model_data_repository);
+        if (!analysis_context)
+        {
+            libMesh::out << "Failed to create analysis context for mesh '" << name << "'." << std::endl;
+            continue;
+        }
+
         auto analysis = repository->get_object<AnalysisBase>();
         if (!analysis)
         {
-            auto legacy_load_step = repository->get_object<TransientAnalysis>();
-            if (legacy_load_step)
-            {
-                analysis = legacy_load_step;
-                repository->set_object<AnalysisBase>(analysis);
-            }
-        }
-        if (!analysis)
-        {
-            analysis = AnalysisBase::build(equation_system.get(), model_data_repository);
+            analysis = AnalysisBase::build(equation_system.get(), model_data_repository, analysis_context);
             if (!analysis)
             {
                 libMesh::out << "Failed to create analysis object for mesh '" << name << "'." << std::endl;
@@ -582,12 +580,11 @@ bool APEC_M::enter_analysis_mode()
         else
         {
             analysis->set_parent_object(equation_system.get());
-        }
-
-        if (!analysis->initialize_model_context(model_data_repository))
-        {
-            libMesh::out << "Failed to initialize analysis context for mesh '" << name << "'." << std::endl;
-            continue;
+            if (!analysis->initialize_context(analysis_context))
+            {
+                libMesh::out << "Failed to refresh analysis context for mesh '" << name << "'." << std::endl;
+                continue;
+            }
         }
 
         equation_system->set_analysis(analysis);

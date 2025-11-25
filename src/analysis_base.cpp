@@ -5,20 +5,23 @@
 
 AnalysisBase::AnalysisBase(Type type,
                            ApecMEquationSystems *eq_systems,
-                           std::string analysis_name)
+                           std::string analysis_name,
+                           std::shared_ptr<ContextView> context_view)
     : FEParentObjectBase<ApecMEquationSystems>(eq_systems),
-      FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session>(),
+      FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(),
       analysis_type(type),
       name(std::move(analysis_name))
 {
+    if (context_view)
+        initialize_context(std::move(context_view));
 }
 
-bool AnalysisBase::initialize_model_context(const std::shared_ptr<FEMDataRepository> &model_repo)
+std::shared_ptr<AnalysisBase::ContextView> AnalysisBase::create_context_view(const std::shared_ptr<FEMDataRepository> &model_repo)
 {
     if (!model_repo)
     {
         libMesh::out << "AnalysisBase: model data repository is not available for context initialization." << std::endl;
-        return false;
+        return nullptr;
     }
 
     auto dummy_time_repo = std::make_shared<FEMDataRepository>();
@@ -29,9 +32,22 @@ bool AnalysisBase::initialize_model_context(const std::shared_ptr<FEMDataReposit
 
     std::get<std::shared_ptr<TimeStep>>(context->ptrs).reset();
 
-    this->set_context_view(context);
+    return context;
+}
+
+bool AnalysisBase::initialize_context(std::shared_ptr<ContextView> context_view)
+{
+    if (!context_view)
+    {
+        libMesh::out << "AnalysisBase: context view is not available for initialization." << std::endl;
+        context_initialized = false;
+        return false;
+    }
+
+    this->set_context_view(std::move(context_view));
     this->set_old_context_view(nullptr);
 
+    auto context = this->get_context_view();
     auto element_factory = context->template get<ElementTypesFactory>();
     auto materials = context->template get<MaterialsObject>();
     auto real_constants = context->template get<RealConstantsObject>();
@@ -43,6 +59,7 @@ bool AnalysisBase::initialize_model_context(const std::shared_ptr<FEMDataReposit
                                          (!needs_settings || (settings && !settings->empty())));
     if (!ready)
         libMesh::out << "AnalysisBase: incomplete model context detected." << std::endl;
+    context_initialized = ready;
     return ready;
 }
 

@@ -12,7 +12,8 @@
 class StaticAnalysis : public AnalysisBase
 {
 public:
-    explicit StaticAnalysis(ApecMEquationSystems *eq_systems = nullptr);
+    explicit StaticAnalysis(ApecMEquationSystems *eq_systems = nullptr,
+                            std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 
     bool solve(const std::string &identifier) override;
 };
@@ -20,7 +21,8 @@ public:
 class DOFInterpolationAnalysis : public AnalysisBase
 {
 public:
-    explicit DOFInterpolationAnalysis(ApecMEquationSystems *eq_systems = nullptr);
+    explicit DOFInterpolationAnalysis(ApecMEquationSystems *eq_systems = nullptr,
+                                      std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 
     bool solve(const std::string &identifier) override;
 };

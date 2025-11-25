@@ -6,144 +6,63 @@
 #include <algorithm>
 #include <libmesh/libmesh.h>
 
-APECMEquilibriumAnalysis::APECMEquilibriumAnalysis(ApecMEquationSystems *eq_systems)
-    : TransientAnalysis(AnalysisBase::Type::APECM_EQUILIBRIUM, eq_systems, "APECMEquilibriumAnalysis")
+APECMEquilibriumAnalysis::APECMEquilibriumAnalysis(ApecMEquationSystems *eq_systems,
+                                                   std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : TransientAnalysis(AnalysisBase::Type::APECM_EQUILIBRIUM, eq_systems, "APECMEquilibriumAnalysis", std::move(context_view))
 {
 }
 
-bool APECMEquilibriumAnalysis::initialize_model_context(const std::shared_ptr<FEMDataRepository> &model_repo)
+std::shared_ptr<ApecMSettingsObject> APECMEquilibriumAnalysis::settings() const
 {
-    if (!TransientAnalysis::initialize_model_context(model_repo))
-        return false;
-    configure_from_settings();
-    return true;
+    auto settings_ptr = this->context<ApecMSettingsObject>();
+    if (!settings_ptr || settings_ptr->empty())
+        libmesh_error_msg("APEC-M equilibrium analysis requires an ApecMSettingsObject in the context.");
+    return settings_ptr;
 }
 
-void APECMEquilibriumAnalysis::configure_from_settings()
+const std::vector<Real> &APECMEquilibriumAnalysis::plasma_current_profile() const
 {
-    auto settings = this->context<ApecMSettingsObject>();
-    if (!settings || settings->empty())
-    {
-        libMesh::out << "WARNING: APEC-M settings not found; using default equilibrium parameters." << std::endl;
-        settings_loaded = false;
-        plasma_current_profile = {0.0};
-        beta_p_profile = plasma_current_profile;
-        set_plasma_state_from_profile(0);
-        return;
-    }
-
-    target_axis = settings->target_axis();
-    R0 = settings->major_radius();
-    max_picard_iterations = static_cast<unsigned char>(std::max(1u, settings->max_iterations()));
-    min_dist_magnetic_axis = settings->min_distance_to_axis();
-    cpgain = settings->cpgain();
-    tol = settings->tolerance();
-    bradx = settings->bradx();
-    brady = settings->brady();
-    bverx = settings->bverx();
-    bvery = settings->bvery();
-    alpha = settings->alpha();
-
-    plasma_current_profile = settings->plasma_currents();
-    beta_p_profile = settings->beta_profile();
-    if (plasma_current_profile.empty())
-        plasma_current_profile.push_back(0.0);
-    if (beta_p_profile.size() < plasma_current_profile.size())
-        beta_p_profile.resize(plasma_current_profile.size(), beta_p_profile.empty() ? 0.0 : beta_p_profile.back());
-
-    set_plasma_state_from_profile(0);
-    settings_loaded = true;
+    auto settings_ptr = settings();
+    const auto &profile = settings_ptr->plasma_currents();
+    if (profile.empty())
+        libmesh_error_msg("APEC-M settings: plasma current profile is empty.");
+    return profile;
 }
 
-void APECMEquilibriumAnalysis::set_plasma_state_from_profile(std::size_t index)
+const std::vector<Real> &APECMEquilibriumAnalysis::beta_p_profile() const
 {
-    if (plasma_current_profile.empty())
-        plasma_current_profile.push_back(0.0);
-    if (index >= plasma_current_profile.size())
-        index = plasma_current_profile.size() - 1;
-    active_profile_index = index;
-    plasma_current_Ip = plasma_current_profile[index];
-    if (!beta_p_profile.empty())
-        beta = beta_p_profile[std::min(index, beta_p_profile.size() - 1)];
+    auto settings_ptr = settings();
+    const auto &profile = settings_ptr->beta_profile();
+    const auto &currents = plasma_current_profile();
+    if (profile.size() < currents.size())
+        libmesh_error_msg("APEC-M settings: beta profile has fewer entries than plasma current profile.");
+    return profile;
 }
 
-bool APECMEquilibriumAnalysis::execute_solve()
+Real APECMEquilibriumAnalysis::min_distance_to_axis() const
 {
-    if (!settings_loaded)
-        configure_from_settings();
-
-    auto time_step = this->context<TimeStep>();
-    if (!time_step)
-    {
-        libMesh::out << "Equilibrium analysis requires load step data." << std::endl;
-        return false;
-    }
-
-    set_plasma_state_from_profile(0);
-    return solve_equilibrium_step(*time_step);
+    return settings()->min_distance_to_axis();
 }
 
-bool APECMEquilibriumAnalysis::solve_equilibrium_step(TimeStep &time_step)
+bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
 {
-    prepare_time_step(time_step, true);
-    return run_picard_iterations(time_step);
-}
-
-void APECMEquilibriumAnalysis::prepare_time_step(TimeStep &time_step, bool enforce_static)
-{
-    if (enforce_static)
-    {
-        if (time_step.get_transient_effect())
-            libMesh::out << "WARNING: Disabling transient effects for equilibrium load step " << time_step.get_step() << "." << std::endl;
-        time_step.set_transient_effect(0);
-    }
-    else
-    {
-        if (!time_step.get_transient_effect())
-            libMesh::out << "INFO: Enabling transient effects for evolution load step " << time_step.get_step() << "." << std::endl;
-        time_step.set_transient_effect(1);
-    }
-
-    if (!time_step.get_write_results())
-        time_step.set_write_results(1);
-
-    if (time_step.get_n_substeps() == 0)
-        time_step.set_substeps(1);
-}
-
-void APECMEquilibriumAnalysis::reset_iteration_state()
-{
-    first_absolute_iteration = true;
-    vacuum_chamber_psi_dofs.clear();
-    prev_it_vacuum_chamber_psi_vector.clear();
-    curr_it_vacuum_chamber_psi_vector.clear();
-}
-
-bool APECMEquilibriumAnalysis::run_picard_iterations(TimeStep &time_step)
-{
-    reset_iteration_state();
-
-    const auto iterations_limit = std::max<unsigned int>(1, max_picard_iterations);
+    const auto iterations_limit = std::max<unsigned int>(1u, settings()->max_picard_iterations());
     bool converged = false;
 
-    for (auto &substep : time_step.get_substeps())
+    for (unsigned int iteration = 0; iteration < iterations_limit; ++iteration)
     {
-        converged = false;
-        for (unsigned int iteration = 0; iteration < iterations_limit; ++iteration)
+        if (picard_loop(substep))
         {
-            if (picard_loop(substep))
-            {
-                converged = true;
-                break;
-            }
+            converged = true;
+            break;
         }
+    }
 
-        if (!converged)
-        {
-            libMesh::out << "Equilibrium analysis did not converge within " << iterations_limit
-                         << " Picard iterations at load step " << time_step.get_step() << "." << std::endl;
-            return false;
-        }
+    if (!converged)
+    {
+        libMesh::out << "Equilibrium analysis did not converge within " << iterations_limit
+                     << " Picard iterations." << std::endl;
+        return false;
     }
 
     return converged;
@@ -184,8 +103,9 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     const auto &mesh = eq_sys->get_mesh();
     auto builder = ElementBuilder::make_element_builder(eq_sys);
     auto point_locator = mesh.sub_point_locator();
+    const auto &axis = settings()->target_axis();
     // Here you will be able to restrict to the subdomain of stranded conductors for speedup
-    const Elem *target_elem = point_locator->operator()(target_axis);
+    const Elem *target_elem = point_locator->operator()(axis);
     auto &comm = mesh.comm();
     // target_axis(0) = -std::numeric_limits<Real>::max();
     // target_axis(1) = -std::numeric_limits<Real>::max();
@@ -195,8 +115,8 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     builder->build_solution_vectors_from_emat_files(target_elem->id(), session->get_path("emat_files_path"));
     // }
     b_target_axis.resize(2);
-    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, target_axis, target_elem, nodal_solution_system.solution.get());
-    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, target_axis, target_elem, nodal_solution_system.solution.get());
+    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, target_elem, nodal_solution_system.solution.get());
+    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, target_elem, nodal_solution_system.solution.get());
 }
 
 void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
@@ -213,7 +133,7 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
     // dof_id_type vacuum_boundary_component = mesh.get_node_integer_index("vacuum_chamber_boundary");
     dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("new_vacuum_chamber_boundary");
 
-    int current_sign = (plasma_current_Ip >= 0) ? 1 : -1;
+    int current_sign = (plasma_current_profile()[load_steps_completed_count] >= 0) ? 1 : -1;
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -340,7 +260,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
 
     dof_id_type vacuum_boundary_region_component = mesh.get_node_integer_index("vacuum_chamber_boundary");
 
-    int current_sign = (plasma_current_Ip >= 0) ? 1 : -1;
+    int current_sign = (plasma_current_profile()[load_steps_completed_count] >= 0) ? 1 : -1;
 
     for (const auto &node : mesh.local_node_ptr_range())
     {
@@ -410,6 +330,13 @@ void APECMEquilibriumAnalysis::find_separatrix()
 
 std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
 {
+    auto cfg = settings();
+    const Real bradx = cfg->bradx();
+    const Real brady = cfg->brady();
+    const Real bverx = cfg->bverx();
+    const Real bvery = cfg->bvery();
+    const Real cpgain = cfg->cpgain();
+
     Real bb = bradx * bvery - bverx * brady;
     Real dira = -(bverx * b_target_axis(1) - bvery * b_target_axis(0)) / bb;
     // delta vertical current
@@ -470,6 +397,11 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
 void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 {
     auto eq_sys = this->get_parent_object();
+    auto cfg = settings();
+    const auto &beta_profile = beta_p_profile();
+    const auto &current_profile = plasma_current_profile();
+    const Real alpha = cfg->alpha();
+    const Real R0 = cfg->major_radius();
 
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
     unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
@@ -482,7 +414,6 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
     auto &comm = mesh.comm();
     dof_id_type plasma_component = mesh.get_elem_integer_index("plasma");
 
-    Real correction_current;
     Real total_plasma_current = 0.0;
 
     for (auto &elem : mesh.active_local_element_ptr_range())
@@ -498,7 +429,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
         Real grad_shafranov_current_density = (1 - std::pow(psi_segn, alpha)) *
-                                              (beta * elem_centroid_rad / R0 + (1 - beta) * R0 / elem_centroid_rad);
+                                              (beta_profile[load_steps_completed_count] * elem_centroid_rad / R0 + (1 - beta_profile[load_steps_completed_count]) * R0 / elem_centroid_rad);
         total_plasma_current += grad_shafranov_current_density * elem->volume();
         plasma_current_vector.set(elem_current_density_dof, grad_shafranov_current_density);
     }
@@ -513,7 +444,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
         Real existing_current_density = element_loads_system.current_local_solution->el(elem_current_density_dof);
-        Real adjusted_current_density = existing_current_density * (plasma_current_Ip / total_plasma_current);
+        Real adjusted_current_density = existing_current_density * (current_profile[load_steps_completed_count] / total_plasma_current);
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
     }
 }
@@ -544,13 +475,14 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     }
 
     bool converged = true;
+    const Real tolerance = settings()->tolerance();
 
     element_solution_system.current_local_solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
 
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
         Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / std::max(std::abs(curr_it_vacuum_chamber_psi_vector[i]), std::abs(prev_it_vacuum_chamber_psi_vector[i]));
-        if (rel_diff > tol)
+        if (rel_diff > tolerance)
         {
             converged = false;
             break;
@@ -607,7 +539,7 @@ void APECMEquilibriumAnalysis::constant_plasma_current_density()
 
         dof_id_type real_constant_elem_id = elem->get_extra_integer(real_constant_mesh_id);
         Real plasma_area = real_constants_map->get_constant(real_constant_elem_id)[0];
-        Real plasma_current_density = plasma_current_Ip / plasma_area;
+        Real plasma_current_density = plasma_current_profile()[load_steps_completed_count] / plasma_area;
         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
         plasma_current_vector.set(elem_current_density_dof, plasma_current_density);
     }
