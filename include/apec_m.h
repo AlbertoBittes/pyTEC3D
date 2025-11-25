@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <optional>
 
 #include <libmesh/libmesh.h>
 
@@ -42,7 +43,7 @@ public:
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
     bool load_model_data(const std::string &filepath);
-    bool set_mode(Session::Mode mode);
+    bool set_mode(Session::Mode mode, std::optional<AnalysisBase::Type> analysis_type = std::nullopt);
     Session::Mode get_mode() const
     {
         auto session = model_data_repository->get_object<Session>();
@@ -59,6 +60,8 @@ public:
     bool solve_load_step(const std::string &filename);
     bool solve_transient_load_steps(const std::string &base_name);
     bool finish_analysis();
+    bool read_grid_data(const std::string &filepath);
+    bool read_time_step_file(const std::string &filepath);
 
     void print_model_data() const;
 
@@ -82,8 +85,9 @@ private:
     std::vector<std::pair<std::string, std::shared_ptr<FEMDataRepository>>> mesh_repositories;
     std::unordered_map<std::string, std::size_t> mesh_repository_lookup;
     std::unique_ptr<CommandLineInterface> cli;
+    std::shared_ptr<AnalysisBase> shared_analysis;
 
-    bool enter_analysis_mode();
+    bool enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type);
     void enter_preprocessing_mode();
 };
 

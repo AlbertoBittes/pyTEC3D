@@ -17,9 +17,10 @@
 #include "apec_m_settings.h"
 
 class ApecMEquationSystems;
+class APEC_M;
 
 class AnalysisBase : public FEDataObjectAbstract,
-                     public FEParentObjectBase<ApecMEquationSystems>,
+                     public FEParentObjectBase<APEC_M>,
                      public FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>
 {
 public:
@@ -35,7 +36,7 @@ public:
     };
 
     AnalysisBase(Type type = Type::STATIC,
-                 ApecMEquationSystems *eq_systems = nullptr,
+                 APEC_M *program = nullptr,
                  std::string analysis_name = "",
                  std::shared_ptr<ContextView> context_view = nullptr);
     virtual ~AnalysisBase() = default;
@@ -48,30 +49,34 @@ public:
     bool initialize_context(std::shared_ptr<ContextView> context_view);
     bool has_valid_context() const { return context_initialized; }
     static std::shared_ptr<ContextView> create_context_view(const std::shared_ptr<FEMDataRepository> &model_repo);
+    ApecMEquationSystems *active_equation_system() const;
+    std::shared_ptr<ApecMEquationSystems> active_equation_system_ptr() const;
 
     virtual bool solve(const std::string &identifier) = 0;
-    virtual bool solve_transient(const std::string &base_name);
+    virtual bool solve_transient(const std::string &base_name) = 0;
+    virtual void prepare_time_substep_solve(Substep &substep) = 0;
+    virtual void solve_equation_systems(Substep &substep) = 0;
+    virtual bool run_picard_iterations(Substep &substep) = 0;
+    virtual void print_output(Substep &substep) = 0;
+
     virtual bool finish();
 
-    std::size_t load_steps_completed() const { return load_steps_completed_count; }
+    void update_time_data_context(const std::shared_ptr<TimeStep> &time_step,
+                                  const std::shared_ptr<ApecMSettingsObject> &settings);
 
-    void update_time_step_context(const std::shared_ptr<TimeStep> &time_step);
-
-    static Type determine_analysis_type(const std::shared_ptr<FEMDataRepository> &model_repo);
-    static std::shared_ptr<AnalysisBase> build(ApecMEquationSystems *eq_systems,
+    static std::shared_ptr<AnalysisBase> build(APEC_M *program,
                                                const std::shared_ptr<FEMDataRepository> &model_repo,
-                                               std::shared_ptr<ContextView> context_view);
+                                               std::shared_ptr<ContextView> context_view,
+                                               Type requested_type);
 
 protected:
-    void mark_load_step_completed();
-    void reset_load_step_counter();
-    std::size_t load_steps_completed_count = 0;
-    bool context_initialized = false;
-
-private:
     virtual bool execute_solve() = 0;
-    Type analysis_type;
+
+    std::size_t load_steps_completed_count = 0;
+    unsigned int cumulative_substeps_completed = 0;
+    bool context_initialized = false;
     std::string name;
+    Type analysis_type;
 };
 
 #endif // ANALYSIS_BASE_H

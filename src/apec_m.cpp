@@ -10,6 +10,7 @@
 #include "time_step.h"
 
 #include <filesystem>
+#include <optional>
 #include <exception>
 #include <utility>
 #include <system_error>
@@ -81,19 +82,13 @@ std::shared_ptr<ApecMEquationSystems> APEC_M::get_active_equation_system() const
 
 std::shared_ptr<AnalysisBase> APEC_M::get_analysis(const std::string &name) const
 {
-    auto repository = find_mesh_repository(name);
-    if (!repository)
-        return nullptr;
-    return repository->get_object<AnalysisBase>();
+    (void)name;
+    return shared_analysis;
 }
 
 std::shared_ptr<AnalysisBase> APEC_M::get_active_analysis() const
 {
-    auto session = model_data_repository->get_object<Session>();
-    if (!session || !session->has_active_mesh())
-        return nullptr;
-
-    return get_analysis(session->get_active_mesh());
+    return shared_analysis;
 }
 
 bool APEC_M::has_mesh(const std::string &name) const
@@ -209,7 +204,6 @@ void APEC_M::print_model_data() const
         {typeid(TimeStep), "Time Parameters"},
         {typeid(ApecMPeriodicBoundaryFactory), "Periodic Boundaries"},
         {typeid(PetscSolverConfiguration), "Solver Settings"},
-        {typeid(ApecMSettingsObject), "APEC-M Settings"},
         {typeid(DofInterpolationSettingsObject), "DOF Interpolation Settings"}};
 
     libMesh::out << "Model data contents:" << std::endl;
@@ -381,24 +375,28 @@ std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
 bool APEC_M::solve_load_step(const std::string &filename)
 {
     auto analysis = get_active_analysis();
-    if (!analysis)
+    auto eq_system = get_active_equation_system();
+    if (!analysis || !eq_system)
     {
         libMesh::out << "No analysis available for the active mesh." << std::endl;
         return false;
     }
 
+    analysis->set_parent_object(this);
     return analysis->solve(filename);
 }
 
 bool APEC_M::solve_transient_load_steps(const std::string &base_name)
 {
     auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
-    if (!analysis)
+    auto eq_system = get_active_equation_system();
+    if (!analysis || !eq_system)
     {
         libMesh::out << "No load step analysis available for the active mesh." << std::endl;
         return false;
     }
 
+    analysis->set_parent_object(this);
     return analysis->solve_transient(base_name);
 }
 
@@ -411,10 +409,37 @@ bool APEC_M::finish_analysis()
         return false;
     }
 
+    analysis->set_parent_object(this);
     return analysis->finish();
 }
 
-bool APEC_M::set_mode(Session::Mode mode)
+bool APEC_M::read_grid_data(const std::string &filepath)
+{
+    auto analysis = std::dynamic_pointer_cast<StaticAnalysis>(get_active_analysis());
+    if (!analysis)
+    {
+        libMesh::out << "No analysis available for grid data import." << std::endl;
+        return false;
+    }
+
+    analysis->set_parent_object(this);
+    return analysis->read_grid_data(filepath);
+}
+
+bool APEC_M::read_time_step_file(const std::string &filepath)
+{
+    auto analysis = std::dynamic_pointer_cast<StaticAnalysis>(get_active_analysis());
+    if (!analysis)
+    {
+        libMesh::out << "No analysis available for time step import." << std::endl;
+        return false;
+    }
+
+    analysis->set_parent_object(this);
+    return static_cast<bool>(analysis->read_time_step(filepath));
+}
+
+bool APEC_M::set_mode(Session::Mode mode, std::optional<AnalysisBase::Type> analysis_type)
 {
     auto session = model_data_repository->get_object<Session>();
     if (!session)
@@ -429,11 +454,21 @@ bool APEC_M::set_mode(Session::Mode mode)
 
     if (current == Session::Mode::PreProcessing && mode == Session::Mode::Analysis)
     {
-        transition_ok = enter_analysis_mode();
+        if (!analysis_type)
+        {
+            libMesh::out << "Analysis type must be specified when entering analysis mode." << std::endl;
+            return false;
+        }
+
+        transition_ok = enter_analysis_mode(analysis_type);
     }
     else if (current == Session::Mode::Analysis && mode == Session::Mode::PreProcessing)
     {
         enter_preprocessing_mode();
+    }
+    else if (analysis_type)
+    {
+        libMesh::out << "Ignoring analysis type when not entering analysis mode." << std::endl;
     }
 
     if (!transition_ok)
@@ -459,7 +494,7 @@ void APEC_M::read_mesh(const std::string &name, const std::string &filepath)
     mesh->set_parent_object(this);
     repository.set_object<ApecMMesh>(mesh);
 
-    auto equation_system = ApecMEquationSystems::build(*mesh);
+    auto equation_system = ApecMEquationSystems::build(*mesh, this);
     repository.set_object<ApecMEquationSystems>(equation_system);
 
     set_active_mesh(name);
@@ -493,7 +528,7 @@ void APEC_M::clear_mesh(const std::string &name)
     }
 }
 
-bool APEC_M::enter_analysis_mode()
+bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type)
 {
     if (mesh_repositories.empty())
     {
@@ -501,10 +536,25 @@ bool APEC_M::enter_analysis_mode()
         return false;
     }
 
+    if (!analysis_type)
+    {
+        libMesh::out << "Analysis type not provided. Cannot enter analysis mode." << std::endl;
+        return false;
+    }
+
+    shared_analysis.reset();
+
     bool initialized_any = false;
 
     auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
     auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
+    auto analysis_context = AnalysisBase::create_context_view(model_data_repository);
+
+    if (!analysis_context)
+    {
+        libMesh::out << "Failed to create analysis context for analysis mode." << std::endl;
+        return false;
+    }
 
     for (auto &entry : mesh_repositories)
     {
@@ -537,10 +587,9 @@ bool APEC_M::enter_analysis_mode()
         auto equation_system = repository->get_object<ApecMEquationSystems>();
         if (!equation_system)
         {
-            equation_system = ApecMEquationSystems::build(*mesh);
+            equation_system = ApecMEquationSystems::build(*mesh, this);
             repository->set_object<ApecMEquationSystems>(equation_system);
         }
-
         equation_system->initialize_systems(model_data_repository);
 
         if (periodic_factory)
@@ -559,35 +608,16 @@ bool APEC_M::enter_analysis_mode()
 
         equation_system->initialize_physics();
 
-        auto analysis_context = AnalysisBase::create_context_view(model_data_repository);
-        if (!analysis_context)
+        if (!shared_analysis)
         {
-            libMesh::out << "Failed to create analysis context for mesh '" << name << "'." << std::endl;
-            continue;
-        }
-
-        auto analysis = repository->get_object<AnalysisBase>();
-        if (!analysis)
-        {
-            analysis = AnalysisBase::build(equation_system.get(), model_data_repository, analysis_context);
-            if (!analysis)
+            shared_analysis = AnalysisBase::build(this, model_data_repository, analysis_context, *analysis_type);
+            if (!shared_analysis)
             {
                 libMesh::out << "Failed to create analysis object for mesh '" << name << "'." << std::endl;
                 continue;
             }
-            repository->set_object<AnalysisBase>(analysis);
+            shared_analysis->set_parent_object(this);
         }
-        else
-        {
-            analysis->set_parent_object(equation_system.get());
-            if (!analysis->initialize_context(analysis_context))
-            {
-                libMesh::out << "Failed to refresh analysis context for mesh '" << name << "'." << std::endl;
-                continue;
-            }
-        }
-
-        equation_system->set_analysis(analysis);
 
         initialized_any = true;
     }
@@ -603,6 +633,7 @@ bool APEC_M::enter_analysis_mode()
 
 void APEC_M::enter_preprocessing_mode()
 {
+    shared_analysis.reset();
     mesh_repositories.clear();
     mesh_repository_lookup.clear();
     auto session = model_data_repository->get_object<Session>();

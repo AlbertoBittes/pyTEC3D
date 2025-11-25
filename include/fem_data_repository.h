@@ -50,36 +50,36 @@ public:
         return data_objects;
     }
 
-    void add_all_from(std::shared_ptr<FEMDataRepository> other)
-    {
-        if (!other)
-            return;
-        for (const auto &pair : other->get_all_objects())
-        {
-            data_objects[pair.first] = pair.second;
-        }
-    }
+    // void add_all_from(std::shared_ptr<FEMDataRepository> other)
+    // {
+    //     if (!other)
+    //         return;
+    //     for (const auto &pair : other->get_all_objects())
+    //     {
+    //         data_objects[pair.first] = pair.second;
+    //     }
+    // }
 
-    void move_all_from(const std::shared_ptr<FEMDataRepository> &other)
-    {
-        if (!other)
-            return;
+    // void move_all_from(const std::shared_ptr<FEMDataRepository> &other)
+    // {
+    //     if (!other)
+    //         return;
 
-        for (auto &pair : other->data_objects)
-        {
-            data_objects[pair.first] = std::move(pair.second);
-        }
-        other->data_objects.clear();
-    }
+    //     for (auto &pair : other->data_objects)
+    //     {
+    //         data_objects[pair.first] = std::move(pair.second);
+    //     }
+    //     other->data_objects.clear();
+    // }
 
-    void move_all_from(FEMDataRepository &other)
-    {
-        for (auto &pair : other.data_objects)
-        {
-            data_objects[pair.first] = std::move(pair.second);
-        }
-        other.data_objects.clear();
-    }
+    // void move_all_from(FEMDataRepository &other)
+    // {
+    //     for (auto &pair : other.data_objects)
+    //     {
+    //         data_objects[pair.first] = std::move(pair.second);
+    //     }
+    //     other.data_objects.clear();
+    // }
 
 protected:
     std::unordered_map<std::type_index, std::shared_ptr<FEDataObjectAbstract>> data_objects;
@@ -117,9 +117,8 @@ struct TypedContextView
         auto view = std::make_shared<TypedContextView<QueryTypes...>>();
         view->ptrs = std::make_tuple(get<QueryTypes>()...);
 
-        const bool has_nullptr = std::apply([](const auto &...ptrs) {
-            return ((ptrs == nullptr) || ...);
-        },
+        const bool has_nullptr = std::apply([](const auto &...ptrs)
+                                            { return ((ptrs == nullptr) || ...); },
                                             view->ptrs);
 
         if (has_nullptr)

@@ -8,12 +8,6 @@
 class ApecMSettingsObject : public BinaryDataFEDataObject
 {
 public:
-    enum class AnalysisMode
-    {
-        EQUILIBRIUM,
-        EVOLUTION
-    };
-
     ApecMSettingsObject();
     explicit ApecMSettingsObject(std::ifstream &file);
 
@@ -21,7 +15,6 @@ public:
 
     bool empty() const { return BinaryDataFEDataObject::empty(); }
 
-    AnalysisMode analysis_mode() const { return mode; }
     const Point &target_axis() const { return target_central_axis; }
     Real major_radius() const { return R0; }
     unsigned int max_picard_iterations() const { return max_picard_iterations_; }
@@ -33,13 +26,12 @@ public:
     Real bverx() const { return bverx_value; }
     Real bvery() const { return bvery_value; }
     Real alpha() const { return alpha_value; }
-    const std::vector<Real> &plasma_currents() const { return plasma_current_profile; }
-    const std::vector<Real> &beta_profile() const { return beta_p_profile; }
+    Real plasma_currents() const { return plasma_current_profile; }
+    Real beta_profile() const { return beta_p_profile; }
 
 private:
     void parse_columns();
 
-    AnalysisMode mode = AnalysisMode::EQUILIBRIUM;
     Point target_central_axis = Point();
     Real R0 = 0.0;
     unsigned int max_picard_iterations_ = 1;
@@ -51,8 +43,8 @@ private:
     Real bverx_value = 0.0;
     Real bvery_value = 0.0;
     Real alpha_value = 1.0;
-    std::vector<Real> plasma_current_profile;
-    std::vector<Real> beta_p_profile;
+    Real plasma_current_profile = 0.0;
+    Real beta_p_profile = 0.0;
 };
 
 #endif // APEC_M_SETTINGS_H

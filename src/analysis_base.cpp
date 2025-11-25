@@ -1,19 +1,39 @@
 #include "analysis_base.h"
+#include "transient_analysis.h"
+
+#include "apec_m_equilibrium_analysis.h"
+#include "apec_m_evolution_analysis.h"
+
 #include "apec_m_eq_system_object.h"
+#include "apec_m.h"
 
 #include <libmesh/libmesh.h>
 
 AnalysisBase::AnalysisBase(Type type,
-                           ApecMEquationSystems *eq_systems,
+                           APEC_M *program,
                            std::string analysis_name,
                            std::shared_ptr<ContextView> context_view)
-    : FEParentObjectBase<ApecMEquationSystems>(eq_systems),
+    : FEParentObjectBase<APEC_M>(program),
       FEMServiceWithOldContext<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(),
       analysis_type(type),
       name(std::move(analysis_name))
 {
     if (context_view)
         initialize_context(std::move(context_view));
+}
+
+std::shared_ptr<ApecMEquationSystems> AnalysisBase::active_equation_system_ptr() const
+{
+    auto program = this->get_parent_object();
+    if (!program)
+        return nullptr;
+    return program->get_active_equation_system();
+}
+
+ApecMEquationSystems *AnalysisBase::active_equation_system() const
+{
+    auto ptr = active_equation_system_ptr();
+    return ptr.get();
 }
 
 std::shared_ptr<AnalysisBase::ContextView> AnalysisBase::create_context_view(const std::shared_ptr<FEMDataRepository> &model_repo)
@@ -26,11 +46,14 @@ std::shared_ptr<AnalysisBase::ContextView> AnalysisBase::create_context_view(con
 
     auto dummy_time_repo = std::make_shared<FEMDataRepository>();
     dummy_time_repo->set_object(std::make_shared<TimeStep>());
+    auto dummy_settings_repo = std::make_shared<FEMDataRepository>();
+    dummy_settings_repo->set_object(std::make_shared<ApecMSettingsObject>());
 
     auto context = std::make_shared<ContextView>(
-        ContextView::from(model_repo, dummy_time_repo));
+        ContextView::from(model_repo, dummy_time_repo, dummy_settings_repo));
 
     std::get<std::shared_ptr<TimeStep>>(context->ptrs).reset();
+    std::get<std::shared_ptr<ApecMSettingsObject>>(context->ptrs).reset();
 
     return context;
 }
@@ -52,26 +75,15 @@ bool AnalysisBase::initialize_context(std::shared_ptr<ContextView> context_view)
     auto materials = context->template get<MaterialsObject>();
     auto real_constants = context->template get<RealConstantsObject>();
     auto session = context->template get<Session>();
-    auto settings = context->template get<ApecMSettingsObject>();
-
-    const bool needs_settings = (analysis_type == Type::APECM_EQUILIBRIUM || analysis_type == Type::APECM_EVOLUTION);
-    const bool ready = static_cast<bool>(element_factory && materials && real_constants && session &&
-                                         (!needs_settings || (settings && !settings->empty())));
+    const bool ready = static_cast<bool>(element_factory && materials && real_constants && session);
     if (!ready)
         libMesh::out << "AnalysisBase: incomplete model context detected." << std::endl;
     context_initialized = ready;
     return ready;
 }
 
-bool AnalysisBase::solve_transient(const std::string &base_name)
-{
-    libMesh::out << "Analysis '" << name
-                 << "' does not support transient solves (requested base name '"
-                 << base_name << "')." << std::endl;
-    return false;
-}
-
-void AnalysisBase::update_time_step_context(const std::shared_ptr<TimeStep> &time_step)
+void AnalysisBase::update_time_data_context(const std::shared_ptr<TimeStep> &time_step,
+                                            const std::shared_ptr<ApecMSettingsObject> &settings)
 {
     auto current = this->get_context_view();
     if (!current)
@@ -79,23 +91,54 @@ void AnalysisBase::update_time_step_context(const std::shared_ptr<TimeStep> &tim
 
     auto new_view = std::make_shared<ContextView>(*current);
     std::get<std::shared_ptr<TimeStep>>(new_view->ptrs) = time_step;
+    std::get<std::shared_ptr<ApecMSettingsObject>>(new_view->ptrs) = settings;
     this->update_context_views(new_view);
 }
 
 bool AnalysisBase::finish()
 {
-    reset_load_step_counter();
-    if (auto *equation_systems = this->get_parent_object())
+    load_steps_completed_count = 0;
+    if (auto equation_systems = this->active_equation_system_ptr())
         equation_systems->zero_all_systems();
     return true;
 }
 
-void AnalysisBase::mark_load_step_completed()
+std::shared_ptr<AnalysisBase> AnalysisBase::build(APEC_M *program,
+                                                  const std::shared_ptr<FEMDataRepository> &model_repo,
+                                                  std::shared_ptr<ContextView> context_view,
+                                                  Type requested_type)
 {
-    ++load_steps_completed_count;
-}
+    const auto type = requested_type;
 
-void AnalysisBase::reset_load_step_counter()
-{
-    load_steps_completed_count = 0;
+    if (!context_view)
+        context_view = create_context_view(model_repo);
+
+    std::shared_ptr<AnalysisBase> analysis;
+
+    switch (type)
+    {
+    case AnalysisBase::Type::STATIC:
+        analysis = std::make_shared<StaticAnalysis>(program, context_view);
+        break;
+    case AnalysisBase::Type::APECM_EQUILIBRIUM:
+        analysis = std::make_shared<APECMEquilibriumAnalysis>(program, context_view);
+        break;
+    case AnalysisBase::Type::APECM_EVOLUTION:
+        analysis = std::make_shared<APECMEvolutionAnalysis>(program, context_view);
+        break;
+    case AnalysisBase::Type::TRANSIENT:
+        analysis = std::make_shared<TransientAnalysis>(program, context_view);
+        break;
+    case AnalysisBase::Type::DOF_INTERPOLATION:
+        analysis = std::make_shared<DOFInterpolationAnalysis>(program, context_view);
+        break;
+    }
+
+    if (analysis && context_view && !analysis->has_valid_context())
+    {
+        libMesh::out << "Failed to initialize analysis context for '" << analysis->get_name() << "'." << std::endl;
+        return nullptr;
+    }
+
+    return analysis;
 }

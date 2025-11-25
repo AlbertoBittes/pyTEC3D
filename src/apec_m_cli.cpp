@@ -9,9 +9,12 @@
 #include <filesystem>
 #include <system_error>
 #include <unordered_map>
+#include <optional>
 
 #include <libmesh/libmesh.h>
 #include <libmesh/parallel.h>
+
+#include "analysis_base.h"
 
 namespace
 {
@@ -187,6 +190,10 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::READ_MODEL_DATA;
     if (input == "-print_model_data")
         return Command::PRINT_MODEL_DATA;
+    if (input.rfind("-read_grid", 0) == 0)
+        return Command::READ_GRID_DATA;
+    if (input.rfind("-read_time_step", 0) == 0)
+        return Command::READ_TIME_STEP;
     if (input == "-list_load_steps")
         return Command::LIST_LOAD_STEPS;
     if (input.rfind("-solve_transient", 0) == 0)
@@ -350,24 +357,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         program.print_model_data();
         return true;
     }
-    case Command::LIST_LOAD_STEPS:
-    {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-list_load_steps"))
-            return true;
-
-        const auto files = program.list_load_step_files();
-        if (files.empty())
-        {
-            libMesh::out << "No load step binaries found for the active mesh." << std::endl;
-            return true;
-        }
-
-        libMesh::out << files.size() << " load step file(s) available:" << std::endl;
-        for (const auto &path : files)
-            libMesh::out << "  - " << path.filename().string() << std::endl;
-        return true;
-    }
     case Command::SOLVE:
     {
         const Session &session = *program.model_data()->get_object<Session>();
@@ -402,14 +391,54 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             libMesh::out << "Analysis state cleared." << std::endl;
         return true;
     }
-    case Command::SET_MODE:
+    case Command::READ_GRID_DATA:
     {
-        auto mode_arg = extract_argument(input);
-        if (mode_arg.empty())
+        const Session &session = *program.model_data()->get_object<Session>();
+        if (!require_mode(session, Session::Mode::Analysis, "-read_grid"))
+            return true;
+
+        auto filepath = extract_argument(input);
+        if (filepath.empty())
         {
-            libMesh::out << "Usage: -mode <preprocessing|analysis|other>" << std::endl;
+            libMesh::out << "Usage: -read_grid <grid_binary_file>" << std::endl;
             return true;
         }
+
+        if (!program.read_grid_data(filepath))
+            libMesh::out << "Failed to read grid data." << std::endl;
+        return true;
+    }
+    case Command::READ_TIME_STEP:
+    {
+        const Session &session = *program.model_data()->get_object<Session>();
+        if (!require_mode(session, Session::Mode::Analysis, "-read_time_step"))
+            return true;
+
+        auto filepath = extract_argument(input);
+        if (filepath.empty())
+        {
+            libMesh::out << "Usage: -read_time_step <load_step_binary_file>" << std::endl;
+            return true;
+        }
+
+        if (!program.read_time_step_file(filepath))
+            libMesh::out << "Failed to read time step data." << std::endl;
+        return true;
+    }
+    case Command::SET_MODE:
+    {
+        auto args = extract_argument(input);
+        if (args.empty())
+        {
+            libMesh::out << "Usage: -mode <preprocessing|analysis|other> [analysis_type]" << std::endl;
+            return true;
+        }
+
+        std::istringstream arg_stream(args);
+        std::string mode_token;
+        std::string analysis_token;
+        arg_stream >> mode_token;
+        arg_stream >> analysis_token;
 
         static const std::unordered_map<std::string, Session::Mode> mode_map = {
             {"pre", Session::Mode::PreProcessing},
@@ -417,18 +446,46 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             {"analysis", Session::Mode::Analysis},
             {"other", Session::Mode::Other}};
 
-        std::string key = mode_arg;
+        static const std::unordered_map<std::string, AnalysisBase::Type> analysis_map = {
+            {"static", AnalysisBase::Type::STATIC},
+            {"transient", AnalysisBase::Type::TRANSIENT},
+            {"apec_equilibrium", AnalysisBase::Type::APECM_EQUILIBRIUM},
+            {"apec_evolution", AnalysisBase::Type::APECM_EVOLUTION},
+            {"dof_interpolation", AnalysisBase::Type::DOF_INTERPOLATION}};
+
+        std::string key = mode_token;
         std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c)
                        { return static_cast<char>(std::tolower(c)); });
 
         auto it = mode_map.find(key);
         if (it == mode_map.end())
         {
-            libMesh::out << "Unknown mode '" << mode_arg << "'." << std::endl;
+            libMesh::out << "Unknown mode '" << mode_token << "'." << std::endl;
             return true;
         }
 
-        if (!program.set_mode(it->second))
+        std::optional<AnalysisBase::Type> requested_analysis;
+        if (it->second == Session::Mode::Analysis)
+        {
+            if (analysis_token.empty())
+            {
+                libMesh::out << "Analysis type is required when entering analysis mode. "
+                             << "Allowed: static | transient | apec_equilibrium | apec_evolution | dof_interpolation" << std::endl;
+                return true;
+            }
+
+            std::transform(analysis_token.begin(), analysis_token.end(), analysis_token.begin(), [](unsigned char c)
+                           { return static_cast<char>(std::tolower(c)); });
+            auto analysis_it = analysis_map.find(analysis_token);
+            if (analysis_it == analysis_map.end())
+            {
+                libMesh::out << "Unknown analysis type '" << analysis_token << "'." << std::endl;
+                return true;
+            }
+            requested_analysis = analysis_it->second;
+        }
+
+        if (!program.set_mode(it->second, requested_analysis))
             return true;
 
         report_session_paths(*program.model_data()->get_object<Session>());
@@ -439,11 +496,12 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -read_mesh <mesh_file>\n"
                      << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
-                     << "  -list_load_steps\n"
                      << "  -solve [load_step_filename]\n"
                      << "  -solve_transient [base_name]\n"
                      << "  -finish\n"
-                     << "  -mode <preprocessing|analysis|other>\n"
+                     << "  -read_grid <grid_binary_file>\n"
+                     << "  -read_time_step <load_step_binary_file>\n"
+                     << "  -mode <preprocessing|analysis|other> [static|transient|apec_equilibrium|apec_evolution|dof_interpolation]\n"
                      << "  -read_model_data <model_file>\n"
                      << "  -print_model_data\n"
                      << "  -clear\n"

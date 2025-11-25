@@ -9,7 +9,7 @@
 #include "fem_service_abstract.h"
 #include "fem_data_repository.h"
 #include "time_step.h"
-#include "apec_m_analysis.h"
+#include "analysis_base.h"
 #include "solver_configuration.h"
 
 using namespace libMesh;
@@ -19,7 +19,8 @@ class ApecMMesh;
 class ApecMEquationSystems
     : public EquationSystems,
       public FEDataObjectAbstract,
-      public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>
+      public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>,
+      public FEParentObjectBase<APEC_M>
 
 {
 public:
@@ -40,15 +41,10 @@ public:
     void initialize_physics();
     void clear_preserving_solver_settings();
     void zero_all_systems();
-    static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh);
-    void set_analysis(std::shared_ptr<AnalysisBase> analysis_object);
-    std::shared_ptr<AnalysisBase> get_analysis() const { return analysis; }
-
+    static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh, APEC_M *program = nullptr);
 private:
     using RampVectorTuple = std::tuple<NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
     std::vector<RampVectorTuple> collect_ramp_vectors();
-
-    std::shared_ptr<AnalysisBase> analysis;
 };
 
 #endif // APEC_M_EQ_SYSTEM_OBJECT_H

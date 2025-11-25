@@ -133,16 +133,13 @@ void ApecMEquationSystems::zero_all_systems()
     }
 }
 
-std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh)
+std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh, APEC_M *program)
 {
     auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
+    if (program)
+        equation_systems->set_parent_object(program);
     equation_systems->configure_systems();
     return equation_systems;
-}
-
-void ApecMEquationSystems::set_analysis(std::shared_ptr<AnalysisBase> analysis_object)
-{
-    analysis = std::move(analysis_object);
 }
 
 std::vector<ApecMEquationSystems::RampVectorTuple> ApecMEquationSystems::collect_ramp_vectors()

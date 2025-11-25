@@ -1,5 +1,6 @@
 #include "element_builder.h"
 #include "binary_reader.h"
+#include "apec_m.h"
 // #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
@@ -35,7 +36,11 @@ std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquati
     if (!eq_sys)
         return nullptr;
 
-    auto analysis = eq_sys->get_analysis();
+    auto program = eq_sys->get_parent_object();
+    if (!program)
+        return nullptr;
+
+    auto analysis = program->get_active_analysis();
     if (!analysis)
         return nullptr;
 

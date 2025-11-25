@@ -11,10 +11,10 @@
 #include <utility>
 #include <vector>
 
-class APECMEquilibriumAnalysis : public TransientAnalysis
+class APECMEquilibriumAnalysis : public virtual StaticAnalysis, public TransientAnalysis
 {
 public:
-    explicit APECMEquilibriumAnalysis(ApecMEquationSystems *eq_systems = nullptr,
+    explicit APECMEquilibriumAnalysis(APEC_M *program = nullptr,
                                       std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 
 protected:
@@ -42,13 +42,9 @@ protected:
 
     inline bool check_distance_magnetic_axis(const Node *node)
     {
-        return (node->operator-(magnetic_axis)).norm() < min_distance_to_axis();
+        return (node->operator-(magnetic_axis)).norm() < min_distance_to_axis;
     };
 
-    std::shared_ptr<ApecMSettingsObject> settings() const;
-    const std::vector<Real> &plasma_current_profile() const;
-    const std::vector<Real> &beta_p_profile() const;
-    Real min_distance_to_axis() const;
     virtual bool run_picard_iterations(Substep &substep) override;
 
 private:
@@ -60,6 +56,8 @@ private:
     DenseVector<Real> b_target_axis;
 
     bool first_absolute_iteration = true;
+
+    Real min_distance_to_axis = 0.3;
 
     std::vector<dof_id_type> vacuum_chamber_psi_dofs;
     std::vector<Number> prev_it_vacuum_chamber_psi_vector;

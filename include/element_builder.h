@@ -113,6 +113,7 @@ public:
         Je,
         Be,
         He,
+        // PSIe,
         NUM_ELEMENT_SOLUTION_VECTORS
     };
 
