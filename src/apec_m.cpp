@@ -435,22 +435,6 @@ bool APEC_M::generate_periodic_boundaries()
     return true;
 }
 
-std::size_t APEC_M::load_step_file_count() const
-{
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
-    if (!analysis)
-        return 0;
-    return analysis->load_step_file_count();
-}
-
-std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
-{
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
-    if (!analysis)
-        return {};
-    return analysis->list_load_step_files();
-}
-
 bool APEC_M::solve_load_step()
 {
     auto analysis = get_analysis();

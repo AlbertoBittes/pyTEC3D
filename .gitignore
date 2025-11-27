@@ -79,3 +79,6 @@ bin/plasma_arc
 tests/**/emat/
 tests/**/output/
 tests/**/temp/
+
+# Generated test binaries
+tests/**/*.bin

@@ -50,37 +50,6 @@ public:
         return data_objects;
     }
 
-    // void add_all_from(std::shared_ptr<FEMDataRepository> other)
-    // {
-    //     if (!other)
-    //         return;
-    //     for (const auto &pair : other->get_all_objects())
-    //     {
-    //         data_objects[pair.first] = pair.second;
-    //     }
-    // }
-
-    // void move_all_from(const std::shared_ptr<FEMDataRepository> &other)
-    // {
-    //     if (!other)
-    //         return;
-
-    //     for (auto &pair : other->data_objects)
-    //     {
-    //         data_objects[pair.first] = std::move(pair.second);
-    //     }
-    //     other->data_objects.clear();
-    // }
-
-    // void move_all_from(FEMDataRepository &other)
-    // {
-    //     for (auto &pair : other.data_objects)
-    //     {
-    //         data_objects[pair.first] = std::move(pair.second);
-    //     }
-    //     other.data_objects.clear();
-    // }
-
 protected:
     std::unordered_map<std::type_index, std::shared_ptr<FEDataObjectAbstract>> data_objects;
 };
@@ -88,37 +57,37 @@ protected:
 // The typed context views are the main way of interfacing data between classes in APEC-M
 // E.g. the Assembler only needs details about the TimeStep integration scheme, it doesnt need
 // the Loads, the Materials, etc.
-// The user can create "slices" of data from the repositories, to be assignet to the services that
+// The user can create "slices" of data from the repositories, to be assigned to the services that
 // can properly use the data
 // Example of a "view" context for typed access
 template <typename... Types>
 struct TypedContextView
 {
-    std::tuple<std::shared_ptr<Types>...> ptrs;
+    std::tuple<std::weak_ptr<Types>...> ptrs;
 
     template <typename... Repos>
     static TypedContextView from(Repos &&...repos)
     {
-        return TypedContextView{std::make_tuple(get_from_repos<Types>(std::forward<Repos>(repos)...)...)};
+        return TypedContextView{std::make_tuple(to_weak(get_from_repos<Types>(std::forward<Repos>(repos)...))...)};
     }
 
     template <typename T>
-    std::shared_ptr<T> get() const { return std::get<std::shared_ptr<T>>(ptrs); }
+    std::shared_ptr<T> get() const { return std::get<std::weak_ptr<T>>(ptrs).lock(); }
 
     template <typename... QueryTypes>
     TypedContextView<QueryTypes...> project() const
     {
-        return TypedContextView<QueryTypes...>{std::make_tuple(get<QueryTypes>()...)};
+        return TypedContextView<QueryTypes...>{std::make_tuple(to_weak(get<QueryTypes>())...)};
     }
 
     template <typename... QueryTypes>
     std::shared_ptr<TypedContextView<QueryTypes...>> project_view() const
     {
         auto view = std::make_shared<TypedContextView<QueryTypes...>>();
-        view->ptrs = std::make_tuple(get<QueryTypes>()...);
+        view->ptrs = std::make_tuple(to_weak(get<QueryTypes>())...);
 
         const bool has_nullptr = std::apply([](const auto &...ptrs)
-                                            { return ((ptrs == nullptr) || ...); },
+                                            { return ((ptrs.lock() == nullptr) || ...); },
                                             view->ptrs);
 
         if (has_nullptr)
@@ -145,12 +114,23 @@ private:
     static std::shared_ptr<T> get_from_repos(Repo1 &&r1, Rest &&...rest)
     {
         auto ptr = try_get<T>(std::forward<Repo1>(r1));
-        if (ptr)
-            return ptr;
         if constexpr (sizeof...(rest) == 0)
-            libmesh_error_msg("Data not found in any repo");
+        {
+            // If not found in any repo (or stored as nullptr), return nullptr
+            return ptr;
+        }
         else
+        {
+            if (ptr)
+                return ptr;
             return get_from_repos<T>(std::forward<Rest>(rest)...);
+        }
+    }
+
+    template <typename T>
+    static std::weak_ptr<T> to_weak(const std::shared_ptr<T> &ptr)
+    {
+        return std::weak_ptr<T>(ptr);
     }
 };
 

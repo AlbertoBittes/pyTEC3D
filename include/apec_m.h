@@ -56,8 +56,6 @@ public:
     bool generate_nodal_couplings();
     bool generate_periodic_boundaries();
 
-    std::size_t load_step_file_count() const;
-    std::vector<std::filesystem::path> list_load_step_files() const;
     bool solve_load_step();
     bool solve_transient_load_steps();
     bool finish_analysis();

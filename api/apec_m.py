@@ -425,8 +425,7 @@ class APEC_M:
                 "real_constants",
                 "solver_settings",
                 "periodic_boundaries",
-                "dof_couplings",
-                "apec_settings"
+                "dof_couplings"
             ],
         )
 

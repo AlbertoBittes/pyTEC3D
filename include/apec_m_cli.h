@@ -1,5 +1,5 @@
-#ifndef APEC_M_CLI_H
-#define APEC_M_CLI_H
+#ifndef CLI_H
+#define CLI_H
 
 #include "apec_m.h"
 
@@ -32,11 +32,10 @@ public:
     void run_batch(APEC_M &program, const std::string &batch_file) override;
 
 private:
-
     Command parse_command(const std::string &input) const;
     std::string extract_argument(const std::string &input) const;
     bool execute_command(APEC_M &program, const std::string &input, bool interactive);
     static std::string default_mesh_name();
 };
 
-#endif // APEC_M_CLI_H
+#endif // CLI_H

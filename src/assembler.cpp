@@ -27,7 +27,7 @@ using namespace libMesh;
 
 AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems,
                                  std::shared_ptr<ContextView> ctx_view)
-    : FEMServiceWithOldContext<TimeStep, Session>(ctx_view),
+    : FEMService<TimeStep, Session>(ctx_view),
       FEParentObjectBase<ApecMEquationSystems>(eq_systems)
 {
 }
@@ -161,7 +161,7 @@ bool AssemblerLinear::check_update_system_matrix()
 
     auto current_time_substep = current_time_step ? current_time_step->get_active_substep() : nullptr;
 
-    auto old_time_step = this->old_context<TimeStep>();
+    auto old_time_step = current_time_step->get_previous_time_step();
 
     auto old_time_substep = old_time_step ? old_time_step->get_active_substep() : nullptr;
 
@@ -365,9 +365,10 @@ void AssemblerLinear::write_solution_vectors(bool nodal_solution)
 
 bool AssemblerLinear::check_update_element_matrices()
 {
-    if (this->context<TimeStep>()->get_active_substep()->get_index() == 0)
+    auto ts = this->context<TimeStep>();
+    if (ts->get_active_substep()->get_index() == 0)
     {
-        auto old_ts = this->old_context<TimeStep>();
+        auto old_ts = ts->get_previous_time_step();
         if (old_ts == nullptr)
             return true;
         else

@@ -78,7 +78,7 @@ void ElementBuilder::build_plane233()
     auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
     auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
     auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
-    // auto &JHe = this->matrices[MatricesSet::NODAL_ELEMENT_SOLUTION_MATRICES][PLANE13SolutionMatrices::JHe_PLANE13];
+    auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JVe];
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
@@ -97,6 +97,7 @@ void ElementBuilder::build_plane233()
             // Also, the pow here is not always needed, is not there when you dont integrate
             BAe(qp, dof_i) += r_sign * dphi[dof_i][qp](1);
             BAe(qp + nq, dof_i) -= r_sign * (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
+            JAe(qp, dof_i) += phi[dof_i][qp];
             // JHe(qp, dof_i) += dphi[dof_i][qp](0);
             // JHe(qp, dof_i + n_dofs_var) += (pow(-1, axisymm) * dphi[dof_i][qp](1) + axisymm * phi[dof_i][qp] / r);
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -139,8 +140,6 @@ void ElementBuilder::build_plane233()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             {
                 // matrices[4](0, i) -= scalar_shape_functions->JxW[qp] * scalar_shape_functions->phi[i][qp] / scalar_shape_functions->phi[0].size();
-                JAe(qp, dof_i) += phi[dof_i][qp];
-
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp] * pow(r, axisymm));
             }
@@ -287,6 +286,10 @@ void ElementBuilder::build_plane233_solution_vectors()
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
     auto &An = solution_vector_support.sol_vectors[0];
 
+    bool axisymm = this->elem_data.element_type->get_keyopts()[3];
+
+    Point centroid = this->elem_data.elem->centroid();
+
     // Nodal solution
     if (this->compute_nodal_solution_vectors)
     {
@@ -314,9 +317,12 @@ void ElementBuilder::build_plane233_solution_vectors()
     auto &Be = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Be];
     auto &He = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::He];
     auto &Je = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::Je];
+    auto &PSIe = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS][ElementSolutionVectors::PSIe];
     Be.resize(2);
     He.resize(2);
     Je.resize(1);
+    PSIe.resize(1);
+
     // Compute B in elements
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::BAe];
     unsigned int n_qp = BAe.m() / 2;
@@ -333,6 +339,17 @@ void ElementBuilder::build_plane233_solution_vectors()
     for (unsigned int k = 0; k < 2; k++)
         He(k) = Be(k) * nu_matrix[0];
 
+    if (axisymm)
+    {
+        auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
+
+        DenseVector<Number> Aq(n_qp);
+        JAe.vector_mult(Aq, An);
+
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            PSIe(0) += Aq(qp);
+        PSIe(0) = PSIe(0) / n_qp * centroid(0); // r component
+    }
     // Compute J in elements
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
@@ -406,6 +423,8 @@ void ElementBuilder::build_plane233_solution_vectors()
     dof_map_element_solution->dof_indices(elem_data.elem, dof_indices);
     Je.append(Be);
     Je.append(He);
+    if (axisymm)
+        Je.append(PSIe);
     for (unsigned int i = 0; i < dof_indices.size(); i++)
     {
         dof_id_type dof_index = dof_indices[i];
@@ -415,7 +434,7 @@ void ElementBuilder::build_plane233_solution_vectors()
     }
 
     // Compute PSI
-    if (elem_data.element_type->get_keyopts()[3])
+    if (axisymm)
     {
         unsigned int a_var_num = main_sys->variable_number("A_z");
         unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");

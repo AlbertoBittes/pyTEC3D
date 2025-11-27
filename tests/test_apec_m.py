@@ -2,6 +2,8 @@ import subprocess
 import tempfile
 import shutil
 import os
+import sys
+import glob
 import pytest
 import numpy as np
 
@@ -10,6 +12,27 @@ import vtk
 # ------------------------------------------------------------------------------
 # Helper: run the solver once
 # ------------------------------------------------------------------------------
+def list_bin_files(case_dir):
+    return {os.path.abspath(p) for p in glob.glob(os.path.join(case_dir, "*.bin"))}
+
+
+def run_macro(case_dir):
+    macro_path = os.path.join(case_dir, "macro.py")
+    if not os.path.isfile(macro_path):
+        raise FileNotFoundError(f"Missing macro script: {macro_path}")
+
+    python_exe = sys.executable or "python3"
+    cmd = [python_exe, macro_path]
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    print(f"\n[TEST] Generating inputs with: {' '.join(cmd)}")
+    result = subprocess.run(cmd, cwd=project_root,
+                            capture_output=True, text=True)
+    print("[TEST] Macro stdout:\n", result.stdout)
+    print("[TEST] Macro stderr:\n", result.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(f"Macro generation failed with exit code {result.returncode}")
+
+
 def run_solver(case_dir, analysis_name, nproc, output_dir, macro_filename="input.mac"):
     """Run the CLI solver (serial or parallel) using the provided macro file."""
 
@@ -791,7 +814,19 @@ def test_fem(case):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"[TEST] Temporary output directory: {tmpdir}")
-        run_solver(case_dir, analysis_name, nproc, tmpdir)
+        existing_bins = list_bin_files(case_dir)
+        try:
+            run_macro(case_dir)
+            run_solver(case_dir, analysis_name, nproc, tmpdir)
+        finally:
+            generated_bins = list_bin_files(case_dir) - existing_bins
+            if generated_bins:
+                print(f"[TEST] Cleaning up generated binaries: {generated_bins}")
+            for bin_path in generated_bins:
+                try:
+                    os.remove(bin_path)
+                except FileNotFoundError:
+                    pass
 
         # perform all checks
         for i, chk in enumerate(case["checks"], 1):
