@@ -194,8 +194,6 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::READ_GRID_DATA;
     if (input.rfind("-read_time_step", 0) == 0)
         return Command::READ_TIME_STEP;
-    if (input == "-list_load_steps")
-        return Command::LIST_LOAD_STEPS;
     if (input.rfind("-solve_transient", 0) == 0)
         return Command::SOLVE_TRANSIENT;
     if (input.rfind("-solve", 0) == 0)
