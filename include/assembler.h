@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "fem_data_repository.h"
 #include "fe_parent_object.h"
 #include "time_step.h"
@@ -22,7 +22,7 @@ class ApecMLinearSystem;
 // Once the system matrix is built, the libMesh solver will take care of solving it
 class AssemblerLinear
     : public System::Assembly,
-      public FEMServiceWithOldContext<TimeStep, Session>,
+      public FEMService<TimeStep, Session>,
       public FEParentObjectBase<ApecMEquationSystems>
 {
 public:

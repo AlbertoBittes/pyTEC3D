@@ -5,7 +5,9 @@
 #include <fstream>
 #include <ios>
 #include <memory>
+#include <stdexcept>
 #include <vector>
+#include <unordered_set>
 
 #include "binary_labels.h"
 #include "fem_data_repository.h"
@@ -19,6 +21,15 @@ enum class FileMode
 {
     Read,
     Write
+};
+
+class BinaryLabelDisallowedError : public std::runtime_error
+{
+public:
+    explicit BinaryLabelDisallowedError(const std::string &message)
+        : std::runtime_error(message)
+    {
+    }
 };
 class BinaryReader
 {
@@ -37,6 +48,7 @@ public:
     void read_binary_fem_data(const std::string &filepath,
                               const std::shared_ptr<FEMDataRepository> &repository = nullptr,
                               const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr);
+    void set_disallowed_labels(std::unordered_set<BinaryLabelId> labels);
 
     static void write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set);
     static void read_element_matrices(ElementBuilder &builder, std::ifstream &inFile, unsigned int matrices_set);
@@ -56,6 +68,8 @@ private:
                        std::ifstream &file,
                        const std::shared_ptr<FEMDataRepository> &repository,
                        const std::shared_ptr<ApecMEquationSystems> &equation_systems);
+
+    std::unordered_set<BinaryLabelId> disallowed_labels;
 };
 
 #endif // BINARY_READER_H

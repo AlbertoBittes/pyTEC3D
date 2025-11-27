@@ -34,10 +34,11 @@ void ApecMSettingsObject::parse_columns()
     bverx_value = 0.0;
     bvery_value = 0.0;
     alpha_value = 1.0;
-    plasma_current_profile = 0.0;
-    beta_p_profile = 0.0;
+    plasma_current = 0.0;
+    beta_p = 0.0;
 
-    const auto get_axis_component = [this](const std::string &key, unsigned int idx) {
+    const auto get_axis_component = [this](const std::string &key, unsigned int idx)
+    {
         if (this->has_column(key))
         {
             const auto &vals = this->get_real_column(key);
@@ -91,9 +92,9 @@ void ApecMSettingsObject::parse_columns()
     if (this->has_column("alpha_value"))
         alpha_value = this->get_real("alpha_value");
 
-    if (this->has_column("plasma_current_profile"))
-        plasma_current_profile = this->get_real("plasma_current_profile");
+    if (this->has_column("plasma_current"))
+        plasma_current = this->get_real("plasma_current");
 
-    if (this->has_column("beta_p_profile"))
-        beta_p_profile = this->get_real("beta_p_profile");
+    if (this->has_column("beta_p"))
+        beta_p = this->get_real("beta_p");
 }

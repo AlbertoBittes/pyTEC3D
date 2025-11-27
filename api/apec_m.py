@@ -1,5 +1,6 @@
 import os
 import sys
+import copy
 from abc import ABC, abstractmethod
 from typing import Optional
 import numpy as np
@@ -59,9 +60,9 @@ class APEC_M:
         self.real_constants = pd.DataFrame(
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
-        self.time_parameters = DEFAULT_TIME_PARAMETERS
+        self.time_parameters = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.apec_settings = {}
-        self.solver_settings = DEFAULT_SOLVER_SETTINGS
+        self.solver_settings = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self.transient_analysis = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
@@ -346,21 +347,59 @@ class APEC_M:
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write load step binaries.")
 
+        # Backward compatibility: writing both time and grid data separately.
+        self.write_time_step(load_step_number)
+        self.write_loads_bcs(load_step_number, filename=filename)
+
+    def write_time_step(self, load_step_number: int, filename: Optional[str] = None):
+        """
+        Writes a time step binary containing time parameters and APEC settings
+        in the same folder as the mesh file.
+        """
+        if not self.folderpath:
+            raise ValueError("Folder path is not set. Cannot write time step binary.")
         if filename:
-            loadstep_path = os.path.join(self.folderpath, filename)
-            target_dir = os.path.dirname(loadstep_path) or self.folderpath
-            os.makedirs(target_dir, exist_ok=True)
+            timestep_path = os.path.join(self.folderpath, filename)
+            target_dir = os.path.dirname(timestep_path) or self.folderpath
         else:
             if not self.jobname:
-                raise ValueError("Job name is not set. Cannot write load step binaries.")
+                raise ValueError("Job name is not set. Cannot write time step binary.")
+            timestep_path = os.path.join(
+                self.folderpath, f"{self.jobname}_timestep_{load_step_number}.bin"
+            )
+            target_dir = self.folderpath
 
+        os.makedirs(target_dir, exist_ok=True)
+        self.write_to_binary(
+            timestep_path,
+            labels_to_write=["time_parameters", "apec_settings"],
+        )
+
+    def write_loads_bcs(self, load_step_number: int, filename: Optional[str] = None):
+        """
+        Writes a grid binary containing point and cell data in the mesh input folder.
+        """
+        if not self.folderpath:
+            raise ValueError("Folder path is not set. Cannot write grid step binary.")
+
+        if filename:
+            grid_path = os.path.join(self.folderpath, filename)
+            target_dir = os.path.dirname(grid_path) or self.folderpath
+        else:
+            if not self.jobname:
+                raise ValueError("Job name is not set. Cannot write grid step binary.")
             load_steps_folder = os.path.join(self.folderpath, self.jobname, "input")
             os.makedirs(load_steps_folder, exist_ok=True)
-            loadstep_path = os.path.join(
-                load_steps_folder, f"{self.jobname}_loadstep_{load_step_number}.bin"
+            grid_path = os.path.join(
+                load_steps_folder, f"{self.jobname}_grid_{load_step_number}.bin"
             )
+            target_dir = load_steps_folder
 
-        self.write_to_binary(loadstep_path, labels_to_write=["time_parameters", "point_data", "cell_data"])
+        os.makedirs(target_dir, exist_ok=True)
+        self.write_to_binary(
+            grid_path,
+            labels_to_write=["point_data", "cell_data"],
+        )
 
     def write_model_data(self, filename: Optional[str] = None):
 
@@ -431,7 +470,8 @@ class APEC_M:
                     f"Skipping Excel read for load step {idx + 1}: no input file provided."
                 )
 
-            self.write_load_step(idx + 1)
+            self.write_time_step(idx + 1)
+            self.write_loads_bcs(idx + 1)
 
     def _write_label_to_binary(self, binary_file, label):
         """

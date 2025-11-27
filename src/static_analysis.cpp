@@ -1,6 +1,7 @@
 #include "static_analysis.h"
 #include "binary_reader.h"
 #include "apec_m_system_objects.h"
+#include "apec_m.h"
 #include "vtkio_updated.h"
 
 #include <set>
@@ -23,109 +24,13 @@ StaticAnalysis::StaticAnalysis(Type type,
 {
 }
 
-bool StaticAnalysis::solve(const std::string &identifier)
+bool DOFInterpolationAnalysis::solve()
 {
-    libMesh::out << "StaticAnalysis is not implemented yet (requested identifier '"
-                 << identifier << "')." << std::endl;
+    libMesh::out << "DOFInterpolationAnalysis is not implemented yet." << std::endl;
     return false;
 }
 
-bool DOFInterpolationAnalysis::solve(const std::string &identifier)
-{
-    libMesh::out << "DOFInterpolationAnalysis is not implemented yet (requested identifier '"
-                 << identifier << "')." << std::endl;
-    return false;
-}
-
-bool StaticAnalysis::read_grid_data(const std::string &filepath)
-{
-    auto equation_systems = active_equation_system_ptr();
-    if (!equation_systems)
-    {
-        libMesh::out << "No active equation systems available for grid data import." << std::endl;
-        return false;
-    }
-
-    if (filepath.empty())
-    {
-        libMesh::out << "Grid data filepath is empty." << std::endl;
-        return false;
-    }
-
-    try
-    {
-        BinaryReader reader;
-        reader.read_binary_fem_data(filepath, nullptr, equation_systems);
-    }
-    catch (const std::exception &ex)
-    {
-        libMesh::out << "Failed to read grid data '" << filepath << "': " << ex.what() << std::endl;
-        return false;
-    }
-    catch (...)
-    {
-        libMesh::out << "Failed to read grid data '" << filepath << "' due to an unknown error." << std::endl;
-        return false;
-    }
-
-    return true;
-}
-
-std::shared_ptr<TimeStep> StaticAnalysis::read_time_step(const std::filesystem::path &filepath)
-{
-    if (filepath.empty())
-    {
-        libMesh::out << "Load step path is empty." << std::endl;
-        return nullptr;
-    }
-
-    if (!std::filesystem::exists(filepath))
-    {
-        libMesh::out << "Load step file '" << filepath << "' not found." << std::endl;
-        return nullptr;
-    }
-
-    auto equation_systems = this->active_equation_system_ptr();
-    if (!equation_systems)
-    {
-        libMesh::out << "Equation systems not available for load step analysis." << std::endl;
-        return nullptr;
-    }
-
-    try
-    {
-        auto load_step_repo = std::make_shared<FEMDataRepository>();
-        BinaryReader reader;
-        reader.read_binary_fem_data(filepath, load_step_repo, equation_systems);
-        auto time_step = load_step_repo->get_object<TimeStep>();
-        if (!time_step)
-        {
-            libMesh::out << "Time step data missing in load step binary '" << filepath << "'." << std::endl;
-            return nullptr;
-        }
-
-        auto previous_time_step = this->context<TimeStep>();
-        time_step->populate_time_step(previous_time_step);
-
-        auto settings = load_step_repo->get_object<ApecMSettingsObject>();
-        update_time_data_context(time_step, settings);
-        return time_step;
-    }
-    catch (const std::exception &ex)
-    {
-        libMesh::out << "Failed to read load step '" << filepath << "': " << ex.what() << std::endl;
-        return nullptr;
-    }
-    catch (...)
-    {
-        libMesh::out << "Failed to read load step '" << filepath << "' due to an unknown error." << std::endl;
-        return nullptr;
-    }
-
-    return nullptr;
-}
-
-std::filesystem::path StaticAnalysis::resolve_load_step_path(const std::string &filename) const
+std::filesystem::path StaticAnalysis::resolve_grid_step_path(const std::string &filename) const
 {
     auto session = this->context<Session>();
     if (!session)
@@ -148,7 +53,30 @@ std::filesystem::path StaticAnalysis::resolve_load_step_path(const std::string &
     return candidate;
 }
 
-std::filesystem::path StaticAnalysis::resolve_default_base_name() const
+std::filesystem::path StaticAnalysis::resolve_time_step_path(const std::string &filename) const
+{
+    auto session = this->context<Session>();
+    if (!session)
+        return {};
+
+    const auto &folder = session->get_path("mesh_folderpath");
+    if (folder.empty())
+        return {};
+
+    if (filename.empty())
+        return {};
+
+    auto candidate = std::filesystem::path(filename);
+    if (!candidate.is_absolute())
+        candidate = folder / candidate;
+
+    if (!candidate.has_extension())
+        candidate.replace_extension(".bin");
+
+    return candidate;
+}
+
+std::filesystem::path StaticAnalysis::resolve_default_grid_base_name() const
 {
     auto session = this->context<Session>();
     if (!session)
@@ -160,9 +88,27 @@ std::filesystem::path StaticAnalysis::resolve_default_base_name() const
 
     auto token = session->get_mesh_filename_without_extension();
     if (token.empty())
-        token = "load_step";
+        token = "grid";
 
-    std::filesystem::path base = folder / (token + "_loadstep");
+    std::filesystem::path base = folder / (token + "_grid");
+    return base;
+}
+
+std::filesystem::path StaticAnalysis::resolve_default_time_base_name() const
+{
+    auto session = this->context<Session>();
+    if (!session)
+        return {};
+
+    const auto &folder = session->get_path("mesh_folderpath");
+    if (folder.empty())
+        return {};
+
+    auto token = session->get_mesh_filename_without_extension();
+    if (token.empty())
+        token = "timestep";
+
+    std::filesystem::path base = folder / (token + "_timestep");
     return base;
 }
 
@@ -175,26 +121,25 @@ void StaticAnalysis::configure_services() const
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto bc_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
     auto global_constraints_object = system.get_global_constraints_object();
-    global_constraints_object->update_context_views(bc_view);
+    global_constraints_object->set_context_view(bc_view);
 
     auto assembler_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep, Session>() : nullptr;
 
     auto assembler = system.get_assembler();
-    assembler->update_context_views(assembler_view);
+    assembler->set_context_view(assembler_view);
 }
 
 bool StaticAnalysis::execute_solve()
 {
-    auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return false;
+    auto apec_m = this->get_parent_object();
+
+    auto model_data_repo = apec_m ? apec_m->model_data() : nullptr;
+
+    this->set_context_view(std::make_shared<ContextView>(ContextView::from(model_data_repo)));
+
+    auto equation_systems = this->active_equation_system_ptr();
 
     auto time_step = this->context<TimeStep>();
-    if (!time_step)
-    {
-        libMesh::out << "Load step does not contain time stepping information." << std::endl;
-        return false;
-    }
 
     configure_services();
 
@@ -292,41 +237,8 @@ bool StaticAnalysis::run_picard_iterations(Substep &substep)
     return true;
 }
 
-bool StaticAnalysis::solve(const std::string &filename)
+bool StaticAnalysis::solve()
 {
-    std::filesystem::path path;
-    if (filename.empty())
-    {
-        auto base = resolve_default_base_name();
-        if (base.empty())
-        {
-            libMesh::out << "Unable to determine default load step base name." << std::endl;
-            return false;
-        }
-
-        const auto next_index = load_steps_completed_count + 1;
-        path = base;
-        path.replace_filename(base.stem().string() + "_" + std::to_string(next_index));
-        path.replace_extension(".bin");
-    }
-    else
-        path = resolve_load_step_path(filename);
-
-    if (path.empty())
-    {
-        libMesh::out << "Unable to resolve load step filename for solve request." << std::endl;
-        return false;
-    }
-
-    if (!std::filesystem::exists(path))
-    {
-        libMesh::out << "Load step file '" << path << "' not found." << std::endl;
-        return false;
-    }
-
-    if (!read_time_step(path))
-        return false;
-
     if (!execute_solve())
         return false;
 
@@ -334,10 +246,8 @@ bool StaticAnalysis::solve(const std::string &filename)
     return true;
 }
 
-bool StaticAnalysis::solve_transient(const std::string &base_name)
+bool StaticAnalysis::solve_transient()
 {
-    libMesh::out << "Analysis '" << name
-                 << "' does not support transient solves (requested base name '"
-                 << base_name << "')." << std::endl;
+    libMesh::out << "Analysis '" << name << "' does not support transient solves." << std::endl;
     return false;
 }

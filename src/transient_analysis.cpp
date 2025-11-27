@@ -10,6 +10,7 @@
 #include <libmesh/sparse_matrix.h>
 #include <libmesh/dof_map.h>
 
+#include "apec_m.h"
 #include "apec_m_eq_system_object.h"
 #include "apec_m_system_objects.h"
 #include "binary_reader.h"
@@ -74,49 +75,42 @@ std::size_t TransientAnalysis::load_step_file_count() const
     return list_load_step_files().size();
 }
 
-bool TransientAnalysis::solve_transient(const std::string &base_name)
+bool TransientAnalysis::solve_transient()
 {
-    std::filesystem::path base;
-    unsigned int step_index = 1;
-    if (base_name.empty())
+    auto program = this->get_parent_object();
+    if (!program || !this->active_equation_system_ptr())
     {
-        base = resolve_default_base_name();
-        if (base.empty())
-        {
-            libMesh::out << "Unable to determine base name for transient solve." << std::endl;
-            return false;
-        }
-        step_index = static_cast<unsigned int>(load_steps_completed_count + 1);
-    }
-    else
-    {
-        auto resolved_path = resolve_load_step_path(base_name);
-        if (resolved_path.empty())
-        {
-            libMesh::out << "Unable to resolve load step path for '" << base_name << "'." << std::endl;
-            return false;
-        }
-        base = resolved_path.parent_path() / resolved_path.stem();
-    }
-
-    if (base.empty())
-    {
-        libMesh::out << "Unable to determine base name for transient solve." << std::endl;
+        libMesh::out << "No load step analysis available for the active mesh." << std::endl;
         return false;
     }
+
+    const auto grid_base = resolve_default_grid_base_name();
+    const auto time_base = resolve_default_time_base_name();
+    if (grid_base.empty() || time_base.empty())
+    {
+        libMesh::out << "Unable to determine default base names for transient solve." << std::endl;
+        return false;
+    }
+
+    unsigned int step_index = static_cast<unsigned int>(load_steps_completed_count + 1);
 
     bool solved_any = false;
     for (; true; ++step_index)
     {
-        auto next_path = base;
-        next_path.replace_filename(base.stem().string() + "_" + std::to_string(step_index));
-        next_path.replace_extension(".bin");
+        auto grid_path = grid_base;
+        grid_path.replace_filename(grid_base.stem().string() + "_" + std::to_string(step_index));
+        grid_path.replace_extension(".bin");
 
-        if (!std::filesystem::exists(next_path))
+        auto time_path = time_base;
+        time_path.replace_filename(time_base.stem().string() + "_" + std::to_string(step_index));
+        time_path.replace_extension(".bin");
+
+        if (!std::filesystem::exists(grid_path) || !std::filesystem::exists(time_path))
             break;
 
-        libMesh::out << "Solving transient load step '" << next_path << "'." << std::endl;
-        if (!read_time_step(next_path))
+        libMesh::out << "Solving transient step " << step_index << " using grid '" << grid_path << "' and timestep '" << time_path << "'." << std::endl;
+
+        if (!program->load_data({grid_path.string(), time_path.string()}))
             return false;
 
         if (!execute_solve())
@@ -128,7 +122,7 @@ bool TransientAnalysis::solve_transient(const std::string &base_name)
 
     if (!solved_any)
     {
-        libMesh::out << "No transient load steps found for base '" << base << "'." << std::endl;
+        libMesh::out << "No transient grid/timestep pairs found." << std::endl;
         return false;
     }
 

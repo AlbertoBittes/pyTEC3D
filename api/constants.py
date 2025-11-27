@@ -115,6 +115,24 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
     "write_substep_results": int,
 }
 
+DEFAULT_APEC_SETTINGS = {
+    "target_central_axis_x": 0.0,
+    "target_central_axis_y": 0.0,
+    "target_central_axis_z": 0.0,
+    "R0": 0.0,
+    "max_picard_iterations": 1,
+    "min_distance": 0.3,
+    "cp_gain": 0.0,
+    "tolerance_value": 1e-6,
+    "bradx_value": 0.0,
+    "brady_value": 0.0,
+    "bverx_value": 0.0,
+    "bvery_value": 0.0,
+    "alpha_value": 1.0,
+    "plasma_current": 0.0,
+    "beta_p": 0.0,
+}
+
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
     "ansys_material_type": int,

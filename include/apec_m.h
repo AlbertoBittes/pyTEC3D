@@ -38,11 +38,12 @@ public:
     std::shared_ptr<ApecMEquationSystems> get_equation_system(const std::string &name) const;
     std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
     std::shared_ptr<AnalysisBase> get_analysis(const std::string &name) const;
-    std::shared_ptr<AnalysisBase> get_active_analysis() const;
+    std::shared_ptr<AnalysisBase> get_analysis() const;
 
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
     bool load_model_data(const std::string &filepath);
+    bool load_data(const std::vector<std::string> &filepaths);
     bool set_mode(Session::Mode mode, std::optional<AnalysisBase::Type> analysis_type = std::nullopt);
     Session::Mode get_mode() const
     {
@@ -57,11 +58,9 @@ public:
 
     std::size_t load_step_file_count() const;
     std::vector<std::filesystem::path> list_load_step_files() const;
-    bool solve_load_step(const std::string &filename);
-    bool solve_transient_load_steps(const std::string &base_name);
+    bool solve_load_step();
+    bool solve_transient_load_steps();
     bool finish_analysis();
-    bool read_grid_data(const std::string &filepath);
-    bool read_time_step_file(const std::string &filepath);
 
     void print_model_data() const;
 

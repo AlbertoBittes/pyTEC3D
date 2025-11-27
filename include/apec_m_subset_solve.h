@@ -8,7 +8,7 @@
 #include <libmesh/numeric_vector.h>
 #include "apec_m_system_objects.h" // <-- Add this line
 
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "time_step.h"
 
 using namespace libMesh;

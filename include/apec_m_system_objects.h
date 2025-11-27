@@ -14,7 +14,7 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/petsc_matrix.h>
 
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "element_types.h"
 #include "element_types_factory.h"
 #include "assembler.h"
@@ -37,7 +37,7 @@ template <typename SysLike>
 class ApecMSystem
     : public SysLike,
       public ApecMSystemBase,
-      public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>
+      public FEMService<ElementTypesFactory, PetscSolverConfiguration>
 {
 public:
     using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;

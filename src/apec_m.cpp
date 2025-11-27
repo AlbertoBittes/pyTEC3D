@@ -3,11 +3,13 @@
 #include "apec_m_periodic_boundary_factory.h"
 #include "apec_m_settings.h"
 #include "element_types_factory.h"
+#include "fe_data_object.h"
 #include "binary_reader.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
 #include "solver_configuration.h"
 #include "time_step.h"
+#include "vtk_data_map_object.h"
 
 #include <filesystem>
 #include <optional>
@@ -16,6 +18,7 @@
 #include <system_error>
 #include <typeindex>
 #include <unordered_map>
+#include <unordered_set>
 
 APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
     : comm(comm),
@@ -86,7 +89,7 @@ std::shared_ptr<AnalysisBase> APEC_M::get_analysis(const std::string &name) cons
     return shared_analysis;
 }
 
-std::shared_ptr<AnalysisBase> APEC_M::get_active_analysis() const
+std::shared_ptr<AnalysisBase> APEC_M::get_analysis() const
 {
     return shared_analysis;
 }
@@ -179,6 +182,82 @@ bool APEC_M::load_model_data(const std::string &filepath)
     session_ref.check_load_steps_folder();
 
     return true;
+}
+
+bool APEC_M::load_data(const std::vector<std::string> &filepaths)
+{
+    if (filepaths.empty())
+    {
+        libMesh::out << "No data files provided." << std::endl;
+        return false;
+    }
+
+    auto session = model_data_repository->get_object<Session>();
+    if (!session)
+        return false;
+
+    const bool analysis_mode = session->get_mode() == Session::Mode::Analysis;
+    std::unordered_set<BinaryLabelId> analysis_disallowed_labels;
+    if (analysis_mode)
+    {
+        analysis_disallowed_labels = {BinaryLabelId::ELEMENT_TYPES,
+                                      BinaryLabelId::MATERIALS,
+                                      BinaryLabelId::REAL_CONSTANTS,
+                                      BinaryLabelId::SOLVER_SETTINGS,
+                                      BinaryLabelId::PERIODIC_BOUNDARIES,
+                                      BinaryLabelId::DOF_COUPLINGS};
+    }
+
+    auto base_dir = session->get_working_directory();
+    std::error_code ec;
+    if (!base_dir.is_absolute())
+    {
+        auto absolute_base = std::filesystem::absolute(base_dir, ec);
+        if (!ec)
+            base_dir = absolute_base;
+    }
+
+    auto analysis = get_analysis();
+    if (analysis)
+        analysis->set_parent_object(this);
+
+    bool any_loaded = false;
+    for (const auto &raw_path : filepaths)
+    {
+        std::filesystem::path input_path(raw_path);
+        std::filesystem::path resolved = input_path.is_absolute() ? input_path : base_dir / input_path;
+        resolved = resolved.lexically_normal();
+
+        auto equation_systems = get_active_equation_system();
+
+        try
+        {
+            BinaryReader reader;
+            if (analysis_mode)
+                reader.set_disallowed_labels(analysis_disallowed_labels);
+            reader.read_binary_fem_data(resolved.string(), model_data_repository, equation_systems);
+        }
+        catch (const BinaryLabelDisallowedError &ex)
+        {
+            libMesh::out << "Failed to load data from '" << resolved << "': " << ex.what() << std::endl;
+            throw;
+        }
+        catch (const std::exception &ex)
+        {
+            libMesh::out << "Failed to load data from '" << resolved << "': " << ex.what() << std::endl;
+            continue;
+        }
+        catch (...)
+        {
+            libMesh::out << "Failed to load data from '" << resolved << "' due to an unknown error." << std::endl;
+            continue;
+        }
+
+        any_loaded = true;
+        libMesh::out << "Loaded data from '" << resolved << "'." << std::endl;
+    }
+
+    return any_loaded;
 }
 
 void APEC_M::print_model_data() const
@@ -358,7 +437,7 @@ bool APEC_M::generate_periodic_boundaries()
 
 std::size_t APEC_M::load_step_file_count() const
 {
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
     if (!analysis)
         return 0;
     return analysis->load_step_file_count();
@@ -366,15 +445,15 @@ std::size_t APEC_M::load_step_file_count() const
 
 std::vector<std::filesystem::path> APEC_M::list_load_step_files() const
 {
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
     if (!analysis)
         return {};
     return analysis->list_load_step_files();
 }
 
-bool APEC_M::solve_load_step(const std::string &filename)
+bool APEC_M::solve_load_step()
 {
-    auto analysis = get_active_analysis();
+    auto analysis = get_analysis();
     auto eq_system = get_active_equation_system();
     if (!analysis || !eq_system)
     {
@@ -383,12 +462,12 @@ bool APEC_M::solve_load_step(const std::string &filename)
     }
 
     analysis->set_parent_object(this);
-    return analysis->solve(filename);
+    return analysis->solve();
 }
 
-bool APEC_M::solve_transient_load_steps(const std::string &base_name)
+bool APEC_M::solve_transient_load_steps()
 {
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_active_analysis());
+    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
     auto eq_system = get_active_equation_system();
     if (!analysis || !eq_system)
     {
@@ -397,12 +476,12 @@ bool APEC_M::solve_transient_load_steps(const std::string &base_name)
     }
 
     analysis->set_parent_object(this);
-    return analysis->solve_transient(base_name);
+    return analysis->solve_transient();
 }
 
 bool APEC_M::finish_analysis()
 {
-    auto analysis = get_active_analysis();
+    auto analysis = get_analysis();
     if (!analysis)
     {
         libMesh::out << "No analysis available for the active mesh." << std::endl;
@@ -411,32 +490,6 @@ bool APEC_M::finish_analysis()
 
     analysis->set_parent_object(this);
     return analysis->finish();
-}
-
-bool APEC_M::read_grid_data(const std::string &filepath)
-{
-    auto analysis = std::dynamic_pointer_cast<StaticAnalysis>(get_active_analysis());
-    if (!analysis)
-    {
-        libMesh::out << "No analysis available for grid data import." << std::endl;
-        return false;
-    }
-
-    analysis->set_parent_object(this);
-    return analysis->read_grid_data(filepath);
-}
-
-bool APEC_M::read_time_step_file(const std::string &filepath)
-{
-    auto analysis = std::dynamic_pointer_cast<StaticAnalysis>(get_active_analysis());
-    if (!analysis)
-    {
-        libMesh::out << "No analysis available for time step import." << std::endl;
-        return false;
-    }
-
-    analysis->set_parent_object(this);
-    return static_cast<bool>(analysis->read_time_step(filepath));
 }
 
 bool APEC_M::set_mode(Session::Mode mode, std::optional<AnalysisBase::Type> analysis_type)
@@ -548,12 +601,23 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
     auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
     auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
-    auto analysis_context = AnalysisBase::create_context_view(model_data_repository);
+
+    auto analysis_context = std::make_shared<AnalysisBase::ContextView>(AnalysisBase::ContextView::from(model_data_repository));
 
     if (!analysis_context)
     {
         libMesh::out << "Failed to create analysis context for analysis mode." << std::endl;
         return false;
+    }
+
+    if (!shared_analysis)
+    {
+        shared_analysis = AnalysisBase::build(this, analysis_context, *analysis_type);
+        if (!shared_analysis)
+        {
+            libMesh::out << "Failed to create analysis object for mesh." << std::endl;
+        }
+        shared_analysis->set_parent_object(this);
     }
 
     for (auto &entry : mesh_repositories)
@@ -607,17 +671,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
         mesh->print_info();
 
         equation_system->initialize_physics();
-
-        if (!shared_analysis)
-        {
-            shared_analysis = AnalysisBase::build(this, model_data_repository, analysis_context, *analysis_type);
-            if (!shared_analysis)
-            {
-                libMesh::out << "Failed to create analysis object for mesh '" << name << "'." << std::endl;
-                continue;
-            }
-            shared_analysis->set_parent_object(this);
-        }
 
         initialized_any = true;
     }

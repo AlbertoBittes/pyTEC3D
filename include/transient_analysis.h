@@ -20,9 +20,8 @@ public:
     std::vector<std::filesystem::path> list_load_step_files() const;
     std::size_t load_step_file_count() const;
 
-    bool solve_transient(const std::string &base_name) override;
+    bool solve_transient() override;
 
-private:
 private:
     unsigned int cumulative_substep_index = 0;
 

@@ -5,6 +5,65 @@ from constants import VTK_ARRAYS_TO_INIT
 
 class VTKGridHelper:
     @staticmethod
+    def add_array_to_grid(mesh, name, location="point", components=1, fill=0, dtype=vtk.VTK_DOUBLE, values=None):
+        """
+        Adds a VTK array to the mesh at the specified location.
+
+        Parameters:
+            mesh: The VTK unstructured grid to add the array to.
+            name (str): Name of the array.
+            location (str): "cell" or "point" (default "point").
+            components (int): Number of components (default 1).
+            fill (numeric): Default value to fill the array if values are not provided (default 0).
+            dtype: VTK data type (default vtk.VTK_DOUBLE).
+            values (np.ndarray, optional): Explicit values to store in the array. Must match expected shape.
+
+        Returns:
+            vtk.vtkDataArray: The created or existing VTK array.
+        """
+        if location not in ["cell", "point"]:
+            raise ValueError(f"Unknown location '{location}'. Use 'cell' or 'point'.")
+
+        data_obj = mesh.GetCellData() if location == "cell" else mesh.GetPointData()
+        num_entries = mesh.GetNumberOfCells() if location == "cell" else mesh.GetNumberOfPoints()
+        num_components = max(1, components)
+        expected_shape = (num_entries,) if num_components == 1 else (num_entries, num_components)
+
+        values_np = None
+        if values is not None:
+            values_np = np.asarray(values)
+            if values_np.shape == (num_entries, 1) and num_components == 1:
+                values_np = values_np.reshape(num_entries)
+            if values_np.shape != expected_shape:
+                raise ValueError(
+                    f"Values for array '{name}' must have shape {expected_shape}, got {values_np.shape}."
+                )
+
+        vtk_array = data_obj.GetArray(name)
+        if vtk_array is None:
+            arr_to_store = values_np if values_np is not None else np.full(expected_shape, fill)
+            vtk_array = vtknp.numpy_to_vtk(arr_to_store, deep=True, array_type=dtype)
+            vtk_array.SetName(name)
+            vtk_array.SetNumberOfComponents(num_components)
+            data_obj.AddArray(vtk_array)
+        else:
+            if vtk_array.GetNumberOfComponents() != num_components:
+                raise ValueError(
+                    f"Existing array '{name}' has {vtk_array.GetNumberOfComponents()} components, expected {num_components}."
+                )
+            if dtype is not None and vtk_array.GetDataType() != dtype:
+                raise ValueError(
+                    f"Existing array '{name}' has VTK type {vtk_array.GetDataType()}, expected {dtype}."
+                )
+
+        if values_np is not None:
+            vtk_np = vtknp.vtk_to_numpy(vtk_array)
+            vtk_np[:] = values_np
+            vtk_array.Modified()
+
+        return vtk_array
+
+    @staticmethod
     def initialize_vtk_arrays(mesh, arrays_to_init=None):
         """
         Initializes required VTK arrays in cell/point data as specified in arrays_to_init.
@@ -17,26 +76,15 @@ class VTKGridHelper:
         if arrays_to_init is None:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
-        cell_data = mesh.GetCellData()
-        point_data = mesh.GetPointData()
-
         for name, info in arrays_to_init.items():
-            data_obj = cell_data if info["location"] == "cell" else point_data
-            if data_obj.GetArray(name) is None:
-                num = (
-                    mesh.GetNumberOfCells()
-                    if info["location"] == "cell"
-                    else mesh.GetNumberOfPoints()
-                )
-                shape = (num, info["components"]) if info["components"] > 1 else num
-                arr = np.full(shape, info.get("fill", 0))
-                vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=info.get("dtype", vtk.VTK_DOUBLE))
-                vtk_arr.SetName(name)
-                if info["components"] > 1:
-                    vtk_arr.SetNumberOfComponents(info["components"])
-                else:
-                    vtk_arr.SetNumberOfComponents(1)
-                data_obj.AddArray(vtk_arr)
+            VTKGridHelper.add_array_to_grid(
+                mesh,
+                name=name,
+                location=info["location"],
+                components=info["components"],
+                fill=info.get("fill", 0),
+                dtype=info.get("dtype", vtk.VTK_DOUBLE),
+            )
 
     @staticmethod
     def initialize_vtk_array(mesh, name, location="point", components=1, fill=0, dtype=vtk.VTK_DOUBLE):
@@ -147,14 +195,14 @@ class VTKGridHelper:
             next_index = max(existing) + 1
 
         array_name = f"boundary_id_{next_index}"
-        if point_data.GetArray(array_name) is not None:
-            return array_name
-
-        num_points = mesh.GetNumberOfPoints()
-        arr = np.zeros(num_points, dtype=np.int32)
-        vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=vtk.VTK_INT)
-        vtk_arr.SetName(array_name)
-        point_data.AddArray(vtk_arr)
+        VTKGridHelper.add_array_to_grid(
+            mesh,
+            name=array_name,
+            location="point",
+            components=1,
+            fill=0,
+            dtype=vtk.VTK_INT,
+        )
         return array_name
 
 
@@ -268,10 +316,14 @@ class VTKGridHelper:
         The array is added to mesh.GetCellData().
         """
         np_centers = VTKGridHelper.compute_cell_centroids(mesh)
-        vtk_centers = vtknp.numpy_to_vtk(np_centers, deep=True, array_type=vtk.VTK_DOUBLE)
-        vtk_centers.SetName(array_name)
-        vtk_centers.SetNumberOfComponents(3)
-        mesh.GetCellData().AddArray(vtk_centers)
+        VTKGridHelper.add_array_to_grid(
+            mesh,
+            name=array_name,
+            location="cell",
+            components=3,
+            dtype=vtk.VTK_DOUBLE,
+            values=np_centers,
+        )
 
     @staticmethod
     def compute_cell_volumes(mesh):
@@ -319,7 +371,47 @@ class VTKGridHelper:
         The array is added to mesh.GetCellData().
         """
         volumes = VTKGridHelper.compute_cell_volumes(mesh)
-        vtk_vol_arr = vtknp.numpy_to_vtk(volumes, deep=True, array_type=vtk.VTK_DOUBLE)
-        vtk_vol_arr.SetName(array_name)
-        vtk_vol_arr.SetNumberOfComponents(1)
-        mesh.GetCellData().AddArray(vtk_vol_arr)
+        VTKGridHelper.add_array_to_grid(
+            mesh,
+            name=array_name,
+            location="cell",
+            components=1,
+            dtype=vtk.VTK_DOUBLE,
+            values=volumes,
+        )
+
+    @staticmethod
+    def add_component(mesh, component_name, cell_or_point="cell"):
+        """
+        Adds a component array marking the current selection.
+
+        Parameters:
+            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
+            component_name (str): Name of the component array to create.
+            cell_or_point (str): "cell" to use CellData selection, "point" for PointData selection.
+        """
+        if cell_or_point not in ["cell", "point"]:
+            raise ValueError("cell_or_point must be 'cell' or 'point'.")
+
+        # Avoid circular import at module load time
+        from selector import Selector
+
+        Selector.ensure_selection_arrays(mesh)
+        data_obj = mesh.GetCellData() if cell_or_point == "cell" else mesh.GetPointData()
+        selection_array = data_obj.GetArray("selection_cell" if cell_or_point == "cell" else "selection_point")
+        if selection_array is None:
+            raise ValueError("Selection array not found; ensure selection arrays are initialized.")
+
+        selection_mask = vtknp.vtk_to_numpy(selection_array)
+        new_array = VTKGridHelper.add_array_to_grid(
+            mesh,
+            name=component_name,
+            location=cell_or_point,
+            components=1,
+            fill=0,
+            dtype=vtk.VTK_UNSIGNED_CHAR,
+        )
+        target_np = vtknp.vtk_to_numpy(new_array)
+        target_np[:] = selection_mask
+        new_array.Modified()
+        return new_array

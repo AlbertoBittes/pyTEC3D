@@ -157,6 +157,11 @@ void BinaryReader::close_file_streams(std::vector<std::unique_ptr<std::ios>> &st
     streams.clear();
 }
 
+void BinaryReader::set_disallowed_labels(std::unordered_set<BinaryLabelId> labels)
+{
+    disallowed_labels = std::move(labels);
+}
+
 void BinaryReader::read_binary_fem_data(const std::string &filepath,
                                         const std::shared_ptr<FEMDataRepository> &repository,
                                         const std::shared_ptr<ApecMEquationSystems> &equation_systems)
@@ -196,11 +201,15 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
                                  const std::shared_ptr<FEMDataRepository> &repository,
                                  const std::shared_ptr<ApecMEquationSystems> &equation_systems)
 {
+    if (disallowed_labels.count(label) != 0)
+        throw BinaryLabelDisallowedError("BinaryReader: section '" + std::string(BinaryLabelTraits::to_string(label)) + "' is not allowed in the current context.");
+
     switch (label)
     {
     case BinaryLabelId::TIME_PARAMETERS:
     {
-        auto time_step = std::make_shared<TimeStep>(file);
+        auto old_time_step = repository->get_object<TimeStep>();
+        auto time_step = std::make_shared<TimeStep>(file, old_time_step);
         repository->set_object(time_step);
         break;
     }
@@ -238,7 +247,12 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
     case BinaryLabelId::CELL_DATA:
     {
         if (!equation_systems)
-            libmesh_error_msg("BinaryReader: vtk data section encountered without an equation system.");
+            libmesh_error_msg("BinaryReader: cannot read VTK data without a valid ApecMEquationSystems reference.");
+
+        auto n_sys = equation_systems->n_systems();
+        for (unsigned int i = 0; i != n_sys; ++i)
+            if (!equation_systems->get_system(i).is_initialized())
+                libmesh_error_msg("BinaryReader: all equation systems must be initialized before reading VTK data.");
 
         auto vtk_data = std::make_shared<VTKDataMapFEDataObject>(equation_systems);
         if (BinaryLabelTraits::is_cell_data(label))

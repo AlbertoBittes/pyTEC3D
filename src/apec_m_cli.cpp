@@ -186,14 +186,10 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::SET_WORKDIR;
     if (input.rfind("-active_mesh", 0) == 0)
         return Command::SET_ACTIVE_MESH;
-    if (input.rfind("-read_model_data", 0) == 0)
-        return Command::READ_MODEL_DATA;
+    if (input.rfind("-load_data", 0) == 0)
+        return Command::LOAD_DATA;
     if (input == "-print_model_data")
         return Command::PRINT_MODEL_DATA;
-    if (input.rfind("-read_grid", 0) == 0)
-        return Command::READ_GRID_DATA;
-    if (input.rfind("-read_time_step", 0) == 0)
-        return Command::READ_TIME_STEP;
     if (input.rfind("-solve_transient", 0) == 0)
         return Command::SOLVE_TRANSIENT;
     if (input.rfind("-solve", 0) == 0)
@@ -315,35 +311,32 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         report_session_paths(session);
         return true;
     }
-    case Command::READ_MODEL_DATA:
+    case Command::LOAD_DATA:
     {
-        auto filepath = extract_argument(input);
-        if (filepath.empty())
+        auto args = extract_argument(input);
+        if (args.empty())
         {
-            libMesh::out << "Usage: -read_model_data <model_file>" << std::endl;
+            libMesh::out << "Usage: -load_data <binary_file1> [binary_file2 ...]" << std::endl;
             return true;
         }
 
         const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-read_model_data"))
-            return true;
+        std::istringstream ss(args);
+        std::vector<std::string> files;
+        std::string token;
+        while (ss >> token)
+            files.push_back(token);
 
-        std::filesystem::path candidate = session.get_working_directory() / filepath;
-        if (!std::filesystem::exists(candidate))
+        if (files.empty())
         {
-            libMesh::out << "Model data file must exist in the working directory: " << candidate << std::endl;
+            libMesh::out << "No files provided to -load_data." << std::endl;
             return true;
         }
 
-        if (!program.load_model_data(filepath))
-        {
-            libMesh::out << "Failed to load model data from '" << filepath << "'." << std::endl;
-            return true;
-        }
-
-        libMesh::out << "Model data loaded from '" << candidate << "'." << std::endl;
-        report_session_paths(session);
-        program.print_model_data();
+        if (!program.load_data(files))
+            libMesh::out << "Failed to load requested data." << std::endl;
+        else
+            report_session_paths(session);
         return true;
     }
     case Command::PRINT_MODEL_DATA:
@@ -361,9 +354,8 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!require_mode(session, Session::Mode::Analysis, "-solve"))
             return true;
 
-        auto argument = extract_argument(input);
-        if (!program.solve_load_step(argument))
-            libMesh::out << "Load step solve failed." << std::endl;
+        if (!program.solve_load_step())
+            libMesh::out << "Load step solve failed (ensure data loaded with -load_data)." << std::endl;
         return true;
     }
     case Command::SOLVE_TRANSIENT:
@@ -372,8 +364,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!require_mode(session, Session::Mode::Analysis, "-solve_transient"))
             return true;
 
-        auto argument = extract_argument(input);
-        if (!program.solve_transient_load_steps(argument))
+        if (!program.solve_transient_load_steps())
             libMesh::out << "Transient solve failed." << std::endl;
         return true;
     }
@@ -387,40 +378,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             libMesh::out << "Failed to reset analysis state." << std::endl;
         else
             libMesh::out << "Analysis state cleared." << std::endl;
-        return true;
-    }
-    case Command::READ_GRID_DATA:
-    {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-read_grid"))
-            return true;
-
-        auto filepath = extract_argument(input);
-        if (filepath.empty())
-        {
-            libMesh::out << "Usage: -read_grid <grid_binary_file>" << std::endl;
-            return true;
-        }
-
-        if (!program.read_grid_data(filepath))
-            libMesh::out << "Failed to read grid data." << std::endl;
-        return true;
-    }
-    case Command::READ_TIME_STEP:
-    {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-read_time_step"))
-            return true;
-
-        auto filepath = extract_argument(input);
-        if (filepath.empty())
-        {
-            libMesh::out << "Usage: -read_time_step <load_step_binary_file>" << std::endl;
-            return true;
-        }
-
-        if (!program.read_time_step_file(filepath))
-            libMesh::out << "Failed to read time step data." << std::endl;
         return true;
     }
     case Command::SET_MODE:
@@ -494,13 +451,11 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
                      << "  -read_mesh <mesh_file>\n"
                      << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
-                     << "  -solve [load_step_filename]\n"
-                     << "  -solve_transient [base_name]\n"
+                     << "  -load_data <binary_file1> [binary_file2 ...]\n"
+                     << "  -solve\n"
+                     << "  -solve_transient\n"
                      << "  -finish\n"
-                     << "  -read_grid <grid_binary_file>\n"
-                     << "  -read_time_step <load_step_binary_file>\n"
                      << "  -mode <preprocessing|analysis|other> [static|transient|apec_equilibrium|apec_evolution|dof_interpolation]\n"
-                     << "  -read_model_data <model_file>\n"
                      << "  -print_model_data\n"
                      << "  -clear\n"
                      << "  -exit" << std::endl;

@@ -26,8 +26,8 @@ public:
     Real bverx() const { return bverx_value; }
     Real bvery() const { return bvery_value; }
     Real alpha() const { return alpha_value; }
-    Real plasma_currents() const { return plasma_current_profile; }
-    Real beta_profile() const { return beta_p_profile; }
+    Real plasma_currents() const { return plasma_current; }
+    Real beta_profile() const { return beta_p; }
 
 private:
     void parse_columns();
@@ -43,8 +43,8 @@ private:
     Real bverx_value = 0.0;
     Real bvery_value = 0.0;
     Real alpha_value = 1.0;
-    Real plasma_current_profile = 0.0;
-    Real beta_p_profile = 0.0;
+    Real plasma_current = 0.0;
+    Real beta_p = 0.0;
 };
 
 #endif // APEC_M_SETTINGS_H

@@ -4,7 +4,7 @@
 #include <libmesh/system.h>
 #include <libmesh/equation_systems.h>
 
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "time_step.h"
 
 using namespace libMesh;
@@ -14,25 +14,25 @@ using namespace libMesh;
 // them in the global system matrix
 class GlobalConstraintsObject
     : public System::Constraint,
-      public FEMServiceWithOldContext<TimeStep>,
+      public FEMService<TimeStep>,
       public FEParentObjectBase<System>
 {
 public:
-    using ContextView = TypedContextView<TimeStep>;
-    using FEParentObjectBase<System>::FEParentObjectBase;
+  using ContextView = TypedContextView<TimeStep>;
+  using FEParentObjectBase<System>::FEParentObjectBase;
 
-    GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr, std::shared_ptr<ContextView> old_ctx_view = nullptr)
-        : FEParentObjectBase<System>(sys), // Set the parent System
-          FEMServiceWithOldContext<TimeStep>(ctx_view, old_ctx_view)
-    {
-    }
+  GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
+      : FEParentObjectBase<System>(sys), // Set the parent System
+        FEMService<TimeStep>(ctx_view)
+  {
+  }
 
-    virtual ~GlobalConstraintsObject() = default;
+  virtual ~GlobalConstraintsObject() = default;
 
-    void constrain() override;
+  void constrain() override;
 
-    // Now uses old context view for comparison
-    bool check_update_boundary_conditions();
+  // Now uses old context view for comparison
+  bool check_update_boundary_conditions();
 };
 
 #endif // BOUNDARY_CONDITIONS_OBJECT_H

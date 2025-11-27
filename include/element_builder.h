@@ -13,7 +13,7 @@
 #include <libmesh/dof_map.h>
 
 #include "fe_parent_object.h"
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "fe_data_object.h"
 #include "fem_data_repository.h"
 // #include "element_types.h"
@@ -59,7 +59,7 @@ struct SolutionVectorSupport
 class BinaryReader;
 
 class ElementBuilder
-    : public FEMServiceAbstract<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
+    : public FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:

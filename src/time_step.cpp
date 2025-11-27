@@ -2,6 +2,7 @@
 #include "time_step.h"
 #include "fem_data_repository.h"
 #include "fe_parent_object.h"
+
 Substep::Substep(unsigned int index, Real dt, TimeStep *parent)
     : FEParentObjectBase<TimeStep>(parent),
       index(index),
@@ -66,6 +67,7 @@ void TimeStep::populate_time_step(const std::shared_ptr<TimeStep> &previous_time
     substeps.clear();
     active_substep = nullptr;
     previous_substep = nullptr;
+    previous_time_step_ptr = previous_time_step;
 
     if (empty() || this->get_data_map()->columns.empty())
     {

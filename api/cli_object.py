@@ -85,7 +85,7 @@ class CLIObject:
         try:
             self.start_process(["apec_m", "-i"], num_processors=num_processors)
             print("Interactive session started with `apec_m -i`.")
-            print("Enter commands (e.g., -model arg, -solu, -solve arg, -finish, -exit).")
+            print("Enter commands (e.g., -model arg, -solu, -solve, -finish, -exit).")
             print("Type 'exit' to terminate the session.")
             while True:
                 command = input("> ")

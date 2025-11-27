@@ -12,8 +12,3 @@ APECMEvolutionAnalysis::APECMEvolutionAnalysis(APEC_M *program,
 {
     set_name("APECMEvolutionAnalysis");
 }
-
-bool APECMEvolutionAnalysis::solve_transient(const std::string &base_name)
-{
-    return this->solve(base_name);
-}

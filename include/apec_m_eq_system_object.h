@@ -6,7 +6,7 @@
 #include <libmesh/equation_systems.h>
 #include "globals.h"
 #include "element_types_factory.h"
-#include "fem_service_abstract.h"
+#include "fem_service.h"
 #include "fem_data_repository.h"
 #include "time_step.h"
 #include "analysis_base.h"
@@ -19,7 +19,7 @@ class ApecMMesh;
 class ApecMEquationSystems
     : public EquationSystems,
       public FEDataObjectAbstract,
-      public FEMServiceAbstract<ElementTypesFactory, PetscSolverConfiguration>,
+      public FEMService<ElementTypesFactory, PetscSolverConfiguration>,
       public FEParentObjectBase<APEC_M>
 
 {
@@ -42,6 +42,7 @@ public:
     void clear_preserving_solver_settings();
     void zero_all_systems();
     static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh, APEC_M *program = nullptr);
+
 private:
     using RampVectorTuple = std::tuple<NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
     std::vector<RampVectorTuple> collect_ramp_vectors();

@@ -60,23 +60,10 @@ private:
 class TimeStep : public BinaryDataFEDataObject
 {
 public:
-    TimeStep()
-        : BinaryDataFEDataObject(),
-          step(0),
-          time(0.0),
-          time_beginning(0.0),
-          delta_t(0.0),
-          write_results(0),
-          transient_effect(0),
-          ramped_load(0),
-          theta(0.0)
-    {
-    }
-
     TimeStep(std::ifstream &file, std::shared_ptr<TimeStep> previous_time_step = nullptr)
         : BinaryDataFEDataObject(file)
     {
-        this->populate_time_step(nullptr);
+        this->populate_time_step(previous_time_step);
     }
 
     int get_step() const { return step; }
@@ -92,6 +79,7 @@ public:
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
     std::vector<Substep> &get_substeps() { return substeps; }
+    std::shared_ptr<TimeStep> get_previous_time_step() { return previous_time_step_ptr; }
 
     void set_step(int s) { step = s; }
     void set_time(Real t) { time = t; }
@@ -104,7 +92,8 @@ public:
     void set_theta(Real th) { theta = th; } // Not used in this context, but kept for compatibility
     void set_active_substep(Substep *substep) { active_substep = substep; }
     void set_previous_substep(Substep *substep) { previous_substep = substep; }
-    void add_substep(Substep &substep) { substeps.push_back(substep); }
+    // Accept const reference to allow adding temporaries
+    void add_substep(const Substep &substep) { substeps.push_back(substep); }
     void set_substeps(int);
     // Custom substep iterator for TimeStep
 
@@ -121,6 +110,7 @@ public:
     void set_dt();
 
 private:
+    std::shared_ptr<TimeStep> previous_time_step_ptr;
     int step;
     Real time;
     Real time_beginning;
