@@ -56,8 +56,8 @@ for i in range(1, 7):
         apec.time_parameters["number_of_substeps"] = 4
         apec.time_parameters["time"] = i * 0.0001
 
-    apec.select("ansys_material_type", 23, cell_or_point="cell_data")
-    apec.set_value_on_selection("Js", 1 / i, 2, cell_or_point="cell_data")
+    apec.select("ansys_material_type", 23, type="cell_data")
+    apec.set_value_on_selection("Js", 1 / i, 2, type="cell_data")
     apec.write_load_step(i)
 
 apec.save_mesh()

@@ -66,7 +66,7 @@ for i in range(1, 10):
         apec.time_parameters["theta"] = 1.0  # autots,off (default)
 
     # select coil elements
-    apec.select("ansys_material_type", 23, cell_or_point="cell_data")
+    apec.select("ansys_material_type", 23, type="cell_data")
     selection_cells = vtknp.vtk_to_numpy(
         apec.mesh.GetCellData().GetArray("selection_cell")
     )

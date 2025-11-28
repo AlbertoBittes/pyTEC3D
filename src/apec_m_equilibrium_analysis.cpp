@@ -76,6 +76,7 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     auto settings = this->context<ApecMSettingsObject>();
     const auto &axis = settings->target_axis();
     // Here you will be able to restrict to the subdomain of stranded conductors for speedup
+    // You can also find before the element where the center is in pre processing
     const Elem *target_elem = point_locator->operator()(axis);
     auto &comm = mesh.comm();
     // target_axis(0) = -std::numeric_limits<Real>::max();

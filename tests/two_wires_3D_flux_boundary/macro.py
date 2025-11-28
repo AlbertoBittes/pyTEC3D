@@ -44,8 +44,8 @@ apec.set_value_on_selection("VOLT", 0)
 
 apec.select("UPPER_FACE_ROD", 1)
 apec.set_value_on_selection("AMPS", 1)
-# apec.select("ansys_material_type", 23, cell_or_point="cell_data")
-# apec.set_value_on_selection("Js", 1, 2, cell_or_point="cell_data")
+# apec.select("ansys_material_type", 23, type="cell_data")
+# apec.set_value_on_selection("Js", 1, 2, type="cell_data")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 1e-3
@@ -60,8 +60,8 @@ apec.write_load_step("load_steps\\load_step_1.bin")
 
 apec.select("UPPER_FACE_ROD", 1)
 apec.set_value_on_selection("AMPS", 100)
-# apec.select("ansys_material_type", 23, cell_or_point="cell_data")
-# apec.set_value_on_selection("Js", 100, 2, cell_or_point="cell_data")
+# apec.select("ansys_material_type", 23, type="cell_data")
+# apec.set_value_on_selection("Js", 100, 2, type="cell_data")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 2e-3
@@ -75,8 +75,8 @@ apec.write_load_step("load_steps\\load_step_2.bin")
 
 apec.select("UPPER_FACE_ROD", 1)
 apec.set_value_on_selection("AMPS", 0)
-# apec.select("ansys_material_type", 23, cell_or_point="cell_data")
-# apec.set_value_on_selection("Js", 0, 2, cell_or_point="cell_data")
+# apec.select("ansys_material_type", 23, type="cell_data")
+# apec.set_value_on_selection("Js", 0, 2, type="cell_data")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 3e-3

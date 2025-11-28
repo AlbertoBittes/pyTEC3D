@@ -517,12 +517,12 @@ class APEC_M:
     #
 
     def select(
-        self, array_name, value, component=0, cell_or_point="point_data", mode="s"
+        self, array_name, value, component=0, type="point_data", mode="s"
     ):
         """
         Delegates selection to Selector static method.
         """
-        Selector.select(self.mesh, array_name, value, component, cell_or_point, mode)
+        Selector.select(self.mesh, array_name, value, component, type, mode)
 
     def select_pos(self, axis, value, mode="s"):
         """
@@ -530,17 +530,17 @@ class APEC_M:
         """
         Selector.select_pos(self.mesh, axis, value, mode)
 
-    def select_all(self, cell_or_point=None):
+    def select_all(self, type=None):
         """
         Delegates select_all to Selector static method.
         """
-        Selector.select_all(self.mesh, cell_or_point)
+        Selector.select_all(self.mesh, type)
 
-    def unselect_all(self, cell_or_point=None):
+    def unselect_all(self, type=None):
         """
         Delegates unselect_all to Selector static method.
         """
-        Selector.unselect_all(self.mesh, cell_or_point)
+        Selector.unselect_all(self.mesh, type)
 
     def nsel_ext(self):
         """
@@ -549,13 +549,13 @@ class APEC_M:
         Selector.nsel_ext(self.mesh)
 
     def set_value_on_selection(
-        self, array_name, value, component=0, cell_or_point="point_data"
+        self, array_name, value, component=0, type="point_data"
     ):
         """
         Delegates set_value_on_selection to Selector static method.
         """
         Selector.set_value_on_selection(
-            self.mesh, array_name, value, component, cell_or_point
+            self.mesh, array_name, value, component, type
         )
 
     def nsle(self, mode="s"):
@@ -732,7 +732,7 @@ class APEC_M:
             self.mesh,
             "ansys_etype",
             invalid_elemtype_ids,
-            cell_or_point="cell_data",
+            type="cell_data",
             mode="s",
         )
 

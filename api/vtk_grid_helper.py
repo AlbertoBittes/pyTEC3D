@@ -381,24 +381,24 @@ class VTKGridHelper:
         )
 
     @staticmethod
-    def add_component(mesh, component_name, cell_or_point="cell"):
+    def add_component(mesh, component_name, type="cell"):
         """
         Adds a component array marking the current selection.
 
         Parameters:
             mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
             component_name (str): Name of the component array to create.
-            cell_or_point (str): "cell" to use CellData selection, "point" for PointData selection.
+            type (str): "cell" to use CellData selection, "point" for PointData selection.
         """
-        if cell_or_point not in ["cell", "point"]:
-            raise ValueError("cell_or_point must be 'cell' or 'point'.")
+        if type not in ["cell", "point"]:
+            raise ValueError("type must be 'cell' or 'point'.")
 
         # Avoid circular import at module load time
         from selector import Selector
 
         Selector.ensure_selection_arrays(mesh)
-        data_obj = mesh.GetCellData() if cell_or_point == "cell" else mesh.GetPointData()
-        selection_array = data_obj.GetArray("selection_cell" if cell_or_point == "cell" else "selection_point")
+        data_obj = mesh.GetCellData() if type == "cell" else mesh.GetPointData()
+        selection_array = data_obj.GetArray("selection_cell" if type == "cell" else "selection_point")
         if selection_array is None:
             raise ValueError("Selection array not found; ensure selection arrays are initialized.")
 
@@ -406,7 +406,7 @@ class VTKGridHelper:
         new_array = VTKGridHelper.add_array_to_grid(
             mesh,
             name=component_name,
-            location=cell_or_point,
+            location=type,
             components=1,
             fill=0,
             dtype=vtk.VTK_UNSIGNED_CHAR,
