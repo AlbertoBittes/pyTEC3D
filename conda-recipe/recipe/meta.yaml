@@ -27,17 +27,21 @@ requirements:
     - git
     - openmpi
   host:
-    - python >=3.9
+    - python >=3.12
     - pip
     - setuptools
     - wheel
     - git
     - petsc >=3.19
     - vtk >=9.1
+    - boost
+    - openmpi
   run:
-    - python >=3.9
+    - python >=3.12
     - petsc >=3.19
     - vtk >=9.1
+    - boost
+    - openmpi
 
 about:
   home: https://github.com/Plasma-Arc-Project/apec_m

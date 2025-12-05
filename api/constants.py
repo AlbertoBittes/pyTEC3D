@@ -322,6 +322,7 @@ ARRAYS_TO_REMOVE = [
     "selection_point",
     "selection_cell",
     "cell_centroids",
+    "cell_volume"
 ]
 
 # Labels to read for each load step from Excel

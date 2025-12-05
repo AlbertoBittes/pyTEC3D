@@ -1,0 +1,6 @@
+﻿constants
+=========
+
+.. automodule:: constants
+
+   

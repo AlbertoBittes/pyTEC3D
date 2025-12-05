@@ -13,7 +13,6 @@ import vtk.util.numpy_support as vtknp
 from tree_gauge_helper import TreeGaugeHelper
 from ansys_helper import AnsysHelper
 from selector import Selector
-from vtk_tables_helper import VTKTablesHelper
 from vtk_grid_helper import VTKGridHelper
 from binary_helper import BinaryHelper
 from excel_io_helper import ExcelIOHelper

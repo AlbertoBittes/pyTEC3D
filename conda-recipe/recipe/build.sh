@@ -17,6 +17,7 @@ export METIS_DIR=${METIS_DIR:-${PREFIX}}
 export PARMETIS_DIR=${PARMETIS_DIR:-${PREFIX}}
 export MPI_DIR=${MPI_DIR:-${PREFIX}}
 export VTK_DIR=${VTK_DIR:-${PREFIX}/lib/cmake/vtk}
+export BOOST_DIR=${BOOST_DIR:-${PREFIX}}
 export LIBMESH_DIR=${LIBMESH_PREFIX}
 export CPPFLAGS="${CPPFLAGS:-} -I${PREFIX}/include"
 export CXXFLAGS="${CXXFLAGS:-} -I${PREFIX}/include"
@@ -37,6 +38,8 @@ pushd build
     --with-metis="${METIS_DIR}" \
     --with-parmetis="${PARMETIS_DIR}" \
     --with-mpi="${MPI_DIR}" \
+    --with-vtk="${VTK_DIR}" \
+    --with-boost="${BOOST_DIR}" \
     --disable-strict-lgpl \
     --enable-distmesh \
     --enable-ifem \
@@ -58,7 +61,10 @@ cmake "${SRC_DIR}/src" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
     -DPETSC_DIR="${PETSC_DIR}" \
-    -DVTK_DIR="${VTK_DIR}"
+    -DVTK_DIR="${VTK_DIR}" \
+    -DBOOST_ROOT="${BOOST_DIR}" \
+    -DBOOST_INCLUDEDIR="${BOOST_DIR}/include" \
+    -DBOOST_LIBRARYDIR="${BOOST_DIR}/lib"
 ninja -j"${CPU_COUNT}"
 install -Dm755 "${SRC_DIR}/bin/apec_m" "${PREFIX}/bin/apec_m"
 popd
