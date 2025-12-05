@@ -78,7 +78,7 @@ public:
     Substep *get_active_substep() { return active_substep; }
     Substep *get_previous_substep() { return previous_substep; }
     std::vector<Substep> &get_substeps() { return substeps; }
-    std::vector<Substep> &get_substeps() { return substeps; }
+    const std::vector<Substep> &get_substeps() const { return substeps; }
     std::shared_ptr<TimeStep> get_previous_time_step() { return previous_time_step_ptr; }
 
     void set_step(int s) { step = s; }

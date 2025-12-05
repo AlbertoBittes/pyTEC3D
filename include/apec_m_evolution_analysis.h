@@ -3,7 +3,7 @@
 
 #include "apec_m_equilibrium_analysis.h"
 
-class APECMEvolutionAnalysis : public APECMEquilibriumAnalysis, public TransientAnalysis
+class APECMEvolutionAnalysis : public APECMEquilibriumAnalysis
 {
 public:
     explicit APECMEvolutionAnalysis(APEC_M *program = nullptr,

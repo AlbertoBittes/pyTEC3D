@@ -46,8 +46,8 @@ public:
     bool solve() override;
 };
 
-DOFInterpolationAnalysis::DOFInterpolationAnalysis(APEC_M *program,
-                                                   std::shared_ptr<AnalysisBase::ContextView> context_view)
+inline DOFInterpolationAnalysis::DOFInterpolationAnalysis(APEC_M *program,
+                                                          std::shared_ptr<AnalysisBase::ContextView> context_view)
     : StaticAnalysis(Type::DOF_INTERPOLATION, program, std::move(context_view), "DOFInterpolationAnalysis")
 {
 }

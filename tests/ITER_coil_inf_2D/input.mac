@@ -1,4 +1,4 @@
 -read_mesh ITER_coil_inf_2D.vtu
 -read_model_data model_data.bin
--mode analysis
+-mode analysis transient
 -solve_transient

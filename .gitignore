@@ -83,3 +83,6 @@ tests/**/temp/
 
 # Generated test binaries
 tests/**/*.bin
+
+# Sphinx generated docs
+docs/generated/
