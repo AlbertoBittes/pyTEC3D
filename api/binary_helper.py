@@ -1,14 +1,47 @@
 import struct
+from typing import (
+    Any,
+    BinaryIO,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Union,
+    TYPE_CHECKING,
+)
+
 import numpy as np
-import vtk.util.numpy_support as vtknp
 import pandas as pd
+import vtk.util.numpy_support as vtknp
+
 from constants import VARIABLES_GLOBAL_LIST
+
+if TYPE_CHECKING:  # pragma: no cover - used only for type checking
+    import vtk
+
+
+SettingsType = Dict[str, Any]
+SettingsInput = Union[SettingsType, Iterable[SettingsType]]
+ColumnValues = Union[np.ndarray, List[str]]
 
 
 class BinaryHelper:
 
     @staticmethod
-    def _ensure_settings_list(settings):
+    def _ensure_settings_list(settings: SettingsInput) -> List[SettingsType]:
+        """
+        Normalize a settings payload into a list of dictionaries.
+
+        Args:
+            settings: Single settings dict or an iterable of settings dictionaries.
+
+        Returns:
+            List[SettingsType]: Normalized list of settings dictionaries.
+
+        Raises:
+            TypeError: If the input is not a dictionary or iterable of dictionaries.
+        """
         if isinstance(settings, dict):
             return [settings]
         if hasattr(settings, "__iter__") and not isinstance(settings, (str, bytes)):
@@ -22,7 +55,19 @@ class BinaryHelper:
         raise TypeError("Settings must be a dict or an iterable of dicts.")
 
     @staticmethod
-    def _validate_settings_keys(settings_list):
+    def _validate_settings_keys(settings_list: List[SettingsType]) -> List[str]:
+        """
+        Ensure all dictionaries share the same keys and return that ordering.
+
+        Args:
+            settings_list: List of settings dictionaries to validate.
+
+        Returns:
+            List[str]: Ordered list of keys taken from the first dictionary.
+
+        Raises:
+            ValueError: If the keys differ between dictionaries.
+        """
         first_keys = list(settings_list[0].keys())
         reference = set(first_keys)
         for idx, settings in enumerate(settings_list[1:], start=1):
@@ -34,7 +79,19 @@ class BinaryHelper:
         return first_keys
 
     @staticmethod
-    def _dataframe_to_column_dict(df):
+    def _dataframe_to_column_dict(df: pd.DataFrame) -> Dict[str, ColumnValues]:
+        """
+        Convert a DataFrame into a dictionary of columns with predictable dtypes.
+
+        Args:
+            df: Source DataFrame to convert.
+
+        Integers/bools are cast to int64, floats to float64, and all other dtypes to
+        string representations to keep the binary format consistent.
+
+        Returns:
+            Dict[str, ColumnValues]: Mapping of column names to numpy arrays or lists of strings.
+        """
         column_dict = {}
         for column_name in df.columns:
             series = df[column_name]
@@ -49,7 +106,26 @@ class BinaryHelper:
         return column_dict
 
     @staticmethod
-    def _write_flattened_series(binary_file, values, key):
+    def _write_flattened_series(binary_file: BinaryIO, values: Sequence[Any], key: str) -> None:
+        """
+        Write a sequence of values under the same key to the binary stream.
+
+        Args:
+            binary_file: Open binary stream for writing.
+            values: Sequence of values sharing the same key across settings entries.
+            key: Settings key the values belong to (used for error messaging).
+
+        Supported payloads:
+            - Scalars (int/float/str)
+            - NumPy arrays or sequences that can be coerced to arrays with matching shapes
+
+        Returns:
+            None
+
+        Raises:
+            TypeError: For unsupported value types.
+            ValueError: When arrays for the same key have mismatched shapes.
+        """
         if all(isinstance(v, (int, np.integer)) for v in values):
             data = np.asarray(values, dtype=np.int64)
             BinaryHelper._write_ndarray_payload(
@@ -111,7 +187,11 @@ class BinaryHelper:
                 flattened = np.empty(0, dtype=arrays[0].dtype)
             cast_dtype = np.int64 if element_kind == 0 else np.float64
             BinaryHelper._write_ndarray_payload(
-                binary_file, dtype_str, full_shape, element_kind, flattened.astype(cast_dtype)
+                binary_file,
+                dtype_str,
+                full_shape,
+                element_kind,
+                flattened.astype(cast_dtype),
             )
         else:
             str_values = []
@@ -119,11 +199,37 @@ class BinaryHelper:
                 flattened = arr.reshape(-1)
                 str_values.extend(str(item) for item in flattened)
             BinaryHelper._write_ndarray_payload(
-                binary_file, dtype_str, full_shape, element_kind, str_values
+                binary_file,
+                dtype_str,
+                full_shape,
+                element_kind,
+                str_values,
             )
 
     @staticmethod
-    def _write_ndarray_payload(binary_file, dtype_str, shape, element_kind, data):
+    def _write_ndarray_payload(
+        binary_file: BinaryIO,
+        dtype_str: str,
+        shape: Sequence[int],
+        element_kind: int,
+        data: Union[np.ndarray, Sequence[str]],
+    ) -> None:
+        """
+        Serialize an ndarray-like payload with shape metadata to the binary stream.
+
+        Args:
+            binary_file: Open binary stream to write to.
+            dtype_str: String representation of the dtype (e.g., 'int64', 'float64', 'str').
+            shape: Sequence describing the array dimensions.
+            element_kind: 0 for ints, 1 for floats, 2 for strings.
+            data: Flattened numeric array or sequence of strings matching the shape product.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the provided data size does not match the expected total elements.
+        """
         binary_file.write(struct.pack("i", 3))
 
         dtype_bytes = dtype_str.encode("utf-8")
@@ -156,10 +262,25 @@ class BinaryHelper:
             binary_file.write(encoded)
 
     @staticmethod
-    def write_data_to_binary(settings, binary_file, label=None):
+    def write_data_to_binary(
+        settings: SettingsInput,
+        binary_file: BinaryIO,
+        label: Optional[str] = None,
+    ) -> None:
         """
-        Writes one or many settings dictionaries to an open binary file stream.
-        Values are flattened into NDArray payloads so they can be reconstructed later.
+        Write one or more settings dictionaries to an open binary file stream.
+
+        Args:
+            settings: Single settings dict or iterable of settings dictionaries.
+            binary_file: Open binary stream to write into.
+            label: Optional descriptive label retained for API parity.
+
+        Each key's values across the iterable are flattened into an NDArray payload so
+        they can be reconstructed later. The optional `label` is retained for API parity
+        even though it is not used internally.
+
+        Returns:
+            None
         """
         settings_list = BinaryHelper._ensure_settings_list(settings)
         if not settings_list:
@@ -176,15 +297,26 @@ class BinaryHelper:
             BinaryHelper._write_flattened_series(binary_file, values, key)
 
     @staticmethod
-    def write_to_binary(obj, binary_file, label):
+    def write_to_binary(
+        obj: Union[SettingsType, pd.DataFrame, Iterable[Union[SettingsType, pd.DataFrame]]],
+        binary_file: BinaryIO,
+        label: str,
+    ) -> None:
         """
-        Writes a dict, DataFrame, or an iterable of dicts/DataFrames to a binary file.
-        A single dict/DataFrame is treated as an iterable containing that single element.
+        Serialize dictionaries or DataFrames (or an iterable of either) to binary.
 
-        Parameters:
-            obj: dict, pd.DataFrame, or iterable of dicts/DataFrames
-            binary_file: open binary file stream
-            label: str, used for type validation (dicts) or column types (DataFrames)
+        A single object is treated as a one-element iterable for consistency.
+
+        Args:
+            obj: A dict, DataFrame, or iterable containing dicts/DataFrames.
+            binary_file: Open binary stream to write into.
+            label: Descriptive label used for downstream validation/metadata.
+
+        Returns:
+            None
+
+        Raises:
+            TypeError: If the iterable contains unsupported item types.
         """
         if isinstance(obj, dict):
             obj_list = [obj]
@@ -209,17 +341,22 @@ class BinaryHelper:
         BinaryHelper.write_data_to_binary(obj_list, binary_file, label)
 
     @staticmethod
-    def create_numpy_array_for_binary(cell_point_data):
+    def create_numpy_array_for_binary(cell_point_data: "vtk.vtkDataSetAttributes") -> np.ndarray:
         """
-        Creates a NumPy structured array for loads/nodal DOFs from a VTK cell/point data array.
+        Build a structured NumPy array representing loads or nodal DOFs from VTK data.
 
-        Parameters:
-            cell_point_data (vtk.vtkDataSetAttributes): The VTK cell or point data.
+        Args:
+            cell_point_data: VTK cell or point data attributes to extract values from.
+
+        The result contains columns:
+            - vtk_id (uint32): Cell/point id
+            - load_bc_number (uint32): Index within VARIABLES_GLOBAL_LIST
+            - component (uint32): Component index inside the VTK array
+            - value (float64): The associated numeric value
 
         Returns:
-            np.ndarray: A structured NumPy array containing the loads or boundary conditions.
+            np.ndarray: Structured array of load/boundary-condition data (empty if none found).
         """
-        total_rows = 0
         all_stacked_data = []
         dtype = np.dtype(
             [
@@ -259,24 +396,30 @@ class BinaryHelper:
                 structured_data["component"] = component_array
                 structured_data["value"] = filtered_values
                 all_stacked_data.append(structured_data)
-                total_rows += len(filtered_cell_points_ids)
         if all_stacked_data:
             final_data = np.concatenate(all_stacked_data)
             return final_data
         return np.zeros(0, dtype=dtype)
 
     @staticmethod
-    def write_numpy_array_to_binary(mesh, binary_file, label):
+    def write_numpy_array_to_binary(
+        mesh: "vtk.vtkUnstructuredGrid",
+        binary_file: BinaryIO,
+        label: str,
+    ) -> None:
         """
-        Extracts the correct numpy array from mesh (cell or point data) and writes it to an open binary file stream.
+        Extract a structured array from mesh cell/point data and write it to binary.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to extract data from.
-            binary_file (file object): An open binary file stream.
-            label (str): Either 'cell_data' or 'point_data'.
+        Args:
+            mesh: Source mesh containing the VTK data arrays.
+            binary_file: Open binary stream for writing.
+            label: Either 'cell_data' or 'point_data', indicating the source arrays.
+
+        Returns:
+            None
 
         Raises:
-            ValueError: If the label is not recognized or the extracted array is not a NumPy array.
+            ValueError: If `label` is unsupported or the extracted payload is not a NumPy array.
         """
         if label == "cell_data":
             numpy_array = BinaryHelper.create_numpy_array_for_binary(mesh.GetCellData())

@@ -1,20 +1,34 @@
 import os
+from os import PathLike
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
+
 import pandas as pd
-from vtk_grid_helper import VTKGridHelper
+
 from binary_helper import BinaryHelper
 from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
+from vtk_grid_helper import VTKGridHelper
+
+if TYPE_CHECKING:  # pragma: no cover - used only for type hints
+    import vtk
 
 
 class ExcelIOHelper:
     @staticmethod
-    def write_excel_cell_point_data(mesh, output_excel_file, data_type="cell_data"):
+    def write_excel_cell_point_data(
+        mesh: "vtk.vtkUnstructuredGrid",
+        output_excel_file: Union[str, PathLike[str]],
+        data_type: str = "cell_data",
+    ) -> None:
         """
         Writes the loads or boundary conditions to an Excel file.
 
-        Parameters:
-            mesh (vtkUnstructuredGrid): The VTK mesh object.
-            output_excel_file (str): The path to the output Excel file.
-            data_type (str): The type of data to write ("cell_data" or "point_data"). Defaults to "cell_data".
+        Args:
+            mesh: The VTK mesh object.
+            output_excel_file: Path to the output Excel file.
+            data_type: Data to write ("cell_data" or "point_data"). Defaults to "cell_data".
+
+        Returns:
+            None
 
         Raises:
             ValueError: If the data_type is invalid.
@@ -57,17 +71,17 @@ class ExcelIOHelper:
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
     @staticmethod
-    def read_excel_dict(excel_file, sheet_name):
+    def read_excel_dict(excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[Dict[str, Any]]:
         """
         Reads a specific sheet from an Excel file into a dictionary and returns it.
         Ensures that the keys in the 'SETTING' column match the default keys defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
 
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Name of the sheet to read.
 
         Returns:
-            dict: The loaded dictionary.
+            Optional[Dict[str, Any]]: Loaded dictionary, or None if the sheet is missing.
 
         Raises:
             ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES or if the keys do not match.
@@ -115,17 +129,17 @@ class ExcelIOHelper:
         return result_dict
 
     @staticmethod
-    def read_excel_df(excel_file, sheet_name):
+    def read_excel_df(excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[pd.DataFrame]:
         """
         Reads a specific sheet from an Excel file into a pandas DataFrame and returns it.
         Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
 
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Name of the sheet to read.
 
         Returns:
-            pd.DataFrame: The loaded DataFrame.
+            Optional[pd.DataFrame]: Loaded DataFrame, or None if the sheet is missing.
 
         Raises:
             ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES or if the columns do not match.
@@ -161,18 +175,27 @@ class ExcelIOHelper:
         return df
 
     @staticmethod
-    def update_vtk_grid_from_excel(mesh, excel_file, sheet_name, data_type=None):
+    def update_vtk_grid_from_excel(
+        mesh: "vtk.vtkUnstructuredGrid",
+        excel_file: Union[str, PathLike[str]],
+        sheet_name: str,
+        data_type: Optional[str] = None,
+    ) -> None:
         """
         Reads a sheet from an Excel file and updates the VTK grid using the data.
 
-        Parameters:
-            mesh (vtkUnstructuredGrid): The VTK mesh object.
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to read.
-            data_type (str): The type of VTK data to update ('cell_data' or 'point_data').
+        Args:
+            mesh: The VTK mesh object.
+            excel_file: Path to the Excel file.
+            sheet_name: Name of the sheet to read.
+            data_type: Type of VTK data to update ('cell_data' or 'point_data'). Defaults to `sheet_name`.
+
+        Returns:
+            None
 
         Raises:
             ValueError: If the data_type is invalid or the sheet does not exist.
+            FileNotFoundError: If the Excel file is missing.
         """
         try:
             df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")

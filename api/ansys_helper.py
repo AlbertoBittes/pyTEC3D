@@ -1,25 +1,38 @@
-import numpy as np
-import pandas as pd
 import os
 import re
+from os import PathLike
+from typing import TYPE_CHECKING, Union
+
+import numpy as np
+import pandas as pd
 import vtk.util.numpy_support as vtknp
+
 from vtk_grid_helper import VTKGridHelper
 from excel_io_helper import ExcelIOHelper
+
+if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import vtk
 
 
 class AnsysHelper:
     @staticmethod
-    def read_bfelist(mesh, file_path):
+    def read_bfelist(mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]) -> None:
         """
         Reads and maps ANSYS element load data from a BFELIST file to the VTK mesh's CellData.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The VTK mesh object to update.
-            file_path (str): Path to the BFELIST file containing element load data.
+        Args:
+            mesh: VTK mesh object to update (CellData will be modified).
+            file_path: Path to the BFELIST file containing element load data.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the BFELIST file does not exist.
+            ValueError: If required ANSYS identifiers are missing in the mesh CellData.
 
         Side Effects:
-            Updates the mesh's CellData arrays with mapped element loads.
-            Prints a summary message on completion.
+            Updates the mesh's CellData arrays and prints a summary message.
         """
         df = AnsysHelper.read_parse_bfelist(file_path)
         mapping_array = AnsysHelper.map_data_to_vtk(
@@ -30,18 +43,28 @@ class AnsysHelper:
         print(f"Grid updated with element loads from '{file_path}'.")
 
     @staticmethod
-    def convert_bfelist(mesh, bfelist_file, output_excel_file):
+    def convert_bfelist(
+        mesh: "vtk.vtkUnstructuredGrid",
+        bfelist_file: Union[str, PathLike[str]],
+        output_excel_file: Union[str, PathLike[str]],
+    ) -> None:
         """
         Reads a BFELIST file, updates the mesh's CellData, and writes the loads to an Excel file.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The VTK mesh object to update.
-            bfelist_file (str): Path to the BFELIST file.
-            output_excel_file (str): Path to the output Excel file.
+        Args:
+            mesh: VTK mesh object to update (CellData will be modified).
+            bfelist_file: Path to the BFELIST file.
+            output_excel_file: Path to the output Excel file to create.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the BFELIST file does not exist.
+            ValueError: If required ANSYS identifiers are missing in the mesh CellData.
 
         Side Effects:
-            Updates mesh CellData and writes loads to Excel.
-            Prints a summary message on completion.
+            Updates mesh CellData, writes loads to Excel, and prints a summary message.
         """
 
         if not os.path.exists(bfelist_file):
@@ -54,17 +77,23 @@ class AnsysHelper:
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
     @staticmethod
-    def read_dlist(mesh, file_path):
+    def read_dlist(mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]) -> None:
         """
         Reads and maps ANSYS node data from a DLIST file to the VTK mesh's PointData.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The VTK mesh object to update.
-            file_path (str): Path to the DLIST file containing node data.
+        Args:
+            mesh: VTK mesh object to update (PointData will be modified).
+            file_path: Path to the DLIST file containing node data.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the DLIST file does not exist.
+            ValueError: If required ANSYS identifiers are missing in the mesh PointData.
 
         Side Effects:
-            Updates the mesh's PointData arrays with mapped node data.
-            Prints a summary message on completion.
+            Updates the mesh's PointData arrays and prints a summary message.
         """
         df = AnsysHelper.read_parse_dlist(file_path)
         mapping_array = AnsysHelper.map_data_to_vtk(
@@ -76,21 +105,29 @@ class AnsysHelper:
         print(f"Grid updated with node data from '{file_path}'.")
 
     @staticmethod
-    def convert_dlist(mesh, dlist_file, output_excel_file):
+    def convert_dlist(
+        mesh: "vtk.vtkUnstructuredGrid",
+        dlist_file: Union[str, PathLike[str]],
+        output_excel_file: Union[str, PathLike[str]],
+    ) -> None:
         """
         Reads a DLIST file, updates the mesh's PointData, and writes the node data to an Excel file.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The VTK mesh object to update.
-            dlist_file (str): Path to the DLIST file.
-            output_excel_file (str): Path to the output Excel file.
+        Args:
+            mesh: VTK mesh object to update (PointData will be modified).
+            dlist_file: Path to the DLIST file.
+            output_excel_file: Path to the output Excel file to create.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the DLIST file does not exist.
+            ValueError: If required ANSYS identifiers are missing in the mesh PointData.
 
         Side Effects:
-            Updates mesh PointData and writes node data to Excel.
-            Prints a summary message on completion.
+            Updates mesh PointData, writes node data to Excel, and prints a summary message.
         """
-        import os
-
         if not os.path.exists(dlist_file):
             raise FileNotFoundError(f"DLIST file '{dlist_file}' not found.")
         AnsysHelper.read_dlist(mesh, dlist_file)
@@ -101,18 +138,17 @@ class AnsysHelper:
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 
     @staticmethod
-    def map_data_to_vtk(data, label):
+    def map_data_to_vtk(data: "vtk.vtkDataSetAttributes", label: str) -> np.ndarray:
         """
         Maps the ANSYS numbers (e.g., element or node numbers) to VTK IDs and returns a 2D NumPy array.
         This function assumes that the VTK grid has been loaded and contains the specified label.
 
-        Parameters:
-            data (vtk.vtkDataSetAttributes): The VTK data (e.g., CellData or PointData).
-            label (str): The name of the array to map (e.g., "ansys_elem_num" or "ansys_node_num").
+        Args:
+            data: The VTK data (e.g., CellData or PointData).
+            label: Name of the array to map (e.g., "ansys_elem_num" or "ansys_node_num").
 
         Returns:
-            np.ndarray: A 2D NumPy array where each row contains:
-                        [VTK ID, ANSYS number].
+            np.ndarray: 2D array where each row contains [VTK ID, ANSYS number].
 
         Raises:
             ValueError: If the specified label is not found in the provided data.
@@ -126,17 +162,19 @@ class AnsysHelper:
         return mapping_array
 
     @staticmethod
-    def replace_ansys_with_vtk_ids(df, mapping_array, label):
+    def replace_ansys_with_vtk_ids(
+        df: pd.DataFrame, mapping_array: np.ndarray, label: str
+    ) -> pd.DataFrame:
         """
-        Replaces the 'ansys_elem_num' column in the DataFrame with the corresponding VTK ID values
-        using the provided mapping array. The column is renamed to 'vtk_element_id'.
+        Replace an ANSYS id column in a DataFrame with the corresponding VTK IDs.
 
         Args:
-            df (pd.DataFrame): The DataFrame containing the 'ansys_elem_num' column.
-            mapping_array (np.ndarray): A 2D NumPy array where each row contains [VTK ID, ANSYS element number].
+            df: DataFrame containing the ANSYS id column.
+            mapping_array: 2D array where each row contains [VTK ID, ANSYS number].
+            label: Column name in `df` holding the ANSYS numbers to replace.
 
         Returns:
-            pd.DataFrame: A new DataFrame with the 'ansys_elem_num' column replaced by VTK IDs and renamed to 'vtk_element_id'.
+            pd.DataFrame: Copy with ANSYS numbers replaced by VTK IDs in a `vtk_id` column.
         """
         ansys_numbers = df[label].to_numpy()
         vtk_ids = mapping_array[:, 0]
@@ -147,19 +185,22 @@ class AnsysHelper:
         return df
 
     @staticmethod
-    def read_parse_bfelist(file_path):
+    def read_parse_bfelist(file_path: Union[str, PathLike[str]]) -> pd.DataFrame:
         """
         Parses element load data from the given file and stores it in a pandas DataFrame.
 
         Args:
-            file_path (str): Path to the file containing element load data.
+            file_path: Path to the file containing element load data.
 
         Returns:
             pd.DataFrame: A DataFrame with columns:
                 - ansys_elem_num: The element ID.
-                - load_label: The label associated with the load (e.g., "Js").
+                - label: The label associated with the load (e.g., "Js").
                 - component: The component index (0, 1, 2).
                 - value: The value of the load for the given component.
+
+        Raises:
+            FileNotFoundError: If `file_path` cannot be opened.
         """
         # Regular expressions to match element and density lines
         element_pattern = re.compile(r"ELEMENT\s*=\s*(\d+)")
@@ -212,19 +253,22 @@ class AnsysHelper:
         return df
 
     @staticmethod
-    def read_parse_dlist(file_path):
+    def read_parse_dlist(file_path: Union[str, PathLike[str]]) -> pd.DataFrame:
         """
         Parses node data from the given file and stores it in a pandas DataFrame.
 
         Args:
-            file_path (str): Path to the file containing node data.
+            file_path: Path to the file containing node data.
 
         Returns:
             pd.DataFrame: A DataFrame with columns:
                 - ansys_node_num: The node ID.
-                - variable_label: The label of the variable (e.g., "A", "VOLT").
+                - label: The label of the variable (e.g., "A", "VOLT").
                 - component: The component index (0, 1, 2 for vector variables, 0 for scalar variables).
                 - value: The value of the variable for the given component.
+
+        Raises:
+            FileNotFoundError: If `file_path` cannot be opened.
         """
         # Regular expression to match node data lines
         node_pattern = re.compile(r"^\s*(\d+)\s+(\S+)\s+([\d\.\-E]+)")

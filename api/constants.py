@@ -15,9 +15,11 @@ VARIABLES_GLOBAL_LIST = [
     "Js",
     "B",
     "H",
+    "PSI",
     "Jt",
     "Be",
     "He",
+    "PSIe",
 ]
 
 # Default solver settings

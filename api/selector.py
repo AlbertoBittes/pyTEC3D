@@ -1,16 +1,25 @@
+from typing import Any, Optional, Union, TYPE_CHECKING
+
 import numpy as np
 import vtk
 import vtk.util.numpy_support as vtknp
 
+if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
+
+
 class Selector:
     @staticmethod
-    def ensure_selection_arrays(mesh):
+    def ensure_selection_arrays(mesh: "vtk.vtkUnstructuredGrid") -> None:
         """
         Ensures that selection arrays ('selection_cell' and 'selection_point') exist in the mesh.
         If not present, initializes them to zero for all cells/points.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
+        Args:
+            mesh: The mesh to operate on.
+
+        Returns:
+            None
 
         Side Effects:
             Adds selection arrays to mesh CellData and PointData if missing.
@@ -29,7 +38,14 @@ class Selector:
             point_data.AddArray(vtk_arr)
 
     @staticmethod
-    def select(mesh, array_name, value, component=0, type="point_data", mode="s"):
+    def select(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        value: Any,
+        component: Union[int, str] = 0,
+        type: str = "point_data",
+        mode: str = "s",
+    ) -> None:
         """
         Selects cells or points in the mesh where the specified array's component matches the given value(s).
 
@@ -41,20 +57,26 @@ class Selector:
 
         Selection is stored as a mask array (0/1) in the VTK grid.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            array_name (str): Name of the array to use for selection.
+        Args:
+            mesh: The mesh to operate on.
+            array_name: Name of the array to use for selection.
             value: Value(s) to match for selection (scalar, tuple, or set).
-            component (int or str): Component index or 'magnitude' for vector arrays (default 0).
-            type (str): 'cell_data' or 'point_data' to specify selection type (default 'point_data').
-            mode (str): Selection mode:
+            component: Component index or 'magnitude' for vector arrays (default 0).
+            type: 'cell_data' or 'point_data' to specify selection type (default 'point_data').
+            mode: Selection mode:
                 's': select from all (replace selection)
                 'a': add new selection to current selection
                 'r': reselect from current selection (intersection)
                 'u': remove masked ids from current selection
 
+        Returns:
+            None
+
         Side Effects:
             Updates selection arrays in mesh data.
+
+        Raises:
+            ValueError: If the specified array is missing in the chosen data type.
         """
         Selector.ensure_selection_arrays(mesh)
         data = mesh.GetCellData() if type == "cell_data" else mesh.GetPointData()
@@ -76,15 +98,23 @@ class Selector:
         Selector.apply_selection_mask(arr, value, data, type, mode)
 
     @staticmethod
-    def select_pos(mesh, axis, value, mode="s"):
+    def select_pos(
+        mesh: "vtk.vtkUnstructuredGrid",
+        axis: int,
+        value: Any,
+        mode: str = "s",
+    ) -> None:
         """
         Selects points in the mesh based on their position along a given axis.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            axis (int): Axis index (0 for x, 1 for y, 2 for z).
+        Args:
+            mesh: The mesh to operate on.
+            axis: Axis index (0 for x, 1 for y, 2 for z).
             value: Value(s) to match (scalar, tuple for range, or set).
-            mode (str): Selection mode ('s', 'a', 'r', 'u').
+            mode: Selection mode ('s', 'a', 'r', 'u').
+
+        Returns:
+            None
 
         Side Effects:
             Updates selection arrays in mesh PointData.
@@ -96,19 +126,31 @@ class Selector:
         Selector.apply_selection_mask(arr, value, data, "point_data", mode)
 
     @staticmethod
-    def apply_selection_mask(arr, value, data, type, mode):
+    def apply_selection_mask(
+        arr: np.ndarray,
+        value: Any,
+        data: "vtk.vtkDataSetAttributes",
+        type: str,
+        mode: str,
+    ) -> None:
         """
         Builds the selection mask based on value type and applies it to the selection array in the VTK grid.
 
-        Parameters:
-            arr (np.ndarray): Array of values to compare.
+        Args:
+            arr: Array of values to compare.
             value: Value(s) to match (scalar, tuple, or set).
-            data (vtk.vtkDataSetAttributes): VTK data object (CellData or PointData).
-            type (str): 'cell_data' or 'point_data'.
-            mode (str): Selection mode ('s', 'a', 'r', 'u').
+            data: VTK data object (CellData or PointData).
+            type: 'cell_data' or 'point_data'.
+            mode: Selection mode ('s', 'a', 'r', 'u').
+
+        Returns:
+            None
 
         Side Effects:
             Modifies the selection array in the VTK grid.
+
+        Raises:
+            ValueError: If an invalid mode is provided or range tuple is not length 2.
         """
         if isinstance(value, tuple):
             if len(value) != 2:
@@ -134,8 +176,20 @@ class Selector:
         sel_array.Modified()
 
     @staticmethod
-    def nsle(mesh, mode="s"):
-        """Select nodes attached to the currently selected cells."""
+    def nsle(mesh: "vtk.vtkUnstructuredGrid", mode: str = "s") -> None:
+        """
+        Select nodes attached to the currently selected cells.
+
+        Args:
+            mesh: The mesh to operate on.
+            mode: Selection mode ('s', 'a', 'r', 'u'). Defaults to 's'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If required selection arrays are missing.
+        """
         Selector.ensure_selection_arrays(mesh)
 
         cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
@@ -145,32 +199,57 @@ class Selector:
         if not cell_sel.any():
             return
 
-        cell_array = vtknp.vtk_to_numpy(mesh.GetCells().GetData())
-        cell_offsets = vtknp.vtk_to_numpy(mesh.GetCellLocationsArray())
-        cell_sizes = cell_array[cell_offsets]
-
         selected_ids = np.nonzero(cell_sel)[0]
         if selected_ids.size == 0:
             return
 
-        node_lists = [
-            cell_array[offset + 1 : offset + 1 + npts]
-            for offset, npts in zip(cell_offsets[selected_ids], cell_sizes[selected_ids])
-        ]
-        if not node_lists:
+        # Build a selection of the chosen cell ids
+        id_array = vtknp.numpy_to_vtkIdTypeArray(selected_ids, deep=True)
+        selection_node = vtk.vtkSelectionNode()
+        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+        selection_node.SetSelectionList(id_array)
+        selection = vtk.vtkSelection()
+        selection.AddNode(selection_node)
+
+        extract_selection = vtk.vtkExtractSelection()
+        extract_selection.SetInputData(0, mesh)
+        extract_selection.SetInputData(1, selection)
+        extract_selection.Update()
+        selected_mesh = extract_selection.GetOutput()
+
+        original_ids_array = selected_mesh.GetPointData().GetArray("vtkOriginalPointIds")
+        if original_ids_array is None:
+            # Fallback: if ids are missing, nothing to select
             return
-        attached_nodes = np.unique(np.concatenate(node_lists))
-        Selector.select(
-            mesh,
-            "ID",
-            set(attached_nodes.tolist()),
-            type="point_data",
-            mode=mode,
-        )
+        original_point_ids = vtknp.vtk_to_numpy(original_ids_array)
+
+        point_sel_array = mesh.GetPointData().GetArray("selection_point")
+        if point_sel_array is None:
+            raise ValueError("Point selection array 'selection_point' not found.")
+        point_sel = vtknp.vtk_to_numpy(point_sel_array)
+        point_sel[:] = 0
+        point_sel[original_point_ids] = 1
+        point_sel_array.Modified()
 
     @staticmethod
-    def esln(mesh, all_nodes=True, mode="s"):
-        """Select cells based on currently selected nodes."""
+    def esln(
+        mesh: "vtk.vtkUnstructuredGrid", all_nodes: bool = True, mode: str = "s"
+    ) -> None:
+        """
+        Select cells based on currently selected nodes.
+
+        Args:
+            mesh: The mesh to operate on.
+            all_nodes: If True, select cells where all nodes are selected; otherwise any node.
+            mode: Selection mode ('s', 'a', 'r', 'u'). Defaults to 's'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If required selection arrays are missing.
+        """
         Selector.ensure_selection_arrays(mesh)
 
         point_sel_array = mesh.GetPointData().GetArray("selection_point")
@@ -180,14 +259,13 @@ class Selector:
         if not point_sel.any():
             return
 
-        cell_array = vtknp.vtk_to_numpy(mesh.GetCells().GetData())
-        cell_offsets = vtknp.vtk_to_numpy(mesh.GetCellLocationsArray())
-        cell_sizes = cell_array[cell_offsets]
-
         selected_cells = []
-        for cid, (offset, npts) in enumerate(zip(cell_offsets, cell_sizes)):
-            pts = cell_array[offset + 1 : offset + 1 + npts]
-            node_mask = point_sel[pts]
+        for cid in range(mesh.GetNumberOfCells()):
+            cell = mesh.GetCell(cid)
+            pts = [cell.GetPointId(i) for i in range(cell.GetNumberOfPoints())]
+            if not pts:
+                continue
+            node_mask = point_sel[np.asarray(pts, dtype=int)]
             if all_nodes:
                 if node_mask.all():
                     selected_cells.append(cid)
@@ -207,13 +285,16 @@ class Selector:
         )
 
     @staticmethod
-    def select_all(mesh, type=None):
+    def select_all(mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None) -> None:
         """
         Selects all cells or points in the mesh.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            type (str, optional): 'cell_data' or 'point_data'. If None, selects both.
+        Args:
+            mesh: The mesh to operate on.
+            type: 'cell_data' or 'point_data'. If None, selects both.
+
+        Returns:
+            None
 
         Side Effects:
             Sets all selection array values to 1 (selected).
@@ -236,13 +317,16 @@ class Selector:
             mesh.GetPointData().GetArray("selection_point").Modified()
 
     @staticmethod
-    def unselect_all(mesh, type=None):
+    def unselect_all(mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None) -> None:
         """
         Unselects all cells or points in the mesh.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            type (str, optional): 'cell_data' or 'point_data'. If None, unselects both.
+        Args:
+            mesh: The mesh to operate on.
+            type: 'cell_data' or 'point_data'. If None, unselects both.
+
+        Returns:
+            None
 
         Side Effects:
             Sets all selection array values to 0 (unselected).
@@ -265,18 +349,24 @@ class Selector:
             mesh.GetPointData().GetArray("selection_point").Modified()
 
     @staticmethod
-    def nsel_ext(mesh):
+    def nsel_ext(mesh: "vtk.vtkUnstructuredGrid") -> None:
         """
         Selects all external nodes (points) of the currently selected cells.
 
         This method finds the surface nodes of the selected cells and updates the
         'selection_point' array in PointData to select those nodes.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
+        Args:
+            mesh: The mesh to operate on.
+
+        Returns:
+            None
 
         Side Effects:
             Updates 'selection_point' array in mesh PointData to select external nodes.
+
+        Raises:
+            ValueError: If required selection arrays are missing.
         """
         Selector.ensure_selection_arrays(mesh)
         cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
@@ -317,19 +407,31 @@ class Selector:
         point_sel_array.Modified()
 
     @staticmethod
-    def set_value_on_selection(mesh, array_name, value, component=0, type="point_data"):
+    def set_value_on_selection(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        value: Any,
+        component: int = 0,
+        type: str = "point_data",
+    ) -> None:
         """
         Sets the value of the specified array for all selected cells or points in the mesh.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            array_name (str): Name of the array to update.
+        Args:
+            mesh: The mesh to operate on.
+            array_name: Name of the array to update.
             value: Value to set for selected elements.
-            component (int): Component index for multi-component arrays (default 0).
-            type (str): 'cell_data' or 'point_data' to specify selection type (default 'point_data').
+            component: Component index for multi-component arrays (default 0).
+            type: 'cell_data' or 'point_data' to specify selection type (default 'point_data').
+
+        Returns:
+            None
 
         Side Effects:
             Updates array values for selected elements in mesh data.
+
+        Raises:
+            ValueError: If the target array is missing.
         """
         Selector.ensure_selection_arrays(mesh)
         data = mesh.GetCellData() if type == "cell_data" else mesh.GetPointData()
@@ -345,92 +447,3 @@ class Selector:
         else:
             arr_np[selected_ids, component] = value
         vtk_array.Modified()
-
-    # def nsle(self):
-    #     """
-    #     Selects the nodes attached to currently selected cells.
-    #     Updates the 'selection_point' array in PointData.
-    #     """
-    #     cell_sel_array = self.mesh.GetCellData().GetArray("selection_cell")
-    #     if cell_sel_array is None:
-    #         raise ValueError(
-    #             "Cell selection array 'selection_cell' not found. Run _ensure_selection_arrays first."
-    #         )
-    #     cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
-    #     selected_cell_ids = np.where(cell_sel == 1)[0]
-    #     if len(selected_cell_ids) == 0:
-    #         print("No cells are selected.")
-    #         return
-
-    #     cell_array = vtknp.vtk_to_numpy(self.mesh.GetCells().GetData())
-    #     cell_offsets = vtknp.vtk_to_numpy(self.mesh.GetCellLocationsArray())
-
-    #     # Efficiently collect all node IDs attached to selected cells
-    #     offsets = cell_offsets[selected_cell_ids]
-    #     npts = cell_array[offsets]
-    #     # Build a list of all node indices for selected cells
-    #     all_node_ids = [
-    #         cell_array[offset + 1 : offset + 1 + npt]
-    #         for offset, npt in zip(offsets, npts)
-    #     ]
-    #     # Flatten and get unique node IDs
-    #     attached_nodes = np.unique(np.concatenate(all_node_ids))
-
-    #     point_sel_array = self.mesh.GetPointData().GetArray("selection_point")
-    #     if point_sel_array is None:
-    #         raise ValueError(
-    #             "Point selection array 'selection_point' not found. Run _ensure_selection_arrays first."
-    #         )
-    #     point_sel = vtknp.vtk_to_numpy(point_sel_array)
-    #     point_sel[:] = 0
-    #     point_sel[attached_nodes] = 1
-    #     point_sel_array.Modified()
-
-    # def esln(self, all_nodes=False):
-    #     """
-    #     Selects cells based on node selection:
-    #     - If all_nodes=False: selects cells with at least one selected node.
-    #     - If all_nodes=True: selects cells where all nodes are selected.
-    #     Updates the 'selection_cell' array in CellData.
-    #     """
-    #     point_sel_array = self.mesh.GetPointData().GetArray("selection_point")
-    #     if point_sel_array is None:
-    #         raise ValueError(
-    #             "Point selection array 'selection_point' not found. Run _ensure_selection_arrays first."
-    #         )
-    #     point_sel = vtknp.vtk_to_numpy(point_sel_array)
-    #     selected_points = np.where(point_sel == 1)[0]
-    #     if selected_points.size == 0:
-    #         print("No nodes are selected.")
-    #         return
-
-    #     # Get connectivity arrays as NumPy
-    #     cell_array = vtknp.vtk_to_numpy(self.mesh.GetCells().GetData())
-    #     cell_offsets = vtknp.vtk_to_numpy(self.mesh.GetCellLocationsArray())
-    #     num_cells = self.mesh.GetNumberOfCells()
-    #     cell_sel_array = self.mesh.GetCellData().GetArray("selection_cell")
-    #     if cell_sel_array is None:
-    #         raise ValueError(
-    #             "Cell selection array 'selection_cell' not found. Run _ensure_selection_arrays first."
-    #         )
-    #     cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
-    #     cell_sel[:] = 0
-
-    #     # Efficient cell classification
-    #     mask_any = np.zeros(num_cells, dtype=bool)
-    #     mask_all = np.zeros(num_cells, dtype=bool)
-    #     selected_set = set(selected_points)
-
-    #     for cid in range(num_cells):
-    #         start = cell_offsets[cid]
-    #         npts = cell_array[start]
-    #         pts = cell_array[start + 1 : start + 1 + npts]
-    #         sel_mask = np.isin(pts, selected_points)
-    #         mask_any[cid] = sel_mask.any()
-    #         mask_all[cid] = sel_mask.all()
-
-    #     if all_nodes:
-    #         cell_sel[:] = mask_all.astype(np.uint8)
-    #     else:
-    #         cell_sel[:] = mask_any.astype(np.uint8)
-    #     cell_sel_array.Modified()

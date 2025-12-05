@@ -1,25 +1,43 @@
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+import numpy as np
+import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
-import numpy as np
+
 from constants import VTK_ARRAYS_TO_INIT
+
+if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
 
 class VTKGridHelper:
     @staticmethod
-    def add_array_to_grid(mesh, name, location="point", components=1, fill=0, dtype=vtk.VTK_DOUBLE, values=None):
+    def add_array_to_grid(
+        mesh: "vtk.vtkUnstructuredGrid",
+        name: str,
+        location: str = "point",
+        components: int = 1,
+        fill: Any = 0,
+        dtype: Optional[int] = vtk.VTK_DOUBLE,
+        values: Optional[np.ndarray] = None,
+    ) -> "vtk.vtkDataArray":
         """
         Adds a VTK array to the mesh at the specified location.
 
-        Parameters:
+        Args:
             mesh: The VTK unstructured grid to add the array to.
-            name (str): Name of the array.
-            location (str): "cell" or "point" (default "point").
-            components (int): Number of components (default 1).
-            fill (numeric): Default value to fill the array if values are not provided (default 0).
-            dtype: VTK data type (default vtk.VTK_DOUBLE).
-            values (np.ndarray, optional): Explicit values to store in the array. Must match expected shape.
+            name: Name of the array.
+            location: "cell" or "point" (default "point").
+            components: Number of components (default 1).
+            fill: Default value to fill the array if values are not provided (default 0).
+            dtype: VTK data type (default vtk.VTK_DOUBLE). If None, dtype validation is skipped.
+            values: Explicit values to store in the array. Must match expected shape.
 
         Returns:
-            vtk.vtkDataArray: The created or existing VTK array.
+            vtkDataArray: The created or existing VTK array.
+
+        Raises:
+            ValueError: If location is invalid, shapes/components mismatch, or dtype differs.
         """
         if location not in ["cell", "point"]:
             raise ValueError(f"Unknown location '{location}'. Use 'cell' or 'point'.")
@@ -64,14 +82,19 @@ class VTKGridHelper:
         return vtk_array
 
     @staticmethod
-    def initialize_vtk_arrays(mesh, arrays_to_init=None):
+    def initialize_vtk_arrays(
+        mesh: "vtk.vtkUnstructuredGrid",
+        arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> None:
         """
         Initializes required VTK arrays in cell/point data as specified in arrays_to_init.
 
-        Parameters:
+        Args:
             mesh: The VTK unstructured grid to initialize arrays for.
-            arrays_to_init (dict, optional): Dictionary specifying arrays to initialize.
-                If None, uses VTK_ARRAYS_TO_INIT from constants.
+            arrays_to_init: Dictionary specifying arrays to initialize; defaults to VTK_ARRAYS_TO_INIT.
+
+        Returns:
+            None
         """
         if arrays_to_init is None:
             arrays_to_init = VTK_ARRAYS_TO_INIT
@@ -87,16 +110,23 @@ class VTKGridHelper:
             )
 
     @staticmethod
-    def initialize_vtk_array(mesh, name, location="point", components=1, fill=0, dtype=vtk.VTK_DOUBLE):
+    def initialize_vtk_array(
+        mesh: "vtk.vtkUnstructuredGrid",
+        name: str,
+        location: str = "point",
+        components: int = 1,
+        fill: Any = 0,
+        dtype: int = vtk.VTK_DOUBLE,
+    ) -> None:
         """
         Initializes a single VTK array in cell or point data.
 
-        Parameters:
+        Args:
             mesh: The VTK unstructured grid to initialize the array for.
-            name (str): Name of the array.
-            location (str): "cell" or "point" (default "point").
-            components (int): Number of components (default 1).
-            fill (numeric): Default value to fill the array (default 0).
+            name: Name of the array.
+            location: "cell" or "point" (default "point").
+            components: Number of components (default 1).
+            fill: Default value to fill the array (default 0).
             dtype: VTK data type (default vtk.VTK_DOUBLE).
         """
         arrays_to_init = {
@@ -110,14 +140,16 @@ class VTKGridHelper:
         VTKGridHelper.initialize_vtk_arrays(mesh, arrays_to_init)
 
     @staticmethod
-    def reset_vtk_arrays_to_default(mesh, arrays_to_init=None):
+    def reset_vtk_arrays_to_default(
+        mesh: "vtk.vtkUnstructuredGrid",
+        arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> None:
         """
         Resets arrays specified in arrays_to_init to their default 'fill' values if present.
 
-        Parameters:
+        Args:
             mesh: The VTK unstructured grid whose arrays will be reset.
-            arrays_to_init (dict, optional): Dictionary specifying arrays to reset.
-                If None, uses VTK_ARRAYS_TO_INIT from constants.
+            arrays_to_init: Dictionary specifying arrays to reset; defaults to VTK_ARRAYS_TO_INIT.
         """
         if arrays_to_init is None:
             from constants import VTK_ARRAYS_TO_INIT
@@ -143,14 +175,18 @@ class VTKGridHelper:
                 vtk_array.Modified()
 
     @staticmethod
-    def safe_remove_array(mesh, array_name, location=None):
+    def safe_remove_array(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        location: Optional[str] = None,
+    ) -> None:
         """
         Safely removes an array from CellData or PointData of the mesh if it exists.
 
-        Parameters:
+        Args:
             mesh (vtk.vtkUnstructuredGrid): The mesh from which to remove the array.
-            array_name (str): The name of the array to remove.
-            location (str, optional): "cell", "point", or None. If None, tries to guess location.
+            array_name: The name of the array to remove.
+            location: "cell", "point", or None. If None, tries to guess location.
 
         Side Effects:
             Removes the array from the detected or specified data location if present.
@@ -178,8 +214,8 @@ class VTKGridHelper:
             data.RemoveArray(array_name)
 
     @staticmethod
-    def add_boundary_array(mesh):
-        """Adds a new boundary_id_N array to point data with default zeros."""
+    def add_boundary_array(mesh: "vtk.vtkUnstructuredGrid") -> str:
+        """Add a new boundary_id_N array to point data with default zeros."""
         point_data = mesh.GetPointData()
         existing = []
         for i in range(point_data.GetNumberOfArrays()):
@@ -207,21 +243,25 @@ class VTKGridHelper:
 
 
     @staticmethod
-    def validate_dataframe_with_vtk_data(vtk_data, df, array_name):
+    def validate_dataframe_with_vtk_data(
+        vtk_data: "vtk.vtkDataSetAttributes",
+        df: pd.DataFrame,
+        array_name: str,
+    ) -> None:
         """
         Validates that the first column of a DataFrame has unique values,
         all values have a correspondence in the specified VTK data array,
         and there are no undefined values in the VTK data array. Useful
         to check 1-to-1 correspondence between IDs.
 
-        Parameters:
-            vtk_data (vtk.vtkDataSetAttributes): The VTK cell or point data to validate against.
+        Args:
+            vtk_data: The VTK cell or point data to validate against.
             df (pd.DataFrame): The DataFrame to validate.
-            array_name (str): The name of the VTK data array to check.
+            array_name: The name of the VTK data array to check.
 
         Raises:
-            ValueError: If the DataFrame is empty, the first column is not unique,
-                        the VTK data array is missing, or the checks fail.
+            ValueError: If the DataFrame is empty, the first column is not unique, the VTK data array is missing,
+                or the checks fail.
         """
         if df.empty:
             print("The DataFrame is empty.")
@@ -247,7 +287,7 @@ class VTKGridHelper:
         print(f"Validation passed for '{array_name}' array and DataFrame.")
 
     @staticmethod
-    def update_vtk_grid(data, df):
+    def update_vtk_grid(data: "vtk.vtkDataSetAttributes", df) -> None:
         """
         Updates the VTK grid's cell/point data arrays using the DataFrame resulting from `replace_ansys_with_vtk_ids`.
         The function assigns values to the appropriate components at the corresponding VTK IDs.
@@ -255,6 +295,12 @@ class VTKGridHelper:
         Args:
             data: VTK DataSetAttributes (CellData or PointData)
             df (pd.DataFrame): The DataFrame containing columns 'vtk_id', 'label', 'component', and 'value'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If any expected label array is missing in the VTK data.
         """
 
         loads_bc_labels = df["label"].unique()
@@ -283,12 +329,12 @@ class VTKGridHelper:
             vtk_array.Modified()
 
     @staticmethod
-    def compute_cell_centroids(mesh):
+    def compute_cell_centroids(mesh: "vtk.vtkUnstructuredGrid") -> np.ndarray:
         """
         Computes the geometric centroids for all cells in the given VTK unstructured grid.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh whose cell centroids are to be computed.
+        Args:
+            mesh: The mesh whose cell centroids are to be computed.
 
         Returns:
             np.ndarray: Array of shape (num_cells, 3) containing the centroid coordinates (x, y, z) for each cell.
@@ -304,16 +350,18 @@ class VTKGridHelper:
         return np_centers
 
     @staticmethod
-    def store_cell_centroids(mesh, array_name="cell_centroids"):
+    def store_cell_centroids(
+        mesh: "vtk.vtkUnstructuredGrid", array_name: str = "cell_centroids"
+    ) -> None:
         """
         Computes cell centroids and stores them in a VTK array in CellData.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh whose cell centroids are to be computed and stored.
-            array_name (str): Name of the array to store centroids in CellData. Default is "cell_centroids".
+        Args:
+            mesh: The mesh whose cell centroids are to be computed and stored.
+            array_name: Name of the array to store centroids in CellData (default "cell_centroids").
 
-        The resulting array will have 3 components per cell, representing the centroid coordinates (x, y, z).
-        The array is added to mesh.GetCellData().
+        Side Effects:
+            Adds/overwrites the centroid array on mesh.GetCellData().
         """
         np_centers = VTKGridHelper.compute_cell_centroids(mesh)
         VTKGridHelper.add_array_to_grid(
@@ -326,12 +374,12 @@ class VTKGridHelper:
         )
 
     @staticmethod
-    def compute_cell_volumes(mesh):
+    def compute_cell_volumes(mesh: "vtk.vtkUnstructuredGrid") -> np.ndarray:
         """
         Computes the volume (for 3D cells) or area (for 2D cells) for each cell in the mesh.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh whose cell volumes/areas are to be computed.
+        Args:
+            mesh: The mesh whose cell volumes/areas are to be computed.
 
         Returns:
             np.ndarray: Array of shape (num_cells,) containing the volume (or area) for each cell.
@@ -359,16 +407,18 @@ class VTKGridHelper:
         return volumes
 
     @staticmethod
-    def store_cell_volumes(mesh, array_name="cell_volume"):
+    def store_cell_volumes(
+        mesh: "vtk.vtkUnstructuredGrid", array_name: str = "cell_volume"
+    ) -> None:
         """
         Computes cell volumes/areas and stores them in a VTK array in CellData.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh whose cell volumes/areas are to be computed and stored.
-            array_name (str): Name of the array to store volumes/areas in CellData. Default is "cell_volume".
+        Args:
+            mesh: The mesh whose cell volumes/areas are to be computed and stored.
+            array_name: Name of the array to store volumes/areas in CellData (default "cell_volume").
 
-        The resulting array will have one component per cell, representing the volume or area.
-        The array is added to mesh.GetCellData().
+        Side Effects:
+            Adds/overwrites the volume/area array on mesh.GetCellData().
         """
         volumes = VTKGridHelper.compute_cell_volumes(mesh)
         VTKGridHelper.add_array_to_grid(
@@ -381,14 +431,19 @@ class VTKGridHelper:
         )
 
     @staticmethod
-    def add_component(mesh, component_name, type="cell"):
+    def add_component(
+        mesh: "vtk.vtkUnstructuredGrid", component_name: str, type: str = "cell"
+    ) -> "vtk.vtkDataArray":
         """
         Adds a component array marking the current selection.
 
-        Parameters:
-            mesh (vtk.vtkUnstructuredGrid): The mesh to operate on.
-            component_name (str): Name of the component array to create.
-            type (str): "cell" to use CellData selection, "point" for PointData selection.
+        Args:
+            mesh: The mesh to operate on.
+            component_name: Name of the component array to create.
+            type: "cell" to use CellData selection, "point" for PointData selection.
+
+        Returns:
+            vtkDataArray: The created component array.
         """
         if type not in ["cell", "point"]:
             raise ValueError("type must be 'cell' or 'point'.")

@@ -36,12 +36,17 @@
 #
 # (c) Provide as-is; tailor as needed for your mesh conventions.
 
-import vtk
+from typing import Dict, Iterable, Optional, Sequence, Set, Tuple, TYPE_CHECKING
+
 import numpy as np
+import vtk
 import vtk.util.numpy_support as vtknp
 
+if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
+
 # Edge tables for 2nd-order VTK cells
-EDGE_TABLES = {
+EDGE_TABLES: Dict[int, Tuple[Sequence[Tuple[int, int]], Sequence[int]]] = {
     vtk.VTK_QUADRATIC_EDGE: (
         [(0, 1)],
         [2],
@@ -87,11 +92,11 @@ EDGE_TABLES = {
 
 
 class DSU:
-    def __init__(self):
-        self.parent = {}
-        self.rank = {}
+    def __init__(self) -> None:
+        self.parent: Dict[int, int] = {}
+        self.rank: Dict[int, int] = {}
 
-    def find(self, x):
+    def find(self, x: int) -> int:
         if x not in self.parent:
             self.parent[x] = x
             self.rank[x] = 0
@@ -100,7 +105,7 @@ class DSU:
             self.parent[x] = self.find(self.parent[x])
         return self.parent[x]
 
-    def union(self, a, b):
+    def union(self, a: int, b: int) -> bool:
         ra, rb = self.find(a), self.find(b)
         if ra == rb:
             return False
@@ -118,33 +123,26 @@ class DSU:
 class TreeGaugeHelper:
     @staticmethod
     def build_tree_cotree_for_midside_edges(
-        ugrid,
-        constrained_point_ids=None,
-        forced_cotree_mask=None,
-        tree_name="TREE",
-        cotree_name="COTREE",
-    ):
+        ugrid: "vtk.vtkUnstructuredGrid",
+        constrained_point_ids: Optional[Iterable[int]] = None,
+        forced_cotree_mask: Optional[np.ndarray] = None,
+        tree_name: str = "TREE",
+        cotree_name: str = "COTREE",
+    ) -> Tuple["vtk.vtkIntArray", "vtk.vtkIntArray", Dict[str, int]]:
         """
         Build a tree–cotree decomposition for second‑order cells, identifying edges by
         their midside node ids. Results are vtkIntArray on PointData (1 at midside nodes).
 
-        Parameters
-        ----------
-        ugrid : vtkUnstructuredGrid
-            Mesh with second‑order elements (quadratic). Edges are implicit.
-        constrained_point_ids : set[int], optional
-            Corner point ids to exclude entirely from traversal (e.g., Dirichlet nodes).
-        forced_cotree_mask : sequence of bool/int, optional
-            Length = number of points. Nonzero/True at midside points forces that edge into cotree.
-        tree_name, cotree_name : str
-            Names for the output arrays (PointData).
+        Args:
+            ugrid: Mesh with second‑order elements (quadratic). Edges are implicit.
+            constrained_point_ids: Corner point ids to exclude entirely from traversal (e.g., Dirichlet nodes).
+            forced_cotree_mask: Length = number of points. Nonzero/True at midside points forces that edge into cotree.
+            tree_name: Name for the tree output array (PointData).
+            cotree_name: Name for the cotree output array (PointData).
 
-        Returns
-        -------
-        tree_arr : vtkIntArray  (PointData)
-        cotree_arr : vtkIntArray  (PointData)
-        info : dict
-            Diagnostic info: { 'num_edges', 'num_tree', 'num_cotree', 'skipped_unknown_cells', ... }
+        Returns:
+            Tuple[vtkIntArray, vtkIntArray, Dict[str, int]]: (tree_arr, cotree_arr, info) where info contains
+            diagnostic counts like num_edges, num_tree, num_cotree, skipped_unknown_cells.
         """
         npts = ugrid.GetNumberOfPoints()
         constrained = set(constrained_point_ids or [])
@@ -227,12 +225,25 @@ class TreeGaugeHelper:
 
     @staticmethod
     def build_tree_cotree_on_grid(
-        ugrid,
-        constrained_point_ids=None,
-        forced_cotree_mask=None,
-        tree_name="TREE",
-        cotree_name="COTREE",
-    ):
+        ugrid: "vtk.vtkUnstructuredGrid",
+        constrained_point_ids: Optional[Iterable[int]] = None,
+        forced_cotree_mask: Optional[np.ndarray] = None,
+        tree_name: str = "TREE",
+        cotree_name: str = "COTREE",
+    ) -> Dict[str, int]:
+        """
+        Convenience wrapper that builds tree/cotree arrays and attaches them to the grid.
+
+        Args:
+            ugrid: Mesh to annotate.
+            constrained_point_ids: Corner point ids to exclude entirely from traversal.
+            forced_cotree_mask: Length = number of points; truthy at midside points that must belong to the cotree.
+            tree_name: Name for the tree output array.
+            cotree_name: Name for the cotree output array.
+
+        Returns:
+            Dict[str, int]: Diagnostic info from `build_tree_cotree_for_midside_edges`.
+        """
         tree_arr, cotree_arr, info = (
             TreeGaugeHelper.build_tree_cotree_for_midside_edges(
                 ugrid,
@@ -250,7 +261,19 @@ class TreeGaugeHelper:
     # Optional: helper to create a forced_cotree_mask from a set of midside ids
     # ------------------------------
     @staticmethod
-    def forced_mask_from_midside_set(n_points, midside_ids):
+    def forced_mask_from_midside_set(
+        n_points: int, midside_ids: Iterable[int]
+    ) -> np.ndarray:
+        """
+        Create a cotree mask (length = number of points) with 1 at specified midside ids.
+
+        Args:
+            n_points: Total number of points in the mesh.
+            midside_ids: Iterable of midside point ids to force into the cotree.
+
+        Returns:
+            np.ndarray: Integer mask with ones at midside ids, zeros elsewhere.
+        """
         mask = np.zeros(n_points, dtype=np.int32)
         for mid in midside_ids:
             if 0 <= mid < n_points:
@@ -258,10 +281,20 @@ class TreeGaugeHelper:
         return mask
 
     @staticmethod
-    def add_midside_nodes_mask_array(ugrid, array_name="MidsideNodes"):
+    def add_midside_nodes_mask_array(
+        ugrid: "vtk.vtkUnstructuredGrid", array_name: str = "MidsideNodes"
+    ) -> "vtk.vtkIntArray":
         """
-        Adds an array to the unstructured grid with 1 on midside nodes, 0 on corner nodes.
+        Add a PointData array with 1 on midside nodes, 0 on corner nodes.
+
         The mask is determined by the cell types and VTK quadratic element conventions.
+
+        Args:
+            ugrid: Target unstructured grid.
+            array_name: Name for the mask array (default "MidsideNodes").
+
+        Returns:
+            vtkIntArray: Added mask array.
         """
         npts = ugrid.GetNumberOfPoints()
         mask = np.zeros(npts, dtype=np.int32)
@@ -284,7 +317,9 @@ class TreeGaugeHelper:
         return arr
 
     @staticmethod
-    def constrained_corners_from_midside_array(ugrid, array_name):
+    def constrained_corners_from_midside_array(
+        ugrid: "vtk.vtkUnstructuredGrid", array_name: str
+    ) -> Set[int]:
         """
         Given an array in PointData (array_name) with NaN at unconstrained midside nodes or corner nodes,
         and a value at constrained midside nodes, return a set of corner node ids to be used as constrained_point_ids
@@ -293,15 +328,12 @@ class TreeGaugeHelper:
         The set will include:
         - All corner nodes connected to any constrained midside node.
 
-        Parameters
-        ----------
-        ugrid : vtkUnstructuredGrid
-        array_name : str
+        Args:
+            ugrid: Unstructured grid containing quadratic elements.
+            array_name: Name of the PointData array with constraints on midside nodes.
 
-        Returns
-        -------
-        constrained_set : set[int]
-            Set of point ids (corner nodes only).
+        Returns:
+            Set[int]: Corner point ids connected to constrained midside nodes.
         """
         arr = ugrid.GetPointData().GetArray(array_name)
         if arr is None:

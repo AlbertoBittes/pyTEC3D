@@ -1,10 +1,11 @@
 import os
 import sys
 import copy
-from abc import ABC, abstractmethod
-from typing import Optional
-import numpy as np
 import struct
+from os import PathLike
+from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Sequence, Set, Union
+
+import numpy as np
 import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
@@ -41,35 +42,35 @@ except ImportError:
 
 class APEC_M:
     """
-    APEC class to manage VTK unstructured grids and element types.
+    APEC class to manage VTK unstructured grids, metadata, and IO utilities.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the APEC object without requiring a file path.
         """
-        self.mesh = vtk.vtkUnstructuredGrid()
+        self.mesh: vtk.vtkUnstructuredGrid = vtk.vtkUnstructuredGrid()
 
-        self.jobname = None
-        self.folderpath = None
+        self.jobname: Optional[str] = None
+        self.folderpath: Optional[str] = None
 
-        self.element_types = pd.DataFrame(
+        self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
         )
-        self.materials = pd.DataFrame(columns=list(MATERIALS_COLUMNS_TYPES.keys()))
-        self.real_constants = pd.DataFrame(
+        self.materials: pd.DataFrame = pd.DataFrame(columns=list(MATERIALS_COLUMNS_TYPES.keys()))
+        self.real_constants: pd.DataFrame = pd.DataFrame(
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
-        self.time_parameters = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
-        self.apec_settings = {}
-        self.solver_settings = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
-        self.transient_analysis = pd.DataFrame(
+        self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
+        self.apec_settings: Dict[str, Any] = {}
+        self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
+        self.transient_analysis: pd.DataFrame = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-        self.process = None
-        self.num_processors = 1
-        self.periodic_boundaries = []
-        self.dof_couplings = []
+        self.process: Optional[Any] = None
+        self.num_processors: int = 1
+        self.periodic_boundaries: List[Any] = []
+        self.dof_couplings: List[Dict[str, Any]] = []
 
     #
     #
@@ -82,12 +83,13 @@ class APEC_M:
     #
     #
     #
-    def read_mesh(self, vtk_file_path):
+    def read_mesh(self, vtk_file_path: Union[str, PathLike[str]], reset_arrays: bool = True) -> None:
         """
         Reads a VTK unstructured grid from a file in XML format.
 
-        Parameters:
-            vtk_file_path (str): Path to the VTK file in XML format.
+        Args:
+            vtk_file_path: Path to the VTK file in XML format.
+            reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
         # Check if the mesh file exists
         if not os.path.exists(vtk_file_path):
@@ -119,6 +121,9 @@ class APEC_M:
 
         TreeGaugeHelper.add_midside_nodes_mask_array(self.mesh)
 
+        if reset_arrays:
+            VTKGridHelper.reset_vtk_arrays_to_default(self.mesh)
+
         print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
         # print a summary of the mesh
         print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
@@ -133,39 +138,46 @@ class APEC_M:
             f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
         )
 
-    def build_dof_couplings(self, print_summary: bool = False):
+    def build_dof_couplings(self, print_summary: bool = False) -> List[Dict[str, Any]]:
         """
         Construct and cache DOF coupling forests from CP_* point-data arrays.
 
-        Parameters
-        ----------
-        print_summary : bool, optional
-            When True, print a human-readable summary of the computed forests.
+        Args:
+            print_summary: When True, print a human-readable summary of the computed forests.
 
-        Returns
-        -------
-        list[dict]
-            The cached list of coupling forests, one per coupling set.
+        Returns:
+            List[Dict[str, Any]]: Cached coupling forests, one per CP_* id combination.
         """
         return self.refresh_dof_couplings(print_summary=print_summary)
 
-    def refresh_dof_couplings(self, print_summary: bool = False):
+    def refresh_dof_couplings(self, print_summary: bool = False) -> List[Dict[str, Any]]:
+        """
+        Recompute DOF coupling forests and optionally print a summary.
+
+        Args:
+            print_summary: When True, print a human-readable summary of the computed forests.
+
+        Returns:
+            List[Dict[str, Any]]: Updated list of coupling forests.
+        """
         forests = DOFCouplingHelper.build_dof_couplings(self.mesh)
         self.dof_couplings = forests
         if print_summary:
             DOFCouplingHelper.print_dof_couplings(forests)
         return forests
 
-    def save_mesh(self):
+    def save_mesh(self) -> None:
         """
         Saves the unstructured grid in self.mesh to a .vtu file named after self.jobname.
         Before writing, attaches the element_types DataFrame as field data to the grid.
         Validates that the first column of element_types has unique values, all values have a correspondence
         in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
 
+        Returns:
+            None
+
         Raises:
-            ValueError: If self.jobname is not set, if the folder path is not set,
-                        or if the validation fails.
+            ValueError: If self.jobname or folderpath is not set.
         """
         if not self.jobname:
             raise ValueError(
@@ -204,7 +216,7 @@ class APEC_M:
     #
     #
     #
-    def get_cli(self):
+    def get_cli(self) -> CLIObject:
         """
         Returns a CLIObject instance bound to this APEC_M instance.
         """
@@ -223,15 +235,21 @@ class APEC_M:
     #
     def read_excel(
         self,
-        excel_file_path,
-        data_to_read=list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
-    ):
+        excel_file_path: Union[str, PathLike[str]],
+        data_to_read: Sequence[str] = tuple(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
+    ) -> None:
         """
         Reads data from an Excel file and processes it based on the provided labels.
 
-        Parameters:
-            excel_file_path (str): The path to the Excel file.
-            data_to_read (list): A list of data types to read and process.
+        Args:
+            excel_file_path: Path to the Excel file.
+            data_to_read: Iterable of sheet labels to read and process.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the Excel file is missing.
         """
         # Check if the Excel file exists
         if not os.path.exists(excel_file_path):
@@ -244,17 +262,17 @@ class APEC_M:
             except ValueError as e:
                 print(f"Warning: {e}")
 
-    def read_excel_sheet(self, excel_file, sheet_name):
+    def read_excel_sheet(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> None:
         """
         Processes an Excel sheet by determining the appropriate method to call
         (read_excel_df, read_excel_dict, or update_vtk_grid_from_excel) based on a global dictionary.
 
-        Parameters:
-            excel_file (str): The path to the Excel file.
-            sheet_name (str): The name of the sheet to process.
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Name of the sheet to process.
 
         Raises:
-            ValueError: If the sheet name is not recognized.
+            ValueError: If the sheet name is not recognized or mapped method is missing.
         """
         if sheet_name not in SHEET_PROCESSING_MAP:
             raise ValueError(
@@ -272,29 +290,91 @@ class APEC_M:
             func = getattr(self, method_name)
             func(excel_file, sheet_name, data_type)
 
-    def update_vtk_grid_from_excel(self, excel_file, sheet_name, data_type=None):
+    def update_vtk_grid_from_excel(
+        self, excel_file: Union[str, PathLike[str]], sheet_name: str, data_type: Optional[str] = None
+    ) -> None:
         """
-        Delegates to ExcelIOHelper static method to update VTK grid from Excel.
+        Load a sheet from Excel and write values into the mesh CellData/PointData.
+
+        Mirrors `ExcelIOHelper.update_vtk_grid_from_excel`, reading `sheet_name` and
+        writing into the VTK arrays specified there. If `data_type` is None, the sheet
+        name is used to decide whether to update cell or point data.
+
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Sheet containing the grid data.
+            data_type: Target VTK data type ('cell_data' or 'point_data'); defaults to sheet name.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If `data_type` is invalid or the sheet is missing required columns.
+            FileNotFoundError: If the Excel file is missing.
         """
         ExcelIOHelper.update_vtk_grid_from_excel(
             self.mesh, excel_file, sheet_name, data_type
         )
 
-    def read_excel_df(self, excel_file, sheet_name):
+    def read_excel_df(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[pd.DataFrame]:
         """
-        Wrapper for ExcelIOHelper.read_excel_df to allow getattr to work in read_excel_sheet.
+        Read a sheet into a DataFrame with column validation.
+
+        Behaves like `ExcelIOHelper.read_excel_df`, ensuring columns match the expected
+        schema defined in `DEFAULT_COLUMNS_ATTRIBUTES_TYPES` and coercing types.
+
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Sheet name to parse.
+
+        Returns:
+            Optional[pd.DataFrame]: Parsed DataFrame or None if missing.
+
+        Raises:
+            FileNotFoundError: If the Excel file is missing.
+            ValueError: If the sheet is not found or columns do not match expectations.
         """
         return ExcelIOHelper.read_excel_df(excel_file, sheet_name)
 
-    def read_excel_dict(self, excel_file, sheet_name):
+    def read_excel_dict(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[Dict[str, Any]]:
         """
-        Wrapper for ExcelIOHelper.read_excel_dict to allow getattr to work in read_excel_sheet.
+        Read a sheet into a dictionary with key/type validation.
+
+        Behaves like `ExcelIOHelper.read_excel_dict`, ensuring 'SETTING'/'VALUE' columns
+        exist, keys match the expected schema, and values are coerced to the declared types.
+
+        Args:
+            excel_file: Path to the Excel file.
+            sheet_name: Sheet name to parse.
+
+        Returns:
+            Optional[Dict[str, Any]]: Parsed dictionary or None if missing.
+
+        Raises:
+            FileNotFoundError: If the Excel file is missing.
+            ValueError: If the sheet is missing, malformed, or contains invalid keys.
         """
         return ExcelIOHelper.read_excel_dict(excel_file, sheet_name)
 
-    def write_excel_cell_point_data(self, output_excel_file, data_type="cell_data"):
+    def write_excel_cell_point_data(
+        self, output_excel_file: Union[str, PathLike[str]], data_type: str = "cell_data"
+    ) -> None:
         """
-        Delegates writing cell/point data to ExcelIOHelper static method.
+        Export loads/boundary conditions to Excel, one sheet per data type.
+
+        Mirrors `ExcelIOHelper.write_excel_cell_point_data`, flattening the structured
+        load/bc array into a DataFrame with columns `vtk_id`, `label`, `component`, `value`
+        and writing it to `output_excel_file` under the sheet `data_type`.
+
+        Args:
+            output_excel_file: Destination Excel path.
+            data_type: 'cell_data' or 'point_data'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If `data_type` is invalid.
         """
         ExcelIOHelper.write_excel_cell_point_data(
             self.mesh, output_excel_file, data_type
@@ -311,13 +391,21 @@ class APEC_M:
     #
     #
     #
-    def write_to_binary(self, output_file, labels_to_write=None):
+    def write_to_binary(
+        self, output_file: Union[str, PathLike[str]], labels_to_write: Optional[Sequence[str]] = None
+    ) -> None:
         """
         Writes the current load step data to a single binary file based on the provided labels.
 
-        Parameters:
-            output_file (str): The path to the output binary file.
-            labels_to_write (list): A list of labels specifying what to write. Defaults to all supported labels.
+        Args:
+            output_file: Path to the output binary file.
+            labels_to_write: Labels specifying what to write. Defaults to all supported labels.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If an unrecognized label is provided.
         """
 
         # Default labels to write if none are provided
@@ -342,7 +430,20 @@ class APEC_M:
 
         print(f"Binary written to '{output_file}'.")
 
-    def write_load_step(self, load_step_number: int, filename: Optional[str] = None):
+    def write_load_step(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+        """
+        Write both time and grid data for a specific load step.
+
+        Args:
+            load_step_number: Load step index (1-based).
+            filename: Optional custom filename for the grid binary; time binary uses default naming.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If folderpath is unset.
+        """
 
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write load step binaries.")
@@ -351,10 +452,20 @@ class APEC_M:
         self.write_time_step(load_step_number)
         self.write_loads_bcs(load_step_number, filename=filename)
 
-    def write_time_step(self, load_step_number: int, filename: Optional[str] = None):
+    def write_time_step(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
         """
         Writes a time step binary containing time parameters and APEC settings
         in the same folder as the mesh file.
+
+        Args:
+            load_step_number: Load step index (1-based).
+            filename: Optional override for the output filename.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If folderpath or jobname (when filename absent) is unset.
         """
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write time step binary.")
@@ -375,9 +486,19 @@ class APEC_M:
             labels_to_write=["time_parameters", "apec_settings"],
         )
 
-    def write_loads_bcs(self, load_step_number: int, filename: Optional[str] = None):
+    def write_loads_bcs(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
         """
         Writes a grid binary containing point and cell data in the mesh input folder.
+
+        Args:
+            load_step_number: Load step index (1-based).
+            filename: Optional override for the output filename.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If folderpath or jobname (when filename absent) is unset.
         """
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write grid step binary.")
@@ -401,7 +522,19 @@ class APEC_M:
             labels_to_write=["point_data", "cell_data"],
         )
 
-    def write_model_data(self, filename: Optional[str] = None):
+    def write_model_data(self, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+        """
+        Write model-wide metadata (element types, materials, etc.) to a binary file.
+
+        Args:
+            filename: Optional custom output filename; defaults to 'model_data.bin' in folderpath.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If folderpath or jobname (when filename absent) is unset.
+        """
 
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write model data.")
@@ -429,7 +562,7 @@ class APEC_M:
             ],
         )
 
-    def generate_transient_analysis(self):
+    def generate_transient_analysis(self) -> None:
         """
         Generates and writes load steps for transient analysis based on the rows in self.transient_analysis.
 
@@ -445,6 +578,9 @@ class APEC_M:
             - Reads and processes Excel files for each load step if provided.
             - Writes binary files for each load step inside the input folder.
             - Prints progress information to the console.
+
+        Returns:
+            None
         """
         for idx, row in self.transient_analysis.iterrows():
             # Step 1: Update self.time_parameters with the values from the current row
@@ -472,13 +608,13 @@ class APEC_M:
             self.write_time_step(idx + 1)
             self.write_loads_bcs(idx + 1)
 
-    def _write_label_to_binary(self, binary_file, label):
+    def _write_label_to_binary(self, binary_file: BinaryIO, label: str) -> None:
         """
         Writes a specific label to the binary file using the appropriate function.
 
-        Parameters:
-            binary_file (file object): An open binary file stream.
-            label (str): The label to write (e.g., 'time_parameters', 'materials').
+        Args:
+            binary_file: An open binary file stream.
+            label: The label to write (e.g., 'time_parameters', 'materials').
 
         Raises:
             ValueError: If the label is not recognized or the corresponding data is missing.
@@ -499,10 +635,26 @@ class APEC_M:
             getattr(self, function_name)(data, binary_file, label)
 
     # Wrapper methods for binary output functions to match WRITING_FUNCTIONS_MAP
-    def _write_to_binary(self, settings, binary_file, label):
+    def _write_to_binary(self, settings: Any, binary_file: BinaryIO, label: str) -> None:
+        """
+        Wrapper dispatch to BinaryHelper.write_to_binary.
+
+        Args:
+            settings: Data payload to serialize.
+            binary_file: Open binary stream.
+            label: Label used for serialization.
+        """
         BinaryHelper.write_to_binary(settings, binary_file, label)
 
-    def _write_numpy_array_to_binary(self, mesh, binary_file, label):
+    def _write_numpy_array_to_binary(self, mesh: vtk.vtkUnstructuredGrid, binary_file: BinaryIO, label: str) -> None:
+        """
+        Wrapper dispatch to BinaryHelper.write_numpy_array_to_binary.
+
+        Args:
+            mesh: Mesh providing point/cell data to serialize.
+            binary_file: Open binary stream.
+            label: 'cell_data' or 'point_data'.
+        """
         BinaryHelper.write_numpy_array_to_binary(mesh, binary_file, label)
 
     #
@@ -517,53 +669,152 @@ class APEC_M:
     #
 
     def select(
-        self, array_name, value, component=0, type="point_data", mode="s"
-    ):
+        self,
+        array_name: str,
+        value: Any,
+        component: Union[int, str] = 0,
+        type: str = "point_data",
+        mode: str = "s",
+    ) -> None:
         """
-        Delegates selection to Selector static method.
+        Select cells or points whose array values match the provided criteria.
+
+        Mirrors `Selector.select` and supports multiple matching strategies:
+            - Scalar equality for single values.
+            - Inclusive range checks for tuples of length 2 (low, high).
+            - Membership tests for sets.
+            - Magnitude checks for vector arrays when `component='magnitude'`.
+
+        The resulting boolean mask is written into `selection_cell` or `selection_point`
+        (created if missing). How the new mask combines with the existing selection is
+        controlled by `mode`:
+            - 's' (set): replace the selection with the new mask.
+            - 'a' (add): logical OR with the existing selection.
+            - 'r' (reselect): logical AND with the existing selection.
+            - 'u' (unselect): remove matches from the existing selection.
+
+        Args:
+            array_name: Data array used for filtering.
+            value: Target value(s); scalar for equality, tuple(len=2) for range, set for membership.
+            component: Component index or 'magnitude' for vector arrays.
+            type: 'cell_data' or 'point_data' selection mask to update.
+            mode: Selection mode — 's' replace, 'a' union, 'r' intersection, 'u' subtraction.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the target array is missing, mode is invalid, or a range tuple is malformed.
         """
         Selector.select(self.mesh, array_name, value, component, type, mode)
 
-    def select_pos(self, axis, value, mode="s"):
+    def select_pos(self, axis: int, value: Any, mode: str = "s") -> None:
         """
-        Delegates position-based selection to Selector static method.
+        Select points based on their position along a given axis.
+
+        Uses `Selector.select_pos` to update `selection_point` using the same value semantics
+        and combination modes as `select`.
+
+        Args:
+            axis: Coordinate axis (0,1,2).
+            value: Target value(s) (scalar, tuple for range, set for membership).
+            mode: Selection mode ('s','a','r','u').
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the mode is invalid or the range tuple length is not 2.
         """
         Selector.select_pos(self.mesh, axis, value, mode)
 
-    def select_all(self, type=None):
+    def select_all(self, type: Optional[str] = None) -> None:
         """
-        Delegates select_all to Selector static method.
+        Mark all cells and/or points as selected.
+
+        Args:
+            type: 'cell_data', 'point_data', or None for both.
+
+        Returns:
+            None
         """
         Selector.select_all(self.mesh, type)
 
-    def unselect_all(self, type=None):
+    def unselect_all(self, type: Optional[str] = None) -> None:
         """
-        Delegates unselect_all to Selector static method.
+        Clear selections for cells and/or points.
+
+        Args:
+            type: 'cell_data', 'point_data', or None for both.
+
+        Returns:
+            None
         """
         Selector.unselect_all(self.mesh, type)
 
-    def nsel_ext(self):
+    def nsel_ext(self) -> None:
         """
-        Delegates external node selection to Selector static method.
+        Select external nodes of the currently selected cells.
+
+        Sets `selection_point` for nodes on the exterior surface of selected cells using `Selector.nsel_ext`.
         """
         Selector.nsel_ext(self.mesh)
 
     def set_value_on_selection(
-        self, array_name, value, component=0, type="point_data"
-    ):
+        self,
+        array_name: str,
+        value: Any,
+        component: int = 0,
+        type: str = "point_data",
+    ) -> None:
         """
-        Delegates set_value_on_selection to Selector static method.
+        Assign a value to all selected cells or points in the given array.
+
+        Args:
+            array_name: Array to modify.
+            value: Value to assign to selected entries.
+            component: Component index for multi-component arrays.
+            type: 'cell_data' or 'point_data'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the target array is missing.
         """
         Selector.set_value_on_selection(
             self.mesh, array_name, value, component, type
         )
 
-    def nsle(self, mode="s"):
-        """Select nodes attached to currently selected elements."""
+    def nsle(self, mode: str = "s") -> None:
+        """
+        Select nodes attached to the currently selected cells.
+
+        Args:
+            mode: Combination mode for updating `selection_point` ('s','a','r','u').
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If required selection arrays are missing.
+        """
         Selector.nsle(self.mesh, mode=mode)
 
-    def esln(self, all_nodes=True, mode="s"):
-        """Select elements based on current node selection."""
+    def esln(self, all_nodes: bool = True, mode: str = "s") -> None:
+        """
+        Select cells based on the current node selection.
+
+        Args:
+            all_nodes: When True, select cells only if all their nodes are selected; otherwise if any node is selected.
+            mode: Combination mode for updating `selection_cell` ('s','a','r','u').
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If required selection arrays are missing.
+        """
         Selector.esln(self.mesh, all_nodes=all_nodes, mode=mode)
 
     #
@@ -577,7 +828,7 @@ class APEC_M:
     #
     #
     #
-    def plot(self):
+    def plot(self) -> None:
         """
         Replot the mesh in the active view in Paraview.
         """
@@ -603,29 +854,86 @@ class APEC_M:
     #
     #
     #
-    def read_bfelist(self, file_path):
+    def read_bfelist(self, file_path: Union[str, PathLike[str]]) -> None:
         """
         Wrapper for AnsysHelpers.read_bfelist to allow getattr and consistent API.
+
+        Args:
+            file_path: Path to the BFELIST file.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the BFELIST file does not exist.
+            ValueError: If required identifiers are missing in the mesh CellData.
         """
         AnsysHelper.read_bfelist(self.mesh, file_path)
 
-    def convert_bfelist(self, bfelist_file, output_excel_file):
+    def convert_bfelist(self, bfelist_file: Union[str, PathLike[str]], output_excel_file: Union[str, PathLike[str]]) -> None:
         """
         Wrapper for AnsysHelpers.convert_bfelist to allow getattr and consistent API.
+
+        Args:
+            bfelist_file: Path to the BFELIST file.
+            output_excel_file: Destination Excel file path.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the BFELIST file does not exist.
+            ValueError: If required identifiers are missing in the mesh CellData.
         """
         AnsysHelper.convert_bfelist(self.mesh, bfelist_file, output_excel_file)
 
-    def read_dlist(self, file_path):
+    def read_dlist(self, file_path: Union[str, PathLike[str]]) -> None:
         """
         Wrapper for AnsysHelpers.read_dlist to allow getattr and consistent API.
+
+        Args:
+            file_path: Path to the DLIST file.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the DLIST file does not exist.
+            ValueError: If required identifiers are missing in the mesh PointData.
         """
         AnsysHelper.read_dlist(self.mesh, file_path)
 
-    def convert_dlist(self, dlist_file, output_excel_file):
+    def convert_dlist(self, dlist_file: Union[str, PathLike[str]], output_excel_file: Union[str, PathLike[str]]) -> None:
         """
         Wrapper for AnsysHelpers.convert_dlist to allow getattr and consistent API.
+
+        Args:
+            dlist_file: Path to the DLIST file.
+            output_excel_file: Destination Excel file path.
+
+        Returns:
+            None
+
+        Raises:
+            FileNotFoundError: If the DLIST file does not exist.
+            ValueError: If required identifiers are missing in the mesh PointData.
         """
         AnsysHelper.convert_dlist(self.mesh, dlist_file, output_excel_file)
+
+    def map_ansys_ids_to_vtk(
+        self, data: "vtk.vtkDataSetAttributes", label: str
+    ) -> np.ndarray:
+        """
+        Wrapper around AnsysHelper.map_data_to_vtk for convenience.
+
+        Args:
+            data: VTK CellData or PointData containing the ANSYS id array.
+            label: Array name to map (e.g., 'ansys_elem_num', 'ansys_node_num').
+
+        Returns:
+            np.ndarray: 2D mapping array [vtk_id, ansys_id].
+        """
+        return AnsysHelper.map_data_to_vtk(data, label)
 
     #
     #
@@ -635,35 +943,165 @@ class APEC_M:
     #
     #
     #
-    def compute_and_store_cell_centroids(self):
+    def compute_and_store_cell_centroids(self) -> None:
         """
         Computes centroids for all cells and stores them in a VTK array 'cell_centroids' in CellData.
+
+        Returns:
+            None
         """
         VTKGridHelper.store_cell_centroids(self.mesh)
 
-    def compute_and_store_cell_volumes(self, array_name="cell_volume"):
+    def compute_and_store_cell_volumes(self, array_name: str = "cell_volume") -> None:
         """
         Computes the volume (for 3D cells) or area (for 2D cells) for each cell in self.mesh,
         and stores the result as a cell data array named `array_name`.
+
+        Args:
+            array_name: Name for the output CellData array.
+
+        Returns:
+            None
         """
         VTKGridHelper.store_cell_volumes(self.mesh, array_name=array_name)
         print(
             f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
         )
 
-    def remove_array(self, array_name):
+    def remove_array(self, array_name: str) -> None:
         """
         Removes an array from CellData or PointData using VTKGridHelpers.safe_remove_array.
 
-        Parameters:
-            array_name (str): The name of the array to remove.
+        Args:
+            array_name: The name of the array to remove.
+
+        Returns:
+            None
         """
         VTKGridHelper.safe_remove_array(self.mesh, array_name)
 
 
-    def add_boundary_array(self):
-        """Add a new boundary_id_N array to the mesh and return its name."""
+    def add_boundary_array(self) -> str:
+        """
+        Add a new sequential `boundary_id_N` array to PointData and return its name.
+
+        The array is initialized with zeros and appended after the highest existing
+        `boundary_id_*` to avoid collisions.
+        """
         return VTKGridHelper.add_boundary_array(self.mesh)
+
+    def add_midside_nodes_mask_array(self, array_name: str = "MidsideNodes") -> "vtk.vtkIntArray":
+        """
+        Add a midside-node mask array to PointData (1 at midside nodes, 0 otherwise).
+
+        Args:
+            array_name: Name for the mask array (default "MidsideNodes").
+
+        Returns:
+            vtkIntArray: Added mask array.
+        """
+        return TreeGaugeHelper.add_midside_nodes_mask_array(self.mesh, array_name=array_name)
+
+    def add_array_to_grid(
+        self,
+        name: str,
+        location: str = "point",
+        components: int = 1,
+        fill: Any = 0,
+        dtype: Optional[int] = vtk.VTK_DOUBLE,
+        values: Optional[np.ndarray] = None,
+    ) -> "vtk.vtkDataArray":
+        """
+        Wrapper to add an array to the mesh via VTKGridHelper for a consistent API.
+
+        Args:
+            name: Array name.
+            location: 'cell' or 'point'.
+            components: Number of components.
+            fill: Default fill value if no values provided.
+            dtype: VTK dtype for the array.
+            values: Explicit values to assign.
+
+        Returns:
+            vtkDataArray: The created or existing array.
+        """
+        return VTKGridHelper.add_array_to_grid(
+            self.mesh,
+            name=name,
+            location=location,
+            components=components,
+            fill=fill,
+            dtype=dtype,
+            values=values,
+        )
+
+    def initialize_arrays(self, arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+        """
+        Initialize required arrays on the mesh (CellData/PointData).
+
+        Args:
+            arrays_to_init: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
+        """
+        VTKGridHelper.initialize_vtk_arrays(self.mesh, arrays_to_init)
+
+    def reset_arrays(self, arrays_to_reset: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+        """
+        Reset arrays on the mesh to their default fill values.
+
+        Args:
+            arrays_to_reset: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
+        """
+        VTKGridHelper.reset_vtk_arrays_to_default(self.mesh, arrays_to_reset)
+
+    def validate_dataframe_with_vtk_data(self, df: pd.DataFrame, array_name: str) -> None:
+        """
+        Validate a DataFrame's first column against a VTK array for uniqueness and coverage.
+
+        Args:
+            df: DataFrame whose first column will be validated.
+            array_name: VTK array name to validate against (CellData).
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If validation fails or the VTK array is missing.
+        """
+        VTKGridHelper.validate_dataframe_with_vtk_data(
+            self.mesh.GetCellData(), df, array_name
+        )
+
+    def add_component_from_selection(self, component_name: str, type: str = "cell") -> "vtk.vtkDataArray":
+        """
+        Create a component mask array from the current selection for cells/points.
+
+        Args:
+            component_name: Name for the component array to create.
+            type: 'cell' to use CellData selection, 'point' for PointData selection.
+
+        Returns:
+            vtkDataArray: The created component mask array.
+
+        Raises:
+            ValueError: If selection arrays are missing or type is invalid.
+        """
+        return VTKGridHelper.add_component(self.mesh, component_name, type)
+
+    def update_vtk_grid_from_dataframe(self, vtk_data: "vtk.vtkDataSetAttributes", df: pd.DataFrame) -> None:
+        """
+        Wrapper for VTKGridHelper.update_vtk_grid to write DataFrame values into arrays.
+
+        Args:
+            vtk_data: Target VTK DataSetAttributes (CellData or PointData).
+            df: DataFrame with columns 'vtk_id', 'label', 'component', 'value'.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If any referenced VTK array is missing.
+        """
+        VTKGridHelper.update_vtk_grid(vtk_data, df)
     #
     #
     #
@@ -677,8 +1115,11 @@ class APEC_M:
     #
     #
     def build_tree_cotree_gauge(
-        self, array_name="Az", tree_name="TREE", cotree_name="COTREE"
-    ):
+        self,
+        array_name: str = "Az",
+        tree_name: str = "TREE",
+        cotree_name: str = "COTREE",
+    ) -> Dict[str, int]:
         """
         Build the tree–cotree decomposition for midside edges in the mesh using TreeGaugeHelper.
 
@@ -690,21 +1131,21 @@ class APEC_M:
         After building the tree–cotree decomposition, all nodes with value 1 in the tree mask array
         (tree_name, default "TREE") will have their value in the selected array (array_name, default "Az") set to 0.
 
-        Parameters:
-            array_name (str): Name of the array in PointData to use for constrained edges (default "Az").
-            tree_name (str): Name for the output tree mask array (default "TREE").
-            cotree_name (str): Name for the output cotree mask array (default "COTREE").
+        Args:
+            array_name: Name of the PointData array to use for constrained edges (default "Az").
+            tree_name: Name for the output tree mask array (default "TREE").
+            cotree_name: Name for the output cotree mask array (default "COTREE").
+
+        Returns:
+            Dict[str, int]: Information about the tree/cotree decomposition (from TreeGaugeHelper).
 
         Raises:
-            ValueError: If the specified array is not found in PointData.
+            ValueError: If required arrays (e.g., 'ansys_etype', array_name) are missing in PointData/CellData.
 
         Side Effects:
             Adds/updates tree and cotree mask arrays in mesh PointData.
             Sets values in array_name to 0 for all nodes with value 1 in tree_name.
             Prints summary information about the decomposition.
-
-        Returns:
-            info (dict): Information about the tree/cotree decomposition (from TreeGaugeHelper).
         """
         arr = self.mesh.GetPointData().GetArray(array_name)
         if arr is None:

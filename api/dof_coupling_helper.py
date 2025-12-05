@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Any, Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import vtk
+
+Adjacency = Sequence[Set[int]]
+Coordinates = Sequence[Tuple[float, float, float]]
+Forest = Dict[str, Any]
 
 
 class DOFCouplingHelper:
@@ -12,22 +19,22 @@ class DOFCouplingHelper:
     CP_PREFIX = "CP_"
 
     @staticmethod
-    def build_dof_couplings(grid) -> List[Dict[str, Any]]:
-        """Return shallow spanning forests for every CP_* coupling set in *grid*.
+    def build_dof_couplings(grid: "vtk.vtkUnstructuredGrid") -> List[Forest]:
+        """
+        Return shallow spanning forests for every CP_* coupling set in *grid*.
 
-        Parameters
-        ----------
-        grid : vtk.vtkUnstructuredGrid
-            Mesh containing CP_* point data arrays.
+        Args:
+            grid: Mesh containing CP_* point data arrays.
 
-        Returns
-        -------
-        List[Dict[str, Any]]
-            One forest per CP_* array / CP id combination. Forests are acyclic by
-            construction and promote sparsity by pairing adjacent nodes first. Each
-            forest dictionary exposes the keys 'array_name' (string), 'cp_id' (int),
+        Returns:
+            List[Forest]: One forest per CP_* array / CP id combination. Forests are
+            acyclic by construction and promote sparsity by pairing adjacent nodes first.
+            Each forest dictionary exposes the keys 'array_name' (string), 'cp_id' (int),
             'pairs' (shape [N, 2] int64 array), 'roots' (shape [R] int64 array), and
             'isolated' (shape [K] int64 array).
+
+        Raises:
+            ValueError: If `grid` is None.
         """
         if grid is None:
             raise ValueError("grid must be a vtk.vtkUnstructuredGrid instance.")
@@ -58,8 +65,16 @@ class DOFCouplingHelper:
         return forests
 
     @staticmethod
-    def print_dof_couplings(forests: Iterable[Dict[str, Any]]) -> None:
-        """Pretty-print the couplings produced by build_dof_couplings."""
+    def print_dof_couplings(forests: Iterable[Forest]) -> None:
+        """
+        Pretty-print the couplings produced by build_dof_couplings.
+
+        Args:
+            forests: Iterable of forest dictionaries as returned by build_dof_couplings.
+
+        Returns:
+            None
+        """
         forests = list(forests)
         if not forests:
             print("No coupling forests computed.")
@@ -90,9 +105,22 @@ class DOFCouplingHelper:
         array_name: str,
         cp_id: int,
         nodes: Sequence[int],
-        adjacency: Sequence[Set[int]],
-        coords: Sequence[Tuple[float, float, float]],
-    ) -> Dict[str, Any]:
+        adjacency: Adjacency,
+        coords: Coordinates,
+    ) -> Forest:
+        """
+        Build a coupling forest for a single CP id.
+
+        Args:
+            array_name: Name of the CP_* array the nodes came from.
+            cp_id: Coupling set identifier extracted from the CP_* values.
+            nodes: Node ids that belong to this coupling set.
+            adjacency: Point connectivity graph for the mesh.
+            coords: Point coordinates used for distance-based edge ordering.
+
+        Returns:
+            Forest: Dictionary containing 'array_name', 'cp_id', 'pairs', 'roots', and 'isolated'.
+        """
         nodes_set = set(nodes)
         remaining = set(nodes)
         edges: List[Tuple[int, int]] = []
@@ -138,7 +166,20 @@ class DOFCouplingHelper:
         }
 
     @staticmethod
-    def _collect_cp_sets(grid, npoints: int) -> Dict[str, Dict[int, List[int]]]:
+    def _collect_cp_sets(
+        grid: "vtk.vtkUnstructuredGrid", npoints: int
+    ) -> Dict[str, Dict[int, List[int]]]:
+        """
+        Collect CP_* point data arrays and group node ids by coupling id.
+
+        Args:
+            grid: Mesh containing CP_* point data arrays.
+            npoints: Number of points in the mesh.
+
+        Returns:
+            Dict[str, Dict[int, List[int]]]: Mapping of array name -> cp_id -> node ids.
+            Only cp_ids with at least two nodes are returned.
+        """
         point_data = grid.GetPointData()
         cp_sets: Dict[str, Dict[int, List[int]]] = {}
 
@@ -172,7 +213,17 @@ class DOFCouplingHelper:
         return cp_sets
 
     @staticmethod
-    def _build_node_adjacency(grid, npoints: int) -> List[Set[int]]:
+    def _build_node_adjacency(grid: "vtk.vtkUnstructuredGrid", npoints: int) -> Adjacency:
+        """
+        Build an undirected adjacency list of mesh nodes based on cell connectivity.
+
+        Args:
+            grid: Mesh whose cell connectivity defines adjacency.
+            npoints: Number of points in the mesh.
+
+        Returns:
+            List[Set[int]]: Adjacency list indexed by point id.
+        """
         adjacency: List[Set[int]] = [set() for _ in range(npoints)]
 
         for cell_id in range(grid.GetNumberOfCells()):
@@ -190,7 +241,19 @@ class DOFCouplingHelper:
         return adjacency
 
     @staticmethod
-    def _collect_point_coordinates(grid, npoints: int) -> List[Tuple[float, float, float]]:
+    def _collect_point_coordinates(
+        grid: "vtk.vtkUnstructuredGrid", npoints: int
+    ) -> Coordinates:
+        """
+        Extract point coordinates from the mesh for distance calculations.
+
+        Args:
+            grid: Mesh providing point coordinates.
+            npoints: Number of points in the mesh.
+
+        Returns:
+            Coordinates: List of (x, y, z) tuples.
+        """
         coords: List[Tuple[float, float, float]] = []
         for pid in range(npoints):
             x, y, z = grid.GetPoint(pid)
@@ -201,8 +264,19 @@ class DOFCouplingHelper:
     def _collect_component(
         seed: int,
         remaining: Set[int],
-        adjacency: Sequence[Set[int]],
+        adjacency: Adjacency,
     ) -> List[int]:
+        """
+        Collect all nodes reachable from a seed within the allowed set.
+
+        Args:
+            seed: Starting node id.
+            remaining: Mutable set of candidate nodes (will be consumed).
+            adjacency: Mesh adjacency list.
+
+        Returns:
+            List[int]: Nodes in the connected component including the seed.
+        """
         component = [seed]
         queue: deque[int] = deque([seed])
 
@@ -220,9 +294,21 @@ class DOFCouplingHelper:
     def _build_tree_edges(
         root: int,
         component_set: Set[int],
-        adjacency: Sequence[Set[int]],
-        coords: Sequence[Tuple[float, float, float]],
+        adjacency: Adjacency,
+        coords: Coordinates,
     ) -> Tuple[List[Tuple[int, int]], Set[int]]:
+        """
+        Build a shallow spanning tree for a component, favoring short edges.
+
+        Args:
+            root: Node id chosen as the tree root.
+            component_set: Nodes belonging to the component.
+            adjacency: Mesh adjacency list.
+            coords: Point coordinates for distance ordering.
+
+        Returns:
+            Tuple[List[Tuple[int, int]], Set[int]]: Tree edges (parent, child) and visited nodes.
+        """
         visited: Set[int] = {root}
         queue: deque[int] = deque([root])
         edges: List[Tuple[int, int]] = []
@@ -250,9 +336,23 @@ class DOFCouplingHelper:
     @staticmethod
     def _pick_seed_node(
         candidates: Set[int],
-        adjacency: Sequence[Set[int]],
+        adjacency: Adjacency,
         allowed: Set[int],
     ) -> int:
+        """
+        Select a seed node with the highest number of allowed neighbors.
+
+        Args:
+            candidates: Remaining candidate nodes to seed a component.
+            adjacency: Mesh adjacency list.
+            allowed: Nodes eligible to be connected.
+
+        Returns:
+            int: Chosen seed node id.
+
+        Raises:
+            RuntimeError: If no seed can be selected.
+        """
         best = None
         best_score = -1
 
@@ -268,7 +368,20 @@ class DOFCouplingHelper:
         return best
 
     @staticmethod
-    def _pick_root(component_set: Set[int], adjacency: Sequence[Set[int]]) -> int:
+    def _pick_root(component_set: Set[int], adjacency: Adjacency) -> int:
+        """
+        Choose a root node for a component, favoring highest degree then lowest id.
+
+        Args:
+            component_set: Nodes in the connected component.
+            adjacency: Mesh adjacency list.
+
+        Returns:
+            int: Root node id.
+
+        Raises:
+            RuntimeError: If no root can be selected.
+        """
         best = None
         best_score = -1
 
@@ -284,7 +397,17 @@ class DOFCouplingHelper:
         return best
 
     @staticmethod
-    def _safe_get_scalar(array, index: int):
+    def _safe_get_scalar(array: "vtk.vtkDataArray", index: int) -> Optional[float]:
+        """
+        Safely extract a scalar value from a VTK array tuple.
+
+        Args:
+            array: VTK data array.
+            index: Tuple index to read.
+
+        Returns:
+            Optional[float]: Scalar value or None if tuple is empty.
+        """
         tuple_value = array.GetTuple(index)
         if not tuple_value:
             return None
@@ -295,6 +418,16 @@ class DOFCouplingHelper:
         a: Tuple[float, float, float],
         b: Tuple[float, float, float],
     ) -> float:
+        """
+        Compute squared Euclidean distance between two points.
+
+        Args:
+            a: First point as (x, y, z).
+            b: Second point as (x, y, z).
+
+        Returns:
+            float: Squared distance.
+        """
         dx = a[0] - b[0]
         dy = a[1] - b[1]
         dz = a[2] - b[2]
