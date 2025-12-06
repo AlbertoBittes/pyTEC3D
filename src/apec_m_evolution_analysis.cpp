@@ -6,11 +6,8 @@
 
 APECMEvolutionAnalysis::APECMEvolutionAnalysis(APEC_M *program,
                                                std::shared_ptr<AnalysisBase::ContextView> context_view)
-    : StaticAnalysis(AnalysisBase::Type::APECM_EVOLUTION, program, context_view, "APECMEvolutionAnalysis"),
-      APECMEquilibriumAnalysis(program,
+    : APECMEquilibriumAnalysis(program,
                                context_view,
-                               AnalysisBase::Type::APECM_EVOLUTION,
-                               "APECMEvolutionAnalysis")
+                               AnalysisBase::Type::APECM_EVOLUTION)
 {
-    set_name("APECMEvolutionAnalysis");
 }

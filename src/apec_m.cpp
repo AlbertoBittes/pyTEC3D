@@ -16,6 +16,8 @@
 #include <exception>
 #include <utility>
 #include <system_error>
+#include <set>
+#include <algorithm>
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
@@ -490,6 +492,162 @@ void APEC_M::clear_mesh(const std::string &name)
     }
 }
 
+bool APEC_M::validate_model_for_analysis()
+{
+    bool valid = true;
+
+    auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
+    auto materials_object = model_data_repository->get_object<MaterialsObject>();
+    auto real_constants_object = model_data_repository->get_object<RealConstantsObject>();
+    auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
+
+    std::unordered_set<int> available_etypes;
+    std::unordered_set<int> available_materials;
+    std::unordered_set<int> available_real_constants;
+
+    if (!element_factory || !element_factory->get_element_types_map() || element_factory->get_element_types_map()->empty())
+    {
+        libMesh::out << "No element types loaded. Cannot enter analysis mode." << std::endl;
+        valid = false;
+    }
+    else
+    {
+        for (const auto &entry : *element_factory->get_element_types_map())
+            available_etypes.insert(static_cast<int>(entry.first));
+    }
+
+    if (!materials_object || materials_object->get_materials_map().empty())
+    {
+        libMesh::out << "No materials loaded. Cannot enter analysis mode." << std::endl;
+        valid = false;
+    }
+    else
+    {
+        for (const auto &entry : materials_object->get_materials_map())
+            available_materials.insert(static_cast<int>(entry.first));
+    }
+
+    if (!real_constants_object || real_constants_object->get_constants_map().empty())
+    {
+        libMesh::out << "No real constants loaded. Cannot enter analysis mode." << std::endl;
+        valid = false;
+    }
+    else
+    {
+        for (const auto &entry : real_constants_object->get_constants_map())
+            available_real_constants.insert(static_cast<int>(entry.first));
+    }
+
+    if (periodic_factory)
+        periodic_factory->populate_periodic_boundaries_from_map();
+
+    for (const auto &entry : mesh_repositories)
+    {
+        const auto &mesh_name = entry.first;
+        auto mesh = entry.second ? entry.second->get_object<ApecMMesh>() : nullptr;
+        if (!mesh)
+            continue;
+
+        const auto etype_index = mesh->get_elem_integer_index("ansys_etype");
+        const auto material_index = mesh->get_elem_integer_index("ansys_material_type");
+        const auto real_constant_index = mesh->get_elem_integer_index("ansys_real_constant");
+
+        auto collect_used_ids = [&](unsigned int index) {
+            std::unordered_set<int> used;
+            if (index == libMesh::invalid_uint)
+                return used;
+            for (const auto elem : mesh->element_ptr_range())
+                used.insert(elem->get_extra_integer(index));
+            return used;
+        };
+
+        if (etype_index == libMesh::invalid_uint)
+        {
+            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_etype'." << std::endl;
+            valid = false;
+        }
+        if (material_index == libMesh::invalid_uint)
+        {
+            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_material_type'." << std::endl;
+            valid = false;
+        }
+        if (real_constant_index == libMesh::invalid_uint)
+        {
+            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_real_constant'." << std::endl;
+            valid = false;
+        }
+
+        const auto used_etypes = collect_used_ids(etype_index);
+        const auto used_materials = collect_used_ids(material_index);
+        const auto used_real_constants = collect_used_ids(real_constant_index);
+
+        auto report_missing = [&](const std::string &label,
+                                  const std::unordered_set<int> &used,
+                                  const std::unordered_set<int> &available) {
+            std::vector<int> missing;
+            missing.reserve(used.size());
+            for (int value : used)
+                if (!available.count(value))
+                    missing.push_back(value);
+            if (!missing.empty())
+            {
+                std::sort(missing.begin(), missing.end());
+                missing.erase(std::unique(missing.begin(), missing.end()), missing.end());
+                libMesh::out << "Mesh '" << mesh_name << "' references undefined " << label << " IDs: ";
+                for (std::size_t i = 0; i < missing.size(); ++i)
+                {
+                    if (i)
+                        libMesh::out << ", ";
+                    libMesh::out << missing[i];
+                }
+                libMesh::out << std::endl;
+                valid = false;
+            }
+        };
+
+        if (!available_etypes.empty())
+            report_missing("element type", used_etypes, available_etypes);
+        if (!available_materials.empty())
+            report_missing("material", used_materials, available_materials);
+        if (!available_real_constants.empty())
+            report_missing("real constant", used_real_constants, available_real_constants);
+
+        if (periodic_factory)
+        {
+            const auto &periodic_boundaries = periodic_factory->get_periodic_boundaries();
+            if (!periodic_boundaries.empty())
+            {
+                auto &boundary_info = mesh->get_boundary_info();
+                if (boundary_info.get_side_boundary_ids().empty())
+                    mesh->apply_boundary_info();
+
+                const auto &side_ids = boundary_info.get_side_boundary_ids();
+                if (side_ids.empty())
+                {
+                    libMesh::out << "Mesh '" << mesh_name << "' has no boundary IDs but periodic boundaries are defined." << std::endl;
+                    valid = false;
+                }
+
+                for (const auto &pb : periodic_boundaries)
+                {
+                    if (side_ids.find(pb.myboundary) == side_ids.end())
+                    {
+                        libMesh::out << "Periodic boundary main ID " << pb.myboundary << " not found on mesh '" << mesh_name << "'." << std::endl;
+                        valid = false;
+                    }
+                    if (side_ids.find(pb.pairedboundary) == side_ids.end())
+                    {
+                        libMesh::out << "Periodic boundary paired ID " << pb.pairedboundary << " not found on mesh '" << mesh_name << "'." << std::endl;
+                        valid = false;
+                    }
+                }
+            }
+        }
+    }
+
+    return valid;
+}
+
 bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type)
 {
     if (mesh_repositories.empty())
@@ -505,6 +663,12 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
     }
 
     shared_analysis.reset();
+
+    if (!validate_model_for_analysis())
+    {
+        libMesh::out << "Model consistency check failed. Cannot enter analysis mode." << std::endl;
+        return false;
+    }
 
     bool initialized_any = false;
 

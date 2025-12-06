@@ -37,12 +37,8 @@ public:
 
     AnalysisBase(Type type = Type::STATIC,
                  APEC_M *program = nullptr,
-                 std::string analysis_name = "",
                  std::shared_ptr<ContextView> context_view = nullptr);
     virtual ~AnalysisBase() = default;
-
-    const std::string &get_name() const { return name; }
-    void set_name(const std::string &analysis_name) { name = analysis_name; }
 
     Type type() const { return analysis_type; }
 
@@ -71,10 +67,7 @@ public:
 protected:
     virtual bool execute_solve() = 0;
 
-    std::size_t load_steps_completed_count = 0;
-    unsigned int cumulative_substeps_completed = 0;
     bool context_initialized = false;
-    std::string name;
     Type analysis_type;
 };
 

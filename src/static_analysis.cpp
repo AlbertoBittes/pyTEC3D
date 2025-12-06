@@ -10,17 +10,15 @@
 
 StaticAnalysis::StaticAnalysis(APEC_M *program,
                                std::shared_ptr<AnalysisBase::ContextView> context_view,
-                               Type type,
-                               std::string analysis_name)
-    : AnalysisBase(type, program, std::move(analysis_name), std::move(context_view))
+                               Type type)
+    : AnalysisBase(type, program, std::move(context_view))
 {
 }
 
 StaticAnalysis::StaticAnalysis(Type type,
                                APEC_M *program,
-                               std::shared_ptr<AnalysisBase::ContextView> context_view,
-                               std::string analysis_name)
-    : AnalysisBase(type, program, std::move(analysis_name), std::move(context_view))
+                               std::shared_ptr<AnalysisBase::ContextView> context_view)
+    : AnalysisBase(type, program, std::move(context_view))
 {
 }
 
@@ -219,15 +217,15 @@ void StaticAnalysis::print_output(Substep &substep)
     if (!should_write || !session || !equation_systems || !assembler)
         return;
 
+    const auto base_substep_index = time_step ? time_step->count_substeps_before_current() : 0;
     std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
 
-    session->set_output_filepath(cumulative_substeps_completed);
+    session->set_output_filepath(base_substep_index + substep.get_index());
     VTKIO_Updated vtk_output(equation_systems->get_mesh(),
                              &equation_systems->get_system<ApecMExplicitSystem>("ElementSolutionSystem"));
     vtk_output.write_equation_systems(session->get_path("final_output_path"),
                                       *equation_systems,
                                       &system_names);
-    ++cumulative_substeps_completed;
 }
 
 bool StaticAnalysis::run_picard_iterations(Substep &substep)
@@ -242,12 +240,11 @@ bool StaticAnalysis::solve()
     if (!execute_solve())
         return false;
 
-    load_steps_completed_count++;
     return true;
 }
 
 bool StaticAnalysis::solve_transient()
 {
-    libMesh::out << "Analysis '" << name << "' does not support transient solves." << std::endl;
+    libMesh::out << "This analysis does not support transient solves." << std::endl;
     return false;
 }

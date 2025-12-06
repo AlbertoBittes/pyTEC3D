@@ -36,9 +36,6 @@ public:
     void set_working_directory(const std::filesystem::path &directory);
     const std::filesystem::path &get_working_directory() const { return working_directory; }
 
-    void set_model_data_filepath(const std::filesystem::path &filepath);
-    const std::filesystem::path &get_model_data_filepath() const { return model_data_filepath; }
-
     void set_mode(Mode mode);
     Mode get_mode() const { return program_mode; }
     static std::string mode_to_string(Mode mode);
@@ -69,7 +66,6 @@ private:
 
     std::string active_mesh;
     std::filesystem::path working_directory;
-    std::filesystem::path model_data_filepath;
     bool custom_working_directory;
     Mode program_mode;
 };

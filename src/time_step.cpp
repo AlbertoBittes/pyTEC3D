@@ -123,3 +123,32 @@ TimeStep::Iterator TimeStep::end()
 {
     return TimeStep::Iterator(this, this->get_n_substeps());
 }
+
+std::size_t TimeStep::count_steps_including_previous() const
+{
+    std::size_t count = 0;
+    const TimeStep *ptr = this;
+    while (ptr)
+    {
+        ++count;
+        ptr = ptr->previous_time_step_ptr.get();
+    }
+    return count;
+}
+
+std::size_t TimeStep::count_substeps_before_current() const
+{
+    std::size_t total = 0;
+    const TimeStep *ptr = previous_time_step_ptr.get();
+    while (ptr)
+    {
+        total += ptr->get_n_substeps();
+        ptr = ptr->previous_time_step_ptr.get();
+    }
+    return total;
+}
+
+std::size_t TimeStep::count_total_substeps_including_current() const
+{
+    return count_substeps_before_current() + static_cast<std::size_t>(get_n_substeps());
+}

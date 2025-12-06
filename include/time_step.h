@@ -81,6 +81,10 @@ public:
     const std::vector<Substep> &get_substeps() const { return substeps; }
     std::shared_ptr<TimeStep> get_previous_time_step() { return previous_time_step_ptr; }
 
+    std::size_t count_steps_including_previous() const;
+    std::size_t count_substeps_before_current() const;
+    std::size_t count_total_substeps_including_current() const;
+
     void set_step(int s) { step = s; }
     void set_time(Real t) { time = t; }
     void set_time_beginning(Real t) { time_beginning = t; }

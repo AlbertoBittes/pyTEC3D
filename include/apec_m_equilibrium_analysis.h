@@ -12,13 +12,12 @@
 #include <utility>
 #include <vector>
 
-class APECMEquilibriumAnalysis : public virtual StaticAnalysis, public TransientAnalysis
+class APECMEquilibriumAnalysis : public TransientAnalysis
 {
 public:
     explicit APECMEquilibriumAnalysis(APEC_M *program = nullptr,
                                       std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr,
-                                      AnalysisBase::Type type = AnalysisBase::Type::APECM_EQUILIBRIUM,
-                                      std::string analysis_name = "APECMEquilibriumAnalysis");
+                                      AnalysisBase::Type type = AnalysisBase::Type::APECM_EQUILIBRIUM);
 
 protected:
     void apply_jplasma_gradshafranov();

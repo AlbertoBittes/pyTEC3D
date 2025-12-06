@@ -12,12 +12,10 @@
 
 AnalysisBase::AnalysisBase(Type type,
                            APEC_M *program,
-                           std::string analysis_name,
                            std::shared_ptr<ContextView> context_view)
     : FEParentObjectBase<APEC_M>(program),
       FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(),
-      analysis_type(type),
-      name(std::move(analysis_name))
+      analysis_type(type)
 {
     if (context_view)
         this->set_context_view(std::move(context_view));
@@ -39,7 +37,6 @@ ApecMEquationSystems *AnalysisBase::active_equation_system() const
 
 bool AnalysisBase::finish()
 {
-    load_steps_completed_count = 0;
     if (auto equation_systems = this->active_equation_system_ptr())
         equation_systems->zero_all_systems();
 

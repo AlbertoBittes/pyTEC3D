@@ -8,10 +8,8 @@
 
 APECMEquilibriumAnalysis::APECMEquilibriumAnalysis(APEC_M *program,
                                                    std::shared_ptr<AnalysisBase::ContextView> context_view,
-                                                   AnalysisBase::Type type,
-                                                   std::string analysis_name)
-    : StaticAnalysis(type, program, context_view, analysis_name),
-      TransientAnalysis(type, program, analysis_name, context_view)
+                                                   AnalysisBase::Type type)
+    : TransientAnalysis(type, program, context_view)
 {
 }
 

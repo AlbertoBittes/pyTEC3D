@@ -52,9 +52,6 @@ namespace
         libMesh::out << "Current mode: " << Session::mode_to_string(session.get_mode()) << std::endl;
         print_path("Working folder: ", session.get_path("working_folderpath"));
 
-        if (!session.get_model_data_filepath().empty())
-            print_path("Model data file: ", session.get_model_data_filepath());
-
         if (session.has_active_mesh())
         {
             libMesh::out << "Active mesh: " << session.get_active_mesh() << std::endl;

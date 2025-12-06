@@ -15,7 +15,6 @@ Session::Session()
       output_filename(""),
       active_mesh(""),
       working_directory(std::filesystem::current_path()),
-      model_data_filepath(),
       custom_working_directory(false),
       program_mode(Mode::PreProcessing)
 {
@@ -117,24 +116,6 @@ void Session::set_working_directory(const std::filesystem::path &directory)
     }
 
     initialize_folder_paths();
-}
-
-void Session::set_model_data_filepath(const std::filesystem::path &filepath)
-{
-    if (filepath.empty())
-    {
-        model_data_filepath.clear();
-    }
-    else
-    {
-        std::error_code ec;
-        auto absolute_path = std::filesystem::absolute(filepath, ec);
-        if (!ec)
-            model_data_filepath = absolute_path.lexically_normal();
-        else
-            model_data_filepath = filepath;
-    }
-    update_dynamic_paths();
 }
 
 void Session::set_mode(Mode mode)
@@ -268,7 +249,6 @@ void Session::print_data_info() const
 {
     libMesh::out << "  Mode: " << mode_to_string(program_mode) << std::endl;
     libMesh::out << "  Working directory: " << (working_directory.empty() ? "<unset>" : working_directory.string()) << std::endl;
-    libMesh::out << "  Model data file: " << (model_data_filepath.empty() ? "<unset>" : model_data_filepath.string()) << std::endl;
     libMesh::out << "  Active mesh: " << (active_mesh.empty() ? "<none>" : active_mesh) << std::endl;
     libMesh::out << "  Output filename: " << (output_filename.empty() ? "<unset>" : output_filename) << std::endl;
 
@@ -320,11 +300,6 @@ void Session::update_dynamic_paths()
         paths_map["load_steps_folderpath"] = std::filesystem::path();
         paths_map["final_output_path"] = std::filesystem::path();
     }
-
-    if (!model_data_filepath.empty())
-        paths_map["model_data_filepath"] = model_data_filepath;
-    else
-        paths_map.erase("model_data_filepath");
 
     paths_map.erase("analysis_folderpath");
 }
