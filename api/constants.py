@@ -135,6 +135,26 @@ DEFAULT_APEC_SETTINGS = {
     "beta_p": 0.0,
 }
 
+DEFAULT_APEC_SETTINGS_TYPES = {
+    "target_central_axis_x": float,
+    "target_central_axis_y": float,
+    "target_central_axis_z": float,
+    "R0": float,
+    "max_picard_iterations": int,
+    "min_distance": float,
+    "cp_gain": float,
+    "tolerance_value": float,
+    "bradx_value": float,
+    "brady_value": float,
+    "bverx_value": float,
+    "bvery_value": float,
+    "alpha_value": float,
+    "plasma_current": float,
+    "beta_p": float,
+}
+# Backwards compatibility with earlier naming
+APEC_SETTINGS_TYPES = DEFAULT_APEC_SETTINGS_TYPES
+
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
     "ansys_material_type": int,
@@ -199,6 +219,13 @@ CELL_POINT_DATA_COLUMNS_TYPES = {
     "value": float,
 }
 
+PERIODIC_BOUNDARIES_COLUMNS_TYPES = {
+    "main_boundary": int,
+    "paired_boundary": int,
+    "periodic_matrix": str,
+    "variable": str,
+}
+
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "time_step_number": int,
     "time": float,
@@ -219,6 +246,8 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "point_data": CELL_POINT_DATA_COLUMNS_TYPES,
     "cell_data": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
+    "periodic_boundaries": PERIODIC_BOUNDARIES_COLUMNS_TYPES,
+    "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
 }
 
 # Define the mapping of sheet names to processing methods
@@ -228,9 +257,11 @@ SHEET_PROCESSING_MAP = {
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
+    "apec_settings": "read_excel_dict",
     "point_data": ("update_vtk_grid_from_excel", "point_data"),
     "cell_data": ("update_vtk_grid_from_excel", "cell_data"),
     "transient_analysis": "read_excel_df",
+    "periodic_boundaries": "read_periodic_boundaries",
 }
 
 WRITING_FUNCTIONS_MAP = {

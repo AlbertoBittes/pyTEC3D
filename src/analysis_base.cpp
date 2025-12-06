@@ -79,11 +79,5 @@ std::shared_ptr<AnalysisBase> AnalysisBase::build(APEC_M *program,
         break;
     }
 
-    if (analysis && context_view && !analysis->has_valid_context())
-    {
-        libMesh::out << "Failed to initialize analysis context for '" << analysis->get_name() << "'." << std::endl;
-        return nullptr;
-    }
-
     return analysis;
 }

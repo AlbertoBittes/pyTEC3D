@@ -1,7 +1,8 @@
 import os
 from os import PathLike
-from typing import Any, Dict, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
+import numpy as np
 import pandas as pd
 
 from binary_helper import BinaryHelper
@@ -173,6 +174,110 @@ class ExcelIOHelper:
                     df[col] = df[col].astype(str)
         print(f"Data from sheet '{sheet_name}' successfully loaded into DataFrame.")
         return df
+
+    @staticmethod
+    def _evaluate_periodic_matrix(raw_value: Any) -> np.ndarray:
+        """
+        Evaluate a periodic matrix expression into a NumPy array.
+
+        Args:
+            raw_value: Cell contents from the periodic matrix column.
+
+        Returns:
+            np.ndarray: Evaluated NumPy array.
+
+        Raises:
+            ValueError: If the expression cannot be evaluated or converted.
+        """
+        try:
+            evaluated = eval(
+                str(raw_value),
+                {"np": np, "numpy": np, "__builtins__": {}},
+            )
+        except Exception as exc:
+            raise ValueError(
+                f"Failed to evaluate periodic matrix expression '{raw_value}': {exc}"
+            ) from exc
+
+        try:
+            return np.asarray(evaluated, dtype=float)
+        except Exception as exc:
+            raise ValueError(
+                f"Evaluated periodic matrix '{raw_value}' could not be converted to a NumPy array: {exc}"
+            ) from exc
+
+    @staticmethod
+    def read_periodic_boundaries(
+        excel_file: Union[str, PathLike[str]],
+        sheet_name: str,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Read periodic boundary definitions from an Excel sheet.
+
+        The sheet must contain the columns defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES
+        under 'periodic_boundaries': main_boundary, paired_boundary, periodic_matrix,
+        and variable. The periodic_matrix column is evaluated via `eval` with NumPy
+        available as `np`/`numpy`.
+
+        Args:
+            excel_file: Path to the Excel workbook.
+            sheet_name: Name of the sheet containing periodic boundaries.
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: Parsed periodic boundary entries, or None if the sheet is missing.
+
+        Raises:
+            FileNotFoundError: If the Excel file does not exist.
+            ValueError: If required columns are missing or values cannot be coerced.
+        """
+        if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES:
+            raise ValueError(
+                f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
+            )
+        if not os.path.exists(excel_file):
+            raise FileNotFoundError(f"Excel file '{excel_file}' not found.")
+
+        try:
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
+        except ValueError:
+            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            return None
+
+        df = df.dropna(how="all")
+        expected_columns = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name].keys()
+        missing_columns = [col for col in expected_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(
+                f"Sheet '{sheet_name}' is missing required columns: {missing_columns}. "
+                f"Expected columns: {list(expected_columns)}."
+            )
+
+        type_map = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name]
+        periodic_boundaries: List[Dict[str, Any]] = []
+        for row_idx, row in df.iterrows():
+            boundary: Dict[str, Any] = {}
+            for column, typ in type_map.items():
+                value = row[column]
+                if pd.isna(value):
+                    raise ValueError(
+                        f"Value for column '{column}' is missing at row {row_idx + 2} in sheet '{sheet_name}'."
+                    )
+
+                if column == "periodic_matrix":
+                    boundary[column] = ExcelIOHelper._evaluate_periodic_matrix(value)
+                elif typ == int:
+                    boundary[column] = int(value)
+                elif typ == float:
+                    boundary[column] = float(value)
+                elif typ == str:
+                    boundary[column] = str(value)
+                else:
+                    boundary[column] = value
+
+            periodic_boundaries.append(boundary)
+
+        print(f"Periodic boundaries loaded from sheet '{sheet_name}'.")
+        return periodic_boundaries
 
     @staticmethod
     def update_vtk_grid_from_excel(

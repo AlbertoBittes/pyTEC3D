@@ -59,7 +59,7 @@ std::filesystem::path StaticAnalysis::resolve_time_step_path(const std::string &
     if (!session)
         return {};
 
-    const auto &folder = session->get_path("mesh_folderpath");
+    const auto &folder = session->get_path("time_steps_folderpath");
     if (folder.empty())
         return {};
 
@@ -100,7 +100,7 @@ std::filesystem::path StaticAnalysis::resolve_default_time_base_name() const
     if (!session)
         return {};
 
-    const auto &folder = session->get_path("mesh_folderpath");
+    const auto &folder = session->get_path("time_steps_folderpath");
     if (folder.empty())
         return {};
 

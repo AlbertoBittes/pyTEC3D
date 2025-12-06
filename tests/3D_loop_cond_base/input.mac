@@ -1,4 +1,5 @@
 -read_mesh 3D_loop_cond_base.vtu
--read_model_data model_data.bin
--mode analysis
+-load_data model_data.bin
+-mode analysis transient
+-print_model_data
 -solve_transient

@@ -296,6 +296,7 @@ void ElementBuilder::build_plane233_solution_vectors()
         this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS].resize(NodalSolutionVectors::NUM_NODAL_SOLUTION_VECTORS);
         auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
         auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
+        auto &psi = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::PSI];
         auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::Me];
         auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][NodalSolutionMatrices::AAe];
         unsigned int n_dofs_var = elem_data.elem->n_nodes();
@@ -310,6 +311,26 @@ void ElementBuilder::build_plane233_solution_vectors()
         Hn.resize(Bn.size());
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             Hn(dof_i) += Bn(dof_i) * nu_matrix[0];
+
+        if (axisymm)
+        {
+            psi.resize(An.size());
+            // unsigned int a_var_num = main_sys->variable_number("A_z");
+            // unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
+            for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
+            {
+                auto &node = elem_data.elem->node_ref(i);
+                // unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+                // unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+                // if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
+                //     (dof_A < main_sys->current_local_solution->last_local_index()) &&
+                //     (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
+                //     (dof_PSI < nodal_solution_system->solution->last_local_index()))
+                // {
+                psi(i) = An(i) * node(0); // r component
+                // }
+            }
+        }
     }
 
     // Element solution
@@ -407,9 +428,12 @@ void ElementBuilder::build_plane233_solution_vectors()
     {
         auto &Bn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::B];
         auto &Hn = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::H];
+        auto &psi = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS][NodalSolutionVectors::PSI];
         DofMap *dof_map_nodal_solution = &nodal_solution_system->get_dof_map();
         dof_map_nodal_solution->dof_indices(elem_data.elem, dof_indices);
         Bn.append(Hn);
+        if (axisymm)
+            Bn.append(psi);
         for (unsigned int i = 0; i < dof_indices.size(); i++)
         {
             dof_id_type dof_index = dof_indices[i];
@@ -433,23 +457,23 @@ void ElementBuilder::build_plane233_solution_vectors()
             element_solution_system->solution->set(dof_index, Je(i));
     }
 
-    // Compute PSI
-    if (axisymm)
-    {
-        unsigned int a_var_num = main_sys->variable_number("A_z");
-        unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
-        for (auto &node : elem_data.elem->node_ref_range())
-        {
-            unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
-            unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
-            if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
-                (dof_A < main_sys->current_local_solution->last_local_index()) &&
-                (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
-                (dof_PSI < nodal_solution_system->solution->last_local_index()))
-            {
-                Real psi_val = main_sys->current_local_solution->el(dof_A) * node(0); // r component
-                nodal_solution_system->solution->set(dof_PSI, psi_val);
-            }
-        }
-    }
+    // // Compute PSI
+    // if (axisymm)
+    // {
+    //     unsigned int a_var_num = main_sys->variable_number("A_z");
+    //     unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
+    //     for (auto &node : elem_data.elem->node_ref_range())
+    //     {
+    //         unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+    //         unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+    //         if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
+    //             (dof_A < main_sys->current_local_solution->last_local_index()) &&
+    //             (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
+    //             (dof_PSI < nodal_solution_system->solution->last_local_index()))
+    //         {
+    //             Real psi_val = main_sys->current_local_solution->el(dof_A) * node(0); // r component
+    //             nodal_solution_system->solution->set(dof_PSI, psi_val);
+    //         }
+    //     }
+    // }
 }

@@ -13,7 +13,9 @@ import vtk
 # Helper: run the solver once
 # ------------------------------------------------------------------------------
 def list_bin_files(case_dir):
-    return {os.path.abspath(p) for p in glob.glob(os.path.join(case_dir, "*.bin"))}
+    # Track .bin files anywhere under the case directory (not just the root)
+    return {os.path.abspath(p)
+            for p in glob.glob(os.path.join(case_dir, "**", "*.bin"), recursive=True)}
 
 
 def run_macro(case_dir):
@@ -806,20 +808,21 @@ analysis_cases = [
 def test_fem(case):
     analysis_name = case["analysis_name"]
     nproc = case["nproc"]
-    case_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), analysis_name)
-    )
+    tests_dir = os.path.dirname(__file__)
+    project_root = os.path.abspath(os.path.join(tests_dir, ".."))
+    case_dir = os.path.abspath(os.path.join(tests_dir, analysis_name))
 
     print(f"\n[TEST] Starting test for {analysis_name}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"[TEST] Temporary output directory: {tmpdir}")
-        existing_bins = list_bin_files(case_dir)
+        # Track any .bin file generated anywhere in the repo (some macros run from project root)
+        existing_bins = list_bin_files(project_root)
         try:
             run_macro(case_dir)
             run_solver(case_dir, analysis_name, nproc, tmpdir)
         finally:
-            generated_bins = list_bin_files(case_dir) - existing_bins
+            generated_bins = list_bin_files(project_root) - existing_bins
             if generated_bins:
                 print(f"[TEST] Cleaning up generated binaries: {generated_bins}")
             for bin_path in generated_bins:

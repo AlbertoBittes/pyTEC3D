@@ -83,12 +83,6 @@ std::shared_ptr<ApecMEquationSystems> APEC_M::get_active_equation_system() const
     return get_equation_system(session->get_active_mesh());
 }
 
-std::shared_ptr<AnalysisBase> APEC_M::get_analysis(const std::string &name) const
-{
-    (void)name;
-    return shared_analysis;
-}
-
 std::shared_ptr<AnalysisBase> APEC_M::get_analysis() const
 {
     return shared_analysis;
@@ -111,75 +105,6 @@ bool APEC_M::set_active_mesh(const std::string &name)
         return false;
 
     session->set_active_mesh(name);
-
-    return true;
-}
-
-bool APEC_M::load_model_data(const std::string &filepath)
-{
-    if (filepath.empty())
-        return false;
-
-    auto session = model_data_repository->get_object<Session>();
-    if (!session)
-        return false;
-
-    auto &session_ref = *session;
-    std::filesystem::path input_path(filepath);
-    std::filesystem::path base_dir = session_ref.get_working_directory();
-    std::error_code ec;
-    if (!base_dir.is_absolute())
-    {
-        auto absolute_base = std::filesystem::absolute(base_dir, ec);
-        if (!ec)
-            base_dir = absolute_base;
-    }
-
-    std::filesystem::path candidate_path = input_path.is_absolute()
-                                               ? input_path
-                                               : base_dir / input_path;
-
-    candidate_path = candidate_path.lexically_normal();
-
-    if (!std::filesystem::exists(candidate_path, ec) || ec)
-    {
-        auto message_path = candidate_path;
-        if (!message_path.is_absolute())
-        {
-            auto absolute_message = std::filesystem::absolute(message_path, ec);
-            if (!ec)
-                message_path = absolute_message;
-        }
-
-        libMesh::out << "Model data file must exist in the working directory: " << message_path.lexically_normal() << std::endl;
-        return false;
-    }
-
-    std::filesystem::path model_path;
-    auto absolute_path = std::filesystem::absolute(candidate_path, ec);
-    if (!ec)
-        model_path = absolute_path.lexically_normal();
-    else
-        model_path = candidate_path;
-
-    try
-    {
-        BinaryReader reader;
-        reader.read_binary_fem_data(model_path, model_data_repository);
-    }
-    catch (const std::exception &ex)
-    {
-        libMesh::out << "Failed to load model data '" << model_path << "': " << ex.what() << std::endl;
-        return false;
-    }
-    catch (...)
-    {
-        libMesh::out << "Failed to load model data '" << model_path << "' due to an unknown error." << std::endl;
-        return false;
-    }
-
-    session_ref.set_model_data_filepath(model_path);
-    session_ref.check_load_steps_folder();
 
     return true;
 }
@@ -601,7 +526,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
         {
             libMesh::out << "Failed to create analysis object for mesh." << std::endl;
         }
-        shared_analysis->set_parent_object(this);
     }
 
     for (auto &entry : mesh_repositories)

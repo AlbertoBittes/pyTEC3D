@@ -105,6 +105,7 @@ public:
     {
         B,
         H,
+        PSI,
         NUM_NODAL_SOLUTION_VECTORS
     };
 

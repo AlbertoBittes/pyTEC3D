@@ -68,6 +68,7 @@ void PLANE233Type::add_plane233_variables(const std::vector<unsigned int> &keyop
     if (keyopts[3] == 1) // PSI option
     {
         vars.insert(vars.end(), {GlobalVariableName::PSI});
+        vars.insert(vars.end(), {GlobalVariableName::PSIe});
     }
 }
 

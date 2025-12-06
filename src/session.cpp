@@ -295,6 +295,7 @@ void Session::update_dynamic_paths()
         mesh_root = effective_working_directory / mesh_token;
 
     paths_map["working_folderpath"] = effective_working_directory;
+    paths_map["time_steps_folderpath"] = effective_working_directory;
     paths_map["mesh_folderpath"] = mesh_root;
 
     if (!mesh_root.empty())
