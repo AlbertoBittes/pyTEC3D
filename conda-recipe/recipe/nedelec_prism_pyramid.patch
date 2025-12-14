@@ -1,0 +1,409 @@
+diff --git a/src/fe/fe_interface.C b/src/fe/fe_interface.C
+index 1234567..89abcde 100644
+--- a/src/fe/fe_interface.C
++++ b/src/fe/fe_interface.C
+@@ -2536,6 +2536,10 @@ unsigned int FEInterface::max_order(const FEType & fe_t,
+         case QUAD8:
+         case QUAD9:
+         case TET10:
++        case PRISM15:
++        case PRISM18:
++        case PYRAMID13:
++        case PYRAMID14:
+         case HEX20:
+         case HEX27:
+           return 1;
+
+
+diff --git a/src/fe/fe_nedelec_one.C b/src/fe/fe_nedelec_one.C
+index 2345678..9abcdef 100644
+--- a/src/fe/fe_nedelec_one.C
++++ b/src/fe/fe_nedelec_one.C
+@@ -XX,6 +XX,30 @@ unsigned int FE<3,NEDELEC_ONE>::n_dofs(const ElemType t, const Order o)
+   libmesh_assert_equal_to (o, FIRST);
+
+   switch (t)
+   {
+     case TET4:
+     case TET10:
+       return 6;
+
+     case HEX8:
+     case HEX20:
+     case HEX27:
+       return 12;
+
++    // 3D wedge/prism: edge-based dofs (9 edges)
++    // NOTE: We intentionally do not support PRISM6 per user request.
++    case PRISM15:
++    case PRISM18:
++      return 9;
++
++    // 3D pyramid: edge-based dofs (8 edges)
++    // NOTE: We intentionally do not support PYRAMID5 per user request.
++    case PYRAMID13:
++    case PYRAMID14:
++      return 8;
++
+     default:
+       libmesh_error_msg("ERROR: Unsupported 3D element type!: " << t);
+   }
+ }
+
+@@ -YY,6 +YY,18 @@ void nedelec_one_nodal_soln(const Elem * elem,
+   switch (elem->type())
+   {
+     case TET4:
+     case TET10:
+     case HEX8:
+     case HEX20:
+     case HEX27:
++    case PRISM15:
++    case PRISM18:
++    case PYRAMID13:
++    case PYRAMID14:
+       break;
+     default:
+       libmesh_error_msg("ERROR: Unsupported 3D element type!: " << elem->type());
+   }
+
+
+diff --git a/src/fe/fe_nedelec_one_shape_3D.C b/src/fe/fe_nedelec_one_shape_3D.C
+index 3456789..abcdef0 100644
+--- a/src/fe/fe_nedelec_one_shape_3D.C
++++ b/src/fe/fe_nedelec_one_shape_3D.C
+@@ -133,6 +133,10 @@ RealGradient FE<3,NEDELEC_ONE>::shape(const Elem * elem,
+     switch (elem->type())
+     {
+       case HEX20:
+       case HEX27:
+       {
+         ...
+       }
+
++      case PRISM15:
++      case PRISM18:
++      {
++        libmesh_assert_less(i, 9);
++
++        const Real xi   = p(0);
++        const Real eta  = p(1);
++        const Real zeta = p(2);
++
++        // Prism master coords: (xi,eta) on reference triangle, zeta in [-1,1]
++        libmesh_assert_greater_equal (xi,  -10.*TOLERANCE);
++        libmesh_assert_greater_equal (eta, -10.*TOLERANCE);
++        libmesh_assert_less_equal    (xi+eta, 1.0+10.*TOLERANCE);
++        libmesh_assert_less_equal    (std::fabs(zeta), 1.0+10.*TOLERANCE);
++
++        const Real L0 = 1.0 - xi - eta;
++        const Real L1 = xi;
++        const Real L2 = eta;
++
++        // Triangle Whitney 1-forms (in (xi,eta) plane)
++        // Edge (0,1): w01 = (1-eta, xi, 0)
++        // Edge (1,2): w12 = (-eta,  xi, 0)
++        // Edge (0,2): w02 = ( eta, 1-xi,0)
++        const Real fbot = 0.5*(1.0 - zeta);
++        const Real ftop = 0.5*(1.0 + zeta);
++
++        auto orient = [&](unsigned int a, unsigned int b, const RealGradient & v)
++        {
++          return (elem->point(a) > elem->point(b)) ? -v : v;
++        };
++
++        switch (i)
++        {
++          // Bottom triangular face edges (zeta=-1): (0,1), (1,2), (0,2)
++          case 0: return orient(0,1, RealGradient(fbot*(1.0-eta), fbot*xi,        0.0));
++          case 1: return orient(1,2, RealGradient(fbot*(-eta),     fbot*xi,        0.0));
++          case 2: return orient(0,2, RealGradient(fbot*( eta),     fbot*(1.0-xi),  0.0));
++
++          // Vertical edges: (0,3), (1,4), (2,5)
++          // Scale so that ∫_{zeta=-1}^{1} (0.5*Li) dzeta = 1 on the associated edge
++          case 3: return orient(0,3, RealGradient(0.0, 0.0, 0.5*L0));
++          case 4: return orient(1,4, RealGradient(0.0, 0.0, 0.5*L1));
++          case 5: return orient(2,5, RealGradient(0.0, 0.0, 0.5*L2));
++
++          // Top triangular face edges (zeta=+1): (3,4), (4,5), (3,5)
++          case 6: return orient(3,4, RealGradient(ftop*(1.0-eta), ftop*xi,        0.0));
++          case 7: return orient(4,5, RealGradient(ftop*(-eta),     ftop*xi,        0.0));
++          case 8: return orient(3,5, RealGradient(ftop*( eta),     ftop*(1.0-xi),  0.0));
++          default: libmesh_error_msg("Invalid i = " << i);
++        }
++      }
++
++      case PYRAMID13:
++      case PYRAMID14:
++      {
++        libmesh_assert_less(i, 8);
++
++        const Real xi   = p(0);
++        const Real eta  = p(1);
++        const Real zeta = p(2);
++
++        // Pyramid master coords (libMesh convention): base at zeta=-1, apex at zeta=+1.
++        libmesh_assert_less_equal(std::fabs(zeta), 1.0+10.*TOLERANCE);
++
++        // Collapsed-coordinate pullback from HEX reference:
++        // a = (1-zeta)/2, r = xi/a, s = eta/a.
++        const Real a = 0.5*(1.0 - zeta);
++        if (a <= 10.*TOLERANCE)
++          return RealGradient(); // avoid division by 0 extremely near apex
++
++        const Real inv_a = 1.0 / a;
++        const Real r = xi  * inv_a;
++        const Real s = eta * inv_a;
++
++        // Cube-style lowest-order Nedelec on (r,s,zeta) with edge integrals normalized to 1
++        Real vr = 0.0, vs = 0.0, vw = 0.0;
++        switch (i)
++        {
++          // Base edges: (0,1),(1,2),(2,3),(0,3)
++          case 0: vr = 0.125*(1.0 - s)*(1.0 - zeta); break;
++          case 1: vs = 0.125*(1.0 + r)*(1.0 - zeta); break;
++          case 2: vr =-0.125*(1.0 + s)*(1.0 - zeta); break;
++          case 3: vs = 0.125*(1.0 - r)*(1.0 - zeta); break;
++
++          // Side edges to apex: (0,4),(1,4),(2,4),(3,4)
++          case 4: vw = 0.125*(1.0 - r)*(1.0 - s); break;
++          case 5: vw = 0.125*(1.0 + r)*(1.0 - s); break;
++          case 6: vw = 0.125*(1.0 + r)*(1.0 + s); break;
++          case 7: vw = 0.125*(1.0 - r)*(1.0 + s); break;
++          default: libmesh_error_msg("Invalid i = " << i);
++        }
++
++        // Covariant Piola for the collapse map (r,s,zeta)->(xi,eta,zeta):
++        // v = J^{-T} v_hat, where J = d(xi,eta,zeta)/d(r,s,zeta)
++        const Real vx = inv_a * vr;
++        const Real vy = inv_a * vs;
++        const Real vz = 0.5*inv_a*(r*vr + s*vs) + vw;
++
++        auto orient = [&](unsigned int a0, unsigned int a1, const RealGradient & v)
++        {
++          return (elem->point(a0) > elem->point(a1)) ? -v : v;
++        };
++
++        switch (i)
++        {
++          case 0: return orient(0,1, RealGradient(vx,vy,vz));
++          case 1: return orient(1,2, RealGradient(vx,vy,vz));
++          case 2: return orient(2,3, RealGradient(vx,vy,vz));
++          case 3: return orient(0,3, RealGradient(vx,vy,vz));
++          case 4: return orient(0,4, RealGradient(vx,vy,vz));
++          case 5: return orient(1,4, RealGradient(vx,vy,vz));
++          case 6: return orient(2,4, RealGradient(vx,vy,vz));
++          case 7: return orient(3,4, RealGradient(vx,vy,vz));
++          default: libmesh_error_msg("Invalid i = " << i);
++        }
++      }
+
+       default:
+         libmesh_error_msg("ERROR: Unsupported 3D element type!: " << elem->type());
+     } // switch elem->type()
+   }   // case FIRST
+
+
+@@ -453,6 +457,10 @@ RealGradient FE<3,NEDELEC_ONE>::shape_deriv(const Elem * elem,
+     switch (elem->type())
+     {
+       case HEX20:
+       case HEX27:
+       {
+         ...
+       }
+
++      case PRISM15:
++      case PRISM18:
++      {
++        libmesh_assert_less(i, 9);
++
++        const Real xi   = p(0);
++        const Real eta  = p(1);
++        const Real zeta = p(2);
++
++        const Real L0 = 1.0 - xi - eta;
++        const Real L1 = xi;
++        const Real L2 = eta;
++
++        const Real fbot = 0.5*(1.0 - zeta);
++        const Real ftop = 0.5*(1.0 + zeta);
++        const Real dfbot_dz = -0.5;
++        const Real dftop_dz =  0.5;
++
++        auto orient = [&](unsigned int a, unsigned int b, const RealGradient & v)
++        {
++          return (elem->point(a) > elem->point(b)) ? -v : v;
++        };
++
++        // Build dv/d(xj) explicitly for each i,j
++        RealGradient dv;
++        switch (i)
++        {
++          case 0: // fbot*(1-eta, xi, 0)
++            if (j==0) dv = RealGradient(0.0, fbot, 0.0);
++            if (j==1) dv = RealGradient(-fbot, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dfbot_dz*(1.0-eta), dfbot_dz*xi, 0.0);
++            return orient(0,1,dv);
++          case 1: // fbot*(-eta, xi, 0)
++            if (j==0) dv = RealGradient(0.0, fbot, 0.0);
++            if (j==1) dv = RealGradient(-fbot, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dfbot_dz*(-eta), dfbot_dz*xi, 0.0);
++            return orient(1,2,dv);
++          case 2: // fbot*(eta, 1-xi, 0)
++            if (j==0) dv = RealGradient(0.0, -fbot, 0.0);
++            if (j==1) dv = RealGradient(fbot, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dfbot_dz*(eta), dfbot_dz*(1.0-xi), 0.0);
++            return orient(0,2,dv);
++          case 3: // (0,0,0.5*L0)
++            if (j==0) dv = RealGradient(0.0, 0.0, -0.5);
++            if (j==1) dv = RealGradient(0.0, 0.0, -0.5);
++            if (j==2) dv = RealGradient();
++            return orient(0,3,dv);
++          case 4: // (0,0,0.5*L1)
++            if (j==0) dv = RealGradient(0.0, 0.0, 0.5);
++            if (j==1) dv = RealGradient();
++            if (j==2) dv = RealGradient();
++            return orient(1,4,dv);
++          case 5: // (0,0,0.5*L2)
++            if (j==0) dv = RealGradient();
++            if (j==1) dv = RealGradient(0.0, 0.0, 0.5);
++            if (j==2) dv = RealGradient();
++            return orient(2,5,dv);
++          case 6: // ftop*(1-eta, xi, 0)
++            if (j==0) dv = RealGradient(0.0, ftop, 0.0);
++            if (j==1) dv = RealGradient(-ftop, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dftop_dz*(1.0-eta), dftop_dz*xi, 0.0);
++            return orient(3,4,dv);
++          case 7: // ftop*(-eta, xi, 0)
++            if (j==0) dv = RealGradient(0.0, ftop, 0.0);
++            if (j==1) dv = RealGradient(-ftop, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dftop_dz*(-eta), dftop_dz*xi, 0.0);
++            return orient(4,5,dv);
++          case 8: // ftop*(eta, 1-xi, 0)
++            if (j==0) dv = RealGradient(0.0, -ftop, 0.0);
++            if (j==1) dv = RealGradient(ftop, 0.0, 0.0);
++            if (j==2) dv = RealGradient(dftop_dz*(eta), dftop_dz*(1.0-xi), 0.0);
++            return orient(3,5,dv);
++          default:
++            libmesh_error_msg("Invalid i = " << i);
++        }
++      }
++
++      case PYRAMID13:
++      case PYRAMID14:
++      {
++        libmesh_assert_less(i, 8);
++
++        const Real xi   = p(0);
++        const Real eta  = p(1);
++        const Real zeta = p(2);
++
++        const Real a = 0.5*(1.0 - zeta);
++        if (a <= 10.*TOLERANCE)
++          return RealGradient();
++
++        const Real inv_a  = 1.0/a;
++        const Real inv_a2 = inv_a*inv_a;
++        const Real r = xi  * inv_a;
++        const Real s = eta * inv_a;
++
++        // dr/d(xi,eta,zeta), ds/d(xi,eta,zeta)
++        const Real dr = (j==0) ? inv_a :
++                        (j==1) ? 0.0 :
++                                 0.5*xi*inv_a2;
++        const Real ds = (j==0) ? 0.0 :
++                        (j==1) ? inv_a :
++                                 0.5*eta*inv_a2;
++        const Real dz = (j==2) ? 1.0 : 0.0;
++
++        const Real dinv_a = (j==2) ? 0.5*inv_a2 : 0.0;
++
++        // v_cube components and their partials wrt (r,s,zeta)
++        Real vr=0.0, vs=0.0, vw=0.0;
++        Real dvr_dr=0.0, dvr_ds=0.0, dvr_dz=0.0;
++        Real dvs_dr=0.0, dvs_ds=0.0, dvs_dz=0.0;
++        Real dvw_dr=0.0, dvw_ds=0.0, dvw_dz=0.0;
++
++        switch (i)
++        {
++          case 0:
++            vr = 0.125*(1.0 - s)*(1.0 - zeta);
++            dvr_ds = -0.125*(1.0 - zeta);
++            dvr_dz = -0.125*(1.0 - s);
++            break;
++          case 1:
++            vs = 0.125*(1.0 + r)*(1.0 - zeta);
++            dvs_dr =  0.125*(1.0 - zeta);
++            dvs_dz = -0.125*(1.0 + r);
++            break;
++          case 2:
++            vr =-0.125*(1.0 + s)*(1.0 - zeta);
++            dvr_ds = -0.125*(1.0 - zeta);
++            dvr_dz =  0.125*(1.0 + s);
++            break;
++          case 3:
++            vs = 0.125*(1.0 - r)*(1.0 - zeta);
++            dvs_dr = -0.125*(1.0 - zeta);
++            dvs_dz = -0.125*(1.0 - r);
++            break;
++          case 4:
++            vw = 0.125*(1.0 - r)*(1.0 - s);
++            dvw_dr = -0.125*(1.0 - s);
++            dvw_ds = -0.125*(1.0 - r);
++            break;
++          case 5:
++            vw = 0.125*(1.0 + r)*(1.0 - s);
++            dvw_dr =  0.125*(1.0 - s);
++            dvw_ds = -0.125*(1.0 + r);
++            break;
++          case 6:
++            vw = 0.125*(1.0 + r)*(1.0 + s);
++            dvw_dr =  0.125*(1.0 + s);
++            dvw_ds =  0.125*(1.0 + r);
++            break;
++          case 7:
++            vw = 0.125*(1.0 - r)*(1.0 + s);
++            dvw_dr = -0.125*(1.0 + s);
++            dvw_ds =  0.125*(1.0 - r);
++            break;
++          default:
++            libmesh_error_msg("Invalid i = " << i);
++        }
++
++        // Chain rule: dv_cube/dxj
++        const Real dvr = dvr_dr*dr + dvr_ds*ds + dvr_dz*dz;
++        const Real dvs = dvs_dr*dr + dvs_ds*ds + dvs_dz*dz;
++        const Real dvw = dvw_dr*dr + dvw_ds*ds + dvw_dz*dz;
++
++        // v_pyr = (inv_a*vr, inv_a*vs, 0.5*inv_a*(r*vr+s*vs) + vw)
++        const Real dvx = dinv_a*vr + inv_a*dvr;
++        const Real dvy = dinv_a*vs + inv_a*dvs;
++        const Real dvz = 0.5*dinv_a*(r*vr + s*vs)
++                       + 0.5*inv_a*(dr*vr + r*dvr + ds*vs + s*dvs)
++                       + dvw;
++
++        auto orient = [&](unsigned int a0, unsigned int a1, const RealGradient & v)
++        {
++          return (elem->point(a0) > elem->point(a1)) ? -v : v;
++        };
++
++        const RealGradient dv_pyr(dvx,dvy,dvz);
++        switch (i)
++        {
++          case 0: return orient(0,1, dv_pyr);
++          case 1: return orient(1,2, dv_pyr);
++          case 2: return orient(2,3, dv_pyr);
++          case 3: return orient(0,3, dv_pyr);
++          case 4: return orient(0,4, dv_pyr);
++          case 5: return orient(1,4, dv_pyr);
++          case 6: return orient(2,4, dv_pyr);
++          case 7: return orient(3,4, dv_pyr);
++          default: libmesh_error_msg("Invalid i = " << i);
++        }
++      }
+
+       default:
+         libmesh_error_msg("ERROR: Unsupported 3D element type!: " << elem->type());
+     } // switch elem->type()
+   }   // case FIRST
