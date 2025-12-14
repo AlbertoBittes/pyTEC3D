@@ -1,0 +1,276 @@
+/clear
+*SET,file_name,'3D_loop_cond_base'
+/filname,%file_name%
+/prep7
+
+size = 0.25
+th=0.01
+L = 0.05
+eps=1e-4
+
+et,21,solid97,0 ! no volt
+
+et,23,solid97,0
+
+et,24,solid97,1
+
+! air/non conducting
+mp,murx,21,1 
+
+mp,murx,23,1
+
+mp,murx,24,1 
+mp,rsvx,24,1e-9
+
+! BLOCK,L-th,L,0,L,-th/2,th/2
+! BLOCK,0,L,L-th,L,-th/2,th/2
+BLOCK,0,size,0,size,-size/2,size/2
+! VSEL,ALL
+! VOVLAP,ALL
+! BLOCK,-csize,csize,-csize,csize,-size,size,
+! BLOCK,-size,size,-size,-csize,-size,size,
+! BLOCK,-size,size,csize,size,-size,size,
+! BLOCK,-size,-csize,-csize,csize,-size,size,
+! BLOCK,csize,size,-csize,csize,-size,size,
+
+
+ALLS
+mshape,0
+MSHKEY,1
+ESIZE,0.01
+TYPE,21
+MAT,21
+VMESH,ALL
+
+esel,s,cent,x,L-th,L
+esel,r,cent,y,0,L-th
+esel,r,cent,z,-2*th-th/2,-2*th+th/2
+emodif,all,mat,23
+emodif,all,type,23
+cm,coil_nocond_1,elem
+
+esel,s,cent,x,0,L-th
+esel,r,cent,y,L-th,L
+esel,r,cent,z,-2*th-th/2,-2*th+th/2
+emodif,all,mat,23
+emodif,all,type,23
+cm,coil_nocond_2,elem
+
+esel,s,cent,x,L-th,L
+esel,r,cent,y,L-th,L
+esel,r,cent,z,-2*th-th/2,-2*th+th/2
+emodif,all,mat,23
+emodif,all,type,23
+cm,coil_nocond_3,elem
+
+esel,s,cent,x,L-th,L
+esel,r,cent,y,0,L-th
+esel,r,cent,z,2*th-th/2,2*th+th/2
+emodif,all,mat,24
+emodif,all,type,24
+cm,coil_cond_1,elem
+
+esel,s,cent,x,0,L-th
+esel,r,cent,y,L-th,L
+esel,r,cent,z,2*th-th/2,2*th+th/2
+emodif,all,mat,24
+emodif,all,type,24
+cm,coil_cond_2,elem
+
+esel,s,cent,x,L-th,L
+esel,r,cent,y,L-th,L
+esel,r,cent,z,2*th-th/2,2*th+th/2
+emodif,all,mat,24
+emodif,all,type,24
+cm,coil_cond_3,elem
+
+nummrg,node,1e-5
+
+ALLS
+alls
+
+NSEL,S,loc,z,size/2
+cm,z_bounds_1,node
+NSEL,s,loc,z,-size/2
+cm,z_bounds_2,node
+
+alls
+NSEL,S,loc,x,0
+cm,x_bounds_1,node
+NSEL,s,loc,x,size
+cm,x_bounds_2,node
+
+alls
+NSEL,S,loc,y,0
+cm,y_bounds_1,node
+NSEL,s,loc,y,size
+cm,y_bounds_2,node
+
+alls
+
+esel,s,mat,,24
+nsle,s,all
+nsel,r,loc,x,-1e-4,1e-4
+
+cm,volt_0_1,node
+
+alls
+esel,s,mat,,24
+nsle,s,all
+nsel,r,loc,y,-1e-4,1e-4
+cm,volt_0_2,node
+
+alls
+cmsel,s,volt_0_1
+cmsel,a,volt_0_2
+d,all,volt,0
+alls
+
+
+
+
+alls
+cmsel,s,z_bounds_1
+cmsel,a,z_bounds_2
+cmsel,a,y_bounds_2
+cmsel,a,x_bounds_2
+d,all,ax,0
+d,all,ay,0
+d,all,az,0
+
+! /output,'%file_name%_0',dlist
+! dlist
+! /out
+
+alls
+cmsel,s,x_bounds_1
+d,all,ay,0
+d,all,az,0
+
+alls
+cmsel,s,y_bounds_1
+d,all,ax,0
+d,all,az,0
+
+b=2**0.5/2
+
+!nsel,s,node,,1
+!d,all,volt,0
+
+SAVE
+
+/solu
+antype,trans ! new analysis
+kbc,0
+outres,all,all
+pivcheck,on,every
+tintp,,,,1
+*do,i,1,2
+   *if,i,eq,1,then
+        time,i*0.0001
+        TIMINT,OFF
+        autots,off
+        nsub,1
+!     *elseif,i,eq,6,then
+!         time,1e-3
+!         timint,on
+!         kbc,1
+!         tintp,1
+!         autots,off
+!         nsub,3
+!     *elseif,i,eq,7,then
+!         time,2e-3
+!         timint,on
+!         kbc,0
+!         tintp,0.8
+!         autots,off
+!         nsub,2
+!     *elseif,i,eq,8,then
+!         time,3e-3
+!         timint,off
+!         kbc,1
+!         tintp,0.8
+!         autots,off
+!         nsub,2
+!     *elseif,i,eq,9,then
+!         time,4e-3
+!         timint,on
+!         kbc,0
+!         tintp,0.9
+!         autots,off
+!         nsub,2
+    *else
+        time,i*0.0001
+        timint,on
+        autots,off
+        nsub,4 
+    *endif
+    alls
+    ! bfedele,all
+    cmsel,s,coil_nocond_1
+    bfe,all,js,1,,1/i
+    alls
+    cmsel,s,coil_nocond_2
+    bfe,all,js,1,-1/i
+    alls
+    cmsel,s,coil_nocond_3
+    bfe,all,js,1,-b/i,b/i
+    alls
+!     f,1716,csgx,100
+!     f,5587,csgy,-100
+!    alls
+!    /output,'%file_name%_%i%',bfelist
+!    bfelist
+!    /out
+!    /output,'%file_name%_%i%',dlist
+!    dlist
+!    /out
+!    /output,'%file_name%_%i%',rlist
+!    rlist
+!    /out
+!    /output,'%file_name%_%i%',mplist
+!    mplist
+!    /out
+!    /output,'%file_name%_%i%',etlist
+!    etlist
+!    /out
+!    /output,'%file_name%_%i%',cplist
+!    cplist
+!    /out
+! autots,on
+! nsub,8,20,6
+! wrfull, 1
+! ematwrite,yes
+!   timint,on
+    solve
+!
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,STIFF
+    ! *PRINT,MatKD,./matrix/Kdense_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,DAMP
+    ! *PRINT,MatKD,./matrix/Cdense_%i%.matrix
+    !*SMAT,MaCD,D,IMPORT,FULL,single_element_cond.full,MASS
+    !*PRINT,MatCD,./matrix/Cdense.matrix
+    ! *VEC,VecRHS,D,IMPORT,FULL,3D_loop_cond.full,RHS
+    ! *PRINT,VecRHS,./matrix/RHS_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,EMAT,3D_loop_cond.emat,STIFF,8780
+    ! *PRINT,MatKD,./matrix/Kdense_elem_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,EMAT,3D_loop_cond.emat,DAMP,8780
+    ! *PRINT,MatKD,./matrix/Cdense_elem_%i%.matrix
+    !*SMAT,MaCD,D,IMPORT,EMAT,single_element_cond.emat,MASS,1
+    !*PRINT,MatCD,./matrix/Cdense_elem.matrix
+    ! *VEC,VecRHS,D,IMPORT,EMAT,3D_loop_cond.emat,RHS,8780
+    ! *PRINT,VecRHS,./matrix/RHS_elem_%i%.matrix
+    ! *DMAT,Nod2Solv,D,IMPORT,FULL,single_element_cond.full,NOD2SOLV
+    ! *PRINT,Nod2Solv,./matrix/Nod2Solv.matrix
+*enddo
+finish
+! SECOND TIME STEP
+! TIME,1
+! timint,oFF
+! autots,on
+! nsub,6,20,4
+
+! alls
+! solve
+
+! FINISH

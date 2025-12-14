@@ -1,0 +1,338 @@
+/clear
+*SET,file_name,'ITER_coil_inf_3D'
+/filname,%file_name%
+/prep7
+
+blc4,0,-2,4,4 
+aplo
+pcirc,1
+pcirc,,2
+blc4,0.2,0.2,0.1,0.1
+blc4,0.2,-0.3,0.1,0.1   
+aovlap,all
+
+!adele,5,6,1,1
+adele,6,7,1,1 
+adele,9,,,1 
+vrotat,all,,,,,,0,1,90,1
+
+et,2,plane182
+et,21,solid97,0! ,,1! no volt
+et,23,solid97,0! ,,1
+et,24,solid97,1! ,,1
+et,111,infin111,1,0
+! air/non conducting
+mp,murx,21,1.1
+mp,mury,21,1.1
+mp,murz,21,1.1
+! mp,rsvx,21,1e-8
+! conducting bar 
+mp,murx,24,1
+mp,rsvx,24,5e-9
+
+mp,murx,23,1 
+
+
+!VSEL,S,VOLU,,4
+!mshape,1,3d
+!MSHKEY,0
+!ESIZE,0.15
+!TYPE,21
+!MAT,21
+!VMESH,ALL
+!
+!VSEL,S,VOLU,,1
+!mshape,0
+!MSHKEY,1
+!ESIZE,0.1
+!TYPE,23
+!MAT,23
+!VMESH,ALL
+!
+!VSEL,S,VOLU,,2
+!mshape,0
+!MSHKEY,1
+!ESIZE,0.1
+!TYPE,24
+!MAT,24
+!
+!accat,15,16
+!accat,17,18
+!VSEL,S,VOLU,,3
+!mshape,0
+!MSHKEY,1
+!ESIZE,0.5
+!TYPE,111
+!MAT,111
+!/eof
+ASEL,S,area,,4
+mshape,0
+MSHKEY,1
+ESIZE,0.1
+TYPE,2
+MAT,23
+AMESH,ALL
+
+ASEL,S,area,,5
+mshape,0
+MSHKEY,1
+ESIZE,0.1
+TYPE,2
+MAT,24
+AMESH,ALL
+
+ASEL,S,area,,10
+mshape,1
+MSHKEY,0
+ESIZE,0.25
+TYPE,2
+MAT,21
+AMESH,ALL
+
+lccat,5,8
+lccat,22,23
+ASEL,S,area,,8
+mshape,0
+MSHKEY,1
+ESIZE,1
+TYPE,2
+MAT,21
+AMESH,ALL
+
+alls
+eextrude,axis,6,,,90
+
+csys,2
+
+esel,s,mat,,21
+emodif,all,type,21
+esel,s,mat,,24
+emodif,all,type,24
+esel,s,mat,,23
+emodif,all,type,23
+esel,s,cent,x,1,10
+emodif,all,type,111
+
+alls
+esys,0
+emodif,all,esys,0
+
+alls
+etdele,2
+!VSEL,S,VOLU,,1
+!mshape,0
+!MSHKEY,1
+!ESIZE,0.1
+!TYPE,23
+!MAT,23
+!VMESH,ALL
+!
+!VSEL,S,VOLU,,2
+!mshape,0
+!MSHKEY,1
+!ESIZE,0.1
+!TYPE,24
+!MAT,24
+!VMESH,ALL
+
+alls
+csys,2
+NSEL,S,loc,x,1.999,2.001
+cm,infinity_boundary,node
+csys,0
+
+alls
+csys,2
+NSEL,S,loc,x,0.999,1.001
+cm,infinity_boundary_inner,node
+csys,0
+! VSEL,S,VOLU,,3
+! mshape,1,3d
+! MSHKEY,0
+! ESIZE,0.5
+! TYPE,111
+! MAT,21
+! VMESH,ALL
+
+ALLS
+alls
+nrotat,all
+csys,0
+
+alls
+NSEL,S,loc,x,0
+cm,x_bound,node
+D,all,az,0
+d,all,ay,0
+
+alls
+NSEL,S,loc,z,0
+cm,z_bound,node
+D,all,ax,0
+d,all,ay,0
+
+alls
+NSEL,S,loc,x,0
+NSEL,r,loc,z,0
+cm,axis_nodes,node
+DDELE,ALL
+d,all,ax,0
+d,all,az,0
+d,all,ay,0
+
+alls
+esel,s,mat,,24
+nsle,s
+NSEL,r,loc,x,0
+cm,rod_1,node
+d,all,volt,0
+
+alls
+esel,s,mat,,24
+nsle,s
+NSEL,r,loc,z,0
+cm,rod_2,node
+d,all,volt,0
+
+alls
+cmsel,s,infinity_boundary
+sf,all,inf
+csys,0
+alls
+
+SAVE
+
+/solu
+antype,trans ! new analysis
+kbc,0
+outres,all,all
+pivcheck,on,every
+tintp,,,,0.75
+
+esel,s,mat,,23
+*GET,n_coil_elems,ELEM,0,COUNT,
+*DIM,coil_elems,array,n_coil_elems
+*VGET,coil_elems,ELEM,,elist
+alls
+
+cmsel,s,infinity_boundary
+ddele,all
+alls
+
+*do,i,1,9
+   *if,i,eq,1,then
+        time,i*0.0001
+        TIMINT,OFF
+        autots,off
+        nsub,1
+    *elseif,i,eq,6,then
+        time,1e-3
+        timint,on
+        kbc,1
+        tintp,1
+        autots,off
+        nsub,3
+    *elseif,i,eq,7,then
+        time,2e-3
+        timint,on
+        kbc,0
+        tintp,0.8
+        autots,off
+        nsub,2
+    *elseif,i,eq,8,then
+        time,3e-3
+        timint,off
+        kbc,1
+        tintp,0.8
+        autots,off
+        nsub,2
+    *elseif,i,eq,9,then
+        time,4e-3
+        timint,on
+        kbc,0
+        tintp,0.9
+        autots,off
+        nsub,2
+    *else
+        time,i*0.0001
+        timint,on
+        autots,off
+        nsub,4 
+    *endif
+    alls
+    ! bfedele,all
+    
+    *do,j,1,n_coil_elems
+        csys,0
+        el_num = coil_elems(j)
+        esel,s,elem,,el_num
+        *get,x_coord,elem,el_num,cent,x
+        *get,z_coord,elem,el_num,cent,z
+        module_square_x=x_coord*x_coord
+        module_square_z=z_coord*z_coord
+        module_square=module_square_x+module_square_z
+        module=SQRT(module_square)
+        cos_theta=z_coord/module
+        sin_theta=x_coord/module
+        fact=i**6
+        bfe,all,js,1,cos_theta*fact,0,-sin_theta*fact
+        alls
+    *enddo
+    /output,'%file_name%_%i%',bfelist
+    bfelist
+    /out
+    /output,'%file_name%_%i%',dlist
+    dlist
+    /out
+    /output,'%file_name%_%i%',rlist
+    rlist
+    /out
+    /output,'%file_name%_%i%',mplist
+    mplist
+    /out
+    /output,'%file_name%_%i%',etlist
+    etlist
+    /out
+    /output,'%file_name%_%i%',cplist
+    cplist
+    /out
+    ! autots,on
+    ! nsub,8,20,6
+    ! wrfull, 1
+    ! ematwrite,yes
+    !   timint,on
+    allsel,all
+    solve
+!
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,STIFF
+    ! *PRINT,MatKD,./matrix/Kdense_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,DAMP
+    ! *PRINT,MatKD,./matrix/Cdense_%i%.matrix
+    !*SMAT,MaCD,D,IMPORT,FULL,single_element_cond.full,MASS
+    !*PRINT,MatCD,./matrix/Cdense.matrix
+    ! *VEC,VecRHS,D,IMPORT,FULL,3D_loop_cond.full,RHS
+    ! *PRINT,VecRHS,./matrix/RHS_%i%.matrix
+!    *if,i,eq,1,then
+!     *DMAT,MatKD,D,IMPORT,EMAT,%file_name%.emat,STIFF,715
+!     *PRINT,MatKD,./matrix/Kdense_elem_%i%.matrix
+!    !  *DMAT,MatKD,D,IMPORT,EMAT,%file_name%.emat,DAMP,715
+!    !  *PRINT,MatKD,./matrix/Cdense_elem_%i%.matrix
+!    !  *SMAT,MaCD,D,IMPORT,EMAT,single_element_cond.emat,MASS,1
+!    !  *PRINT,MatCD,./matrix/Cdense_elem.matrix
+!     *VEC,VecRHS,D,IMPORT,EMAT,%file_name%.emat,RHS,715
+!     *PRINT,VecRHS,./matrix/RHS_elem_%i%.matrix
+    !  *DMAT,Nod2Solv,D,IMPORT,FULL,single_element_cond.full,NOD2SOLV
+    !  *PRINT,Nod2Solv,./matrix/Nod2Solv.matrix
+    *endif
+*enddo
+finish
+! SECOND TIME STEP
+! TIME,1
+! timint,oFF
+! autots,on
+! nsub,6,20,4
+
+! alls
+! solve
+
+! FINISH

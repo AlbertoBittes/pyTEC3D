@@ -1,0 +1,191 @@
+/clear
+*SET,file_name,'ITER_coil_inf_2D'
+/filname,%file_name%
+/prep7
+
+blc4,0,-1,2,2   
+aplo
+pcirc,,1
+blc4,0.2,0.2,0.1,0.1
+blc4,0.2,-0.3,0.1,0.1   
+aovlap,all 
+lccat,19,20
+
+et,21,plane13,0,1,1! no volt
+et,24,plane13,0,1,1
+et,23,plane13,0,1,1
+et,110,infin110,,,1
+! air/non conducting
+mp,murx,21,1 
+! mp,rsvx,21,1e-8
+! conducting bar 
+mp,murx,24,1
+mp,rsvx,24,1e-9
+
+mp,murx,23,1 
+
+
+
+ASEL,S,AREA,,5,6
+ADELE,ALL,,,1
+!LDELE,ALL,,,1
+!KDELE,ALL,,,1
+
+!! comment this to remove inf boundary
+! asel,u,area,,all
+! pcirc,1.1
+! blc4,0,-1.11,2.21,2.21
+! alls
+! aovlap,all
+! ASEL,S,AREA,,5,6
+! ADELE,ALL,,,1
+! lccat,1,5
+! lccat,19,20
+
+ASEL,S,AREA,,7
+mshape,1
+MSHKEY,0
+ESIZE,0.1
+TYPE,21
+MAT,21
+AMESH,ALL
+
+ASEL,S,AREA,,3
+mshape,0
+MSHKEY,1
+ESIZE,0.1
+TYPE,23
+MAT,23
+AMESH,ALL
+
+ASEL,S,AREA,,4
+mshape,0
+MSHKEY,1
+ESIZE,0.1
+TYPE,24
+MAT,24
+AMESH,ALL
+
+!! comment this to remove inf boundary
+! ASEL,S,AREA,,8
+! mshape,0
+! MSHKEY,1
+! ESIZE,0.1
+! TYPE,110
+! MAT,21
+! AMESH,ALL
+! ALLS
+! alls
+
+NSEL,S,loc,x,-0.001,0.001
+D,all,az,0
+
+alls
+csys,2
+
+! comment this to remove infinite boundary
+! NSEL,S,loc,x,1.1
+! cm,infinity,node
+! sf,all,inf
+
+NSEL,S,loc,x,1
+cm,base_inf_nodes,node
+d,all,az,0
+
+csys,0
+alls
+
+SAVE
+
+/solu
+antype,trans ! new analysis
+kbc,0
+outres,all,all
+pivcheck,on,every
+tintp,,,,0.5
+*do,i,1,6
+   *if,i,eq,1,then
+      TIMINT,OFF
+      time, i*0.0001
+      autots,off
+      nsub,1
+    *elseif,i,eq,6,then
+        time,i*0.001
+        timint,off
+        autots,off
+        kbc,1
+        nsub,1
+    *elseif,i,eq,5,then
+        time,i*0.0001
+        timint,on
+        autots,off
+        kbc,1
+        tintp,,,,0.85
+        nsub,3
+    *else
+        time,i*0.0001
+        timint,on
+        autots,off
+        nsub,4 
+    *endif
+    alls
+    ! bfedele,all
+    esel,s,mat,,23
+    bfe,all,js,1,,,1/i
+    alls
+
+!    /output,'%file_name%_%i%',bfelist
+!    bfelist
+!    /out
+!    /output,'%file_name%_%i%',dlist
+!    dlist
+!    /out
+!    /output,'%file_name%_%i%',rlist
+!    rlist
+!    /out
+!    /output,'%file_name%_%i%',mplist
+!    mplist
+!    /out
+!    /output,'%file_name%_%i%',etlist
+!    etlist
+!    /out
+!    /output,'%file_name%_%i%',cplist
+!    cplist
+!    /out
+! autots,on
+! nsub,8,20,6
+! wrfull, 1
+! ematwrite,yes
+!   timint,on
+    solve
+!
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,STIFF
+    ! *PRINT,MatKD,./matrix/Kdense_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,FULL,3D_loop_cond.full,DAMP
+    ! *PRINT,MatKD,./matrix/Cdense_%i%.matrix
+    !*SMAT,MaCD,D,IMPORT,FULL,single_element_cond.full,MASS
+    !*PRINT,MatCD,./matrix/Cdense.matrix
+    ! *VEC,VecRHS,D,IMPORT,FULL,3D_loop_cond.full,RHS
+    ! *PRINT,VecRHS,./matrix/RHS_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,EMAT,3D_loop_cond.emat,STIFF,8780
+    ! *PRINT,MatKD,./matrix/Kdense_elem_%i%.matrix
+    ! *DMAT,MatKD,D,IMPORT,EMAT,3D_loop_cond.emat,DAMP,8780
+    ! *PRINT,MatKD,./matrix/Cdense_elem_%i%.matrix
+    !*SMAT,MaCD,D,IMPORT,EMAT,single_element_cond.emat,MASS,1
+    !*PRINT,MatCD,./matrix/Cdense_elem.matrix
+    ! *VEC,VecRHS,D,IMPORT,EMAT,3D_loop_cond.emat,RHS,8780
+    ! *PRINT,VecRHS,./matrix/RHS_elem_%i%.matrix
+    ! *DMAT,Nod2Solv,D,IMPORT,FULL,single_element_cond.full,NOD2SOLV
+    ! *PRINT,Nod2Solv,./matrix/Nod2Solv.matrix
+*enddo
+finish
+! SECOND TIME STEP
+! TIME,1
+! timint,oFF
+! autots,on
+! nsub,6,20,4
+
+! alls
+! solve
+
+! FINISH
