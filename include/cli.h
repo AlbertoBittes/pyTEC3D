@@ -13,7 +13,6 @@ public:
     {
         READ_MESH,
         CLEAR_MESH,
-        SET_WORKDIR,
         SET_ACTIVE_MESH,
         LOAD_DATA,
         PRINT_MODEL_DATA,

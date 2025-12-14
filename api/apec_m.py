@@ -66,10 +66,9 @@ class APEC_M:
         self.transient_analysis: pd.DataFrame = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-        self.process: Optional[Any] = None
-        self.num_processors: int = 1
         self.periodic_boundaries: List[Any] = []
         self.dof_couplings: List[Dict[str, Any]] = []
+        self.cli: CLIObject = CLIObject(self)
 
     #
     #
@@ -217,9 +216,9 @@ class APEC_M:
     #
     def get_cli(self) -> CLIObject:
         """
-        Returns a CLIObject instance bound to this APEC_M instance.
+        Return the CLI helper attached to this instance.
         """
-        return CLIObject(self)
+        return self.cli
 
     #
     #
@@ -1192,6 +1191,30 @@ class APEC_M:
         if ansys_elem_array is None:
             raise ValueError("CellData array 'ansys_etype' not found.")
         ansys_elem_np = vtknp.vtk_to_numpy(ansys_elem_array)
+
+        # Ensure all element definitions in the mesh are SOLID236
+        if self.element_types.empty:
+            raise ValueError("Element types table is empty; cannot validate ansys_etype mappings.")
+        if "ansys_etype" not in self.element_types or "element_type" not in self.element_types:
+            raise ValueError("Element types table is missing required columns 'ansys_etype' and 'element_type'.")
+
+        unique_mesh_etypes = np.unique(ansys_elem_np)
+        for etype in unique_mesh_etypes:
+            rows = self.element_types[self.element_types["ansys_etype"] == etype]
+            if rows.empty:
+                raise ValueError(
+                    f"ANSYS element type {etype} used in mesh is not defined in element types table."
+                )
+            unique_labels = set(str(v) for v in rows["element_type"].unique())
+            if len(unique_labels) != 1:
+                raise ValueError(
+                    f"ANSYS element type {etype} has multiple element_type entries: {sorted(unique_labels)}."
+                )
+            label = unique_labels.pop()
+            if label != "SOLID236":
+                raise ValueError(
+                    f"Tree/cotree gauge requires all elements to be SOLID236, but ANSYS etype {etype} is '{label}'."
+                )
         # Save current selection to restore later
         selection_cell_array = cell_data.GetArray("selection_cell")
         selection_cell_backup = vtknp.vtk_to_numpy(selection_cell_array).copy()

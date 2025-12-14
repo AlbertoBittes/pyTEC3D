@@ -33,7 +33,6 @@ public:
     const std::string &get_active_mesh() const { return active_mesh; }
     bool has_active_mesh() const { return !active_mesh.empty(); }
 
-    void set_working_directory(const std::filesystem::path &directory);
     const std::filesystem::path &get_working_directory() const { return working_directory; }
 
     void set_mode(Mode mode);
@@ -66,7 +65,6 @@ private:
 
     std::string active_mesh;
     std::filesystem::path working_directory;
-    bool custom_working_directory;
     Mode program_mode;
 };
 

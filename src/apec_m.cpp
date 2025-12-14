@@ -21,6 +21,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 
 APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
     : comm(comm),
@@ -504,6 +505,7 @@ bool APEC_M::validate_model_for_analysis()
     std::unordered_set<int> available_etypes;
     std::unordered_set<int> available_materials;
     std::unordered_set<int> available_real_constants;
+    std::vector<std::pair<int, int>> periodic_boundary_pairs;
 
     if (!element_factory || !element_factory->get_element_types_map() || element_factory->get_element_types_map()->empty())
     {
@@ -539,7 +541,65 @@ bool APEC_M::validate_model_for_analysis()
     }
 
     if (periodic_factory)
-        periodic_factory->populate_periodic_boundaries_from_map();
+    {
+        const auto *data_map = periodic_factory->get_data_map();
+        if (data_map && !data_map->columns.empty())
+        {
+            auto main_it = data_map->columns.find("main_boundary");
+            auto paired_it = data_map->columns.find("paired_boundary");
+            if (main_it == data_map->columns.end() || paired_it == data_map->columns.end())
+            {
+                libMesh::out << "Periodic boundary data present but required columns are missing." << std::endl;
+                valid = false;
+            }
+            else
+            {
+                auto extract_ids = [&](const Globals::NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>> {
+                    return std::visit(
+                        [&](const auto &vec) -> std::optional<std::vector<int>>
+                        {
+                            using VecType = std::decay_t<decltype(vec)>;
+                            if constexpr (std::is_same_v<VecType, std::vector<int>>)
+                                return vec;
+                            else if constexpr (std::is_same_v<VecType, std::vector<Real>>)
+                            {
+                                std::vector<int> converted;
+                                converted.reserve(vec.size());
+                                for (Real value : vec)
+                                    converted.push_back(static_cast<int>(value));
+                                return converted;
+                            }
+                            else
+                            {
+                                libMesh::out << "Periodic boundary column '" << column_label << "' is not numeric." << std::endl;
+                                return std::nullopt;
+                            }
+                        },
+                        array.values);
+                };
+
+                auto main_ids_opt = extract_ids(main_it->second, "main_boundary");
+                auto paired_ids_opt = extract_ids(paired_it->second, "paired_boundary");
+
+                if (!main_ids_opt || !paired_ids_opt)
+                {
+                    valid = false;
+                }
+                else if (main_ids_opt->size() != paired_ids_opt->size())
+                {
+                    libMesh::out << "Periodic boundary arrays have mismatched sizes (" << main_ids_opt->size()
+                                 << " vs " << paired_ids_opt->size() << ")." << std::endl;
+                    valid = false;
+                }
+                else
+                {
+                    periodic_boundary_pairs.reserve(main_ids_opt->size());
+                    for (std::size_t i = 0; i < main_ids_opt->size(); ++i)
+                        periodic_boundary_pairs.emplace_back((*main_ids_opt)[i], (*paired_ids_opt)[i]);
+                }
+            }
+        }
+    }
 
     for (const auto &entry : mesh_repositories)
     {
@@ -612,34 +672,77 @@ bool APEC_M::validate_model_for_analysis()
         if (!available_real_constants.empty())
             report_missing("real constant", used_real_constants, available_real_constants);
 
-        if (periodic_factory)
+        if (element_factory && element_factory->get_element_types_map() && !used_etypes.empty())
         {
-            const auto &periodic_boundaries = periodic_factory->get_periodic_boundaries();
-            if (!periodic_boundaries.empty())
-            {
-                auto &boundary_info = mesh->get_boundary_info();
-                if (boundary_info.get_side_boundary_ids().empty())
-                    mesh->apply_boundary_info();
+            auto *etype_map = element_factory->get_element_types_map();
+            std::optional<ElementTypeEnum> mesh_element_enum;
+            int reference_ansys_type = -1;
 
-                const auto &side_ids = boundary_info.get_side_boundary_ids();
-                if (side_ids.empty())
+            for (int etype_id : used_etypes)
+            {
+                auto it = etype_map->find(static_cast<unsigned int>(etype_id));
+                if (it == etype_map->end())
+                    continue; // Missing types were already reported
+
+                const auto &etype_ptr = it->second;
+                if (!etype_ptr)
+                    continue;
+
+                const auto &keyopts = etype_ptr->get_keyopts();
+                if (keyopts.empty())
                 {
-                    libMesh::out << "Mesh '" << mesh_name << "' has no boundary IDs but periodic boundaries are defined." << std::endl;
+                    libMesh::out << "Element type definition for ANSYS etype " << etype_id
+                                 << " has no keyopts; cannot determine ElementTypeEnum." << std::endl;
                     valid = false;
+                    continue;
                 }
 
-                for (const auto &pb : periodic_boundaries)
+                ElementTypeEnum current_enum = static_cast<ElementTypeEnum>(keyopts.front());
+                if (!mesh_element_enum)
                 {
-                    if (side_ids.find(pb.myboundary) == side_ids.end())
-                    {
-                        libMesh::out << "Periodic boundary main ID " << pb.myboundary << " not found on mesh '" << mesh_name << "'." << std::endl;
-                        valid = false;
-                    }
-                    if (side_ids.find(pb.pairedboundary) == side_ids.end())
-                    {
-                        libMesh::out << "Periodic boundary paired ID " << pb.pairedboundary << " not found on mesh '" << mesh_name << "'." << std::endl;
-                        valid = false;
-                    }
+                    mesh_element_enum = current_enum;
+                    reference_ansys_type = etype_id;
+                }
+                else if (*mesh_element_enum != current_enum)
+                {
+                    libMesh::out << "Mesh '" << mesh_name << "' mixes ElementTypeEnum values across element types "
+                                 << "(ANSYS etype " << reference_ansys_type << " -> "
+                                 << static_cast<unsigned int>(*mesh_element_enum) << ", ANSYS etype "
+                                 << etype_id << " -> " << static_cast<unsigned int>(current_enum) << ")."
+                                 << std::endl;
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if (!periodic_boundary_pairs.empty())
+        {
+            auto &boundary_info = mesh->get_boundary_info();
+            if (boundary_info.get_side_boundary_ids().empty())
+                mesh->apply_boundary_info();
+
+            const auto &side_ids = boundary_info.get_side_boundary_ids();
+            if (side_ids.empty())
+            {
+                libMesh::out << "Mesh '" << mesh_name << "' has no boundary IDs but periodic boundaries are defined." << std::endl;
+                valid = false;
+            }
+
+            for (const auto &pair : periodic_boundary_pairs)
+            {
+                const boundary_id_type main_id = static_cast<boundary_id_type>(pair.first);
+                const boundary_id_type paired_id = static_cast<boundary_id_type>(pair.second);
+
+                if (side_ids.find(main_id) == side_ids.end())
+                {
+                    libMesh::out << "Periodic boundary main ID " << main_id << " not found on mesh '" << mesh_name << "'." << std::endl;
+                    valid = false;
+                }
+                if (side_ids.find(paired_id) == side_ids.end())
+                {
+                    libMesh::out << "Periodic boundary paired ID " << paired_id << " not found on mesh '" << mesh_name << "'." << std::endl;
+                    valid = false;
                 }
             }
         }

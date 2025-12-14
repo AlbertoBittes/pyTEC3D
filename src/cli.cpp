@@ -179,8 +179,6 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::READ_MESH;
     if (input == "-clear")
         return Command::CLEAR_MESH;
-    if (input.rfind("-set_workdir", 0) == 0)
-        return Command::SET_WORKDIR;
     if (input.rfind("-active_mesh", 0) == 0)
         return Command::SET_ACTIVE_MESH;
     if (input.rfind("-load_data", 0) == 0)
@@ -240,7 +238,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             libMesh::out << "Reading mesh '" << mesh_name << "' from " << filepath << std::endl;
 
         program.read_mesh(mesh_name, filepath);
-        report_session_paths(session);
         return true;
     }
     case Command::CLEAR_MESH:
@@ -261,25 +258,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
 
         program.clear_mesh(mesh_name);
         libMesh::out << "Cleared mesh context '" << mesh_name << "'." << std::endl;
-        return true;
-    }
-    case Command::SET_WORKDIR:
-    {
-        auto arg = extract_argument(input);
-        if (arg.empty())
-        {
-            libMesh::out << "Usage: -set_workdir <folder_path>" << std::endl;
-            return true;
-        }
-
-        Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-set_workdir"))
-            return true;
-
-        session.set_working_directory(std::filesystem::path(arg));
-
-        libMesh::out << "Working directory set to: " << session.get_working_directory() << std::endl;
-        report_session_paths(session);
         return true;
     }
     case Command::SET_ACTIVE_MESH:
@@ -446,7 +424,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     case Command::HELP:
         libMesh::out << "Available commands:\n"
                      << "  -read_mesh <mesh_file>\n"
-                     << "  -set_workdir <folder_path>\n"
                      << "  -active_mesh <mesh_name>\n"
                      << "  -load_data <binary_file1> [binary_file2 ...]\n"
                      << "  -solve\n"

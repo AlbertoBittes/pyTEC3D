@@ -1,11 +1,8 @@
 #include "session.h"
 
 #include <cctype>
-#include <fstream>
 #include <iostream>
 #include <string>
-#include <utility>
-#include <system_error>
 
 #include <libmesh/libmesh.h>
 
@@ -15,7 +12,6 @@ Session::Session()
       output_filename(""),
       active_mesh(""),
       working_directory(std::filesystem::current_path()),
-      custom_working_directory(false),
       program_mode(Mode::PreProcessing)
 {
     initialize_folder_paths();
@@ -59,20 +55,6 @@ void Session::set_input_mesh_filepath(const std::string &filepath)
     std::filesystem::path input_path(filepath);
     mesh_filename_without_extension = input_path.stem().string();
 
-    if (!custom_working_directory && input_path.has_parent_path())
-    {
-        auto parent = input_path.parent_path();
-        if (!parent.empty())
-        {
-            std::error_code ec;
-            auto absolute_parent = std::filesystem::absolute(parent, ec);
-            if (!ec)
-                working_directory = absolute_parent.lexically_normal();
-            else
-                working_directory = parent.lexically_normal();
-        }
-    }
-
     update_dynamic_paths();
 }
 
@@ -85,36 +67,6 @@ void Session::set_active_mesh(const std::string &mesh_name)
         mesh_filename_without_extension.clear();
 
     output_filename.clear();
-    initialize_folder_paths();
-}
-
-void Session::set_working_directory(const std::filesystem::path &directory)
-{
-    std::filesystem::path target_directory;
-    if (!directory.empty())
-        target_directory = std::filesystem::absolute(directory);
-    else
-        target_directory = std::filesystem::current_path();
-
-    if (!std::filesystem::exists(target_directory))
-        std::filesystem::create_directories(target_directory);
-
-    std::error_code change_dir_ec;
-    std::filesystem::current_path(target_directory, change_dir_ec);
-    if (change_dir_ec)
-        libMesh::out << "Warning: failed to change working directory to " << target_directory << ": " << change_dir_ec.message() << std::endl;
-
-    if (!directory.empty())
-    {
-        working_directory = target_directory;
-        custom_working_directory = true;
-    }
-    else
-    {
-        working_directory = target_directory;
-        custom_working_directory = false;
-    }
-
     initialize_folder_paths();
 }
 
