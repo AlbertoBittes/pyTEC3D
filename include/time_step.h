@@ -45,7 +45,7 @@ public:
 
     void print_solve_msg() const
     {
-        libMesh::out << "  Solving substep " << index
+        libMesh::out << "  Solving substep " << index + 1
                      << " at time " << time
                      << " (dt=" << dt << ")" << std::endl;
     }

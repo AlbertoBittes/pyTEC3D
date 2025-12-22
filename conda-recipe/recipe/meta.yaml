@@ -45,5 +45,5 @@ requirements:
 
 about:
   home: https://github.com/Plasma-Arc-Project/apec_m
-  summary: "Tools for preparing and running libMesh/PETSc based PlasmaArc simulations."
+  summary: "A 2.5D FEM code for simulation of plasma equilibria and disruptions."
   license: MIT

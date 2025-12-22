@@ -5,16 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "apec_m"
 version = "0.1.0"
-description = "Tools for preparing APEC/PlasmaArc simulations"
+description = "A 2.5D FEM code for simulation of plasma equilibria and disruptions."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = [
-    "pandas",
-    "vtk",
-    "numpy",
-    "ansys-mapdl-reader",
-]
+dependencies = ["pandas", "vtk", "numpy", "ansys-mapdl-reader"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -26,7 +21,7 @@ apec = "apec_m:main"
 convert_mesh = "convert_mesh:main"
 
 [tool.setuptools]
-package-dir = {"" = "api"}
+package-dir = { "" = "api" }
 py-modules = [
     "ansys_helper",
     "apec_m",
