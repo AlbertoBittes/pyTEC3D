@@ -7,10 +7,9 @@ VARIABLES_GLOBAL_LIST = [
     "Az",
     "VOLT",
     "EMF",
-    "CURR",
+    "V",
     "CSG",
     "AMPS",
-    "VLTG",
     "CURT",
     "Js",
     "B",
@@ -175,13 +174,10 @@ MATERIALS_COLUMNS_TYPES = {
 # Assign types to real constants columns
 REAL_CONSTANTS_COLUMNS_TYPES = {
     "ansys_real_constant": int,
-    "CARE": float,
-    "TURN": float,
-    "LENG": float,
-    "DIRZ": float,
-    "FILL": float,
+    "THK": float,
     "SC": float,
     "NC": float,
+    "VC": float,
     "RAD": float,
     "TX": float,
     "TY": float,
@@ -197,6 +193,7 @@ REAL_CONSTANTS_COLUMNS_TYPES = {
     "XLOC": float,
     "YLOC": float,
     "ZLOC": float,
+    "CPSIGN": float,
 }
 
 # Assign types to element types columns

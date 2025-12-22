@@ -75,9 +75,8 @@ public:
     }
 
 private:
-    static constexpr std::array<const char *, 23> PROPERTY_COLUMNS = {
-        "CARE", "TURN", "LENG", "DIRZ", "FILL", "SC",
-        "NC", "RAD", "TX", "TY", "TZ", "R",
+    static constexpr std::array<const char *, 20> PROPERTY_COLUMNS = {
+        "THK", "SC", "NC", "VC", "RAD", "TX", "TY", "TZ", "R",
         "SYM", "VELOX", "VELOY", "VELOZ", "OMEGAX", "OMEGAY",
         "OMEGAZ", "XLOC", "YLOC", "ZLOC", "CPSIGN"};
 

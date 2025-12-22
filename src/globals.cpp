@@ -17,7 +17,7 @@ namespace Globals
         {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0, SystemType::DOF_SOLUTION_SYSTEM, NEDELEC_ONE, FIRST}},
         {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, SystemType::DOF_SOLUTION_SYSTEM, LAGRANGE, FIRST}},
         {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, SystemType::DOF_SOLUTION_SYSTEM, LAGRANGE, FIRST}},
-        {GlobalVariableName::CURR, {GlobalVariableName::CURR, APIVariableName::CURR, "CURR", "CURR", 0, SystemType::DOF_SOLUTION_SYSTEM, LAGRANGE, FIRST}},
+        {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, SystemType::DOF_SOLUTION_SYSTEM, LAGRANGE, FIRST}},
 
         // Nodal Loads Variables
         {GlobalVariableName::CSG_x, {GlobalVariableName::CSG_x, APIVariableName::CSG, "CSG_x", "CSG", 0, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},

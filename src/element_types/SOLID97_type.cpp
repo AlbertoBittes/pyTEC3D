@@ -48,30 +48,28 @@ void SOLID97Type::add_solid97_variables(const PhysicalRegionEnum physical_region
 
     switch (physical_region)
     {
-    case SOLID_CONDUCTOR:
-    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == SOLID_CONDUCTOR_CIRCUIT_COUPLED)
-        {
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        }
-        break;
-    case STRANDED_COIL_CIRCUIT_COUPLED:
-    case STRANDED_COIL_VOLTAGE_FED:
-        vars.insert(vars.end(), {GlobalVariableName::CURR,
-                                 GlobalVariableName::VLTG});
-        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
-        {
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        }
-        break;
     case STRANDED_CONDUCTOR:
         vars.insert(vars.end(), {GlobalVariableName::Js_x,
                                  GlobalVariableName::Js_y,
                                  GlobalVariableName::Js_z});
+        break;
+    case SOLID_CONDUCTOR:
+    case STRANDED_COIL:
+        vars.insert(vars.end(), {
+                                    GlobalVariableName::VOLT,
+                                    GlobalVariableName::AMPS,
+                                });
+        if (physical_region == STRANDED_COIL)
+            vars.insert(vars.end(), {GlobalVariableName::EMF,
+                                     GlobalVariableName::CURT});
+        break;
+    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
+    case STRANDED_COIL_CIRCUIT_COUPLED:
+        vars.insert(vars.end(), {GlobalVariableName::V,
+                                 GlobalVariableName::AMPS});
+        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
+            vars.insert(vars.end(), {GlobalVariableName::EMF,
+                                     GlobalVariableName::CURT});
         break;
     default:
         break;

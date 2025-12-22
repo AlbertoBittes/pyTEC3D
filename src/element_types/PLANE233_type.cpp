@@ -46,21 +46,26 @@ void PLANE233Type::add_plane233_variables(const std::vector<unsigned int> &keyop
     PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(keyopts[1]);
     switch (physical_region)
     {
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
-        // fall through
-    case STRANDED_COIL_CIRCUIT_COUPLED:
-    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
-        vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                 GlobalVariableName::CURT});
-        // fall through
-    case STRANDED_COIL_VOLTAGE_FED:
-        vars.insert(vars.end(), {GlobalVariableName::CURR,
-                                 GlobalVariableName::VLTG});
-        break;
     case STRANDED_CONDUCTOR:
         vars.insert(vars.end(), {GlobalVariableName::Js_z});
+        break;
+    case SOLID_CONDUCTOR:
+    case STRANDED_COIL:
+        vars.insert(vars.end(), {
+                                    GlobalVariableName::VOLT,
+                                    GlobalVariableName::AMPS,
+                                });
+        if (physical_region == STRANDED_COIL)
+            vars.insert(vars.end(), {GlobalVariableName::EMF,
+                                     GlobalVariableName::CURT});
+        break;
+    case STRANDED_COIL_CIRCUIT_COUPLED:
+    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
+        vars.insert(vars.end(), {GlobalVariableName::V,
+                                 GlobalVariableName::AMPS});
+        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
+            vars.insert(vars.end(), {GlobalVariableName::EMF,
+                                     GlobalVariableName::CURT});
         break;
     default:
         break;

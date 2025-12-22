@@ -54,6 +54,14 @@ void SOLID236Type::add_solid236_variables(const PhysicalRegionEnum physical_regi
         vars.insert(vars.end(), {GlobalVariableName::VOLT,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL)
+            vars.insert(vars.end(), {GlobalVariableName::EMF,
+                                     GlobalVariableName::CURT});
+        break;
+    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
+    case STRANDED_COIL_CIRCUIT_COUPLED:
+        vars.insert(vars.end(), {GlobalVariableName::V,
+                                 GlobalVariableName::AMPS});
+        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
         {
             vars.insert(vars.end(), {GlobalVariableName::EMF,
                                      GlobalVariableName::CURT});
