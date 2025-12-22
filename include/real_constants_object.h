@@ -75,11 +75,11 @@ public:
     }
 
 private:
-    static constexpr std::array<const char *, 22> PROPERTY_COLUMNS = {
+    static constexpr std::array<const char *, 23> PROPERTY_COLUMNS = {
         "CARE", "TURN", "LENG", "DIRZ", "FILL", "SC",
         "NC", "RAD", "TX", "TY", "TZ", "R",
         "SYM", "VELOX", "VELOY", "VELOZ", "OMEGAX", "OMEGAY",
-        "OMEGAZ", "XLOC", "YLOC", "ZLOC"};
+        "OMEGAZ", "XLOC", "YLOC", "ZLOC", "CPSIGN"};
 
     void build_constants_map()
     {

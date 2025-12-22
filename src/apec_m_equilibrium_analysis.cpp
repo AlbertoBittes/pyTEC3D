@@ -362,7 +362,7 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
         Real coil_area = real_constants_map->get_constant(real_constant_elem_id)[0];
         Real correction_current_density = correction_current / coil_area;
 
-        char correction_current_sign = real_constants_map->get_constant(real_constant_elem_id)[3];
+        char correction_current_sign = real_constants_map->get_constant(real_constant_elem_id)[22]; // CPSIGN
         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, vertical_coil_current_var_number, 0);
         Real existing_current_density = element_loads_system.current_local_solution->el(elem_current_density_dof);
         Real new_current_density = existing_current_density + correction_current_sign * correction_current_density;
