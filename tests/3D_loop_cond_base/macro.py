@@ -57,13 +57,13 @@ for i in range(1, 3):
         apec.time_parameters["transient_effects"] = 1
         apec.time_parameters["number_of_substeps"] = 4
 
-    apec.select("COIL_NOCOND_1", 1, type="cell_data")
-    apec.set_value_on_selection("Js", 1 / i, 1, type="cell_data")
-    apec.select("COIL_NOCOND_2", 1, type="cell_data")
-    apec.set_value_on_selection("Js", -1 / i, 0, type="cell_data")
-    apec.select("COIL_NOCOND_3", 1, type="cell_data")
-    apec.set_value_on_selection("Js", -b / i, 0, type="cell_data")
-    apec.set_value_on_selection("Js", b / i, 1, type="cell_data")
+    apec.select("COIL_NOCOND_1", 1, type="elem")
+    apec.set_value_on_selection("Js", 1 / i, 1, type="elem")
+    apec.select("COIL_NOCOND_2", 1, type="elem")
+    apec.set_value_on_selection("Js", -1 / i, 0, type="elem")
+    apec.select("COIL_NOCOND_3", 1, type="elem")
+    apec.set_value_on_selection("Js", -b / i, 0, type="elem")
+    apec.set_value_on_selection("Js", b / i, 1, type="elem")
     apec.write_load_step(i)
 
 apec.save_mesh()

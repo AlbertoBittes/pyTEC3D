@@ -1,21 +1,25 @@
 # Default to local libMesh install; environment overrides still work
 LIBMESH_DIR ?= /home/bitteal/libmesh_inst
-PETSC_DIR ?= /usr
+LIBMESH_CONFIG ?= $(LIBMESH_DIR)/bin/libmesh-config
+METHOD ?= dbg
 
-# Compiler settings - change this to your MPI C++ compiler
-CXX=mpicxx
+LIBMESH_CXX := $(shell METHOD=$(METHOD) $(LIBMESH_CONFIG) --cxx)
+LIBMESH_INCLUDE := $(shell METHOD=$(METHOD) $(LIBMESH_CONFIG) --include)
+LIBMESH_CXXFLAGS := $(shell METHOD=$(METHOD) $(LIBMESH_CONFIG) --cxxflags)
+LIBMESH_LIBS := $(shell METHOD=$(METHOD) $(LIBMESH_CONFIG) --libs)
+VTK_LIBS ?= -lvtkFiltersGeneral-9.1 -lvtkIOGeometry-9.1 -lvtkIOLegacy-9.1
 
-# Include path for libMesh/PETSc
-INCLUDES=-I../include -I$(LIBMESH_DIR)/include -I$(PETSC_DIR)/include/petsc -I$(PETSC_DIR)/include/petsc64 -I/usr/include/vtk-9.1
+# Compiler settings - default to libMesh compiler so flags/libs stay consistent
+CXX=$(LIBMESH_CXX)
+
+# Include path for libMesh/PETSc pulled from libmesh-config
+INCLUDES=-I../include $(LIBMESH_INCLUDE)
 
 # Compiler flags (add -MMD -MP for dependency generation)
-CXXFLAGS=-std=c++17 -Wall $(INCLUDES) -pthread -O0 -g -fopenmp -MMD -MP
+CXXFLAGS=-std=c++17 -Wall $(INCLUDES) $(LIBMESH_CXXFLAGS) -pthread -MMD -MP
 
 # Linker flags, add your project-specific libraries not related to MPI
-LDFLAGS=-L$(LIBMESH_DIR)/lib -L/usr/lib/x86_64-linux-gnu -lmesh_dbg -ltimpi_dbg -lpetsc -pthread -fopenmp \
--lvtkCommonCore-9.1 -lvtkCommonDataModel-9.1 -lvtkFiltersCore-9.1 -lvtkFiltersGeneral-9.1 -lvtkIOXML-9.1 \
--lvtkCommonExecutionModel-9.1 -lvtkIOParallelXML-9.1 -lvtkIOCore-9.1 -lvtkIOGeometry-9.1 \
--lvtkIOLegacy-9.1 -lvtkParallelMPI-9.1 
+LDFLAGS=$(LIBMESH_LIBS) $(VTK_LIBS)
 
 # The target executable name
 BIN_DIR=../bin

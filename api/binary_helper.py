@@ -413,7 +413,7 @@ class BinaryHelper:
         Args:
             mesh: Source mesh containing the VTK data arrays.
             binary_file: Open binary stream for writing.
-            label: Either 'cell_data' or 'point_data', indicating the source arrays.
+            label: Either 'elem' or 'node', indicating the source arrays.
 
         Returns:
             None
@@ -421,9 +421,9 @@ class BinaryHelper:
         Raises:
             ValueError: If `label` is unsupported or the extracted payload is not a NumPy array.
         """
-        if label == "cell_data":
+        if label == "elem":
             numpy_array = BinaryHelper.create_numpy_array_for_binary(mesh.GetCellData())
-        elif label == "point_data":
+        elif label == 'node':
             numpy_array = BinaryHelper.create_numpy_array_for_binary(
                 mesh.GetPointData()
             )

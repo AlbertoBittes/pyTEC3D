@@ -18,7 +18,7 @@ class ExcelIOHelper:
     def write_excel_cell_point_data(
         mesh: "vtk.vtkUnstructuredGrid",
         output_excel_file: Union[str, PathLike[str]],
-        data_type: str = "cell_data",
+        data_type: str = "elem",
     ) -> None:
         """
         Writes the loads or boundary conditions to an Excel file.
@@ -26,7 +26,7 @@ class ExcelIOHelper:
         Args:
             mesh: The VTK mesh object.
             output_excel_file: Path to the output Excel file.
-            data_type: Data to write ("cell_data" or "point_data"). Defaults to "cell_data".
+            data_type: Data to write ("elem" or 'node'). Defaults to "elem".
 
         Returns:
             None
@@ -36,12 +36,12 @@ class ExcelIOHelper:
         """
 
         # Determine the VTK data and mapping based on the data_type
-        if data_type == "cell_data":
+        if data_type == "elem":
             vtk_data = mesh.GetCellData()
-        elif data_type == "point_data":
+        elif data_type == 'node':
             vtk_data = mesh.GetPointData()
         else:
-            raise ValueError("Invalid data_type. Must be 'cell_data' or 'point_data'.")
+            raise ValueError("Invalid data_type. Must be 'elem' or 'node'.")
 
         # Retrieve the final_data NumPy array
         final_data = BinaryHelper.create_numpy_array_for_binary(vtk_data)
@@ -293,7 +293,7 @@ class ExcelIOHelper:
             mesh: The VTK mesh object.
             excel_file: Path to the Excel file.
             sheet_name: Name of the sheet to read.
-            data_type: Type of VTK data to update ('cell_data' or 'point_data'). Defaults to `sheet_name`.
+            data_type: Type of VTK data to update ('elem' or 'node'). Defaults to `sheet_name`.
 
         Returns:
             None
@@ -311,13 +311,13 @@ class ExcelIOHelper:
         if data_type is None:
             data_type = sheet_name
         # Determine the VTK data type to update
-        if data_type == "cell_data":
+        if data_type == "elem":
             vtk_data = mesh.GetCellData()
-        elif data_type == "point_data":
+        elif data_type == 'node':
             vtk_data = mesh.GetPointData()
         else:
             raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be 'cell_data' or 'point_data'."
+                f"Invalid data_type '{data_type}'. Must be 'elem' or 'node'."
             )
 
         VTKGridHelper.update_vtk_grid(vtk_data, df)

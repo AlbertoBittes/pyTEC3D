@@ -43,7 +43,7 @@ class Selector:
         array_name: str,
         value: Any,
         component: Union[int, str] = 0,
-        type: str = "point_data",
+        type: str = 'node',
         mode: str = "s",
     ) -> None:
         """
@@ -62,7 +62,7 @@ class Selector:
             array_name: Name of the array to use for selection.
             value: Value(s) to match for selection (scalar, tuple, or set).
             component: Component index or 'magnitude' for vector arrays (default 0).
-            type: 'cell_data' or 'point_data' to specify selection type (default 'point_data').
+            type: 'elem' or 'node' to specify selection type (default 'node').
             mode: Selection mode:
                 's': select from all (replace selection)
                 'a': add new selection to current selection
@@ -79,9 +79,9 @@ class Selector:
             ValueError: If the specified array is missing in the chosen data type.
         """
         Selector.ensure_selection_arrays(mesh)
-        data = mesh.GetCellData() if type == "cell_data" else mesh.GetPointData()
+        data = mesh.GetCellData() if type == "elem" else mesh.GetPointData()
         if array_name == "ID":
-            count = mesh.GetNumberOfCells() if type == "cell_data" else mesh.GetNumberOfPoints()
+            count = mesh.GetNumberOfCells() if type == "elem" else mesh.GetNumberOfPoints()
             arr = np.arange(count, dtype=np.int64)
         else:
             vtk_array = data.GetArray(array_name)
@@ -123,7 +123,7 @@ class Selector:
         coords = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
         arr = coords[:, axis]
         data = mesh.GetPointData()
-        Selector.apply_selection_mask(arr, value, data, "point_data", mode)
+        Selector.apply_selection_mask(arr, value, data, 'node', mode)
 
     @staticmethod
     def apply_selection_mask(
@@ -140,7 +140,7 @@ class Selector:
             arr: Array of values to compare.
             value: Value(s) to match (scalar, tuple, or set).
             data: VTK data object (CellData or PointData).
-            type: 'cell_data' or 'point_data'.
+            type: 'elem' or 'node'.
             mode: Selection mode ('s', 'a', 'r', 'u').
 
         Returns:
@@ -161,7 +161,7 @@ class Selector:
         else:
             mask = arr == value
         mask = mask.astype(np.uint8)
-        sel_array = data.GetArray("selection_cell" if type == "cell_data" else "selection_point")
+        sel_array = data.GetArray("selection_cell" if type == "elem" else "selection_point")
         sel_np = vtknp.vtk_to_numpy(sel_array)
         if mode == "s":
             sel_np[:] = mask
@@ -280,7 +280,7 @@ class Selector:
             mesh,
             "ID",
             set(selected_cells),
-            type="cell_data",
+            type="elem",
             mode=mode,
         )
 
@@ -291,7 +291,7 @@ class Selector:
 
         Args:
             mesh: The mesh to operate on.
-            type: 'cell_data' or 'point_data'. If None, selects both.
+            type: 'elem' or 'node'. If None, selects both.
 
         Returns:
             None
@@ -300,18 +300,18 @@ class Selector:
             Sets all selection array values to 1 (selected).
         """
         Selector.ensure_selection_arrays(mesh)
-        if type is None or type not in ["cell_data", "point_data"]:
+        if type is None or type not in ["elem", 'node']:
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 1
             mesh.GetCellData().GetArray("selection_cell").Modified()
             point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
             point_sel[:] = 1
             mesh.GetPointData().GetArray("selection_point").Modified()
-        elif type == "cell_data":
+        elif type == "elem":
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 1
             mesh.GetCellData().GetArray("selection_cell").Modified()
-        elif type == "point_data":
+        elif type == 'node':
             point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
             point_sel[:] = 1
             mesh.GetPointData().GetArray("selection_point").Modified()
@@ -323,7 +323,7 @@ class Selector:
 
         Args:
             mesh: The mesh to operate on.
-            type: 'cell_data' or 'point_data'. If None, unselects both.
+            type: 'elem' or 'node'. If None, unselects both.
 
         Returns:
             None
@@ -332,18 +332,18 @@ class Selector:
             Sets all selection array values to 0 (unselected).
         """
         Selector.ensure_selection_arrays(mesh)
-        if type is None or type not in ["cell_data", "point_data"]:
+        if type is None or type not in ["elem", 'node']:
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 0
             mesh.GetCellData().GetArray("selection_cell").Modified()
             point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
             point_sel[:] = 0
             mesh.GetPointData().GetArray("selection_point").Modified()
-        elif type == "cell_data":
+        elif type == "elem":
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 0
             mesh.GetCellData().GetArray("selection_cell").Modified()
-        elif type == "point_data":
+        elif type == 'node':
             point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
             point_sel[:] = 0
             mesh.GetPointData().GetArray("selection_point").Modified()
@@ -412,7 +412,7 @@ class Selector:
         array_name: str,
         value: Any,
         component: int = 0,
-        type: str = "point_data",
+        type: str = 'node',
     ) -> None:
         """
         Sets the value of the specified array for all selected cells or points in the mesh.
@@ -422,7 +422,7 @@ class Selector:
             array_name: Name of the array to update.
             value: Value to set for selected elements.
             component: Component index for multi-component arrays (default 0).
-            type: 'cell_data' or 'point_data' to specify selection type (default 'point_data').
+            type: 'elem' or 'node' to specify selection type (default 'node').
 
         Returns:
             None
@@ -434,12 +434,12 @@ class Selector:
             ValueError: If the target array is missing.
         """
         Selector.ensure_selection_arrays(mesh)
-        data = mesh.GetCellData() if type == "cell_data" else mesh.GetPointData()
+        data = mesh.GetCellData() if type == "elem" else mesh.GetPointData()
         vtk_array = data.GetArray(array_name)
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {type}.")
         arr_np = vtknp.vtk_to_numpy(vtk_array)
-        sel_array = data.GetArray("selection_cell" if type == "cell_data" else "selection_point")
+        sel_array = data.GetArray("selection_cell" if type == "elem" else "selection_point")
         sel_np = vtknp.vtk_to_numpy(sel_array)
         selected_ids = np.where(sel_np == 1)[0]
         if arr_np.ndim == 1:

@@ -49,8 +49,8 @@ apec.set_value_on_selection("VOLT", 0)
 
 apec.build_tree_cotree_gauge()
 
-apec.select("ansys_material_type", 23, type="cell_data")
-apec.set_value_on_selection("Js", 1, 2, type="cell_data")
+apec.select("ansys_material_type", 23, type="elem")
+apec.set_value_on_selection("Js", 1, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 1e-3
@@ -63,8 +63,8 @@ apec.time_parameters["write_substep_results"] = 1
 apec.write_load_step(1)
 
 
-apec.select("ansys_material_type", 23, type="cell_data")
-apec.set_value_on_selection("Js", 100, 2, type="cell_data")
+apec.select("ansys_material_type", 23, type="elem")
+apec.set_value_on_selection("Js", 100, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 2e-3
@@ -76,8 +76,8 @@ apec.time_parameters["write_substep_results"] = 1
 
 apec.write_load_step(2)
 
-apec.select("ansys_material_type", 23, type="cell_data")
-apec.set_value_on_selection("Js", 0, 2, type="cell_data")
+apec.select("ansys_material_type", 23, type="elem")
+apec.set_value_on_selection("Js", 0, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 3e-3

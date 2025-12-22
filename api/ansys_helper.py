@@ -72,7 +72,7 @@ class AnsysHelper:
         AnsysHelper.read_bfelist(mesh, bfelist_file)
 
         ExcelIOHelper.write_excel_cell_point_data(
-            mesh, output_excel_file, data_type="cell_data"
+            mesh, output_excel_file, data_type="elem"
         )
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
@@ -133,7 +133,7 @@ class AnsysHelper:
         AnsysHelper.read_dlist(mesh, dlist_file)
 
         ExcelIOHelper.write_excel_cell_point_data(
-            mesh, output_excel_file, data_type="point_data"
+            mesh, output_excel_file, data_type='node'
         )
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 

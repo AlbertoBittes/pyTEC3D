@@ -243,8 +243,8 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
-    "point_data": CELL_POINT_DATA_COLUMNS_TYPES,
-    "cell_data": CELL_POINT_DATA_COLUMNS_TYPES,
+    'node': CELL_POINT_DATA_COLUMNS_TYPES,
+    "elem": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
     "periodic_boundaries": PERIODIC_BOUNDARIES_COLUMNS_TYPES,
     "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
@@ -258,8 +258,8 @@ SHEET_PROCESSING_MAP = {
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
     "apec_settings": "read_excel_dict",
-    "point_data": ("update_vtk_grid_from_excel", "point_data"),
-    "cell_data": ("update_vtk_grid_from_excel", "cell_data"),
+    'node': ("update_vtk_grid_from_excel", 'node'),
+    "elem": ("update_vtk_grid_from_excel", "elem"),
     "transient_analysis": "read_excel_df",
     "periodic_boundaries": "read_periodic_boundaries",
 }
@@ -270,8 +270,8 @@ WRITING_FUNCTIONS_MAP = {
     "solver_settings": "_write_to_binary",
     "materials": "_write_to_binary",
     "real_constants": "_write_to_binary",
-    "point_data": "_write_numpy_array_to_binary",
-    "cell_data": "_write_numpy_array_to_binary",
+    'node': "_write_numpy_array_to_binary",
+    "elem": "_write_numpy_array_to_binary",
     "periodic_boundaries": "_write_to_binary",
     "dof_couplings": "_write_to_binary",
     "apec_settings": "_write_to_binary"
@@ -358,6 +358,6 @@ ARRAYS_TO_REMOVE = [
 
 # Labels to read for each load step from Excel
 EXCEL_LOAD_STEP_LABELS = [
-    "point_data",
-    "cell_data",
+    'node',
+    "elem",
 ]

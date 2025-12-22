@@ -301,7 +301,7 @@ class APEC_M:
         Args:
             excel_file: Path to the Excel file.
             sheet_name: Sheet containing the grid data.
-            data_type: Target VTK data type ('cell_data' or 'point_data'); defaults to sheet name.
+            data_type: Target VTK data type ('elem' or 'node'); defaults to sheet name.
 
         Returns:
             None
@@ -383,7 +383,7 @@ class APEC_M:
         return periodic_boundaries
 
     def write_excel_cell_point_data(
-        self, output_excel_file: Union[str, PathLike[str]], data_type: str = "cell_data"
+        self, output_excel_file: Union[str, PathLike[str]], data_type: str = "elem"
     ) -> None:
         """
         Export loads/boundary conditions to Excel, one sheet per data type.
@@ -394,7 +394,7 @@ class APEC_M:
 
         Args:
             output_excel_file: Destination Excel path.
-            data_type: 'cell_data' or 'point_data'.
+            data_type: 'elem' or 'node'.
 
         Returns:
             None
@@ -545,7 +545,7 @@ class APEC_M:
         os.makedirs(target_dir, exist_ok=True)
         self.write_to_binary(
             grid_path,
-            labels_to_write=["point_data", "cell_data"],
+            labels_to_write=['node', "elem"],
         )
 
     def write_model_data(self, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
@@ -652,7 +652,7 @@ class APEC_M:
         function_name = WRITING_FUNCTIONS_MAP[label]
 
         # Always call the function with (mesh or data, binary_file, label)
-        if label in ["cell_data", "point_data"]:
+        if label in ["elem", 'node']:
             getattr(self, function_name)(self.mesh, binary_file, label)
         else:
             data = getattr(self, label, None)
@@ -679,7 +679,7 @@ class APEC_M:
         Args:
             mesh: Mesh providing point/cell data to serialize.
             binary_file: Open binary stream.
-            label: 'cell_data' or 'point_data'.
+            label: 'elem' or 'node'.
         """
         BinaryHelper.write_numpy_array_to_binary(mesh, binary_file, label)
 
@@ -699,7 +699,7 @@ class APEC_M:
         array_name: str,
         value: Any,
         component: Union[int, str] = 0,
-        type: str = "point_data",
+        type: str = 'node',
         mode: str = "s",
     ) -> None:
         """
@@ -723,7 +723,7 @@ class APEC_M:
             array_name: Data array used for filtering.
             value: Target value(s); scalar for equality, tuple(len=2) for range, set for membership.
             component: Component index or 'magnitude' for vector arrays.
-            type: 'cell_data' or 'point_data' selection mask to update.
+            type: 'elem' or 'node' selection mask to update.
             mode: Selection mode — 's' replace, 'a' union, 'r' intersection, 'u' subtraction.
 
         Returns:
@@ -759,7 +759,7 @@ class APEC_M:
         Mark all cells and/or points as selected.
 
         Args:
-            type: 'cell_data', 'point_data', or None for both.
+            type: 'elem', 'node', or None for both.
 
         Returns:
             None
@@ -771,7 +771,7 @@ class APEC_M:
         Clear selections for cells and/or points.
 
         Args:
-            type: 'cell_data', 'point_data', or None for both.
+            type: 'elem', 'node', or None for both.
 
         Returns:
             None
@@ -791,7 +791,7 @@ class APEC_M:
         array_name: str,
         value: Any,
         component: int = 0,
-        type: str = "point_data",
+        type: str = 'node',
     ) -> None:
         """
         Assign a value to all selected cells or points in the given array.
@@ -800,7 +800,7 @@ class APEC_M:
             array_name: Array to modify.
             value: Value to assign to selected entries.
             component: Component index for multi-component arrays.
-            type: 'cell_data' or 'point_data'.
+            type: 'elem' or 'node'.
 
         Returns:
             None
