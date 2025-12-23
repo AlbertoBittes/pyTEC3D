@@ -21,7 +21,7 @@ public:
 
 protected:
     void apply_jplasma_gradshafranov();
-    void constant_plasma_current_density();
+    // void constant_plasma_current_density();
     void find_separatrix();
     bool check_poloidal_flux_convergence();
     void apply_control_currents(std::pair<Real, Real> &correction_currents);

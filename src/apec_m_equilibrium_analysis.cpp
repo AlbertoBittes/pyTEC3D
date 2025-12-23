@@ -23,6 +23,7 @@ bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
     {
         if (picard_loop(substep))
         {
+            libMesh::out << "Equilibrium analysis converged in " << iteration + 1 << " Picard iterations." << std::endl;
             converged = true;
             break;
         }
@@ -40,13 +41,14 @@ bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
 
 void APECMEquilibriumAnalysis::reset_plasma_components()
 {
+    libMesh::out << "Resetting plasma region and boundary components..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &mesh = eq_sys->get_mesh();
 
-    dof_id_type plasma_region_component = mesh.get_elem_integer_index("plasma");
-    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("vacuum_chamber");
-    dof_id_type vacuum_boundary_component = mesh.get_node_integer_index("vacuum_chamber_boundary");
-    dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("new_vacuum_chamber_boundary");
+    dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
+    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
+    dof_id_type vacuum_boundary_component = mesh.get_node_integer_index("VACUUM_CHAMBER_BOUNDARY");
+    dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
 
     for (auto &elem : mesh.active_local_element_ptr_range())
         if (elem->get_extra_integer(vacuum_chamber_component))
@@ -64,6 +66,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
 
 void APECMEquilibriumAnalysis::set_b_target_axis()
 {
+    libMesh::out << "Finding B field at axis point..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto session = this->context<Session>();
     auto &main_sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
@@ -84,7 +87,7 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     // target_axis(2) = -std::numeric_limits<Real>::max();
     // if (target_elem)
     // {
-    builder->build_solution_vectors_from_emat_files(target_elem->id(), session->get_path("emat_files_path"));
+    builder->build_solution_vectors_from_emat_files(target_elem->id(), session->get_path("emat_folderpath"));
     // }
     b_target_axis.resize(2);
     b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, target_elem, nodal_solution_system.solution.get());
@@ -93,6 +96,7 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
 
 void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
 {
+    libMesh::out << "Removing plasma region outside X-point..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
     // unsigned int psi_var_number = element_solution_system.variable_number("PSI");
@@ -100,10 +104,10 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
     unsigned int by_var_number = element_solution_system.variable_number("Be_y");
     auto &mesh = eq_sys->get_mesh();
 
-    dof_id_type plasma_region_component = mesh.get_elem_integer_index("plasma");
-    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("vacuum_chamber");
-    // dof_id_type vacuum_boundary_component = mesh.get_node_integer_index("vacuum_chamber_boundary");
-    dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("new_vacuum_chamber_boundary");
+    dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
+    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
+    // dof_id_type vacuum_boundary_component = mesh.get_node_integer_index("VACUUM_CHAMBER_BOUNDARY");
+    dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
 
     auto settings_ptr = this->context<ApecMSettingsObject>();
 
@@ -131,12 +135,13 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
 
 void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 {
+    libMesh::out << "Finding magnetic axis..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
     unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
 
-    dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("vacuum_chamber");
+    dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
 
     std::pair<dof_id_type, Real> magnetic_axis_data;
 
@@ -198,11 +203,12 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 
 void APECMEquilibriumAnalysis::identify_plasma_region()
 {
+    libMesh::out << "Identifying plasma region..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &mesh = eq_sys->get_mesh();
 
-    dof_id_type plasma_region_component = mesh.get_elem_integer_index("plasma");
-    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("vacuum_chamber");
+    dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
+    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
     unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
@@ -227,6 +233,7 @@ void APECMEquilibriumAnalysis::identify_plasma_region()
 
 Real APECMEquilibriumAnalysis::check_limiter()
 {
+    libMesh::out << "Checking limiter configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
     unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
@@ -235,7 +242,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
     const auto &mesh = eq_sys->get_mesh();
     Real psi_limiter = -std::numeric_limits<Real>::max();
 
-    dof_id_type vacuum_boundary_region_component = mesh.get_node_integer_index("vacuum_chamber_boundary");
+    dof_id_type vacuum_boundary_region_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
 
     auto settings_ptr = this->context<ApecMSettingsObject>();
     int current_sign = (settings_ptr->plasma_currents() >= 0) ? 1 : -1;
@@ -244,14 +251,6 @@ Real APECMEquilibriumAnalysis::check_limiter()
     {
         bool is_vacuum_chamber = node->get_extra_integer(vacuum_boundary_region_component);
         if (!is_vacuum_chamber)
-            continue;
-
-        Real bx_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, bx_var_number, 0);
-        Real by_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, by_var_number, 0);
-        Real bx_value = nodal_solution_system.current_local_solution->el(bx_dof);
-        Real by_value = nodal_solution_system.current_local_solution->el(by_dof);
-
-        if (current_sign * (by_value * ((*node)(0) - magnetic_axis(0)) - bx_value * ((*node)(1) - magnetic_axis(1))) < 0)
             continue;
         // Process the element as needed
         dof_id_type psi_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, psi_var_number, 0);
@@ -265,13 +264,14 @@ Real APECMEquilibriumAnalysis::check_limiter()
 
 Real APECMEquilibriumAnalysis::check_X_point()
 {
+    libMesh::out << "Checking X-point configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
     unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
     Real psi_X_point = std::numeric_limits<Real>::max();
 
-    dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("vacuum_chamber_nodes");
+    dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
     for (const auto &node : mesh.local_node_ptr_range())
     {
         bool is_vacuum_chamber = node->get_extra_integer(vacuum_chamber_region_component);
@@ -292,6 +292,7 @@ Real APECMEquilibriumAnalysis::check_X_point()
 
 void APECMEquilibriumAnalysis::find_separatrix()
 {
+    libMesh::out << "Finding separatrix..." << std::endl;
     this->reset_plasma_components();
     this->set_psi_magnetic_axis();
 
@@ -308,6 +309,7 @@ void APECMEquilibriumAnalysis::find_separatrix()
 
 std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
 {
+    libMesh::out << "Computing correction currents..." << std::endl;
     auto settings = this->context<ApecMSettingsObject>();
     const Real bradx = settings->bradx();
     const Real brady = settings->brady();
@@ -335,14 +337,15 @@ std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
 
 void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &correction_currents)
 {
+    libMesh::out << "Applying control currents..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int vertical_coil_current_var_number = element_loads_system.variable_number("Js_z");
     NumericVector<Number> &coils_current_vector = element_loads_system.get_vector("ramped_loads");
 
     const auto &mesh = eq_sys->get_mesh();
-    dof_id_type vertical_control_coils_component = mesh.get_elem_integer_index("vertical_control_coils");
-    dof_id_type radial_control_coils_component = mesh.get_elem_integer_index("radial_control_coils");
+    dof_id_type vertical_control_coils_component = mesh.get_elem_integer_index("VERTICAL_CONTROL_COILS");
+    dof_id_type radial_control_coils_component = mesh.get_elem_integer_index("RADIAL_CONTROL_COILS");
     dof_id_type real_constant_mesh_id = mesh.get_elem_integer_index("ansys_real_constant");
 
     auto real_constants_map = this->context<RealConstantsObject>();
@@ -374,6 +377,7 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
 
 void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 {
+    libMesh::out << "Applying J. Plasma Grad-Shafranov current profile..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto settings = this->context<ApecMSettingsObject>();
     const Real beta_profile = settings->beta_profile();
@@ -389,7 +393,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
-    dof_id_type plasma_component = mesh.get_elem_integer_index("plasma");
+    dof_id_type plasma_component = mesh.get_elem_integer_index("PLASMA");
 
     auto settings_ptr = this->context<ApecMSettingsObject>();
     Real total_plasma_current = 0.0;
@@ -429,6 +433,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
 bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
 {
+    libMesh::out << "Checking poloidal flux convergence..." << std::endl;
     auto eq_sys = this->active_equation_system();
 
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
@@ -436,7 +441,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
-    dof_id_type vacuum_chamber_id = mesh.get_elem_integer_index("vacuum_chamber");
+    dof_id_type vacuum_chamber_id = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
     auto settings = this->context<ApecMSettingsObject>();
 
@@ -479,14 +484,13 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
 bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
 {
     if (!first_absolute_iteration)
+    {
         find_separatrix();
-
-    if (first_absolute_iteration)
-        constant_plasma_current_density();
-    else
         apply_jplasma_gradshafranov();
-
+    }
     bool converged = check_poloidal_flux_convergence();
+
+    set_b_target_axis();
 
     if (converged)
         return true;
@@ -498,31 +502,31 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
     return false;
 }
 
-void APECMEquilibriumAnalysis::constant_plasma_current_density()
-{
-    auto eq_sys = this->active_equation_system();
+// void APECMEquilibriumAnalysis::constant_plasma_current_density()
+// {
+//     auto eq_sys = this->active_equation_system();
 
-    auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
-    unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &plasma_current_vector = element_loads_system.get_vector("ramped_loads");
+//     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
+//     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
+//     NumericVector<Number> &plasma_current_vector = element_loads_system.get_vector("ramped_loads");
 
-    const auto &mesh = eq_sys->get_mesh();
-    dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("vacuum_chamber");
+//     const auto &mesh = eq_sys->get_mesh();
+//     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
-    auto real_constants_map = this->context<RealConstantsObject>();
-    dof_id_type real_constant_mesh_id = mesh.get_elem_integer_index("ansys_real_constant");
+//     auto real_constants_map = this->context<RealConstantsObject>();
+//     dof_id_type real_constant_mesh_id = mesh.get_elem_integer_index("ansys_real_constant");
 
-    auto settings_ptr = this->context<ApecMSettingsObject>();
+//     auto settings_ptr = this->context<ApecMSettingsObject>();
 
-    for (auto &elem : mesh.active_local_element_ptr_range())
-    {
-        if (!elem->get_extra_integer(vacuum_chamber_component))
-            continue;
+//     for (auto &elem : mesh.active_local_element_ptr_range())
+//     {
+//         if (!elem->get_extra_integer(vacuum_chamber_component))
+//             continue;
 
-        dof_id_type real_constant_elem_id = elem->get_extra_integer(real_constant_mesh_id);
-        Real plasma_area = real_constants_map->get_constant(real_constant_elem_id)[0];
-        Real plasma_current_density = settings_ptr->plasma_currents() / plasma_area;
-        dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
-        plasma_current_vector.set(elem_current_density_dof, plasma_current_density);
-    }
-}
+//         dof_id_type real_constant_elem_id = elem->get_extra_integer(real_constant_mesh_id);
+//         Real plasma_area = real_constants_map->get_constant(real_constant_elem_id)[0];
+//         Real plasma_current_density = settings_ptr->plasma_currents() / plasma_area;
+//         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
+//         plasma_current_vector.set(elem_current_density_dof, plasma_current_density);
+//     }
+// }

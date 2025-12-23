@@ -24,7 +24,6 @@ namespace Globals
         {GlobalVariableName::CSG_y, {GlobalVariableName::CSG_y, APIVariableName::CSG, "CSG_y", "CSG", 1, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},
         {GlobalVariableName::CSG_z, {GlobalVariableName::CSG_z, APIVariableName::CSG, "CSG_z", "CSG", 2, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},
         {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},
-        {GlobalVariableName::VLTG, {GlobalVariableName::VLTG, APIVariableName::VLTG, "VLTG", "VLTG", 0, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},
         {GlobalVariableName::CURT, {GlobalVariableName::CURT, APIVariableName::CURT, "CURT", "CURT", 0, SystemType::NODAL_LOADS, LAGRANGE, FIRST}},
 
         // Element Loads Variables
@@ -77,5 +76,12 @@ namespace Globals
         // "flux_parallel",
         // "periodic_boundary",
         // "MidsideNodes",
-        "boundary_id_"};
+        "BOUNDARY_ID_",
+        "PLASMA",
+        "VACUUM_CHAMBER",
+        "VACUUM_CHAMBER_NODES",
+        "VERTICAL_CONTROL_COILS",
+        "RADIAL_CONTROL_COILS",
+        "VACUUM_CHAMBER_BOUNDARY",
+        "NEW_VACUUM_CHAMBER_BOUNDARY"};
 }
