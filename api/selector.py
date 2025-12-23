@@ -199,11 +199,10 @@ class Selector:
         if not cell_sel.any():
             return
 
-        selected_ids = np.nonzero(cell_sel)[0]
+        selected_ids = np.flatnonzero(cell_sel)
         if selected_ids.size == 0:
             return
 
-        # Build a selection of the chosen cell ids
         id_array = vtknp.numpy_to_vtkIdTypeArray(selected_ids, deep=True)
         selection_node = vtk.vtkSelectionNode()
         selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
@@ -220,17 +219,18 @@ class Selector:
 
         original_ids_array = selected_mesh.GetPointData().GetArray("vtkOriginalPointIds")
         if original_ids_array is None:
-            # Fallback: if ids are missing, nothing to select
             return
         original_point_ids = vtknp.vtk_to_numpy(original_ids_array)
+        if original_point_ids.size == 0:
+            return
 
-        point_sel_array = mesh.GetPointData().GetArray("selection_point")
-        if point_sel_array is None:
-            raise ValueError("Point selection array 'selection_point' not found.")
-        point_sel = vtknp.vtk_to_numpy(point_sel_array)
-        point_sel[:] = 0
-        point_sel[original_point_ids] = 1
-        point_sel_array.Modified()
+        Selector.select(
+            mesh,
+            "ID",
+            set(np.unique(original_point_ids)),
+            type="node",
+            mode=mode,
+        )
 
     @staticmethod
     def esln(
@@ -369,6 +369,7 @@ class Selector:
             ValueError: If required selection arrays are missing.
         """
         Selector.ensure_selection_arrays(mesh)
+        Selector.unselect_all(mesh, type='node')
         cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
         if cell_sel_array is None:
             raise ValueError("Cell selection array 'selection_cell' not found. Run ensure_selection_arrays first.")
