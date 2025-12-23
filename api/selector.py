@@ -349,7 +349,7 @@ class Selector:
             mesh.GetPointData().GetArray("selection_point").Modified()
 
     @staticmethod
-    def nsel_ext(mesh: "vtk.vtkUnstructuredGrid") -> None:
+    def nsel_ext(mesh: "vtk.vtkUnstructuredGrid", mode: str = "s") -> None:
         """
         Selects all external nodes (points) of the currently selected cells.
 
@@ -369,7 +369,6 @@ class Selector:
             ValueError: If required selection arrays are missing.
         """
         Selector.ensure_selection_arrays(mesh)
-        Selector.unselect_all(mesh, type='node')
         cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
         if cell_sel_array is None:
             raise ValueError("Cell selection array 'selection_cell' not found. Run ensure_selection_arrays first.")
@@ -378,6 +377,7 @@ class Selector:
         if selected_cell_ids.size == 0:
             print("No cells are selected.")
             return
+
         id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
         selection_node = vtk.vtkSelectionNode()
         selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
@@ -390,22 +390,51 @@ class Selector:
         extract_selection.SetInputData(1, selection)
         extract_selection.Update()
         selected_mesh = extract_selection.GetOutput()
-        extract_surface = vtk.vtkGeometryFilter()
-        extract_surface.SetInputData(selected_mesh)
-        extract_surface.Update()
-        surface = extract_surface.GetOutput()
-        vtk_ids_array = surface.GetPointData().GetArray("vtkOriginalPointIds")
-        if vtk_ids_array is None:
-            print("No external nodes found (vtkOriginalPointIds missing).")
-            return
-        surface_point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
-        point_sel_array = mesh.GetPointData().GetArray("selection_point")
-        if point_sel_array is None:
-            raise ValueError("Point selection array 'selection_point' not found. Run ensure_selection_arrays first.")
-        point_sel = vtknp.vtk_to_numpy(point_sel_array)
-        point_sel[:] = 0
-        point_sel[surface_point_ids] = 1
-        point_sel_array.Modified()
+
+        cell_dimension = mesh.GetMaxSpatialDimension()
+
+        point_ids = None
+        if cell_dimension <= 2:
+            id_filter = vtk.vtkIdFilter()
+            id_filter.SetInputData(selected_mesh)
+            id_filter.SetPointIds(True)
+            id_filter.SetCellIds(False)
+            id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
+            id_filter.Update()
+            feature_edges = vtk.vtkFeatureEdges()
+            feature_edges.SetInputData(id_filter.GetOutput())
+            feature_edges.BoundaryEdgesOn()
+            feature_edges.FeatureEdgesOff()
+            feature_edges.ManifoldEdgesOff()
+            feature_edges.NonManifoldEdgesOff()
+            feature_edges.Update()
+            edges = feature_edges.GetOutput()
+            vtk_ids_array = edges.GetPointData().GetArray("vtkOriginalPointIds")
+            if vtk_ids_array is None:
+                print("No external nodes found (vtkOriginalPointIds missing).")
+                return
+            point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+            if point_ids.size == 0:
+                print("No external nodes found (feature edges returned empty).")
+                return
+        else:
+            extract_surface = vtk.vtkGeometryFilter()
+            extract_surface.SetInputData(selected_mesh)
+            extract_surface.Update()
+            surface = extract_surface.GetOutput()
+            vtk_ids_array = surface.GetPointData().GetArray("vtkOriginalPointIds")
+            if vtk_ids_array is None:
+                print("No external nodes found (vtkOriginalPointIds missing).")
+                return
+            point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+
+        Selector.select(
+            mesh,
+            "ID",
+            set(point_ids.tolist()),
+            type="node",
+            mode=mode,
+        )
 
     @staticmethod
     def set_value_on_selection(

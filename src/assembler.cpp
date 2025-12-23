@@ -170,7 +170,12 @@ bool AssemblerLinear::check_update_system_matrix()
 
     bool update_matrix = false;
 
-    if (current_time_substep->get_index() == 0)
+    // Here I will introduce a check on picard loops
+    if (current_time_substep->get_number_picard_iterations() > 0)
+    {
+        update_matrix = false;
+    }
+    else if (current_time_substep->get_index() == 0)
     {
         // If first substep and BCs have changed, we need to update the matrix
         // This will also include automatically the case of very first substep

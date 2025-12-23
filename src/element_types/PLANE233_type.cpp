@@ -49,15 +49,11 @@ void PLANE233Type::add_plane233_variables(const std::vector<unsigned int> &keyop
     case STRANDED_CONDUCTOR:
         vars.insert(vars.end(), {GlobalVariableName::Js_z});
         break;
-    case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {
-                                    GlobalVariableName::VOLT,
-                                    GlobalVariableName::AMPS,
-                                });
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT,
+                                 GlobalVariableName::AMPS,
+                                 GlobalVariableName::EMF,
+                                 GlobalVariableName::CURT});
         break;
     case STRANDED_COIL_CIRCUIT_COUPLED:
     case SOLID_CONDUCTOR_CIRCUIT_COUPLED:

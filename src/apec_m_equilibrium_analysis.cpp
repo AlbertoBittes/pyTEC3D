@@ -19,14 +19,17 @@ bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
     const auto iterations_limit = std::max<unsigned int>(1u, settings->max_picard_iterations());
     bool converged = false;
 
+    substep.reset_number_picard_iterations(0);
     for (unsigned int iteration = 0; iteration < iterations_limit; ++iteration)
     {
         if (picard_loop(substep))
         {
+            substep.increment_number_picard_iterations();
             libMesh::out << "Equilibrium analysis converged in " << iteration + 1 << " Picard iterations." << std::endl;
             converged = true;
             break;
         }
+        substep.increment_number_picard_iterations();
     }
 
     if (!converged)

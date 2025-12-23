@@ -8,7 +8,8 @@ Substep::Substep(unsigned int index, Real dt, TimeStep *parent)
       index(index),
       time(0.0),
       dt(dt),
-      solved(false)
+      solved(false),
+      number_picard_iterations(0)
 {
     time = parent->get_time_beginning() + (index + 1) * dt;
 }
