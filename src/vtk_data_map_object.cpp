@@ -78,7 +78,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
             for (auto &ctx : systems)
             {
-                if (cached_sys_type == ctx.system_info->type)
+                if (cached_sys_type == *ctx.system_type)
                 {
                     cached_var_num = data_map->get_system(ctx.sys_number).variable_number(cached_variable_label);
                     cached_sys_number = ctx.sys_number;
@@ -92,7 +92,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
         for (auto &ctx : systems)
         {
-            if (cached_sys_type == ctx.system_info->type)
+            if (cached_sys_type == *ctx.system_type)
             {
                 dof_id_type dof_id = is_element_data ? elem_ptr->dof_number(cached_sys_number, cached_var_num, 0) : node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
                 ctx.vec->set(dof_id, value);

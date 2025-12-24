@@ -112,14 +112,14 @@ void ApecMSystem<SysType>::init_variables()
     const std::string sys_name = this->name();
     for (const auto &pair : Globals::SYSTEM_INFO_MAP)
     {
-        if (pair.second.name == sys_name)
+        if (pair.second == sys_name)
         {
             type = pair.first;
             break;
         }
     }
     if (type == Globals::NUM_SYSTEMS)
-        libmesh_error_msg("SystemInfo not found for system name: " + sys_name);
+        libmesh_error_msg("System type not found for system name: " + sys_name);
 
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);
 

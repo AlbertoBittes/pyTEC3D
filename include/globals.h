@@ -2,6 +2,7 @@
 #define GLOBALS_H
 
 #include <string>
+#include <map>
 #include <vector>
 #include <utility>
 #include <variant>
@@ -25,34 +26,9 @@ namespace Globals
         NUM_SYSTEMS
     };
 
-    struct SystemInfo
-    {
-        SystemType type;
-        std::string name;
-        // Add other fields as needed
-    };
     // Global system info map
-    extern const std::map<SystemType, SystemInfo> SYSTEM_INFO_MAP;
+    extern const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
 
-    //
-    // BCs globals infomrations
-    //
-    enum class BoundaryConditionType
-    {
-        INFINITE_BOUNDARY,
-        FLUX_NORMAL,
-        FLUX_PARALLEL,
-        PERIODIC_BOUNDARY,
-        UNKNOWN // Fallback for invalid strings
-    };
-
-    struct BoundaryConditionInfo
-    {
-        BoundaryConditionType array_enum;
-        std::string label;
-        libMesh::boundary_id_type id;
-        // Add other fields as needed
-    };
     extern const libMesh::boundary_id_type FLUX_PARALLEL_ID_BC;
     extern const libMesh::boundary_id_type FLUX_NORMAL_ID_BC;
 

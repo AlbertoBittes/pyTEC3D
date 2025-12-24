@@ -10,12 +10,12 @@ namespace Globals
     const boundary_id_type FLUX_PARALLEL_ID_BC = 32760; // Example ID for flux parallel boundary condition
     const boundary_id_type FLUX_NORMAL_ID_BC = 32761;   // Example ID for flux normal boundary condition
 
-    const std::map<SystemType, SystemInfo> SYSTEM_INFO_MAP = {
-        {DOF_SOLUTION_SYSTEM, {DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"}},
-        {NODAL_LOADS, {NODAL_LOADS, "NodalLoadsSystem"}},
-        {ELEMENT_LOADS, {ELEMENT_LOADS, "ElementLoadsSystem"}},
-        {NODAL_SOLUTION, {NODAL_SOLUTION, "NodalSolutionSystem"}},
-        {ELEMENT_SOLUTION, {ELEMENT_SOLUTION, "ElementSolutionSystem"}},
+    const std::map<SystemType, std::string> SYSTEM_INFO_MAP = {
+        {DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"},
+        {NODAL_LOADS, "NodalLoadsSystem"},
+        {ELEMENT_LOADS, "ElementLoadsSystem"},
+        {NODAL_SOLUTION, "NodalSolutionSystem"},
+        {ELEMENT_SOLUTION, "ElementSolutionSystem"},
     };
 
     const std::vector<std::string> VTK_DATA_ARRAY_NAMES = {

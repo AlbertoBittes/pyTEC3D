@@ -356,8 +356,8 @@ void AssemblerLinear::write_solution_vectors(bool nodal_solution)
 
     reader.close_file_streams(inp_streams);
 
-    const auto &nodal_name = Globals::SYSTEM_INFO_MAP.at(Globals::NODAL_SOLUTION).name;
-    const auto &element_name = Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION).name;
+    const auto &nodal_name = Globals::SYSTEM_INFO_MAP.at(Globals::NODAL_SOLUTION);
+    const auto &element_name = Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION);
 
     auto &nodal_system = eq_sys->get_system<System>(nodal_name);
     auto &element_system = eq_sys->get_system<System>(element_name);

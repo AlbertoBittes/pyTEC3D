@@ -19,7 +19,7 @@ public:
         unsigned int sys_number;
         NumericVector<Number> *vec;
         NumericVector<Number> *old_vec;
-        Globals::SystemInfo *system_info;
+        Globals::SystemType *system_type;
         Real initial_val;
     };
 
@@ -39,7 +39,7 @@ public:
         systems.push_back({system->number(),
                            system->request_vector("node_dof_constraints"),
                            system->request_vector("old_node_dof_constraints"),
-                           &system->system_info,
+                           &system->system_type,
                            std::numeric_limits<Real>::quiet_NaN()});
     }
 
@@ -49,7 +49,7 @@ public:
         systems.push_back({nodal_loads_system->number(),
                            nodal_loads_system->current_local_solution.get(),
                            nodal_loads_system->request_vector("old_loads"),
-                           &nodal_loads_system->system_info,
+                           &nodal_loads_system->system_type,
                            0});
     }
 
@@ -59,7 +59,7 @@ public:
         systems.push_back({element_system->number(),
                            element_system->current_local_solution.get(),
                            element_system->request_vector("old_loads"),
-                           &element_system->system_info,
+                           &element_system->system_type,
                            0});
     }
 

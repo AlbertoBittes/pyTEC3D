@@ -45,30 +45,32 @@ public:
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
 
-    Globals::SystemInfo system_info; // Attribute to hold SystemInfo
+    Globals::SystemType system_type = Globals::NUM_SYSTEMS;
+    std::string system_name;
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
     ApecMSystem(Args &&...args)
         : SysLike(std::forward<Args>(args)...)
     {
-        // Fetch SystemInfo from Globals using the system name
+        // Fetch system type from Globals using the system name
         std::string sys_name = this->name();
         auto sys_type = Globals::NUM_SYSTEMS;
         for (const auto &pair : Globals::SYSTEM_INFO_MAP)
         {
-            if (pair.second.name == sys_name)
+            if (pair.second == sys_name)
             {
                 sys_type = pair.first;
                 break;
             }
         }
         if (sys_type == Globals::NUM_SYSTEMS)
-            libmesh_error_msg("SystemInfo not found for system name: " + sys_name);
+            libmesh_error_msg("System type not found for system name: " + sys_name);
         auto it = Globals::SYSTEM_INFO_MAP.find(sys_type);
         if (it == Globals::SYSTEM_INFO_MAP.end())
-            libmesh_error_msg("SystemInfo not found for system type.");
-        system_info = it->second;
+            libmesh_error_msg("System name not found for system type.");
+        system_type = sys_type;
+        system_name = it->second;
     }
 
     static void ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector);
@@ -179,7 +181,7 @@ public:
         : ApecMSystem<ExplicitSystem>(
               std::forward<Args>(args)...)
     {
-        if (system_info.type == Globals::NODAL_LOADS || system_info.type == Globals::ELEMENT_LOADS)
+        if (system_type == Globals::NODAL_LOADS || system_type == Globals::ELEMENT_LOADS)
         {
             this->add_vector("old_loads");
             this->add_vector("ramped_loads");
