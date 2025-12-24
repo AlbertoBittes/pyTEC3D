@@ -51,7 +51,7 @@ public:
     virtual bool solve() = 0;
     virtual bool solve_transient() = 0;
     virtual void prepare_time_substep_solve(Substep &substep) = 0;
-    virtual void solve_equation_systems(Substep &substep) = 0;
+    virtual void solve_equation_systems(Substep &substep, bool nodal_solution) = 0;
     virtual bool run_picard_iterations(Substep &substep) = 0;
     virtual void print_output(Substep &substep) = 0;
 

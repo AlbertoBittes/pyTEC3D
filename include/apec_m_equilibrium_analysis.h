@@ -42,10 +42,10 @@ protected:
 
     bool picard_loop(Substep &substep);
 
-    inline bool check_distance_magnetic_axis(const Node *node)
-    {
-        return (node->operator-(magnetic_axis)).norm() < min_distance_to_axis;
-    };
+    // inline bool check_distance_magnetic_axis(const Point &point)
+    // {
+    //     return (point - magnetic_axis).norm() > min_distance_to_axis;
+    // };
 
     virtual bool run_picard_iterations(Substep &substep) override;
 

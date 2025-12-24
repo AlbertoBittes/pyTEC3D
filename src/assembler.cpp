@@ -374,6 +374,8 @@ bool AssemblerLinear::check_update_element_matrices()
     if (ts->get_active_substep()->get_index() == 0)
     {
         auto old_ts = ts->get_previous_time_step();
+        if (ts->get_active_substep()->get_number_picard_iterations() > 0)
+            return false;
         if (old_ts == nullptr)
             return true;
         else

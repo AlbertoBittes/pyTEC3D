@@ -18,7 +18,7 @@ public:
     virtual bool solve() override;
     virtual bool solve_transient() override;
     virtual void prepare_time_substep_solve(Substep &substep) override;
-    virtual void solve_equation_systems(Substep &substep) override;
+    virtual void solve_equation_systems(Substep &substep, bool nodal_solution = true) override;
     virtual bool run_picard_iterations(Substep &substep) override;
     virtual void print_output(Substep &substep) override;
     void configure_services() const;

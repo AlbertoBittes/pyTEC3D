@@ -22,9 +22,9 @@ apec.apec_settings = {
     "target_central_axis_z": 0.0,
     "R0": 6.2,
     "max_picard_iterations": 50,
-    "min_distance": 0.3,
+    "min_distance": 0.6,
     "cp_gain": 0.80,
-    "tolerance_value": 1e-4,
+    "tolerance_value": 1e-6,
     "bradx_value":  -3.873415861E-08,
     "brady_value":  5.313857037E-09,
     "bverx_value": 1.822467692E-10,
@@ -65,7 +65,7 @@ apec.select_all()
 apec.nsel_ext()
 apec.set_value_on_selection("A", 0, 2)
 
-apec.time_parameters["ramped_loads"] = 1
+apec.time_parameters["ramped_loads"] = 0
 apec.time_parameters["theta"] = 0.5
 apec.time_parameters["write_substep_results"] = 1
 apec.time_parameters["transient_effects"] = 0

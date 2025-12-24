@@ -148,10 +148,11 @@ bool StaticAnalysis::execute_solve()
         prepare_time_substep_solve(substep);
 
         if (!run_picard_iterations(substep))
+        {
+            print_output(substep);
             return false;
-
+        }
         print_output(substep);
-
         *system.old_local_solution = *system.current_local_solution;
     }
 
@@ -178,10 +179,10 @@ void StaticAnalysis::prepare_time_substep_solve(Substep &substep)
 
     system.reinit_constraints();
 
-    assembler->write_element_matrices_and_rhs();
+    // assembler->write_element_matrices_and_rhs();
 }
 
-void StaticAnalysis::solve_equation_systems(Substep &substep)
+void StaticAnalysis::solve_equation_systems(Substep &substep, bool nodal_solution)
 {
     auto *equation_systems = this->active_equation_system();
     if (!equation_systems)
@@ -195,10 +196,12 @@ void StaticAnalysis::solve_equation_systems(Substep &substep)
         return;
     }
 
+    assembler->write_element_matrices_and_rhs();
+
     system.solve();
     system.get_dof_map().enforce_constraints_exactly(system);
     system.compute_solution_time_derivative(substep);
-    assembler->write_solution_vectors(true);
+    assembler->write_solution_vectors(nodal_solution);
 }
 
 void StaticAnalysis::print_output(Substep &substep)
