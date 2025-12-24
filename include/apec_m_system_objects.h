@@ -54,13 +54,21 @@ public:
     {
         // Fetch SystemInfo from Globals using the system name
         std::string sys_name = this->name();
-        auto sys_type = Globals::get_key_by_predicate_one(
-            Globals::SYSTEM_INFO_MAP,
-            [sys_name](const Globals::SystemInfo &info)
+        auto sys_type = Globals::NUM_SYSTEMS;
+        for (const auto &pair : Globals::SYSTEM_INFO_MAP)
+        {
+            if (pair.second.name == sys_name)
             {
-                return info.name == sys_name;
-            });
-        system_info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, sys_type);
+                sys_type = pair.first;
+                break;
+            }
+        }
+        if (sys_type == Globals::NUM_SYSTEMS)
+            libmesh_error_msg("SystemInfo not found for system name: " + sys_name);
+        auto it = Globals::SYSTEM_INFO_MAP.find(sys_type);
+        if (it == Globals::SYSTEM_INFO_MAP.end())
+            libmesh_error_msg("SystemInfo not found for system type.");
+        system_info = it->second;
     }
 
     static void ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector);

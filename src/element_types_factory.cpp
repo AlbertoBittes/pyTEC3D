@@ -1,5 +1,6 @@
 #include "element_types_factory.h"
 #include "globals.h"
+#include "variables_map.h"
 
 #include <algorithm>
 #include <cmath>
@@ -101,10 +102,12 @@ ElementTypesFactory::associate_variables_with_element_IDs(Globals::SystemType sy
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
-
-        auto active_vars = elementType->get_active_variables(system_type);
-        for (const auto &var : active_vars)
-            (*variableToElementIds)[var].insert(elementId);
+        const auto &vars = elementType->get_variables();
+        for (const auto &var : vars)
+        {
+            if (VariablesMap::get_info_by_key(var).system_type == system_type)
+                (*variableToElementIds)[var].insert(elementId);
+        }
     }
     return variableToElementIds;
 }

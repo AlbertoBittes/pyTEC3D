@@ -15,6 +15,7 @@
 #include <libmesh/boundary_info.h>
 #include "element_types_factory.h"
 #include "globals.h"
+#include "variables_map.h"
 
 // {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
 void ElementBuilder::build_solid97()
@@ -503,7 +504,7 @@ void ElementBuilder::build_solid97_solution_vectors()
 
             materials_object->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object->get_sigma_matrix();
-            unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
+            unsigned int volt_var_num = main_sys->variable_number(VariablesMap::get_info_by_key(GlobalVariableName::VOLT).global_label);
 
             fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), 0); // solution_derivative
 

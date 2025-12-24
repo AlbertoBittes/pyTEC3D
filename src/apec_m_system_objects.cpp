@@ -3,6 +3,7 @@
 #include "global_constraints_object.h"
 #include "libmesh/libmesh.h"
 #include "libmesh/numeric_vector.h"
+#include "variables_map.h"
 
 template <>
 void ApecMSystem<System>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
@@ -107,34 +108,34 @@ void ApecMSystem<SysType>::init_variables()
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
     // Use new helper functions to map system name to SystemType
-    Globals::SystemType type = Globals::get_key_by_predicate_one(
-        Globals::SYSTEM_INFO_MAP,
-        [sys_name = this->name()](const Globals::SystemInfo &info)
+    Globals::SystemType type = Globals::NUM_SYSTEMS;
+    const std::string sys_name = this->name();
+    for (const auto &pair : Globals::SYSTEM_INFO_MAP)
+    {
+        if (pair.second.name == sys_name)
         {
-            return info.name == sys_name;
-        });
+            type = pair.first;
+            break;
+        }
+    }
+    if (type == Globals::NUM_SYSTEMS)
+        libmesh_error_msg("SystemInfo not found for system name: " + sys_name);
 
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);
 
     for (const auto &pair : *vars_to_subdomain_ids)
     {
-        const auto &variable_string = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, pair.first).global_label;
+        const auto &variable_string = VariablesMap::get_info_by_key(pair.first).global_label;
         const std::set<subdomain_id_type> &subdomain_ids = pair.second;
         auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
-
-        // Get variable info for this variable
-        auto &var_info = elem_type->get_variable_information();
-        auto it = var_info.find(pair.first);
-        if (it == var_info.end())
-            continue; // Skip if variable info not found
-
-        Globals::VariableInfo &data = it->second;
+        auto fe_family = VariablesMap::get_variable_fe_family(*elem_type, pair.first);
+        auto order = VariablesMap::get_variable_order(*elem_type, pair.first);
 
         // Add the variable to the system, specifying subdomains
         this->add_variable(
             variable_string,
-            data.order,
-            data.fe_family,
+            order,
+            fe_family,
             &subdomain_ids);
     }
     // Add more conditions as needed for other combinations

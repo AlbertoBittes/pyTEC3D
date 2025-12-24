@@ -1,76 +1,30 @@
 #include "element_types.h"
 #include "element_builder.h"
-#include "globals.h"
-
-using namespace Globals;
-
+#include "variables_map.h"
 // Direct constructor
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(
           keyopts,
-          [keyopts](std::vector<Globals::GlobalVariableName> &vars)
-          { add_solid236_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars); },
           [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               add_solid236_fe_structs(fe_structs, keyopts);
           })
 {
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Chain-prolonging constructor for derived types
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts,
-                           std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
           keyopts,
-          [variable_collector, keyopts](std::vector<Globals::GlobalVariableName> &vars)
-          {
-              variable_collector(vars);
-              add_solid236_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars);
-          },
           [fe_collector, keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
               add_solid236_fe_structs(fe_structs, keyopts);
           })
 {
-}
-
-// Helper to add SOLID236 variables
-void SOLID236Type::add_solid236_variables(const PhysicalRegionEnum physical_region,
-                                          std::vector<Globals::GlobalVariableName> &vars)
-{
-    vars.insert(vars.end(), {GlobalVariableName::Az});
-
-    switch (physical_region)
-    {
-    case STRANDED_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::Js_x,
-                                 GlobalVariableName::Js_y,
-                                 GlobalVariableName::Js_z});
-        break;
-    case SOLID_CONDUCTOR:
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        break;
-    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
-    case STRANDED_COIL_CIRCUIT_COUPLED:
-        vars.insert(vars.end(), {GlobalVariableName::V,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
-        {
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        }
-        break;
-    default:
-        break;
-    }
-    // Add any further SOLID236-specific logic here if needed
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Helper to add two FEDataShapeFunctions structs

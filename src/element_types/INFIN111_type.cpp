@@ -1,15 +1,8 @@
 #include "element_types.h"
-#include "globals.h"
-
-using namespace Globals;
-
+#include "variables_map.h"
 INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
     : SOLID97Type(
           keyopts,
-          [](std::vector<Globals::GlobalVariableName> &)
-          {
-              // No INFIN111-specific variables
-          },
           [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               // Add one FE struct for INFIN111
@@ -24,6 +17,7 @@ INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
               });
           })
 {
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> INFIN111Type::get_solution_matrix_idx_size_map(bool nodal_solution)

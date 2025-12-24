@@ -1,6 +1,7 @@
 #include "apec_m_periodic_boundary.h"
 
 #include "globals.h"
+#include "variables_map.h"
 #include <map>
 
 ApecMPeriodicBoundary::ApecMPeriodicBoundary(const boundary_id_type main_b,
@@ -73,16 +74,11 @@ void ApecMPeriodicBoundary::set_variables()
 
     for (const auto &label : variable_labels)
     {
-        auto keys = Globals::get_keys_by_predicate(
-            Globals::GLOBAL_VARIABLE_INFO_MAP,
-            [&label](const Globals::VariableInfo &info)
-            {
-                return info.api_label == label;
-            });
+        auto keys = VariablesMap::get_keys_by_api_label(label);
 
         for (const auto &key : keys)
         {
-            auto &var_string_name = Globals::GLOBAL_VARIABLE_INFO_MAP.at(key).global_label;
+            auto &var_string_name = VariablesMap::get_info_by_key(key).global_label;
             if (eq_sys->get_system(0).has_variable(var_string_name))
             {
                 unsigned int var_index = eq_sys->get_system(0).variable_number(var_string_name);
@@ -134,22 +130,17 @@ DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const
 
     std::vector<unsigned int> ordered(vars_set.begin(), vars_set.end());
     std::vector<unsigned int> component_indices(ordered.size());
-    std::map<Globals::APIVariableName, std::vector<std::size_t>> label_rows;
-    std::vector<Globals::APIVariableName> label_order;
+    std::map<APIVariableName, std::vector<std::size_t>> label_rows;
+    std::vector<APIVariableName> label_order;
 
     for (std::size_t i = 0; i < ordered.size(); ++i)
     {
         unsigned int var_index = ordered[i];
         std::string var_name = system.variable_name(var_index);
 
-        auto key = Globals::get_key_by_predicate_one(
-            Globals::GLOBAL_VARIABLE_INFO_MAP,
-            [&var_name](const Globals::VariableInfo &info)
-            {
-                return info.global_label == var_name;
-            });
+        auto key = VariablesMap::get_key_by_global_label(var_name);
 
-        const auto &info = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, key);
+        const auto &info = VariablesMap::get_info_by_key(key);
         component_indices[i] = info.component_index;
 
         if (!label_rows.count(info.api_name))
@@ -160,7 +151,7 @@ DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const
     TensorValue<Real> rotation_T = rotation_matrix.transpose();
     const unsigned int rotation_dim = 3;
 
-    for (Globals::APIVariableName label : label_order)
+    for (APIVariableName label : label_order)
     {
         const auto &rows = label_rows[label];
         const std::size_t dim = rows.size();

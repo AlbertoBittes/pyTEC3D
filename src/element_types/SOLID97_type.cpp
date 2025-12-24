@@ -1,79 +1,30 @@
 #include "element_types.h"
 #include "element_builder.h"
-#include "globals.h"
-
-using namespace Globals;
+#include "variables_map.h"
 // Direct constructor
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(
           keyopts,
-          [keyopts](std::vector<Globals::GlobalVariableName> &vars)
-          { add_solid97_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars); },
           [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               add_solid97_fe_structs(fe_structs, keyopts);
           })
 {
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Chain-prolonging constructor for derived types
 SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts,
-                         std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
           keyopts,
-          [variable_collector, keyopts](std::vector<Globals::GlobalVariableName> &vars)
-          {
-              variable_collector(vars);
-              add_solid97_variables(static_cast<PhysicalRegionEnum>(keyopts[1]), vars);
-          },
           [fe_collector, keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
               add_solid97_fe_structs(fe_structs, keyopts);
           })
 {
-}
-
-// Helper to add SOLID97 variables
-void SOLID97Type::add_solid97_variables(const PhysicalRegionEnum physical_region,
-                                        std::vector<GlobalVariableName> &vars)
-{
-    vars.insert(vars.end(), {GlobalVariableName::A_x,
-                             GlobalVariableName::A_y,
-                             GlobalVariableName::A_z,
-                             GlobalVariableName::CSG_x,
-                             GlobalVariableName::CSG_y,
-                             GlobalVariableName::CSG_z});
-
-    switch (physical_region)
-    {
-    case STRANDED_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::Js_x,
-                                 GlobalVariableName::Js_y,
-                                 GlobalVariableName::Js_z});
-        break;
-    case SOLID_CONDUCTOR:
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {
-                                    GlobalVariableName::VOLT,
-                                    GlobalVariableName::AMPS,
-                                });
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        break;
-    case SOLID_CONDUCTOR_CIRCUIT_COUPLED:
-    case STRANDED_COIL_CIRCUIT_COUPLED:
-        vars.insert(vars.end(), {GlobalVariableName::V,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_CIRCUIT_COUPLED)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
-        break;
-    default:
-        break;
-    }
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Helper to add two FEDataShapeFunctions structs

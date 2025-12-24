@@ -13,6 +13,7 @@
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
+#include "variables_map.h"
 
 // Temporary placeholder for build_solid236
 void ElementBuilder::build_solid236()
@@ -392,7 +393,7 @@ void ElementBuilder::build_solid236_solution_vectors()
 
             materials_object->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object->get_sigma_matrix();
-            unsigned int volt_var_num = main_sys->variable_number(this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].global_label);
+            unsigned int volt_var_num = main_sys->variable_number(VariablesMap::get_info_by_key(GlobalVariableName::VOLT).global_label);
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
             fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), 0); // solution_derivative

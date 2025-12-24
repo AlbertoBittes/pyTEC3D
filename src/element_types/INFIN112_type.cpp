@@ -1,15 +1,8 @@
 #include "element_types.h"
-#include "globals.h"
-
-using namespace Globals;
-
+#include "variables_map.h"
 INFIN112Type::INFIN112Type(const std::vector<unsigned int> &keyopts)
     : SOLID236Type(
           keyopts,
-          [](std::vector<Globals::GlobalVariableName> &)
-          {
-              // No INFIN112-specific variables
-          },
           [](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               // Add one FE struct for INFIN112
@@ -24,4 +17,5 @@ INFIN112Type::INFIN112Type(const std::vector<unsigned int> &keyopts)
               });
           })
 {
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }

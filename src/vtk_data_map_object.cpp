@@ -1,4 +1,5 @@
 #include "globals.h"
+#include "variables_map.h"
 #include <libmesh/numeric_vector.h>
 #include <libmesh/dof_map.h>
 
@@ -64,16 +65,12 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
         if (label_number != prev_label_number || component_number != prev_component_number)
         {
-            Globals::APIVariableName api_var_enum = static_cast<Globals::APIVariableName>(static_cast<unsigned int>(label_number));
+            APIVariableName api_var_enum = static_cast<APIVariableName>(static_cast<unsigned int>(label_number));
 
-            Globals::GlobalVariableName global_label = Globals::get_key_by_predicate_one(
-                Globals::GLOBAL_VARIABLE_INFO_MAP,
-                [api_var_enum, component_number](const Globals::VariableInfo &info)
-                {
-                    return info.api_name == api_var_enum && info.component_index == static_cast<unsigned int>(component_number);
-                });
+            GlobalVariableName global_label =
+                VariablesMap::get_key_by_api_component(api_var_enum, static_cast<unsigned int>(component_number));
 
-            auto var_info = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, global_label);
+            auto var_info = VariablesMap::get_info_by_key(global_label);
 
             cached_sys_type = var_info.system_type;
 

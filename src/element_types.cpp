@@ -10,41 +10,11 @@
 #include "element_builder.h"
 #include <libmesh/inf_fe.h>
 
-using namespace Globals;
-
 ElementType::ElementType(const std::vector<unsigned int> &keyopts,
-                         std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : keyopts(keyopts)
 {
-    build_variable_information(variable_collector);
-    set_variables_order();
     build_fe_array(fe_collector);
-}
-
-void ElementType::build_variable_information(std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector)
-{
-    std::vector<Globals::GlobalVariableName> collected_vars;
-    variable_collector(collected_vars);
-    for (const auto &var : collected_vars)
-        variable_info[var] = Globals::get_info_by_key(Globals::GLOBAL_VARIABLE_INFO_MAP, var);
-}
-
-// Virtual methods to be implemented by derived classes
-std::vector<Globals::GlobalVariableName> ElementType::get_active_variables(Globals::SystemType variable_system_type) const
-{
-    std::vector<Globals::GlobalVariableName> active_vars;
-    for (const auto &pair : variable_info)
-    {
-        const Globals::GlobalVariableName &var_name = pair.first;
-        const Globals::VariableInfo &var_data = pair.second;
-
-        if (var_data.system_type == variable_system_type)
-        {
-            active_vars.push_back(var_name);
-        }
-    }
-    return active_vars;
 }
 
 void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
@@ -84,16 +54,4 @@ void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunct
             fe_array.push_back(std::move(fe_obj));
         }
     }
-}
-
-void ElementType::set_variables_order()
-{
-    if (static_cast<Order>(keyopts[2]) != FIRST)
-        for (auto &pair : variable_info)
-        {
-            if (pair.second.fe_family == LAGRANGE || pair.second.fe_family == L2_LAGRANGE)
-            {
-                pair.second.order = static_cast<Order>(keyopts[2]);
-            }
-        }
 }

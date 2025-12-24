@@ -26,7 +26,7 @@ void ApecMEquationSystems::configure_systems()
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
         Globals::SystemType type = static_cast<Globals::SystemType>(i);
-        const std::string sys_name = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type).name;
+        const std::string sys_name = Globals::SYSTEM_INFO_MAP.at(type).name;
 
         if (type == Globals::DOF_SOLUTION_SYSTEM)
         {
@@ -48,7 +48,7 @@ void ApecMEquationSystems::initialize_system_contexts()
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info.name);
 
         if (type == Globals::DOF_SOLUTION_SYSTEM)
@@ -72,7 +72,7 @@ void ApecMEquationSystems::post_initialize_systems()
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info.name);
 
         if (type == Globals::DOF_SOLUTION_SYSTEM)
@@ -125,7 +125,7 @@ void ApecMEquationSystems::zero_all_systems()
     for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::get_info_by_key(Globals::SYSTEM_INFO_MAP, type);
+        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info.name);
 
         if (auto *zeroable = dynamic_cast<ApecMSystemBase *>(&base_system))

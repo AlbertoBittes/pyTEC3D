@@ -15,6 +15,7 @@
 #include "apec_m_system_objects.h"
 #include "element_types_factory.h"
 #include "globals.h"
+#include "variables_map.h"
 
 //
 //
@@ -258,11 +259,18 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
 
-    auto active_vars = elem_data.element_type->get_active_variables(sys_type);
+    const auto &vars = elem_data.element_type->get_variables();
+    std::vector<GlobalVariableName> active_vars;
+    active_vars.reserve(vars.size());
+    for (const auto &var : vars)
+    {
+        if (VariablesMap::get_info_by_key(var).system_type == sys_type)
+            active_vars.push_back(var);
+    }
 
     for (const auto &var_enum : active_vars)
     {
-        unsigned int system_var_num = sys->variable_number(elem_data.element_type->get_variable_information()[var_enum].global_label);
+        unsigned int system_var_num = sys->variable_number(VariablesMap::get_info_by_key(var_enum).global_label);
         std::vector<dof_id_type> dof_indices_variable;
         if (dof_map)
         {

@@ -6,13 +6,14 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <utility>
 #include <libmesh/libmesh.h> // Include the libMesh header
 #include <libmesh/quadrature_gauss.h>
 #include <libmesh/string_to_enum.h>
 #include <libmesh/fe.h>
 
 #include "fe_data_object.h"
-#include "globals.h" // Include the header for global constants
+#include "variables_map.h"
 
 using namespace libMesh;
 
@@ -52,8 +53,7 @@ struct FEDataShapeFunctions
     bool is_vector; // NEW: true for FEVectorBase, false for FEBase
 };
 typedef std::unordered_map<unsigned int, std::unique_ptr<ElementType>> ElementTypesMap;
-typedef std::map<Globals::GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
-typedef std::map<Globals::GlobalVariableName, Globals::VariableInfo> VariableInformation;
+typedef std::map<GlobalVariableName, std::set<subdomain_id_type>> VariableToElementIdsMapType;
 
 // This is probably one of the most important classes of the program (ETYPE in APDL).
 // It holds the ElementTypes ID numbers (formulations) and all the information relevant for the formulation of the problem:
@@ -62,35 +62,26 @@ typedef std::map<Globals::GlobalVariableName, Globals::VariableInfo> VariableInf
 // Axisymmetric options (KEYOPT3)
 // Last, it contains an array of libMesh FE objects, which hold all the shape functions, quadrature points, etc.
 // These infomration will be used to build by the ElementBuilder e.g. to build the element matrices
-// Also, each element has associated DOF variables (e.g. SOLI97, see APDL, can have A_x, A_y, A_z, VOLT...)
-// given a mesh containing the element type IDs for each element, the SystemBuilder will distribute properly the variables
-// in the proper subdomains of the mesh. The ElementType contains info about name, number of variables, if they are active, etc.
+// Also, each element has associated DOF variables (e.g. SOLID97, see APDL, can have A_x, A_y, A_z, VOLT...).
+// Variable ownership and mapping live in VariablesMap; ElementType only stores formulation and FE data.
 class ElementType
 {
 public:
     ElementType(const std::vector<unsigned int> &keyopts,
-                std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
-
-    void build_variable_information(std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector);
-
-    void set_variables_order();
-    // Virtual methods to be implemented by derived classes
-    std::vector<Globals::GlobalVariableName> get_active_variables(Globals::SystemType variable_system_type) const;
 
     void build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
-    // Getter for ElementTypeData
-    inline const VariableInformation &get_variable_information() const { return variable_info; }
-    inline VariableInformation &get_variable_information() { return variable_info; }
+    inline const std::vector<GlobalVariableName> &get_variables() const { return variables; }
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
 protected:
-    VariableInformation variable_info;
+    void set_variables(std::vector<GlobalVariableName> vars) { variables = std::move(vars); }
+    std::vector<GlobalVariableName> variables;
     const std::vector<unsigned int> keyopts; // Element type keyopts
 
     // PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
@@ -102,7 +93,6 @@ class AVElementType : public ElementType
 public:
     // Constructor
     AVElementType(const std::vector<unsigned int> &keyopts,
-                  std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                   std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
@@ -111,7 +101,6 @@ class AV3DElementType : public AVElementType
 public:
     // Constructor
     AV3DElementType(const std::vector<unsigned int> &keyopts,
-                    std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
@@ -120,9 +109,8 @@ class AV2DElementType : public AVElementType
 public:
     // Constructor
     AV2DElementType(const std::vector<unsigned int> &keyopts,
-                    std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
-        : AVElementType(keyopts, variable_collector, fe_collector)
+        : AVElementType(keyopts, fe_collector)
     {
         // Optionally call set_fe_array() or other initialization here
     }
@@ -136,12 +124,7 @@ public:
 
     // Chain-prolonging constructor for derived types
     SOLID97Type(const std::vector<unsigned int> &keyopts,
-                std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
-    // Helper to add SOLID97 variables
-    static void add_solid97_variables(const PhysicalRegionEnum physical_region,
-                                      std::vector<Globals::GlobalVariableName> &vars);
-
     // Helper to add two FEDataShapeFunctions structs
     static void add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                        const std::vector<unsigned int> &keyopts);
@@ -157,12 +140,7 @@ public:
 
     // Chain-prolonging constructor for derived types
     SOLID236Type(const std::vector<unsigned int> &keyopts,
-                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
-
-    // Helper to add SOLID236 variables
-    static void add_solid236_variables(const PhysicalRegionEnum physical_region,
-                                       std::vector<Globals::GlobalVariableName> &vars);
 
     // Helper to add two FEDataShapeFunctions structs
     static void add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
@@ -179,12 +157,7 @@ public:
 
     // Chain-prolonging constructor for derived types
     PLANE233Type(const std::vector<unsigned int> &keyopts,
-                 std::function<void(std::vector<Globals::GlobalVariableName> &)> variable_collector,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
-
-    // Helper to add PLANE233 variables
-    static void add_plane233_variables(const std::vector<unsigned int> &keyopts,
-                                       std::vector<Globals::GlobalVariableName> &vars);
 
     // Helper to add two FEDataShapeFunctions structs
     static void add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,

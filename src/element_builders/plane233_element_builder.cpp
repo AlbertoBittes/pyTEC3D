@@ -247,8 +247,8 @@ void ElementBuilder::build_plane233_rhs()
         // }
 
         break;
-        // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::VOLT].system_var_num;
-        // unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[Globals::GlobalVariableName::AMPS].system_var_num;
+        // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[GlobalVariableName::VOLT].system_var_num;
+        // unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[GlobalVariableName::AMPS].system_var_num;
 
         // // Apply nodal AMPS loads
         // dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);

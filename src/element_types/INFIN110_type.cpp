@@ -1,15 +1,8 @@
 #include "element_types.h"
-#include "globals.h"
-
-using namespace Globals;
-
+#include "variables_map.h"
 INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
     : PLANE233Type(
           keyopts,
-          [](std::vector<Globals::GlobalVariableName> &)
-          {
-              // No INFIN110-specific variables
-          },
           [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               // Add one FE struct for INFIN110
@@ -24,4 +17,5 @@ INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
               });
           })
 {
+    set_variables(VariablesMap::get_variables_for_element(*this));
 }
