@@ -26,7 +26,6 @@
 #include "libmesh/node.h"
 #include "libmesh/elem.h"
 #include "libmesh/enum_io_package.h"
-#include "libmesh/explicit_system.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/string_to_enum.h"
 #include "libmesh/mesh_communication.h"
@@ -51,7 +50,6 @@
 #include "vtkPointData.h"
 #include "vtkPoints.h"
 #include "vtkSmartPointer.h"
-#include "vtkMergeVectorComponents.h"
 #include "vtkStringArray.h"
 
 #ifdef LIBMESH_HAVE_MPI
@@ -63,6 +61,7 @@
 #include "libmesh/restore_warnings.h"
 #include "vtkio_updated.h"
 #include "globals.h"
+#include "variables_map.h"
 // C++ includes
 #include <fstream>
 #include <map>
@@ -91,16 +90,16 @@ VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_pa
                                                MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
                                                ,
-                                               _compress(false), _sys(nullptr)
+                                               _compress(false), _eq_sys(nullptr)
 #endif
 {
 }
 
 // Constructor for writing
-VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, ExplicitSystem *sys) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
+VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
-                                                                          ,
-                                                                          _compress(false), _sys(sys)
+                                                                                  ,
+                                                                                  _compress(false), _eq_sys(eq_systems)
 #endif
 {
 }
@@ -518,6 +517,20 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
     // add cells to the grid
     this->cells_to_vtk();
 
+    if (_eq_sys)
+    {
+        const std::set<std::string> element_system_names = {
+            Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_LOADS),
+            Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION)};
+        for (unsigned int i = 0; i < _eq_sys->n_systems(); ++i)
+        {
+            const System &sys = _eq_sys->get_system(i);
+            if (element_system_names.count(sys.name()) == 0)
+                continue;
+            add_cell_data_from_system(sys);
+        }
+    }
+
     // add nodal solutions to the grid, if solutions are given
     if (names.size() > 0)
     {
@@ -710,19 +723,6 @@ void VTKIO_Updated::cells_to_vtk()
     elem_proc_id->SetName("processor_id");
     elem_proc_id->SetNumberOfComponents(1);
 
-    unsigned int num_elem_data_vars = _sys->n_vars();
-    std::vector<vtkSmartPointer<vtkDoubleArray>> elem_data_vars;
-
-    for (unsigned int i = 0; i < num_elem_data_vars; ++i)
-    {
-        elem_data_vars.push_back(vtkSmartPointer<vtkDoubleArray>::New());
-        elem_data_vars[i]->SetName(_sys->variable_name(i).c_str());
-        elem_data_vars[i]->SetNumberOfComponents(1);
-    }
-
-    std::vector<dof_id_type> dof_indices;
-    DofMap &dof_map = _sys->get_dof_map();
-    std::vector<Number> tuple_values;
     unsigned active_element_counter = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -777,13 +777,6 @@ void VTKIO_Updated::cells_to_vtk()
         elem_id->InsertTuple1(vtkcellid, elem->id());
         subdomain_id->InsertTuple1(vtkcellid, elem->subdomain_id());
         elem_proc_id->InsertTuple1(vtkcellid, elem->processor_id());
-        for (unsigned int i = 0; i < num_elem_data_vars; ++i)
-        {
-            dof_map.dof_indices(elem, dof_indices, i);
-            _sys->current_local_solution->get(dof_indices, tuple_values);
-            for (unsigned int j = 0; j < tuple_values.size(); ++j)
-                elem_data_vars[i]->InsertTuple(vtkcellid, tuple_values.data());
-        }
         ++active_element_counter;
     } // end loop over active elements
 
@@ -791,6 +784,44 @@ void VTKIO_Updated::cells_to_vtk()
     _vtk_grid->GetCellData()->AddArray(elem_id);
     _vtk_grid->GetCellData()->AddArray(subdomain_id);
     _vtk_grid->GetCellData()->AddArray(elem_proc_id);
+}
+
+void VTKIO_Updated::add_cell_data_from_system(const System &system)
+{
+    const MeshBase &mesh = MeshOutput<MeshBase>::mesh();
+    const unsigned int num_elem_data_vars = system.n_vars();
+    std::vector<vtkSmartPointer<vtkDoubleArray>> elem_data_vars;
+    elem_data_vars.reserve(num_elem_data_vars);
+
+    for (unsigned int i = 0; i < num_elem_data_vars; ++i)
+    {
+        elem_data_vars.push_back(vtkSmartPointer<vtkDoubleArray>::New());
+        elem_data_vars[i]->SetName(system.variable_name(i).c_str());
+        elem_data_vars[i]->SetNumberOfComponents(1);
+    }
+
+    std::vector<dof_id_type> dof_indices;
+    const DofMap &dof_map = system.get_dof_map();
+    std::vector<Number> tuple_values;
+    unsigned active_element_counter = 0;
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        if (elem->infinite())
+            continue;
+        if (elem->type() == NODEELEM)
+            continue;
+
+        vtkIdType vtkcellid = static_cast<vtkIdType>(active_element_counter);
+        for (unsigned int i = 0; i < num_elem_data_vars; ++i)
+        {
+            dof_map.dof_indices(elem, dof_indices, i);
+            system.current_local_solution->get(dof_indices, tuple_values);
+            for (unsigned int j = 0; j < tuple_values.size(); ++j)
+                elem_data_vars[i]->InsertTuple(vtkcellid, tuple_values.data());
+        }
+        ++active_element_counter;
+    }
+
     for (unsigned int i = 0; i < num_elem_data_vars; ++i)
         _vtk_grid->GetCellData()->AddArray(elem_data_vars[i]);
 }
@@ -942,40 +973,58 @@ void VTKIO_Updated::merge_vector_components(bool is_point_data)
             base_name = arr_name.substr(0, arr_name.size() - 2);
 
         if (!base_name.empty() && bases_to_merge.find(base_name) == bases_to_merge.end())
-        {
-            bool has_x = data->HasArray((base_name + "_x").c_str());
-            bool has_y = data->HasArray((base_name + "_y").c_str());
-            bool has_z = data->HasArray((base_name + "_z").c_str());
-            if (has_x && has_y && has_z)
-                bases_to_merge.insert(base_name);
-        }
+            bases_to_merge.insert(base_name);
     }
+
+    if (!_eq_sys)
+        return;
 
     // Second pass: merge and then remove arrays
     for (const auto &base_name : bases_to_merge)
     {
-        vtkSmartPointer<vtkMergeVectorComponents> merger = vtkSmartPointer<vtkMergeVectorComponents>::New();
-        merger->SetOutputVectorName(base_name.c_str());
-        merger->SetXArrayName((base_name + "_x").c_str());
-        merger->SetYArrayName((base_name + "_y").c_str());
-        merger->SetZArrayName((base_name + "_z").c_str());
-        if (is_point_data)
-            merger->SetAttributeTypeToPointData();
-        else
-            merger->SetAttributeTypeToCellData();
-        merger->SetInputData(_vtk_grid);
-        merger->Update();
-        _vtk_grid = vtkUnstructuredGrid::SafeDownCast(merger->GetOutput());
-    }
-    for (const auto &base_name : bases_to_merge)
-    {
-        vtkDataSetAttributes *new_data = is_point_data
-                                             ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())
-                                             : static_cast<vtkDataSetAttributes *>(_vtk_grid->GetCellData());
+        const std::string x_name = base_name + "_x";
+        const std::string y_name = base_name + "_y";
+        const std::string z_name = base_name + "_z";
 
-        new_data->RemoveArray((base_name + "_x").c_str());
-        new_data->RemoveArray((base_name + "_y").c_str());
-        new_data->RemoveArray((base_name + "_z").c_str());
+        unsigned int comp_count = 0;
+        if (data->HasArray(x_name.c_str()))
+            ++comp_count;
+        if (data->HasArray(y_name.c_str()))
+            ++comp_count;
+        if (data->HasArray(z_name.c_str()))
+            ++comp_count;
+        if (comp_count < 2)
+            continue;
+
+        std::vector<vtkDataArray *> component_arrays;
+        if (data->HasArray(x_name.c_str()))
+            component_arrays.push_back(data->GetArray(x_name.c_str()));
+        if (data->HasArray(y_name.c_str()))
+            component_arrays.push_back(data->GetArray(y_name.c_str()));
+        if (data->HasArray(z_name.c_str()))
+            component_arrays.push_back(data->GetArray(z_name.c_str()));
+
+        if (component_arrays.size() != comp_count)
+            continue;
+
+        vtkIdType num_tuples = component_arrays.front()->GetNumberOfTuples();
+        vtkSmartPointer<vtkDoubleArray> merged = vtkSmartPointer<vtkDoubleArray>::New();
+        merged->SetName(base_name.c_str());
+        merged->SetNumberOfComponents(comp_count);
+        merged->SetNumberOfTuples(num_tuples);
+
+        std::vector<double> tuple(comp_count, 0.0);
+        for (vtkIdType t = 0; t < num_tuples; ++t)
+        {
+            for (unsigned int c = 0; c < comp_count; ++c)
+                tuple[c] = component_arrays[c]->GetComponent(t, 0);
+            merged->SetTuple(t, tuple.data());
+        }
+
+        data->AddArray(merged);
+        data->RemoveArray(x_name.c_str());
+        data->RemoveArray(y_name.c_str());
+        data->RemoveArray(z_name.c_str());
     }
 }
 

@@ -10,6 +10,11 @@
 
 #include "globals.h"
 
+namespace libMesh
+{
+    class System;
+}
+
 class ElementType;
 enum PhysicalRegionEnum : unsigned int;
 
@@ -134,6 +139,13 @@ public:
                                    GlobalVariableName variable);
     static bool is_variable_vector(const ElementType &element,
                                    GlobalVariableName variable);
+    struct PhysicalComponentsInfo
+    {
+        unsigned int physical_components;
+        bool is_scalar;
+    };
+    static PhysicalComponentsInfo get_variable_components_for_system(const libMesh::System &system,
+                                                                     GlobalVariableName variable);
 
 private:
     static std::vector<GlobalVariableName> add_av_variables();

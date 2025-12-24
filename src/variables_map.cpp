@@ -1,5 +1,6 @@
 #include "variables_map.h"
 #include "element_types.h"
+#include <libmesh/system.h>
 const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_INFO_MAP = {
         // DOF Variables
         {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0, Globals::DOF_SOLUTION_SYSTEM}},
@@ -271,6 +272,42 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
 
     namespace
     {
+        std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system)
+        {
+            std::vector<GlobalVariableName> vars;
+            const unsigned int n_vars = system.n_vars();
+            vars.reserve(n_vars);
+            for (unsigned int i = 0; i < n_vars; ++i)
+            {
+                const std::string &name = system.variable_name(i);
+                auto keys = VariablesMap::get_keys_by_predicate(
+                    VariablesMap::GLOBAL_VARIABLE_INFO_MAP,
+                    [&name](const VariableInfo &info)
+                    {
+                        return info.global_label == name;
+                    });
+                if (keys.empty())
+                    continue;
+                if (keys.size() > 1)
+                    libmesh_error_msg("Variable name maps to multiple global variables: " + name);
+                vars.push_back(keys.front());
+            }
+            return vars;
+        }
+
+        unsigned int count_label_components(const std::string &base_label,
+                                            const std::vector<GlobalVariableName> &vars)
+        {
+            unsigned int count = 0;
+            if (has_label_component(base_label, "_x", vars))
+                ++count;
+            if (has_label_component(base_label, "_y", vars))
+                ++count;
+            if (has_label_component(base_label, "_z", vars))
+                ++count;
+            return count > 0 ? count : 1;
+        }
+
         bool has_label_component(const std::string &base_label,
                                  const char *suffix,
                                  const std::vector<GlobalVariableName> &vars)
@@ -387,15 +424,7 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
         std::string base_label = label.substr(0, label.size() - 2);
         const auto vars = get_variables_for_element(element);
 
-        unsigned int count = 0;
-        if (has_label_component(base_label, "_x", vars))
-            ++count;
-        if (has_label_component(base_label, "_y", vars))
-            ++count;
-        if (has_label_component(base_label, "_z", vars))
-            ++count;
-
-        return count > 0 ? count : 1;
+        return count_label_components(base_label, vars);
     }
 
     bool VariablesMap::is_variable_scalar(const ElementType &element,
@@ -408,4 +437,18 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
                                           GlobalVariableName variable)
     {
         return !is_variable_scalar(element, variable);
+    }
+
+    VariablesMap::PhysicalComponentsInfo VariablesMap::get_variable_components_for_system(const libMesh::System &system,
+                                                                                           GlobalVariableName variable)
+    {
+        const std::string &label = get_info_by_key(variable).global_label;
+        if (!has_vector_suffix(label))
+            return {1, true};
+
+        std::string base_label = label.substr(0, label.size() - 2);
+        const auto vars = get_system_variables(system);
+
+        unsigned int count = count_label_components(base_label, vars);
+        return {count, count == 1};
     }

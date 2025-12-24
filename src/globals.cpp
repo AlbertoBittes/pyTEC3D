@@ -29,7 +29,7 @@ namespace Globals
         // "flux_parallel",
         // "periodic_boundary",
         "angles",
-        "BOUNDARY_ID_",
+        "boundary_id_",
         "PLASMA",
         "VACUUM_CHAMBER",
         "VACUUM_CHAMBER_NODES",

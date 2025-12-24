@@ -225,7 +225,7 @@ void StaticAnalysis::print_output(Substep &substep)
 
     session->set_output_filepath(base_substep_index + substep.get_index());
     VTKIO_Updated vtk_output(equation_systems->get_mesh(),
-                             &equation_systems->get_system<ApecMExplicitSystem>("ElementSolutionSystem"));
+                             equation_systems);
     vtk_output.write_equation_systems(session->get_path("final_output_path"),
                                       *equation_systems,
                                       &system_names);

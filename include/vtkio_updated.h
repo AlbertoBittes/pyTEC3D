@@ -23,7 +23,7 @@
 #include "libmesh/mesh_input.h"
 #include "libmesh/mesh_output.h"
 #include "libmesh/utility.h"
-#include "libmesh/explicit_system.h"
+#include "libmesh/equation_systems.h"
 
 #ifdef LIBMESH_HAVE_VTK
 // Ignore "deprecated...header" warning from strstream
@@ -51,7 +51,7 @@ class VTKIO_Updated : public MeshInput<MeshBase>,
 public:
     explicit VTKIO_Updated(MeshBase &mesh);
 
-    explicit VTKIO_Updated(const MeshBase &mesh, ExplicitSystem *sys);
+    explicit VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems);
 
     // New constructor: calls base constructor and then read_apec_m_model
     VTKIO_Updated(MeshBase &mesh, const std::string &mesh_filepath)
@@ -85,6 +85,7 @@ private:
     void nodes_to_vtk();
 
     void cells_to_vtk();
+    void add_cell_data_from_system(const System &system);
 
     void node_values_to_vtk(const std::string &name,
                             const std::vector<Real> &local_values);
@@ -100,7 +101,7 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid;
 
     bool _compress;
-    ExplicitSystem *_sys;
+    EquationSystems *_eq_sys;
     std::map<dof_id_type, dof_id_type> _local_node_map;
 
     struct ElementMaps
