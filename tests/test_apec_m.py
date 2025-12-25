@@ -247,7 +247,7 @@ analysis_cases = [
             },
             {
                 "timestep": 8,
-                "array": "Be_x",
+                "array": "Be",
                 "component": 0,
                 "libmesh_id": 234,
                 "expected": 0.58415E-008,
@@ -256,7 +256,7 @@ analysis_cases = [
             },
             {
                 "timestep": 14,
-                "array": "Be_x",
+                "array": "Be",
                 "component": 0,
                 "libmesh_id": 331,
                 "expected": -0.93636E-009,
@@ -265,7 +265,7 @@ analysis_cases = [
             },
             {
                 "timestep": 2,
-                "array": "Be_x",
+                "array": "Be",
                 "component": 0,
                 "libmesh_id": 181,
                 "expected": -0.93335E-009,
@@ -274,8 +274,8 @@ analysis_cases = [
             },
             {           # Here I get small discrepancy not detected by the test, to investigate
                 "timestep": 2,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 231,
                 "expected": 0.15646E-007,
                 "tol": 3e-2,
@@ -283,8 +283,8 @@ analysis_cases = [
             },
             {           # Here I get small discrepancy not detected by the test, to investigate - By not exactly equal for axisymm elements
                 "timestep": 12,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 265,
                 "expected": -0.15372E-009,
                 "tol": 2e-2,
@@ -293,8 +293,8 @@ analysis_cases = [
             {           # Here I get small discrepancy not detected by the test, to investigate
                 # Assumption: being only Bz, it can be due to the 1/r term of the curl, computed slightly differently by ANSYS.
                 "timestep": 14,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 265,
                 "expected": -0.12428E-009,
                 "tol": 2e-2,
@@ -362,8 +362,8 @@ analysis_cases = [
             # },
             {
                 "timestep": 3,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 200,
                 "expected": -0.11356E-004,
                 "tol": 1e-3,
@@ -371,8 +371,8 @@ analysis_cases = [
             },
             {
                 "timestep": 3,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 729,
                 "expected":  0.31682E-005,
                 "tol": 1e-3,
@@ -422,8 +422,8 @@ analysis_cases = [
             },
             {
                 "timestep": 1,  # 0.44348E-007
-                "array": "Jt_z",
-                "component": 0,
+                "array": "Jt",
+                "component": 2,
                 "libmesh_id": 23,
                 "expected": -26.573,
                 "tol": 1e-5,
@@ -431,8 +431,8 @@ analysis_cases = [
             },
             {
                 "timestep": 3,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 200,
                 "expected": -0.11356E-004,
                 "tol": 1e-4,
@@ -440,8 +440,8 @@ analysis_cases = [
             },
             {
                 "timestep": 3,
-                "array": "Be_y",
-                "component": 0,
+                "array": "Be",
+                "component": 1,
                 "libmesh_id": 729,
                 "expected":  0.31682E-005,
                 "tol": 1e-4,

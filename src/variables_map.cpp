@@ -295,19 +295,6 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
             return vars;
         }
 
-        unsigned int count_label_components(const std::string &base_label,
-                                            const std::vector<GlobalVariableName> &vars)
-        {
-            unsigned int count = 0;
-            if (has_label_component(base_label, "_x", vars))
-                ++count;
-            if (has_label_component(base_label, "_y", vars))
-                ++count;
-            if (has_label_component(base_label, "_z", vars))
-                ++count;
-            return count > 0 ? count : 1;
-        }
-
         bool has_label_component(const std::string &base_label,
                                  const char *suffix,
                                  const std::vector<GlobalVariableName> &vars)
@@ -319,6 +306,19 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
                     return true;
             }
             return false;
+        }
+
+        unsigned int count_label_components(const std::string &base_label,
+                                            const std::vector<GlobalVariableName> &vars)
+        {
+            unsigned int count = 0;
+            if (has_label_component(base_label, "_x", vars))
+                ++count;
+            if (has_label_component(base_label, "_y", vars))
+                ++count;
+            if (has_label_component(base_label, "_z", vars))
+                ++count;
+            return count > 0 ? count : 1;
         }
 
         bool has_vector_suffix(const std::string &label)

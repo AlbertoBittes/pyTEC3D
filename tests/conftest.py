@@ -8,7 +8,7 @@ import sys
 sys.dont_write_bytecode = True
 
 
-def pytest_configure(_config):
+def pytest_configure(config):
     """Remove any existing __pycache__ directories before tests execute."""
     repo_root = Path(__file__).resolve().parent.parent
     for cache_dir in repo_root.rglob("__pycache__"):

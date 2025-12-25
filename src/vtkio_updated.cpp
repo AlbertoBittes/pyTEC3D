@@ -520,7 +520,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
     if (_eq_sys)
     {
         const std::set<std::string> element_system_names = {
-            Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_LOADS),
+            // Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_LOADS),
             Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION)};
         for (unsigned int i = 0; i < _eq_sys->n_systems(); ++i)
         {
@@ -566,8 +566,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
 #endif
         }
     }
-    merge_vector_components(true);
-    merge_vector_components(false);
+    merge_vector_components();
     // Tell the writer how many partitions exist and on which processor
     // we are currently
     writer->SetNumberOfPieces(mesh.n_processors());
@@ -943,89 +942,88 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
 //     }
 // }
 
-void VTKIO_Updated::merge_vector_components(bool is_point_data)
+void VTKIO_Updated::merge_vector_components()
 {
-    vtkDataSetAttributes *data = is_point_data ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())
-                                               : static_cast<vtkDataSetAttributes *>(_vtk_grid->GetCellData());
-    std::set<std::string> bases_to_merge;
-    int num_arrays = data->GetNumberOfArrays();
-
-    auto ends_with = [](const std::string &str, const std::string &suffix)
+    auto merge_for_data = [](vtkDataSetAttributes *data)
     {
-        return str.size() >= suffix.size() &&
-               str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
-    };
+        std::set<std::string> bases_to_merge;
+        int num_arrays = data->GetNumberOfArrays();
 
-    // First pass: collect base names to merge
-    for (int i = 0; i < num_arrays; ++i)
-    {
-        const char *arr_name_cstr = data->GetArrayName(i);
-        if (!arr_name_cstr)
-            continue;
-        std::string arr_name(arr_name_cstr);
-
-        std::string base_name;
-        if (ends_with(arr_name, "_x"))
-            base_name = arr_name.substr(0, arr_name.size() - 2);
-        else if (ends_with(arr_name, "_y"))
-            base_name = arr_name.substr(0, arr_name.size() - 2);
-        else if (ends_with(arr_name, "_z"))
-            base_name = arr_name.substr(0, arr_name.size() - 2);
-
-        if (!base_name.empty() && bases_to_merge.find(base_name) == bases_to_merge.end())
-            bases_to_merge.insert(base_name);
-    }
-
-    if (!_eq_sys)
-        return;
-
-    // Second pass: merge and then remove arrays
-    for (const auto &base_name : bases_to_merge)
-    {
-        const std::string x_name = base_name + "_x";
-        const std::string y_name = base_name + "_y";
-        const std::string z_name = base_name + "_z";
-
-        unsigned int comp_count = 0;
-        if (data->HasArray(x_name.c_str()))
-            ++comp_count;
-        if (data->HasArray(y_name.c_str()))
-            ++comp_count;
-        if (data->HasArray(z_name.c_str()))
-            ++comp_count;
-        if (comp_count < 2)
-            continue;
-
-        std::vector<vtkDataArray *> component_arrays;
-        if (data->HasArray(x_name.c_str()))
-            component_arrays.push_back(data->GetArray(x_name.c_str()));
-        if (data->HasArray(y_name.c_str()))
-            component_arrays.push_back(data->GetArray(y_name.c_str()));
-        if (data->HasArray(z_name.c_str()))
-            component_arrays.push_back(data->GetArray(z_name.c_str()));
-
-        if (component_arrays.size() != comp_count)
-            continue;
-
-        vtkIdType num_tuples = component_arrays.front()->GetNumberOfTuples();
-        vtkSmartPointer<vtkDoubleArray> merged = vtkSmartPointer<vtkDoubleArray>::New();
-        merged->SetName(base_name.c_str());
-        merged->SetNumberOfComponents(comp_count);
-        merged->SetNumberOfTuples(num_tuples);
-
-        std::vector<double> tuple(comp_count, 0.0);
-        for (vtkIdType t = 0; t < num_tuples; ++t)
+        auto ends_with = [](const std::string &str, const std::string &suffix)
         {
-            for (unsigned int c = 0; c < comp_count; ++c)
-                tuple[c] = component_arrays[c]->GetComponent(t, 0);
-            merged->SetTuple(t, tuple.data());
+            return str.size() >= suffix.size() &&
+                   str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+        };
+
+        for (int i = 0; i < num_arrays; ++i)
+        {
+            const char *arr_name_cstr = data->GetArrayName(i);
+            if (!arr_name_cstr)
+                continue;
+            std::string arr_name(arr_name_cstr);
+
+            std::string base_name;
+            if (ends_with(arr_name, "_x"))
+                base_name = arr_name.substr(0, arr_name.size() - 2);
+            else if (ends_with(arr_name, "_y"))
+                base_name = arr_name.substr(0, arr_name.size() - 2);
+            else if (ends_with(arr_name, "_z"))
+                base_name = arr_name.substr(0, arr_name.size() - 2);
+
+            if (!base_name.empty() && bases_to_merge.find(base_name) == bases_to_merge.end())
+                bases_to_merge.insert(base_name);
         }
 
-        data->AddArray(merged);
-        data->RemoveArray(x_name.c_str());
-        data->RemoveArray(y_name.c_str());
-        data->RemoveArray(z_name.c_str());
-    }
+        for (const auto &base_name : bases_to_merge)
+        {
+            const std::string x_name = base_name + "_x";
+            const std::string y_name = base_name + "_y";
+            const std::string z_name = base_name + "_z";
+
+            unsigned int comp_count = 0;
+            if (data->HasArray(x_name.c_str()))
+                ++comp_count;
+            if (data->HasArray(y_name.c_str()))
+                ++comp_count;
+            if (data->HasArray(z_name.c_str()))
+                ++comp_count;
+            if (comp_count < 2)
+                continue;
+
+            std::vector<vtkDataArray *> component_arrays;
+            if (data->HasArray(x_name.c_str()))
+                component_arrays.push_back(data->GetArray(x_name.c_str()));
+            if (data->HasArray(y_name.c_str()))
+                component_arrays.push_back(data->GetArray(y_name.c_str()));
+            if (data->HasArray(z_name.c_str()))
+                component_arrays.push_back(data->GetArray(z_name.c_str()));
+
+            if (component_arrays.size() != comp_count)
+                continue;
+
+            vtkIdType num_tuples = component_arrays.front()->GetNumberOfTuples();
+            vtkSmartPointer<vtkDoubleArray> merged = vtkSmartPointer<vtkDoubleArray>::New();
+            merged->SetName(base_name.c_str());
+            merged->SetNumberOfComponents(comp_count);
+            merged->SetNumberOfTuples(num_tuples);
+
+            std::vector<double> tuple(comp_count, 0.0);
+            for (vtkIdType t = 0; t < num_tuples; ++t)
+            {
+                for (unsigned int c = 0; c < comp_count; ++c)
+                    tuple[c] = component_arrays[c]->GetComponent(t, 0);
+                merged->SetTuple(t, tuple.data());
+            }
+
+            data->AddArray(merged);
+            data->RemoveArray(x_name.c_str());
+            data->RemoveArray(y_name.c_str());
+            data->RemoveArray(z_name.c_str());
+        }
+    };
+
+    merge_for_data(_vtk_grid->GetPointData());
+    merge_for_data(_vtk_grid->GetCellData());
 }
 
 #else // !LIBMESH_HAVE_VTK
