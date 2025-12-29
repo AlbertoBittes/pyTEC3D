@@ -1,0 +1,106 @@
+#include "augment_sparsity_on_nodes.h"
+
+#include <algorithm>
+#include <unordered_set>
+
+#include <libmesh/elem.h>
+
+using namespace libMesh;
+
+namespace
+{
+    bool add_pair(std::vector<std::pair<dof_id_type, dof_id_type>> &pairs,
+                  dof_id_type first,
+                  dof_id_type second)
+    {
+        const auto candidate = std::make_pair(first, second);
+        if (std::find(pairs.begin(), pairs.end(), candidate) != pairs.end())
+            return false;
+        pairs.push_back(candidate);
+        return true;
+    }
+}
+
+AugmentSparsityOnNodes::AugmentSparsityOnNodes(MeshBase &mesh, const DofCouplingsObject &couplings)
+    : _mesh(mesh)
+{
+    build_node_sets(couplings);
+    rebuild_elem_neighbors();
+}
+
+void AugmentSparsityOnNodes::build_node_sets(const DofCouplingsObject &couplings)
+{
+    node_pairs.clear();
+    const auto &entries = couplings.get_couplings();
+    node_pairs.reserve(entries.size());
+
+    for (const auto &entry : entries)
+    {
+        for (const auto &pair : entry.pairs)
+            node_pairs.emplace_back(pair.first, pair.second);
+    }
+}
+
+void AugmentSparsityOnNodes::rebuild_elem_neighbors()
+{
+    elem_pairs.clear();
+
+    std::unordered_map<unsigned int, dof_id_type> node_to_elem;
+    for (const auto *elem : _mesh.element_ptr_range())
+    {
+        if (elem->type() != NODEELEM || elem->n_nodes() == 0)
+            continue;
+        node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(0)), elem->id());
+    }
+
+    for (const auto &node_pair : node_pairs)
+    {
+        auto first_it = node_to_elem.find(node_pair.first);
+        auto second_it = node_to_elem.find(node_pair.second);
+        if (first_it == node_to_elem.end() || second_it == node_to_elem.end())
+            continue;
+
+        add_pair(elem_pairs, first_it->second, second_it->second);
+    }
+}
+
+void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &range_begin,
+                                        const MeshBase::const_element_iterator &range_end,
+                                        processor_id_type p,
+                                        map_type &coupled_elements)
+{
+    const CouplingMatrix *const null_mat = nullptr;
+
+    for (auto it = range_begin; it != range_end; ++it)
+    {
+        const Elem *elem = *it;
+        if (!elem)
+            continue;
+
+        if (elem->processor_id() == p)
+            continue;
+
+        for (const auto &pair : elem_pairs)
+        {
+            if (elem->id() != pair.first && elem->id() != pair.second)
+                continue;
+
+            coupled_elements.emplace(elem, null_mat);
+
+            const dof_id_type neighbor_id = (elem->id() == pair.first) ? pair.second : pair.first;
+            const Elem *neighbor = _mesh.elem_ptr(neighbor_id);
+            if (neighbor && neighbor->processor_id() != p)
+                coupled_elements.emplace(neighbor, null_mat);
+        }
+    }
+}
+
+void AugmentSparsityOnNodes::mesh_reinit()
+{
+    rebuild_elem_neighbors();
+}
+
+void AugmentSparsityOnNodes::redistribute()
+{
+    this->mesh_reinit();
+}

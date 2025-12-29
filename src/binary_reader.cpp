@@ -17,6 +17,7 @@
 #include "apec_m_system_objects.h"
 #include "element_builder.h"
 #include "element_types_factory.h"
+#include "dof_couplings_factory.h"
 #include "materials_object.h"
 #include "real_constants_object.h"
 #include "solver_configuration.h"
@@ -272,8 +273,8 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
     }
     case BinaryLabelId::DOF_COUPLINGS:
     {
-        auto binary_data = std::make_shared<BinaryDataFEDataObject>(file);
-        repository->set_object(binary_data);
+        auto couplings = std::make_shared<DofCouplingsObject>(file);
+        repository->set_object(couplings);
         break;
     }
     case BinaryLabelId::APEC_SETTINGS:

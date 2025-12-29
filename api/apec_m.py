@@ -60,6 +60,9 @@ class APEC_M:
         self.real_constants: pd.DataFrame = pd.DataFrame(
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
+        self.coupled_variables: pd.DataFrame = pd.DataFrame(
+            columns=list(COUPLED_VARIABLES_COLUMNS_TYPES.keys())
+        )
         self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.apec_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_APEC_SETTINGS)
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
@@ -158,7 +161,10 @@ class APEC_M:
         Returns:
             List[Dict[str, Any]]: Updated list of coupling forests.
         """
-        forests = DOFCouplingHelper.build_dof_couplings(self.mesh)
+        forests = DOFCouplingHelper.build_dof_couplings(
+            self.mesh,
+            coupled_variables=self.coupled_variables,
+        )
         self.dof_couplings = forests
         if print_summary:
             DOFCouplingHelper.print_dof_couplings(forests)

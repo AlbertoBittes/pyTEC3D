@@ -9,6 +9,7 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 
+#include "dof_couplings_factory.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
 
@@ -30,6 +31,7 @@ public:
 
     void apply_boundary_info();
     void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
+    bool generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name);
 };
 
 #endif // APEC_M_MESH_H

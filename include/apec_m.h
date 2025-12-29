@@ -73,8 +73,6 @@ private:
     bool validate_model_for_analysis();
     FEMDataRepository &ensure_mesh_repository(const std::string &name);
     std::shared_ptr<FEMDataRepository> find_mesh_repository(const std::string &name) const;
-    bool generate_nodal_couplings_for_mesh(const std::string &name,
-                                           const std::shared_ptr<ApecMMesh> &mesh);
 
     libMesh::Parallel::Communicator &comm;
     std::shared_ptr<FEMDataRepository> model_data_repository;

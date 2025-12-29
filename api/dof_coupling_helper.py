@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
+import warnings
 
 import numpy as np
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
+    import pandas as pd
     import vtk
 
 Adjacency = Sequence[Set[int]]
@@ -19,12 +21,16 @@ class DOFCouplingHelper:
     CP_PREFIX = "CP_"
 
     @staticmethod
-    def build_dof_couplings(grid: "vtk.vtkUnstructuredGrid") -> List[Forest]:
+    def build_dof_couplings(
+        grid: "vtk.vtkUnstructuredGrid",
+        coupled_variables: Optional["pd.DataFrame"] = None,
+    ) -> List[Forest]:
         """
         Return shallow spanning forests for every CP_* coupling set in *grid*.
 
         Args:
             grid: Mesh containing CP_* point data arrays.
+            coupled_variables: Optional DataFrame mapping CP ids to variable names.
 
         Returns:
             List[Forest]: One forest per CP_* array / CP id combination. Forests are
@@ -47,12 +53,21 @@ class DOFCouplingHelper:
         if not cp_sets:
             return []
 
+        coupled_variables_map = DOFCouplingHelper._collect_coupled_variables(
+            coupled_variables
+        )
         adjacency = DOFCouplingHelper._build_node_adjacency(grid, npoints)
         coords = DOFCouplingHelper._collect_point_coordinates(grid, npoints)
 
         forests: List[Dict[str, Any]] = []
         for array_name, groups in cp_sets.items():
             for cp_id, nodes in groups.items():
+                variables = coupled_variables_map.get(cp_id, [])
+                if not variables:
+                    warnings.warn(
+                        f"CP set {cp_id} in '{array_name}' has no coupled variables defined.",
+                        RuntimeWarning,
+                    )
                 forests.append(
                     DOFCouplingHelper._build_forest_for_nodes(
                         array_name=array_name,
@@ -60,6 +75,7 @@ class DOFCouplingHelper:
                         nodes=nodes,
                         adjacency=adjacency,
                         coords=coords,
+                        coupled_variables=variables,
                     )
                 )
         return forests
@@ -88,6 +104,10 @@ class DOFCouplingHelper:
                 )
             print(header)
 
+            if "coupled_variables" in forest and forest["coupled_variables"].size:
+                vars_str = ", ".join(str(var) for var in forest["coupled_variables"].tolist())
+                print(f"  variables: {vars_str}")
+
             if forest["pairs"].size:
                 for parent, child in forest["pairs"].tolist():
                     print(f"  {parent} -> {child}")
@@ -107,6 +127,7 @@ class DOFCouplingHelper:
         nodes: Sequence[int],
         adjacency: Adjacency,
         coords: Coordinates,
+        coupled_variables: Sequence[str],
     ) -> Forest:
         """
         Build a coupling forest for a single CP id.
@@ -163,6 +184,7 @@ class DOFCouplingHelper:
             "pairs": pairs_array,
             "roots": roots_array,
             "isolated": isolated_array,
+            "coupled_variables": np.asarray(coupled_variables, dtype=str),
         }
 
     @staticmethod
@@ -211,6 +233,52 @@ class DOFCouplingHelper:
                 cp_sets[name] = filtered
 
         return cp_sets
+
+    @staticmethod
+    def _collect_coupled_variables(
+        coupled_variables: Optional["pd.DataFrame"],
+    ) -> Dict[int, List[str]]:
+        """
+        Build a mapping of CP id to coupled variable names.
+
+        Args:
+            coupled_variables: DataFrame with 'cp_id' and 'variable' columns.
+
+        Returns:
+            Dict[int, List[str]]: CP id -> list of variable names.
+
+        Raises:
+            ValueError: If required columns are missing.
+        """
+        if coupled_variables is None:
+            return {}
+
+        if coupled_variables.empty:
+            return {}
+
+        required_columns = {"cp_id", "variable"}
+        missing = required_columns - set(coupled_variables.columns)
+        if missing:
+            raise ValueError(
+                f"Coupled variables dataframe is missing required columns: {sorted(missing)}."
+            )
+
+        mapping: Dict[int, List[str]] = defaultdict(list)
+        for _, row in coupled_variables.iterrows():
+            cp_value = row["cp_id"]
+            variable = row["variable"]
+            if cp_value is None or variable is None:
+                continue
+            try:
+                cp_id = int(cp_value)
+            except (TypeError, ValueError):
+                continue
+            var_name = str(variable).strip()
+            if not var_name:
+                continue
+            mapping[cp_id].append(var_name)
+
+        return mapping
 
     @staticmethod
     def _build_node_adjacency(grid: "vtk.vtkUnstructuredGrid", npoints: int) -> Adjacency:

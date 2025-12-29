@@ -1,7 +1,9 @@
 #include "apec_m.h"
 
+#include "augment_sparsity_on_nodes.h"
 #include "apec_m_periodic_boundary_factory.h"
 #include "apec_m_settings.h"
+#include "dof_couplings_factory.h"
 #include "element_types_factory.h"
 #include "fe_data_object.h"
 #include "binary_reader.h"
@@ -306,19 +308,6 @@ bool APEC_M::generate_infinite_elements()
     return true;
 }
 
-bool APEC_M::generate_nodal_couplings_for_mesh(const std::string &name,
-                                               const std::shared_ptr<ApecMMesh> &mesh)
-{
-    if (!mesh)
-    {
-        libMesh::out << "No mesh provided for nodal coupling generation." << std::endl;
-        return false;
-    }
-
-    libMesh::out << "Generating nodal couplings (stub) for mesh '" << name << "'." << std::endl;
-    return true;
-}
-
 bool APEC_M::generate_nodal_couplings()
 {
     auto session = model_data_repository->get_object<Session>();
@@ -328,9 +317,22 @@ bool APEC_M::generate_nodal_couplings()
         return false;
     }
 
+    auto couplings_object = model_data_repository->get_object<DofCouplingsObject>();
+    if (!couplings_object)
+    {
+        libMesh::out << "No DOF couplings object available. Skipping nodal coupling generation." << std::endl;
+        return false;
+    }
+
     auto &session_ref = *session;
     auto mesh = get_active_mesh();
-    return generate_nodal_couplings_for_mesh(session_ref.get_active_mesh(), mesh);
+    if (!mesh)
+    {
+        libMesh::out << "No mesh provided for nodal coupling generation." << std::endl;
+        return false;
+    }
+
+    return mesh->generate_nodal_couplings(*couplings_object, session_ref.get_active_mesh());
 }
 
 bool APEC_M::generate_periodic_boundaries()
@@ -554,7 +556,8 @@ bool APEC_M::validate_model_for_analysis()
             }
             else
             {
-                auto extract_ids = [&](const Globals::NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>> {
+                auto extract_ids = [&](const Globals::NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>>
+                {
                     return std::visit(
                         [&](const auto &vec) -> std::optional<std::vector<int>>
                         {
@@ -612,7 +615,8 @@ bool APEC_M::validate_model_for_analysis()
         const auto material_index = mesh->get_elem_integer_index("ansys_material_type");
         const auto real_constant_index = mesh->get_elem_integer_index("ansys_real_constant");
 
-        auto collect_used_ids = [&](unsigned int index) {
+        auto collect_used_ids = [&](unsigned int index)
+        {
             std::unordered_set<int> used;
             if (index == libMesh::invalid_uint)
                 return used;
@@ -643,7 +647,8 @@ bool APEC_M::validate_model_for_analysis()
 
         auto report_missing = [&](const std::string &label,
                                   const std::unordered_set<int> &used,
-                                  const std::unordered_set<int> &available) {
+                                  const std::unordered_set<int> &available)
+        {
             std::vector<int> missing;
             missing.reserve(used.size());
             for (int value : used)
@@ -777,6 +782,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
     auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
     auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
+    auto couplings_object = model_data_repository->get_object<DofCouplingsObject>();
 
     auto analysis_context = std::make_shared<AnalysisBase::ContextView>(AnalysisBase::ContextView::from(model_data_repository));
 
@@ -821,7 +827,10 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
         mesh->apply_boundary_info();
 
-        generate_nodal_couplings_for_mesh(name, mesh);
+        if (couplings_object)
+            mesh->generate_nodal_couplings(*couplings_object, name);
+        else
+            libMesh::out << "No DOF couplings object available. Skipping nodal coupling generation for mesh '" << name << "'." << std::endl;
 
         auto equation_system = repository->get_object<ApecMEquationSystems>();
         if (!equation_system)
@@ -839,6 +848,14 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
         else
         {
             libMesh::out << "No periodic boundary factory available for mesh '" << name << "'." << std::endl;
+        }
+
+        if (couplings_object)
+        {
+            auto &main_system = equation_system->get_system(Globals::DOF_SOLUTION_SYSTEM);
+            AugmentSparsityOnNodes augment_sparsity(*mesh, *couplings_object);
+            main_system.get_dof_map().add_coupling_functor(augment_sparsity);
+            libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
         }
 
         mesh->prepare_for_use(true);

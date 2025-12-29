@@ -5,12 +5,15 @@
 #include "vtkio_updated.h"
 #include "element_types_factory.h"
 
+#include <libmesh/elem.h>
 #include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
 #include <libmesh/node.h>
 #include <libmesh/point.h>
+
+#include <unordered_set>
 
 #include "fem_data_repository.h"
 
@@ -119,4 +122,52 @@ void ApecMMesh::generate_infinite_elements(const std::shared_ptr<ElementTypesFac
             if (elem->infinite())
                 elem->subdomain_id() = id;
     }
+}
+
+bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name)
+{
+    const auto &entries = couplings.get_couplings();
+    if (entries.empty())
+    {
+        libMesh::out << "No DOF couplings defined. Skipping nodal coupling generation for mesh '"
+                     << mesh_name << "'." << std::endl;
+        return true;
+    }
+
+    std::unordered_set<unsigned int> nodeelem_nodes;
+    std::size_t created = 0;
+
+    auto ensure_nodeelem = [&](unsigned int node_id, const std::string &context)
+    {
+        if (!nodeelem_nodes.insert(node_id).second)
+            return;
+
+        Node *node = this->node_ptr(node_id);
+        if (!node)
+        {
+            libMesh::out << "Warning: node " << node_id << " not found in mesh '" << mesh_name
+                         << "' while creating nodeelem for " << context << "." << std::endl;
+            nodeelem_nodes.erase(node_id);
+            return;
+        }
+
+        auto node_elem = this->add_elem(Elem::build(NODEELEM));
+        node_elem->set_node(0, node);
+        ++created;
+    };
+
+    for (const auto &entry : entries)
+    {
+        for (const auto &pair : entry.pairs)
+        {
+            ensure_nodeelem(pair.first, "pair node");
+            ensure_nodeelem(pair.second, "pair node");
+        }
+
+        for (unsigned int node_id : entry.isolated)
+            ensure_nodeelem(node_id, "isolated node");
+    }
+
+    libMesh::out << "Generated " << created << " nodeelems for mesh '" << mesh_name << "'." << std::endl;
+    return true;
 }
