@@ -1,6 +1,7 @@
 #ifndef APEC_M_MESH_H
 #define APEC_M_MESH_H
 
+#include <array>
 #include <memory>
 #include <set>
 #include <string>
@@ -9,6 +10,7 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 
+#include "apec_tensor_value.h"
 #include "dof_couplings_factory.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
@@ -25,6 +27,14 @@ public:
     using libMesh::Mesh::Mesh;
     using FEParentObjectBase<APEC_M>::FEParentObjectBase;
 
+    struct AngleDataIndices
+    {
+        std::array<unsigned int, 3> indices{{libMesh::invalid_uint,
+                                             libMesh::invalid_uint,
+                                             libMesh::invalid_uint}};
+        bool available = false;
+    };
+
     static std::shared_ptr<ApecMMesh> read_mesh(libMesh::Parallel::Communicator &comm,
                                                 FEMDataRepository &mesh_repository,
                                                 const std::string &mesh_filepath);
@@ -32,6 +42,8 @@ public:
     void apply_boundary_info();
     void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
     bool generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name);
+    AngleDataIndices detect_angle_indices() const;
+    ApecTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
 };
 
 #endif // APEC_M_MESH_H

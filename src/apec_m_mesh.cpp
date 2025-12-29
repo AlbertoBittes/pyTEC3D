@@ -171,3 +171,36 @@ bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, co
     libMesh::out << "Generated " << created << " nodeelems for mesh '" << mesh_name << "'." << std::endl;
     return true;
 }
+
+ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
+{
+    AngleDataIndices info;
+    bool all_found = true;
+    for (unsigned int i = 0; i < 3; ++i)
+    {
+        const std::string name = "angles-" + std::to_string(i);
+        if (this->has_node_integer(name))
+            info.indices[i] = this->get_node_integer_index(name);
+        else
+        {
+            all_found = false;
+            break;
+        }
+    }
+    if (all_found)
+        info.available = true;
+    return info;
+}
+
+ApecTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
+{
+    VectorValue<Real> angles_deg(0., 0., 0.);
+    const auto *node_ptr = this->node_ptr(node_id);
+    const AngleDataIndices angle_data = detect_angle_indices();
+    if (node_ptr && angle_data.available)
+    {
+        for (unsigned int i = 0; i < 3; ++i)
+            angles_deg(i) = node_ptr->get_extra_datum<Real>(angle_data.indices[i]);
+    }
+    return ApecTensorValue::build_ansys_rotation_matrix(angles_deg(0), angles_deg(1), angles_deg(2));
+}
