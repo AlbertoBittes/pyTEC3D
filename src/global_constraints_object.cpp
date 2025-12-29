@@ -14,7 +14,6 @@
 #include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <limits>
 #include <map>

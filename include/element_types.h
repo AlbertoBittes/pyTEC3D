@@ -62,7 +62,6 @@ typedef std::map<GlobalVariableName, std::set<subdomain_id_type>> VariableToElem
 // Axisymmetric options (KEYOPT3)
 // Last, it contains an array of libMesh FE objects, which hold all the shape functions, quadrature points, etc.
 // These infomration will be used to build by the ElementBuilder e.g. to build the element matrices
-// Also, each element has associated DOF variables (e.g. SOLID97, see APDL, can have A_x, A_y, A_z, VOLT...).
 // Variable ownership and mapping live in VariablesMap; ElementType only stores formulation and FE data.
 class ElementType
 {
@@ -73,15 +72,12 @@ public:
     void build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Getters
     inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
-    inline const std::vector<GlobalVariableName> &get_variables() const { return variables; }
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
 protected:
-    void set_variables(std::vector<GlobalVariableName> vars) { variables = std::move(vars); }
-    std::vector<GlobalVariableName> variables;
     const std::vector<unsigned int> keyopts; // Element type keyopts
 
     // PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type

@@ -58,7 +58,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
     dof_id_type new_vacuum_boundary_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
 
     for (auto &elem : mesh.active_local_element_ptr_range())
-        if (elem->get_extra_integer(vacuum_chamber_component))
+        if (elem->get_extra_integer(vacuum_chamber_component) == 1)
         {
             elem->set_extra_integer(plasma_region_component, 1);
 
@@ -67,7 +67,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
             plasma_current_vector.set(elem_current_density_dof, 0.0);
 
             for (auto &node : elem->node_ref_range())
-                if (node.get_extra_integer(vacuum_boundary_component))
+                if (node.get_extra_integer(vacuum_boundary_component) == 1)
                     node.set_extra_integer(new_vacuum_boundary_component, 1);
         }
 
@@ -129,7 +129,7 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (!elem->get_extra_integer(vacuum_chamber_component))
+        if (elem->get_extra_integer(vacuum_chamber_component) != 1)
             continue;
 
         dof_id_type bx_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, bx_var_number, 0);
@@ -146,7 +146,7 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
         {
             elem->set_extra_integer(plasma_region_component, 0);
             for (auto &node : elem->node_ref_range())
-                if (node.get_extra_integer(new_vacuum_boundary_component))
+                if (node.get_extra_integer(new_vacuum_boundary_component) == 1)
                     node.set_extra_integer(new_vacuum_boundary_component, 0);
         }
         else
@@ -175,8 +175,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 
     for (const auto &node : mesh.local_node_ptr_range())
     {
-        bool is_vacuum_chamber = node->get_extra_integer(vacuum_chamber_region_component);
-        if (!is_vacuum_chamber)
+        if (node->get_extra_integer(vacuum_chamber_region_component) != 1)
             continue;
 
         // if (!check_distance_magnetic_axis(node))
@@ -238,7 +237,7 @@ void APECMEquilibriumAnalysis::identify_plasma_region()
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (!elem->get_extra_integer(vacuum_chamber_component))
+        if (elem->get_extra_integer(vacuum_chamber_component) != 1)
             continue;
 
         for (auto &node : elem->node_ref_range())
@@ -272,8 +271,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
     unsigned int limiter_node = 0;
     for (const auto &node : mesh.local_node_ptr_range())
     {
-        bool is_vacuum_chamber = node->get_extra_integer(vacuum_boundary_region_component);
-        if (!is_vacuum_chamber)
+        if (node->get_extra_integer(vacuum_boundary_region_component) != 1)
             continue;
         // Process the element as needed
         dof_id_type psi_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, psi_var_number, 0);
@@ -305,12 +303,8 @@ Real APECMEquilibriumAnalysis::check_X_point()
     unsigned int X_point_elem = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        bool is_vacuum_chamber = elem->get_extra_integer(vacuum_chamber_region_component);
-        if (!is_vacuum_chamber)
+        if (elem->get_extra_integer(vacuum_chamber_region_component) != 1)
             continue;
-
-        // if (!check_distance_magnetic_axis(elem->centroid()))
-        //     continue;
 
         Real dist = (elem->centroid() - magnetic_axis).norm();
         if (dist < min_distance_to_axis)
@@ -397,9 +391,9 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
 
     for (auto &elem : eq_sys->get_mesh().active_local_element_ptr_range())
     {
-        if (elem->get_extra_integer(vertical_control_coils_component))
+        if (elem->get_extra_integer(vertical_control_coils_component) == 1)
             correction_current = correction_currents.second;
-        else if (elem->get_extra_integer(radial_control_coils_component))
+        else if (elem->get_extra_integer(radial_control_coils_component) == 1)
             correction_current = correction_currents.first;
         else
             continue;
@@ -443,7 +437,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (!elem->get_extra_integer(plasma_component))
+        if (elem->get_extra_integer(plasma_component) != 1)
             continue;
 
         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
@@ -464,7 +458,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (!elem->get_extra_integer(plasma_component))
+        if (elem->get_extra_integer(plasma_component) != 1)
             continue;
 
         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
@@ -494,7 +488,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     {
         for (auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->get_extra_integer(vacuum_chamber_id))
+            if (elem->get_extra_integer(vacuum_chamber_id) == 1)
             {
                 dof_id_type psi_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, psi_var_number, 0);
                 vacuum_chamber_psi_dofs.push_back(psi_dof);

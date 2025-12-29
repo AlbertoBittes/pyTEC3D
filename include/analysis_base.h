@@ -35,12 +35,7 @@ public:
         DOF_INTERPOLATION
     };
 
-    AnalysisBase(Type type = Type::STATIC,
-                 APEC_M *program = nullptr,
-                 std::shared_ptr<ContextView> context_view = nullptr);
     virtual ~AnalysisBase() = default;
-
-    Type type() const { return analysis_type; }
 
     // bool initialize_context(std::shared_ptr<ContextView> context_view);
     bool has_valid_context() const { return context_initialized; }
@@ -65,6 +60,8 @@ public:
                                                Type requested_type);
 
 protected:
+    AnalysisBase(APEC_M *program, std::shared_ptr<ContextView> context_view);
+
     virtual bool execute_solve() = 0;
 
     bool context_initialized = false;

@@ -11,9 +11,7 @@
 class StaticAnalysis : public AnalysisBase
 {
 public:
-    explicit StaticAnalysis(APEC_M *program = nullptr,
-                            std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr,
-                            Type type = Type::STATIC);
+    using AnalysisBase::AnalysisBase;
 
     virtual bool solve() override;
     virtual bool solve_transient() override;
@@ -24,30 +22,15 @@ public:
     void configure_services() const;
 
 protected:
-    StaticAnalysis(Type type,
-                   APEC_M *program,
-                   std::shared_ptr<AnalysisBase::ContextView> context_view);
     bool execute_solve() override;
-
-    std::filesystem::path resolve_grid_step_path(const std::string &filename) const;
-    std::filesystem::path resolve_time_step_path(const std::string &filename) const;
-    std::filesystem::path resolve_default_grid_base_name() const;
-    std::filesystem::path resolve_default_time_base_name() const;
 };
 
 class DOFInterpolationAnalysis : public StaticAnalysis
 {
 public:
-    explicit DOFInterpolationAnalysis(APEC_M *program,
-                                      std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
+    using StaticAnalysis::StaticAnalysis;
 
     bool solve() override;
 };
-
-inline DOFInterpolationAnalysis::DOFInterpolationAnalysis(APEC_M *program,
-                                                          std::shared_ptr<AnalysisBase::ContextView> context_view)
-    : StaticAnalysis(Type::DOF_INTERPOLATION, program, std::move(context_view))
-{
-}
 
 #endif // STATIC_ANALYSIS_H

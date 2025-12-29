@@ -621,7 +621,8 @@ bool APEC_M::validate_model_for_analysis()
             if (index == libMesh::invalid_uint)
                 return used;
             for (const auto elem : mesh->element_ptr_range())
-                used.insert(elem->get_extra_integer(index));
+                if (elem->type() != NODEELEM) // Skip NODEELEM types
+                    used.insert(elem->get_extra_integer(index));
             return used;
         };
 
@@ -794,7 +795,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
     if (!shared_analysis)
     {
-        shared_analysis = AnalysisBase::build(this, analysis_context, *analysis_type);
+        shared_analysis = AnalysisBase::build(this, *analysis_type, analysis_context);
         if (!shared_analysis)
         {
             libMesh::out << "Failed to create analysis object for mesh." << std::endl;

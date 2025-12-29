@@ -74,7 +74,11 @@ void ApecMPeriodicBoundary::set_variables()
 
     for (const auto &label : variable_labels)
     {
-        auto keys = VariablesMap::get_keys_by_api_label(label);
+        auto keys = VariablesMap::get_keys_by_predicate(
+            [&label](const VariableInfo &info)
+            {
+                return info.api_label == label;
+            });
 
         for (const auto &key : keys)
         {
@@ -138,7 +142,11 @@ DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const
         unsigned int var_index = ordered[i];
         std::string var_name = system.variable_name(var_index);
 
-        auto key = VariablesMap::get_key_by_global_label(var_name);
+        auto key = VariablesMap::get_key_by_predicate_one(
+            [&var_name](const VariableInfo &info)
+            {
+                return info.global_label == var_name;
+            });
 
         const auto &info = VariablesMap::get_info_by_key(key);
         component_indices[i] = info.component_index;

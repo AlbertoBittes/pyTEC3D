@@ -2,6 +2,7 @@
 #define VARIABLES_MAP_H
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -92,57 +93,28 @@ class VariablesMap
 public:
     static const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
 
-    template <typename MapType>
-    static const typename MapType::mapped_type &get_info_by_key(const MapType &map,
-                                                                const typename MapType::key_type &key)
+    struct VectorComponent
     {
-        auto it = map.find(key);
-        if (it == map.end())
-            libmesh_error_msg("Key not found in info map");
-        return it->second;
-    }
+        unsigned int var_number = libMesh::invalid_uint;
+        unsigned int component_index = libMesh::invalid_uint;
+        std::string api_label;
+        std::string global_label;
+    };
 
-    template <typename MapType, typename Predicate>
-    static std::vector<typename MapType::key_type> get_keys_by_predicate(const MapType &map, Predicate pred)
+    struct PhysicalComponentsInfo
     {
-        std::vector<typename MapType::key_type> result;
-        for (const auto &pair : map)
-            if (pred(pair.second))
-                result.push_back(pair.first);
-        return result;
-    }
-
-    template <typename MapType, typename Predicate>
-    static typename MapType::key_type get_key_by_predicate_one(const MapType &map, Predicate pred)
-    {
-        auto keys = get_keys_by_predicate(map, pred);
-        if (keys.size() == 1)
-            return keys[0];
-        libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
-    }
-
-    template <typename MapType, typename Predicate>
-    static typename MapType::key_type get_keys_by_predicate_one(const MapType &map, Predicate pred)
-    {
-        return get_key_by_predicate_one(map, pred);
-    }
-
-    template <typename MapType>
-    static void sort_vector_components(MapType &vector_variables)
-    {
-        for (auto &entry : vector_variables)
-        {
-            auto &components = entry.second;
-            std::sort(components.begin(), components.end(),
-                      [](const auto &a, const auto &b)
-                      { return a.component_index < b.component_index; });
-        }
-    }
+        unsigned int physical_components;
+        bool is_scalar;
+    };
 
     static const VariableInfo &get_info_by_key(GlobalVariableName key);
-    static GlobalVariableName get_key_by_global_label(const std::string &global_label);
-    static GlobalVariableName get_key_by_api_component(APIVariableName api_name, unsigned int component_index);
-    static std::vector<GlobalVariableName> get_keys_by_api_label(const std::string &api_label);
+    static std::vector<GlobalVariableName> get_keys_by_predicate(
+        const std::function<bool(const VariableInfo &)> &pred);
+    static GlobalVariableName get_key_by_predicate_one(
+        const std::function<bool(const VariableInfo &)> &pred);
+    static void sort_vector_components(
+        std::map<std::string, std::vector<VectorComponent>> &vector_variables);
+    static std::vector<std::string> get_global_labels_for_label(const std::string &label);
 
     static std::vector<GlobalVariableName> get_variables_for_element(const ElementType &element);
     static std::vector<GlobalVariableName> get_active_variables_for_element(const ElementType &element,
@@ -159,23 +131,12 @@ public:
     static bool is_variable_vector(const ElementType &element,
                                    GlobalVariableName variable);
 
-    struct VectorComponent
-    {
-        unsigned int var_number = libMesh::invalid_uint;
-        unsigned int component_index = libMesh::invalid_uint;
-        std::string api_label;
-        std::string global_label;
-    };
-
-    struct PhysicalComponentsInfo
-    {
-        unsigned int physical_components;
-        bool is_scalar;
-    };
     static PhysicalComponentsInfo get_variable_components_for_system(const libMesh::System &system,
                                                                      GlobalVariableName variable);
     static std::map<std::string, std::vector<VectorComponent>> get_vector_variables_for_system(
         const libMesh::System &system);
+
+    static std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system);
 
 private:
     static std::vector<GlobalVariableName> add_av_variables();

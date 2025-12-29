@@ -23,38 +23,14 @@
 #include "time_step.h"
 #include "vtkio_updated.h"
 
-namespace
-{
-    bool has_bin_extension(const std::filesystem::path &path)
-    {
-        return path.has_extension() && path.extension() == ".bin";
-    }
-}
-
-TransientAnalysis::TransientAnalysis(APEC_M *program,
-                                     std::shared_ptr<AnalysisBase::ContextView> context_view)
-    : TransientAnalysis(AnalysisBase::Type::TRANSIENT, program, std::move(context_view))
-{
-}
-
-TransientAnalysis::TransientAnalysis(AnalysisBase::Type type,
-                                     APEC_M *program,
-                                     std::shared_ptr<AnalysisBase::ContextView> context_view)
-    : StaticAnalysis(type, program, std::move(context_view))
-{
-}
-
 bool TransientAnalysis::solve_transient()
 {
     auto program = this->get_parent_object();
-    if (!program || !this->active_equation_system_ptr())
-    {
-        libMesh::out << "No load step analysis available for the active mesh." << std::endl;
-        return false;
-    }
 
-    const auto grid_base = resolve_default_grid_base_name();
-    const auto time_base = resolve_default_time_base_name();
+    auto session = this->context<Session>();
+
+    const auto grid_base = session->resolve_default_step_base("load_steps_folderpath", "grid", "_grid");
+    const auto time_base = session->resolve_default_step_base("time_steps_folderpath", "timestep", "_timestep");
     if (grid_base.empty() || time_base.empty())
     {
         libMesh::out << "Unable to determine default base names for transient solve." << std::endl;

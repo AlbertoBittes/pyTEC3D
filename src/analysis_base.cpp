@@ -10,15 +10,12 @@
 
 #include <libmesh/libmesh.h>
 
-AnalysisBase::AnalysisBase(Type type,
-                           APEC_M *program,
-                           std::shared_ptr<ContextView> context_view)
+AnalysisBase::AnalysisBase(
+    APEC_M *program,
+    std::shared_ptr<ContextView> context_view)
     : FEParentObjectBase<APEC_M>(program),
-      FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(),
-      analysis_type(type)
+      FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(std::move(context_view))
 {
-    if (context_view)
-        this->set_context_view(std::move(context_view));
 }
 
 std::shared_ptr<ApecMEquationSystems> AnalysisBase::active_equation_system_ptr() const

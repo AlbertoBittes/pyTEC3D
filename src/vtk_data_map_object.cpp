@@ -67,8 +67,12 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
         {
             APIVariableName api_var_enum = static_cast<APIVariableName>(static_cast<unsigned int>(label_number));
 
-            GlobalVariableName global_label =
-                VariablesMap::get_key_by_api_component(api_var_enum, static_cast<unsigned int>(component_number));
+            auto global_label = VariablesMap::get_key_by_predicate_one(
+                [api_var_enum, component_number](const VariableInfo &info)
+                {
+                    return info.api_name == api_var_enum &&
+                           info.component_index == static_cast<unsigned int>(component_number);
+                });
 
             auto var_info = VariablesMap::get_info_by_key(global_label);
 

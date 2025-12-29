@@ -8,106 +8,10 @@
 
 #include <libmesh/libmesh.h>
 
-StaticAnalysis::StaticAnalysis(APEC_M *program,
-                               std::shared_ptr<AnalysisBase::ContextView> context_view,
-                               Type type)
-    : AnalysisBase(type, program, std::move(context_view))
-{
-}
-
-StaticAnalysis::StaticAnalysis(Type type,
-                               APEC_M *program,
-                               std::shared_ptr<AnalysisBase::ContextView> context_view)
-    : AnalysisBase(type, program, std::move(context_view))
-{
-}
-
 bool DOFInterpolationAnalysis::solve()
 {
     libMesh::out << "DOFInterpolationAnalysis is not implemented yet." << std::endl;
     return false;
-}
-
-std::filesystem::path StaticAnalysis::resolve_grid_step_path(const std::string &filename) const
-{
-    auto session = this->context<Session>();
-    if (!session)
-        return {};
-
-    const auto &folder = session->get_path("load_steps_folderpath");
-    if (folder.empty())
-        return {};
-
-    if (filename.empty())
-        return {};
-
-    auto candidate = std::filesystem::path(filename);
-    if (!candidate.is_absolute())
-        candidate = folder / candidate;
-
-    if (!candidate.has_extension())
-        candidate.replace_extension(".bin");
-
-    return candidate;
-}
-
-std::filesystem::path StaticAnalysis::resolve_time_step_path(const std::string &filename) const
-{
-    auto session = this->context<Session>();
-    if (!session)
-        return {};
-
-    const auto &folder = session->get_path("time_steps_folderpath");
-    if (folder.empty())
-        return {};
-
-    if (filename.empty())
-        return {};
-
-    auto candidate = std::filesystem::path(filename);
-    if (!candidate.is_absolute())
-        candidate = folder / candidate;
-
-    if (!candidate.has_extension())
-        candidate.replace_extension(".bin");
-
-    return candidate;
-}
-
-std::filesystem::path StaticAnalysis::resolve_default_grid_base_name() const
-{
-    auto session = this->context<Session>();
-    if (!session)
-        return {};
-
-    const auto &folder = session->get_path("load_steps_folderpath");
-    if (folder.empty())
-        return {};
-
-    auto token = session->get_mesh_filename_without_extension();
-    if (token.empty())
-        token = "grid";
-
-    std::filesystem::path base = folder / (token + "_grid");
-    return base;
-}
-
-std::filesystem::path StaticAnalysis::resolve_default_time_base_name() const
-{
-    auto session = this->context<Session>();
-    if (!session)
-        return {};
-
-    const auto &folder = session->get_path("time_steps_folderpath");
-    if (folder.empty())
-        return {};
-
-    auto token = session->get_mesh_filename_without_extension();
-    if (token.empty())
-        token = "timestep";
-
-    std::filesystem::path base = folder / (token + "_timestep");
-    return base;
 }
 
 void StaticAnalysis::configure_services() const
@@ -162,16 +66,9 @@ bool StaticAnalysis::execute_solve()
 void StaticAnalysis::prepare_time_substep_solve(Substep &substep)
 {
     auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return;
 
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto assembler = system.get_assembler();
-    if (!assembler)
-    {
-        libMesh::out << "Assembler not available for linear system." << std::endl;
-        return;
-    }
 
     equation_systems->apply_ramped_effects(substep);
 
@@ -185,16 +82,10 @@ void StaticAnalysis::prepare_time_substep_solve(Substep &substep)
 void StaticAnalysis::solve_equation_systems(Substep &substep, bool nodal_solution)
 {
     auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return;
 
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
     auto assembler = system.get_assembler();
-    if (!assembler)
-    {
-        libMesh::out << "Assembler not available for linear system." << std::endl;
-        return;
-    }
 
     assembler->write_element_matrices_and_rhs();
 
@@ -217,7 +108,7 @@ void StaticAnalysis::print_output(Substep &substep)
     const bool should_write = substep.get_write_results() ||
                               substep.get_index() == substep.get_parent_object()->get_n_substeps() - 1;
 
-    if (!should_write || !session || !equation_systems || !assembler)
+    if (!should_write)
         return;
 
     const auto base_substep_index = time_step ? time_step->count_substeps_before_current() : 0;

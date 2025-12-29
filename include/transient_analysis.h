@@ -14,15 +14,9 @@
 class TransientAnalysis : public StaticAnalysis
 {
 public:
-    explicit TransientAnalysis(APEC_M *program = nullptr,
-                               std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
+    using StaticAnalysis::StaticAnalysis;
 
     bool solve_transient() override;
-
-protected:
-    TransientAnalysis(AnalysisBase::Type type,
-                      APEC_M *program,
-                      std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr);
 };
 
 #endif // TRANSIENT_ANALYSIS_H

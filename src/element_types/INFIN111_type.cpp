@@ -1,5 +1,4 @@
 #include "element_types.h"
-#include "variables_map.h"
 INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
     : SOLID97Type(
           keyopts,
@@ -17,7 +16,6 @@ INFIN111Type::INFIN111Type(const std::vector<unsigned int> &keyopts)
               });
           })
 {
-    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> INFIN111Type::get_solution_matrix_idx_size_map(bool nodal_solution)

@@ -48,42 +48,6 @@ namespace
         return value_count / entry_count;
     }
 
-    std::vector<std::string> to_global_labels(const std::string &label)
-    {
-        const auto matches_global = VariablesMap::get_keys_by_predicate(
-            VariablesMap::GLOBAL_VARIABLE_INFO_MAP,
-            [&label](const VariableInfo &info)
-            {
-                return info.global_label == label;
-            });
-
-        if (!matches_global.empty())
-            return {label};
-
-        auto matches_api = VariablesMap::get_keys_by_predicate(
-            VariablesMap::GLOBAL_VARIABLE_INFO_MAP,
-            [&label](const VariableInfo &info)
-            {
-                return info.api_label == label;
-            });
-
-        if (matches_api.empty())
-            libmesh_error_msg("Dof couplings: unknown variable label '" + label + "'.");
-
-        std::sort(matches_api.begin(), matches_api.end(),
-                  [](GlobalVariableName lhs, GlobalVariableName rhs)
-                  {
-                      return VariablesMap::get_info_by_key(lhs).component_index <
-                             VariablesMap::get_info_by_key(rhs).component_index;
-                  });
-
-        std::vector<std::string> labels;
-        labels.reserve(matches_api.size());
-        for (const auto &key : matches_api)
-            labels.push_back(VariablesMap::get_info_by_key(key).global_label);
-        return labels;
-    }
-
     void append_unique(std::vector<std::string> &values, const std::string &label)
     {
         if (std::find(values.begin(), values.end(), label) == values.end())
@@ -183,7 +147,7 @@ void DofCouplingsObject::parse_couplings_from_map()
         for (std::size_t v = 0; v < variables_stride; ++v)
         {
             const auto &raw_label = variable_values[variables_offset + v];
-            for (const auto &global_label : to_global_labels(raw_label))
+            for (const auto &global_label : VariablesMap::get_global_labels_for_label(raw_label))
                 append_unique(entry.coupled_variables, global_label);
         }
 

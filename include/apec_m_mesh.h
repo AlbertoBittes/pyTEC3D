@@ -1,7 +1,6 @@
 #ifndef APEC_M_MESH_H
 #define APEC_M_MESH_H
 
-#include <array>
 #include <memory>
 #include <set>
 #include <string>
@@ -14,6 +13,8 @@
 #include "dof_couplings_factory.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
+
+using namespace libMesh;
 
 class FEMDataRepository;
 class ElementTypesFactory;
@@ -29,9 +30,9 @@ public:
 
     struct AngleDataIndices
     {
-        std::array<unsigned int, 3> indices{{libMesh::invalid_uint,
-                                             libMesh::invalid_uint,
-                                             libMesh::invalid_uint}};
+        VectorValue<unsigned int> indices = VectorValue<unsigned int>(libMesh::invalid_uint,
+                                                                      libMesh::invalid_uint,
+                                                                      libMesh::invalid_uint);
         bool available = false;
     };
 

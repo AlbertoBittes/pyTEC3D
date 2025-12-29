@@ -102,7 +102,7 @@ ElementTypesFactory::associate_variables_with_element_IDs(Globals::SystemType sy
     {
         subdomain_id_type elementId = pair.first;
         const auto &elementType = pair.second;
-        const auto &vars = elementType->get_variables();
+        const auto vars = VariablesMap::get_variables_for_element(*elementType);
         for (const auto &var : vars)
         {
             if (VariablesMap::get_info_by_key(var).system_type == system_type)

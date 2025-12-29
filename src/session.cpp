@@ -99,6 +99,42 @@ const std::filesystem::path &Session::get_path(const std::string &key) const
     return data_map->at(key);
 }
 
+std::filesystem::path Session::resolve_step_path(const std::string &folder_key,
+                                                 const std::string &filename) const
+{
+    const auto &folder = get_path(folder_key);
+    if (folder.empty())
+        return {};
+
+    if (filename.empty())
+        return {};
+
+    auto candidate = std::filesystem::path(filename);
+    if (!candidate.is_absolute())
+        candidate = folder / candidate;
+
+    if (!candidate.has_extension())
+        candidate.replace_extension(".bin");
+
+    return candidate;
+}
+
+std::filesystem::path Session::resolve_default_step_base(const std::string &folder_key,
+                                                         const std::string &default_token,
+                                                         const std::string &suffix) const
+{
+    const auto &folder = get_path(folder_key);
+    if (folder.empty())
+        return {};
+
+    auto token = get_mesh_filename_without_extension();
+    if (token.empty())
+        token = default_token;
+
+    std::filesystem::path base = folder / (token + suffix);
+    return base;
+}
+
 void Session::set_output_filename(const std::string &filename)
 {
     output_filename = filename;

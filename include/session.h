@@ -41,6 +41,11 @@ public:
 
     void set_path(const std::string &key, const std::filesystem::path &path);
     const std::filesystem::path &get_path(const std::string &key) const;
+    std::filesystem::path resolve_step_path(const std::string &folder_key,
+                                            const std::string &filename) const;
+    std::filesystem::path resolve_default_step_base(const std::string &folder_key,
+                                                    const std::string &default_token,
+                                                    const std::string &suffix) const;
 
     const std::string &get_mesh_filename_without_extension() const { return mesh_filename_without_extension; }
 

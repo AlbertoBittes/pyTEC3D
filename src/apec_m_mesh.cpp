@@ -137,16 +137,16 @@ bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, co
     std::unordered_set<unsigned int> nodeelem_nodes;
     std::size_t created = 0;
 
-    auto ensure_nodeelem = [&](unsigned int node_id, const std::string &context)
+    auto ensure_nodeelem = [&](unsigned int node_id)
     {
         if (!nodeelem_nodes.insert(node_id).second)
             return;
 
-        Node *node = this->node_ptr(node_id);
+        Node *node = this->query_node_ptr(node_id);
         if (!node)
         {
             libMesh::out << "Warning: node " << node_id << " not found in mesh '" << mesh_name
-                         << "' while creating nodeelem for " << context << "." << std::endl;
+                         << "' while creating nodal couplings." << std::endl;
             nodeelem_nodes.erase(node_id);
             return;
         }
@@ -160,12 +160,12 @@ bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, co
     {
         for (const auto &pair : entry.pairs)
         {
-            ensure_nodeelem(pair.first, "pair node");
-            ensure_nodeelem(pair.second, "pair node");
+            ensure_nodeelem(pair.first);
+            ensure_nodeelem(pair.second);
         }
 
         for (unsigned int node_id : entry.isolated)
-            ensure_nodeelem(node_id, "isolated node");
+            ensure_nodeelem(node_id);
     }
 
     libMesh::out << "Generated " << created << " nodeelems for mesh '" << mesh_name << "'." << std::endl;
@@ -180,7 +180,7 @@ ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
     {
         const std::string name = "angles-" + std::to_string(i);
         if (this->has_node_integer(name))
-            info.indices[i] = this->get_node_integer_index(name);
+            info.indices(i) = this->get_node_integer_index(name);
         else
         {
             all_found = false;
@@ -195,12 +195,12 @@ ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
 ApecTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
 {
     VectorValue<Real> angles_deg(0., 0., 0.);
-    const auto *node_ptr = this->node_ptr(node_id);
+    const Node *node_ptr = this->query_node_ptr(node_id);
     const AngleDataIndices angle_data = detect_angle_indices();
     if (node_ptr && angle_data.available)
     {
         for (unsigned int i = 0; i < 3; ++i)
-            angles_deg(i) = node_ptr->get_extra_datum<Real>(angle_data.indices[i]);
+            angles_deg(i) = node_ptr->get_extra_datum<Real>(angle_data.indices(i));
     }
     return ApecTensorValue::build_ansys_rotation_matrix(angles_deg(0), angles_deg(1), angles_deg(2));
 }

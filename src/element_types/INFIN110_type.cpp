@@ -1,5 +1,4 @@
 #include "element_types.h"
-#include "variables_map.h"
 INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
     : PLANE233Type(
           keyopts,
@@ -17,5 +16,4 @@ INFIN110Type::INFIN110Type(const std::vector<unsigned int> &keyopts)
               });
           })
 {
-    set_variables(VariablesMap::get_variables_for_element(*this));
 }

@@ -1,6 +1,43 @@
 #include "variables_map.h"
 #include "element_types.h"
 #include <libmesh/system.h>
+
+namespace
+{
+
+    bool has_label_component(const std::string &base_label,
+                             const char *suffix,
+                             const std::vector<GlobalVariableName> &vars)
+    {
+        std::string label = base_label + suffix;
+        for (const auto &var : vars)
+        {
+            if (VariablesMap::get_info_by_key(var).global_label == label)
+                return true;
+        }
+        return false;
+    }
+
+    unsigned int count_label_components(const std::string &base_label,
+                                        const std::vector<GlobalVariableName> &vars)
+    {
+        unsigned int count = 0;
+        if (has_label_component(base_label, "_x", vars))
+            ++count;
+        if (has_label_component(base_label, "_y", vars))
+            ++count;
+        if (has_label_component(base_label, "_z", vars))
+            ++count;
+        return count > 0 ? count : 1;
+    }
+
+    bool has_vector_suffix(const std::string &label)
+    {
+        return label.size() > 2 && label[label.size() - 2] == '_' &&
+               (label[label.size() - 1] == 'x' || label[label.size() - 1] == 'y' || label[label.size() - 1] == 'z');
+    }
+}
+
 const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_INFO_MAP = {
     // DOF Variables
     {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0, Globals::DOF_SOLUTION_SYSTEM}},
@@ -47,37 +84,75 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
 {
-    return VariablesMap::get_info_by_key(GLOBAL_VARIABLE_INFO_MAP, key);
+    auto it = GLOBAL_VARIABLE_INFO_MAP.find(key);
+    if (it == GLOBAL_VARIABLE_INFO_MAP.end())
+        libmesh_error_msg("Key not found in info map");
+    return it->second;
 }
 
-GlobalVariableName VariablesMap::get_key_by_global_label(const std::string &global_label)
+std::vector<GlobalVariableName> VariablesMap::get_keys_by_predicate(
+    const std::function<bool(const VariableInfo &)> &pred)
 {
-    return VariablesMap::get_key_by_predicate_one(
-        GLOBAL_VARIABLE_INFO_MAP,
-        [&global_label](const VariableInfo &info)
-        {
-            return info.global_label == global_label;
-        });
+    std::vector<GlobalVariableName> result;
+    for (const auto &pair : GLOBAL_VARIABLE_INFO_MAP)
+        if (pred(pair.second))
+            result.push_back(pair.first);
+    return result;
 }
 
-GlobalVariableName VariablesMap::get_key_by_api_component(APIVariableName api_name, unsigned int component_index)
+GlobalVariableName VariablesMap::get_key_by_predicate_one(
+    const std::function<bool(const VariableInfo &)> &pred)
 {
-    return VariablesMap::get_key_by_predicate_one(
-        GLOBAL_VARIABLE_INFO_MAP,
-        [api_name, component_index](const VariableInfo &info)
-        {
-            return info.api_name == api_name && info.component_index == component_index;
-        });
+    auto keys = get_keys_by_predicate(pred);
+    if (keys.size() == 1)
+        return keys[0];
+    libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
 }
 
-std::vector<GlobalVariableName> VariablesMap::get_keys_by_api_label(const std::string &api_label)
+void VariablesMap::sort_vector_components(
+    std::map<std::string, std::vector<VectorComponent>> &vector_variables)
 {
-    return VariablesMap::get_keys_by_predicate(
-        GLOBAL_VARIABLE_INFO_MAP,
-        [&api_label](const VariableInfo &info)
+    for (auto &entry : vector_variables)
+    {
+        auto &components = entry.second;
+        std::sort(components.begin(), components.end(),
+                  [](const auto &a, const auto &b)
+                  { return a.component_index < b.component_index; });
+    }
+}
+
+std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::string &label)
+{
+    const auto matches_global = VariablesMap::get_keys_by_predicate(
+        [&label](const VariableInfo &info)
         {
-            return info.api_label == api_label;
+            return info.global_label == label;
         });
+
+    if (!matches_global.empty())
+        return {label};
+
+    auto matches_api = VariablesMap::get_keys_by_predicate(
+        [&label](const VariableInfo &info)
+        {
+            return info.api_label == label;
+        });
+
+    if (matches_api.empty())
+        libmesh_error_msg("Dof couplings: unknown variable label '" + label + "'.");
+
+    std::sort(matches_api.begin(), matches_api.end(),
+              [](GlobalVariableName lhs, GlobalVariableName rhs)
+              {
+                  return VariablesMap::get_info_by_key(lhs).component_index <
+                         VariablesMap::get_info_by_key(rhs).component_index;
+              });
+
+    std::vector<std::string> labels;
+    labels.reserve(matches_api.size());
+    for (const auto &key : matches_api)
+        labels.push_back(VariablesMap::get_info_by_key(key).global_label);
+    return labels;
 }
 
 std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const ElementType &element)
@@ -270,62 +345,26 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
     return vars;
 }
 
-namespace
+std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System &system)
 {
-    std::vector<GlobalVariableName> get_system_variables(const System &system)
+    std::vector<GlobalVariableName> vars;
+    const unsigned int n_vars = system.n_vars();
+    vars.reserve(n_vars);
+    for (unsigned int i = 0; i < n_vars; ++i)
     {
-        std::vector<GlobalVariableName> vars;
-        const unsigned int n_vars = system.n_vars();
-        vars.reserve(n_vars);
-        for (unsigned int i = 0; i < n_vars; ++i)
-        {
-            const std::string &name = system.variable_name(i);
-            auto keys = VariablesMap::get_keys_by_predicate(
-                VariablesMap::GLOBAL_VARIABLE_INFO_MAP,
-                [&name](const VariableInfo &info)
-                {
-                    return info.global_label == name;
-                });
-            if (keys.empty())
-                continue;
-            if (keys.size() > 1)
-                libmesh_error_msg("Variable name maps to multiple global variables: " + name);
-            vars.push_back(keys.front());
-        }
-        return vars;
+        const std::string &name = system.variable_name(i);
+        auto keys = VariablesMap::get_keys_by_predicate(
+            [&name](const VariableInfo &info)
+            {
+                return info.global_label == name;
+            });
+        if (keys.empty())
+            continue;
+        if (keys.size() > 1)
+            libmesh_error_msg("Variable name maps to multiple global variables: " + name);
+        vars.push_back(keys.front());
     }
-
-    bool has_label_component(const std::string &base_label,
-                             const char *suffix,
-                             const std::vector<GlobalVariableName> &vars)
-    {
-        std::string label = base_label + suffix;
-        for (const auto &var : vars)
-        {
-            if (VariablesMap::get_info_by_key(var).global_label == label)
-                return true;
-        }
-        return false;
-    }
-
-    unsigned int count_label_components(const std::string &base_label,
-                                        const std::vector<GlobalVariableName> &vars)
-    {
-        unsigned int count = 0;
-        if (has_label_component(base_label, "_x", vars))
-            ++count;
-        if (has_label_component(base_label, "_y", vars))
-            ++count;
-        if (has_label_component(base_label, "_z", vars))
-            ++count;
-        return count > 0 ? count : 1;
-    }
-
-    bool has_vector_suffix(const std::string &label)
-    {
-        return label.size() > 2 && label[label.size() - 2] == '_' &&
-               (label[label.size() - 1] == 'x' || label[label.size() - 1] == 'y' || label[label.size() - 1] == 'z');
-    }
+    return vars;
 }
 
 FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
@@ -447,7 +486,7 @@ VariablesMap::PhysicalComponentsInfo VariablesMap::get_variable_components_for_s
         return {1, true};
 
     std::string base_label = label.substr(0, label.size() - 2);
-    const auto vars = get_system_variables(system);
+    const auto vars = VariablesMap::get_system_variables(system);
 
     unsigned int count = count_label_components(base_label, vars);
     return {count, count == 1};
@@ -461,7 +500,11 @@ VariablesMap::get_vector_variables_for_system(const System &system)
     for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
     {
         const std::string &var_name = system.variable_name(var_num);
-        const GlobalVariableName global_var = get_key_by_global_label(var_name);
+        const GlobalVariableName global_var = get_key_by_predicate_one(
+            [&var_name](const VariableInfo &info)
+            {
+                return info.global_label == var_name;
+            });
         const auto &var_info = get_info_by_key(global_var);
         auto components_info = get_variable_components_for_system(system, global_var);
         if (components_info.is_scalar)

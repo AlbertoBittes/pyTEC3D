@@ -259,16 +259,11 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
 
-    const auto &vars = elem_data.element_type->get_variables();
-    std::vector<GlobalVariableName> active_vars;
-    active_vars.reserve(vars.size());
-    for (const auto &var : vars)
-    {
-        if (VariablesMap::get_info_by_key(var).system_type == sys_type)
-            active_vars.push_back(var);
-    }
+    // This is now maybe too slow, but it works for now
+    // TODO: Check if there is room for optimization later
+    const auto vars = VariablesMap::get_active_variables_for_element(*elem_data.element_type, sys_type);
 
-    for (const auto &var_enum : active_vars)
+    for (const auto &var_enum : vars)
     {
         unsigned int system_var_num = sys->variable_number(VariablesMap::get_info_by_key(var_enum).global_label);
         std::vector<dof_id_type> dof_indices_variable;

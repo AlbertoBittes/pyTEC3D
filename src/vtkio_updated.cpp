@@ -725,11 +725,9 @@ void VTKIO_Updated::cells_to_vtk()
     unsigned active_element_counter = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->infinite())
+        if (elem->infinite() || elem->type() == NODEELEM)
             continue;
         // When using rational bernstein these hold the weights
-        if (elem->type() == NODEELEM)
-            continue;
 
         pts->SetNumberOfIds(elem->n_nodes());
 
@@ -805,9 +803,7 @@ void VTKIO_Updated::add_cell_data_from_system(const System &system)
     unsigned active_element_counter = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->infinite())
-            continue;
-        if (elem->type() == NODEELEM)
+        if (elem->infinite() || elem->type() == NODEELEM)
             continue;
 
         vtkIdType vtkcellid = static_cast<vtkIdType>(active_element_counter);

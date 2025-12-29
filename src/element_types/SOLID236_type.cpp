@@ -1,6 +1,5 @@
 #include "element_types.h"
 #include "element_builder.h"
-#include "variables_map.h"
 // Direct constructor
 SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
     : AV3DElementType(
@@ -10,7 +9,6 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
               add_solid236_fe_structs(fe_structs, keyopts);
           })
 {
-    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Chain-prolonging constructor for derived types
@@ -24,7 +22,6 @@ SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts,
               add_solid236_fe_structs(fe_structs, keyopts);
           })
 {
-    set_variables(VariablesMap::get_variables_for_element(*this));
 }
 
 // Helper to add two FEDataShapeFunctions structs
