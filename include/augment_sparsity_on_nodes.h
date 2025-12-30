@@ -16,13 +16,13 @@ class AugmentSparsityOnNodes : public GhostingFunctor
 public:
     AugmentSparsityOnNodes(MeshBase &mesh, const DofCouplingsObject &couplings);
 
-    void operator()(const MeshBase::const_element_iterator &range_begin,
-                    const MeshBase::const_element_iterator &range_end,
-                    processor_id_type p,
-                    map_type &coupled_elements) override;
+    virtual void operator()(const MeshBase::const_element_iterator &range_begin,
+                            const MeshBase::const_element_iterator &range_end,
+                            processor_id_type p,
+                            map_type &coupled_elements) override;
 
-    void mesh_reinit() override;
-    void redistribute() override;
+    virtual void mesh_reinit() override;
+    virtual void redistribute() override;
 
 private:
     void build_node_sets(const DofCouplingsObject &couplings);

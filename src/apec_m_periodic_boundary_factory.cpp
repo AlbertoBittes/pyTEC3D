@@ -1,42 +1,16 @@
 #include "apec_m_periodic_boundary_factory.h"
-#include "apec_m_system_objects.h"
-#include "globals.h"
+#include "apec_m_system.h"
+
 #include "libmesh/dof_map.h"
 #include "libmesh/libmesh.h"
 
 #include <map>
 #include <set>
 
-namespace
-{
-    const std::vector<int> &extract_int_array(const Globals::NDArray &array)
-    {
-        if (!std::holds_alternative<std::vector<int>>(array.values))
-            libmesh_error_msg("Periodic boundary factory expected integer array.");
-        return std::get<std::vector<int>>(array.values);
-    }
-
-    const std::vector<Real> &extract_real_array(const Globals::NDArray &array)
-    {
-        if (!std::holds_alternative<std::vector<Real>>(array.values))
-            libmesh_error_msg("Periodic boundary factory expected real array.");
-        return std::get<std::vector<Real>>(array.values);
-    }
-
-    const std::vector<std::string> &extract_string_array(const Globals::NDArray &array)
-    {
-        if (!std::holds_alternative<std::vector<std::string>>(array.values))
-            libmesh_error_msg("Periodic boundary factory expected string array.");
-        return std::get<std::vector<std::string>>(array.values);
-    }
-}
-
-ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::ifstream &file, EquationSystems *eq_sys)
+ApecMPeriodicBoundaryFactory::ApecMPeriodicBoundaryFactory(std::ifstream &file)
     : BinaryDataFEDataObject(file),
-      FEParentObjectBase<EquationSystems>(eq_sys)
+      FEParentObjectBase<System>()
 {
-    if (eq_sys)
-        this->initialize(eq_sys);
 }
 
 const std::vector<ApecMPeriodicBoundary> &ApecMPeriodicBoundaryFactory::get_periodic_boundaries() const
@@ -60,10 +34,10 @@ void ApecMPeriodicBoundaryFactory::populate_periodic_boundaries_from_map()
     const auto &matrix_array = get_column("periodic_matrix");
     const auto &variables_array = get_column("variable");
 
-    const auto &main_values = extract_int_array(main_array);
-    const auto &paired_values = extract_int_array(paired_array);
-    const auto &matrix_values = extract_real_array(matrix_array);
-    const auto &variable_values = extract_string_array(variables_array);
+    const auto &main_values = main_array.view<int>();
+    const auto &paired_values = paired_array.view<int>();
+    const auto &matrix_values = matrix_array.view<Real>();
+    const auto &variable_values = variables_array.view<std::string>();
 
     if (main_values.size() != paired_values.size())
         libmesh_error_msg("Periodic boundary factory: boundary array size mismatch.");
@@ -139,10 +113,6 @@ void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
     if (periodic_boundaries.empty())
         return;
 
-    EquationSystems *eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
-
     std::map<std::pair<boundary_id_type, boundary_id_type>, std::vector<ApecMPeriodicBoundary>> grouped;
     for (const auto &pb : periodic_boundaries)
         grouped[{pb.myboundary, pb.pairedboundary}].push_back(pb);
@@ -201,7 +171,7 @@ void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
                                               periodic_matrix,
                                               PeriodicBoundaryBase::FORWARD,
                                               merged_labels,
-                                              eq_sys);
+                                              this->get_parent_object());
 
         compressed.push_back(std::move(merged_boundary));
     }
@@ -221,11 +191,7 @@ void ApecMPeriodicBoundaryFactory::compress_periodic_boundaries()
 
 void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
 {
-    EquationSystems *eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        libmesh_error_msg("No EquationSystems associated with ApecMPeriodicBoundaryFactory.");
-
-    DofMap &dof_map = eq_sys->get_system(0).get_dof_map();
+    DofMap &dof_map = this->get_parent_object()->get_dof_map();
 
     for (const auto &pb : periodic_boundaries)
     {
@@ -233,10 +199,10 @@ void ApecMPeriodicBoundaryFactory::apply_periodic_boundaries()
     }
 }
 
-void ApecMPeriodicBoundaryFactory::initialize(EquationSystems *eq_sys)
+void ApecMPeriodicBoundaryFactory::initialize(System *sys)
 {
     libMesh::out << "Applying periodic boundaries..." << std::endl;
-    this->set_parent_object(eq_sys);
+    this->set_parent_object(sys);
     this->populate_periodic_boundaries_from_map();
     this->apply_periodic_boundaries();
 }
@@ -260,9 +226,9 @@ void ApecMPeriodicBoundaryFactory::print_data_info() const
     const auto &paired_array = get_column("paired_boundary");
     const auto &matrix_array = get_column("periodic_matrix");
 
-    const auto &main_values = extract_int_array(main_array);
-    const auto &paired_values = extract_int_array(paired_array);
-    const auto &matrix_values = extract_real_array(matrix_array);
+    const auto &main_values = main_array.view<int>();
+    const auto &paired_values = paired_array.view<int>();
+    const auto &matrix_values = matrix_array.view<Real>();
 
     const std::size_t count = std::min(main_values.size(), paired_values.size());
     libMesh::out << "  Periodic boundary pairs: " << count << std::endl;
@@ -283,7 +249,7 @@ void ApecMPeriodicBoundaryFactory::print_data_info() const
     if (has_column("variables"))
     {
         const auto &variables_array = get_column("variables");
-        variables_ptr = &extract_string_array(variables_array);
+        variables_ptr = &variables_array.view<std::string>();
         if (!variables_array.shape.empty())
         {
             variable_stride = 1;

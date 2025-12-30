@@ -4,8 +4,8 @@
 #include "apec_m_periodic_boundary.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
-#include "globals.h"
-#include "libmesh/equation_systems.h"
+
+#include "libmesh/system.h"
 #include "libmesh/periodic_boundary_base.h"
 #include <fstream>
 #include <memory>
@@ -19,22 +19,23 @@ using namespace libMesh;
 // ------------------------------------------------------
 class ApecMPeriodicBoundaryFactory
     : public BinaryDataFEDataObject,
-      public FEParentObjectBase<EquationSystems>
+      public FEParentObjectBase<System>
 {
 public:
-    explicit ApecMPeriodicBoundaryFactory(std::ifstream &file, EquationSystems *eq_sys = nullptr);
+    explicit ApecMPeriodicBoundaryFactory(std::ifstream &file);
     // NEW: Populate periodic boundaries directly from stored vtkFieldData
-    void populate_periodic_boundaries_from_map();
 
     const std::vector<ApecMPeriodicBoundary> &get_periodic_boundaries() const;
 
-    void apply_periodic_boundaries();
-    void initialize(EquationSystems *eq_sys);
-    void compress_periodic_boundaries();
+    void initialize(System *sys);
 
     void print_data_info() const override;
 
 private:
+    void apply_periodic_boundaries();
+    void compress_periodic_boundaries();
+    void populate_periodic_boundaries_from_map();
+
     std::vector<ApecMPeriodicBoundary> periodic_boundaries;
 };
 

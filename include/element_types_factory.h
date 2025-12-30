@@ -1,6 +1,7 @@
 #ifndef ELEMENT_TYPES_FACTORY_H
 #define ELEMENT_TYPES_FACTORY_H
 
+#include "apec_m_system.h"
 #include "element_types.h"
 #include "fe_data_object.h"
 #include <memory>
@@ -22,7 +23,7 @@ public:
     // Accessors
     inline ElementTypesMap *get_element_types_map() const { return element_types_map.get(); }
     ElementType *get_element_type(subdomain_id_type element_id);
-    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(Globals::SystemType system_type) const;
+    std::unique_ptr<VariableToElementIdsMapType> associate_variables_with_element_IDs(ApecMSystemBase::SystemType system_type) const;
 
     // Add element type manually
     void add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type);

@@ -10,7 +10,7 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include "element_types_factory.h"
 // Temporary placeholder for build_plane233
 void ElementBuilder::build_plane233()
@@ -186,8 +186,8 @@ void ElementBuilder::build_plane233_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *nodal_loads_system = &this->get_parent_object()->get_system(Globals::NODAL_LOADS);
-    System *element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
+    System *nodal_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_LOADS);
+    System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
 
     DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
     DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
@@ -234,7 +234,7 @@ void ElementBuilder::build_plane233_rhs()
         //     dof_indices_loads.clear();
         //     for (const auto &node : elem_data.elem->node_ref_range())
         //         if (node.processor_id() == proc_id)
-        //             dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
+        //             dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, csg_var_num, 0));
 
         //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
@@ -274,16 +274,16 @@ void ElementBuilder::build_plane233_solution_vectors()
     // ApecMSolutionSystem *solution_system = dynamic_cast<ApecMSolutionSystem *>(this->get_parent_object());
     std::vector<dof_id_type> dof_indices;
 
-    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM));
-    System *nodal_solution_system = &this->get_parent_object()->get_system(Globals::NODAL_SOLUTION);
-    System *element_solution_system = &this->get_parent_object()->get_system(Globals::ELEMENT_SOLUTION);
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    System *nodal_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_SOLUTION);
+    System *element_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
 
     auto materials_object = this->context<MaterialsObject>();
     materials_object->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object->get_nu_matrix();
 
     // Retrieve A DOF solution
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     auto &An = solution_vector_support.sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
@@ -320,8 +320,8 @@ void ElementBuilder::build_plane233_solution_vectors()
             for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
             {
                 auto &node = elem_data.elem->node_ref(i);
-                // unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
-                // unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+                // unsigned int dof_A = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+                // unsigned int dof_PSI = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_num, 0);
                 // if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
                 //     (dof_A < main_sys->current_local_solution->last_local_index()) &&
                 //     (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&
@@ -386,7 +386,7 @@ void ElementBuilder::build_plane233_solution_vectors()
         // for (unsigned int qp = 0; qp < n_qp; qp++)
         //     Je(0) += Jq(qp);
         // Je(0) = Je(0) / n_qp;
-        auto element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
+        auto element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
         auto element_loads_dof_map = &element_loads_system->get_dof_map();
         element_loads_dof_map->dof_indices(elem_data.elem, dof_indices);
         NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
@@ -403,7 +403,7 @@ void ElementBuilder::build_plane233_solution_vectors()
             materials_object->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object->get_sigma_matrix();
 
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), Globals::DOF_SOLUTION_SYSTEM); // solution_derivative
+            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             // Get derivative of A DOF Solutions (dA/dt, dV/dt)
             auto &An_dt = solution_vector_support.sol_vectors[0];
@@ -464,8 +464,8 @@ void ElementBuilder::build_plane233_solution_vectors()
     //     unsigned int psi_var_num = nodal_solution_system->variable_number("PSI");
     //     for (auto &node : elem_data.elem->node_ref_range())
     //     {
-    //         unsigned int dof_A = node.dof_number(Globals::DOF_SOLUTION_SYSTEM, a_var_num, 0);
-    //         unsigned int dof_PSI = node.dof_number(Globals::NODAL_SOLUTION, psi_var_num, 0);
+    //         unsigned int dof_A = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, a_var_num, 0);
+    //         unsigned int dof_PSI = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_num, 0);
     //         if ((main_sys->current_local_solution->first_local_index() <= dof_A) &&
     //             (dof_A < main_sys->current_local_solution->last_local_index()) &&
     //             (nodal_solution_system->solution->first_local_index() <= dof_PSI) &&

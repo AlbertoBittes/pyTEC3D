@@ -1,12 +1,12 @@
-#ifndef APEC_M_SUBSET_SOLVE_H
-#define APEC_M_SUBSET_SOLVE_H
+#ifndef SYSTEM_MATRIX_REDUCTION_H
+#define SYSTEM_MATRIX_REDUCTION_H
 
 #include <libmesh/system.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/system_subset_by_subdomain.h>
 #include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
-#include "apec_m_system_objects.h" // <-- Add this line
+#include "apec_m_system.h" // <-- Add this line
 
 #include "fem_service.h"
 #include "time_step.h"
@@ -22,20 +22,18 @@ using namespace libMesh;
 #include <cstddef>
 #include <set>
 
-// Forward Declarations
-
-class ApecMSubset : public SystemSubset,
-                    public ParallelObject
+class SystemMatrixReduction : public SystemSubset,
+                              public ParallelObject
 {
 public:
-    ApecMSubset(const System &system) : SystemSubset(system),
-                                        ParallelObject(system),
-                                        _dof_ids()
+    SystemMatrixReduction(const System &system) : SystemSubset(system),
+                                                  ParallelObject(system),
+                                                  _dof_ids()
     {
         this->init();
     };
 
-    virtual ~ApecMSubset() = default;
+    virtual ~SystemMatrixReduction() = default;
 
     inline virtual const std::vector<unsigned int> &dof_ids() const override
     {
@@ -128,4 +126,4 @@ protected:
     std::vector<unsigned int> _dof_ids;
 
 }; // class SystemSubset
-#endif // APEC_M_SUBSET_SOLVE_H
+#endif // SYSTEM_MATRIX_REDUCTION_H

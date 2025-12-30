@@ -4,8 +4,8 @@
 #include "apec_m_equilibrium_analysis.h"
 #include "apec_m_evolution_analysis.h"
 
-#include "apec_m_eq_system_object.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_equation_systems.h"
+#include "apec_m_system.h"
 #include "apec_m.h"
 
 #include <libmesh/libmesh.h>

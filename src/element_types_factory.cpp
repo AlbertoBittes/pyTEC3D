@@ -1,5 +1,5 @@
 #include "element_types_factory.h"
-#include "globals.h"
+
 #include "variables_map.h"
 
 #include <algorithm>
@@ -95,7 +95,7 @@ ElementType *ElementTypesFactory::get_element_type(subdomain_id_type element_id)
 // Variable → Element ID associations
 // --------------------------------------------------------
 std::unique_ptr<VariableToElementIdsMapType>
-ElementTypesFactory::associate_variables_with_element_IDs(Globals::SystemType system_type) const
+ElementTypesFactory::associate_variables_with_element_IDs(ApecMSystemBase::SystemType system_type) const
 {
     auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
     for (const auto &pair : *element_types_map)

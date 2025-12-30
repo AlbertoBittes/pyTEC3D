@@ -9,8 +9,6 @@
 
 #include <libmesh/libmesh.h>
 
-namespace Globals
-{
 class NDArray
 {
 public:
@@ -77,6 +75,5 @@ public:
     std::vector<std::uint32_t> shape;
     std::variant<std::vector<int>, std::vector<libMesh::Real>, std::vector<std::string>> values;
 };
-} // namespace Globals
 
 #endif // ND_ARRAY_H

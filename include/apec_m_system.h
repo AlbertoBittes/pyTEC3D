@@ -1,7 +1,9 @@
-#ifndef APEC_M_SYSTEM_OBJECTS_H
-#define APEC_M_SYSTEM_OBJECTS_H
+#ifndef APEC_M_SYSTEM_H
+#define APEC_M_SYSTEM_H
 
+#include <map>
 #include <memory>
+#include <string>
 #include <type_traits> // Add this include for std::is_base_of
 
 #include <libmesh/equation_systems.h>
@@ -15,22 +17,35 @@
 #include <libmesh/petsc_matrix.h>
 
 #include "fem_service.h"
-#include "element_types.h"
-#include "element_types_factory.h"
 #include "assembler.h"
-#include "globals.h"
+
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
-#include "apec_m_eq_system_object.h"
-
 using namespace libMesh;
+
+class ElementTypesFactory;
 
 class ApecMSystemBase
 {
 public:
+    enum SystemType
+    {
+        DOF_SOLUTION_SYSTEM = 0,
+        NODAL_LOADS,
+        ELEMENT_LOADS,
+        NODAL_SOLUTION,
+        ELEMENT_SOLUTION,
+        NUM_SYSTEMS
+    };
+
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
+
+    static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
 };
+
+#include "apec_m_equation_systems.h"
+#include "element_types.h"
 
 // The basic libMesh class (System, EquationSystems, see libMesh guide) are extendend to meet APEC-M code structure requirements
 template <typename SysLike>
@@ -45,7 +60,7 @@ public:
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
 
-    Globals::SystemType system_type = Globals::NUM_SYSTEMS;
+    ApecMSystemBase::SystemType system_type = ApecMSystemBase::NUM_SYSTEMS;
     std::string system_name;
 
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
@@ -55,8 +70,8 @@ public:
     {
         // Fetch system type from Globals using the system name
         std::string sys_name = this->name();
-        auto sys_type = Globals::NUM_SYSTEMS;
-        for (const auto &pair : Globals::SYSTEM_INFO_MAP)
+        auto sys_type = ApecMSystemBase::NUM_SYSTEMS;
+        for (const auto &pair : ApecMSystemBase::SYSTEM_INFO_MAP)
         {
             if (pair.second == sys_name)
             {
@@ -64,10 +79,10 @@ public:
                 break;
             }
         }
-        if (sys_type == Globals::NUM_SYSTEMS)
+        if (sys_type == ApecMSystemBase::NUM_SYSTEMS)
             libmesh_error_msg("System type not found for system name: " + sys_name);
-        auto it = Globals::SYSTEM_INFO_MAP.find(sys_type);
-        if (it == Globals::SYSTEM_INFO_MAP.end())
+        auto it = ApecMSystemBase::SYSTEM_INFO_MAP.find(sys_type);
+        if (it == ApecMSystemBase::SYSTEM_INFO_MAP.end())
             libmesh_error_msg("System name not found for system type.");
         system_type = sys_type;
         system_name = it->second;
@@ -116,7 +131,10 @@ public:
         this->add_vector("old_node_dof_constraints");
         this->add_vector("ramped_node_dof_constraints");
         this->add_vector("solution_time_derivative", true, GHOSTED);
-        assembler = std::make_shared<AssemblerLinear>(static_cast<ApecMEquationSystems *>(&this->get_equation_systems()));
+        auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
+        if (!equation_systems)
+            libmesh_error_msg("ApecMLinearSystem: equation systems is not ApecMEquationSystems.");
+        assembler = std::make_shared<AssemblerLinear>(equation_systems);
         this->attach_assemble_object(*assembler);
     }
 
@@ -181,7 +199,7 @@ public:
         : ApecMSystem<ExplicitSystem>(
               std::forward<Args>(args)...)
     {
-        if (system_type == Globals::NODAL_LOADS || system_type == Globals::ELEMENT_LOADS)
+        if (system_type == ApecMSystemBase::NODAL_LOADS || system_type == ApecMSystemBase::ELEMENT_LOADS)
         {
             this->add_vector("old_loads");
             this->add_vector("ramped_loads");
@@ -189,4 +207,4 @@ public:
     }
 };
 
-#endif // APEC_M_SYSTEM_OBJECTS_H
+#endif // APEC_M_SYSTEM_H

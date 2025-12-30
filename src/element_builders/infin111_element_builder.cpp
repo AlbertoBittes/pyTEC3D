@@ -11,8 +11,8 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "globals.h"
-#include "apec_m_system_objects.h"
+
+#include "apec_m_system.h"
 #include "element_types_factory.h"
 
 // Not implemented placeholders for INFIN111 element builder methods
@@ -64,7 +64,7 @@ void ElementBuilder::build_infin111()
             }
         }
     }
-    Ke.scale(1 / Globals::MU_0);
+    Ke.scale(1 / (4 * libMesh::pi * 1e-7));
     return;
 }
 

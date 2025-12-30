@@ -11,10 +11,10 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include <libmesh/boundary_info.h>
 #include "element_types_factory.h"
-#include "globals.h"
+
 #include "variables_map.h"
 
 // {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
@@ -193,7 +193,7 @@ void ElementBuilder::build_solid97()
         if (elem_data.elem->neighbor_ptr(s) == nullptr)
         {
             boundary_info->boundary_ids(elem_data.elem, s, side_boundary_ids);
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_PARALLEL_ID_BC) != side_boundary_ids.end())
+            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), 32760) != side_boundary_ids.end())
             {
                 if (cont == 0)
                 {
@@ -243,7 +243,7 @@ void ElementBuilder::build_solid97()
                                                                                        face_tangents[qp][h](l));
                 }
             }
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), Globals::FLUX_NORMAL_ID_BC) != side_boundary_ids.end())
+            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), 32761) != side_boundary_ids.end())
             {
                 if (cont == 0)
                 {
@@ -323,9 +323,9 @@ void ElementBuilder::build_solid97_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *main_system = &this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM);
-    System *nodal_loads_system = &this->get_parent_object()->get_system(Globals::NODAL_LOADS);
-    System *element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
+    System *main_system = &this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    System *nodal_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_LOADS);
+    System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
 
     DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
     DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
@@ -356,7 +356,7 @@ void ElementBuilder::build_solid97_rhs()
         //     dof_indices_loads.clear();
         //     for (const auto &node : elem_data.elem->node_ref_range())
         //         if (node.processor_id() == proc_id)
-        //             dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, csg_var_num, 0));
+        //             dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, csg_var_num, 0));
 
         //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
@@ -381,8 +381,8 @@ void ElementBuilder::build_solid97_rhs()
 
             for (const auto &node : elem_data.elem->node_ref_range())
                 if (node.processor_id() == proc_id)
-                    if (node.n_dofs(Globals::NODAL_LOADS, amps_var_num))
-                        dof_indices_loads.push_back(node.dof_number(Globals::NODAL_LOADS, amps_var_num, 0));
+                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amps_var_num))
+                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amps_var_num, 0));
 
             // Apply nodal AMPS loads
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
@@ -411,11 +411,11 @@ void ElementBuilder::build_solid97_solution_vectors()
     materials_object->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object->get_nu_matrix();
 
-    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(Globals::DOF_SOLUTION_SYSTEM));
-    System *nodal_solution_system = &this->get_parent_object()->get_system(Globals::NODAL_SOLUTION);
-    System *element_solution_system = &this->get_parent_object()->get_system(Globals::ELEMENT_SOLUTION);
+    ApecMLinearSystem *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    System *nodal_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_SOLUTION);
+    System *element_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
 
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), Globals::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     // Get DOF Solutions in the nodes
     DenseVector<Number> An;
@@ -479,7 +479,7 @@ void ElementBuilder::build_solid97_solution_vectors()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        System *element_loads_system = &this->get_parent_object()->get_system(Globals::ELEMENT_LOADS);
+        System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
         DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
         dof_map_element_loads->dof_indices(elem_data.elem, dof_indices);
         NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);

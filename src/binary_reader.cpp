@@ -11,10 +11,10 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/petsc_linear_solver.h>
 
-#include "apec_m_eq_system_object.h"
+#include "apec_m_equation_systems.h"
 #include "apec_m_periodic_boundary_factory.h"
 #include "apec_m_settings.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include "element_builder.h"
 #include "element_types_factory.h"
 #include "dof_couplings_factory.h"
@@ -383,8 +383,7 @@ void BinaryReader::read_element_vectors(ElementBuilder &builder, std::ifstream &
 
 bool BinaryReader::read_solution_matrices_for_element(ElementBuilder &builder,
                                                       dof_id_type element_id,
-                                                      const std::filesystem::path &emat_folderpath,
-                                                      bool include_nodal_matrices)
+                                                      const std::filesystem::path &emat_folderpath)
 {
     libmesh_error_msg_if(emat_folderpath.empty(),
                          "BinaryReader: invalid emat folder path supplied for solution reconstruction.");
@@ -425,25 +424,22 @@ bool BinaryReader::read_solution_matrices_for_element(ElementBuilder &builder,
         if (!element_location.found)
             continue;
 
-        if (include_nodal_matrices)
-        {
-            auto nodal_it = nodal_files.find(file_info.first);
-            libmesh_error_msg_if(nodal_it == nodal_files.end(),
-                                 "BinaryReader: missing nodal solution matrix file for rank " + std::to_string(file_info.first) + ".");
+        auto nodal_it = nodal_files.find(file_info.first);
+        libmesh_error_msg_if(nodal_it == nodal_files.end(),
+                             "BinaryReader: missing nodal solution matrix file for rank " + std::to_string(file_info.first) + ".");
 
-            auto nodal_stream = open_file_stream(nodal_it->second, FileMode::Read);
-            auto *nodal_file = dynamic_cast<std::ifstream *>(nodal_stream.get());
-            libmesh_error_msg_if(!nodal_file,
-                                 "BinaryReader: unexpected stream type while opening '" + nodal_it->second.string() + "'.");
+        auto nodal_stream = open_file_stream(nodal_it->second, FileMode::Read);
+        auto *nodal_file = dynamic_cast<std::ifstream *>(nodal_stream.get());
+        libmesh_error_msg_if(!nodal_file,
+                             "BinaryReader: unexpected stream type while opening '" + nodal_it->second.string() + "'.");
 
-            auto nodal_location = locate_element_record(*nodal_file, elem_id_uint);
-            libmesh_error_msg_if(!nodal_location.found,
-                                 "BinaryReader: element " + std::to_string(elem_id_uint) + " not found in nodal solution matrices file '" + nodal_it->second.string() + "'.");
+        auto nodal_location = locate_element_record(*nodal_file, elem_id_uint);
+        libmesh_error_msg_if(!nodal_location.found,
+                             "BinaryReader: element " + std::to_string(elem_id_uint) + " not found in nodal solution matrices file '" + nodal_it->second.string() + "'.");
 
-            nodal_file->clear();
-            nodal_file->seekg(nodal_location.offset);
-            BinaryReader::read_element_matrices(builder, *nodal_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-        }
+        nodal_file->clear();
+        nodal_file->seekg(nodal_location.offset);
+        BinaryReader::read_element_matrices(builder, *nodal_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
 
         element_file->clear();
         element_file->seekg(element_location.offset);

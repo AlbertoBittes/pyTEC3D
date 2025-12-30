@@ -1,6 +1,5 @@
 #include "apec_m_mesh.h"
 
-#include "globals.h"
 #include "inf_elem_builder_updated.h"
 #include "vtkio_updated.h"
 #include "element_types_factory.h"
@@ -12,6 +11,7 @@
 #include <libmesh/mesh_modification.h>
 #include <libmesh/node.h>
 #include <libmesh/point.h>
+#include <libmesh/vector_value.h>
 
 #include <unordered_set>
 
@@ -48,7 +48,7 @@ void ApecMMesh::apply_boundary_info()
     boundary_info.clear();
 
     std::vector<std::string> boundary_arrays;
-    for (const auto &name : Globals::VTK_DATA_ARRAY_NAMES)
+    for (const auto &name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
     {
         if (name.find("boundary_id_") == 0)
         {
@@ -192,7 +192,7 @@ ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
     return info;
 }
 
-ApecTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
+ApecMTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
 {
     VectorValue<Real> angles_deg(0., 0., 0.);
     const Node *node_ptr = this->query_node_ptr(node_id);
@@ -202,5 +202,5 @@ ApecTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
         for (unsigned int i = 0; i < 3; ++i)
             angles_deg(i) = node_ptr->get_extra_datum<Real>(angle_data.indices(i));
     }
-    return ApecTensorValue::build_ansys_rotation_matrix(angles_deg(0), angles_deg(1), angles_deg(2));
+    return ApecMTensorValue::build_ansys_rotation_matrix(angles_deg(0), angles_deg(1), angles_deg(2));
 }

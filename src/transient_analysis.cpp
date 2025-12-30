@@ -11,12 +11,12 @@
 #include <libmesh/dof_map.h>
 
 #include "apec_m.h"
-#include "apec_m_eq_system_object.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_equation_systems.h"
+#include "apec_m_system.h"
 #include "binary_reader.h"
 #include "element_types_factory.h"
 #include "fem_data_repository.h"
-#include "globals.h"
+
 #include "materials_object.h"
 #include "real_constants_object.h"
 #include "apec_m_settings.h"

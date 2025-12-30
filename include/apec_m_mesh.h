@@ -8,8 +8,9 @@
 #include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
+#include <libmesh/vector_value.h>
 
-#include "apec_tensor_value.h"
+#include "apec_m_tensor_value.h"
 #include "dof_couplings_factory.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
@@ -44,7 +45,7 @@ public:
     void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
     bool generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name);
     AngleDataIndices detect_angle_indices() const;
-    ApecTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
+    ApecMTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
 };
 
 #endif // APEC_M_MESH_H

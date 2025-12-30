@@ -59,9 +59,9 @@ public:
                                                std::shared_ptr<ContextView> context_view,
                                                Type requested_type);
 
-protected:
     AnalysisBase(APEC_M *program, std::shared_ptr<ContextView> context_view);
 
+protected:
     virtual bool execute_solve() = 0;
 
     bool context_initialized = false;

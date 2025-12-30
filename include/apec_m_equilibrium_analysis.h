@@ -2,7 +2,7 @@
 #define APECM_EQUILIBRIUM_ANALYSIS_H
 
 #include "transient_analysis.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include "element_builder.h"
 
 #include <libmesh/node.h>
@@ -15,9 +15,7 @@
 class APECMEquilibriumAnalysis : public TransientAnalysis
 {
 public:
-    explicit APECMEquilibriumAnalysis(APEC_M *program = nullptr,
-                                      std::shared_ptr<AnalysisBase::ContextView> context_view = nullptr,
-                                      AnalysisBase::Type type = AnalysisBase::Type::APECM_EQUILIBRIUM);
+    using TransientAnalysis::TransientAnalysis;
 
 protected:
     void apply_jplasma_gradshafranov();

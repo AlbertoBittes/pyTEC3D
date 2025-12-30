@@ -1,4 +1,4 @@
-#include "globals.h"
+
 #include "variables_map.h"
 #include <libmesh/numeric_vector.h>
 #include <libmesh/dof_map.h>
@@ -33,7 +33,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 
     dof_id_type prev_label_number = static_cast<dof_id_type>(-1);
     dof_id_type prev_component_number = static_cast<dof_id_type>(-1);
-    Globals::SystemType cached_sys_type;
+    ApecMSystemBase::SystemType cached_sys_type;
     std::string cached_variable_label;
     unsigned int cached_var_num = 0;
     unsigned int cached_sys_number = 0;

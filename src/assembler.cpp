@@ -16,8 +16,8 @@
 #include <filesystem>
 
 #include "assembler.h"
-#include "apec_m_system_objects.h"
-#include "apec_m_eq_system_object.h"
+#include "apec_m_system.h"
+#include "apec_m_equation_systems.h"
 #include "element_builder.h"
 #include "element_types.h"
 #include "global_constraints_object.h"
@@ -25,10 +25,10 @@
 
 using namespace libMesh;
 
-AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems,
-                                 std::shared_ptr<ContextView> ctx_view)
-    : FEMService<TimeStep, Session>(ctx_view),
-      FEParentObjectBase<ApecMEquationSystems>(eq_systems)
+AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems)
+    : FEParentObjectBase<ApecMEquationSystems>(eq_systems),
+      FEMService<TimeStep, Session>(nullptr)
+
 {
 }
 
@@ -42,8 +42,6 @@ void AssemblerLinear::assemble()
     PerfLog perf_log("Matrix Assembly");
 
     auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
 
     auto builder = make_element_builder();
     if (!builder)
@@ -153,8 +151,6 @@ void AssemblerLinear::assemble()
 bool AssemblerLinear::check_update_system_matrix()
 {
     auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return false;
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
@@ -219,8 +215,6 @@ bool AssemblerLinear::check_update_system_matrix()
 void AssemblerLinear::write_element_matrices_and_rhs()
 {
     auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
 
     auto builder = make_element_builder();
     if (!builder)
@@ -368,8 +362,8 @@ void AssemblerLinear::write_solution_vectors(bool nodal_solution)
 
     reader.close_file_streams(inp_streams);
 
-    const auto &nodal_name = Globals::SYSTEM_INFO_MAP.at(Globals::NODAL_SOLUTION);
-    const auto &element_name = Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION);
+    const auto &nodal_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION);
+    const auto &element_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION);
 
     auto &nodal_system = eq_sys->get_system<System>(nodal_name);
     auto &element_system = eq_sys->get_system<System>(element_name);

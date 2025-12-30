@@ -57,8 +57,7 @@ public:
 
     bool read_solution_matrices_for_element(ElementBuilder &builder,
                                             dof_id_type element_id,
-                                            const std::filesystem::path &emat_folderpath,
-                                            bool include_nodal_matrices);
+                                            const std::filesystem::path &emat_folderpath);
 
 private:
     void read_binary_fem_data_from_stream(std::ifstream &file,

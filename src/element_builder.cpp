@@ -12,9 +12,9 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include "element_types_factory.h"
-#include "globals.h"
+
 #include "variables_map.h"
 
 //
@@ -25,8 +25,8 @@
 
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view)
-    : FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>(ctx_view),
-      FEParentObjectBase<EquationSystems>(equation_systems),
+    : FEParentObjectBase<EquationSystems>(equation_systems),
+      FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
@@ -34,21 +34,10 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
 
 std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
 {
-    if (!eq_sys)
-        return nullptr;
-
     auto program = eq_sys->get_parent_object();
-    if (!program)
-        return nullptr;
 
     auto analysis = program->get_analysis();
-    if (!analysis)
-        return nullptr;
-
     auto analysis_ctx = analysis->get_context_view();
-    if (!analysis_ctx)
-        return nullptr;
-
     auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>();
 
     return std::make_unique<ElementBuilder>(eq_sys, builder_view);
@@ -230,7 +219,6 @@ bool ElementBuilder::build_solution_vectors_from_emat_files(dof_id_type element_
                                                             const std::filesystem::path &emat_folderpath)
 {
     auto eq_sys = this->get_parent_object();
-    libmesh_error_msg_if(!eq_sys, "ElementBuilder: no equation systems associated with builder.");
 
     const auto elem_id_uint = static_cast<unsigned int>(element_id);
     auto &mesh = eq_sys->get_mesh();
@@ -241,7 +229,7 @@ bool ElementBuilder::build_solution_vectors_from_emat_files(dof_id_type element_
     this->set_element_data(elem_ptr);
 
     BinaryReader reader;
-    if (!reader.read_solution_matrices_for_element(*this, element_id, emat_folderpath, this->compute_nodal_solution_vectors))
+    if (!reader.read_solution_matrices_for_element(*this, element_id, emat_folderpath))
         return false;
 
     this->build_solution_vectors();
@@ -257,7 +245,7 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
     System *sys = &eq_sys->get_system(dof_map_index);
     DofMap *dof_map = &sys->get_dof_map();
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
-    Globals::SystemType sys_type = static_cast<Globals::SystemType>(dof_map_index);
+    ApecMSystemBase::SystemType sys_type = static_cast<ApecMSystemBase::SystemType>(dof_map_index);
 
     // This is now maybe too slow, but it works for now
     // TODO: Check if there is room for optimization later

@@ -2,9 +2,6 @@
 
 #include <sstream>
 
-namespace Globals
-{
-
 NDArray::NDArray() = default;
 
 NDArray::NDArray(std::vector<std::uint32_t> s,
@@ -66,5 +63,3 @@ std::size_t NDArray::infer_entry_span(const std::vector<std::uint32_t> &shape, s
 
     return value_count;
 }
-
-} // namespace Globals

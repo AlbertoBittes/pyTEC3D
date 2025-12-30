@@ -2,6 +2,7 @@
 #define ELEMENT_TYPES_H
 
 #include <unordered_map>
+#include <map>
 #include <set>
 #include <string>
 #include <memory>
@@ -13,11 +14,10 @@
 #include <libmesh/fe.h>
 
 #include "fe_data_object.h"
-#include "variables_map.h"
-
 using namespace libMesh;
 
 class ElementType;
+enum class GlobalVariableName;
 
 enum ElementTypeEnum : unsigned int
 {
@@ -79,9 +79,6 @@ public:
 
 protected:
     const std::vector<unsigned int> keyopts; // Element type keyopts
-
-    // PhysicalRegionEnum physical_region; // Flag to indicate the physical region of the element type
-    // Order order;
 };
 
 class AVElementType : public ElementType

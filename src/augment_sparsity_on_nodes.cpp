@@ -71,9 +71,8 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
 {
     const CouplingMatrix *const null_mat = nullptr;
 
-    for (auto it = range_begin; it != range_end; ++it)
+    for (const auto &elem : as_range(range_begin, range_end))
     {
-        const Elem *elem = *it;
         if (!elem)
             continue;
 
@@ -97,7 +96,7 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
 
 void AugmentSparsityOnNodes::mesh_reinit()
 {
-    rebuild_elem_neighbors();
+    // rebuild_elem_neighbors();
 }
 
 void AugmentSparsityOnNodes::redistribute()

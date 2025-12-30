@@ -1,5 +1,5 @@
-#ifndef APEC_TENSOR_VALUE_H
-#define APEC_TENSOR_VALUE_H
+#ifndef APEC_M_TENSOR_VALUE_H
+#define APEC_M_TENSOR_VALUE_H
 
 #include <array>
 #include <cmath>
@@ -9,7 +9,7 @@
 
 using namespace libMesh;
 
-class ApecTensorValue : public TensorValue<Real>
+class ApecMTensorValue : public TensorValue<Real>
 {
 public:
     using TensorValue<Real>::TensorValue;
@@ -26,9 +26,9 @@ public:
         return value;
     }
 
-    static ApecTensorValue build_ansys_rotation_matrix(Real angle_xy_deg,
-                                                       Real angle_yz_deg,
-                                                       Real angle_xz_deg)
+    static ApecMTensorValue build_ansys_rotation_matrix(Real angle_xy_deg,
+                                                        Real angle_yz_deg,
+                                                        Real angle_xz_deg)
     {
         const Real to_rad = pi / 180.0;
         const Real angle_xy = angle_xy_deg * to_rad;
@@ -42,7 +42,7 @@ public:
         const Real c3 = snap_trig_value(std::cos(angle_xz));
         const Real s3 = snap_trig_value(std::sin(angle_xz));
 
-        ApecTensorValue rotation;
+        ApecMTensorValue rotation;
         // ANSYS convention: intrinsic rotations about Z, then X', then Y''
         rotation(0, 0) = c1 * c3 - s1 * s2 * s3;
         rotation(0, 1) = -s1 * c2;
@@ -57,4 +57,4 @@ public:
     }
 };
 
-#endif // APEC_TENSOR_VALUE_H
+#endif // APEC_M_TENSOR_VALUE_H

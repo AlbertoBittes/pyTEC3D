@@ -4,7 +4,7 @@
 #include <libmesh/libmesh.h>
 
 #include "libmesh/periodic_boundaries.h"
-#include "libmesh/equation_systems.h"
+#include "libmesh/system.h"
 #include "fe_parent_object.h"
 #include "libmesh/periodic_boundary.h"
 #include "libmesh/periodic_boundary_base.h"
@@ -12,7 +12,7 @@
 #include "libmesh/dense_matrix.h"
 #include "libmesh/point.h"
 #include "libmesh/dense_vector.h"
-#include "globals.h"
+
 #include <memory>
 #include <set>
 #include <vector>
@@ -21,14 +21,14 @@
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
 
-class ApecMPeriodicBoundary : public PeriodicBoundaryBase, FEParentObjectBase<EquationSystems>
+class ApecMPeriodicBoundary : public PeriodicBoundaryBase, FEParentObjectBase<System>
 {
 public:
     ApecMPeriodicBoundary(const boundary_id_type main_b, const boundary_id_type paired_b,
                           const std::vector<std::vector<Real>> &periodic_mtx,
                           TransformationType t = FORWARD,
                           const std::vector<std::string> &variable_labels = {},
-                          EquationSystems *eq_sys = nullptr);
+                          System *sys = nullptr);
 
     ApecMPeriodicBoundary(const ApecMPeriodicBoundary &o, TransformationType t = FORWARD);
     virtual Point get_corresponding_pos(const Point &pt) const override;

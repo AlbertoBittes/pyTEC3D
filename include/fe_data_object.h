@@ -16,7 +16,7 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 
-#include "globals.h"
+#include "nd_array.h"
 
 using namespace libMesh;
 
@@ -102,7 +102,7 @@ struct AlwaysFalse : std::false_type
 struct BinaryColumnarData
 {
     std::size_t entry_count = 0;
-    std::unordered_map<std::string, Globals::NDArray> columns;
+    std::unordered_map<std::string, NDArray> columns;
 };
 
 class BinaryDataFEDataObject : public FEDataObjectMap<BinaryColumnarData>
@@ -138,18 +138,18 @@ public:
     bool has_column(const std::string &key) const;
     std::size_t entry_count() const;
     bool empty() const { return entry_count() == 0; }
+    static std::size_t flattened_size(const NDArray &array);
 
     void read_data(std::ifstream &file);
     void print_data_info() const override;
 
 protected:
-    const Globals::NDArray &get_column(const std::string &key) const;
-    static std::size_t flattened_size(const Globals::NDArray &array);
+    const NDArray &get_column(const std::string &key) const;
     static void ensure_index_in_bounds(const std::string &key, std::size_t index, std::size_t size);
 };
 
 template <typename T>
-    T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) const
+T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) const
 {
     if constexpr (std::is_same_v<T, int>)
         return static_cast<T>(get_int(key, index));

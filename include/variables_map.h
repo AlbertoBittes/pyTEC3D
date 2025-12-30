@@ -10,7 +10,7 @@
 #include <libmesh/enum_fe_family.h>
 #include <libmesh/enum_order.h>
 
-#include "globals.h"
+#include "apec_m_system.h"
 
 namespace libMesh
 {
@@ -85,7 +85,7 @@ struct VariableInfo
     std::string global_label;
     std::string api_label;
     unsigned int component_index;
-    Globals::SystemType system_type;
+    ApecMSystemBase::SystemType system_type;
 };
 
 class VariablesMap
@@ -118,7 +118,7 @@ public:
 
     static std::vector<GlobalVariableName> get_variables_for_element(const ElementType &element);
     static std::vector<GlobalVariableName> get_active_variables_for_element(const ElementType &element,
-                                                                            Globals::SystemType system_type);
+                                                                            ApecMSystemBase::SystemType system_type);
 
     static FEFamily get_variable_fe_family(const ElementType &element,
                                            GlobalVariableName variable);

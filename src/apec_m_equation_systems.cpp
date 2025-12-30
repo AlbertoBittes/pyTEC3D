@@ -1,5 +1,5 @@
-#include "apec_m_eq_system_object.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_equation_systems.h"
+#include "apec_m_system.h"
 #include "apec_m_mesh.h"
 #include "time_step.h"
 #include <libmesh/solver_configuration.h>
@@ -23,12 +23,12 @@ void ApecMEquationSystems::configure_systems()
 
     libMesh::out << "Checking system options..." << std::endl;
 
-    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
-        Globals::SystemType type = static_cast<Globals::SystemType>(i);
-        const std::string sys_name = Globals::SYSTEM_INFO_MAP.at(type);
+        ApecMSystemBase::SystemType type = static_cast<ApecMSystemBase::SystemType>(i);
+        const std::string sys_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
 
-        if (type == Globals::DOF_SOLUTION_SYSTEM)
+        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
             auto &linear_system = this->add_system<ApecMLinearSystem>(sys_name);
             if (auto assembler = linear_system.get_assembler())
@@ -45,13 +45,13 @@ void ApecMEquationSystems::initialize_system_contexts()
     if (!system_builder_view)
         return;
 
-    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
-        const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info);
 
-        if (type == Globals::DOF_SOLUTION_SYSTEM)
+        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
             if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
             {
@@ -69,13 +69,13 @@ void ApecMEquationSystems::initialize_system_contexts()
 
 void ApecMEquationSystems::post_initialize_systems()
 {
-    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
-        const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info);
 
-        if (type == Globals::DOF_SOLUTION_SYSTEM)
+        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
             if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
                 system->post_init();
@@ -122,10 +122,10 @@ void ApecMEquationSystems::clear_preserving_solver_settings()
 
 void ApecMEquationSystems::zero_all_systems()
 {
-    for (int i = 0; i < Globals::NUM_SYSTEMS; ++i)
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
-        const auto type = static_cast<Globals::SystemType>(i);
-        const auto &info = Globals::SYSTEM_INFO_MAP.at(type);
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
         auto &base_system = this->get_system<System>(info);
 
         if (auto *zeroable = dynamic_cast<ApecMSystemBase *>(&base_system))
@@ -135,9 +135,10 @@ void ApecMEquationSystems::zero_all_systems()
 
 std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh, APEC_M *program)
 {
+    if (program == nullptr)
+        libmesh_error_msg("APEC_M program pointer not provided to ApecMEquationSystems::build.");
     auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
-    if (program)
-        equation_systems->set_parent_object(program);
+    equation_systems->set_parent_object(program);
     equation_systems->configure_systems();
     return equation_systems;
 }

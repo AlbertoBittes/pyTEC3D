@@ -7,7 +7,7 @@
 #include <map>
 #include <fstream> // Include this header for std::ifstream
 #include "fe_data_object.h"
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 
 using namespace libMesh;
 
@@ -19,7 +19,7 @@ public:
         unsigned int sys_number;
         NumericVector<Number> *vec;
         NumericVector<Number> *old_vec;
-        Globals::SystemType *system_type;
+        ApecMSystemBase::SystemType *system_type;
         Real initial_val;
     };
 

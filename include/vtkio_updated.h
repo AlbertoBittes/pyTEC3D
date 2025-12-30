@@ -36,8 +36,9 @@
 // C++ includes
 #include <cstddef>
 #include <map>
+#include <string>
+#include <vector>
 #include "element_types.h"
-#include "globals.h"
 
 using namespace libMesh;
 // Forward declarations
@@ -70,6 +71,8 @@ public:
     virtual void read(const std::string &) override;
 
     virtual void write(const std::string &) override;
+
+    static const std::vector<std::string> VTK_DATA_ARRAY_NAMES;
 
 #ifdef LIBMESH_HAVE_VTK
 

@@ -1,6 +1,5 @@
 #include "apec_m_periodic_boundary.h"
 
-#include "globals.h"
 #include "variables_map.h"
 #include <map>
 
@@ -9,9 +8,9 @@ ApecMPeriodicBoundary::ApecMPeriodicBoundary(const boundary_id_type main_b,
                                              const std::vector<std::vector<Real>> &periodic_mtx,
                                              TransformationType t,
                                              const std::vector<std::string> &variable_labels_in,
-                                             EquationSystems *eq_sys)
+                                             System *sys)
     : PeriodicBoundaryBase(),
-      FEParentObjectBase<EquationSystems>(eq_sys),
+      FEParentObjectBase<System>(sys),
       rotation_matrix(periodic_mtx[0][0], periodic_mtx[0][1], periodic_mtx[0][2],
                       periodic_mtx[1][0], periodic_mtx[1][1], periodic_mtx[1][2],
                       periodic_mtx[2][0], periodic_mtx[2][1], periodic_mtx[2][2]),
@@ -69,9 +68,6 @@ void ApecMPeriodicBoundary::set_variables()
 {
     variables.clear();
 
-    EquationSystems *eq_sys = this->get_parent_object();
-    libmesh_error_msg_if(!eq_sys, "EquationSystems not associated with periodic boundary.");
-
     for (const auto &label : variable_labels)
     {
         auto keys = VariablesMap::get_keys_by_predicate(
@@ -83,9 +79,9 @@ void ApecMPeriodicBoundary::set_variables()
         for (const auto &key : keys)
         {
             auto &var_string_name = VariablesMap::get_info_by_key(key).global_label;
-            if (eq_sys->get_system(0).has_variable(var_string_name))
+            if (this->get_parent_object()->has_variable(var_string_name))
             {
-                unsigned int var_index = eq_sys->get_system(0).variable_number(var_string_name);
+                unsigned int var_index = this->get_parent_object()->variable_number(var_string_name);
                 set_variable(var_index);
             }
         }
@@ -128,9 +124,7 @@ DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const
     if (n == 0)
         return matrix;
 
-    EquationSystems *eq_sys = this->get_parent_object();
-    libmesh_error_msg_if(!eq_sys, "EquationSystems not associated with periodic boundary.");
-    const System &system = eq_sys->get_system(0);
+    System *system = this->get_parent_object();
 
     std::vector<unsigned int> ordered(vars_set.begin(), vars_set.end());
     std::vector<unsigned int> component_indices(ordered.size());
@@ -140,7 +134,7 @@ DenseMatrix<Real> ApecMPeriodicBoundary::build_transformation_matrix() const
     for (std::size_t i = 0; i < ordered.size(); ++i)
     {
         unsigned int var_index = ordered[i];
-        std::string var_name = system.variable_name(var_index);
+        std::string var_name = system->variable_name(var_index);
 
         auto key = VariablesMap::get_key_by_predicate_one(
             [&var_name](const VariableInfo &info)

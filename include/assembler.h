@@ -29,8 +29,7 @@ public:
     using ContextView = TypedContextView<TimeStep, Session>;
     using FEParentObjectBase<ApecMEquationSystems>::FEParentObjectBase;
 
-    AssemblerLinear(ApecMEquationSystems *equation_systems = nullptr,
-                    std::shared_ptr<ContextView> ctx_view = nullptr);
+    AssemblerLinear(ApecMEquationSystems *equation_systems = nullptr);
 
     void assemble() override;
 

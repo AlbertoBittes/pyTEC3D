@@ -82,7 +82,7 @@ std::shared_ptr<ApecMEquationSystems> APEC_M::get_equation_system(const std::str
 std::shared_ptr<ApecMEquationSystems> APEC_M::get_active_equation_system() const
 {
     auto session = model_data_repository->get_object<Session>();
-    if (!session || !session->has_active_mesh())
+    if (!session->has_active_mesh())
         return nullptr;
 
     return get_equation_system(session->get_active_mesh());
@@ -123,8 +123,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
     }
 
     auto session = model_data_repository->get_object<Session>();
-    if (!session)
-        return false;
 
     const bool analysis_mode = session->get_mode() == Session::Mode::Analysis;
     std::unordered_set<BinaryLabelId> analysis_disallowed_labels;
@@ -148,8 +146,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
     }
 
     auto analysis = get_analysis();
-    if (analysis)
-        analysis->set_parent_object(this);
 
     bool any_loaded = false;
     for (const auto &raw_path : filepaths)
@@ -192,18 +188,7 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
 
 void APEC_M::print_model_data() const
 {
-    if (!model_data_repository)
-    {
-        libMesh::out << "Model data repository is not initialized." << std::endl;
-        return;
-    }
-
     const auto &objects = model_data_repository->get_all_objects();
-    if (objects.empty())
-    {
-        libMesh::out << "Model data repository is empty." << std::endl;
-        return;
-    }
 
     static const std::unordered_map<std::type_index, std::string> friendly_names = {
         {typeid(Session), "Session"},
@@ -229,140 +214,6 @@ void APEC_M::print_model_data() const
         else
             libMesh::out << "  (object not initialized)" << std::endl;
     }
-}
-
-bool APEC_M::distribute_boundary_ids()
-{
-    auto session = model_data_repository->get_object<Session>();
-    if (!session)
-        return false;
-
-    Session &session_ref = *session;
-    auto mesh = get_active_mesh();
-    if (!mesh)
-    {
-        libMesh::out << "No active mesh selected." << std::endl;
-        return false;
-    }
-
-    mesh->apply_boundary_info();
-    libMesh::out << "Boundary IDs distributed for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
-    return true;
-}
-
-bool APEC_M::generate_infinite_elements()
-{
-    auto session = model_data_repository->get_object<Session>();
-    if (!session)
-        return false;
-
-    Session &session_ref = *session;
-    auto mesh = get_active_mesh();
-    if (!mesh)
-    {
-        libMesh::out << "No active mesh selected." << std::endl;
-        return false;
-    }
-
-    mesh->apply_boundary_info();
-
-    auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
-    if (!element_factory)
-    {
-        libMesh::out << "No ElementTypesFactory available. Unable to generate infinite elements." << std::endl;
-        return false;
-    }
-
-    ElementTypesMap *map = element_factory->get_element_types_map();
-    if (!map || map->empty())
-    {
-        libMesh::out << "ElementTypesFactory has no element types. Skipping infinite element generation." << std::endl;
-        return false;
-    }
-
-    auto &boundary_info = mesh->get_boundary_info();
-    const auto &side_boundary_ids = boundary_info.get_side_boundary_ids();
-
-    bool has_valid_boundary = false;
-    for (const auto &pair : *map)
-    {
-        const auto boundary_id = pair.first;
-        if (side_boundary_ids.find(boundary_id) == side_boundary_ids.end())
-        {
-            libMesh::out << "Warning: Boundary ID " << boundary_id
-                         << " not found on mesh. Skipping infinite elements for this ID." << std::endl;
-            continue;
-        }
-        has_valid_boundary = true;
-    }
-
-    if (!has_valid_boundary)
-    {
-        libMesh::out << "No matching boundary IDs found. Infinite elements were not generated." << std::endl;
-        return false;
-    }
-
-    mesh->generate_infinite_elements(element_factory);
-    // mesh->apply_boundary_info();
-    libMesh::out << "Generated infinite elements for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
-    return true;
-}
-
-bool APEC_M::generate_nodal_couplings()
-{
-    auto session = model_data_repository->get_object<Session>();
-    if (!session || !session->has_active_mesh())
-    {
-        libMesh::out << "No active mesh selected." << std::endl;
-        return false;
-    }
-
-    auto couplings_object = model_data_repository->get_object<DofCouplingsObject>();
-    if (!couplings_object)
-    {
-        libMesh::out << "No DOF couplings object available. Skipping nodal coupling generation." << std::endl;
-        return false;
-    }
-
-    auto &session_ref = *session;
-    auto mesh = get_active_mesh();
-    if (!mesh)
-    {
-        libMesh::out << "No mesh provided for nodal coupling generation." << std::endl;
-        return false;
-    }
-
-    return mesh->generate_nodal_couplings(*couplings_object, session_ref.get_active_mesh());
-}
-
-bool APEC_M::generate_periodic_boundaries()
-{
-    auto equation_system = get_active_equation_system();
-
-    auto session = model_data_repository->get_object<Session>();
-    if (!session || !session->has_active_mesh())
-    {
-        libMesh::out << "No active mesh selected." << std::endl;
-        return false;
-    }
-
-    auto &session_ref = *session;
-    if (!equation_system)
-    {
-        libMesh::out << "No equation system available for active mesh." << std::endl;
-        return false;
-    }
-
-    auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
-    if (!periodic_factory)
-    {
-        libMesh::out << "No periodic boundary factory available." << std::endl;
-        return false;
-    }
-
-    periodic_factory->initialize(equation_system.get());
-    libMesh::out << "Periodic boundaries generated for mesh '" << session_ref.get_active_mesh() << "'." << std::endl;
-    return true;
 }
 
 bool APEC_M::solve_load_step()
@@ -556,7 +407,7 @@ bool APEC_M::validate_model_for_analysis()
             }
             else
             {
-                auto extract_ids = [&](const Globals::NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>>
+                auto extract_ids = [&](const NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>>
                 {
                     return std::visit(
                         [&](const auto &vec) -> std::optional<std::vector<int>>
@@ -795,7 +646,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
     if (!shared_analysis)
     {
-        shared_analysis = AnalysisBase::build(this, *analysis_type, analysis_context);
+        shared_analysis = AnalysisBase::build(this, analysis_context, *analysis_type);
         if (!shared_analysis)
         {
             libMesh::out << "Failed to create analysis object for mesh." << std::endl;
@@ -843,7 +694,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
         if (periodic_factory)
         {
-            periodic_factory->initialize(equation_system.get());
+            periodic_factory->initialize(&equation_system.get()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
             libMesh::out << "Periodic boundaries generated for mesh '" << name << "'." << std::endl;
         }
         else
@@ -853,9 +704,9 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
         if (couplings_object)
         {
-            auto &main_system = equation_system->get_system(Globals::DOF_SOLUTION_SYSTEM);
-            AugmentSparsityOnNodes augment_sparsity(*mesh, *couplings_object);
-            main_system.get_dof_map().add_coupling_functor(augment_sparsity);
+            auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+            AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh, *couplings_object);
+            main_system.get_dof_map().add_coupling_functor(*gf);
             libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
         }
 

@@ -30,6 +30,8 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/mesh_communication.h"
 
+#include "vtkio_updated.h"
+
 #ifdef LIBMESH_HAVE_VTK
 
 // I get a lot of "warning: extra ';' inside a class [-Wextra-semi]" from clang
@@ -59,9 +61,8 @@
 #endif
 
 #include "libmesh/restore_warnings.h"
-#include "vtkio_updated.h"
-#include "globals.h"
 #include "variables_map.h"
+#include "apec_m_system.h"
 // C++ includes
 #include <fstream>
 #include <map>
@@ -69,6 +70,25 @@
 #include <set>
 
 using namespace libMesh;
+const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
+    // "ansys_node_num",
+    // "ansys_elem_num",
+    "ansys_etype",
+    "ansys_material_type",
+    "ansys_real_constant",
+    // "infinite_boundary",
+    // "flux_normal",
+    // "flux_parallel",
+    // "periodic_boundary",
+    "angles",
+    "boundary_id_",
+    "PLASMA",
+    "VACUUM_CHAMBER",
+    "VACUUM_CHAMBER_NODES",
+    "VERTICAL_CONTROL_COILS",
+    "RADIAL_CONTROL_COILS",
+    "VACUUM_CHAMBER_BOUNDARY",
+    "NEW_VACUUM_CHAMBER_BOUNDARY"};
 // A convenient macro for comparing VTK versions.  Returns 1 if the
 // current VTK version is < major.minor.subminor and zero otherwise.
 //
@@ -379,7 +399,7 @@ void VTKIO_Updated::add_ugrid_data_vtk(MeshBase &mesh)
 
         std::set<std::string> processed_names;
 
-        for (const auto &base_name : Globals::VTK_DATA_ARRAY_NAMES)
+        for (const auto &base_name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
         {
             if (base_name.empty())
                 continue;
@@ -520,8 +540,8 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
     if (_eq_sys)
     {
         const std::set<std::string> element_system_names = {
-            // Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_LOADS),
-            Globals::SYSTEM_INFO_MAP.at(Globals::ELEMENT_SOLUTION)};
+            // ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_LOADS),
+            ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION)};
         for (unsigned int i = 0; i < _eq_sys->n_systems(); ++i)
         {
             const System &sys = _eq_sys->get_system(i);

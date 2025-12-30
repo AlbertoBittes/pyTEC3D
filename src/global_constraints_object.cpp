@@ -2,10 +2,10 @@
 #include "fe_parent_object.h"
 #include "apec_m.h"
 #include "apec_m_mesh.h"
-#include "apec_m_system_objects.h"
-#include "apec_tensor_value.h"
+#include "apec_m_system.h"
+#include "apec_m_tensor_value.h"
 #include "dof_couplings_factory.h"
-#include "globals.h"
+
 #include "fem_data_repository.h"
 #include "fe_data_object.h"
 #include "variables_map.h"
@@ -70,7 +70,7 @@ GlobalConstraintsObject::build_point_constraints()
     {
 
         bool rotation_ready = false;
-        ApecTensorValue rotation;
+        ApecMTensorValue rotation;
 
         for (const auto &var_entry : vector_variables)
         {

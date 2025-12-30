@@ -10,7 +10,7 @@
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
-#include "apec_m_system_objects.h"
+#include "apec_m_system.h"
 #include "element_types_factory.h"
 
 void ElementBuilder::build_infin110()

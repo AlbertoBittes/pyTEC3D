@@ -7,7 +7,6 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
-#include <system_error>
 #include <unordered_map>
 #include <optional>
 
@@ -25,48 +24,6 @@ namespace
             return "";
         const auto last = input.find_last_not_of(" \t\r\n");
         return input.substr(first, last - first + 1);
-    }
-
-    void report_session_paths(const Session &session)
-    {
-        const auto normalize_path = [](const std::filesystem::path &path) -> std::filesystem::path
-        {
-            if (path.empty())
-                return path;
-
-            std::error_code ec;
-            auto absolute_path = std::filesystem::absolute(path, ec);
-            if (!ec)
-                return absolute_path.lexically_normal();
-
-            return path.lexically_normal();
-        };
-
-        const auto print_path = [&](const std::string &label, const std::filesystem::path &path)
-        {
-            if (path.empty())
-                return;
-            libMesh::out << label << normalize_path(path) << std::endl;
-        };
-
-        libMesh::out << "Current mode: " << Session::mode_to_string(session.get_mode()) << std::endl;
-        print_path("Working folder: ", session.get_path("working_folderpath"));
-
-        if (session.has_active_mesh())
-        {
-            libMesh::out << "Active mesh: " << session.get_active_mesh() << std::endl;
-            print_path("Mesh folder: ", session.get_path("mesh_folderpath"));
-            print_path("Input folder: ", session.get_path("input_folderpath"));
-            print_path("Output folder: ", session.get_path("output_folderpath"));
-            print_path("Load steps folder: ", session.get_path("load_steps_folderpath"));
-            print_path("Final output path: ", session.get_path("final_output_path"));
-            print_path("Emat folder: ", session.get_path("emat_folderpath"));
-            print_path("Temp folder: ", session.get_path("temp_folderpath"));
-        }
-        else
-        {
-            libMesh::out << "Active mesh: <none>" << std::endl;
-        }
     }
 
     bool require_mode(const Session &session, Session::Mode expected, const std::string &command_name)
@@ -283,7 +240,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
 
         const Session &session = *program.model_data()->get_object<Session>();
         libMesh::out << "Active mesh set to '" << session.get_active_mesh() << "'." << std::endl;
-        report_session_paths(session);
+        session.print_data_info();
         return true;
     }
     case Command::LOAD_DATA:
@@ -295,7 +252,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        const Session &session = *program.model_data()->get_object<Session>();
         std::istringstream ss(args);
         std::vector<std::string> files;
         std::string token;
@@ -310,8 +266,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
 
         if (!program.load_data(files))
             libMesh::out << "Failed to load requested data." << std::endl;
-        else
-            report_session_paths(session);
+
         return true;
     }
     case Command::PRINT_MODEL_DATA:
@@ -418,7 +373,7 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         if (!program.set_mode(it->second, requested_analysis))
             return true;
 
-        report_session_paths(*program.model_data()->get_object<Session>());
+        program.model_data()->get_object<Session>()->print_data_info();
         return true;
     }
     case Command::HELP:

@@ -2,24 +2,9 @@
 #include "variables_map.h"
 
 #include <algorithm>
-#include <type_traits>
 
 namespace
 {
-    const std::vector<int> &extract_int_array(const Globals::NDArray &array)
-    {
-        if (!std::holds_alternative<std::vector<int>>(array.values))
-            libmesh_error_msg("Dof couplings: expected integer array.");
-        return std::get<std::vector<int>>(array.values);
-    }
-
-    const std::vector<std::string> &extract_string_array(const Globals::NDArray &array)
-    {
-        if (!std::holds_alternative<std::vector<std::string>>(array.values))
-            libmesh_error_msg("Dof couplings: expected string array.");
-        return std::get<std::vector<std::string>>(array.values);
-    }
-
     unsigned int to_unsigned(int value, const std::string &label)
     {
         if (value < 0)
@@ -27,7 +12,7 @@ namespace
         return static_cast<unsigned int>(value);
     }
 
-    std::size_t stride_from_shape(const Globals::NDArray &array, std::size_t entry_count, const std::string &label)
+    std::size_t stride_from_shape(const NDArray &array, std::size_t entry_count, const std::string &label)
     {
         if (!array.shape.empty())
         {
@@ -85,12 +70,12 @@ void DofCouplingsObject::parse_couplings_from_map()
     const auto &isolated_array = get_column("isolated");
     const auto &variables_array = get_column("coupled_variables");
 
-    const auto &array_names = extract_string_array(array_name_array);
-    const auto &cp_ids = extract_int_array(cp_id_array);
-    const auto &pair_values = extract_int_array(pairs_array);
-    const auto &root_values = extract_int_array(roots_array);
-    const auto &isolated_values = extract_int_array(isolated_array);
-    const auto &variable_values = extract_string_array(variables_array);
+    const auto &array_names = array_name_array.view<std::string>();
+    const auto &cp_ids = cp_id_array.view<int>();
+    const auto &pair_values = pairs_array.view<int>();
+    const auto &root_values = roots_array.view<int>();
+    const auto &isolated_values = isolated_array.view<int>();
+    const auto &variable_values = variables_array.view<std::string>();
 
     const std::size_t count = entry_count();
     if (array_names.size() < count || cp_ids.size() < count)

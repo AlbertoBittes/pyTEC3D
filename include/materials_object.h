@@ -9,7 +9,6 @@
 #include <vector>
 #include <libmesh/libmesh.h>
 #include "fe_data_object.h" // Include the base class
-#include "globals.h"
 
 using namespace libMesh;
 
@@ -50,9 +49,9 @@ public:
     {
         const std::vector<Real> &mat_properties = get_material_properties(mat_id);
 
-        nu_matrix[0] = 1 / (Globals::MU_0 * mat_properties[0]);
-        nu_matrix[1] = 1 / (Globals::MU_0 * mat_properties[1]);
-        nu_matrix[2] = 1 / (Globals::MU_0 * mat_properties[2]);
+        nu_matrix[0] = 1 / (MU_0 * mat_properties[0]);
+        nu_matrix[1] = 1 / (MU_0 * mat_properties[1]);
+        nu_matrix[2] = 1 / (MU_0 * mat_properties[2]);
     }
 
     // Fill the sigma_matrix for a given material ID
@@ -150,8 +149,9 @@ private:
     }
 
     std::unordered_map<dof_id_type, std::vector<Real>> materials_map;
-    std::vector<Real> nu_matrix;    // Magnetic permeability matrix
-    std::vector<Real> sigma_matrix; // Resistivity matrix
+    std::vector<Real> nu_matrix;                // Magnetic permeability matrix
+    std::vector<Real> sigma_matrix;             // Resistivity matrix
+    const Real MU_0 = 4.0 * libMesh::pi * 1e-7; // Permeability of free space
 };
 
 #endif // MATERIALS_OBJECT_H

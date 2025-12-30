@@ -1,9 +1,18 @@
-#include "apec_m_system_objects.h"
-#include "apec_m_subset_solve.h"
+#include "apec_m_system.h"
+#include "system_matrix_reduction.h"
+#include "element_types_factory.h"
 #include "global_constraints_object.h"
 #include "libmesh/libmesh.h"
 #include "libmesh/numeric_vector.h"
 #include "variables_map.h"
+
+const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM_INFO_MAP = {
+    {ApecMSystemBase::DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"},
+    {ApecMSystemBase::NODAL_LOADS, "NodalLoadsSystem"},
+    {ApecMSystemBase::ELEMENT_LOADS, "ElementLoadsSystem"},
+    {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
+    {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
+};
 
 template <>
 void ApecMSystem<System>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
@@ -82,7 +91,7 @@ void ApecMLinearSystem::compute_solution_time_derivative(const Substep &time_sub
 void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
     libMesh::out << "Removing constrained DOFs from the system..." << std::endl;
-    ApecMSubset *subset_ptr = new ApecMSubset(*this);
+    SystemMatrixReduction *subset_ptr = new SystemMatrixReduction(*this);
     this->release_subset_solve();
     this->restrict_solve_to(subset_ptr, SUBSET_ZERO);
 }
@@ -108,9 +117,9 @@ void ApecMSystem<SysType>::init_variables()
     // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
     // {
     // Use new helper functions to map system name to SystemType
-    Globals::SystemType type = Globals::NUM_SYSTEMS;
+    ApecMSystemBase::SystemType type = ApecMSystemBase::NUM_SYSTEMS;
     const std::string sys_name = this->name();
-    for (const auto &pair : Globals::SYSTEM_INFO_MAP)
+    for (const auto &pair : ApecMSystemBase::SYSTEM_INFO_MAP)
     {
         if (pair.second == sys_name)
         {
@@ -118,7 +127,7 @@ void ApecMSystem<SysType>::init_variables()
             break;
         }
     }
-    if (type == Globals::NUM_SYSTEMS)
+    if (type == ApecMSystemBase::NUM_SYSTEMS)
         libmesh_error_msg("System type not found for system name: " + sys_name);
 
     auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);

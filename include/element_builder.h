@@ -22,7 +22,6 @@
 #include "real_constants_object.h"
 #include "time_step.h"
 #include "session.h"
-#include "globals.h"
 
 using namespace libMesh;
 
@@ -119,10 +118,6 @@ public:
     };
 
     using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
-    using FEParentObjectBase<EquationSystems>::FEParentObjectBase;
-
-    ElementBuilder(EquationSystems *equation_systems = nullptr,
-                   std::shared_ptr<ContextView> ctx_view = nullptr);
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
@@ -173,6 +168,8 @@ public:
 
     static std::unique_ptr<ElementBuilder> make_element_builder(ApecMEquationSystems *eq_sys);
 
+    ElementBuilder(EquationSystems *equation_systems, std::shared_ptr<ContextView> ctx_view);
+
 private:
     friend class BinaryReader;
     friend class AssemblerLinear;
@@ -189,6 +186,7 @@ private:
     SolutionVectorSupport solution_vector_support;
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
+
 };
 
 #endif // ELEMENT_BUILDER_H

@@ -10,7 +10,6 @@
 #include <libmesh/libmesh.h>
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
-#include "globals.h"
 
 using namespace libMesh;
 

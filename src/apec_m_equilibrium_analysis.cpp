@@ -6,13 +6,6 @@
 #include <algorithm>
 #include <libmesh/libmesh.h>
 
-APECMEquilibriumAnalysis::APECMEquilibriumAnalysis(APEC_M *program,
-                                                   std::shared_ptr<AnalysisBase::ContextView> context_view,
-                                                   AnalysisBase::Type type)
-    : TransientAnalysis(type, program, context_view)
-{
-}
-
 bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
 {
     auto settings = this->context<ApecMSettingsObject>();
@@ -62,7 +55,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
         {
             elem->set_extra_integer(plasma_region_component, 1);
 
-            dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
+            dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
 
             plasma_current_vector.set(elem_current_density_dof, 0.0);
 
@@ -132,8 +125,8 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
         if (elem->get_extra_integer(vacuum_chamber_component) != 1)
             continue;
 
-        dof_id_type bx_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, bx_var_number, 0);
-        dof_id_type by_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, by_var_number, 0);
+        dof_id_type bx_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
+        dof_id_type by_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
         Real bx_value = element_solution_system.current_local_solution->el(bx_dof);
         Real by_value = element_solution_system.current_local_solution->el(by_dof);
 
@@ -181,7 +174,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
         // if (!check_distance_magnetic_axis(node))
         //     continue;
         // Process the element as needed
-        dof_id_type psi_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, psi_var_number, 0);
+        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
         Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > magnetic_axis_data.second)
             magnetic_axis_data = std::make_pair(node->id(), psi_value);
@@ -242,7 +235,7 @@ void APECMEquilibriumAnalysis::identify_plasma_region()
 
         for (auto &node : elem->node_ref_range())
         {
-            dof_id_type psi_dof = node.dof_number(Globals::SystemType::NODAL_SOLUTION, psi_var_number, 0);
+            dof_id_type psi_dof = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
             Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
             if (psi_value < psi_min)
             {
@@ -274,7 +267,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
         if (node->get_extra_integer(vacuum_boundary_region_component) != 1)
             continue;
         // Process the element as needed
-        dof_id_type psi_dof = node->dof_number(Globals::SystemType::NODAL_SOLUTION, psi_var_number, 0);
+        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
         Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > psi_limiter)
         {
@@ -310,15 +303,15 @@ Real APECMEquilibriumAnalysis::check_X_point()
         if (dist < min_distance_to_axis)
             continue;
         // Process the element as needed
-        dof_id_type bx_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, bx_var_number, 0);
-        dof_id_type by_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, by_var_number, 0);
+        dof_id_type bx_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
+        dof_id_type by_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
         Real bx_value = element_solution_system.current_local_solution->el(bx_dof);
         Real by_value = element_solution_system.current_local_solution->el(by_dof);
         Real b_sum = std::sqrt(bx_value * bx_value + by_value * by_value);
         if (b_sum < min_b_sum)
         {
             min_b_sum = b_sum;
-            dof_id_type psi_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, psi_var_number, 0);
+            dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
             psi_X_point = element_solution_system.current_local_solution->el(psi_dof);
             X_point_elem = elem->id();
         }
@@ -403,7 +396,7 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
         Real correction_current_density = correction_current / coil_area;
 
         Real correction_current_sign = real_constants_map->get_constant(real_constant_elem_id)[19]; // CPSIGN
-        dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, vertical_coil_current_var_number, 0);
+        dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, vertical_coil_current_var_number, 0);
         Real existing_current_density = coils_current_vector.el(elem_current_density_dof);
         Real new_current_density = existing_current_density + correction_current_sign * correction_current_density;
         coils_current_vector.set(elem_current_density_dof, new_current_density);
@@ -440,8 +433,8 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         if (elem->get_extra_integer(plasma_component) != 1)
             continue;
 
-        dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
-        dof_id_type psi_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, psi_var_number, 0);
+        dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
+        dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
 
         Real psi_elem = element_solution_system.current_local_solution->el(psi_dof);
         Real elem_centroid_rad = elem->centroid()(0);
@@ -461,7 +454,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         if (elem->get_extra_integer(plasma_component) != 1)
             continue;
 
-        dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
+        dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
         Real existing_current_density = plasma_current_vector.el(elem_current_density_dof);
         Real adjusted_current_density = existing_current_density * (settings_ptr->plasma_currents() / total_plasma_current);
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
@@ -490,7 +483,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
         {
             if (elem->get_extra_integer(vacuum_chamber_id) == 1)
             {
-                dof_id_type psi_dof = elem->dof_number(Globals::SystemType::ELEMENT_SOLUTION, psi_var_number, 0);
+                dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
                 vacuum_chamber_psi_dofs.push_back(psi_dof);
             }
         }
@@ -569,7 +562,7 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
 //         dof_id_type real_constant_elem_id = elem->get_extra_integer(real_constant_mesh_id);
 //         Real plasma_area = real_constants_map->get_constant(real_constant_elem_id)[0];
 //         Real plasma_current_density = settings_ptr->plasma_currents() / plasma_area;
-//         dof_id_type elem_current_density_dof = elem->dof_number(Globals::SystemType::ELEMENT_LOADS, plasma_current_var_number, 0);
+//         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
 //         plasma_current_vector.set(elem_current_density_dof, plasma_current_density);
 //     }
 // }

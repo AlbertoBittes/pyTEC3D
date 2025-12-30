@@ -1,4 +1,5 @@
 #include "fe_data_object.h"
+#include "nd_array.h"
 
 #include <algorithm>
 #include <cmath>
@@ -52,7 +53,7 @@ void BinaryDataFEDataObject::read_data(std::ifstream &file)
         std::uint32_t ndim = 0;
         file.read(reinterpret_cast<char *>(&ndim), sizeof(ndim));
 
-        Globals::NDArray array_value;
+        NDArray array_value;
         array_value.shape.resize(ndim);
 
         std::size_t expected_elements = 1;
@@ -122,18 +123,20 @@ void BinaryDataFEDataObject::read_data(std::ifstream &file)
             libmesh_error_msg("BinaryDataFEDataObject: unsupported element kind encountered for key '" + key + "'.");
         }
 
-        const std::size_t value_count = std::visit([](const auto &vec) { return Globals::NDArray::vector_size(vec); }, array_value.values);
+        const std::size_t value_count = std::visit([](const auto &vec)
+                                                   { return NDArray::vector_size(vec); }, array_value.values);
         if (value_count != expected_elements)
             libmesh_error_msg("BinaryDataFEDataObject: flattened size mismatch while reading key '" + key + "'.");
 
-        const std::size_t entry_span = Globals::NDArray::infer_entry_span(array_value.shape, value_count);
+        const std::size_t entry_span = NDArray::infer_entry_span(array_value.shape, value_count);
         if (entry_count > 1)
         {
             const bool matches_shape = array_value.shape.empty()
                                            ? (value_count == entry_count)
                                            : std::any_of(array_value.shape.begin(),
                                                          array_value.shape.end(),
-                                                         [&](std::uint32_t dim) { return dim == entry_count; });
+                                                         [&](std::uint32_t dim)
+                                                         { return dim == entry_count; });
             if (!matches_shape)
                 libmesh_error_msg("BinaryDataFEDataObject: provided entry count does not match any dimension of key '" + key + "'.");
         }
@@ -146,7 +149,7 @@ void BinaryDataFEDataObject::read_data(std::ifstream &file)
     data_map->entry_count = (entry_count > 1) ? entry_count : deduced_entry_count;
 }
 
-const Globals::NDArray &BinaryDataFEDataObject::get_column(const std::string &key) const
+const NDArray &BinaryDataFEDataObject::get_column(const std::string &key) const
 {
     auto it = data_map->columns.find(key);
     if (it == data_map->columns.end())
@@ -164,9 +167,10 @@ std::size_t BinaryDataFEDataObject::entry_count() const
     return data_map->entry_count;
 }
 
-std::size_t BinaryDataFEDataObject::flattened_size(const Globals::NDArray &array)
+std::size_t BinaryDataFEDataObject::flattened_size(const NDArray &array)
 {
-    return std::visit([](const auto &vec) { return Globals::NDArray::vector_size(vec); }, array.values);
+    return std::visit([](const auto &vec)
+                      { return NDArray::vector_size(vec); }, array.values);
 }
 
 void BinaryDataFEDataObject::ensure_index_in_bounds(const std::string &key, std::size_t index, std::size_t size)
@@ -278,11 +282,11 @@ void BinaryDataFEDataObject::print_data_info() const
     libMesh::out << "  Columns:" << std::endl;
     for (const auto &column_pair : map->columns)
     {
-        libMesh::out << "    " << column_pair.first << " shape=" << Globals::NDArray::format_shape(column_pair.second.shape) << " values=";
+        libMesh::out << "    " << column_pair.first << " shape=" << NDArray::format_shape(column_pair.second.shape) << " values=";
         std::visit(
             [&](const auto &vec)
             {
-                Globals::NDArray::print_vector_contents(vec);
+                NDArray::print_vector_contents(vec);
             },
             column_pair.second.values);
         libMesh::out << std::endl;

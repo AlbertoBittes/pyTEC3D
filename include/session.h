@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "fe_data_object.h" // or wherever FEDataObjectMap is defined
-#include "globals.h"        // or wherever PathMap is defined
+                            // or wherever PathMap is defined
 
 typedef std::unordered_map<std::string, std::filesystem::path> PathMap;
 

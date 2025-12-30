@@ -11,7 +11,7 @@
 
 #include <libmesh/libmesh.h>
 
-#include "apec_m_eq_system_object.h"
+#include "apec_m_equation_systems.h"
 #include "apec_m_mesh.h"
 #include "fem_data_repository.h"
 #include "transient_analysis.h"
@@ -48,11 +48,6 @@ public:
         auto session = model_data_repository->get_object<Session>();
         return session ? session->get_mode() : Session::Mode::PreProcessing;
     }
-
-    bool distribute_boundary_ids();
-    bool generate_infinite_elements();
-    bool generate_nodal_couplings();
-    bool generate_periodic_boundaries();
 
     bool solve_load_step();
     bool solve_transient_load_steps();

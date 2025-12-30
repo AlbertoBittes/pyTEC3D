@@ -40,46 +40,46 @@ namespace
 
 const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_INFO_MAP = {
     // DOF Variables
-    {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, "A_y", "A", 1, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, Globals::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, Globals::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, "A_y", "A", 1, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
 
     // Nodal Loads Variables
-    {GlobalVariableName::CSG_x, {GlobalVariableName::CSG_x, APIVariableName::CSG, "CSG_x", "CSG", 0, Globals::NODAL_LOADS}},
-    {GlobalVariableName::CSG_y, {GlobalVariableName::CSG_y, APIVariableName::CSG, "CSG_y", "CSG", 1, Globals::NODAL_LOADS}},
-    {GlobalVariableName::CSG_z, {GlobalVariableName::CSG_z, APIVariableName::CSG, "CSG_z", "CSG", 2, Globals::NODAL_LOADS}},
-    {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, Globals::NODAL_LOADS}},
-    {GlobalVariableName::CURT, {GlobalVariableName::CURT, APIVariableName::CURT, "CURT", "CURT", 0, Globals::NODAL_LOADS}},
+    {GlobalVariableName::CSG_x, {GlobalVariableName::CSG_x, APIVariableName::CSG, "CSG_x", "CSG", 0, ApecMSystemBase::NODAL_LOADS}},
+    {GlobalVariableName::CSG_y, {GlobalVariableName::CSG_y, APIVariableName::CSG, "CSG_y", "CSG", 1, ApecMSystemBase::NODAL_LOADS}},
+    {GlobalVariableName::CSG_z, {GlobalVariableName::CSG_z, APIVariableName::CSG, "CSG_z", "CSG", 2, ApecMSystemBase::NODAL_LOADS}},
+    {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, ApecMSystemBase::NODAL_LOADS}},
+    {GlobalVariableName::CURT, {GlobalVariableName::CURT, APIVariableName::CURT, "CURT", "CURT", 0, ApecMSystemBase::NODAL_LOADS}},
 
     // Element Loads Variables
-    {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0, Globals::ELEMENT_LOADS}},
-    {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, "Js_y", "Js", 1, Globals::ELEMENT_LOADS}},
-    {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, "Js_z", "Js", 2, Globals::ELEMENT_LOADS}},
+    {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0, ApecMSystemBase::ELEMENT_LOADS}},
+    {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, "Js_y", "Js", 1, ApecMSystemBase::ELEMENT_LOADS}},
+    {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, "Js_z", "Js", 2, ApecMSystemBase::ELEMENT_LOADS}},
 
     // Nodal Solution Variables
-    {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, "B_x", "B", 0, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, "B_y", "B", 1, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, "B_z", "B", 2, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2, Globals::NODAL_SOLUTION}},
-    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, Globals::NODAL_SOLUTION}},
+    {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, "B_x", "B", 0, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, "B_y", "B", 1, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, "B_z", "B", 2, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, ApecMSystemBase::NODAL_SOLUTION}},
 
     // Element Solution Variables
-    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, "Be_y", "Be", 1, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, "Be_z", "Be", 2, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2, Globals::ELEMENT_SOLUTION}},
-    {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0, Globals::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, "Be_y", "Be", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, "Be_z", "Be", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
 };
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
@@ -197,7 +197,7 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
 }
 
 std::vector<GlobalVariableName> VariablesMap::get_active_variables_for_element(const ElementType &element,
-                                                                               Globals::SystemType system_type)
+                                                                               ApecMSystemBase::SystemType system_type)
 {
     std::vector<GlobalVariableName> active_vars;
     auto vars = get_variables_for_element(element);
