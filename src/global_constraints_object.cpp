@@ -141,6 +141,99 @@ GlobalConstraintsObject::build_point_constraints()
                 continue;
             }
 
+            std::vector<unsigned int> constrained_components;
+            constrained_components.reserve(max_components);
+            for (unsigned int i = 0; i < max_components; ++i)
+            {
+                if (!std::isnan(values(i)))
+                    constrained_components.push_back(i);
+            }
+
+            if (constrained_components.size() == 2)
+            {
+                const unsigned int eq0 = constrained_components[0];
+                const unsigned int eq1 = constrained_components[1];
+                const ApecMVector2Value rhs(values(eq0), values(eq1));
+
+                std::vector<unsigned int> candidate_dofs;
+                candidate_dofs.reserve(max_components);
+                for (unsigned int j = 0; j < max_components; ++j)
+                {
+                    if (dofs(j) == libMesh::invalid_uint)
+                        continue;
+                    if (constrained_dofs.count(dofs(j)) != 0)
+                        continue;
+                    candidate_dofs.push_back(j);
+                }
+
+                const Real tol = 1e-12;
+                bool handled = false;
+                if (candidate_dofs.size() >= 2)
+                {
+                    Real best_det = 0.;
+                    unsigned int s0 = 0;
+                    unsigned int s1 = 0;
+                    for (size_t a = 0; a < candidate_dofs.size(); ++a)
+                    {
+                        for (size_t b = a + 1; b < candidate_dofs.size(); ++b)
+                        {
+                            const unsigned int j0 = candidate_dofs[a];
+                            const unsigned int j1 = candidate_dofs[b];
+                            const ApecMTensor2Value sub(rotation, j0, j1, eq0, eq1);
+                            const Real det = sub.det();
+                            const Real abs_det = std::abs(det);
+                            if (abs_det > best_det)
+                            {
+                                best_det = abs_det;
+                                s0 = j0;
+                                s1 = j1;
+                            }
+                        }
+                    }
+
+                    if (best_det >= tol)
+                    {
+                        const ApecMTensor2Value sub(rotation, s0, s1, eq0, eq1);
+                        ApecMTensor2Value inv;
+                        if (!sub.inverse(inv, tol))
+                            continue;
+                        const Real inv00 = inv(0, 0);
+                        const Real inv01 = inv(0, 1);
+                        const Real inv10 = inv(1, 0);
+                        const Real inv11 = inv(1, 1);
+
+                        const unsigned int slaves[2] = {s0, s1};
+                        for (unsigned int k = 0; k < 2; ++k)
+                        {
+                            const unsigned int slave = slaves[k];
+                            const Real inv0 = (k == 0) ? inv00 : inv10;
+                            const Real inv1 = (k == 0) ? inv01 : inv11;
+
+                            ConstraintEntry entry;
+                            for (unsigned int j = 0; j < max_components; ++j)
+                            {
+                                if (j == s0 || j == s1)
+                                    continue;
+                                if (dofs(j) == libMesh::invalid_uint)
+                                    continue;
+                                const Real coeff = -(inv0 * rotation(j, eq0) + inv1 * rotation(j, eq1));
+                                entry.row[dofs(j)] = coeff;
+                            }
+
+                            entry.value = inv0 * rhs(0) + inv1 * rhs(1);
+                            const dof_id_type slave_dof = dofs(slave);
+                            if (constraints.emplace(slave_dof, entry).second)
+                                constrained_dofs.insert(slave_dof);
+                        }
+
+                        handled = true;
+                    }
+                }
+
+                if (handled)
+                    continue;
+            }
+
             for (unsigned int i = 0; i < max_components; ++i)
             {
                 const VectorValue<Real> column = rotation.column(i);
@@ -368,10 +461,12 @@ void GlobalConstraintsObject::constrain()
     auto volt_constraints = build_volt_constraints();
     constraints.insert(volt_constraints.begin(), volt_constraints.end());
 
+    libMesh::out << "Setting point constraints..." << std::endl;
     auto point_constraints = build_point_constraints();
     for (const auto &entry : point_constraints)
         constraints.emplace(entry.first, entry.second);
 
+    libMesh::out << "Setting coupling constraints..." << std::endl;
     auto coupling_constraints = build_coupling_constraints();
     for (const auto &entry : coupling_constraints)
         constraints.emplace(entry.first, entry.second);

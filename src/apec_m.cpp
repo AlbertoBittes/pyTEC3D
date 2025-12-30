@@ -702,13 +702,13 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
             libMesh::out << "No periodic boundary factory available for mesh '" << name << "'." << std::endl;
         }
 
-        if (couplings_object)
-        {
-            auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-            AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh, *couplings_object);
-            main_system.get_dof_map().add_coupling_functor(*gf);
-            libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
-        }
+        // if (couplings_object)
+        // {
+        //     auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+        //     AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh, *couplings_object);
+        //     main_system.get_dof_map().add_coupling_functor(*gf);
+        //     libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
+        // }
 
         mesh->prepare_for_use(true);
 

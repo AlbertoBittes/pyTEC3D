@@ -96,7 +96,7 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
 
 void AugmentSparsityOnNodes::mesh_reinit()
 {
-    // rebuild_elem_neighbors();
+    rebuild_elem_neighbors();
 }
 
 void AugmentSparsityOnNodes::redistribute()

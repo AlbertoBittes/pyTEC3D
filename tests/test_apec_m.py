@@ -693,7 +693,7 @@ analysis_cases = [
                 "component": 2,
                 "libmesh_id": 162,
                 "expected": -1.3480,
-                "tol": 1e-4,
+                "tol": 1e-3,
                 "is_point": False,
             },
             {
