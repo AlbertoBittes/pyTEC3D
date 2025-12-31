@@ -186,7 +186,6 @@ private:
     SolutionVectorSupport solution_vector_support;
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
-
 };
 
 #endif // ELEMENT_BUILDER_H

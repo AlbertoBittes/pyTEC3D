@@ -86,17 +86,33 @@ void ElementBuilder::build_solid97()
 
     for (unsigned int qp = 0; qp < nq; qp++)
         for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                for (unsigned int l = 0; l < 3; l++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * nu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
             for (unsigned int k = 0; k < 3; k++)
                 for (unsigned int l = 0; l < 3; l++)
-                {
                     BAe(qp + k * nq, dof_i + l * n_dofs_var) += curl_phi_vec[dof_i * 3 + l][qp](k);
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    {
-                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * nu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
-                        AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
-                        Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
-                    }
-                }
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                for (unsigned int k = 0; k < 3; k++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
+
+    for (unsigned int qp = 0; qp < nq; qp++)
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                for (unsigned int k = 0; k < 3; k++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
 
     // for (unsigned int qp = 0; qp < nq; qp++)
     //     for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
@@ -144,6 +160,112 @@ void ElementBuilder::build_solid97()
                     Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
         break;
     }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    {
+        auto real_constants_object = this->context<RealConstantsObject>();
+        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+            libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real vc = rc[3];
+        const Real tx = rc[5];
+        const Real ty = rc[6];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+        const Real sym = rc[9];
+
+        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
+
+        const unsigned int n_dofs_A = n_dofs_var * 3;
+        if (n_dofs >= n_dofs_A + 2 * n_dofs_var)
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
+                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
+                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
+                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
+
+                        Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
+                        Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
+                        Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
+                        Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
+
+                        Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
+                        Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
+                        Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
+
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kvv;
+                    }
+        }
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
+    {
+        auto real_constants_object = this->context<RealConstantsObject>();
+        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+            libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real vc = rc[3];
+        const Real tx = rc[5];
+        const Real ty = rc[6];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+        const Real sym = rc[9];
+
+        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
+
+        const unsigned int n_dofs_A = n_dofs_var * 3;
+        if (n_dofs >= n_dofs_A + 2 * n_dofs_var)
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
+                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
+                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
+                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
+
+                        Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
+                        Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
+                        Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
+                        Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
+                        Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
+                        Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
+
+                        Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
+                        Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
+                        Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
+
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A + n_dofs_var) -= kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A) -= kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) += kvv;
+                    }
+        }
+        break;
+    }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         Real CAV_value;
@@ -151,22 +273,41 @@ void ElementBuilder::build_solid97()
         auto &sigma_matrix = materials_object->get_sigma_matrix();
         for (unsigned int qp = 0; qp < nq; qp++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-            {
                 for (unsigned int k = 0; k < 3; k++)
-                {
                     JVe(qp + k * nq, dof_i) += dphi[dof_i][qp](k);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int k = 0; k < 3; k++)
                     JAe(qp + k * nq, dof_i + k * n_dofs_var) += phi[dof_i][qp];
-                }
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
-                    {
-                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        CAV_value = JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) += CAV_value;
-                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) += CAV_value;
-                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) += JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
-                    }
-            }
+                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
+                            JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
         //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -389,6 +530,56 @@ void ElementBuilder::build_solid97_rhs()
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i];
+
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    {
+        if (nodal_loads_system->has_variable("AMPS") && main_system->has_variable("VOLT"))
+        {
+            unsigned int amps_var_num = nodal_loads_system->variable_number("AMPS");
+            unsigned int volt_var_num = main_system->variable_number("VOLT");
+
+            unsigned int proc_id = nodal_loads_system->comm().rank();
+            dof_indices_loads.clear();
+
+            for (const auto &node : elem_data.elem->node_ref_range())
+                if (node.processor_id() == proc_id)
+                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amps_var_num))
+                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amps_var_num, 0));
+
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i];
+
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
+    {
+        if (nodal_loads_system->has_variable("AMPS") && main_system->has_variable("V"))
+        {
+            unsigned int amps_var_num = nodal_loads_system->variable_number("AMPS");
+            unsigned int v_var_num = main_system->variable_number("V");
+
+            unsigned int proc_id = nodal_loads_system->comm().rank();
+            dof_indices_loads.clear();
+
+            for (const auto &node : elem_data.elem->node_ref_range())
+                if (node.processor_id() == proc_id)
+                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amps_var_num))
+                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amps_var_num, 0));
+
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i + v_var_num * n_dofs_var) = loads_vec[dof_i];
 
             for (dof_id_type &dof_value : dof_indices_loads)
                 nodal_loads_vector->set(dof_value, 0);

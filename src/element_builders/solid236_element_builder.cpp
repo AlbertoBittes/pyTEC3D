@@ -123,6 +123,124 @@ void ElementBuilder::build_solid236()
     {
         break;
     }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    {
+        auto real_constants_object = this->context<RealConstantsObject>();
+        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+            libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real vc = rc[3];
+        const Real tx = rc[5];
+        const Real ty = rc[6];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+        const Real sym = rc[9];
+
+        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
+
+        if (n_dofs >= n_dofs_A + 2 * n_dofs_V)
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_i][qp](0) +
+                            ty * phi_edge[dof_i][qp](1) +
+                            tz * phi_edge[dof_i][qp](2);
+                        const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
+                        Ce(dof_i, dof_j + n_dofs_A) += kav;
+                        Ce(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
+                    }
+
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_j][qp](0) +
+                            ty * phi_edge[dof_j][qp](1) +
+                            tz * phi_edge[dof_j][qp](2);
+                        const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
+                    }
+
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) -= kvv;
+                    }
+        }
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
+    {
+        auto real_constants_object = this->context<RealConstantsObject>();
+        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+            libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real vc = rc[3];
+        const Real tx = rc[5];
+        const Real ty = rc[6];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+        const Real sym = rc[9];
+
+        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
+
+        if (n_dofs >= n_dofs_A + 2 * n_dofs_V)
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_i][qp](0) +
+                            ty * phi_edge[dof_i][qp](1) +
+                            tz * phi_edge[dof_i][qp](2);
+                        const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
+                        Ke(dof_i, dof_j + n_dofs_A) += kav;
+                        Ke(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
+                    }
+
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_j][qp](0) +
+                            ty * phi_edge[dof_j][qp](1) +
+                            tz * phi_edge[dof_j][qp](2);
+                        const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
+                    }
+
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A + n_dofs_V) -= kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A) -= kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) += kvv;
+                    }
+        }
+        break;
+    }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         materials_object->fill_sigma_matrix(this->elem_data.material_num);
@@ -251,6 +369,68 @@ void ElementBuilder::build_solid236_rhs()
         // for (dof_id_type &dof_value : dof_indices_loads)
         //     nodal_loads_vector->set(dof_value, 0);
 
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    {
+        if (nodal_loads_sys->has_variable("AMPS") && main_sys->has_variable("VOLT"))
+        {
+            unsigned int amp_var_num = nodal_loads_sys->variable_number("AMPS");
+            unsigned int volt_var_num = main_sys->variable_number("VOLT");
+            unsigned int az_var_num = main_sys->variable_number("Az");
+
+            unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
+            unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num);
+
+            if (n_dofs_V == 0 || n_dofs_A == 0)
+                break;
+
+            unsigned int proc_id = main_sys->comm().rank();
+            dof_indices_loads.clear();
+            for (const auto &node : elem_data.elem->node_ref_range())
+                if (node.processor_id() == proc_id)
+                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
+                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
+
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
+
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
+    {
+        if (nodal_loads_sys->has_variable("AMPS") && main_sys->has_variable("V"))
+        {
+            unsigned int amp_var_num = nodal_loads_sys->variable_number("AMPS");
+            unsigned int v_var_num = main_sys->variable_number("V");
+            unsigned int az_var_num = main_sys->variable_number("Az");
+
+            unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
+            unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, v_var_num);
+
+            if (n_dofs_V == 0 || n_dofs_A == 0)
+                break;
+
+            unsigned int proc_id = main_sys->comm().rank();
+            dof_indices_loads.clear();
+            for (const auto &node : elem_data.elem->node_ref_range())
+                if (node.processor_id() == proc_id)
+                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
+                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
+
+            nodal_loads_vector->get(dof_indices_loads, loads_vec);
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
+
+            for (dof_id_type &dof_value : dof_indices_loads)
+                nodal_loads_vector->set(dof_value, 0);
+        }
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
