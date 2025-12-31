@@ -172,51 +172,6 @@ void ElementBuilder::build_plane233()
         }
         break;
     }
-    case PhysicalRegionEnum::STRANDED_COIL:
-    {
-        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
-            libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
-
-        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
-        const Real sc = rc[1];
-        const Real nc = rc[2];
-        const Real vc = rc[3];
-        const Real tz = rc[7];
-        const Real r_coil = rc[8];
-        const Real sym = rc[9];
-
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
-
-        const Real kav_scale = -(nc / (sc * r_coil)) * tz;
-        const Real kvv_scale = 1.0 / (r_coil * vc);
-
-        if (n_dofs >= 3 * n_dofs_var)
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-            {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(r, axisymm);
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    {
-                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                        const Real kav = kav_scale * nn;
-                        const Real kvv = kvv_scale * nn;
-
-                        // Time-integrated A-VOLT-EMF formulation (KEYOPT(2)=2).
-                        Ce(dof_i, dof_j + n_dofs_var) += kav;
-                        Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
-                        Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
-                        Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
-                        Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
-                        Ce(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
-                    }
-            }
-        }
-        break;
-    }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     {
         materials_object->fill_sigma_matrix(this->elem_data.material_num);
@@ -323,6 +278,51 @@ void ElementBuilder::build_plane233()
         }
         break;
     }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    {
+        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+            libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real vc = rc[3];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+        const Real sym = rc[9];
+
+        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
+
+        const Real kav_scale = -(nc / (sc * r_coil)) * tz;
+        const Real kvv_scale = 1.0 / (r_coil * vc);
+
+        if (n_dofs >= 3 * n_dofs_var)
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(r, axisymm);
+
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
+                        const Real kav = kav_scale * nn;
+                        const Real kvv = kvv_scale * nn;
+
+                        // Time-integrated A-VOLT-EMF formulation (KEYOPT(2)=2).
+                        Ce(dof_i, dof_j + n_dofs_var) += kav;
+                        Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
+                        Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
+                        Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
+                    }
+            }
+        }
+        break;
+    }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
         if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
@@ -368,68 +368,6 @@ void ElementBuilder::build_plane233()
                         Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
                     }
             }
-        }
-        break;
-    }
-    case PhysicalRegionEnum::STRANDED_COIL:
-    {
-        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable("VOLT"))
-        {
-            unsigned int amp_var_num = nodal_loads_system->variable_number("AMPS");
-            unsigned int volt_var_num = main_sys->variable_number("VOLT");
-            unsigned int az_var_num = main_sys->variable_number("A_z");
-
-            unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
-            unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num);
-
-            if (n_dofs_V != n_dofs_A)
-                libmesh_error_msg("Number of DOFs for VOLT and A_z do not match in stranded coil elements");
-
-            unsigned int proc_id = main_sys->comm().rank();
-            dof_indices_loads.clear();
-            for (const auto &node : elem_data.elem->node_ref_range())
-                if (node.processor_id() == proc_id)
-                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
-                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
-
-            nodal_loads_vector->get(dof_indices_loads, loads_vec);
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
-
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
-        }
-        break;
-    }
-    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
-    {
-        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable("V"))
-        {
-            unsigned int amp_var_num = nodal_loads_system->variable_number("AMPS");
-            unsigned int v_var_num = main_sys->variable_number("V");
-            unsigned int az_var_num = main_sys->variable_number("A_z");
-
-            unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
-            unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, v_var_num);
-
-            if (n_dofs_V != n_dofs_A)
-                libmesh_error_msg("Number of DOFs for V and A_z do not match in stranded coil solenoidal elements");
-
-            unsigned int proc_id = main_sys->comm().rank();
-            dof_indices_loads.clear();
-            for (const auto &node : elem_data.elem->node_ref_range())
-                if (node.processor_id() == proc_id)
-                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
-                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
-
-            nodal_loads_vector->get(dof_indices_loads, loads_vec);
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
-
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
         }
         break;
     }
@@ -481,6 +419,9 @@ void ElementBuilder::build_plane233_rhs()
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -507,85 +448,27 @@ void ElementBuilder::build_plane233_rhs()
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        // Apply nodal CSG loads+
-        // if (nodal_loads_system->has_variable("CSG_z"))
-        // {
-        //     unsigned int csg_var_num = nodal_loads_system->variable_number("CSG_z");
-
-        //     unsigned int proc_id = nodal_loads_system->comm().rank();
-        //     dof_indices_loads.clear();
-        //     for (const auto &node : elem_data.elem->node_ref_range())
-        //         if (node.processor_id() == proc_id)
-        //             dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, csg_var_num, 0));
-
-        //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
-
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         if (loads_vec[dof_i] != 0)
-        //             Fe(dof_i) = loads_vec[dof_i];
-
-        //     for (dof_id_type &dof_value : dof_indices_loads)
-        //         nodal_loads_vector->set(dof_value, 0);
-        // }
-
-        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable("VOLT"))
-        {
-            unsigned int amp_var_num = nodal_loads_system->variable_number("AMPS");
-            unsigned int volt_var_num = main_sys->variable_number("VOLT");
-            unsigned int az_var_num = main_sys->variable_number("A_z");
-
-            unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
-            unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num);
-
-            if (n_dofs_V != n_dofs_A)
-                libmesh_error_msg("Number of DOFs for VOLT and A_z do not match in solid conductor elements");
-
-            unsigned int proc_id = main_sys->comm().rank();
-            dof_indices_loads.clear();
-            for (const auto &node : elem_data.elem->node_ref_range())
-                if (node.processor_id() == proc_id)
-                    if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
-                        dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
-
-            nodal_loads_vector->get(dof_indices_loads, loads_vec);
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
-
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
-        }
-
-        break;
-        // unsigned int volt_var_num = this->elem_data.element_type->get_variable_information()[GlobalVariableName::VOLT].system_var_num;
-        // unsigned int amp_var_num = this->elem_data.element_type->get_variable_information()[GlobalVariableName::AMPS].system_var_num;
-
-        // // Apply nodal AMPS loads
-        // dof_map_nodal_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        // nodal_loads_map->current_local_solution->get(dof_indices_loads, loads_vec);
-
-        // for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //     Fe(dof_i + volt_var_num * n_dofs_var) = loads_vec[dof_i + amp_var_num * n_dofs_var];
-
-        // for (dof_id_type &dof_value : dof_indices_loads)
-        //     nodal_loads_map->current_local_solution->set(dof_value, 0);
-
-        // break;
-    }
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
+    case PhysicalRegionEnum::STRANDED_COIL:
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable("V"))
+        std::string volt_var_name;
+        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]) ||
+            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+            volt_var_name = "V";
+        else
+            volt_var_name = "VOLT";
+        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable(volt_var_name) && main_sys->has_variable("A_z"))
         {
             unsigned int amp_var_num = nodal_loads_system->variable_number("AMPS");
-            unsigned int v_var_num = main_sys->variable_number("V");
+            unsigned int v_var_num = main_sys->variable_number(volt_var_name);
             unsigned int az_var_num = main_sys->variable_number("A_z");
 
             unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
             unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, v_var_num);
 
             if (n_dofs_V != n_dofs_A)
-                libmesh_error_msg("Number of DOFs for V and A_z do not match in solid conductor solenoidal elements");
+                libmesh_error_msg("Number of DOFs for V and A_z do not match in stranded coil solenoidal elements");
 
             unsigned int proc_id = main_sys->comm().rank();
             dof_indices_loads.clear();
@@ -597,10 +480,12 @@ void ElementBuilder::build_plane233_rhs()
             nodal_loads_vector->get(dof_indices_loads, loads_vec);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+            {
+                const dof_id_type dof_id = dof_indices_loads[dof_i];
+                if (!nodal_loads_dof_cache.insert(dof_id).second)
+                    continue;
                 Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
-
-            for (dof_id_type &dof_value : dof_indices_loads)
-                nodal_loads_vector->set(dof_value, 0);
+            }
         }
         break;
     }
@@ -623,6 +508,8 @@ void ElementBuilder::build_plane233_solution_vectors()
     auto materials_object = this->context<MaterialsObject>();
     materials_object->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object->get_nu_matrix();
+
+    auto real_constants_object = this->context<RealConstantsObject>();
 
     // Retrieve A DOF solution
     this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
@@ -713,10 +600,14 @@ void ElementBuilder::build_plane233_solution_vectors()
             PSIe(0) += Aq(qp);
         PSIe(0) = PSIe(0) / n_qp * centroid(0); // r component
     }
+
     // Compute J in elements
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
+    switch (physical_region)
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -736,29 +627,76 @@ void ElementBuilder::build_plane233_solution_vectors()
 
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
-        if (this->context<TimeStep>()->get_transient_effect())
+        Real Vn = 0.0;
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+            Vn = solution_vector_support.sol_vectors[1][0];
+
+        fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
+            Vn = solution_vector_support.sol_vectors[1][0];
+
+        auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
+
+        materials_object->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object->get_sigma_matrix();
+
+        // Get derivative of A DOF Solutions (dA/dt, dV/dt)
+        auto &An_dt = solution_vector_support.sol_vectors[0];
+
+        // Compute dA/dt in quadrature points
+        DenseVector<Number> Jq_A(n_qp);
+        JAe.vector_mult(Jq_A, An_dt);
+
+        // average on quadrature points and scale by conductivity
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+            Je(0) -= Jq_A(qp);
+        Je(0) = Je(0) * sigma_matrix[0] / n_qp;
+
+        Real thk = 1.0;
+        if (real_constants_object && real_constants_object->has_constant(this->elem_data.real_constant_num))
+            thk = real_constants_object->get_constant(this->elem_data.real_constant_num)[0];
+        if (thk == 0.0)
+            libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
+        Je(0) += Vn / thk;
+        unsigned int axisymm = elem_data.element_type->get_keyopts()[3];
+        if (axisymm)
+            Je(0) /= 2 * libMesh::pi * centroid(0); // r component
+        break;
+    }
+    case PhysicalRegionEnum::STRANDED_COIL:
+    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
+    {
+        Real Vn = 0.0;
+        Real En = 0.0;
+
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
         {
-            auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][ElementSolutionMatrices::JAe];
-
-            materials_object->fill_sigma_matrix(this->elem_data.material_num);
-            auto &sigma_matrix = materials_object->get_sigma_matrix();
-
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
-
-            // Get derivative of A DOF Solutions (dA/dt, dV/dt)
-            auto &An_dt = solution_vector_support.sol_vectors[0];
-
-            // Compute dA/dt in quadrature points
-            DenseVector<Number> Jq_A(n_qp);
-            JAe.vector_mult(Jq_A, An_dt);
-
-            // average on quadrature points and scale by conductivity
-            for (unsigned int qp = 0; qp < n_qp; qp++)
-                Je(0) -= Jq_A(qp);
-            Je(0) = Je(0) * sigma_matrix[0] / n_qp;
+            Vn = solution_vector_support.sol_vectors[1][0];
+            En = solution_vector_support.sol_vectors[2][0];
         }
+
+        fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        {
+            Vn = solution_vector_support.sol_vectors[1][0];
+            En = solution_vector_support.sol_vectors[2][0];
+        }
+
+        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const Real sc = rc[1];
+        const Real nc = rc[2];
+        const Real tz = rc[7];
+        const Real r_coil = rc[8];
+
+        if (sc == 0.0 || r_coil == 0.0)
+            libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL_SOLENOIDAL elements.");
+        Je(0) = (nc / (sc * r_coil)) * tz * (Vn - En);
         break;
     }
     default:

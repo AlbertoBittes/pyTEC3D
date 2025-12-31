@@ -45,15 +45,11 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
     {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
     {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
     {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
 
     // Nodal Loads Variables
-    {GlobalVariableName::CSG_x, {GlobalVariableName::CSG_x, APIVariableName::CSG, "CSG_x", "CSG", 0, ApecMSystemBase::NODAL_LOADS}},
-    {GlobalVariableName::CSG_y, {GlobalVariableName::CSG_y, APIVariableName::CSG, "CSG_y", "CSG", 1, ApecMSystemBase::NODAL_LOADS}},
-    {GlobalVariableName::CSG_z, {GlobalVariableName::CSG_z, APIVariableName::CSG, "CSG_z", "CSG", 2, ApecMSystemBase::NODAL_LOADS}},
     {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, ApecMSystemBase::NODAL_LOADS}},
-    {GlobalVariableName::CURT, {GlobalVariableName::CURT, APIVariableName::CURT, "CURT", "CURT", 0, ApecMSystemBase::NODAL_LOADS}},
 
     // Element Loads Variables
     {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0, ApecMSystemBase::ELEMENT_LOADS}},
@@ -238,10 +234,7 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
 {
     std::vector<GlobalVariableName> vars = {GlobalVariableName::A_x,
                                             GlobalVariableName::A_y,
-                                            GlobalVariableName::A_z,
-                                            GlobalVariableName::CSG_x,
-                                            GlobalVariableName::CSG_y,
-                                            GlobalVariableName::CSG_z};
+                                            GlobalVariableName::A_z};
 
     switch (physical_region)
     {
@@ -256,16 +249,14 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
         vars.insert(vars.end(), {GlobalVariableName::VOLT,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     case SOLID_CONDUCTOR_SOLENOIDAL:
     case STRANDED_COIL_SOLENOIDAL:
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     default:
         break;
@@ -290,16 +281,14 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
         vars.insert(vars.end(), {GlobalVariableName::VOLT,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     case SOLID_CONDUCTOR_SOLENOIDAL:
     case STRANDED_COIL_SOLENOIDAL:
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     default:
         break;
@@ -309,8 +298,7 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
 
 std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::vector<unsigned int> &keyopts)
 {
-    std::vector<GlobalVariableName> vars = {GlobalVariableName::A_z,
-                                            GlobalVariableName::CSG_z};
+    std::vector<GlobalVariableName> vars = {GlobalVariableName::A_z};
 
     PhysicalRegionEnum physical_region = UNKNOWN;
     if (keyopts.size() > 1)
@@ -326,16 +314,14 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
         vars.insert(vars.end(), {GlobalVariableName::VOLT,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     case STRANDED_COIL_SOLENOIDAL:
     case SOLID_CONDUCTOR_SOLENOIDAL:
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF,
-                                     GlobalVariableName::CURT});
+            vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     default:
         break;
@@ -380,13 +366,9 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::A_y:
     case GlobalVariableName::A_z:
     case GlobalVariableName::VOLT:
-    case GlobalVariableName::EMF:
     case GlobalVariableName::V:
-    case GlobalVariableName::CSG_x:
-    case GlobalVariableName::CSG_y:
-    case GlobalVariableName::CSG_z:
+    case GlobalVariableName::EMF:
     case GlobalVariableName::AMPS:
-    case GlobalVariableName::CURT:
     case GlobalVariableName::PSI:
         return LAGRANGE;
     case GlobalVariableName::Az:

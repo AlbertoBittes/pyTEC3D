@@ -289,6 +289,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     libMesh::out << "Applying loads to RHS" << std::endl;
 
+    builder->clear_nodal_loads_dof_cache();
+
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->type() == NODEELEM)

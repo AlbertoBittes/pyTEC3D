@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include <libmesh/elem.h>
@@ -58,7 +59,7 @@ struct SolutionVectorSupport
 class BinaryReader;
 
 class ElementBuilder
-    : public FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>,
+    : public FEMService<ElementTypesFactory, MaterialsObject, RealConstantsObject>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
@@ -117,7 +118,7 @@ public:
         NUM_ELEMENT_SOLUTION_VECTORS
     };
 
-    using ContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>;
+    using ContextView = TypedContextView<ElementTypesFactory, MaterialsObject, RealConstantsObject>;
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
@@ -166,6 +167,8 @@ public:
     void set_n_dofs(unsigned int n) { n_dofs = n; }
     unsigned int get_n_dofs() const { return n_dofs; }
 
+    void clear_nodal_loads_dof_cache() { nodal_loads_dof_cache.clear(); }
+
     static std::unique_ptr<ElementBuilder> make_element_builder(ApecMEquationSystems *eq_sys);
 
     ElementBuilder(EquationSystems *equation_systems, std::shared_ptr<ContextView> ctx_view);
@@ -186,6 +189,7 @@ private:
     SolutionVectorSupport solution_vector_support;
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
+    std::set<dof_id_type> nodal_loads_dof_cache;
 };
 
 #endif // ELEMENT_BUILDER_H

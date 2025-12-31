@@ -26,7 +26,7 @@
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view)
     : FEParentObjectBase<EquationSystems>(equation_systems),
-      FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>(ctx_view),
+      FEMService<ElementTypesFactory, MaterialsObject, RealConstantsObject>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
@@ -38,7 +38,7 @@ std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquati
 
     auto analysis = program->get_analysis();
     auto analysis_ctx = analysis->get_context_view();
-    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject>();
+    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, MaterialsObject, RealConstantsObject>();
 
     return std::make_unique<ElementBuilder>(eq_sys, builder_view);
 }
