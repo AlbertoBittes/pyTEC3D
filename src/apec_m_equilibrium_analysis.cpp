@@ -362,6 +362,9 @@ std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
     // Proportional+Integral component
     Real xiver = -cpgain * dive;
 
+    libMesh::out << "Radial correction current: " << xirad << " A" << std::endl;
+    libMesh::out << "Vertical correction current: " << xiver << " A" << std::endl;
+
     return std::make_pair(xirad, xiver);
 }
 
@@ -397,8 +400,9 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
 
         Real correction_current_sign = real_constants_map->get_constant(real_constant_elem_id)[19]; // CPSIGN
         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, vertical_coil_current_var_number, 0);
-        Real existing_current_density = coils_current_vector.el(elem_current_density_dof);
-        Real new_current_density = existing_current_density + correction_current_sign * correction_current_density;
+
+        Real base_current = real_constants_map->get_constant(real_constant_elem_id)[20]; // CURR
+        Real new_current_density = base_current / coil_area + correction_current_sign * correction_current_density;
         coils_current_vector.set(elem_current_density_dof, new_current_density);
     }
     coils_current_vector.close();
