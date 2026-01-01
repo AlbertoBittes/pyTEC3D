@@ -47,6 +47,7 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
     {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
     {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::E, {GlobalVariableName::E, APIVariableName::E, "E", "E", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
 
     // Nodal Loads Variables
     {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, ApecMSystemBase::NODAL_LOADS}},
@@ -256,7 +257,7 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
+            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -288,7 +289,7 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
+            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -321,7 +322,7 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
         vars.insert(vars.end(), {GlobalVariableName::V,
                                  GlobalVariableName::AMPS});
         if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
+            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -368,6 +369,7 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::VOLT:
     case GlobalVariableName::V:
     case GlobalVariableName::EMF:
+    case GlobalVariableName::E:
     case GlobalVariableName::AMPS:
     case GlobalVariableName::PSI:
         return LAGRANGE;
@@ -431,7 +433,7 @@ Order VariablesMap::get_variable_order(const ElementType &element,
     {
         auto keyopt_order = static_cast<Order>(keyopts[2]);
         if (keyopt_order != FIRST &&
-            (family == LAGRANGE || family == L2_LAGRANGE || family == LAGRANGE_VEC))
+            (family == LAGRANGE || family == L2_LAGRANGE || family == LAGRANGE_VEC || family == L2_LAGRANGE_VEC))
         {
             order = keyopt_order;
         }

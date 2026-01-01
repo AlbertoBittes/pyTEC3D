@@ -161,6 +161,8 @@ void ElementBuilder::build_solid97()
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -168,6 +170,79 @@ void ElementBuilder::build_solid97()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int k = 0; k < 3; k++)
                     Fe(dof_i + k * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+        break;
+    }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    {
+        materials_object->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object->get_sigma_matrix();
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
+                            JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
+        // Here when you will implement loads with F
+        // for (unsigned int qp = 0; qp < nq; qp++)
+        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        //         Fe(dof_i + 3 * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
+        break;
+    }
+    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
+    {
+        materials_object->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object->get_sigma_matrix();
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ke(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+
+        for (unsigned int qp = 0; qp < nq; qp++)
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    for (unsigned int l = 0; l < 3; l++)
+                        Ke(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
+                            JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
@@ -274,88 +349,6 @@ void ElementBuilder::build_solid97()
                         Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) += kvv;
                     }
         }
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
-                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
-                            JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
-        // Here when you will implement loads with F
-        // for (unsigned int qp = 0; qp < nq; qp++)
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         Fe(dof_i + 3 * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
-    {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int k = 0; k < 3; k++)
-                    JVe(qp + k * nq, dof_i) += dphi[dof_i][qp](k);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int k = 0; k < 3; k++)
-                    JAe(qp + k * nq, dof_i + k * n_dofs_var) += phi[dof_i][qp];
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ke(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
-                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
-
-        for (unsigned int qp = 0; qp < nq; qp++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ke(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
-                            JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
         break;
     }
     default:
@@ -523,7 +516,6 @@ void ElementBuilder::build_solid97_rhs()
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -537,6 +529,7 @@ void ElementBuilder::build_solid97_rhs()
 
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     case PhysicalRegionEnum::STRANDED_COIL:
@@ -660,7 +653,6 @@ void ElementBuilder::build_solid97_solution_vectors()
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -680,6 +672,7 @@ void ElementBuilder::build_solid97_solution_vectors()
 
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
@@ -703,7 +696,7 @@ void ElementBuilder::build_solid97_solution_vectors()
             An_dt.append(solution_vector_support.sol_vectors[k]);
         }
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR || physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
             Vn = solution_vector_support.sol_vectors[3];
 
         // Compute dA/dt in quadrature points
@@ -732,7 +725,7 @@ void ElementBuilder::build_solid97_solution_vectors()
         Real Vn = 0.0;
         Real En = 0.0;
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL)
         {
             Vn = solution_vector_support.sol_vectors[3][0];
             En = solution_vector_support.sol_vectors[4][0];
@@ -740,7 +733,7 @@ void ElementBuilder::build_solid97_solution_vectors()
 
         fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
         {
             Vn = solution_vector_support.sol_vectors[3][0];
             En = solution_vector_support.sol_vectors[4][0];

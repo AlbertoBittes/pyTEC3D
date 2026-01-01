@@ -8,6 +8,7 @@ VARIABLES_GLOBAL_LIST = [
     "VOLT",
     "V",
     "EMF",
+    "E",
     "AMPS",
     "Js",
     "B",
@@ -302,37 +303,25 @@ VTK_ARRAYS_TO_INIT = {
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
+    "V": {
+        "location": "point",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
     "EMF": {
         "location": "point",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
-    "CURR": {
-        "location": "point",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "CSG": {
+    "E": {
         "location": "point",
         "components": 3,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "AMPS": {
-        "location": "point",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "VLTG": {
-        "location": "point",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "CURT": {
         "location": "point",
         "components": 1,
         "fill": np.nan,

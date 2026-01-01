@@ -657,15 +657,20 @@ void ElementBuilder::build_plane233_solution_vectors()
             Je(0) -= Jq_A(qp);
         Je(0) = Je(0) * sigma_matrix[0] / n_qp;
 
+        if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
+            break;
+
         Real thk = 1.0;
         if (real_constants_object && real_constants_object->has_constant(this->elem_data.real_constant_num))
             thk = real_constants_object->get_constant(this->elem_data.real_constant_num)[0];
         if (thk == 0.0)
             libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
-        Je(0) += Vn / thk;
-        unsigned int axisymm = elem_data.element_type->get_keyopts()[3];
+        Real V_factor = Vn / thk;
         if (axisymm)
-            Je(0) /= 2 * libMesh::pi * centroid(0); // r component
+            V_factor /= 2 * libMesh::pi * centroid(0); // r component
+        Je(0) += V_factor;
+        unsigned int axisymm = elem_data.element_type->get_keyopts()[3];
+
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
@@ -674,7 +679,7 @@ void ElementBuilder::build_plane233_solution_vectors()
         Real Vn = 0.0;
         Real En = 0.0;
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL)
         {
             Vn = solution_vector_support.sol_vectors[1][0];
             En = solution_vector_support.sol_vectors[2][0];
@@ -682,7 +687,7 @@ void ElementBuilder::build_plane233_solution_vectors()
 
         fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
         {
             Vn = solution_vector_support.sol_vectors[1][0];
             En = solution_vector_support.sol_vectors[2][0];

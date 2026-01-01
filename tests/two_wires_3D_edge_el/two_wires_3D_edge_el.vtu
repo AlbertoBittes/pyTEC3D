@@ -126,6 +126,20 @@
         <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAACgXAAALQAAAA==eJztwQEBAAAAgiD/r25IQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAALwZcoAAB
         </DataArray>
+        <DataArray type="Float64" Name="V" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
+          AgAAAACAAABAOQAASwAAADEAAAA=eJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjW8YWEjOTmzbtm3btm3btm3btm3btm3btm3btp9cKN18Lw==
+        </DataArray>
+        <DataArray type="Float64" Name="E" NumberOfComponents="3" format="binary" RangeMin="3.1622776601683796e+149" RangeMax="NaN">
+          BQAAAACAAADAKwAASwAAAEsAAABLAAAASwAAAC0AAAA=eJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjUe4wUJydmLbtm3btm3btm3btm3btm37/QKKtANB
+          <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
+            <Value index="0">
+              3.1622776602e+149
+            </Value>
+            <Value index="1">
+              -nan
+            </Value>
+          </InformationKey>
+        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="1210">

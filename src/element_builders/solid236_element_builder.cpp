@@ -128,11 +128,14 @@ void ElementBuilder::build_solid236()
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
         materials_object->fill_sigma_matrix(this->elem_data.material_num);
@@ -366,7 +369,6 @@ void ElementBuilder::build_solid236_rhs()
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -405,6 +407,7 @@ void ElementBuilder::build_solid236_rhs()
 
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     case PhysicalRegionEnum::STRANDED_COIL:
@@ -524,7 +527,6 @@ void ElementBuilder::build_solid236_solution_vectors()
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
@@ -544,6 +546,7 @@ void ElementBuilder::build_solid236_solution_vectors()
 
         break;
     }
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
@@ -562,7 +565,7 @@ void ElementBuilder::build_solid236_solution_vectors()
 
         auto &A_dt = solution_vector_support.sol_vectors[0];
 
-        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR || physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
             Vn = solution_vector_support.sol_vectors[1];
 
         // Compute dA/dt in quadrature points

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360">
+  <defs>
+    <style type="text/css"><![CDATA[
+      .frame { fill: #f5f5f0; stroke: #333333; stroke-width: 2; }
+      .node { fill: #d8d2c8; stroke: #333333; stroke-width: 1.5; }
+      .title { font: 16px serif; fill: #222222; }
+      .label { font: 13px serif; fill: #222222; }
+      .small { font: 12px serif; fill: #222222; }
+    ]]></style>
+  </defs>
+
+  <rect x="30" y="40" rx="90" ry="90" width="840" height="240" class="frame"/>
+
+  <text x="450" y="70" text-anchor="middle" class="title">Background domain (air or vacuum)</text>
+  <text x="450" y="90" text-anchor="middle" class="small">nonconductive, nonpermeable, sigma = 0, mu = mu0</text>
+
+  <ellipse cx="170" cy="180" rx="80" ry="40" class="node"/>
+  <text x="170" y="175" text-anchor="middle" class="label">Solid</text>
+  <text x="170" y="192" text-anchor="middle" class="label">conductor</text>
+
+  <ellipse cx="360" cy="180" rx="90" ry="45" class="node"/>
+  <text x="360" y="175" text-anchor="middle" class="label">Stranded</text>
+  <text x="360" y="192" text-anchor="middle" class="label">conductor</text>
+
+  <ellipse cx="550" cy="180" rx="95" ry="45" class="node"/>
+  <text x="550" y="175" text-anchor="middle" class="label">Soft</text>
+  <text x="550" y="192" text-anchor="middle" class="label">magnetic</text>
+
+  <ellipse cx="740" cy="180" rx="95" ry="45" class="node"/>
+  <text x="740" y="175" text-anchor="middle" class="label">Hard</text>
+  <text x="740" y="192" text-anchor="middle" class="label">magnetic</text>
+
+  <text x="450" y="300" text-anchor="middle" class="small">
+    Materials combine electric and magnetic behavior to define the analysis domains.
+  </text>
+</svg>
