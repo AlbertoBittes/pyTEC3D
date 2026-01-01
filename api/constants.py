@@ -199,6 +199,7 @@ REAL_CONSTANTS_COLUMNS_TYPES = {
     "YLOC": float,
     "ZLOC": float,
     "CPSIGN": float,
+    "CURR": float,
 }
 
 # Assign types to element types columns

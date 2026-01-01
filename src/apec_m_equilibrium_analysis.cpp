@@ -225,24 +225,32 @@ void APECMEquilibriumAnalysis::identify_plasma_region()
     dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
-    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
-    unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
+    // auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
+    // unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
+
+    auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
+    unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->get_extra_integer(vacuum_chamber_component) != 1)
+        if (elem->get_extra_integer(plasma_region_component) != 1)
             continue;
 
-        for (auto &node : elem->node_ref_range())
-        {
-            dof_id_type psi_dof = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
-            Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
-            if (psi_value < psi_min)
-            {
-                elem->set_extra_integer(plasma_region_component, 0);
-                break;
-            }
-        }
+        dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
+        Real psi_value = element_solution_system.current_local_solution->el(psi_dof);
+        if (psi_value < psi_min)
+            elem->set_extra_integer(plasma_region_component, 0);
+
+        // for (auto &node : elem->node_ref_range())
+        // {
+        //     dof_id_type psi_dof = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
+        //     Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
+        //     if (psi_value < psi_min)
+        //     {
+        //         elem->set_extra_integer(plasma_region_component, 0);
+        //         break;
+        //     }
+        // }
     }
 }
 
@@ -432,6 +440,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
     auto settings_ptr = this->context<ApecMSettingsObject>();
     Real total_plasma_current = 0.0;
 
+    unsigned int plasma_elem_count = 0;
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->get_extra_integer(plasma_component) != 1)
@@ -448,11 +457,13 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
                                               (beta_profile * elem_centroid_rad / R0 + (1 - beta_profile) * R0 / elem_centroid_rad);
         total_plasma_current += grad_shafranov_current_density * elem->volume();
         plasma_current_vector.set(elem_current_density_dof, grad_shafranov_current_density);
+        plasma_elem_count++;
     }
 
     // Take total current across all processors
     comm.sum(total_plasma_current);
 
+    Real lambda = settings_ptr->plasma_currents() / total_plasma_current;
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->get_extra_integer(plasma_component) != 1)
@@ -460,7 +471,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
         Real existing_current_density = plasma_current_vector.el(elem_current_density_dof);
-        Real adjusted_current_density = existing_current_density * (settings_ptr->plasma_currents() / total_plasma_current);
+        Real adjusted_current_density = existing_current_density * lambda;
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
     }
     plasma_current_vector.close();
@@ -499,17 +510,18 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     const Real tolerance = settings->tolerance();
 
     element_solution_system.solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
-
+    // Removed incorrect vectorized relative difference calculation.
+    Real tot_norm = 0.0;
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
         Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / std::max(std::abs(curr_it_vacuum_chamber_psi_vector[i]), std::abs(prev_it_vacuum_chamber_psi_vector[i]));
-        if (rel_diff > tolerance)
-        {
-            converged = false;
-            break;
-        }
+        tot_norm += rel_diff;
     }
 
+    if (tot_norm > tolerance * curr_it_vacuum_chamber_psi_vector.size())
+    {
+        converged = false;
+    }
     // Check if converged in all processors
     comm.min(converged);
 

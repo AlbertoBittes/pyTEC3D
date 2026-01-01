@@ -68,14 +68,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // {
-    //     if (init.comm().rank() == 1)
-    //     {
-    //         int i = 0;
-    //         while (0 == i)
-    //             sleep(1);
-    //     }
-    // }
+    {
+        if (init.comm().rank() == 1)
+        {
+            int i = 0;
+            while (0 == i)
+                sleep(1);
+        }
+    }
 
     APEC_M program(init.comm());
     program.set_cli(std::make_unique<BasicCommandLineInterface>());
