@@ -53,7 +53,7 @@ private:
 
     Point magnetic_axis = Point();
 
-    DenseVector<Real> b_target_axis;
+    DenseVector<Real> b_target_axis = DenseVector<Real>(2);
 
     bool first_absolute_iteration = true;
 

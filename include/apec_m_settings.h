@@ -16,6 +16,7 @@ public:
     bool empty() const { return BinaryDataFEDataObject::empty(); }
 
     const Point &target_axis() const { return target_central_axis; }
+    dof_id_type target_axis_element_id() const { return target_central_axis_element_id; }
     Real major_radius() const { return R0; }
     unsigned int max_picard_iterations() const { return max_picard_iterations_; }
     Real min_distance_to_axis() const { return min_distance; }
@@ -33,6 +34,7 @@ private:
     void parse_columns();
 
     Point target_central_axis = Point();
+    dof_id_type target_central_axis_element_id = 0;
     Real R0 = 0.0;
     unsigned int max_picard_iterations_ = 1;
     Real min_distance = 0.3;

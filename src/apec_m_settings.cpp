@@ -24,6 +24,7 @@ void ApecMSettingsObject::read_data(std::ifstream &file)
 void ApecMSettingsObject::parse_columns()
 {
     target_central_axis = Point();
+    target_central_axis_element_id = 0;
     R0 = 0.0;
     max_picard_iterations_ = 1;
     min_distance = 0.3;
@@ -61,6 +62,9 @@ void ApecMSettingsObject::parse_columns()
         target_central_axis(2) = this->get_real("target_central_axis_z");
     else
         get_axis_component("target_central_axis", 2);
+
+    if (this->has_column("target_central_axis_element_id"))
+        target_central_axis_element_id = static_cast<dof_id_type>(this->get_int("target_central_axis_element_id"));
 
     if (this->has_column("R0"))
         R0 = this->get_real("R0");

@@ -81,24 +81,29 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     unsigned int bx_var_number = nodal_solution_system.variable_number("B_x");
     unsigned int by_var_number = nodal_solution_system.variable_number("B_y");
     const auto &mesh = eq_sys->get_mesh();
-    auto builder = ElementBuilder::make_element_builder(eq_sys);
-    auto point_locator = mesh.sub_point_locator();
+    // auto builder = ElementBuilder::make_element_builder(eq_sys);
+    // auto point_locator = mesh.sub_point_locator();
+    // point_locator->enable_out_of_mesh_mode();
     auto settings = this->context<ApecMSettingsObject>();
+    dof_id_type target_axis_element_id = settings->target_axis_element_id();
     const auto &axis = settings->target_axis();
     // Here you will be able to restrict to the subdomain of stranded conductors for speedup
     // You can also find before the element where the center is in pre processing
-    const Elem *target_elem = point_locator->operator()(axis);
     auto &comm = mesh.comm();
-    // target_axis(0) = -std::numeric_limits<Real>::max();
-    // target_axis(1) = -std::numeric_limits<Real>::max();
-    // target_axis(2) = -std::numeric_limits<Real>::max();
+    // const Elem *target_elem = point_locator->operator()(axis);
+
+    b_target_axis(0) = -std::numeric_limits<Real>::max();
+    b_target_axis(1) = -std::numeric_limits<Real>::max();
+    // b_target_axis(2) = -std::numeric_limits<Real>::max();
     // if (target_elem)
     // {
     // builder->build_solution_vectors_from_emat_files(target_elem->id(), session->get_path("emat_folderpath"));
     // }
-    b_target_axis.resize(2);
-    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, target_elem, nodal_solution_system.solution.get());
-    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, target_elem, nodal_solution_system.solution.get());
+    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, target_axis_element_id, nodal_solution_system.solution.get());
+    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, target_axis_element_id, nodal_solution_system.solution.get());
+    // }
+    comm.max(b_target_axis(0));
+    comm.max(b_target_axis(1));
 }
 
 void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
