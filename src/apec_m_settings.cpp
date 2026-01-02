@@ -104,4 +104,7 @@ void ApecMSettingsObject::parse_columns()
 
     if (this->has_column("print_full_output"))
         print_full_output_ = static_cast<bool>(this->get_int("print_full_output"));
+
+    if (this->has_column("main_mesh"))
+        main_mesh_ = this->get_string("main_mesh");
 }

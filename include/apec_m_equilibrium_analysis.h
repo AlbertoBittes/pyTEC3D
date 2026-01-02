@@ -38,7 +38,7 @@ protected:
     void reset_plasma_components();
     void remove_plasma_out_of_X_point();
 
-    bool picard_loop(Substep &substep);
+    virtual bool picard_loop(Substep &substep);
 
     // inline bool check_distance_magnetic_axis(const Point &point)
     // {
@@ -47,7 +47,7 @@ protected:
 
     virtual bool run_picard_iterations(Substep &substep) override;
 
-private:
+protected:
     Real psi_magnetic_axis = 0.0;
     Real psi_min = 0.0;
 

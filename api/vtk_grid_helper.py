@@ -1,4 +1,8 @@
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from collections import defaultdict
+import os
+from os import PathLike
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -12,6 +16,55 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 class VTKGridHelper:
     @staticmethod
+    def read_mesh(
+        vtk_file_path: Union[str, PathLike[str]],
+        reset_arrays: bool = True,
+    ) -> "vtk.vtkUnstructuredGrid":
+        """
+        Reads a VTK unstructured grid from a file in XML format (.vtu or .pvtu).
+
+        Args:
+            vtk_file_path: Path to the VTK file in XML format.
+            reset_arrays: When True, reset initialized arrays to defaults after loading.
+
+        Returns:
+            vtk.vtkUnstructuredGrid: The loaded mesh.
+        """
+        path = os.fspath(vtk_file_path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Mesh file '{path}' not found.")
+
+        _, ext = os.path.splitext(path)
+        ext = ext.lower()
+        if ext == ".pvtu":
+            reader = vtk.vtkXMLPUnstructuredGridReader()
+        else:
+            reader = vtk.vtkXMLUnstructuredGridReader()
+        reader.SetFileName(path)
+        reader.Update()
+        mesh = reader.GetOutput()
+
+        if reset_arrays:
+            # Avoid circular import at module load time
+            from selector import Selector
+            from tree_gauge_helper import TreeGaugeHelper
+
+            VTKGridHelper.initialize_vtk_arrays(mesh)
+            Selector.ensure_selection_arrays(mesh)
+            VTKGridHelper.store_cell_centroids(mesh)
+            TreeGaugeHelper.add_midside_nodes_mask_array(mesh)
+            VTKGridHelper.reset_vtk_arrays_to_default(mesh)
+
+        print(f"VTK unstructured grid loaded from '{path}'.")
+        print(f"Number of points: {mesh.GetNumberOfPoints()}")
+        print(f"Number of cells: {mesh.GetNumberOfCells()}")
+        print(f"Number of point data arrays: {mesh.GetPointData().GetNumberOfArrays()}")
+        print(f"Number of cell data arrays: {mesh.GetCellData().GetNumberOfArrays()}")
+        print(f"Number of field data arrays: {mesh.GetFieldData().GetNumberOfArrays()}")
+
+        return mesh
+
+    @staticmethod
     def add_array_to_grid(
         mesh: "vtk.vtkUnstructuredGrid",
         name: str,
@@ -20,7 +73,8 @@ class VTKGridHelper:
         fill: Any = 0,
         dtype: Optional[int] = vtk.VTK_DOUBLE,
         values: Optional[np.ndarray] = None,
-    ) -> "vtk.vtkDataArray":
+        replace: bool = False,
+    ) -> Union[np.ndarray, "vtk.vtkDataArray"]:
         """
         Adds a VTK array to the mesh at the specified location.
 
@@ -34,7 +88,7 @@ class VTKGridHelper:
             values: Explicit values to store in the array. Must match expected shape.
 
         Returns:
-            vtkDataArray: The created or existing VTK array.
+            vtkDataArray or np.ndarray: The created VTK array, or an existing array's NumPy view.
 
         Raises:
             ValueError: If location is invalid, shapes/components mismatch, or dtype differs.
@@ -47,8 +101,16 @@ class VTKGridHelper:
         num_components = max(1, components)
         expected_shape = (num_entries,) if num_components == 1 else (num_entries, num_components)
 
+        vtk_array = data_obj.GetArray(name)
+        if vtk_array is not None and not replace:
+            return vtknp.vtk_to_numpy(vtk_array)
+
+        if replace and vtk_array is not None:
+            data_obj.RemoveArray(name)
+            vtk_array = None
+
         values_np = None
-        if values is not None:
+        if not replace and values is not None:
             values_np = np.asarray(values)
             if values_np.shape == (num_entries, 1) and num_components == 1:
                 values_np = values_np.reshape(num_entries)
@@ -57,30 +119,45 @@ class VTKGridHelper:
                     f"Values for array '{name}' must have shape {expected_shape}, got {values_np.shape}."
                 )
 
-        vtk_array = data_obj.GetArray(name)
-        if vtk_array is None:
-            arr_to_store = values_np if values_np is not None else np.full(expected_shape, fill)
-            vtk_array = vtknp.numpy_to_vtk(arr_to_store, deep=True, array_type=dtype)
-            vtk_array.SetName(name)
-            vtk_array.SetNumberOfComponents(num_components)
-            data_obj.AddArray(vtk_array)
-        else:
-            if vtk_array.GetNumberOfComponents() != num_components:
-                raise ValueError(
-                    f"Existing array '{name}' has {vtk_array.GetNumberOfComponents()} components, expected {num_components}."
-                )
-            if dtype is not None and vtk_array.GetDataType() != dtype:
-                raise ValueError(
-                    f"Existing array '{name}' has VTK type {vtk_array.GetDataType()}, expected {dtype}."
-                )
+        arr_to_store = values_np
+        if replace:
+            arr_to_store = np.full(expected_shape, fill)
+        elif arr_to_store is None:
+            arr_to_store = np.full(expected_shape, fill)
 
-        if values_np is not None:
-            vtk_np = vtknp.vtk_to_numpy(vtk_array)
-            vtk_np[:] = values_np
-            vtk_array.Modified()
+        vtk_array = vtknp.numpy_to_vtk(arr_to_store, deep=True, array_type=dtype)
+        vtk_array.SetName(name)
+        vtk_array.SetNumberOfComponents(num_components)
+        data_obj.AddArray(vtk_array)
+        vtk_array.Modified()
 
         return vtk_array
 
+    @staticmethod
+    def save_mesh(
+        mesh: "vtk.vtkUnstructuredGrid",
+        output_file: Union[str, PathLike[str]],
+        binary: bool = True,
+    ) -> None:
+        """
+        Save an unstructured grid to a .vtu file.
+
+        Args:
+            mesh: The VTK unstructured grid to save.
+            output_file: Destination file path.
+            binary: When True, write in binary mode; otherwise ASCII.
+
+        Returns:
+            None
+        """
+        writer = vtk.vtkXMLUnstructuredGridWriter()
+        writer.SetFileName(os.fspath(output_file))
+        writer.SetInputData(mesh)
+        if binary:
+            writer.SetDataModeToBinary()
+        else:
+            writer.SetDataModeToAscii()
+        writer.Write()
     @staticmethod
     def initialize_vtk_arrays(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -348,6 +425,539 @@ class VTKGridHelper:
         vtk_points = cellCenters.GetOutput().GetPoints().GetData()
         np_centers = vtknp.vtk_to_numpy(vtk_points)
         return np_centers
+
+    @staticmethod
+    def build_toroidal_projection_map(
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        target_mesh: "vtk.vtkUnstructuredGrid",
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Build a toroidal projection map from a 2D input mesh to a 3D target mesh.
+
+        Each input point/cell centroid is associated with all target points/cell centroids that share
+        the same radial distance from the rotation axis and the same axial coordinate within
+        the given tolerance.
+        The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
+        the remaining columns hold the corresponding target IDs (padded with NaNs when needed).
+        If the input mesh has a selection array for the chosen location, only selected IDs are used.
+
+        Args:
+            input_mesh: 2D unstructured grid used to generate a surface of revolution.
+            target_mesh: Target unstructured grid (typically 3D).
+            location: "point" to map point IDs or "cell" to map cell IDs.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+
+        Returns:
+            np.ndarray: 2D array with shape (num_input, 1 + max_matches).
+
+        Raises:
+            ValueError: If inputs are invalid or the input mesh is not 2D.
+        """
+        from selector import Selector
+
+        if location not in ["point", "cell"]:
+            raise ValueError("location must be 'point' or 'cell'.")
+        if tolerance <= 0:
+            raise ValueError("tolerance must be positive.")
+
+        Selector.ensure_selection_arrays(input_mesh)
+        axis_vec = np.array(
+            axis if axis is not None else [0.0, 1.0, 0.0], dtype=float
+        ).reshape(-1)
+        if axis_vec.size != 3:
+            raise ValueError("axis must be a 3-element vector.")
+        axis_norm = np.linalg.norm(axis_vec)
+        if axis_norm <= 0.0:
+            raise ValueError("axis must be a non-zero vector.")
+        axis_unit = axis_vec / axis_norm
+        origin_vec = np.array(
+            origin if origin is not None else [0.0, 0.0, 0.0], dtype=float
+        ).reshape(-1)
+        if origin_vec.size != 3:
+            raise ValueError("origin must be a 3-element vector.")
+
+        input_points = input_mesh.GetPoints()
+        if input_points is None:
+            return np.empty((0, 1), dtype=float)
+        input_points_np = vtknp.vtk_to_numpy(input_points.GetData())
+
+        if input_mesh.GetNumberOfCells() > 0 and input_mesh.GetMaxSpatialDimension() > 2:
+            raise ValueError("Input mesh must be 2D.")
+
+        def get_positions(mesh: "vtk.vtkUnstructuredGrid") -> np.ndarray:
+            if location == "point":
+                points = mesh.GetPoints()
+                if points is None:
+                    return np.empty((0, 3))
+                return vtknp.vtk_to_numpy(points.GetData())
+            return VTKGridHelper.compute_cell_centroids(mesh)
+
+        def get_input_positions_and_ids(
+            mesh: "vtk.vtkUnstructuredGrid",
+        ) -> Tuple[np.ndarray, np.ndarray]:
+            positions = get_positions(mesh)
+            if location == "point":
+                count = mesh.GetNumberOfPoints()
+                data = mesh.GetPointData()
+                selection_name = "selection_point"
+            else:
+                count = mesh.GetNumberOfCells()
+                data = mesh.GetCellData()
+                selection_name = "selection_cell"
+            ids = np.arange(count, dtype=int)
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                return positions, ids
+            selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+            if selection_mask.size != ids.size:
+                raise ValueError(
+                    f"Selection array '{selection_name}' has unexpected length."
+                )
+            if np.any(selection_mask):
+                return positions[selection_mask], ids[selection_mask]
+            return positions[:0], ids[:0]
+
+        input_pos, input_ids = get_input_positions_and_ids(input_mesh)
+        target_pos = get_positions(target_mesh)
+
+        if input_pos.size == 0:
+            return np.empty((0, 1), dtype=float)
+
+        input_vec = input_pos - origin_vec
+        target_vec = target_pos - origin_vec
+        input_axial = np.dot(input_vec, axis_unit)
+        target_axial = np.dot(target_vec, axis_unit)
+        input_radial_vec = input_vec - np.outer(input_axial, axis_unit)
+        target_radial_vec = target_vec - np.outer(target_axial, axis_unit)
+        input_radius = np.linalg.norm(input_radial_vec, axis=1)
+        target_radius = np.linalg.norm(target_radial_vec, axis=1)
+
+        scale = 1.0 / tolerance
+        def quantize(r: float, axial: float) -> tuple:
+            return (int(round(r * scale)), int(round(axial * scale)))
+
+        target_index: Dict[tuple, List[int]] = defaultdict(list)
+        for idx, (r, axial) in enumerate(zip(target_radius, target_axial)):
+            target_index[quantize(r, axial)].append(idx)
+
+        num_input = input_radius.shape[0]
+        matches_per_input: List[List[int]] = []
+        for input_id in range(num_input):
+            matches = target_index.get(
+                quantize(input_radius[input_id], input_axial[input_id]), []
+            )
+            matches_per_input.append(sorted(matches))
+
+        max_matches = max((len(m) for m in matches_per_input), default=0)
+        mapping = np.full((num_input, 1 + max_matches), np.nan)
+        mapping[:, 0] = input_ids.astype(int)
+
+        counts = []
+        for row_idx, matches in enumerate(matches_per_input):
+            counts.append(len(matches))
+            if matches:
+                mapping[row_idx, 1 : 1 + len(matches)] = matches
+
+        if max_matches > 0 and any(count != max_matches for count in counts):
+            warnings.warn(
+                "Toroidal projection map has varying numbers of target IDs per source ID; "
+                "rows were padded with NaNs. This should not happen for an extruded mesh.",
+                RuntimeWarning,
+            )
+
+        return mapping
+
+    @staticmethod
+    def toroidal_projection(
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        input_array_name: str,
+        input_component: Optional[int],
+        target_mesh: "vtk.vtkUnstructuredGrid",
+        target_array_name: str,
+        target_component: Optional[int] = None,
+        projection_map: Optional[np.ndarray] = None,
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Project scalar or vector fields from a 2D input mesh onto a 3D target mesh.
+
+        Modes:
+            - input_component is None: treat the input as a 3-component vector field and rotate
+              it toroidally to each matched target position.
+            - input_component and target_component are set: treat as a scalar value and copy it
+              into the target component for each matched position.
+            - input_component is set and target_component is None: treat the selected component
+              as a toroidal (theta) component and write it as a vector aligned with the local
+              toroidal unit direction around the given axis.
+
+        Args:
+            input_mesh: 2D unstructured grid used to generate a surface of revolution.
+            input_array_name: Name of the input array on the input mesh.
+            input_component: Component index to read from the input array, or None for full vector.
+            target_mesh: Target unstructured grid (typically 3D).
+            target_array_name: Name of the target array to write on the target mesh.
+            projection_map: Optional precomputed toroidal projection map.
+            location: "point" to map point data or "cell" to map cell data.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+            target_component: Component index to write for scalar copy mode.
+
+        Returns:
+            None
+        """
+        if location not in ["point", "cell"]:
+            raise ValueError("location must be 'point' or 'cell'.")
+        if input_component is None and target_component is not None:
+            raise ValueError("target_component cannot be set when input_component is None.")
+
+        input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
+        input_array = input_data.GetArray(input_array_name) if input_data is not None else None
+        if input_array is None:
+            raise ValueError(f"Array '{input_array_name}' not found in input {location} data.")
+
+        input_np = vtknp.vtk_to_numpy(input_array)
+        input_components = input_array.GetNumberOfComponents()
+        is_vector_mode = input_component is None
+        is_scalar_copy_mode = input_component is not None and target_component is not None
+        is_theta_mode = input_component is not None and target_component is None
+
+        if is_vector_mode:
+            if input_components != 3:
+                raise ValueError("input_array_name must refer to a 3-component array.")
+            input_vectors = input_np
+        else:
+            if input_components == 1:
+                if input_component != 0:
+                    raise ValueError("input_component must be 0 for scalar arrays.")
+                input_values = input_np
+            else:
+                if input_component < 0 or input_component >= input_np.shape[1]:
+                    raise ValueError("input_component out of range for input array.")
+                input_values = input_np[:, input_component]
+
+        if projection_map is None:
+            projection_map = VTKGridHelper.build_toroidal_projection_map(
+                input_mesh,
+                target_mesh,
+                location=location,
+                tolerance=tolerance,
+                origin=origin,
+                axis=axis,
+            )
+
+        if projection_map.size == 0:
+            return
+
+        target_data = target_mesh.GetPointData() if location == "point" else target_mesh.GetCellData()
+        if target_data is None:
+            raise ValueError(f"Target mesh has no {location} data.")
+        target_array = target_data.GetArray(target_array_name)
+        if target_array is None:
+            target_components = 3 if (is_vector_mode or is_theta_mode) else max(1, target_component + 1)
+            target_array = VTKGridHelper.add_array_to_grid(
+                target_mesh,
+                name=target_array_name,
+                location=location,
+                components=target_components,
+                fill=0.0,
+                dtype=vtk.VTK_DOUBLE,
+            )
+        if is_vector_mode or is_theta_mode:
+            if target_array.GetNumberOfComponents() != 3:
+                raise ValueError("target_array_name must refer to a 3-component array.")
+        else:
+            if target_component < 0:
+                raise ValueError("target_component must be non-negative.")
+            if target_array.GetNumberOfComponents() == 1 and target_component != 0:
+                raise ValueError("target_component must be 0 for scalar target arrays.")
+            if target_component >= target_array.GetNumberOfComponents():
+                raise ValueError("target_component out of range for target array.")
+
+        target_np = vtknp.vtk_to_numpy(target_array)
+
+        axis_unit = None
+        origin_vec = None
+        target_radial_unit = None
+        target_toroidal_unit = None
+        input_radial_unit = None
+        input_toroidal_unit = None
+        if is_vector_mode or is_theta_mode:
+            axis_vec = np.array(
+                axis if axis is not None else [0.0, 1.0, 0.0], dtype=float
+            ).reshape(-1)
+            if axis_vec.size != 3:
+                raise ValueError("axis must be a 3-element vector.")
+            axis_norm = np.linalg.norm(axis_vec)
+            if axis_norm <= 0.0:
+                raise ValueError("axis must be a non-zero vector.")
+            axis_unit = axis_vec / axis_norm
+            origin_vec = np.array(
+                origin if origin is not None else [0.0, 0.0, 0.0], dtype=float
+            ).reshape(-1)
+            if origin_vec.size != 3:
+                raise ValueError("origin must be a 3-element vector.")
+
+            if location == "point":
+                points = target_mesh.GetPoints()
+                target_pos = np.empty((0, 3)) if points is None else vtknp.vtk_to_numpy(points.GetData())
+                input_points = input_mesh.GetPoints()
+                input_pos = np.empty((0, 3)) if input_points is None else vtknp.vtk_to_numpy(input_points.GetData())
+            else:
+                target_pos = VTKGridHelper.compute_cell_centroids(target_mesh)
+                input_pos = VTKGridHelper.compute_cell_centroids(input_mesh)
+
+            if target_pos.size == 0:
+                return
+
+            target_vec = target_pos - origin_vec
+            target_axial = np.dot(target_vec, axis_unit)
+            target_radial_vec = target_vec - np.outer(target_axial, axis_unit)
+            target_radial_norm = np.linalg.norm(target_radial_vec, axis=1)
+            target_radial_unit = np.zeros_like(target_radial_vec)
+            target_nonzero = target_radial_norm > 0.0
+            target_radial_unit[target_nonzero] = target_radial_vec[target_nonzero] / target_radial_norm[target_nonzero, None]
+            target_toroidal_unit = np.cross(axis_unit, target_radial_unit)
+
+            if is_vector_mode:
+                if input_pos.size == 0:
+                    return
+                input_vec = input_pos - origin_vec
+                input_axial = np.dot(input_vec, axis_unit)
+                input_radial_vec = input_vec - np.outer(input_axial, axis_unit)
+                input_radial_norm = np.linalg.norm(input_radial_vec, axis=1)
+                input_radial_unit = np.zeros_like(input_radial_vec)
+                input_nonzero = input_radial_norm > 0.0
+                input_radial_unit[input_nonzero] = input_radial_vec[input_nonzero] / input_radial_norm[input_nonzero, None]
+                input_toroidal_unit = np.cross(axis_unit, input_radial_unit)
+
+        for row in projection_map:
+            input_id = row[0]
+            if np.isnan(input_id):
+                continue
+            input_id_int = int(input_id)
+            if is_vector_mode:
+                if input_id_int < 0 or input_id_int >= input_vectors.shape[0]:
+                    continue
+                input_vec = input_vectors[input_id_int]
+                vr = np.dot(input_vec, input_radial_unit[input_id_int])
+                vt = np.dot(input_vec, input_toroidal_unit[input_id_int])
+                va = np.dot(input_vec, axis_unit)
+            else:
+                if input_id_int < 0 or input_id_int >= input_values.shape[0]:
+                    continue
+                value = input_values[input_id_int]
+            for target_id in row[1:]:
+                if np.isnan(target_id):
+                    continue
+                target_id_int = int(target_id)
+                if target_id_int < 0 or target_id_int >= target_np.shape[0]:
+                    continue
+                if is_vector_mode:
+                    target_np[target_id_int, :] = (
+                        vr * target_radial_unit[target_id_int]
+                        + va * axis_unit
+                        + vt * target_toroidal_unit[target_id_int]
+                    )
+                elif is_scalar_copy_mode:
+                    if target_np.ndim == 1:
+                        target_np[target_id_int] = value
+                    else:
+                        target_np[target_id_int, target_component] = value
+                else:
+                    target_np[target_id_int, :] = value * target_toroidal_unit[target_id_int]
+
+        target_array.Modified()
+
+    @staticmethod
+    def toroidal_projection_inverse(
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        input_array_name: str,
+        input_component: Optional[int],
+        target_mesh: "vtk.vtkUnstructuredGrid",
+        target_array_name: str,
+        target_component: Optional[int] = None,
+        projection_map: Optional[np.ndarray] = None,
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Average toroidal fields from a 3D input mesh onto a 2D target mesh.
+
+        Modes:
+            - input_component is None and target_component is None: treat both arrays as 3-component
+              vectors. Decompose input into radial/toroidal/axial components, average across
+              toroidal positions, and reconstruct on the target mesh.
+            - input_component and target_component are set: treat as scalar values and average
+              across toroidal positions into the target component.
+
+        Args:
+            input_mesh: 3D unstructured grid providing the vector field.
+            input_array_name: Name of the input array on the input mesh.
+            input_component: Component index to read from the input array, or None for full vector.
+            target_mesh: 2D unstructured grid used to generate a surface of revolution.
+            target_array_name: Name of the target array on the target mesh.
+            target_component: Component index to write for scalar targets (default None/0).
+            projection_map: Optional precomputed toroidal projection map.
+            location: "point" to map point data or "cell" to map cell data.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+
+        Returns:
+            None
+        """
+        if location not in ["point", "cell"]:
+            raise ValueError("location must be 'point' or 'cell'.")
+        if (input_component is None) != (target_component is None):
+            raise ValueError("input_component and target_component must both be None or both set.")
+
+        input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
+        input_array = input_data.GetArray(input_array_name) if input_data is not None else None
+        if input_array is None:
+            raise ValueError(f"Array '{input_array_name}' not found in input {location} data.")
+        input_np = vtknp.vtk_to_numpy(input_array)
+        input_components = input_array.GetNumberOfComponents()
+        if input_components not in [1, 3]:
+            raise ValueError("input_array_name must refer to a scalar or 3-component array.")
+
+        if projection_map is None:
+            projection_map = VTKGridHelper.build_toroidal_projection_map(
+                target_mesh,
+                input_mesh,
+                location=location,
+                tolerance=tolerance,
+                origin=origin,
+                axis=axis,
+            )
+
+        if projection_map.size == 0:
+            return
+
+        target_data = target_mesh.GetPointData() if location == "point" else target_mesh.GetCellData()
+        if target_data is None:
+            raise ValueError(f"Target mesh has no {location} data.")
+        target_array = target_data.GetArray(target_array_name)
+        if target_array is None:
+            target_components = 1 if input_components == 1 else 3
+            target_array = VTKGridHelper.add_array_to_grid(
+                target_mesh,
+                name=target_array_name,
+                location=location,
+                components=target_components,
+                fill=np.nan,
+                dtype=vtk.VTK_DOUBLE,
+            )
+        target_components = target_array.GetNumberOfComponents()
+        if input_component is None:
+            if input_components != 3 or target_components != 3:
+                raise ValueError("Both input and target arrays must be 3-component for vector mode.")
+        else:
+            if target_components == 1 and target_component != 0:
+                raise ValueError("target_component must be 0 for scalar target arrays.")
+            if target_component < 0 or target_component >= target_components:
+                raise ValueError("target_component out of range for target array.")
+            if input_components == 1 and input_component != 0:
+                raise ValueError("input_component must be 0 for scalar input arrays.")
+            if input_components > 1 and input_component >= input_components:
+                raise ValueError("input_component out of range for input array.")
+
+        target_np = vtknp.vtk_to_numpy(target_array)
+
+        if input_component is None:
+            axis_vec = np.array(
+                axis if axis is not None else [0.0, 1.0, 0.0], dtype=float
+            ).reshape(-1)
+            if axis_vec.size != 3:
+                raise ValueError("axis must be a 3-element vector.")
+            axis_norm = np.linalg.norm(axis_vec)
+            if axis_norm <= 0.0:
+                raise ValueError("axis must be a non-zero vector.")
+            axis_unit = axis_vec / axis_norm
+            origin_vec = np.array(
+                origin if origin is not None else [0.0, 0.0, 0.0], dtype=float
+            ).reshape(-1)
+            if origin_vec.size != 3:
+                raise ValueError("origin must be a 3-element vector.")
+
+            if location == "point":
+                points = input_mesh.GetPoints()
+                input_pos = np.empty((0, 3)) if points is None else vtknp.vtk_to_numpy(points.GetData())
+                target_points = target_mesh.GetPoints()
+                target_pos = np.empty((0, 3)) if target_points is None else vtknp.vtk_to_numpy(target_points.GetData())
+            else:
+                input_pos = VTKGridHelper.compute_cell_centroids(input_mesh)
+                target_pos = VTKGridHelper.compute_cell_centroids(target_mesh)
+
+            if input_pos.size == 0:
+                return
+
+            input_vec = input_pos - origin_vec
+            input_axial = np.dot(input_vec, axis_unit)
+            input_radial_vec = input_vec - np.outer(input_axial, axis_unit)
+            radial_norm = np.linalg.norm(input_radial_vec, axis=1)
+            input_radial_unit = np.zeros_like(input_radial_vec)
+            nonzero = radial_norm > 0.0
+            input_radial_unit[nonzero] = input_radial_vec[nonzero] / radial_norm[nonzero, None]
+            input_toroidal_unit = np.cross(axis_unit, input_radial_unit)
+
+            target_vec = target_pos - origin_vec
+            target_axial = np.dot(target_vec, axis_unit)
+            target_radial_vec = target_vec - np.outer(target_axial, axis_unit)
+            target_radial_norm = np.linalg.norm(target_radial_vec, axis=1)
+            target_radial_unit = np.zeros_like(target_radial_vec)
+            target_nonzero = target_radial_norm > 0.0
+            target_radial_unit[target_nonzero] = target_radial_vec[target_nonzero] / target_radial_norm[target_nonzero, None]
+            target_toroidal_unit = np.cross(axis_unit, target_radial_unit)
+
+        for row in projection_map:
+            target_id = row[0]
+            if np.isnan(target_id):
+                continue
+            target_id_int = int(target_id)
+            target_ids = row[1:]
+            target_ids = target_ids[~np.isnan(target_ids)]
+            if target_ids.size == 0:
+                if target_np.ndim == 1:
+                    target_np[target_id_int] = np.nan
+                else:
+                    target_np[target_id_int, target_component] = np.nan
+                continue
+            input_ids = target_ids.astype(int)
+            if input_component is None:
+                input_vecs = input_np[input_ids]
+                vr = np.mean(np.einsum("ij,ij->i", input_vecs, input_radial_unit[input_ids]))
+                vt = np.mean(np.einsum("ij,ij->i", input_vecs, input_toroidal_unit[input_ids]))
+                va = np.mean(np.dot(input_vecs, axis_unit))
+                target_np[target_id_int, :] = (
+                    vr * target_radial_unit[target_id_int]
+                    + vt * target_toroidal_unit[target_id_int]
+                    + va * axis_unit
+                )
+            else:
+                if input_components == 1:
+                    value = float(np.mean(input_np[input_ids]))
+                else:
+                    if input_component < 0 or input_component >= input_components:
+                        raise ValueError("input_component out of range for input array.")
+                    value = float(np.mean(input_np[input_ids, input_component]))
+                if target_np.ndim == 1:
+                    target_np[target_id_int] = value
+                else:
+                    target_np[target_id_int, target_component] = value
+
+        target_array.Modified()
 
     @staticmethod
     def store_cell_centroids(

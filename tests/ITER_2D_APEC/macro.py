@@ -33,7 +33,7 @@ apec.apec_settings = {
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
-    "print_full_output": 1,
+    "print_full_output": 0,
 }
 
 i_CS3U=-4.8204e+06

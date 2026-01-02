@@ -116,8 +116,10 @@ void StaticAnalysis::print_output(Substep &substep, bool picard_iteration_print)
     std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
 
     std::optional<unsigned int> picard_iteration;
-    if (picard_iteration_print || substep.get_number_picard_iterations() > 0)
+    if (picard_iteration_print)
         picard_iteration = substep.get_number_picard_iterations();
+    else
+        picard_iteration = std::nullopt;
 
     session->set_output_filepath(base_substep_index + substep.get_index(), picard_iteration);
     VTKIO_Updated vtk_output(equation_systems->get_mesh(),

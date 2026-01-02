@@ -1,0 +1,5 @@
+-read_mesh ITER_2D_APEC_evol.vtu
+-load_data model_data.bin
+-mode analysis apec_equilibrium
+-load_data ITER_2D_APEC_timestep_1.bin ITER_2D_APEC_evol/input/ITER_2D_APEC_evol_grid_1.bin
+-solve

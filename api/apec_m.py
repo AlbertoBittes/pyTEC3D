@@ -92,17 +92,11 @@ class APEC_M:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
-        # Check if the mesh file exists
-        if not os.path.exists(vtk_file_path):
-            raise FileNotFoundError(f"Mesh file '{vtk_file_path}' not found.")
+        self.mesh = VTKGridHelper.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
-        reader = vtk.vtkXMLUnstructuredGridReader()
-        reader.SetFileName(vtk_file_path)
-        reader.Update()
-        self.mesh = reader.GetOutput()
-
-        self.jobname = os.path.splitext(os.path.basename(vtk_file_path))[0]
-        self.folderpath = os.path.dirname(vtk_file_path)
+        mesh_path = os.fspath(vtk_file_path)
+        self.jobname = os.path.splitext(os.path.basename(mesh_path))[0]
+        self.folderpath = os.path.dirname(mesh_path)
 
         # Prepare per-mesh folders inside the project directory
         mesh_root = os.path.join(self.folderpath, self.jobname)
@@ -113,31 +107,6 @@ class APEC_M:
 
         # Ensure relative paths resolve from the mesh directory
         os.chdir(self.folderpath)
-
-        VTKGridHelper.initialize_vtk_arrays(self.mesh)
-
-        Selector.ensure_selection_arrays(self.mesh)
-
-        self.compute_and_store_cell_centroids()
-
-        TreeGaugeHelper.add_midside_nodes_mask_array(self.mesh)
-
-        if reset_arrays:
-            VTKGridHelper.reset_vtk_arrays_to_default(self.mesh)
-
-        print(f"VTK unstructured grid loaded from '{vtk_file_path}'.")
-        # print a summary of the mesh
-        print(f"Number of points: {self.mesh.GetNumberOfPoints()}")
-        print(f"Number of cells: {self.mesh.GetNumberOfCells()}")
-        print(
-            f"Number of point data arrays: {self.mesh.GetPointData().GetNumberOfArrays()}"
-        )
-        print(
-            f"Number of cell data arrays: {self.mesh.GetCellData().GetNumberOfArrays()}"
-        )
-        print(
-            f"Number of field data arrays: {self.mesh.GetFieldData().GetNumberOfArrays()}"
-        )
 
     def build_dof_couplings(self, print_summary: bool = False) -> List[Dict[str, Any]]:
         """
@@ -170,9 +139,9 @@ class APEC_M:
             DOFCouplingHelper.print_dof_couplings(forests)
         return forests
 
-    def save_mesh(self) -> None:
+    def save_mesh(self, output_file: Optional[Union[str, PathLike[str]]] = None) -> None:
         """
-        Saves the unstructured grid in self.mesh to a .vtu file named after self.jobname.
+        Saves the unstructured grid in self.mesh to a .vtu file.
         Before writing, attaches the element_types DataFrame as field data to the grid.
         Validates that the first column of element_types has unique values, all values have a correspondence
         in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
@@ -181,31 +150,29 @@ class APEC_M:
             None
 
         Raises:
-            ValueError: If self.jobname or folderpath is not set.
+            ValueError: If output_file is not provided and self.jobname or folderpath is not set.
         """
-        if not self.jobname:
-            raise ValueError(
-                "Job name is not set. Please set self.jobname before saving the mesh."
-            )
+        if output_file is None:
+            if not self.jobname:
+                raise ValueError(
+                    "Job name is not set. Please set self.jobname before saving the mesh."
+                )
 
-        if not self.folderpath:
-            raise ValueError(
-                "Folder path is not set. Please set self.folderpath before saving the mesh."
-            )
+            if not self.folderpath:
+                raise ValueError(
+                    "Folder path is not set. Please set self.folderpath before saving the mesh."
+                )
 
         # Remove arrays listed in ARRAYS_TO_REMOVE using safe_remove_array
         for arr in ARRAYS_TO_REMOVE:
             VTKGridHelper.safe_remove_array(self.mesh, arr)
 
         # Define the output file name
-        output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
+        if output_file is None:
+            output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 
         # Write the unstructured grid to the .vtu file
-        writer = vtk.vtkXMLUnstructuredGridWriter()
-        writer.SetFileName(output_file)
-        writer.SetInputData(self.mesh)
-        writer.SetDataModeToBinary()  # Set the writer to binary mode
-        writer.Write()
+        VTKGridHelper.save_mesh(self.mesh, output_file, binary=True)
 
         print(f"Mesh saved to '{output_file}'.")
 
@@ -518,12 +485,12 @@ class APEC_M:
             labels_to_write=["time_parameters", "apec_settings"],
         )
 
-    def write_loads_bcs(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_loads_bcs(self, load_step_number: int = 1, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
         """
         Writes a grid binary containing point and cell data in the mesh input folder.
 
         Args:
-            load_step_number: Load step index (1-based).
+            load_step_number: Load step index (1-based). Default is 1.
             filename: Optional override for the output filename.
 
         Returns:
@@ -998,6 +965,128 @@ class APEC_M:
         VTKGridHelper.store_cell_volumes(self.mesh, array_name=array_name)
         print(
             f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
+        )
+
+    def build_toroidal_projection_map(
+        self,
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Build a toroidal projection map from a 2D input mesh to self.mesh.
+
+        Args:
+            input_mesh: 2D unstructured grid used to generate a surface of revolution.
+            location: "point" to map point IDs or "cell" to map cell IDs.
+            tolerance: Absolute tolerance for matching radial distance and axial coordinate.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+
+        Returns:
+            np.ndarray: 2D array with input IDs in column 0 and mapped target IDs in the remaining columns.
+                If a selection array exists on the input mesh for the chosen location,
+                only selected IDs are included.
+        """
+        return VTKGridHelper.build_toroidal_projection_map(
+            input_mesh,
+            self.mesh,
+            location=location,
+            tolerance=tolerance,
+            origin=origin,
+            axis=axis,
+        )
+
+    def toroidal_projection(
+        self,
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        input_array_name: str,
+        input_component: Optional[int],
+        target_array_name: str,
+        projection_map: Optional[np.ndarray] = None,
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+        target_component: Optional[int] = None,
+    ) -> None:
+        """
+        Project scalar or vector fields from a 2D input mesh onto self.mesh.
+
+        Args:
+            input_mesh: 2D unstructured grid used to generate a surface of revolution.
+            input_array_name: Name of the input array on the input mesh.
+            input_component: Component index to read from the input array, or None for full vector.
+            target_array_name: Name of the target array on self.mesh.
+            projection_map: Optional precomputed toroidal projection map.
+            location: "point" to map point data or "cell" to map cell data.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+            target_component: Component index to write for scalar copy mode.
+
+        Returns:
+            None
+        """
+        VTKGridHelper.toroidal_projection(
+            input_mesh,
+            input_array_name,
+            input_component,
+            self.mesh,
+            target_array_name,
+            projection_map=projection_map,
+            location=location,
+            tolerance=tolerance,
+            origin=origin,
+            axis=axis,
+            target_component=target_component,
+        )
+
+    def toroidal_projection_inverse(
+        self,
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        input_array_name: str,
+        input_component: Optional[int],
+        target_array_name: str,
+        target_component: Optional[int] = None,
+        projection_map: Optional[np.ndarray] = None,
+        location: str = "point",
+        tolerance: float = 1e-6,
+        origin: Optional[np.ndarray] = None,
+        axis: Optional[np.ndarray] = None,
+    ) -> None:
+        """
+        Average toroidal fields from a 3D input mesh onto self.mesh.
+
+        Args:
+            input_mesh: 3D unstructured grid providing the field.
+            input_array_name: Name of the input array on the input mesh.
+            input_component: Component index to read from the input array, or None for full vector.
+            target_array_name: Name of the target array on self.mesh.
+            target_component: Component index to write for scalar targets.
+            projection_map: Optional precomputed toroidal projection map.
+            location: "point" to map point data or "cell" to map cell data.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            origin: A point on the rotation axis. Defaults to (0, 0, 0).
+            axis: Rotation axis direction. Defaults to (0, 1, 0).
+
+        Returns:
+            None
+        """
+        VTKGridHelper.toroidal_projection_inverse(
+            input_mesh,
+            input_array_name,
+            input_component,
+            self.mesh,
+            target_array_name,
+            target_component=target_component,
+            projection_map=projection_map,
+            location=location,
+            tolerance=tolerance,
+            origin=origin,
+            axis=axis,
         )
 
     def remove_array(self, array_name: str) -> None:

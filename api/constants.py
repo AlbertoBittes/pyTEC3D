@@ -133,6 +133,7 @@ DEFAULT_APEC_SETTINGS = {
     "plasma_current": 0.0,
     "beta_p": 0.0,
     "print_full_output": 0,
+    "main_mesh": "",
 }
 
 DEFAULT_APEC_SETTINGS_TYPES = {
@@ -153,6 +154,7 @@ DEFAULT_APEC_SETTINGS_TYPES = {
     "plasma_current": float,
     "beta_p": float,
     "print_full_output": int,
+    "main_mesh": str,
 }
 # Backwards compatibility with earlier naming
 APEC_SETTINGS_TYPES = DEFAULT_APEC_SETTINGS_TYPES
