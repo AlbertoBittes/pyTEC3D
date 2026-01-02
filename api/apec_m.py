@@ -1003,29 +1003,29 @@ class APEC_M:
         self,
         input_mesh: "vtk.vtkUnstructuredGrid",
         input_array_name: str,
-        input_component: Optional[int],
+        input_component: int,
         target_array_name: str,
+        target_component: Optional[int] = None,
         projection_map: Optional[np.ndarray] = None,
         location: str = "point",
         tolerance: float = 1e-6,
         origin: Optional[np.ndarray] = None,
         axis: Optional[np.ndarray] = None,
-        target_component: Optional[int] = None,
     ) -> None:
         """
-        Project scalar or vector fields from a 2D input mesh onto self.mesh.
+        Project a 2D scalar component onto self.mesh.
 
         Args:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
             input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array, or None for full vector.
+            input_component: Component index to read from the input array.
             target_array_name: Name of the target array on self.mesh.
             projection_map: Optional precomputed toroidal projection map.
             location: "point" to map point data or "cell" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             origin: A point on the rotation axis. Defaults to (0, 0, 0).
             axis: Rotation axis direction. Defaults to (0, 1, 0).
-            target_component: Component index to write for scalar copy mode.
+            target_component: Component index to write for scalar copy mode, or None for theta mode.
 
         Returns:
             None
@@ -1063,7 +1063,7 @@ class APEC_M:
         Args:
             input_mesh: 3D unstructured grid providing the field.
             input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array, or None for full vector.
+            input_component: Component index to read from the input array, or None for vector input.
             target_array_name: Name of the target array on self.mesh.
             target_component: Component index to write for scalar targets.
             projection_map: Optional precomputed toroidal projection map.

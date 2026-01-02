@@ -41,12 +41,12 @@ apec.set_value_on_selection("A", 0, 2)
 apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-toroidal_map = apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, location="cell")
-static_elem_ids = toroidal_map[:, 1]
-output_elem_ids = toroidal_map[:, 0]
-jtz_array = vtknp.vtk_to_numpy(apec_equilibrium_output.mesh.GetCellData().GetArray("Jt_z"))
-jts_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-jts_array[static_elem_ids, 2] = jtz_array[output_elem_ids]
+apec.toroidal_projection(apec_equilibrium_output.mesh,
+                         "Jt_z",
+                         0,
+                         "Js",
+                         2,
+                         location="cell")
 
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
@@ -76,12 +76,12 @@ apec.set_value_on_selection("A", 0, 2)
 apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-toroidal_map = apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, location="cell")
-static_elem_ids = toroidal_map[:, 1]
-output_elem_ids = toroidal_map[:, 0]
-jtz_array = vtknp.vtk_to_numpy(apec_equilibrium_output.mesh.GetCellData().GetArray("Jt_z"))
-jts_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-jts_array[static_elem_ids, 2] = jtz_array[output_elem_ids]
+apec.toroidal_projection(apec_equilibrium_output.mesh,
+                         "Jt_z",
+                         0,
+                         "Js",
+                         2,
+                         location="cell")
 
 apec.write_loads_bcs()
 

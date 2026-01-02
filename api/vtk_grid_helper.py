@@ -556,7 +556,7 @@ class VTKGridHelper:
 
         max_matches = max((len(m) for m in matches_per_input), default=0)
         mapping = np.full((num_input, 1 + max_matches), np.nan)
-        mapping[:, 0] = input_ids.astype(int)
+        mapping[:, 0] = input_ids
 
         counts = []
         for row_idx, matches in enumerate(matches_per_input):
@@ -571,13 +571,13 @@ class VTKGridHelper:
                 RuntimeWarning,
             )
 
-        return mapping
+        return mapping.astype(int)
 
     @staticmethod
     def toroidal_projection(
         input_mesh: "vtk.vtkUnstructuredGrid",
         input_array_name: str,
-        input_component: Optional[int],
+        input_component: int,
         target_mesh: "vtk.vtkUnstructuredGrid",
         target_array_name: str,
         target_component: Optional[int] = None,
@@ -588,21 +588,18 @@ class VTKGridHelper:
         axis: Optional[np.ndarray] = None,
     ) -> None:
         """
-        Project scalar or vector fields from a 2D input mesh onto a 3D target mesh.
+        Project a 2D scalar component onto a 3D toroidal mesh.
 
-        Modes:
-            - input_component is None: treat the input as a 3-component vector field and rotate
-              it toroidally to each matched target position.
-            - input_component and target_component are set: treat as a scalar value and copy it
-              into the target component for each matched position.
-            - input_component is set and target_component is None: treat the selected component
-              as a toroidal (theta) component and write it as a vector aligned with the local
-              toroidal unit direction around the given axis.
+        If target_component is None, the target array must be 3-component and the input values
+        are interpreted as the toroidal (theta) component of a vector field. The values are
+        written as vectors aligned with the local toroidal unit direction.
+        If target_component is set, the input values are treated as a scalar field and copied
+        into the target component for each matched position.
 
         Args:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
             input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array, or None for full vector.
+            input_component: Component index to read from the input array.
             target_mesh: Target unstructured grid (typically 3D).
             target_array_name: Name of the target array to write on the target mesh.
             projection_map: Optional precomputed toroidal projection map.
@@ -610,15 +607,13 @@ class VTKGridHelper:
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             origin: A point on the rotation axis. Defaults to (0, 0, 0).
             axis: Rotation axis direction. Defaults to (0, 1, 0).
-            target_component: Component index to write for scalar copy mode.
+            target_component: Component index to write for scalar copy mode, or None for theta mode.
 
         Returns:
             None
         """
         if location not in ["point", "cell"]:
             raise ValueError("location must be 'point' or 'cell'.")
-        if input_component is None and target_component is not None:
-            raise ValueError("target_component cannot be set when input_component is None.")
 
         input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
         input_array = input_data.GetArray(input_array_name) if input_data is not None else None
@@ -627,23 +622,14 @@ class VTKGridHelper:
 
         input_np = vtknp.vtk_to_numpy(input_array)
         input_components = input_array.GetNumberOfComponents()
-        is_vector_mode = input_component is None
-        is_scalar_copy_mode = input_component is not None and target_component is not None
-        is_theta_mode = input_component is not None and target_component is None
-
-        if is_vector_mode:
-            if input_components != 3:
-                raise ValueError("input_array_name must refer to a 3-component array.")
-            input_vectors = input_np
+        if input_components == 1:
+            if input_component != 0:
+                raise ValueError("input_component must be 0 for scalar arrays.")
+            input_values = input_np
         else:
-            if input_components == 1:
-                if input_component != 0:
-                    raise ValueError("input_component must be 0 for scalar arrays.")
-                input_values = input_np
-            else:
-                if input_component < 0 or input_component >= input_np.shape[1]:
-                    raise ValueError("input_component out of range for input array.")
-                input_values = input_np[:, input_component]
+            if input_component < 0 or input_component >= input_components:
+                raise ValueError("input_component out of range for input array.")
+            input_values = input_np[:, input_component]
 
         if projection_map is None:
             projection_map = VTKGridHelper.build_toroidal_projection_map(
@@ -663,7 +649,7 @@ class VTKGridHelper:
             raise ValueError(f"Target mesh has no {location} data.")
         target_array = target_data.GetArray(target_array_name)
         if target_array is None:
-            target_components = 3 if (is_vector_mode or is_theta_mode) else max(1, target_component + 1)
+            target_components = 3 if target_component is None else max(1, target_component + 1)
             target_array = VTKGridHelper.add_array_to_grid(
                 target_mesh,
                 name=target_array_name,
@@ -672,7 +658,7 @@ class VTKGridHelper:
                 fill=0.0,
                 dtype=vtk.VTK_DOUBLE,
             )
-        if is_vector_mode or is_theta_mode:
+        if target_component is None:
             if target_array.GetNumberOfComponents() != 3:
                 raise ValueError("target_array_name must refer to a 3-component array.")
         else:
@@ -685,13 +671,8 @@ class VTKGridHelper:
 
         target_np = vtknp.vtk_to_numpy(target_array)
 
-        axis_unit = None
-        origin_vec = None
-        target_radial_unit = None
         target_toroidal_unit = None
-        input_radial_unit = None
-        input_toroidal_unit = None
-        if is_vector_mode or is_theta_mode:
+        if target_component is None:
             axis_vec = np.array(
                 axis if axis is not None else [0.0, 1.0, 0.0], dtype=float
             ).reshape(-1)
@@ -710,11 +691,8 @@ class VTKGridHelper:
             if location == "point":
                 points = target_mesh.GetPoints()
                 target_pos = np.empty((0, 3)) if points is None else vtknp.vtk_to_numpy(points.GetData())
-                input_points = input_mesh.GetPoints()
-                input_pos = np.empty((0, 3)) if input_points is None else vtknp.vtk_to_numpy(input_points.GetData())
             else:
                 target_pos = VTKGridHelper.compute_cell_centroids(target_mesh)
-                input_pos = VTKGridHelper.compute_cell_centroids(input_mesh)
 
             if target_pos.size == 0:
                 return
@@ -728,53 +706,27 @@ class VTKGridHelper:
             target_radial_unit[target_nonzero] = target_radial_vec[target_nonzero] / target_radial_norm[target_nonzero, None]
             target_toroidal_unit = np.cross(axis_unit, target_radial_unit)
 
-            if is_vector_mode:
-                if input_pos.size == 0:
-                    return
-                input_vec = input_pos - origin_vec
-                input_axial = np.dot(input_vec, axis_unit)
-                input_radial_vec = input_vec - np.outer(input_axial, axis_unit)
-                input_radial_norm = np.linalg.norm(input_radial_vec, axis=1)
-                input_radial_unit = np.zeros_like(input_radial_vec)
-                input_nonzero = input_radial_norm > 0.0
-                input_radial_unit[input_nonzero] = input_radial_vec[input_nonzero] / input_radial_norm[input_nonzero, None]
-                input_toroidal_unit = np.cross(axis_unit, input_radial_unit)
-
         for row in projection_map:
             input_id = row[0]
             if np.isnan(input_id):
                 continue
             input_id_int = int(input_id)
-            if is_vector_mode:
-                if input_id_int < 0 or input_id_int >= input_vectors.shape[0]:
-                    continue
-                input_vec = input_vectors[input_id_int]
-                vr = np.dot(input_vec, input_radial_unit[input_id_int])
-                vt = np.dot(input_vec, input_toroidal_unit[input_id_int])
-                va = np.dot(input_vec, axis_unit)
-            else:
-                if input_id_int < 0 or input_id_int >= input_values.shape[0]:
-                    continue
-                value = input_values[input_id_int]
+            if input_id_int < 0 or input_id_int >= input_values.shape[0]:
+                continue
+            value = input_values[input_id_int]
             for target_id in row[1:]:
                 if np.isnan(target_id):
                     continue
                 target_id_int = int(target_id)
                 if target_id_int < 0 or target_id_int >= target_np.shape[0]:
                     continue
-                if is_vector_mode:
-                    target_np[target_id_int, :] = (
-                        vr * target_radial_unit[target_id_int]
-                        + va * axis_unit
-                        + vt * target_toroidal_unit[target_id_int]
-                    )
-                elif is_scalar_copy_mode:
+                if target_component is None:
+                    target_np[target_id_int, :] = value * target_toroidal_unit[target_id_int]
+                else:
                     if target_np.ndim == 1:
                         target_np[target_id_int] = value
                     else:
                         target_np[target_id_int, target_component] = value
-                else:
-                    target_np[target_id_int, :] = value * target_toroidal_unit[target_id_int]
 
         target_array.Modified()
 
@@ -795,12 +747,10 @@ class VTKGridHelper:
         """
         Average toroidal fields from a 3D input mesh onto a 2D target mesh.
 
-        Modes:
-            - input_component is None and target_component is None: treat both arrays as 3-component
-              vectors. Decompose input into radial/toroidal/axial components, average across
-              toroidal positions, and reconstruct on the target mesh.
-            - input_component and target_component are set: treat as scalar values and average
-              across toroidal positions into the target component.
+        If input_component is None, interpret the input as a 3-component vector field and
+        average the toroidal (theta) component into the target component.
+        If input_component is set, treat the input as a scalar field (component) and average
+        it into the target component.
 
         Args:
             input_mesh: 3D unstructured grid providing the vector field.
@@ -820,8 +770,6 @@ class VTKGridHelper:
         """
         if location not in ["point", "cell"]:
             raise ValueError("location must be 'point' or 'cell'.")
-        if (input_component is None) != (target_component is None):
-            raise ValueError("input_component and target_component must both be None or both set.")
 
         input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
         input_array = input_data.GetArray(input_array_name) if input_data is not None else None
@@ -829,8 +777,15 @@ class VTKGridHelper:
             raise ValueError(f"Array '{input_array_name}' not found in input {location} data.")
         input_np = vtknp.vtk_to_numpy(input_array)
         input_components = input_array.GetNumberOfComponents()
-        if input_components not in [1, 3]:
-            raise ValueError("input_array_name must refer to a scalar or 3-component array.")
+        if input_component is None:
+            if input_components != 3:
+                raise ValueError("input_array_name must refer to a 3-component array for theta projection.")
+        else:
+            if input_components == 1:
+                if input_component != 0:
+                    raise ValueError("input_component must be 0 for scalar input arrays.")
+            elif input_component < 0 or input_component >= input_components:
+                raise ValueError("input_component out of range for input array.")
 
         if projection_map is None:
             projection_map = VTKGridHelper.build_toroidal_projection_map(
@@ -850,7 +805,7 @@ class VTKGridHelper:
             raise ValueError(f"Target mesh has no {location} data.")
         target_array = target_data.GetArray(target_array_name)
         if target_array is None:
-            target_components = 1 if input_components == 1 else 3
+            target_components = 1 if target_component is None else max(1, target_component + 1)
             target_array = VTKGridHelper.add_array_to_grid(
                 target_mesh,
                 name=target_array_name,
@@ -860,18 +815,15 @@ class VTKGridHelper:
                 dtype=vtk.VTK_DOUBLE,
             )
         target_components = target_array.GetNumberOfComponents()
-        if input_component is None:
-            if input_components != 3 or target_components != 3:
-                raise ValueError("Both input and target arrays must be 3-component for vector mode.")
-        else:
-            if target_components == 1 and target_component != 0:
-                raise ValueError("target_component must be 0 for scalar target arrays.")
-            if target_component < 0 or target_component >= target_components:
-                raise ValueError("target_component out of range for target array.")
-            if input_components == 1 and input_component != 0:
-                raise ValueError("input_component must be 0 for scalar input arrays.")
-            if input_components > 1 and input_component >= input_components:
-                raise ValueError("input_component out of range for input array.")
+        if target_component is None:
+            if target_components == 1:
+                target_component = 0
+            else:
+                raise ValueError("target_component is required for multi-component target arrays.")
+        if target_components == 1 and target_component != 0:
+            raise ValueError("target_component must be 0 for scalar target arrays.")
+        if target_component < 0 or target_component >= target_components:
+            raise ValueError("target_component out of range for target array.")
 
         target_np = vtknp.vtk_to_numpy(target_array)
 
@@ -912,15 +864,6 @@ class VTKGridHelper:
             input_radial_unit[nonzero] = input_radial_vec[nonzero] / radial_norm[nonzero, None]
             input_toroidal_unit = np.cross(axis_unit, input_radial_unit)
 
-            target_vec = target_pos - origin_vec
-            target_axial = np.dot(target_vec, axis_unit)
-            target_radial_vec = target_vec - np.outer(target_axial, axis_unit)
-            target_radial_norm = np.linalg.norm(target_radial_vec, axis=1)
-            target_radial_unit = np.zeros_like(target_radial_vec)
-            target_nonzero = target_radial_norm > 0.0
-            target_radial_unit[target_nonzero] = target_radial_vec[target_nonzero] / target_radial_norm[target_nonzero, None]
-            target_toroidal_unit = np.cross(axis_unit, target_radial_unit)
-
         for row in projection_map:
             target_id = row[0]
             if np.isnan(target_id):
@@ -937,20 +880,16 @@ class VTKGridHelper:
             input_ids = target_ids.astype(int)
             if input_component is None:
                 input_vecs = input_np[input_ids]
-                vr = np.mean(np.einsum("ij,ij->i", input_vecs, input_radial_unit[input_ids]))
-                vt = np.mean(np.einsum("ij,ij->i", input_vecs, input_toroidal_unit[input_ids]))
-                va = np.mean(np.dot(input_vecs, axis_unit))
-                target_np[target_id_int, :] = (
-                    vr * target_radial_unit[target_id_int]
-                    + vt * target_toroidal_unit[target_id_int]
-                    + va * axis_unit
-                )
+                theta_vals = np.einsum("ij,ij->i", input_vecs, input_toroidal_unit[input_ids])
+                value = float(np.mean(theta_vals))
+                if target_np.ndim == 1:
+                    target_np[target_id_int] = value
+                else:
+                    target_np[target_id_int, target_component] = value
             else:
                 if input_components == 1:
                     value = float(np.mean(input_np[input_ids]))
                 else:
-                    if input_component < 0 or input_component >= input_components:
-                        raise ValueError("input_component out of range for input array.")
                     value = float(np.mean(input_np[input_ids, input_component]))
                 if target_np.ndim == 1:
                     target_np[target_id_int] = value
