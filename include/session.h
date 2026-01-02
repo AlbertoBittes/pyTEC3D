@@ -2,6 +2,7 @@
 #define SESSION_H
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -52,7 +53,7 @@ public:
     void set_output_filename(const std::string &filename);
     const std::string &get_output_filename() const { return output_filename; }
 
-    void set_output_filepath(unsigned int output_label);
+    void set_output_filepath(unsigned int output_label, std::optional<unsigned int> picard_iteration = std::nullopt);
     void create_temp_folder();
     void create_output_folder();
     void create_emat_folder();

@@ -519,7 +519,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     Real tot_norm = 0.0;
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
-        Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / std::max(std::abs(curr_it_vacuum_chamber_psi_vector[i]), std::abs(prev_it_vacuum_chamber_psi_vector[i]));
+        Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / std::min(std::abs(curr_it_vacuum_chamber_psi_vector[i]), std::abs(prev_it_vacuum_chamber_psi_vector[i]));
         tot_norm += rel_diff;
     }
 
@@ -537,6 +537,9 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
 
 bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
 {
+    auto settings = this->context<ApecMSettingsObject>();
+    bool print_full_output = settings->print_full_output();
+
     if (!first_absolute_iteration)
     {
         find_separatrix();
@@ -555,6 +558,9 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
     }
 
     solve_equation_systems(substep, true);
+    if (print_full_output)
+        print_output(substep, true);
+
     first_absolute_iteration = false;
     return false;
 }

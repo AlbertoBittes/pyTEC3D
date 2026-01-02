@@ -48,7 +48,7 @@ public:
     virtual void prepare_time_substep_solve(Substep &substep) = 0;
     virtual void solve_equation_systems(Substep &substep, bool nodal_solution) = 0;
     virtual bool run_picard_iterations(Substep &substep) = 0;
-    virtual void print_output(Substep &substep) = 0;
+    virtual void print_output(Substep &substep, bool picard_iteration_print = false) = 0;
 
     virtual bool finish();
 

@@ -4,6 +4,7 @@
 #include "apec_m.h"
 #include "vtkio_updated.h"
 
+#include <optional>
 #include <set>
 
 #include <libmesh/libmesh.h>
@@ -95,7 +96,7 @@ void StaticAnalysis::solve_equation_systems(Substep &substep, bool nodal_solutio
     assembler->write_solution_vectors(nodal_solution);
 }
 
-void StaticAnalysis::print_output(Substep &substep)
+void StaticAnalysis::print_output(Substep &substep, bool picard_iteration_print)
 {
     auto *equation_systems = this->active_equation_system();
 
@@ -114,7 +115,11 @@ void StaticAnalysis::print_output(Substep &substep)
     const auto base_substep_index = time_step ? time_step->count_substeps_before_current() : 0;
     std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
 
-    session->set_output_filepath(base_substep_index + substep.get_index());
+    std::optional<unsigned int> picard_iteration;
+    if (picard_iteration_print || substep.get_number_picard_iterations() > 0)
+        picard_iteration = substep.get_number_picard_iterations();
+
+    session->set_output_filepath(base_substep_index + substep.get_index(), picard_iteration);
     VTKIO_Updated vtk_output(equation_systems->get_mesh(),
                              equation_systems);
     vtk_output.write_equation_systems(session->get_path("final_output_path"),

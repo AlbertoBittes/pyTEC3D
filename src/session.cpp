@@ -141,7 +141,7 @@ void Session::set_output_filename(const std::string &filename)
     update_dynamic_paths();
 }
 
-void Session::set_output_filepath(unsigned int output_label)
+void Session::set_output_filepath(unsigned int output_label, std::optional<unsigned int> picard_iteration)
 {
     if (!has_active_mesh())
     {
@@ -157,7 +157,10 @@ void Session::set_output_filepath(unsigned int output_label)
         base_name = active_mesh.empty() ? std::string("mesh") : sanitize_token(active_mesh);
     }
 
-    output_filename = base_name + "_out_" + std::to_string(output_label) + ".pvtu";
+    output_filename = base_name + "_out_" + std::to_string(output_label);
+    if (picard_iteration)
+        output_filename += "_" + std::to_string(*picard_iteration);
+    output_filename += ".pvtu";
     update_dynamic_paths();
 }
 

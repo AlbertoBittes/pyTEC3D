@@ -29,6 +29,7 @@ public:
     Real alpha() const { return alpha_value; }
     Real plasma_currents() const { return plasma_current; }
     Real beta_profile() const { return beta_p; }
+    bool print_full_output() const { return print_full_output_; }
 
 private:
     void parse_columns();
@@ -47,6 +48,7 @@ private:
     Real alpha_value = 1.0;
     Real plasma_current = 0.0;
     Real beta_p = 0.0;
+    bool print_full_output_ = false;
 };
 
 #endif // APEC_M_SETTINGS_H

@@ -22,7 +22,7 @@ apec.apec_settings = {
     "target_central_axis_z": 0.0,
     "target_central_axis_element_id": 651,
     "R0": 6.2,
-    "max_picard_iterations": 50,
+    "max_picard_iterations": 70,
     "min_distance": 0.6,
     "cp_gain": 0.250,
     "tolerance_value": 1e-3,
@@ -33,6 +33,7 @@ apec.apec_settings = {
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
+    "print_full_output": 1,
 }
 
 i_CS3U=-4.8204e+06

@@ -101,4 +101,7 @@ void ApecMSettingsObject::parse_columns()
 
     if (this->has_column("beta_p"))
         beta_p = this->get_real("beta_p");
+
+    if (this->has_column("print_full_output"))
+        print_full_output_ = static_cast<bool>(this->get_int("print_full_output"));
 }

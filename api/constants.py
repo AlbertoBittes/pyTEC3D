@@ -132,6 +132,7 @@ DEFAULT_APEC_SETTINGS = {
     "alpha_value": 1.0,
     "plasma_current": 0.0,
     "beta_p": 0.0,
+    "print_full_output": 0,
 }
 
 DEFAULT_APEC_SETTINGS_TYPES = {
@@ -151,6 +152,7 @@ DEFAULT_APEC_SETTINGS_TYPES = {
     "alpha_value": float,
     "plasma_current": float,
     "beta_p": float,
+    "print_full_output": int,
 }
 # Backwards compatibility with earlier naming
 APEC_SETTINGS_TYPES = DEFAULT_APEC_SETTINGS_TYPES
