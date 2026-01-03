@@ -3,7 +3,7 @@ import sys
 import copy
 import struct
 from os import PathLike
-from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Sequence, Set, Union
+from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -967,13 +967,63 @@ class APEC_M:
             f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
         )
 
+    def map_local_coordinates(
+        self,
+        coordinate_system: "CoordinateSystem",
+        location: str = "point",
+        selected_only: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Map mesh points or cell centroids into the provided coordinate system.
+
+        Args:
+            coordinate_system: Coordinate system used for local coordinates.
+            location: "point" to map point IDs or "cell" to map cell IDs.
+            selected_only: When True, use selection arrays to filter IDs.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: (local_coordinates, ids)
+        """
+        return VTKGridHelper.map_local_coordinates(
+            self.mesh,
+            coordinate_system,
+            location=location,
+            selected_only=selected_only,
+        )
+
+    def rotate_vector_array_to_coordinate_system(
+        self,
+        array_name: str,
+        coordinate_system: "CoordinateSystem",
+        location: str = "point",
+        to_local: bool = True,
+    ) -> np.ndarray:
+        """
+        Rotate a 3-component array to/from the provided coordinate system.
+
+        Args:
+            array_name: Name of the array to rotate.
+            coordinate_system: Coordinate system used for rotation.
+            location: "point" or "cell".
+            to_local: When True, rotate from global to local; otherwise local to global.
+
+        Returns:
+            np.ndarray: The rotated array (NumPy view).
+        """
+        return VTKGridHelper.rotate_vector_array_to_coordinate_system(
+            self.mesh,
+            array_name,
+            coordinate_system,
+            location=location,
+            to_local=to_local,
+        )
+
     def build_toroidal_projection_map(
         self,
         input_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "point",
         tolerance: float = 1e-6,
-        origin: Optional[np.ndarray] = None,
-        axis: Optional[np.ndarray] = None,
+        coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
         """
         Build a toroidal projection map from a 2D input mesh to self.mesh.
@@ -982,8 +1032,7 @@ class APEC_M:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
             location: "point" to map point IDs or "cell" to map cell IDs.
             tolerance: Absolute tolerance for matching radial distance and axial coordinate.
-            origin: A point on the rotation axis. Defaults to (0, 0, 0).
-            axis: Rotation axis direction. Defaults to (0, 1, 0).
+            coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
             np.ndarray: 2D array with input IDs in column 0 and mapped target IDs in the remaining columns.
@@ -995,8 +1044,7 @@ class APEC_M:
             self.mesh,
             location=location,
             tolerance=tolerance,
-            origin=origin,
-            axis=axis,
+            coordinate_system=coordinate_system,
         )
 
     def toroidal_projection(
@@ -1005,12 +1053,11 @@ class APEC_M:
         input_array_name: str,
         input_component: int,
         target_array_name: str,
-        target_component: Optional[int] = None,
+        target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
         location: str = "point",
         tolerance: float = 1e-6,
-        origin: Optional[np.ndarray] = None,
-        axis: Optional[np.ndarray] = None,
+        coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
         """
         Project a 2D scalar component onto self.mesh.
@@ -1023,9 +1070,8 @@ class APEC_M:
             projection_map: Optional precomputed toroidal projection map.
             location: "point" to map point data or "cell" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
-            origin: A point on the rotation axis. Defaults to (0, 0, 0).
-            axis: Rotation axis direction. Defaults to (0, 1, 0).
-            target_component: Component index to write for scalar copy mode, or None for theta mode.
+            coordinate_system: Cylindrical coordinate system used for local coordinates.
+            target_component: Component index to write for scalar copy mode.
 
         Returns:
             None
@@ -1039,8 +1085,7 @@ class APEC_M:
             projection_map=projection_map,
             location=location,
             tolerance=tolerance,
-            origin=origin,
-            axis=axis,
+            coordinate_system=coordinate_system,
             target_component=target_component,
         )
 
@@ -1048,29 +1093,27 @@ class APEC_M:
         self,
         input_mesh: "vtk.vtkUnstructuredGrid",
         input_array_name: str,
-        input_component: Optional[int],
+        input_component: int,
         target_array_name: str,
-        target_component: Optional[int] = None,
+        target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
         location: str = "point",
         tolerance: float = 1e-6,
-        origin: Optional[np.ndarray] = None,
-        axis: Optional[np.ndarray] = None,
+        coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
         """
-        Average toroidal fields from a 3D input mesh onto self.mesh.
+        Average scalar fields from a 3D input mesh onto self.mesh.
 
         Args:
             input_mesh: 3D unstructured grid providing the field.
             input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array, or None for vector input.
+            input_component: Component index to read from the input array.
             target_array_name: Name of the target array on self.mesh.
             target_component: Component index to write for scalar targets.
             projection_map: Optional precomputed toroidal projection map.
             location: "point" to map point data or "cell" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
-            origin: A point on the rotation axis. Defaults to (0, 0, 0).
-            axis: Rotation axis direction. Defaults to (0, 1, 0).
+            coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
             None
@@ -1085,8 +1128,7 @@ class APEC_M:
             projection_map=projection_map,
             location=location,
             tolerance=tolerance,
-            origin=origin,
-            axis=axis,
+            coordinate_system=coordinate_system,
         )
 
     def remove_array(self, array_name: str) -> None:

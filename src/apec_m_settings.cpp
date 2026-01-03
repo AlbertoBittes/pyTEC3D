@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <sstream>
+#include <vector>
+
+#include <libmesh/libmesh.h>
 
 ApecMSettingsObject::ApecMSettingsObject()
     : BinaryDataFEDataObject()
@@ -37,6 +41,37 @@ void ApecMSettingsObject::parse_columns()
     alpha_value = 1.0;
     plasma_current = 0.0;
     beta_p = 0.0;
+
+    const auto *data_map = this->get_data_map();
+    if (data_map && !data_map->columns.empty())
+    {
+        const std::vector<std::string> required_columns = {
+            "R0",
+            "max_picard_iterations",
+            "tolerance_value",
+            "alpha_value",
+            "plasma_current",
+            "beta_p"};
+        std::vector<std::string> missing;
+        missing.reserve(required_columns.size());
+        for (const auto &name : required_columns)
+        {
+            if (!this->has_column(name))
+                missing.push_back(name);
+        }
+        if (!missing.empty())
+        {
+            std::ostringstream oss;
+            oss << "ApecMSettingsObject: missing required columns: ";
+            for (std::size_t i = 0; i < missing.size(); ++i)
+            {
+                if (i > 0)
+                    oss << ", ";
+                oss << missing[i];
+            }
+            libmesh_error_msg(oss.str());
+        }
+    }
 
     const auto get_axis_component = [this](const std::string &key, unsigned int idx)
     {

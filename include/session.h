@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -72,6 +73,7 @@ private:
     std::string active_mesh;
     std::filesystem::path working_directory;
     Mode program_mode;
+    std::set<std::filesystem::path> emat_folders_cleared;
 };
 
 #endif // SESSION_H

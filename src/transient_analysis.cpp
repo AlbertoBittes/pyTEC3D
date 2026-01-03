@@ -51,12 +51,27 @@ bool TransientAnalysis::solve_transient()
         time_path.replace_filename(time_base.stem().string() + "_" + std::to_string(step_index));
         time_path.replace_extension(".bin");
 
-        if (!std::filesystem::exists(grid_path) || !std::filesystem::exists(time_path))
+        const bool has_grid = std::filesystem::exists(grid_path);
+        const bool has_time = std::filesystem::exists(time_path);
+        if (!has_time)
             break;
 
-        libMesh::out << "Solving transient step " << step_index << " using grid '" << grid_path << "' and timestep '" << time_path << "'." << std::endl;
+        if (!has_grid)
+        {
+            libMesh::out << "Transient step " << step_index
+                         << ": load/bcs binary not found, using previous loads and bcs." << std::endl;
+        }
 
-        if (!program->load_data({grid_path.string(), time_path.string()}))
+        libMesh::out << "Solving transient step " << step_index << " using "
+                     << (has_grid ? "grid '" + grid_path.string() + "' and " : "")
+                     << "timestep '" << time_path << "'." << std::endl;
+
+        std::vector<std::string> paths;
+        paths.reserve(2);
+        if (has_grid)
+            paths.push_back(grid_path.string());
+        paths.push_back(time_path.string());
+        if (!program->load_data(paths))
             return false;
 
         if (!execute_solve())

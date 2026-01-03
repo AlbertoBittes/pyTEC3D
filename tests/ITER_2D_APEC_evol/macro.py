@@ -64,9 +64,9 @@ apec.apec_settings = {
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
+    "main_mesh": "ITER_2D_APEC_evol",
+    "static_mesh": "ITER_2D_APEC_evol_1",
     "print_full_output": 1,
-    "node_toroidal_projection_map": apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, location="point"),
-    "elem_toroidal_projection_map": apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, location="cell"),
 }
 
 apec.select_all()
@@ -91,9 +91,9 @@ currents = np.loadtxt("plasma_current.txt")
 betas = np.loadtxt("beta_p.txt")
 
 # Consider only the time steps every 5 in the list
-time_steps = time_steps[::5]
-currents = currents[::5]
-betas = betas[::5]
+time_steps = time_steps[::5][1:]
+currents = currents[::5][1:]
+betas = betas[::5][1:]
 
 for step_idx in range(len(time_steps)):
     apec.time_parameters["time"] = time_steps[step_idx]

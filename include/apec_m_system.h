@@ -21,6 +21,7 @@
 
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
+#include "coordinate_system.h"
 using namespace libMesh;
 
 class ElementTypesFactory;
@@ -40,11 +41,17 @@ public:
 
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
+    virtual bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                            const std::string &variable_label) = 0;
+    virtual bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                            const std::string &variable_label) = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
     static bool is_nodal_system(SystemType system_type);
     static const std::string &system_name_from_type(SystemType system_type);
 };
+
+#include "variables_map.h"
 
 #include "apec_m_equation_systems.h"
 #include "element_types.h"
@@ -115,7 +122,10 @@ public:
         // zero_optional(this->rhs.get());
     }
 
-private:
+    bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                    const std::string &variable_label) override;
+    bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                    const std::string &variable_label) override;
 };
 
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>

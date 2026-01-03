@@ -1,10 +1,90 @@
 #include "apec_m_system.h"
+
+#include <array>
+#include <vector>
+
 #include "system_matrix_reduction.h"
 #include "element_types_factory.h"
 #include "global_constraints_object.h"
 #include "libmesh/libmesh.h"
 #include "libmesh/numeric_vector.h"
 #include "variables_map.h"
+
+namespace
+{
+    VectorValue<Real> read_vector(const NumericVector<Number> &vec,
+                                  const std::array<dof_id_type, 3> &dofs)
+    {
+        return VectorValue<Real>(vec(dofs[0]), vec(dofs[1]), vec(dofs[2]));
+    }
+
+    void write_vector(NumericVector<Number> &vec,
+                      const std::array<dof_id_type, 3> &dofs,
+                      const VectorValue<Real> &values)
+    {
+        vec.set(dofs[0], values(0));
+        vec.set(dofs[1], values(1));
+        vec.set(dofs[2], values(2));
+    }
+
+    template <typename TransformFn>
+    void apply_vector_transform(System &system,
+                                bool is_nodal,
+                                const std::array<unsigned int, 3> &var_numbers,
+                                TransformFn &&transform)
+    {
+        const auto &dof_map = system.get_dof_map();
+        std::vector<dof_id_type> dof_indices;
+        const auto &mesh = system.get_mesh();
+
+        if (is_nodal)
+        {
+            for (const auto *node : mesh.local_node_ptr_range())
+            {
+                std::array<dof_id_type, 3> dofs{};
+                bool complete = true;
+                for (unsigned int i = 0; i < 3; ++i)
+                {
+                    dof_map.dof_indices(node, dof_indices, var_numbers[i]);
+                    if (dof_indices.empty())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    dofs[i] = dof_indices.front();
+                }
+                if (!complete)
+                    continue;
+
+                transform(*node, dofs);
+            }
+        }
+        else
+        {
+            for (const auto &elem : mesh.active_local_element_ptr_range())
+            {
+                if (elem->infinite() || elem->type() == NODEELEM)
+                    continue;
+                std::array<dof_id_type, 3> dofs{};
+                bool complete = true;
+                for (unsigned int i = 0; i < 3; ++i)
+                {
+                    dof_map.dof_indices(elem, dof_indices, var_numbers[i]);
+                    if (dof_indices.empty())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    dofs[i] = dof_indices.front();
+                }
+                if (!complete)
+                    continue;
+
+                transform(elem->centroid(), dofs);
+            }
+        }
+    }
+} // namespace
 
 const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM_INFO_MAP = {
     {ApecMSystemBase::DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"},
@@ -29,8 +109,77 @@ const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::Syste
     return it->second;
 }
 
+template <typename SysLike>
+bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                                      const std::string &variable_label)
+{
+    std::array<unsigned int, 3> var_numbers{};
+    if (!this->rhs)
+        libmesh_error_msg("ApecMSystem: system RHS vector is null.");
+
+    NumericVector<Number> &rhs = *this->rhs;
+    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
+
+    if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
+    {
+        if (!this->current_local_solution)
+            libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
+        rhs = *this->current_local_solution;
+        rhs.close();
+        return true;
+    }
+
+    auto transform_values = [&](const Point &point,
+                                const std::array<dof_id_type, 3> &dofs)
+    {
+        VectorValue<Real> global = read_vector(rhs, dofs);
+        VectorValue<Real> local = coordinate_system.global_to_local_rotation(point) * global;
+        write_vector(rhs, dofs, local);
+    };
+
+    apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
+
+    rhs.close();
+    return true;
+}
+
+template <typename SysLike>
+bool ApecMSystem<SysLike>::local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
+                                                                      const std::string &variable_label)
+{
+    std::array<unsigned int, 3> var_numbers{};
+    if (!this->rhs)
+        libmesh_error_msg("ApecMSystem: system RHS vector is null.");
+    if (!this->current_local_solution)
+        libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
+
+    NumericVector<Number> &rhs = *this->rhs;
+    NumericVector<Number> &solution = *this->current_local_solution;
+    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
+
+    if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
+    {
+        solution = rhs;
+        solution.close();
+        return true;
+    }
+
+    auto transform_values = [&](const Point &point,
+                                const std::array<dof_id_type, 3> &dofs)
+    {
+        VectorValue<Real> local = read_vector(rhs, dofs);
+        VectorValue<Real> global = coordinate_system.local_to_global_rotation(point) * local;
+        write_vector(solution, dofs, global);
+    };
+
+    apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
+
+    solution.close();
+    return true;
+}
+
 template <>
-void ApecMSystem<System>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
+void ApecMSystem<ExplicitSystem>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
 {
     if (time_substep.get_ramped_load())
     {
@@ -165,6 +314,5 @@ void ApecMSystem<SysType>::init_variables()
     // Add more conditions as needed for other combinations
 }
 
-template class ApecMSystem<System>;
 template class ApecMSystem<libMesh::TransientSystem<libMesh::LinearImplicitSystem>>;
 template class ApecMSystem<libMesh::ExplicitSystem>;

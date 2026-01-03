@@ -134,7 +134,17 @@ DEFAULT_APEC_SETTINGS = {
     "beta_p": 0.0,
     "print_full_output": 0,
     "main_mesh": "",
+    "static_mesh": "",
 }
+
+REQUIRED_APEC_SETTINGS = [
+    "R0",
+    "max_picard_iterations",
+    "tolerance_value",
+    "alpha_value",
+    "plasma_current",
+    "beta_p",
+]
 
 DEFAULT_APEC_SETTINGS_TYPES = {
     "target_central_axis_x": float,

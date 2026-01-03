@@ -76,7 +76,7 @@ private:
         return ptr;
     }
 
-    template <typename T>
+    template <typename T, typename std::enable_if_t<!std::is_pointer_v<T>, int> = 0>
     static const T *to_entity_ptr(const T &ref)
     {
         return &ref;

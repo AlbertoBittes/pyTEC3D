@@ -4,7 +4,6 @@
 #include <memory>
 
 #include <libmesh/point.h>
-#include <libmesh/vector_value.h>
 
 #include "apec_m_tensor_value.h"
 
@@ -46,7 +45,7 @@ protected:
                      Real thzx_deg);
 
     const ApecMTensorValue &local_to_global_cartesian() const { return local_to_global_cart_; }
-    VectorValue<Real> to_local_vector(const Point &global_point) const;
+    Point to_local_vector(const Point &global_point) const;
 
 private:
     Type type_;

@@ -413,8 +413,8 @@ void ElementBuilder::build_plane233_rhs()
     DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
     DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
 
-    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->request_vector(2);
-    NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
+    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->current_local_solution.get();
+    NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
@@ -622,7 +622,7 @@ void ElementBuilder::build_plane233_solution_vectors()
         auto element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
         auto element_loads_dof_map = &element_loads_system->get_dof_map();
         element_loads_dof_map->dof_indices(elem_data.elem, dof_indices);
-        NumericVector<Number> *element_loads_vector = element_loads_system->request_vector(2);
+        NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
         element_loads_vector->get(dof_indices, Je.get_values());
 
         break;

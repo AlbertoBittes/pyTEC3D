@@ -18,7 +18,7 @@ bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
         if (picard_loop(substep))
         {
             substep.increment_number_picard_iterations();
-            libMesh::out << "Equilibrium analysis converged in " << iteration + 1 << " Picard iterations." << std::endl;
+            libMesh::out << "APEC algorithm converged in " << iteration + 1 << " Picard iterations." << std::endl;
             converged = true;
             break;
         }
@@ -27,7 +27,7 @@ bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
 
     if (!converged)
     {
-        libMesh::out << "Equilibrium analysis did not converge within " << iterations_limit
+        libMesh::out << "APEC algorithm did not converge within " << iterations_limit
                      << " Picard iterations." << std::endl;
         return false;
     }

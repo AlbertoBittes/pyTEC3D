@@ -211,15 +211,23 @@ void Session::create_emat_folder()
     {
         std::filesystem::create_directories(emat_folderpath);
         libMesh::out << "Emat folder created at " << emat_folderpath << std::endl;
+        emat_folders_cleared.insert(emat_folderpath);
     }
     else
     {
-        for (const auto &entry : std::filesystem::directory_iterator(emat_folderpath))
+        if (emat_folders_cleared.insert(emat_folderpath).second)
         {
-            if (entry.is_regular_file())
-                std::filesystem::remove(entry.path());
+            for (const auto &entry : std::filesystem::directory_iterator(emat_folderpath))
+            {
+                if (entry.is_regular_file())
+                    std::filesystem::remove(entry.path());
+            }
+            libMesh::out << "Emat folder already exists at " << emat_folderpath << ". All files deleted." << std::endl;
         }
-        libMesh::out << "Emat folder already exists at " << emat_folderpath << ". All files deleted." << std::endl;
+        else
+        {
+            libMesh::out << "Emat folder already exists at " << emat_folderpath << "." << std::endl;
+        }
     }
 }
 
