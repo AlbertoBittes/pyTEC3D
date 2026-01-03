@@ -1,11 +1,89 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "apec_m_mesh.h"
+#include "coordinate_system.h"
 #include "time_step.h"
+#include "variables_map.h"
 #include <libmesh/solver_configuration.h>
 #include "solver_configuration.h"
 
 #include <utility>
+
+namespace
+{
+    VectorValue<Real> read_vector(const NumericVector<Number> &vec,
+                                  const std::array<dof_id_type, 3> &dofs)
+    {
+        return VectorValue<Real>(vec(dofs[0]), vec(dofs[1]), vec(dofs[2]));
+    }
+
+    void write_vector(NumericVector<Number> &vec,
+                      const std::array<dof_id_type, 3> &dofs,
+                      const VectorValue<Real> &values)
+    {
+        vec.set(dofs[0], values(0));
+        vec.set(dofs[1], values(1));
+        vec.set(dofs[2], values(2));
+    }
+
+    template <typename TransformFn>
+    void apply_vector_transform(System &system,
+                                bool is_nodal,
+                                const std::array<unsigned int, 3> &var_numbers,
+                                TransformFn &&transform)
+    {
+        const auto &dof_map = system.get_dof_map();
+        std::vector<dof_id_type> dof_indices;
+        const auto &mesh = system.get_mesh();
+
+        if (is_nodal)
+        {
+            for (const auto *node : mesh.local_node_ptr_range())
+            {
+                std::array<dof_id_type, 3> dofs{};
+                bool complete = true;
+                for (unsigned int i = 0; i < 3; ++i)
+                {
+                    dof_map.dof_indices(node, dof_indices, var_numbers[i]);
+                    if (dof_indices.empty())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    dofs[i] = dof_indices.front();
+                }
+                if (!complete)
+                    continue;
+
+                transform(*node, dofs);
+            }
+        }
+        else
+        {
+            for (const auto &elem : mesh.active_local_element_ptr_range())
+            {
+                if (elem->infinite() || elem->type() == NODEELEM)
+                    continue;
+                std::array<dof_id_type, 3> dofs{};
+                bool complete = true;
+                for (unsigned int i = 0; i < 3; ++i)
+                {
+                    dof_map.dof_indices(elem, dof_indices, var_numbers[i]);
+                    if (dof_indices.empty())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    dofs[i] = dof_indices.front();
+                }
+                if (!complete)
+                    continue;
+
+                transform(elem->centroid(), dofs);
+            }
+        }
+    }
+} // namespace
 
 void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
 {
@@ -143,6 +221,73 @@ std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mes
     return equation_systems;
 }
 
+bool ApecMEquationSystems::set_vector_rhs_in_coordinate_system(ApecMSystemBase::SystemType system_type,
+                                                               const CoordinateSystem &coordinate_system,
+                                                               const std::string &variable_label)
+{
+    const auto &sys_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(system_type);
+    auto &system = this->get_system<ExplicitSystem>(sys_name);
+
+    std::array<unsigned int, 3> var_numbers{};
+    if (!VariablesMap::resolve_vector_var_numbers(system, variable_label, var_numbers))
+        return false;
+
+    if (!system.rhs)
+        libmesh_error_msg("System RHS vector is null.");
+
+    NumericVector<Number> &rhs = *system.rhs;
+
+    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
+
+    auto transform_values = [&](const Point &point,
+                                const std::array<dof_id_type, 3> &dofs)
+    {
+        VectorValue<Real> global = read_vector(rhs, dofs);
+        VectorValue<Real> local = coordinate_system.global_to_local_rotation(point) * global;
+        write_vector(rhs, dofs, local);
+    };
+
+    apply_vector_transform(system, is_nodal, var_numbers, transform_values);
+
+    rhs.close();
+    return true;
+}
+
+bool ApecMEquationSystems::set_vector_solution_from_rhs_global(ApecMSystemBase::SystemType system_type,
+                                                               const CoordinateSystem &coordinate_system,
+                                                               const std::string &variable_label)
+{
+    const auto &sys_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(system_type);
+    auto &system = this->get_system<ExplicitSystem>(sys_name);
+
+    std::array<unsigned int, 3> var_numbers{};
+    if (!VariablesMap::resolve_vector_var_numbers(system, variable_label, var_numbers))
+        return false;
+
+    if (!system.rhs)
+        libmesh_error_msg("System RHS vector is null.");
+    if (!system.current_local_solution)
+        libmesh_error_msg("System current_local_solution is null.");
+
+    NumericVector<Number> &rhs = *system.rhs;
+    NumericVector<Number> &solution = *system.current_local_solution;
+
+    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
+
+    auto transform_values = [&](const Point &point,
+                                const std::array<dof_id_type, 3> &dofs)
+    {
+        VectorValue<Real> local = read_vector(rhs, dofs);
+        VectorValue<Real> global = coordinate_system.local_to_global_rotation(point) * local;
+        write_vector(solution, dofs, global);
+    };
+
+    apply_vector_transform(system, is_nodal, var_numbers, transform_values);
+
+    solution.close();
+    return true;
+}
+
 std::vector<ApecMEquationSystems::RampVectorTuple> ApecMEquationSystems::collect_ramp_vectors()
 {
     std::vector<RampVectorTuple> ramp_sets;
@@ -156,14 +301,14 @@ std::vector<ApecMEquationSystems::RampVectorTuple> ApecMEquationSystems::collect
     System &element_loads_system = this->get_system<System>("ElementLoadsSystem");
     ramp_sets.emplace_back(
         element_loads_system.request_vector("old_loads"),
-        element_loads_system.current_local_solution.get(),
-        element_loads_system.request_vector("ramped_loads"));
+        element_loads_system.request_vector("new_loads"),
+        element_loads_system.current_local_solution.get());
 
     System &nodal_loads_system = this->get_system<System>("NodalLoadsSystem");
     ramp_sets.emplace_back(
         nodal_loads_system.request_vector("old_loads"),
-        nodal_loads_system.current_local_solution.get(),
-        nodal_loads_system.request_vector("ramped_loads"));
+        nodal_loads_system.request_vector("new_loads"),
+        nodal_loads_system.current_local_solution.get());
 
     return ramp_sets;
 }

@@ -47,7 +47,7 @@ public:
     {
         ApecMExplicitSystem *nodal_loads_system = &data_map->get_system<ApecMExplicitSystem>("NodalLoadsSystem");
         systems.push_back({nodal_loads_system->number(),
-                           nodal_loads_system->current_local_solution.get(),
+                           nodal_loads_system->request_vector("new_loads"),
                            nodal_loads_system->request_vector("old_loads"),
                            &nodal_loads_system->system_type,
                            0});
@@ -57,7 +57,7 @@ public:
     {
         ApecMExplicitSystem *element_system = &data_map->get_system<ApecMExplicitSystem>("ElementLoadsSystem");
         systems.push_back({element_system->number(),
-                           element_system->current_local_solution.get(),
+                           element_system->request_vector("new_loads"),
                            element_system->request_vector("old_loads"),
                            &element_system->system_type,
                            0});

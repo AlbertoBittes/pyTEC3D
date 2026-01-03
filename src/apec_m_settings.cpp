@@ -107,4 +107,7 @@ void ApecMSettingsObject::parse_columns()
 
     if (this->has_column("main_mesh"))
         main_mesh_ = this->get_string("main_mesh");
+
+    if (this->has_column("static_mesh"))
+        static_mesh_ = this->get_string("static_mesh");
 }

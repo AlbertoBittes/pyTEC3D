@@ -106,6 +106,53 @@ GlobalVariableName VariablesMap::get_key_by_predicate_one(
     libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
 }
 
+const VariableInfo &VariablesMap::resolve_variable_info(const std::string &api_label,
+                                                        unsigned int component)
+{
+    const auto key = VariablesMap::get_key_by_predicate_one(
+        [&api_label, component](const VariableInfo &info)
+        {
+            return info.api_label == api_label && info.component_index == component;
+        });
+    return VariablesMap::get_info_by_key(key);
+}
+
+unsigned int VariablesMap::resolve_variable_number(const libMesh::System &system,
+                                                   const std::string &api_label,
+                                                   unsigned int component)
+{
+    const auto &info = VariablesMap::resolve_variable_info(api_label, component);
+    if (!system.has_variable(info.global_label))
+        libmesh_error_msg("System does not contain variable: " + info.global_label);
+    return system.variable_number(info.global_label);
+}
+
+std::array<unsigned int, 3> VariablesMap::resolve_vector_variable_numbers(const libMesh::System &system,
+                                                                          const std::string &api_label)
+{
+    std::array<unsigned int, 3> vars{};
+    for (unsigned int component = 0; component < 3; ++component)
+        vars[component] = VariablesMap::resolve_variable_number(system, api_label, component);
+    return vars;
+}
+
+bool VariablesMap::resolve_vector_var_numbers(const libMesh::System &system,
+                                              const std::string &variable_label,
+                                              std::array<unsigned int, 3> &var_numbers)
+{
+    auto vector_vars = VariablesMap::get_vector_variables_for_system(system);
+    auto it = vector_vars.find(variable_label);
+    if (it == vector_vars.end())
+        return false;
+    VariablesMap::sort_vector_components(vector_vars);
+    const auto &components = it->second;
+    if (components.size() < 3)
+        return false;
+    for (unsigned int i = 0; i < 3; ++i)
+        var_numbers[i] = components[i].var_number;
+    return true;
+}
+
 void VariablesMap::sort_vector_components(
     std::map<std::string, std::vector<VectorComponent>> &vector_variables)
 {

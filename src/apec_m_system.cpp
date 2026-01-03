@@ -14,6 +14,21 @@ const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM
     {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
 };
 
+bool ApecMSystemBase::is_nodal_system(ApecMSystemBase::SystemType system_type)
+{
+    return system_type == ApecMSystemBase::DOF_SOLUTION_SYSTEM ||
+           system_type == ApecMSystemBase::NODAL_LOADS ||
+           system_type == ApecMSystemBase::NODAL_SOLUTION;
+}
+
+const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::SystemType system_type)
+{
+    auto it = ApecMSystemBase::SYSTEM_INFO_MAP.find(system_type);
+    if (it == ApecMSystemBase::SYSTEM_INFO_MAP.end())
+        libmesh_error_msg("System type not found.");
+    return it->second;
+}
+
 template <>
 void ApecMSystem<System>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
 {

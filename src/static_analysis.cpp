@@ -3,6 +3,7 @@
 #include "apec_m_system.h"
 #include "apec_m.h"
 #include "vtkio_updated.h"
+#include "toroidal_projection.h"
 
 #include <optional>
 #include <set>
@@ -148,4 +149,38 @@ bool StaticAnalysis::solve_transient()
 {
     libMesh::out << "This analysis does not support transient solves." << std::endl;
     return false;
+}
+
+void StaticAnalysis::toroidal_projection(
+    const std::string &input_equation_system_name,
+    const std::string &input_variable_label,
+    unsigned int input_component,
+    const libMesh::NumericVector<libMesh::Number> &input_vector,
+    const std::string &target_equation_system_name,
+    const std::string &target_variable_label,
+    std::optional<unsigned int> target_component,
+    libMesh::NumericVector<libMesh::Number> &target_vector,
+    const libMesh::Point &origin,
+    const libMesh::Point &axis,
+    const ToroidalProjectionMap &projection_map,
+    libMesh::Real tolerance) const
+{
+    auto apec_m = this->get_parent_object();
+    if (!apec_m)
+        libmesh_error_msg("StaticAnalysis: parent APEC_M is not available.");
+
+    toroidal_projection().project(
+        *apec_m,
+        input_equation_system_name,
+        input_variable_label,
+        input_component,
+        input_vector,
+        target_equation_system_name,
+        target_variable_label,
+        target_component,
+        target_vector,
+        origin,
+        axis,
+        projection_map,
+        tolerance);
 }

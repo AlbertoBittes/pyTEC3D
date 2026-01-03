@@ -42,6 +42,8 @@ public:
     virtual void zero_all() = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
+    static bool is_nodal_system(SystemType system_type);
+    static const std::string &system_name_from_type(SystemType system_type);
 };
 
 #include "apec_m_equation_systems.h"
@@ -202,7 +204,7 @@ public:
         if (system_type == ApecMSystemBase::NODAL_LOADS || system_type == ApecMSystemBase::ELEMENT_LOADS)
         {
             this->add_vector("old_loads");
-            this->add_vector("ramped_loads");
+            this->add_vector("new_loads");
         }
     }
 };

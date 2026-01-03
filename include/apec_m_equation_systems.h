@@ -5,6 +5,7 @@
 #include <vector>
 #include <libmesh/equation_systems.h>
 
+#include "apec_m_system.h"
 #include "apec_m_periodic_boundary_factory.h"
 #include "fem_service.h"
 #include "fem_data_repository.h"
@@ -17,6 +18,7 @@ using namespace libMesh;
 class ApecMMesh;
 class ElementTypesFactory;
 class APEC_M;
+class CoordinateSystem;
 
 class ApecMEquationSystems
     : public EquationSystems,
@@ -36,6 +38,12 @@ public:
     void initialize_physics();
     void clear_preserving_solver_settings();
     void zero_all_systems();
+    bool set_vector_rhs_in_coordinate_system(ApecMSystemBase::SystemType system_type,
+                                             const CoordinateSystem &coordinate_system,
+                                             const std::string &variable_label);
+    bool set_vector_solution_from_rhs_global(ApecMSystemBase::SystemType system_type,
+                                             const CoordinateSystem &coordinate_system,
+                                             const std::string &variable_label);
     static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh, APEC_M *program);
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional

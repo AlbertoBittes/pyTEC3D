@@ -2,6 +2,7 @@
 #define VARIABLES_MAP_H
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <string>
@@ -108,6 +109,16 @@ public:
         const std::function<bool(const VariableInfo &)> &pred);
     static GlobalVariableName get_key_by_predicate_one(
         const std::function<bool(const VariableInfo &)> &pred);
+    static const VariableInfo &resolve_variable_info(const std::string &api_label,
+                                                     unsigned int component);
+    static unsigned int resolve_variable_number(const libMesh::System &system,
+                                                const std::string &api_label,
+                                                unsigned int component);
+    static std::array<unsigned int, 3> resolve_vector_variable_numbers(const libMesh::System &system,
+                                                                       const std::string &api_label);
+    static bool resolve_vector_var_numbers(const libMesh::System &system,
+                                           const std::string &variable_label,
+                                           std::array<unsigned int, 3> &var_numbers);
     static void sort_vector_components(
         std::map<std::string, std::vector<VectorComponent>> &vector_variables);
     static std::vector<std::string> get_global_labels_for_label(const std::string &label);

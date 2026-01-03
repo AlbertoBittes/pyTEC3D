@@ -31,6 +31,7 @@ public:
     Real beta_profile() const { return beta_p; }
     bool print_full_output() const { return print_full_output_; }
     const std::string &main_mesh() const { return main_mesh_; }
+    const std::string &static_mesh() const { return static_mesh_; }
 
 private:
     void parse_columns();
@@ -51,6 +52,7 @@ private:
     Real beta_p = 0.0;
     bool print_full_output_ = false;
     std::string main_mesh_ = "";
+    std::string static_mesh_ = "";
 };
 
 #endif // APEC_M_SETTINGS_H

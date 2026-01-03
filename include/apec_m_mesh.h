@@ -1,16 +1,21 @@
 #ifndef APEC_M_MESH_H
 #define APEC_M_MESH_H
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <type_traits>
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
+#include <libmesh/node.h>
+#include <libmesh/elem.h>
 #include <libmesh/vector_value.h>
 
 #include "apec_m_tensor_value.h"
+#include "coordinate_system.h"
 #include "dof_couplings_factory.h"
 #include "fe_data_object.h"
 #include "fe_parent_object.h"
@@ -46,6 +51,45 @@ public:
     bool generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name);
     AngleDataIndices detect_angle_indices() const;
     ApecMTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
+
+    template <typename Iterator>
+    std::map<dof_id_type, Point> map_local_coordinates(Iterator begin,
+                                                       Iterator end,
+                                                       const CoordinateSystem &coordinate_system) const
+    {
+        std::map<dof_id_type, Point> result;
+        for (auto it = begin; it != end; ++it)
+        {
+            const auto *entity_ptr = to_entity_ptr(*it);
+            if (!entity_ptr)
+                continue;
+            const Point point = entity_point(*entity_ptr);
+            result.emplace(entity_ptr->id(), coordinate_system.to_local_coordinates(point));
+        }
+        return result;
+    }
+
+private:
+    template <typename T>
+    static const T *to_entity_ptr(const T *ptr)
+    {
+        return ptr;
+    }
+
+    template <typename T>
+    static const T *to_entity_ptr(const T &ref)
+    {
+        return &ref;
+    }
+
+    template <typename T>
+    static Point entity_point(const T &entity)
+    {
+        if constexpr (std::is_base_of_v<Node, T>)
+            return Point(entity(0), entity(1), entity(2));
+        else
+            return entity.centroid();
+    }
 };
 
 #endif // APEC_M_MESH_H

@@ -43,7 +43,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
 
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &plasma_current_vector = element_loads_system.get_vector("ramped_loads");
+    NumericVector<Number> &plasma_current_vector = *element_loads_system.current_local_solution;
 
     dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
@@ -387,7 +387,7 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
     auto eq_sys = this->active_equation_system();
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int vertical_coil_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &coils_current_vector = element_loads_system.get_vector("ramped_loads");
+    NumericVector<Number> &coils_current_vector = *element_loads_system.current_local_solution;
 
     const auto &mesh = eq_sys->get_mesh();
     dof_id_type vertical_control_coils_component = mesh.get_elem_integer_index("VERTICAL_CONTROL_COILS");
@@ -436,7 +436,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &plasma_current_vector = element_loads_system.get_vector("ramped_loads");
+    NumericVector<Number> &plasma_current_vector = *element_loads_system.current_local_solution;
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
@@ -564,32 +564,3 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
     first_absolute_iteration = false;
     return false;
 }
-
-// void APECMEquilibriumAnalysis::constant_plasma_current_density()
-// {
-//     auto eq_sys = this->active_equation_system();
-
-//     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
-//     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-//     NumericVector<Number> &plasma_current_vector = element_loads_system.get_vector("ramped_loads");
-
-//     const auto &mesh = eq_sys->get_mesh();
-//     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
-
-//     auto real_constants_map = this->context<RealConstantsObject>();
-//     dof_id_type real_constant_mesh_id = mesh.get_elem_integer_index("ansys_real_constant");
-
-//     auto settings_ptr = this->context<ApecMSettingsObject>();
-
-//     for (auto &elem : mesh.active_local_element_ptr_range())
-//     {
-//         if (!elem->get_extra_integer(vacuum_chamber_component))
-//             continue;
-
-//         dof_id_type real_constant_elem_id = elem->get_extra_integer(real_constant_mesh_id);
-//         Real plasma_area = real_constants_map->get_constant(real_constant_elem_id)[0];
-//         Real plasma_current_density = settings_ptr->plasma_currents() / plasma_area;
-//         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
-//         plasma_current_vector.set(elem_current_density_dof, plasma_current_density);
-//     }
-// }
