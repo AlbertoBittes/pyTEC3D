@@ -31,33 +31,39 @@ namespace
         return VariablesMap::get_info_by_key(key);
     }
 
-    void fill_nodal_values_from_parallel(const MeshBase &mesh,
-                                         const NumericVector<Number> &parallel_vector,
-                                         unsigned int n_vars,
-                                         unsigned int var_number,
-                                         std::vector<Real> &values)
+    void fill_nodal_values_from_local_solution(const MeshBase &mesh,
+                                               const System &system,
+                                               unsigned int var_number,
+                                               const NumericVector<Number> &solution_vector,
+                                               std::vector<Real> &values)
     {
+        const auto &dof_map = system.get_dof_map();
+        std::vector<dof_id_type> dof_indices;
         for (const auto *node : mesh.local_node_ptr_range())
         {
             const auto id = node->id();
-            const auto idx = static_cast<numeric_index_type>(id) * n_vars + var_number;
-            values[id] = Real(parallel_vector(idx));
+            dof_map.dof_indices(node, dof_indices, var_number);
+            if (!dof_indices.empty())
+                values[id] = Real(solution_vector.el(dof_indices.front()));
         }
     }
 
-    void fill_element_values_from_parallel(const MeshBase &mesh,
-                                           const NumericVector<Number> &parallel_vector,
-                                           std::size_t elem_count,
-                                           unsigned int component_index,
-                                           std::vector<Real> &values)
+    void fill_element_values_from_local_solution(const MeshBase &mesh,
+                                                 const System &system,
+                                                 unsigned int var_number,
+                                                 const NumericVector<Number> &solution_vector,
+                                                 std::vector<Real> &values)
     {
+        const auto &dof_map = system.get_dof_map();
+        std::vector<dof_id_type> dof_indices;
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             if (elem->infinite() || elem->type() == NODEELEM)
                 continue;
             const auto id = elem->id();
-            const auto idx = static_cast<numeric_index_type>(component_index) * elem_count + id;
-            values[id] = Real(parallel_vector(idx));
+            dof_map.dof_indices(elem, dof_indices, var_number);
+            if (!dof_indices.empty())
+                values[id] = Real(solution_vector.el(dof_indices.front()));
         }
     }
 
@@ -96,28 +102,27 @@ namespace
         std::size_t target_count;
     };
 
-    std::vector<Real> build_input_values(const ApecMEquationSystems &input_eq,
-                                         const ProjectionContext &context,
-                                         const std::string &input_variable_label)
+    std::vector<Real> build_input_values(const ProjectionContext &context)
     {
         std::vector<Real> input_values(context.input_count, 0.0);
+        if (!context.input_system.current_local_solution)
+            libmesh_error_msg("ToroidalProjection: input system current_local_solution is null.");
+        const NumericVector<Number> &solution_vector = *context.input_system.current_local_solution;
         if (context.input_is_nodal)
         {
-            const std::set<std::string> system_names = {context.input_system.name()};
-            auto parallel_solution = input_eq.build_parallel_solution_vector(&system_names);
-            fill_nodal_values_from_parallel(context.input_mesh,
-                                            *parallel_solution,
-                                            context.input_system.n_vars(),
-                                            context.input_var_number,
-                                            input_values);
+            fill_nodal_values_from_local_solution(context.input_mesh,
+                                                  context.input_system,
+                                                  context.input_var_number,
+                                                  solution_vector,
+                                                  input_values);
         }
         else
         {
-            std::vector<std::string> names = {input_variable_label};
-            auto parallel_solution = input_eq.build_parallel_elemental_solution_vector(names);
-            if (!parallel_solution)
-                libmesh_error_msg("ToroidalProjection: elemental parallel solution vector is null.");
-            fill_element_values_from_parallel(context.input_mesh, *parallel_solution, context.input_count, 0, input_values);
+            fill_element_values_from_local_solution(context.input_mesh,
+                                                    context.input_system,
+                                                    context.input_var_number,
+                                                    solution_vector,
+                                                    input_values);
         }
         context.input_mesh.comm().sum(input_values);
         return input_values;
@@ -380,7 +385,7 @@ void ToroidalProjection::project(
     const auto &active_map = cached.map;
     // target_vector.zero();
 
-    std::vector<Real> input_values = build_input_values(input_eq, context, input_variable_label);
+    std::vector<Real> input_values = build_input_values(context);
 
     std::vector<Real> target_values(context.target_count, 0.0);
     std::vector<Real> target_mask(context.target_count, 0.0);
@@ -435,7 +440,7 @@ void ToroidalProjection::toroidal_average(
     // target_vector.close();
     // target_vector.zero();
 
-    std::vector<Real> input_values = build_input_values(input_eq, context, input_variable_label);
+    std::vector<Real> input_values = build_input_values(context);
 
     std::vector<Real> target_values(context.target_count, 0.0);
     std::vector<Real> target_mask(context.target_count, 0.0);

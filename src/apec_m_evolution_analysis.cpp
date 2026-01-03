@@ -50,9 +50,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
             *static_eq_sys,
             *main_eq_sys,
             "Jt_z",
-            *static_sys_element_sol.current_local_solution.get(),
             "Js" + jtor_lab,
-            *main_sys_element_loads.current_local_solution.get(),
             cylindrical_coordinate_system);
         libMesh::out << "Projection completed." << std::endl;
         libMesh::out << "Rotating to global coordinates..." << std::endl;
@@ -86,18 +84,14 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         *main_eq_sys,
         *static_eq_sys,
         "Jt" + jtor_lab,
-        *main_sys_element_sol.current_local_solution.get(),
         "Js_z",
-        *static_sys_element_loads.current_local_solution.get(),
         cylindrical_coordinate_system);
 
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
         "Jt" + jtor_lab,
-        *main_sys_element_sol.current_local_solution.get(),
-        "Js_z",
-        *static_sys_element_sol.current_local_solution.get(),
+        "Jt_z",
         cylindrical_coordinate_system);
 
     if (print_full_output)
@@ -107,37 +101,29 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         *main_eq_sys,
         *static_eq_sys,
         "PSI",
-        *main_sys_nodal_sol.current_local_solution.get(),
         "PSI",
-        *static_sys_nodal_sol.current_local_solution.get(),
         cylindrical_coordinate_system);
 
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
         "PSIe",
-        *main_sys_element_sol.current_local_solution.get(),
         "PSIe",
-        *static_sys_element_sol.current_local_solution.get(),
         cylindrical_coordinate_system);
 
     // Project B
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
-        "B" + brad_lab,
-        *main_sys_nodal_sol.current_local_solution.get(),
-        "B_y",
-        *static_sys_nodal_sol.current_local_solution.get(),
+        "Be" + brad_lab,
+        "Be_x",
         cylindrical_coordinate_system);
 
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
-        "B" + bver_lab,
-        *main_sys_nodal_sol.current_local_solution.get(),
-        "B_y",
-        *static_sys_nodal_sol.current_local_solution.get(),
+        "Be" + bver_lab,
+        "Be_y",
         cylindrical_coordinate_system);
 
     if (print_full_output)
