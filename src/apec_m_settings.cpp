@@ -140,9 +140,9 @@ void ApecMSettingsObject::parse_columns()
     if (this->has_column("print_full_output"))
         print_full_output_ = static_cast<bool>(this->get_int("print_full_output"));
 
-    if (this->has_column("main_mesh"))
-        main_mesh_ = this->get_string("main_mesh");
+    if (this->has_column("evolution_mesh"))
+        evolution_mesh_ = this->get_string("evolution_mesh");
 
-    if (this->has_column("static_mesh"))
-        static_mesh_ = this->get_string("static_mesh");
+    if (this->has_column("equilibrium_mesh"))
+        equilibrium_mesh_ = this->get_string("equilibrium_mesh");
 }

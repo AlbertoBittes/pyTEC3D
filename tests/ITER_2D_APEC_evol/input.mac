@@ -1,6 +1,7 @@
--read_mesh ITER_2D_APEC_evol.vtu
 -read_mesh ITER_2D_APEC_evol_1.vtu
+-read_mesh ITER_2D_APEC_evol.vtu
 -active_mesh ITER_2D_APEC_evol
 -load_data model_data.bin
--mode analysis apec_m_evolution
+-mode analysis apec_evolution
+-input_data ./ITER_2D_APEC_evol_1/input/ITER_2D_APEC_evol_1_grid_1.mac
 -solve_transient

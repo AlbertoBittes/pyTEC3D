@@ -30,8 +30,8 @@ public:
     Real plasma_currents() const { return plasma_current; }
     Real beta_profile() const { return beta_p; }
     bool print_full_output() const { return print_full_output_; }
-    const std::string &main_mesh() const { return main_mesh_; }
-    const std::string &static_mesh() const { return static_mesh_; }
+    const std::string &evolution_mesh() const { return evolution_mesh_; }
+    const std::string &equilibrium_mesh() const { return equilibrium_mesh_; }
 
 private:
     void parse_columns();
@@ -51,8 +51,8 @@ private:
     Real plasma_current = 0.0;
     Real beta_p = 0.0;
     bool print_full_output_ = false;
-    std::string main_mesh_ = "";
-    std::string static_mesh_ = "";
+    std::string evolution_mesh_ = "";
+    std::string equilibrium_mesh_ = "";
 };
 
 #endif // APEC_M_SETTINGS_H

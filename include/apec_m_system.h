@@ -187,9 +187,10 @@ public:
 
         if (solver_config)
         {
-            solver_config->set_petsc_linear_solver(
+            solver_config_copy_.reset(new PetscSolverConfiguration(*solver_config));
+            solver_config_copy_->set_petsc_linear_solver(
                 dynamic_cast<PetscLinearSolver<Number> *>(this->linear_solver.get()));
-            solver_config->configure_solver();
+            solver_config_copy_->configure_solver();
         }
         else
         {
@@ -200,6 +201,7 @@ public:
 private:
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
     std::shared_ptr<AssemblerLinear> assembler;
+    std::unique_ptr<PetscSolverConfiguration> solver_config_copy_;
 };
 
 class ApecMExplicitSystem : public ApecMSystem<ExplicitSystem>

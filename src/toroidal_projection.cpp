@@ -380,7 +380,7 @@ void ToroidalProjection::project(
         coordinate_system,
         tolerance);
     const auto &active_map = cached.map;
-    target_vector.zero();
+    // target_vector.zero();
 
     std::vector<Real> input_values = build_input_values(input_eq, context, input_variable_label);
 
@@ -435,8 +435,8 @@ void ToroidalProjection::toroidal_average(
         coordinate_system,
         tolerance);
     const auto &active_map = cached.map;
-    target_vector.close();
-    target_vector.zero();
+    // target_vector.close();
+    // target_vector.zero();
 
     std::vector<Real> input_values = build_input_values(input_eq, context, input_variable_label);
 

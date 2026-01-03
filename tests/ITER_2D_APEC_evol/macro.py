@@ -64,8 +64,8 @@ apec.apec_settings = {
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
-    "main_mesh": "ITER_2D_APEC_evol",
-    "static_mesh": "ITER_2D_APEC_evol_1",
+    "evolution_mesh": "ITER_2D_APEC_evol",
+    "equilibrium_mesh": "ITER_2D_APEC_evol_1",
     "print_full_output": 1,
 }
 

@@ -20,11 +20,11 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 
     APEC_M *program = this->get_parent_object();
 
-    const std::string &main_mesh = settings->main_mesh();
-    const std::string &static_mesh = settings->main_mesh();
+    const std::string &evolution_mesh = settings->evolution_mesh();
+    const std::string &equilibrium_mesh = settings->equilibrium_mesh();
 
-    auto main_eq_sys = program->get_equation_system(main_mesh);
-    auto static_eq_sys = program->get_equation_system(static_mesh);
+    auto main_eq_sys = program->get_equation_system(evolution_mesh);
+    auto static_eq_sys = program->get_equation_system(equilibrium_mesh);
 
     ApecMExplicitSystem &main_sys_element_sol = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
@@ -33,7 +33,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     ApecMExplicitSystem &main_sys_element_loads = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
-    program->set_active_mesh(main_mesh);
+    program->set_active_mesh(evolution_mesh);
 
     auto toroidal_proj = toroidal_projection.get();
 
@@ -52,7 +52,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
             "Jt_z",
             *static_sys_element_sol.current_local_solution.get(),
             "Js" + jtor_lab,
-            *main_sys_element_loads.rhs,
+            *main_sys_element_loads.current_local_solution.get(),
             cylindrical_coordinate_system);
         libMesh::out << "Projection completed." << std::endl;
         libMesh::out << "Rotating to global coordinates..." << std::endl;
@@ -67,7 +67,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     if (print_full_output)
         print_output(substep, true);
 
-    program->set_active_mesh(static_mesh);
+    program->set_active_mesh(equilibrium_mesh);
 
     libMesh::out << "Projection from main mesh to static mesh..." << std::endl;
     // Rotate the J and B to cylindrical coordinates
@@ -78,17 +78,30 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         cylindrical_coordinate_system,
         "Jt");
 
+    if (print_full_output)
+        print_output(substep, true);
     // Project back to the static mesh
     // Project J, from plasma, coils and vessel
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
         "Jt" + jtor_lab,
-        *main_sys_element_loads.rhs,
+        *main_sys_element_sol.current_local_solution.get(),
         "Js_z",
         *static_sys_element_loads.current_local_solution.get(),
         cylindrical_coordinate_system);
 
+    toroidal_proj->toroidal_average(
+        *main_eq_sys,
+        *static_eq_sys,
+        "Jt" + jtor_lab,
+        *main_sys_element_sol.current_local_solution.get(),
+        "Js_z",
+        *static_sys_element_sol.current_local_solution.get(),
+        cylindrical_coordinate_system);
+
+    if (print_full_output)
+        print_output(substep, true);
     // Project PSI
     toroidal_proj->toroidal_average(
         *main_eq_sys,
@@ -113,7 +126,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         *main_eq_sys,
         *static_eq_sys,
         "B" + brad_lab,
-        *main_sys_nodal_sol.rhs,
+        *main_sys_nodal_sol.current_local_solution.get(),
         "B_y",
         *static_sys_nodal_sol.current_local_solution.get(),
         cylindrical_coordinate_system);
@@ -122,10 +135,13 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         *main_eq_sys,
         *static_eq_sys,
         "B" + bver_lab,
-        *main_sys_nodal_sol.rhs,
+        *main_sys_nodal_sol.current_local_solution.get(),
         "B_y",
         *static_sys_nodal_sol.current_local_solution.get(),
         cylindrical_coordinate_system);
+
+    if (print_full_output)
+        print_output(substep, true);
 
     find_separatrix();
 
@@ -138,6 +154,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 
     libMesh::out << "Solving equilibrium step..." << std::endl;
     solve_equation_systems(substep, true);
+
     if (print_full_output)
         print_output(substep, true);
 

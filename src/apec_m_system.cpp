@@ -114,32 +114,26 @@ bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const Coor
                                                                       const std::string &variable_label)
 {
     std::array<unsigned int, 3> var_numbers{};
-    if (!this->rhs)
-        libmesh_error_msg("ApecMSystem: system RHS vector is null.");
+    if (!this->current_local_solution)
+        libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
 
-    NumericVector<Number> &rhs = *this->rhs;
+    NumericVector<Number> &solution = *this->current_local_solution;
     const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
 
     if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
-    {
-        if (!this->current_local_solution)
-            libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
-        rhs = *this->current_local_solution;
-        rhs.close();
         return true;
-    }
 
     auto transform_values = [&](const Point &point,
                                 const std::array<dof_id_type, 3> &dofs)
     {
-        VectorValue<Real> global = read_vector(rhs, dofs);
+        VectorValue<Real> global = read_vector(solution, dofs);
         VectorValue<Real> local = coordinate_system.global_to_local_rotation(point) * global;
-        write_vector(rhs, dofs, local);
+        write_vector(solution, dofs, local);
     };
 
     apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
 
-    rhs.close();
+    solution.close();
     return true;
 }
 
@@ -148,26 +142,19 @@ bool ApecMSystem<SysLike>::local_to_global_coordinate_system_solution(const Coor
                                                                       const std::string &variable_label)
 {
     std::array<unsigned int, 3> var_numbers{};
-    if (!this->rhs)
-        libmesh_error_msg("ApecMSystem: system RHS vector is null.");
     if (!this->current_local_solution)
         libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
 
-    NumericVector<Number> &rhs = *this->rhs;
     NumericVector<Number> &solution = *this->current_local_solution;
     const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
 
     if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
-    {
-        solution = rhs;
-        solution.close();
         return true;
-    }
 
     auto transform_values = [&](const Point &point,
                                 const std::array<dof_id_type, 3> &dofs)
     {
-        VectorValue<Real> local = read_vector(rhs, dofs);
+        VectorValue<Real> local = read_vector(solution, dofs);
         VectorValue<Real> global = coordinate_system.local_to_global_rotation(point) * local;
         write_vector(solution, dofs, global);
     };
