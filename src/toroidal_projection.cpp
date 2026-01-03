@@ -361,9 +361,7 @@ void ToroidalProjection::project(
     const ApecMEquationSystems &input_eq,
     const ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
-    const NumericVector<Number> &input_vector,
     const std::string &target_variable_label,
-    NumericVector<Number> &target_vector,
     const CylindricalCoordinateSystem &coordinate_system,
     Real tolerance)
 {
@@ -409,6 +407,7 @@ void ToroidalProjection::project(
     context.target_mesh.comm().sum(target_values);
     context.target_mesh.comm().sum(target_mask);
 
+    NumericVector<Number> &target_vector = *context.target_system.current_local_solution;
     apply_target_values(context, target_values, target_mask, target_vector);
 }
 
@@ -416,9 +415,7 @@ void ToroidalProjection::toroidal_average(
     const ApecMEquationSystems &input_eq,
     const ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
-    const NumericVector<Number> &input_vector,
     const std::string &target_variable_label,
-    NumericVector<Number> &target_vector,
     const CylindricalCoordinateSystem &coordinate_system,
     Real tolerance)
 {
@@ -477,5 +474,6 @@ void ToroidalProjection::toroidal_average(
     context.target_mesh.comm().sum(target_values);
     context.target_mesh.comm().sum(target_mask);
 
+    NumericVector<Number> &target_vector = *context.target_system.current_local_solution;
     apply_target_values(context, target_values, target_mask, target_vector);
 }

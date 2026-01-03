@@ -20,18 +20,14 @@ public:
     void project(const ApecMEquationSystems &input_eq,
                  const ApecMEquationSystems &target_eq,
                  const std::string &input_variable_label,
-                 const libMesh::NumericVector<libMesh::Number> &input_vector,
                  const std::string &target_variable_label,
-                 libMesh::NumericVector<libMesh::Number> &target_vector,
                  const CylindricalCoordinateSystem &coordinate_system = CylindricalCoordinateSystem(),
                  libMesh::Real tolerance = 1e-6);
 
     void toroidal_average(const ApecMEquationSystems &input_eq,
                           const ApecMEquationSystems &target_eq,
                           const std::string &input_variable_label,
-                          const libMesh::NumericVector<libMesh::Number> &input_vector,
                           const std::string &target_variable_label,
-                          libMesh::NumericVector<libMesh::Number> &target_vector,
                           const CylindricalCoordinateSystem &coordinate_system = CylindricalCoordinateSystem(),
                           libMesh::Real tolerance = 1e-6);
 
