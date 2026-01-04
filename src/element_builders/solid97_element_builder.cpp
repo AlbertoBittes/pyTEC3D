@@ -669,6 +669,10 @@ void ElementBuilder::build_solid97_nodal_solution()
 
     this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
+    fe->reinit(elem_data.elem);
+    const std::vector<Point> &qpoints = fe->get_xyz();
+
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
         An.append(solution_vector_support.sol_vectors[k]);
@@ -717,8 +721,7 @@ void ElementBuilder::build_solid97_nodal_solution()
                                       return have_h ? &Hn : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
@@ -778,6 +781,34 @@ void ElementBuilder::build_solid97_element_solution()
         for (unsigned int k = 0; k < 3; k++)
             He(k) = Be(k) * nu_matrix[k];
         have_he = true;
+    };
+
+    auto build_psie = [&]()
+    {
+        PSIe.resize(1);
+        auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
+        unsigned int n_qp = JAe.m() / 3;
+
+        DenseVector<Number> Aq;
+        JAe.vector_mult(Aq, An);
+
+        const Point centroid = elem_data.elem->centroid();
+        const Point local_centroid = cylindrical_coordinate_system_.to_local_coordinates(centroid);
+
+        Real a_theta_avg = 0.0;
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+        {
+            const VectorValue<Real> A_global(Aq(qp), Aq(qp + n_qp), Aq(qp + 2 * n_qp));
+            const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(centroid) * A_global;
+            const Real a_theta = -A_local(2);
+            a_theta_avg += a_theta;
+        }
+        if (n_qp > 0)
+            a_theta_avg /= static_cast<Real>(n_qp);
+
+        const Real radius = cylindrical_coordinate_system_.to_local_coordinates(centroid)(0);
+        PSIe(0) = radius * a_theta_avg;
+        have_psie = true;
     };
 
     auto build_je = [&]()
@@ -881,20 +912,10 @@ void ElementBuilder::build_solid97_element_solution()
         have_je = true;
     };
 
-    auto build_psie = [&]()
-    {
-        PSIe.resize(1);
-        PSIe(0) = 0.0;
-        have_psie = true;
-    };
-
     this->fill_vectors_by_api(api_vars, element_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
                               {
                                   switch (api_var)
                                   {
-                                  case APIVariableName::Jt:
-                                      build_je();
-                                      return have_je ? &Je : nullptr;
                                   case APIVariableName::Be:
                                       build_be();
                                       return have_be ? &Be : nullptr;
@@ -904,10 +925,12 @@ void ElementBuilder::build_solid97_element_solution()
                                   case APIVariableName::PSIe:
                                       build_psie();
                                       return have_psie ? &PSIe : nullptr;
+                                  case APIVariableName::Jt:
+                                      build_je();
+                                      return have_je ? &Je : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
@@ -918,6 +941,8 @@ void ElementBuilder::build_solid97_support_solution()
     if (api_vars.empty())
         return;
 
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+
     std::vector<DenseVector<Number>> support_vectors;
     support_vectors.resize(api_vars.size());
     DenseVector<Number> psi_values;
@@ -925,9 +950,20 @@ void ElementBuilder::build_solid97_support_solution()
 
     auto build_psi = [&]()
     {
+        const auto &Ax = solution_vector_support.sol_vectors[0];
+        const auto &Ay = solution_vector_support.sol_vectors[1];
+        const auto &Az = solution_vector_support.sol_vectors[2];
         psi_values.resize(elem_data.elem->n_nodes());
-        for (unsigned int i = 0; i < psi_values.size(); ++i)
-            psi_values(i) = 0.0;
+        for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
+        {
+            auto &node = elem_data.elem->node_ref(i);
+            const Point local = cylindrical_coordinate_system_.to_local_coordinates(node);
+            const Real radius = local(0);
+            const VectorValue<Real> A_global(Ax(i), Ay(i), Az(i));
+            const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(node) * A_global;
+            const Real a_theta = -A_local(2);
+            psi_values(i) = radius * a_theta;
+        }
         have_psi = true;
     };
 
@@ -940,8 +976,7 @@ void ElementBuilder::build_solid97_support_solution()
                                       return have_psi ? &psi_values : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

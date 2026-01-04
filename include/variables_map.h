@@ -42,9 +42,6 @@ enum class GlobalVariableName
     H_y,
     H_z,
     PSI,
-    Jt_x,
-    Jt_y,
-    Jt_z,
     Be_x,
     Be_y,
     Be_z,
@@ -52,6 +49,9 @@ enum class GlobalVariableName
     He_y,
     He_z,
     PSIe,
+    Jt_x,
+    Jt_y,
+    Jt_z,
     UNKNOWN // Fallback for invalid strings
 };
 
@@ -68,10 +68,10 @@ enum class APIVariableName
     B,
     H,
     PSI,
-    Jt,
     Be,
     He,
     PSIe,
+    Jt,
     UNKNOWN // Fallback for invalid strings
 };
 

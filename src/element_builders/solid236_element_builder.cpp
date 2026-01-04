@@ -606,8 +606,7 @@ void ElementBuilder::build_solid236_nodal_solution()
                                       return have_h ? &Hn : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
@@ -666,6 +665,12 @@ void ElementBuilder::build_solid236_element_solution()
         have_he = true;
     };
 
+    auto build_psie = [&]()
+    {
+        PSIe.resize(1);
+        PSIe(0) = 0.0;
+        have_psie = true;
+    };
     auto build_je = [&]()
     {
         auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
@@ -765,20 +770,10 @@ void ElementBuilder::build_solid236_element_solution()
         have_je = true;
     };
 
-    auto build_psie = [&]()
-    {
-        PSIe.resize(1);
-        PSIe(0) = 0.0;
-        have_psie = true;
-    };
-
     this->fill_vectors_by_api(api_vars, element_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
                               {
                                   switch (api_var)
                                   {
-                                  case APIVariableName::Jt:
-                                      build_je();
-                                      return have_je ? &Je : nullptr;
                                   case APIVariableName::Be:
                                       build_be();
                                       return have_be ? &Be : nullptr;
@@ -788,10 +783,12 @@ void ElementBuilder::build_solid236_element_solution()
                                   case APIVariableName::PSIe:
                                       build_psie();
                                       return have_psie ? &PSIe : nullptr;
+                                  case APIVariableName::Jt:
+                                      build_je();
+                                      return have_je ? &Je : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
@@ -824,8 +821,7 @@ void ElementBuilder::build_solid236_support_solution()
                                       return have_psi ? &psi_values : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

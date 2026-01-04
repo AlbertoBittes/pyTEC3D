@@ -24,6 +24,7 @@
 #include "time_step.h"
 #include "session.h"
 #include "variables_map.h"
+#include "coordinate_system.h"
 
 using namespace libMesh;
 
@@ -185,6 +186,7 @@ private:
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
+    CylindricalCoordinateSystem cylindrical_coordinate_system_;
 
     ApecMEquationSystems *equation_systems_ = nullptr;
     ApecMLinearSystem *dof_solution_system_ = nullptr;
@@ -194,8 +196,8 @@ private:
     System *nodal_loads_system_ = nullptr;
     System *element_loads_system_ = nullptr;
     DofMap *dof_solution_dof_map_ = nullptr;
-    MaterialsObject *materials_object_ = nullptr;
-    RealConstantsObject *real_constants_object_ = nullptr;
+    std::shared_ptr<MaterialsObject> materials_object_ = nullptr;
+    std::shared_ptr<RealConstantsObject> real_constants_object_ = nullptr;
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,

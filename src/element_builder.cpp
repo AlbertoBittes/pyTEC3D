@@ -28,7 +28,8 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
     : FEParentObjectBase<EquationSystems>(equation_systems),
       FEMService<ElementTypesFactory, MaterialsObject, RealConstantsObject>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
-      vectors(VectorsSet::NUM_VECTORS_SETS)
+      vectors(VectorsSet::NUM_VECTORS_SETS),
+      cylindrical_coordinate_system_()
 {
     equation_systems_ = dynamic_cast<ApecMEquationSystems *>(equation_systems);
     if (!equation_systems_)

@@ -618,8 +618,7 @@ void ElementBuilder::build_plane233_nodal_solution()
                                       return have_h ? &Hn : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
@@ -684,7 +683,6 @@ void ElementBuilder::build_plane233_element_solution()
     auto build_psie = [&]()
     {
         PSIe.resize(1);
-        PSIe(0) = 0.0;
         if (axisymm)
         {
             auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
@@ -803,9 +801,6 @@ void ElementBuilder::build_plane233_element_solution()
                               {
                                   switch (api_var)
                                   {
-                                  case APIVariableName::Jt:
-                                      build_je();
-                                      return have_je ? &Je : nullptr;
                                   case APIVariableName::Be:
                                       build_be();
                                       return have_be ? &Be : nullptr;
@@ -815,10 +810,12 @@ void ElementBuilder::build_plane233_element_solution()
                                   case APIVariableName::PSIe:
                                       build_psie();
                                       return have_psie ? &PSIe : nullptr;
+                                  case APIVariableName::Jt:
+                                      build_je();
+                                      return have_je ? &Je : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
@@ -842,8 +839,6 @@ void ElementBuilder::build_plane233_support_solution()
     auto build_psi = [&]()
     {
         psi_values.resize(An.size());
-        for (unsigned int i = 0; i < psi_values.size(); ++i)
-            psi_values(i) = 0.0;
         for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
         {
             auto &node = elem_data.elem->node_ref(i);
@@ -861,8 +856,7 @@ void ElementBuilder::build_plane233_support_solution()
                                       return have_psi ? &psi_values : nullptr;
                                   default:
                                       return nullptr;
-                                  }
-                              });
+                                  } });
 
     this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

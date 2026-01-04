@@ -158,8 +158,8 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 {
     libMesh::out << "Finding magnetic axis..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
-    unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SupportSolutionSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
 
     dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
@@ -180,7 +180,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
         //     continue;
         // Process the element as needed
         dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
-        Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
+        Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > magnetic_axis_data.second)
             magnetic_axis_data = std::make_pair(node->id(), psi_value);
     }
@@ -263,8 +263,8 @@ Real APECMEquilibriumAnalysis::check_limiter()
 {
     libMesh::out << "Checking limiter configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
-    unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SupportSolutionSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
 
     const auto &mesh = eq_sys->get_mesh();
     Real psi_limiter = -std::numeric_limits<Real>::max();
@@ -281,7 +281,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
             continue;
         // Process the element as needed
         dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
-        Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
+        Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > psi_limiter)
         {
             limiter_node = node->id();
@@ -375,8 +375,8 @@ std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
     // Proportional+Integral component
     Real xiver = -cpgain * dive;
 
-    libMesh::out << "Radial correction current: " << xirad << " A" << std::endl;
-    libMesh::out << "Vertical correction current: " << xiver << " A" << std::endl;
+    // libMesh::out << "Radial correction current: " << xirad << " A" << std::endl;
+    // libMesh::out << "Vertical correction current: " << xiver << " A" << std::endl;
 
     return std::make_pair(xirad, xiver);
 }

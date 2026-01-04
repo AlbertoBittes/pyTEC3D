@@ -67,9 +67,6 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, ApecMSystemBase::SUPPORT_SOLUTION}},
 
     // Element Solution Variables
-    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
     {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
     {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, "Be_y", "Be", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
     {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, "Be_z", "Be", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
@@ -77,6 +74,9 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
     {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
     {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
 };
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
@@ -254,7 +254,7 @@ std::vector<GlobalVariableName> VariablesMap::get_active_variables_for_element(c
 }
 
 std::vector<APIVariableName> VariablesMap::get_api_variables_for_element(const ElementType &element,
-                                                                          ApecMSystemBase::SystemType system_type)
+                                                                         ApecMSystemBase::SystemType system_type)
 {
     auto vars = get_active_variables_for_element(element, system_type);
     std::vector<APIVariableName> api_vars;
