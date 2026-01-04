@@ -7,6 +7,7 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "apec_m.h"
+#include "session.h"
 
 #include <libmesh/libmesh.h>
 
@@ -44,6 +45,30 @@ bool AnalysisBase::finish()
             model_repo->set_object(std::shared_ptr<TimeStep>()); // drop current time step and its history
     }
     return true;
+}
+
+void AnalysisBase::apply_to_all_equation_systems(const std::function<void(ApecMEquationSystems &)> &func) const
+{
+    auto program = this->get_parent_object();
+    if (!program)
+        return;
+
+    const auto all_equation_systems = program->get_all_equation_systems_with_names();
+    const auto model_data = program->model_data();
+    const auto session = model_data ? model_data->get_object<Session>() : nullptr;
+    const auto initial_active_mesh = session ? session->get_active_mesh() : std::string{};
+
+    for (const auto &entry : all_equation_systems)
+    {
+        if (!entry.second)
+            continue;
+        if (!entry.first.empty())
+            program->set_active_mesh(entry.first);
+        func(*entry.second);
+    }
+
+    if (!initial_active_mesh.empty())
+        program->set_active_mesh(initial_active_mesh);
 }
 
 std::shared_ptr<AnalysisBase> AnalysisBase::build(APEC_M *program,

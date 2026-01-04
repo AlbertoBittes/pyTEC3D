@@ -1,12 +1,5 @@
 #include "static_analysis.h"
-#include "binary_reader.h"
-#include "apec_m_system.h"
 #include "apec_m.h"
-#include "vtkio_updated.h"
-#include "toroidal_projection.h"
-
-#include <optional>
-#include <set>
 
 #include <libmesh/libmesh.h>
 
@@ -19,47 +12,47 @@ bool DOFInterpolationAnalysis::solve()
 void StaticAnalysis::configure_services() const
 {
     auto *equation_systems = this->active_equation_system();
-
-    auto analysis_ctx = this->get_context_view();
-
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto bc_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
-    auto global_constraints_object = system.get_global_constraints_object();
-    global_constraints_object->set_context_view(bc_view);
-
-    auto assembler_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep, Session>() : nullptr;
-
-    auto assembler = system.get_assembler();
-    assembler->set_context_view(assembler_view);
+    if (!equation_systems)
+        return;
+    equation_systems->configure_services(this->get_context_view());
 }
 
 bool StaticAnalysis::execute_solve()
 {
     auto apec_m = this->get_parent_object();
+    if (!apec_m)
+        return false;
 
     auto model_data_repo = apec_m ? apec_m->model_data() : nullptr;
 
     this->set_context_view(std::make_shared<ContextView>(ContextView::from(model_data_repo)));
 
-    configure_services();
+    const auto analysis_ctx = this->get_context_view();
 
     auto equation_systems = this->active_equation_system_ptr();
+    if (!equation_systems)
+        return false;
 
     auto time_step = this->context<TimeStep>();
 
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    apply_to_all_equation_systems([&](ApecMEquationSystems &eq_sys)
+                                  { eq_sys.configure_services(analysis_ctx); });
 
     for (auto &substep : *time_step)
     {
-        prepare_time_substep_solve(substep);
+        apply_to_all_equation_systems([&](ApecMEquationSystems &eq_sys)
+                                      { eq_sys.prepare_time_substep_solve(substep); });
 
         if (!run_picard_iterations(substep))
         {
-            print_output(substep);
+            apply_to_all_equation_systems([&](ApecMEquationSystems &eq_sys)
+                                          { eq_sys.print_output(substep); });
             return false;
         }
-        print_output(substep);
-        *system.old_local_solution = *system.current_local_solution;
+        apply_to_all_equation_systems([&](ApecMEquationSystems &eq_sys)
+                                      { eq_sys.print_output(substep); });
+        apply_to_all_equation_systems([&](ApecMEquationSystems &eq_sys)
+                                      { eq_sys.update_old_local_solution(); });
     }
 
     return true;
@@ -68,69 +61,25 @@ bool StaticAnalysis::execute_solve()
 void StaticAnalysis::prepare_time_substep_solve(Substep &substep)
 {
     auto *equation_systems = this->active_equation_system();
-
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto assembler = system.get_assembler();
-
-    equation_systems->apply_ramped_effects(substep);
-
-    system.get_dof_map().swap_dof_constraints();
-
-    system.reinit_constraints();
-
-    // assembler->write_element_matrices_and_rhs();
+    if (!equation_systems)
+        return;
+    equation_systems->prepare_time_substep_solve(substep);
 }
 
 void StaticAnalysis::solve_equation_systems(Substep &substep, bool nodal_solution)
 {
     auto *equation_systems = this->active_equation_system();
-
-    auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
-    auto assembler = system.get_assembler();
-
-    assembler->write_element_matrices_and_rhs();
-
-    system.solve();
-    system.get_dof_map().enforce_constraints_exactly(system);
-    system.compute_solution_time_derivative(substep);
-    assembler->write_solution_vectors(nodal_solution);
+    if (!equation_systems)
+        return;
+    equation_systems->solve_equation_systems(substep, nodal_solution);
 }
 
 void StaticAnalysis::print_output(Substep &substep, bool picard_iteration_print)
 {
-
     auto *equation_systems = this->active_equation_system();
-
-    libMesh::out << "Writing output for substep " << substep.get_index() << std::endl;
-
-    auto time_step = this->context<TimeStep>();
-
-    auto session = this->context<Session>();
-
-    auto assembler = equation_systems ? equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem").get_assembler() : nullptr;
-
-    const bool should_write = substep.get_write_results() ||
-                              substep.get_index() == substep.get_parent_object()->get_n_substeps() - 1;
-
-    if (!should_write)
+    if (!equation_systems)
         return;
-
-    const auto base_substep_index = time_step ? time_step->count_substeps_before_current() : 0;
-    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
-
-    std::optional<unsigned int> picard_iteration;
-    if (picard_iteration_print)
-        picard_iteration = substep.get_number_picard_iterations();
-    else
-        picard_iteration = std::nullopt;
-
-    session->set_output_filepath(base_substep_index + substep.get_index(), picard_iteration);
-    VTKIO_Updated vtk_output(equation_systems->get_mesh(),
-                             equation_systems);
-    vtk_output.write_equation_systems(session->get_path("final_output_path"),
-                                      *equation_systems,
-                                      &system_names);
+    equation_systems->print_output(substep, picard_iteration_print);
 }
 
 bool StaticAnalysis::run_picard_iterations(Substep &substep)

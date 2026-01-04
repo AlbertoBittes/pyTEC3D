@@ -37,6 +37,8 @@ public:
     std::shared_ptr<ApecMMesh> get_active_mesh() const;
     std::shared_ptr<ApecMEquationSystems> get_equation_system(const std::string &name) const;
     std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
+    std::vector<std::shared_ptr<ApecMEquationSystems>> get_all_equation_systems() const;
+    std::vector<std::pair<std::string, std::shared_ptr<ApecMEquationSystems>>> get_all_equation_systems_with_names() const;
     std::shared_ptr<AnalysisBase> get_analysis() const;
 
     bool has_mesh(const std::string &name) const;

@@ -88,6 +88,39 @@ std::shared_ptr<ApecMEquationSystems> APEC_M::get_active_equation_system() const
     return get_equation_system(session->get_active_mesh());
 }
 
+std::vector<std::shared_ptr<ApecMEquationSystems>> APEC_M::get_all_equation_systems() const
+{
+    std::vector<std::shared_ptr<ApecMEquationSystems>> systems;
+    systems.reserve(mesh_repositories.size());
+    for (const auto &entry : mesh_repositories)
+    {
+        const auto &repository = entry.second;
+        if (!repository)
+            continue;
+        auto equation_system = repository->get_object<ApecMEquationSystems>();
+        if (equation_system)
+            systems.push_back(equation_system);
+    }
+    return systems;
+}
+
+std::vector<std::pair<std::string, std::shared_ptr<ApecMEquationSystems>>> APEC_M::get_all_equation_systems_with_names() const
+{
+    std::vector<std::pair<std::string, std::shared_ptr<ApecMEquationSystems>>> systems;
+    systems.reserve(mesh_repositories.size());
+    for (const auto &entry : mesh_repositories)
+    {
+        const auto &name = entry.first;
+        const auto &repository = entry.second;
+        if (!repository)
+            continue;
+        auto equation_system = repository->get_object<ApecMEquationSystems>();
+        if (equation_system)
+            systems.emplace_back(name, equation_system);
+    }
+    return systems;
+}
+
 std::shared_ptr<AnalysisBase> APEC_M::get_analysis() const
 {
     return shared_analysis;
@@ -316,6 +349,8 @@ void APEC_M::read_mesh(const std::string &name, const std::string &filepath)
     repository.set_object<ApecMEquationSystems>(equation_system);
 
     set_active_mesh(name);
+    if (session)
+        session->initialize_folder_paths();
 }
 
 void APEC_M::clear_mesh(const std::string &name)

@@ -1,10 +1,15 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "apec_m_mesh.h"
+#include "element_types_factory.h"
 #include "time_step.h"
+#include "vtkio_updated.h"
+#include "session.h"
 #include <libmesh/solver_configuration.h>
 #include "solver_configuration.h"
 
+#include <optional>
+#include <set>
 #include <utility>
 
 void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
@@ -13,6 +18,85 @@ void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
 
     for (auto &[system, old_vec, current_vec, ramped_vec] : ramp_sets)
         system->ramp_vectors(time_substep, *old_vec, *current_vec, *ramped_vec);
+}
+
+void ApecMEquationSystems::configure_services(const std::shared_ptr<AnalysisContextView> &analysis_ctx)
+{
+    analysis_context_view_ = analysis_ctx;
+
+    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto bc_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
+    auto global_constraints_object = system.get_global_constraints_object();
+    global_constraints_object->set_context_view(bc_view);
+
+    auto assembler_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep, Session>() : nullptr;
+    auto assembler = system.get_assembler();
+    assembler->set_context_view(assembler_view);
+}
+
+void ApecMEquationSystems::prepare_time_substep_solve(Substep &substep)
+{
+    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
+    this->apply_ramped_effects(substep);
+
+    system.get_dof_map().swap_dof_constraints();
+
+    system.reinit_constraints();
+}
+
+void ApecMEquationSystems::solve_equation_systems(Substep &substep, bool nodal_solution)
+{
+    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto assembler = system.get_assembler();
+
+    assembler->write_element_matrices_and_rhs();
+
+    system.solve();
+    system.get_dof_map().enforce_constraints_exactly(system);
+    system.compute_solution_time_derivative(substep);
+    assembler->write_solution_vectors(nodal_solution);
+}
+
+void ApecMEquationSystems::print_output(Substep &substep, bool picard_iteration_print)
+{
+    libMesh::out << "Writing output for substep " << substep.get_index() << std::endl;
+
+    auto time_step = analysis_context_view_ ? analysis_context_view_->template get<TimeStep>() : nullptr;
+    auto session = analysis_context_view_ ? analysis_context_view_->template get<Session>() : nullptr;
+
+    if (!time_step || !session)
+        return;
+
+    const bool should_write = substep.get_write_results() ||
+                              substep.get_index() == substep.get_parent_object()->get_n_substeps() - 1;
+
+    if (!should_write)
+        return;
+
+    const auto base_substep_index = time_step->count_substeps_before_current();
+    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
+
+    std::optional<unsigned int> picard_iteration;
+    if (picard_iteration_print)
+        picard_iteration = substep.get_number_picard_iterations();
+    else
+        picard_iteration = std::nullopt;
+
+    session->set_output_filepath(base_substep_index + substep.get_index(), picard_iteration);
+    VTKIO_Updated vtk_output(this->get_mesh(),
+                             this);
+    vtk_output.write_equation_systems(session->get_path("final_output_path"),
+                                      *this,
+                                      &system_names);
+}
+
+void ApecMEquationSystems::update_old_local_solution()
+{
+    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    if (!system.old_local_solution || !system.current_local_solution)
+        return;
+    *system.old_local_solution = *system.current_local_solution;
 }
 
 void ApecMEquationSystems::configure_systems()

@@ -2,6 +2,7 @@
 #define ANALYSIS_BASE_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -63,6 +64,7 @@ public:
 
 protected:
     virtual bool execute_solve() = 0;
+    void apply_to_all_equation_systems(const std::function<void(ApecMEquationSystems &)> &func) const;
 
     bool context_initialized = false;
     Type analysis_type;

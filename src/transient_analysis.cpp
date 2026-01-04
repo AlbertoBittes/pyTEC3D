@@ -26,12 +26,13 @@
 bool TransientAnalysis::solve_transient()
 {
     auto program = this->get_parent_object();
+    if (!program)
+        return false;
 
     auto session = this->context<Session>();
 
-    const auto grid_base = session->resolve_default_step_base("load_steps_folderpath", "grid", "_grid");
     const auto time_base = session->resolve_default_step_base("time_steps_folderpath", "timestep", "_timestep");
-    if (grid_base.empty() || time_base.empty())
+    if (time_base.empty())
     {
         libMesh::out << "Unable to determine default base names for transient solve." << std::endl;
         return false;
@@ -43,35 +44,43 @@ bool TransientAnalysis::solve_transient()
     bool solved_any = false;
     for (; true; ++step_index)
     {
-        auto grid_path = grid_base;
-        grid_path.replace_filename(grid_base.stem().string() + "_" + std::to_string(step_index));
-        grid_path.replace_extension(".bin");
-
         auto time_path = time_base;
         time_path.replace_filename(time_base.stem().string() + "_" + std::to_string(step_index));
         time_path.replace_extension(".bin");
 
-        const bool has_grid = std::filesystem::exists(grid_path);
         const bool has_time = std::filesystem::exists(time_path);
         if (!has_time)
             break;
 
-        if (!has_grid)
-        {
-            libMesh::out << "Transient step " << step_index
-                         << ": load/bcs binary not found, using previous loads and bcs." << std::endl;
-        }
+        if (!program->load_data({time_path.string()}))
+            return false;
 
-        libMesh::out << "Solving transient step " << step_index << " using "
-                     << (has_grid ? "grid '" + grid_path.string() + "' and " : "")
-                     << "timestep '" << time_path << "'." << std::endl;
+        bool loaded_all = true;
+        apply_to_all_equation_systems([&](ApecMEquationSystems &)
+                                      {
+            const auto grid_base = session->resolve_default_step_base("load_steps_folderpath", "grid", "_grid");
+            if (grid_base.empty())
+            {
+                loaded_all = false;
+                return;
+            }
 
-        std::vector<std::string> paths;
-        paths.reserve(2);
-        if (has_grid)
-            paths.push_back(grid_path.string());
-        paths.push_back(time_path.string());
-        if (!program->load_data(paths))
+            auto grid_path = grid_base;
+            grid_path.replace_filename(grid_base.stem().string() + "_" + std::to_string(step_index));
+            grid_path.replace_extension(".bin");
+
+            const bool has_grid = std::filesystem::exists(grid_path);
+            if (!has_grid)
+            {
+                libMesh::out << "Transient step " << step_index
+                             << ": load/bcs binary not found, using previous loads and bcs." << std::endl;
+                return;
+            }
+
+            if (!program->load_data({grid_path.string()}))
+                loaded_all = false; });
+
+        if (!loaded_all)
             return false;
 
         if (!execute_solve())

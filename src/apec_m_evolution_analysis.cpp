@@ -62,8 +62,8 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     libMesh::out << "Solving evolution step..." << std::endl;
     solve_equation_systems(substep, true);
 
-    if (print_full_output)
-        print_output(substep, true);
+    // if (print_full_output)
+    //     print_output(substep, true);
 
     program->set_active_mesh(equilibrium_mesh);
 
@@ -124,9 +124,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "Be_y",
         cylindrical_coordinate_system);
 
-    if (print_full_output)
-        print_output(substep, true);
-
     find_separatrix();
 
     apply_jplasma_gradshafranov();
@@ -139,8 +136,8 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     libMesh::out << "Solving equilibrium step..." << std::endl;
     solve_equation_systems(substep, true);
 
-    if (print_full_output)
-        print_output(substep, true);
+    // if (print_full_output)
+    //     print_output(substep, true);
 
     first_absolute_iteration = false;
     return false;

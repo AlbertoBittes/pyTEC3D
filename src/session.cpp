@@ -67,7 +67,7 @@ void Session::set_active_mesh(const std::string &mesh_name)
         mesh_filename_without_extension.clear();
 
     output_filename.clear();
-    initialize_folder_paths();
+    update_dynamic_paths();
 }
 
 void Session::set_mode(Mode mode)
