@@ -64,7 +64,7 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0, ApecMSystemBase::NODAL_SOLUTION}},
     {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1, ApecMSystemBase::NODAL_SOLUTION}},
     {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, ApecMSystemBase::NODAL_SOLUTION}},
+    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, ApecMSystemBase::SUPPORT_SOLUTION}},
 
     // Element Solution Variables
     {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
@@ -253,6 +253,21 @@ std::vector<GlobalVariableName> VariablesMap::get_active_variables_for_element(c
     return active_vars;
 }
 
+std::vector<APIVariableName> VariablesMap::get_api_variables_for_element(const ElementType &element,
+                                                                          ApecMSystemBase::SystemType system_type)
+{
+    auto vars = get_active_variables_for_element(element, system_type);
+    std::vector<APIVariableName> api_vars;
+    api_vars.reserve(vars.size());
+    for (const auto &var : vars)
+    {
+        auto api_name = get_info_by_key(var).api_name;
+        if (std::find(api_vars.begin(), api_vars.end(), api_name) == api_vars.end())
+            api_vars.push_back(api_name);
+    }
+    return api_vars;
+}
+
 std::vector<GlobalVariableName> VariablesMap::add_av_variables()
 {
     return {GlobalVariableName::B_x,
@@ -260,10 +275,12 @@ std::vector<GlobalVariableName> VariablesMap::add_av_variables()
             GlobalVariableName::H_x,
             GlobalVariableName::H_y,
             GlobalVariableName::Jt_z,
+            GlobalVariableName::PSI,
             GlobalVariableName::Be_x,
             GlobalVariableName::Be_y,
             GlobalVariableName::He_x,
-            GlobalVariableName::He_y};
+            GlobalVariableName::He_y,
+            GlobalVariableName::PSIe};
 }
 
 std::vector<GlobalVariableName> VariablesMap::add_av3d_variables()
@@ -375,11 +392,11 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
         break;
     }
 
-    if (keyopts.size() > 3 && keyopts[3] == 1)
-    {
-        vars.insert(vars.end(), {GlobalVariableName::PSI,
-                                 GlobalVariableName::PSIe});
-    }
+    // if (keyopts.size() > 3 && keyopts[3] == 1)
+    // {
+    //     vars.insert(vars.end(), {GlobalVariableName::PSI,
+    //                              GlobalVariableName::PSIe});
+    // }
     return vars;
 }
 

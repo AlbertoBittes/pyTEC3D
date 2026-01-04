@@ -75,5 +75,22 @@ void ElementBuilder::build_infin111_rhs()
 
 void ElementBuilder::build_infin111_solution_vectors()
 {
+    this->build_infin111_nodal_solution();
+    this->build_infin111_element_solution();
+    this->build_infin111_support_solution();
+}
+
+void ElementBuilder::build_infin111_nodal_solution()
+{
+    return;
+}
+
+void ElementBuilder::build_infin111_element_solution()
+{
+    return;
+}
+
+void ElementBuilder::build_infin111_support_solution()
+{
     return;
 }

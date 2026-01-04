@@ -85,38 +85,8 @@ public:
         Ce,
         NUM_DOF_MATRICES,
     };
-
-    enum NodalSolutionMatrices
-    {
-        Me,
-        AAe,
-        NUM_NODAL_SOLUTION_MATRICES
-    };
-
-    enum ElementSolutionMatrices
-    {
-        JAe,
-        JVe,
-        BAe,
-        NUM_ELEMENT_SOLUTION_MATRICES
-    };
-
-    enum NodalSolutionVectors
-    {
-        B,
-        H,
-        PSI,
-        NUM_NODAL_SOLUTION_VECTORS
-    };
-
-    enum ElementSolutionVectors
-    {
-        Je,
-        Be,
-        He,
-        PSIe,
-        NUM_ELEMENT_SOLUTION_VECTORS
-    };
+    static constexpr unsigned int kNumNodalSolutionMatrices = 2;
+    static constexpr unsigned int kNumElementSolutionMatrices = 3;
 
     using ContextView = TypedContextView<ElementTypesFactory, MaterialsObject, RealConstantsObject>;
 
@@ -148,6 +118,9 @@ public:
     void build_infin112_rhs();
 
     void build_solution_vectors();
+    void build_nodal_solution();
+    void build_element_solution();
+    void build_support_solution();
     bool build_solution_vectors_from_emat_files(dof_id_type element_id,
                                                 const std::filesystem::path &emat_folderpath);
 
@@ -157,6 +130,27 @@ public:
     void build_infin110_solution_vectors();
     void build_infin111_solution_vectors();
     void build_infin112_solution_vectors();
+
+    void build_solid97_nodal_solution();
+    void build_solid236_nodal_solution();
+    void build_plane233_nodal_solution();
+    void build_infin110_nodal_solution();
+    void build_infin111_nodal_solution();
+    void build_infin112_nodal_solution();
+
+    void build_solid97_element_solution();
+    void build_solid236_element_solution();
+    void build_plane233_element_solution();
+    void build_infin110_element_solution();
+    void build_infin111_element_solution();
+    void build_infin112_element_solution();
+
+    void build_solid97_support_solution();
+    void build_solid236_support_solution();
+    void build_plane233_support_solution();
+    void build_infin110_support_solution();
+    void build_infin111_support_solution();
+    void build_infin112_support_solution();
 
     // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
     void fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index);
@@ -190,6 +184,9 @@ private:
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
+
+    void append_and_write_solution(System &system,
+                                   const std::vector<DenseVector<Number>> &ordered_vectors);
 };
 
 #endif // ELEMENT_BUILDER_H

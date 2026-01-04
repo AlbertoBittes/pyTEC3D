@@ -25,6 +25,23 @@
 
 using namespace libMesh;
 
+namespace
+{
+    template <typename PrepareFn, typename BuildFn>
+    void run_for_elements(const MeshBase &mesh, ElementBuilder &builder, PrepareFn &&prepare_fn, BuildFn &&build_fn)
+    {
+        for (const auto &elem : mesh.active_local_element_ptr_range())
+        {
+            if (elem->type() == NODEELEM)
+                continue;
+
+            builder.set_element_data(elem);
+            prepare_fn();
+            build_fn();
+        }
+    }
+} // namespace
+
 AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems)
     : FEParentObjectBase<ApecMEquationSystems>(eq_systems),
       FEMService<TimeStep, Session>(nullptr)
@@ -310,7 +327,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     reader.close_file_streams(streams_out);
 }
 
-void AssemblerLinear::write_solution_vectors(bool nodal_solution)
+void AssemblerLinear::write_nodal_solution()
 {
     libMesh::out << "Computing derived quantities..." << std::endl;
 
@@ -324,7 +341,7 @@ void AssemblerLinear::write_solution_vectors(bool nodal_solution)
         libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
         return;
     }
-    builder->set_compute_nodal_solution_vectors(nodal_solution);
+    builder->set_compute_nodal_solution_vectors(true);
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
@@ -336,45 +353,119 @@ void AssemblerLinear::write_solution_vectors(bool nodal_solution)
     const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
 
     BinaryReader reader;
-    const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat",
-                                                    "element_sol_mtrx_" + rank_str + ".emat"};
+    const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat"};
     auto inp_streams = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
 
     auto *nodal_solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
-    auto *element_solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[1].get());
 
-    if (!nodal_solution_mtrx_input_file || !element_solution_mtrx_input_file)
+    if (!nodal_solution_mtrx_input_file)
     {
         reader.close_file_streams(inp_streams);
         libMesh::out << "AssemblerLinear: failed to open solution matrix file." << std::endl;
         return;
     }
 
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        if (elem->type() == NODEELEM)
-            continue;
-
-        builder->set_element_data(elem);
-        if (nodal_solution)
-            BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-        BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
-        builder->build_solution_vectors();
-    }
+    run_for_elements(mesh,
+                     *builder,
+                     [&]()
+                     { BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); },
+                     [&]()
+                     { builder->build_nodal_solution(); });
 
     reader.close_file_streams(inp_streams);
 
     const auto &nodal_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION);
-    const auto &element_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION);
-
     auto &nodal_system = eq_sys->get_system<System>(nodal_name);
-    auto &element_system = eq_sys->get_system<System>(element_name);
 
     nodal_system.solution->close();
-    element_system.solution->close();
     nodal_system.update();
+}
+
+void AssemblerLinear::write_element_solution()
+{
+    libMesh::out << "Computing derived quantities..." << std::endl;
+
+    auto eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return;
+
+    auto builder = make_element_builder();
+    if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
+        return;
+    }
+    builder->set_compute_nodal_solution_vectors(false);
+
+    const MeshBase &mesh = eq_sys->get_mesh();
+    const auto &comm = mesh.comm();
+    auto session = this->context<Session>();
+    if (!session)
+        return;
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+
+    BinaryReader reader;
+    const std::vector<std::string> inp_filenames = {"element_sol_mtrx_" + rank_str + ".emat"};
+    auto inp_streams = reader.open_file_streams(emat_folderpath, inp_filenames, FileMode::Read);
+
+    auto *element_solution_mtrx_input_file = dynamic_cast<std::ifstream *>(inp_streams[0].get());
+
+    if (!element_solution_mtrx_input_file)
+    {
+        reader.close_file_streams(inp_streams);
+        libMesh::out << "AssemblerLinear: failed to open solution matrix file." << std::endl;
+        return;
+    }
+
+    run_for_elements(mesh,
+                     *builder,
+                     [&]()
+                     { BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); },
+                     [&]()
+                     { builder->build_element_solution(); });
+
+    reader.close_file_streams(inp_streams);
+
+    const auto &element_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION);
+    auto &element_system = eq_sys->get_system<System>(element_name);
+
+    element_system.solution->close();
     element_system.update();
 }
+
+void AssemblerLinear::write_support_solution()
+{
+    libMesh::out << "Computing derived quantities..." << std::endl;
+
+    auto eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return;
+
+    auto builder = make_element_builder();
+    if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
+        return;
+    }
+    builder->set_compute_nodal_solution_vectors(true);
+
+    const MeshBase &mesh = eq_sys->get_mesh();
+
+    run_for_elements(mesh,
+                     *builder,
+                     [&]() {},
+                     [&]()
+                     { builder->build_support_solution(); });
+
+    const auto &support_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::SUPPORT_SOLUTION);
+    auto &support_system = eq_sys->get_system<System>(support_name);
+
+    support_system.solution->close();
+    support_system.update();
+}
+
 
 bool AssemblerLinear::check_update_element_matrices()
 {

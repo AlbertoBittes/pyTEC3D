@@ -39,6 +39,7 @@ public:
         ELEMENT_LOADS,
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
+        SUPPORT_SOLUTION,
         NUM_SYSTEMS
     };
 

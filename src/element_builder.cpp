@@ -186,29 +186,95 @@ void ElementBuilder::build_element_rhs()
 
 void ElementBuilder::build_solution_vectors()
 {
-    // Build the nodal solution vector
-    // This is a placeholder for the actual implementation
+    this->build_nodal_solution();
+    this->build_element_solution();
+    this->build_support_solution();
+}
+
+void ElementBuilder::build_nodal_solution()
+{
+    if (!this->compute_nodal_solution_vectors)
+        return;
+
     auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
 
     switch (etype)
     {
     case ElementTypeEnum::SOLID97:
-        this->build_solid97_solution_vectors();
+        this->build_solid97_nodal_solution();
         break;
     case ElementTypeEnum::SOLID236:
-        this->build_solid236_solution_vectors();
+        this->build_solid236_nodal_solution();
         break;
     case ElementTypeEnum::PLANE233:
-        this->build_plane233_solution_vectors();
+        this->build_plane233_nodal_solution();
         break;
     case ElementTypeEnum::INFIN110:
-        this->build_infin110_solution_vectors();
+        this->build_infin110_nodal_solution();
         break;
     case ElementTypeEnum::INFIN111:
-        this->build_infin111_solution_vectors();
+        this->build_infin111_nodal_solution();
         break;
     case ElementTypeEnum::INFIN112:
-        this->build_infin112_solution_vectors();
+        this->build_infin112_nodal_solution();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::build_element_solution()
+{
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_element_solution();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_element_solution();
+        break;
+    case ElementTypeEnum::PLANE233:
+        this->build_plane233_element_solution();
+        break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110_element_solution();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111_element_solution();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112_element_solution();
+        break;
+    default:
+        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+void ElementBuilder::build_support_solution()
+{
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::SOLID97:
+        this->build_solid97_support_solution();
+        break;
+    case ElementTypeEnum::SOLID236:
+        this->build_solid236_support_solution();
+        break;
+    case ElementTypeEnum::PLANE233:
+        this->build_plane233_support_solution();
+        break;
+    case ElementTypeEnum::INFIN110:
+        this->build_infin110_support_solution();
+        break;
+    case ElementTypeEnum::INFIN111:
+        this->build_infin111_support_solution();
+        break;
+    case ElementTypeEnum::INFIN112:
+        this->build_infin112_support_solution();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -271,5 +337,30 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
             }
             solution_vector_support.sol_vectors.emplace_back(std::move(local_sol));
         }
+    }
+}
+
+void ElementBuilder::append_and_write_solution(System &system,
+                                               const std::vector<DenseVector<Number>> &ordered_vectors)
+{
+    DenseVector<Number> values;
+    for (const auto &vec : ordered_vectors)
+    {
+        values.append(vec);
+    }
+
+    if (values.size() == 0)
+        return;
+
+    std::vector<dof_id_type> dof_indices;
+    DofMap *dof_map = &system.get_dof_map();
+    dof_map->dof_indices(elem_data.elem, dof_indices);
+
+    for (unsigned int i = 0; i < dof_indices.size() && i < values.size(); i++)
+    {
+        dof_id_type dof_index = dof_indices[i];
+        if ((system.solution->first_local_index() <= dof_index) &&
+            (dof_index < system.solution->last_local_index()))
+            system.solution->set(dof_index, values(i));
     }
 }

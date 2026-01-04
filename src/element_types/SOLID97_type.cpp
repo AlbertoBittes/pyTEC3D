@@ -65,26 +65,26 @@ std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solutio
     unsigned int n_sf_vec = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[2]->n_quadrature_points();
 
-    unsigned int num_matrices = nodal_solution ? ElementBuilder::NUM_NODAL_SOLUTION_MATRICES
-                                               : ElementBuilder::NUM_ELEMENT_SOLUTION_MATRICES;
+    unsigned int num_matrices = nodal_solution ? ElementBuilder::kNumNodalSolutionMatrices
+                                               : ElementBuilder::kNumElementSolutionMatrices;
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
         std::make_unique<std::vector<std::vector<unsigned int>>>(num_matrices, std::vector<unsigned int>(2, 0));
 
     if (nodal_solution)
     {
         // Me
-        (*solution_matrix_idx_size_map)[ElementBuilder::NodalSolutionMatrices::Me] = {n_sf_vec, n_sf_vec};
+        (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
         // AAe
-        (*solution_matrix_idx_size_map)[ElementBuilder::NodalSolutionMatrices::AAe] = {n_sf_vec, n_sf_vec};
+        (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_vec};
     }
     else
     {
         // JAe
-        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::JAe] = {3 * n_qp, n_sf_vec};
+        (*solution_matrix_idx_size_map)[0] = {3 * n_qp, n_sf_vec};
         // JVe
-        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::JVe] = {3 * n_qp, n_sf};
+        (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf};
         // BAe
-        (*solution_matrix_idx_size_map)[ElementBuilder::ElementSolutionMatrices::BAe] = {3 * n_qp, n_sf_vec};
+        (*solution_matrix_idx_size_map)[2] = {3 * n_qp, n_sf_vec};
     }
     return solution_matrix_idx_size_map;
 }

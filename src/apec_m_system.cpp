@@ -92,13 +92,15 @@ const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM
     {ApecMSystemBase::ELEMENT_LOADS, "ElementLoadsSystem"},
     {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
     {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
+    {ApecMSystemBase::SUPPORT_SOLUTION, "SupportSolutionSystem"},
 };
 
 bool ApecMSystemBase::is_nodal_system(ApecMSystemBase::SystemType system_type)
 {
     return system_type == ApecMSystemBase::DOF_SOLUTION_SYSTEM ||
            system_type == ApecMSystemBase::NODAL_LOADS ||
-           system_type == ApecMSystemBase::NODAL_SOLUTION;
+           system_type == ApecMSystemBase::NODAL_SOLUTION ||
+           system_type == ApecMSystemBase::SUPPORT_SOLUTION;
 }
 
 const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::SystemType system_type)

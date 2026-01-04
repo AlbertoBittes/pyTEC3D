@@ -55,7 +55,11 @@ void ApecMEquationSystems::solve_equation_systems(Substep &substep, bool nodal_s
     system.solve();
     system.get_dof_map().enforce_constraints_exactly(system);
     system.compute_solution_time_derivative(substep);
-    assembler->write_solution_vectors(nodal_solution);
+    if (nodal_solution)
+        assembler->write_nodal_solution();
+    assembler->write_element_solution();
+    if (nodal_solution)
+        assembler->write_support_solution();
 }
 
 void ApecMEquationSystems::print_output(Substep &substep, bool picard_iteration_print)

@@ -37,7 +37,9 @@ public:
     bool check_update_element_matrices();
 
     void write_element_matrices_and_rhs();
-    void write_solution_vectors(bool nodal_solution);
+    void write_nodal_solution();
+    void write_element_solution();
+    void write_support_solution();
 
 private:
     std::unique_ptr<ElementBuilder> make_element_builder() const;

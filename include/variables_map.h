@@ -126,6 +126,8 @@ public:
     static std::vector<GlobalVariableName> get_variables_for_element(const ElementType &element);
     static std::vector<GlobalVariableName> get_active_variables_for_element(const ElementType &element,
                                                                             ApecMSystemBase::SystemType system_type);
+    static std::vector<APIVariableName> get_api_variables_for_element(const ElementType &element,
+                                                                      ApecMSystemBase::SystemType system_type);
 
     static FEFamily get_variable_fe_family(const ElementType &element,
                                            GlobalVariableName variable);
