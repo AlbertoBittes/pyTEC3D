@@ -75,9 +75,7 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
                 });
 
             auto var_info = VariablesMap::get_info_by_key(global_label);
-
-            cached_sys_type = var_info.system_type;
-
+            cached_sys_type = VariablesMap::get_system_type_for_variable(*data_map, global_label);
             cached_variable_label = var_info.global_label;
 
             for (auto &ctx : systems)

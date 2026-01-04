@@ -147,7 +147,8 @@ namespace
         const auto &target_mesh = target_eq.get_mesh();
 
         const auto &input_info = get_info_by_global_label(input_variable_label);
-        const auto input_system_type = input_info.system_type;
+        const auto input_system_type = VariablesMap::get_system_type_for_variable(input_eq,
+                                                                                  input_info.global_name);
         const auto &input_system = input_eq.get_system(ApecMSystemBase::system_name_from_type(input_system_type));
         const bool input_is_nodal = ApecMSystemBase::is_nodal_system(input_system_type);
         if (!input_system.has_variable(input_variable_label))
@@ -155,7 +156,8 @@ namespace
         const unsigned int input_var_number = input_system.variable_number(input_variable_label);
 
         const auto &target_info = get_info_by_global_label(target_variable_label);
-        const auto target_system_type = target_info.system_type;
+        const auto target_system_type = VariablesMap::get_system_type_for_variable(target_eq,
+                                                                                   target_info.global_name);
         auto &target_system = target_eq.get_system(ApecMSystemBase::system_name_from_type(target_system_type));
         const bool target_is_nodal = ApecMSystemBase::is_nodal_system(target_system_type);
         if (!target_system.has_variable(target_variable_label))

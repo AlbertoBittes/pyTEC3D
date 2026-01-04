@@ -14,10 +14,10 @@ VARIABLES_GLOBAL_LIST = [
     "B",
     "H",
     "PSI",
-    "Jt",
     "Be",
     "He",
     "PSIe",
+    "Jt",
 ]
 
 # Default solver settings

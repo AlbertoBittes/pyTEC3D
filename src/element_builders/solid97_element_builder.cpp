@@ -669,10 +669,6 @@ void ElementBuilder::build_solid97_nodal_solution()
 
     this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
-    fe->reinit(elem_data.elem);
-    const std::vector<Point> &qpoints = fe->get_xyz();
-
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
         An.append(solution_vector_support.sol_vectors[k]);

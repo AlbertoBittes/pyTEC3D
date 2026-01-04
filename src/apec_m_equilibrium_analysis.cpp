@@ -158,7 +158,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 {
     libMesh::out << "Finding magnetic axis..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SupportSolutionSystem");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
     unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
 
@@ -179,7 +179,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
         // if (!check_distance_magnetic_axis(node))
         //     continue;
         // Process the element as needed
-        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
+        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
         Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > magnetic_axis_data.second)
             magnetic_axis_data = std::make_pair(node->id(), psi_value);
@@ -263,7 +263,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
 {
     libMesh::out << "Checking limiter configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SupportSolutionSystem");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
     unsigned int psi_var_number = support_solution_system.variable_number("PSI");
 
     const auto &mesh = eq_sys->get_mesh();
@@ -280,7 +280,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
         if (node->get_extra_integer(vacuum_boundary_region_component) != 1)
             continue;
         // Process the element as needed
-        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
+        dof_id_type psi_dof = node->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
         Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > psi_limiter)
         {

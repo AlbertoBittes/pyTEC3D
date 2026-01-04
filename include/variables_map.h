@@ -16,6 +16,7 @@
 namespace libMesh
 {
     class System;
+    class EquationSystems;
 }
 
 class ElementType;
@@ -82,7 +83,6 @@ struct VariableInfo
     std::string global_label;
     std::string api_label;
     unsigned int component_index;
-    ApecMSystemBase::SystemType system_type;
 };
 
 class VariablesMap
@@ -128,6 +128,8 @@ public:
                                                                             ApecMSystemBase::SystemType system_type);
     static std::vector<APIVariableName> get_api_variables_for_element(const ElementType &element,
                                                                       ApecMSystemBase::SystemType system_type);
+    static ApecMSystemBase::SystemType get_variable_system_type(const ElementType &element,
+                                                                GlobalVariableName variable);
 
     static FEFamily get_variable_fe_family(const ElementType &element,
                                            GlobalVariableName variable);
@@ -146,6 +148,11 @@ public:
         const libMesh::System &system);
 
     static std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system);
+    static std::vector<GlobalVariableName> get_variables_for_equation_systems(
+        const libMesh::EquationSystems &equation_systems);
+    static ApecMSystemBase::SystemType get_system_type_for_variable(
+        const libMesh::EquationSystems &equation_systems,
+        GlobalVariableName variable);
 
 private:
     static std::vector<GlobalVariableName> add_av_variables();

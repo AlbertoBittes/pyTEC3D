@@ -92,7 +92,7 @@ const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM
     {ApecMSystemBase::ELEMENT_LOADS, "ElementLoadsSystem"},
     {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
     {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
-    {ApecMSystemBase::SUPPORT_SOLUTION, "SupportSolutionSystem"},
+    {ApecMSystemBase::SUPPORT_SOLUTION, "SolutionSupportSystem"},
 };
 
 bool ApecMSystemBase::is_nodal_system(ApecMSystemBase::SystemType system_type)

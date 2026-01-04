@@ -105,7 +105,7 @@ ElementTypesFactory::associate_variables_with_element_IDs(ApecMSystemBase::Syste
         const auto vars = VariablesMap::get_variables_for_element(*elementType);
         for (const auto &var : vars)
         {
-            if (VariablesMap::get_info_by_key(var).system_type == system_type)
+            if (VariablesMap::get_variable_system_type(*elementType, var) == system_type)
                 (*variableToElementIds)[var].insert(elementId);
         }
     }

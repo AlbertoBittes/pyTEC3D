@@ -1,10 +1,10 @@
 #include "variables_map.h"
 #include "element_types.h"
+#include <libmesh/equation_systems.h>
 #include <libmesh/system.h>
 
 namespace
 {
-
     bool has_label_component(const std::string &base_label,
                              const char *suffix,
                              const std::vector<GlobalVariableName> &vars)
@@ -40,43 +40,43 @@ namespace
 
 const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_INFO_MAP = {
     // DOF Variables
-    {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, "A_y", "A", 1, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
-    {GlobalVariableName::E, {GlobalVariableName::E, APIVariableName::E, "E", "E", 0, ApecMSystemBase::DOF_SOLUTION_SYSTEM}},
+    {GlobalVariableName::A_x, {GlobalVariableName::A_x, APIVariableName::A, "A_x", "A", 0}},
+    {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, "A_y", "A", 1}},
+    {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2}},
+    {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0}},
+    {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0}},
+    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0}},
+    {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0}},
+    {GlobalVariableName::E, {GlobalVariableName::E, APIVariableName::E, "E", "E", 0}},
 
     // Nodal Loads Variables
-    {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0, ApecMSystemBase::NODAL_LOADS}},
+    {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0}},
 
     // Element Loads Variables
-    {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0, ApecMSystemBase::ELEMENT_LOADS}},
-    {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, "Js_y", "Js", 1, ApecMSystemBase::ELEMENT_LOADS}},
-    {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, "Js_z", "Js", 2, ApecMSystemBase::ELEMENT_LOADS}},
+    {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0}},
+    {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, "Js_y", "Js", 1}},
+    {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, "Js_z", "Js", 2}},
 
     // Nodal Solution Variables
-    {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, "B_x", "B", 0, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, "B_y", "B", 1, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, "B_z", "B", 2, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2, ApecMSystemBase::NODAL_SOLUTION}},
-    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0, ApecMSystemBase::SUPPORT_SOLUTION}},
+    {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, "B_x", "B", 0}},
+    {GlobalVariableName::B_y, {GlobalVariableName::B_y, APIVariableName::B, "B_y", "B", 1}},
+    {GlobalVariableName::B_z, {GlobalVariableName::B_z, APIVariableName::B, "B_z", "B", 2}},
+    {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0}},
+    {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1}},
+    {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2}},
+    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0}},
 
     // Element Solution Variables
-    {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, "Be_y", "Be", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, "Be_z", "Be", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1, ApecMSystemBase::ELEMENT_SOLUTION}},
-    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2, ApecMSystemBase::ELEMENT_SOLUTION}},
+    {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0}},
+    {GlobalVariableName::Be_y, {GlobalVariableName::Be_y, APIVariableName::Be, "Be_y", "Be", 1}},
+    {GlobalVariableName::Be_z, {GlobalVariableName::Be_z, APIVariableName::Be, "Be_z", "Be", 2}},
+    {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0}},
+    {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1}},
+    {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2}},
+    {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0}},
+    {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0}},
+    {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1}},
+    {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2}},
 };
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
@@ -247,9 +247,14 @@ std::vector<GlobalVariableName> VariablesMap::get_active_variables_for_element(c
     auto vars = get_variables_for_element(element);
     for (const auto &var : vars)
     {
-        if (get_info_by_key(var).system_type == system_type)
+        if (get_variable_system_type(element, var) == system_type)
             active_vars.push_back(var);
     }
+    std::sort(active_vars.begin(), active_vars.end(),
+              [](GlobalVariableName lhs, GlobalVariableName rhs)
+              {
+                  return static_cast<unsigned int>(lhs) < static_cast<unsigned int>(rhs);
+              });
     return active_vars;
 }
 
@@ -266,6 +271,51 @@ std::vector<APIVariableName> VariablesMap::get_api_variables_for_element(const E
             api_vars.push_back(api_name);
     }
     return api_vars;
+}
+
+ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const ElementType &,
+                                                                   GlobalVariableName variable)
+{
+    switch (variable)
+    {
+    case GlobalVariableName::A_x:
+    case GlobalVariableName::A_y:
+    case GlobalVariableName::A_z:
+    case GlobalVariableName::Az:
+    case GlobalVariableName::VOLT:
+    case GlobalVariableName::V:
+    case GlobalVariableName::EMF:
+    case GlobalVariableName::E:
+        return ApecMSystemBase::DOF_SOLUTION_SYSTEM;
+    case GlobalVariableName::AMPS:
+        return ApecMSystemBase::NODAL_LOADS;
+    case GlobalVariableName::Js_x:
+    case GlobalVariableName::Js_y:
+    case GlobalVariableName::Js_z:
+        return ApecMSystemBase::ELEMENT_LOADS;
+    case GlobalVariableName::B_x:
+    case GlobalVariableName::B_y:
+    case GlobalVariableName::B_z:
+    case GlobalVariableName::H_x:
+    case GlobalVariableName::H_y:
+    case GlobalVariableName::H_z:
+        return ApecMSystemBase::NODAL_SOLUTION;
+    case GlobalVariableName::PSI:
+        return ApecMSystemBase::SUPPORT_SOLUTION;
+    case GlobalVariableName::Be_x:
+    case GlobalVariableName::Be_y:
+    case GlobalVariableName::Be_z:
+    case GlobalVariableName::He_x:
+    case GlobalVariableName::He_y:
+    case GlobalVariableName::He_z:
+    case GlobalVariableName::PSIe:
+    case GlobalVariableName::Jt_x:
+    case GlobalVariableName::Jt_y:
+    case GlobalVariableName::Jt_z:
+        return ApecMSystemBase::ELEMENT_SOLUTION;
+    default:
+        libmesh_error_msg("VariablesMap: missing system type for variable.");
+    }
 }
 
 std::vector<GlobalVariableName> VariablesMap::add_av_variables()
@@ -420,6 +470,50 @@ std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System 
         vars.push_back(keys.front());
     }
     return vars;
+}
+
+std::vector<GlobalVariableName> VariablesMap::get_variables_for_equation_systems(
+    const libMesh::EquationSystems &equation_systems)
+{
+    std::vector<GlobalVariableName> vars;
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &name = ApecMSystemBase::system_name_from_type(type);
+        if (!equation_systems.has_system(name))
+            continue;
+        const auto &system = equation_systems.get_system(name);
+        const auto system_vars = get_system_variables(system);
+        for (const auto &var : system_vars)
+        {
+            if (std::find(vars.begin(), vars.end(), var) == vars.end())
+                vars.push_back(var);
+        }
+    }
+    std::sort(vars.begin(), vars.end(),
+              [](GlobalVariableName lhs, GlobalVariableName rhs)
+              {
+                  return static_cast<unsigned int>(lhs) < static_cast<unsigned int>(rhs);
+              });
+    return vars;
+}
+
+ApecMSystemBase::SystemType VariablesMap::get_system_type_for_variable(
+    const libMesh::EquationSystems &equation_systems,
+    GlobalVariableName variable)
+{
+    const auto &label = get_info_by_key(variable).global_label;
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &name = ApecMSystemBase::system_name_from_type(type);
+        if (!equation_systems.has_system(name))
+            continue;
+        const auto &system = equation_systems.get_system(name);
+        if (system.has_variable(label))
+            return type;
+    }
+    libmesh_error_msg("VariablesMap: variable not found in equation systems: " + label);
 }
 
 FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
