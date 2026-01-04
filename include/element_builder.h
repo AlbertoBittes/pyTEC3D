@@ -197,101 +197,16 @@ private:
     MaterialsObject *materials_object_ = nullptr;
     RealConstantsObject *real_constants_object_ = nullptr;
 
-    template <typename BuildB, typename BuildH>
-    void fill_bh_nodal_vectors(const std::vector<APIVariableName> &api_vars,
-                               std::vector<DenseVector<Number>> &nodal_vectors,
-                               BuildB &&build_b,
-                               bool &have_b,
-                               const DenseVector<Number> &Bn,
-                               BuildH &&build_h,
-                               bool &have_h,
-                               const DenseVector<Number> &Hn)
+    template <typename Resolver>
+    void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,
+                             std::vector<DenseVector<Number>> &output_vectors,
+                             Resolver &&resolve_vector)
     {
         for (unsigned int k = 0; k < api_vars.size(); ++k)
         {
-            switch (api_vars[k])
-            {
-            case APIVariableName::B:
-                build_b();
-                if (have_b)
-                    nodal_vectors[k] = Bn;
-                break;
-            case APIVariableName::H:
-                build_h();
-                if (have_h)
-                    nodal_vectors[k] = Hn;
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
-    template <typename BuildJe, typename BuildBe, typename BuildHe, typename BuildPSIe>
-    void fill_element_vectors_jt_be_he_psie(const std::vector<APIVariableName> &api_vars,
-                                            std::vector<DenseVector<Number>> &element_vectors,
-                                            BuildJe &&build_je,
-                                            bool &have_je,
-                                            const DenseVector<Number> &Je,
-                                            BuildBe &&build_be,
-                                            bool &have_be,
-                                            const DenseVector<Number> &Be,
-                                            BuildHe &&build_he,
-                                            bool &have_he,
-                                            const DenseVector<Number> &He,
-                                            BuildPSIe &&build_psie,
-                                            bool &have_psie,
-                                            const DenseVector<Number> &PSIe)
-    {
-        for (unsigned int k = 0; k < api_vars.size(); ++k)
-        {
-            switch (api_vars[k])
-            {
-            case APIVariableName::Jt:
-                build_je();
-                if (have_je)
-                    element_vectors[k] = Je;
-                break;
-            case APIVariableName::Be:
-                build_be();
-                if (have_be)
-                    element_vectors[k] = Be;
-                break;
-            case APIVariableName::He:
-                build_he();
-                if (have_he)
-                    element_vectors[k] = He;
-                break;
-            case APIVariableName::PSIe:
-                build_psie();
-                if (have_psie)
-                    element_vectors[k] = PSIe;
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
-    template <typename BuildPsi>
-    void fill_support_vectors_psi(const std::vector<APIVariableName> &api_vars,
-                                  std::vector<DenseVector<Number>> &support_vectors,
-                                  BuildPsi &&build_psi,
-                                  bool &have_psi,
-                                  const DenseVector<Number> &psi_values)
-    {
-        for (unsigned int k = 0; k < api_vars.size(); ++k)
-        {
-            switch (api_vars[k])
-            {
-            case APIVariableName::PSI:
-                build_psi();
-                if (have_psi)
-                    support_vectors[k] = psi_values;
-                break;
-            default:
-                break;
-            }
+            const DenseVector<Number> *vec = resolve_vector(api_vars[k]);
+            if (vec)
+                output_vectors[k] = *vec;
         }
     }
 

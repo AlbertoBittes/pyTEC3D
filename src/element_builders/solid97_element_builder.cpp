@@ -705,7 +705,20 @@ void ElementBuilder::build_solid97_nodal_solution()
         have_h = true;
     };
 
-    this->fill_bh_nodal_vectors(api_vars, nodal_vectors, build_b, have_b, Bn, build_h, have_h, Hn);
+    this->fill_vectors_by_api(api_vars, nodal_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
+                              {
+                                  switch (api_var)
+                                  {
+                                  case APIVariableName::B:
+                                      build_b();
+                                      return have_b ? &Bn : nullptr;
+                                  case APIVariableName::H:
+                                      build_h();
+                                      return have_h ? &Hn : nullptr;
+                                  default:
+                                      return nullptr;
+                                  }
+                              });
 
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
@@ -875,20 +888,26 @@ void ElementBuilder::build_solid97_element_solution()
         have_psie = true;
     };
 
-    this->fill_element_vectors_jt_be_he_psie(api_vars,
-                                             element_vectors,
-                                             build_je,
-                                             have_je,
-                                             Je,
-                                             build_be,
-                                             have_be,
-                                             Be,
-                                             build_he,
-                                             have_he,
-                                             He,
-                                             build_psie,
-                                             have_psie,
-                                             PSIe);
+    this->fill_vectors_by_api(api_vars, element_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
+                              {
+                                  switch (api_var)
+                                  {
+                                  case APIVariableName::Jt:
+                                      build_je();
+                                      return have_je ? &Je : nullptr;
+                                  case APIVariableName::Be:
+                                      build_be();
+                                      return have_be ? &Be : nullptr;
+                                  case APIVariableName::He:
+                                      build_he();
+                                      return have_he ? &He : nullptr;
+                                  case APIVariableName::PSIe:
+                                      build_psie();
+                                      return have_psie ? &PSIe : nullptr;
+                                  default:
+                                      return nullptr;
+                                  }
+                              });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
@@ -912,7 +931,17 @@ void ElementBuilder::build_solid97_support_solution()
         have_psi = true;
     };
 
-    this->fill_support_vectors_psi(api_vars, support_vectors, build_psi, have_psi, psi_values);
+    this->fill_vectors_by_api(api_vars, support_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
+                              {
+                                  switch (api_var)
+                                  {
+                                  case APIVariableName::PSI:
+                                      build_psi();
+                                      return have_psi ? &psi_values : nullptr;
+                                  default:
+                                      return nullptr;
+                                  }
+                              });
 
     this->append_and_write_solution(*support_solution_system_, support_vectors);
 }
