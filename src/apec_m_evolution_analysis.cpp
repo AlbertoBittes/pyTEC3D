@@ -76,10 +76,18 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         cylindrical_coordinate_system,
         "Jt");
 
-    if (print_full_output)
-        print_output(substep, true);
+    // if (print_full_output)
+    //     print_output(substep, true);
     // Project back to the static mesh
     // Project J, from plasma, coils and vessel
+    // Project PSI
+    toroidal_proj->toroidal_average(
+        *main_eq_sys,
+        *static_eq_sys,
+        "PSI",
+        "PSI",
+        cylindrical_coordinate_system);
+
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
@@ -92,16 +100,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         *static_eq_sys,
         "Jt" + jtor_lab,
         "Jt_z",
-        cylindrical_coordinate_system);
-
-    if (print_full_output)
-        print_output(substep, true);
-    // Project PSI
-    toroidal_proj->toroidal_average(
-        *main_eq_sys,
-        *static_eq_sys,
-        "PSI",
-        "PSI",
         cylindrical_coordinate_system);
 
     toroidal_proj->toroidal_average(

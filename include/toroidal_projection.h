@@ -18,14 +18,14 @@ public:
     using Map = std::vector<std::vector<libMesh::dof_id_type>>;
 
     void project(const ApecMEquationSystems &input_eq,
-                 const ApecMEquationSystems &target_eq,
+                 ApecMEquationSystems &target_eq,
                  const std::string &input_variable_label,
                  const std::string &target_variable_label,
                  const CylindricalCoordinateSystem &coordinate_system = CylindricalCoordinateSystem(),
                  libMesh::Real tolerance = 1e-6);
 
     void toroidal_average(const ApecMEquationSystems &input_eq,
-                          const ApecMEquationSystems &target_eq,
+                          ApecMEquationSystems &target_eq,
                           const std::string &input_variable_label,
                           const std::string &target_variable_label,
                           const CylindricalCoordinateSystem &coordinate_system = CylindricalCoordinateSystem(),

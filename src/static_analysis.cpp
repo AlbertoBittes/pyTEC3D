@@ -41,11 +41,11 @@ bool StaticAnalysis::execute_solve()
 
     this->set_context_view(std::make_shared<ContextView>(ContextView::from(model_data_repo)));
 
+    configure_services();
+
     auto equation_systems = this->active_equation_system_ptr();
 
     auto time_step = this->context<TimeStep>();
-
-    configure_services();
 
     auto &system = equation_systems->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
@@ -99,9 +99,10 @@ void StaticAnalysis::solve_equation_systems(Substep &substep, bool nodal_solutio
 
 void StaticAnalysis::print_output(Substep &substep, bool picard_iteration_print)
 {
-    libMesh::out << "Writing output for substep " << substep.get_index() << std::endl;
 
     auto *equation_systems = this->active_equation_system();
+
+    libMesh::out << "Writing output for substep " << substep.get_index() << std::endl;
 
     auto time_step = this->context<TimeStep>();
 

@@ -43,7 +43,7 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
 
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &plasma_current_vector = *element_loads_system.current_local_solution;
+    NumericVector<Number> &plasma_current_vector = *element_loads_system.solution;
 
     dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
@@ -64,8 +64,8 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
                     node.set_extra_integer(new_vacuum_boundary_component, 1);
         }
 
-    // plasma_current_vector.close();
-    // element_loads_system.update();
+    plasma_current_vector.close();
+    element_loads_system.update();
     // for (auto &node : mesh.local_node_ptr_range())
     //     if (node->get_extra_integer(vacuum_boundary_component))
     //         node->set_extra_integer(new_vacuum_boundary_component, 1);
@@ -387,7 +387,7 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
     auto eq_sys = this->active_equation_system();
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int vertical_coil_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &coils_current_vector = *element_loads_system.current_local_solution;
+    NumericVector<Number> &coils_current_vector = *element_loads_system.solution;
 
     const auto &mesh = eq_sys->get_mesh();
     dof_id_type vertical_control_coils_component = mesh.get_elem_integer_index("VERTICAL_CONTROL_COILS");
@@ -436,7 +436,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
-    NumericVector<Number> &plasma_current_vector = *element_loads_system.current_local_solution;
+    NumericVector<Number> &plasma_current_vector = *element_loads_system.solution;
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
@@ -479,6 +479,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         Real adjusted_current_density = existing_current_density * lambda;
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
     }
+
     plasma_current_vector.close();
     element_loads_system.update();
 }

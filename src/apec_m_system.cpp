@@ -114,10 +114,8 @@ bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const Coor
                                                                       const std::string &variable_label)
 {
     std::array<unsigned int, 3> var_numbers{};
-    if (!this->current_local_solution)
-        libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
 
-    NumericVector<Number> &solution = *this->current_local_solution;
+    NumericVector<Number> &solution = *this->solution;
     const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
 
     if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
@@ -134,6 +132,7 @@ bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const Coor
     apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
 
     solution.close();
+    this->update();
     return true;
 }
 
@@ -142,10 +141,8 @@ bool ApecMSystem<SysLike>::local_to_global_coordinate_system_solution(const Coor
                                                                       const std::string &variable_label)
 {
     std::array<unsigned int, 3> var_numbers{};
-    if (!this->current_local_solution)
-        libmesh_error_msg("ApecMSystem: system current_local_solution is null.");
 
-    NumericVector<Number> &solution = *this->current_local_solution;
+    NumericVector<Number> &solution = *this->solution;
     const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
 
     if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
@@ -162,41 +159,8 @@ bool ApecMSystem<SysLike>::local_to_global_coordinate_system_solution(const Coor
     apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
 
     solution.close();
+    this->update();
     return true;
-}
-
-template <>
-void ApecMSystem<ExplicitSystem>::ramp_vectors(const Substep &time_substep, NumericVector<Number> &old_vector, NumericVector<Number> &current_vector, NumericVector<Number> &ramped_vector)
-{
-    if (time_substep.get_ramped_load())
-    {
-        Real substep_number = static_cast<Real>(time_substep.get_index()) + 1;
-        Real number_of_substeps = static_cast<Real>(time_substep.get_parent_object()->get_n_substeps());
-        for (numeric_index_type k = old_vector.first_local_index(); k < old_vector.last_local_index(); ++k)
-        {
-            Real old_val = old_vector(k);
-            Real curr_val = current_vector(k);
-
-            if (std::isnan(curr_val))
-            {
-                ramped_vector.set(k, std::numeric_limits<Real>::quiet_NaN());
-            }
-            else
-            {
-                Real start_val = std::isnan(old_val) ? 0.0 : old_val;
-                Real ramped_val = start_val + (curr_val - start_val) / number_of_substeps * substep_number;
-                ramped_vector.set(k, ramped_val);
-            }
-        }
-    }
-    else
-    {
-        for (numeric_index_type k = current_vector.first_local_index(); k < current_vector.last_local_index(); ++k)
-        {
-            Real curr_val = current_vector(k);
-            ramped_vector.set(k, curr_val);
-        }
-    }
 }
 
 void ApecMLinearSystem::release_subset_solve()

@@ -31,11 +31,11 @@ namespace
         return VariablesMap::get_info_by_key(key);
     }
 
-    void fill_nodal_values_from_local_solution(const MeshBase &mesh,
-                                               const System &system,
-                                               unsigned int var_number,
-                                               const NumericVector<Number> &solution_vector,
-                                               std::vector<Real> &values)
+    void fill_nodal_values_from_solution(const MeshBase &mesh,
+                                         const System &system,
+                                         unsigned int var_number,
+                                         const NumericVector<Number> &solution_vector,
+                                         std::vector<Real> &values)
     {
         const auto &dof_map = system.get_dof_map();
         std::vector<dof_id_type> dof_indices;
@@ -48,11 +48,11 @@ namespace
         }
     }
 
-    void fill_element_values_from_local_solution(const MeshBase &mesh,
-                                                 const System &system,
-                                                 unsigned int var_number,
-                                                 const NumericVector<Number> &solution_vector,
-                                                 std::vector<Real> &values)
+    void fill_element_values_from_solution(const MeshBase &mesh,
+                                           const System &system,
+                                           unsigned int var_number,
+                                           const NumericVector<Number> &solution_vector,
+                                           std::vector<Real> &values)
     {
         const auto &dof_map = system.get_dof_map();
         std::vector<dof_id_type> dof_indices;
@@ -93,7 +93,7 @@ namespace
         const MeshBase &input_mesh;
         const MeshBase &target_mesh;
         const System &input_system;
-        const System &target_system;
+        System &target_system;
         bool input_is_nodal;
         bool target_is_nodal;
         unsigned int input_var_number;
@@ -105,24 +105,23 @@ namespace
     std::vector<Real> build_input_values(const ProjectionContext &context)
     {
         std::vector<Real> input_values(context.input_count, 0.0);
-        if (!context.input_system.current_local_solution)
-            libmesh_error_msg("ToroidalProjection: input system current_local_solution is null.");
-        const NumericVector<Number> &solution_vector = *context.input_system.current_local_solution;
+
+        const NumericVector<Number> &solution_vector = *context.input_system.solution;
         if (context.input_is_nodal)
         {
-            fill_nodal_values_from_local_solution(context.input_mesh,
-                                                  context.input_system,
-                                                  context.input_var_number,
-                                                  solution_vector,
-                                                  input_values);
+            fill_nodal_values_from_solution(context.input_mesh,
+                                            context.input_system,
+                                            context.input_var_number,
+                                            solution_vector,
+                                            input_values);
         }
         else
         {
-            fill_element_values_from_local_solution(context.input_mesh,
-                                                    context.input_system,
-                                                    context.input_var_number,
-                                                    solution_vector,
-                                                    input_values);
+            fill_element_values_from_solution(context.input_mesh,
+                                              context.input_system,
+                                              context.input_var_number,
+                                              solution_vector,
+                                              input_values);
         }
         context.input_mesh.comm().sum(input_values);
         return input_values;
@@ -140,7 +139,7 @@ namespace
     }
 
     ProjectionContext build_projection_context(const ApecMEquationSystems &input_eq,
-                                               const ApecMEquationSystems &target_eq,
+                                               ApecMEquationSystems &target_eq,
                                                const std::string &input_variable_label,
                                                const std::string &target_variable_label)
     {
@@ -157,7 +156,7 @@ namespace
 
         const auto &target_info = get_info_by_global_label(target_variable_label);
         const auto target_system_type = target_info.system_type;
-        const auto &target_system = target_eq.get_system(ApecMSystemBase::system_name_from_type(target_system_type));
+        auto &target_system = target_eq.get_system(ApecMSystemBase::system_name_from_type(target_system_type));
         const bool target_is_nodal = ApecMSystemBase::is_nodal_system(target_system_type);
         if (!target_system.has_variable(target_variable_label))
             libmesh_error_msg("ToroidalProjection: system does not contain variable: " + target_variable_label);
@@ -364,7 +363,7 @@ std::string ToroidalProjection::make_cache_key(
 
 void ToroidalProjection::project(
     const ApecMEquationSystems &input_eq,
-    const ApecMEquationSystems &target_eq,
+    ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
     const std::string &target_variable_label,
     const CylindricalCoordinateSystem &coordinate_system,
@@ -412,13 +411,14 @@ void ToroidalProjection::project(
     context.target_mesh.comm().sum(target_values);
     context.target_mesh.comm().sum(target_mask);
 
-    NumericVector<Number> &target_vector = *context.target_system.current_local_solution;
+    NumericVector<Number> &target_vector = *context.target_system.solution;
     apply_target_values(context, target_values, target_mask, target_vector);
+    context.target_system.update();
 }
 
 void ToroidalProjection::toroidal_average(
     const ApecMEquationSystems &input_eq,
-    const ApecMEquationSystems &target_eq,
+    ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
     const std::string &target_variable_label,
     const CylindricalCoordinateSystem &coordinate_system,
@@ -479,6 +479,7 @@ void ToroidalProjection::toroidal_average(
     context.target_mesh.comm().sum(target_values);
     context.target_mesh.comm().sum(target_mask);
 
-    NumericVector<Number> &target_vector = *context.target_system.current_local_solution;
+    NumericVector<Number> &target_vector = *context.target_system.solution;
     apply_target_values(context, target_values, target_mask, target_vector);
+    context.target_system.update();
 }

@@ -46,7 +46,7 @@ public:
     }
 
 private:
-    using RampVectorTuple = std::tuple<NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
+    using RampVectorTuple = std::tuple<ApecMSystemBase *, NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
     std::vector<RampVectorTuple> collect_ramp_vectors();
 };
 

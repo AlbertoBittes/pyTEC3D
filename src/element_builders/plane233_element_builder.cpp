@@ -413,8 +413,8 @@ void ElementBuilder::build_plane233_rhs()
     DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
     DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
 
-    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->current_local_solution.get();
-    NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
+    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->solution.get();
+    NumericVector<Number> *element_loads_vector = element_loads_system->solution.get();
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {

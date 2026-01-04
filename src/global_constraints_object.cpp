@@ -14,6 +14,7 @@
 #include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -22,7 +23,7 @@
 #include <vector>
 
 std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
-GlobalConstraintsObject::build_volt_constraints()
+GlobalConstraintsObject::build_time_integration_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
@@ -32,13 +33,20 @@ GlobalConstraintsObject::build_volt_constraints()
 
     EquationSystems &equation_systems = system->get_equation_systems();
     const MeshBase &mesh = equation_systems.get_mesh();
-    if (time_step->get_transient_effect() || !system->has_variable("VOLT"))
+    if (time_step->get_transient_effect())
         return constraints;
 
+    const std::array<std::string, 2> variable_labels = {"VOLT", "EMF"};
     std::vector<dof_id_type> dof_indices;
-    dof_map.local_variable_indices(dof_indices, mesh, system->variable_number("VOLT"));
-    for (const auto &dof : dof_indices)
-        constraints.emplace(dof, ConstraintEntry{});
+    for (const auto &label : variable_labels)
+    {
+        if (!system->has_variable(label))
+            continue;
+        dof_indices.clear();
+        dof_map.local_variable_indices(dof_indices, mesh, system->variable_number(label));
+        for (const auto &dof : dof_indices)
+            constraints.emplace(dof, ConstraintEntry{});
+    }
     return constraints;
 }
 
@@ -458,8 +466,8 @@ void GlobalConstraintsObject::constrain()
     libMesh::out << "Setting transient effects constraints..." << std::endl;
 
     std::map<dof_id_type, ConstraintEntry> constraints;
-    auto volt_constraints = build_volt_constraints();
-    constraints.insert(volt_constraints.begin(), volt_constraints.end());
+    auto time_integration_constraints = build_time_integration_constraints();
+    constraints.insert(time_integration_constraints.begin(), time_integration_constraints.end());
 
     libMesh::out << "Setting point constraints..." << std::endl;
     auto point_constraints = build_point_constraints();

@@ -11,8 +11,8 @@ void ApecMEquationSystems::apply_ramped_effects(const Substep &time_substep)
 {
     auto ramp_sets = collect_ramp_vectors();
 
-    for (auto &[old_vec, current_vec, ramped_vec] : ramp_sets)
-        ApecMSystem<ExplicitSystem>::ramp_vectors(time_substep, *old_vec, *current_vec, *ramped_vec);
+    for (auto &[system, old_vec, current_vec, ramped_vec] : ramp_sets)
+        system->ramp_vectors(time_substep, *old_vec, *current_vec, *ramped_vec);
 }
 
 void ApecMEquationSystems::configure_systems()
@@ -148,22 +148,34 @@ std::vector<ApecMEquationSystems::RampVectorTuple> ApecMEquationSystems::collect
     std::vector<RampVectorTuple> ramp_sets;
 
     System &main_system = this->get_system<System>("ApecMLinearSystem");
+    auto *main_apec_system = dynamic_cast<ApecMSystemBase *>(&main_system);
+    if (!main_apec_system)
+        libmesh_error_msg("ApecMEquationSystems: ApecMLinearSystem is not an ApecMSystemBase.");
     ramp_sets.emplace_back(
+        main_apec_system,
         main_system.request_vector("old_node_dof_constraints"),
         main_system.request_vector("node_dof_constraints"),
         main_system.request_vector("ramped_node_dof_constraints"));
 
     System &element_loads_system = this->get_system<System>("ElementLoadsSystem");
+    auto *element_apec_system = dynamic_cast<ApecMSystemBase *>(&element_loads_system);
+    if (!element_apec_system)
+        libmesh_error_msg("ApecMEquationSystems: ElementLoadsSystem is not an ApecMSystemBase.");
     ramp_sets.emplace_back(
+        element_apec_system,
         element_loads_system.request_vector("old_loads"),
         element_loads_system.request_vector("new_loads"),
-        element_loads_system.current_local_solution.get());
+        element_loads_system.solution.get());
 
     System &nodal_loads_system = this->get_system<System>("NodalLoadsSystem");
+    auto *nodal_apec_system = dynamic_cast<ApecMSystemBase *>(&nodal_loads_system);
+    if (!nodal_apec_system)
+        libmesh_error_msg("ApecMEquationSystems: NodalLoadsSystem is not an ApecMSystemBase.");
     ramp_sets.emplace_back(
+        nodal_apec_system,
         nodal_loads_system.request_vector("old_loads"),
         nodal_loads_system.request_vector("new_loads"),
-        nodal_loads_system.current_local_solution.get());
+        nodal_loads_system.solution.get());
 
     return ramp_sets;
 }
