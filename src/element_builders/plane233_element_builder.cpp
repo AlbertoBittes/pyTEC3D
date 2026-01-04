@@ -78,11 +78,8 @@ void ElementBuilder::build_plane233()
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials_object = this->context<MaterialsObject>();
-
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
-    auto real_constants_object = this->context<RealConstantsObject>();
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -209,8 +206,8 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
+        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object_->get_sigma_matrix();
         auto build_caa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -231,12 +228,12 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
+        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
         Real thk = 1.0;
-        if (real_constants_object && real_constants_object->has_constant(this->elem_data.real_constant_num))
-            thk = real_constants_object->get_constant(this->elem_data.real_constant_num)[0];
+        if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
+            thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
         if (thk == 0.0)
             libmesh_error_msg("THK is zero for SOLID_CONDUCTOR elements.");
 
@@ -283,12 +280,12 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
+        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
         Real thk = 1.0;
-        if (real_constants_object && real_constants_object->has_constant(this->elem_data.real_constant_num))
-            thk = real_constants_object->get_constant(this->elem_data.real_constant_num)[0];
+        if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
+            thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
         if (thk == 0.0)
             libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
 
@@ -335,10 +332,10 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
 
-        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -384,10 +381,10 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
 
-        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -469,16 +466,6 @@ void ElementBuilder::build_plane233_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *main_sys = &this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    System *nodal_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_LOADS);
-    System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
-
-    DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
-    DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
-
-    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->solution.get();
-    NumericVector<Number> *element_loads_vector = element_loads_system->solution.get();
-
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
@@ -488,10 +475,10 @@ void ElementBuilder::build_plane233_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        if (element_loads_system->has_variable("Js_z"))
+        if (element_loads_system_->has_variable("Js_z"))
         {
-            dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
-            element_loads_vector->get(dof_indices_loads, loads_vec);
+            element_loads_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices_loads);
+            element_loads_system_->solution.get()->get(dof_indices_loads, loads_vec);
 
             auto build_fa = [&]()
             {
@@ -500,17 +487,17 @@ void ElementBuilder::build_plane233_rhs()
             };
             build_fa();
         }
-        // if (nodal_loads_system->has_variable("CSG_z"))
+        // if (nodal_loads_system_->has_variable("CSG_z"))
         // {
         //     // Apply nodal CSG loads
-        //     nodal_loads_vector->get(dof_indices_loads, loads_vec);
+        //     nodal_loads_system_->solution.get()->get(dof_indices_loads, loads_vec);
 
         //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
         //         if (loads_vec[dof_i] != 0)
         //             Fe(dof_i) = loads_vec[dof_i];
 
         //     for (dof_id_type &dof_value : dof_indices_loads)
-        //         nodal_loads_vector->set(dof_value, 0);
+        //         nodal_loads_system_->solution->set(dof_value, 0);
         // }
         break;
     }
@@ -525,13 +512,13 @@ void ElementBuilder::build_plane233_rhs()
             volt_var_name = "V";
         else
             volt_var_name = "VOLT";
-        if (nodal_loads_system->has_variable("AMPS") && main_sys->has_variable(volt_var_name) && main_sys->has_variable("A_z"))
+        if (nodal_loads_system_->has_variable("AMPS") && dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("A_z"))
         {
             auto build_fv = [&]()
             {
-                unsigned int amp_var_num = nodal_loads_system->variable_number("AMPS");
-                unsigned int v_var_num = main_sys->variable_number(volt_var_name);
-                unsigned int az_var_num = main_sys->variable_number("A_z");
+                unsigned int amp_var_num = nodal_loads_system_->variable_number("AMPS");
+                unsigned int v_var_num = dof_solution_system_->variable_number(volt_var_name);
+                unsigned int az_var_num = dof_solution_system_->variable_number("A_z");
 
                 unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
                 unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, v_var_num);
@@ -539,14 +526,14 @@ void ElementBuilder::build_plane233_rhs()
                 if (n_dofs_V != n_dofs_A)
                     libmesh_error_msg("Number of DOFs for V and A_z do not match in stranded coil solenoidal elements");
 
-                unsigned int proc_id = main_sys->comm().rank();
+                unsigned int proc_id = dof_solution_system_->comm().rank();
                 dof_indices_loads.clear();
                 for (const auto &node : elem_data.elem->node_ref_range())
                     if (node.processor_id() == proc_id)
                         if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
                             dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
 
-                nodal_loads_vector->get(dof_indices_loads, loads_vec);
+                nodal_loads_system_->current_local_solution.get()->get(dof_indices_loads, loads_vec);
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 {
@@ -583,14 +570,10 @@ void ElementBuilder::build_plane233_nodal_solution()
     if (api_vars.empty())
         return;
 
-    auto *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    auto *nodal_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_SOLUTION);
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    auto materials_object = this->context<MaterialsObject>();
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
-
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     auto &An = solution_vector_support.sol_vectors[0];
 
     auto &nodal_vectors = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS];
@@ -623,26 +606,9 @@ void ElementBuilder::build_plane233_nodal_solution()
         have_h = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::B:
-            build_b();
-            if (have_b)
-                nodal_vectors[k] = Bn;
-            break;
-        case APIVariableName::H:
-            build_h();
-            if (have_h)
-                nodal_vectors[k] = Hn;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_bh_nodal_vectors(api_vars, nodal_vectors, build_b, have_b, Bn, build_h, have_h, Hn);
 
-    this->append_and_write_solution(*nodal_solution_system, nodal_vectors);
+    this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
 
 void ElementBuilder::build_plane233_element_solution()
@@ -653,16 +619,10 @@ void ElementBuilder::build_plane233_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    auto *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    auto *element_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    auto materials_object = this->context<MaterialsObject>();
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
-
-    auto real_constants_object = this->context<RealConstantsObject>();
-
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     auto &An = solution_vector_support.sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
@@ -742,11 +702,9 @@ void ElementBuilder::build_plane233_element_solution()
             break;
         case PhysicalRegionEnum::STRANDED_CONDUCTOR:
         {
-            auto element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
-            auto element_loads_dof_map = &element_loads_system->get_dof_map();
+            auto element_loads_dof_map = &element_loads_system_->get_dof_map();
             element_loads_dof_map->dof_indices(elem_data.elem, dof_indices);
-            NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
-            element_loads_vector->get(dof_indices, Je.get_values());
+            element_loads_system_->current_local_solution.get()->get(dof_indices, Je.get_values());
             break;
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
@@ -757,15 +715,15 @@ void ElementBuilder::build_plane233_element_solution()
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
                 Vn = solution_vector_support.sol_vectors[1][0];
 
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
                 Vn = solution_vector_support.sol_vectors[1][0];
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
-            materials_object->fill_sigma_matrix(this->elem_data.material_num);
-            auto &sigma_matrix = materials_object->get_sigma_matrix();
+            materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+            auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
             auto &An_dt = solution_vector_support.sol_vectors[0];
 
@@ -780,8 +738,8 @@ void ElementBuilder::build_plane233_element_solution()
                 break;
 
             Real thk = 1.0;
-            if (real_constants_object && real_constants_object->has_constant(this->elem_data.real_constant_num))
-                thk = real_constants_object->get_constant(this->elem_data.real_constant_num)[0];
+            if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
+                thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
             if (thk == 0.0)
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
             Real V_factor = Vn / thk;
@@ -802,7 +760,7 @@ void ElementBuilder::build_plane233_element_solution()
                 En = solution_vector_support.sol_vectors[2][0];
             }
 
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
             {
@@ -810,7 +768,7 @@ void ElementBuilder::build_plane233_element_solution()
                 En = solution_vector_support.sol_vectors[2][0];
             }
 
-            const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+            const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
             const Real sc = rc[1];
             const Real nc = rc[2];
             const Real tz = rc[7];
@@ -828,36 +786,22 @@ void ElementBuilder::build_plane233_element_solution()
         have_je = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::Jt:
-            build_je();
-            if (have_je)
-                element_vectors[k] = Je;
-            break;
-        case APIVariableName::Be:
-            build_be();
-            if (have_be)
-                element_vectors[k] = Be;
-            break;
-        case APIVariableName::He:
-            build_he();
-            if (have_he)
-                element_vectors[k] = He;
-            break;
-        case APIVariableName::PSIe:
-            build_psie();
-            if (have_psie)
-                element_vectors[k] = PSIe;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_element_vectors_jt_be_he_psie(api_vars,
+                                             element_vectors,
+                                             build_je,
+                                             have_je,
+                                             Je,
+                                             build_be,
+                                             have_be,
+                                             Be,
+                                             build_he,
+                                             have_he,
+                                             He,
+                                             build_psie,
+                                             have_psie,
+                                             PSIe);
 
-    this->append_and_write_solution(*element_solution_system, element_vectors);
+    this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
 
 void ElementBuilder::build_plane233_support_solution()
@@ -866,10 +810,7 @@ void ElementBuilder::build_plane233_support_solution()
     if (api_vars.empty())
         return;
 
-    auto *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    auto *support_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::SUPPORT_SOLUTION);
-
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     auto &An = solution_vector_support.sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
@@ -892,19 +833,7 @@ void ElementBuilder::build_plane233_support_solution()
         have_psi = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::PSI:
-            build_psi();
-            if (have_psi)
-                support_vectors[k] = psi_values;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_support_vectors_psi(api_vars, support_vectors, build_psi, have_psi, psi_values);
 
-    this->append_and_write_solution(*support_solution_system, support_vectors);
+    this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

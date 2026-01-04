@@ -30,6 +30,23 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
+    equation_systems_ = dynamic_cast<ApecMEquationSystems *>(equation_systems);
+    if (!equation_systems_)
+        libmesh_error_msg("ElementBuilder: equation systems is not ApecMEquationSystems.");
+
+    dof_solution_system_ = dynamic_cast<ApecMLinearSystem *>(&equation_systems_->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    if (!dof_solution_system_)
+        libmesh_error_msg("ElementBuilder: DOF solution system is not ApecMLinearSystem.");
+
+    nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
+    element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
+    support_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::SUPPORT_SOLUTION);
+    nodal_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_LOADS);
+    element_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_LOADS);
+    dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
+
+    materials_object_ = this->context<MaterialsObject>();
+    real_constants_object_ = this->context<RealConstantsObject>();
 }
 
 std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
@@ -284,10 +301,8 @@ void ElementBuilder::build_support_solution()
 bool ElementBuilder::build_solution_vectors_from_emat_files(dof_id_type element_id,
                                                             const std::filesystem::path &emat_folderpath)
 {
-    auto eq_sys = this->get_parent_object();
-
     const auto elem_id_uint = static_cast<unsigned int>(element_id);
-    auto &mesh = eq_sys->get_mesh();
+    auto &mesh = equation_systems_->get_mesh();
     Elem *elem_ptr = mesh.query_elem_ptr(elem_id_uint);
     if (!elem_ptr)
         return false;
@@ -306,10 +321,8 @@ void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *s
 {
     solution_vector_support.clear();
 
-    auto eq_sys = this->get_parent_object();
-
-    System *sys = &eq_sys->get_system(dof_map_index);
-    DofMap *dof_map = &sys->get_dof_map();
+    System *sys = &equation_systems_->get_system(dof_map_index);
+    DofMap *dof_map = (dof_map_index == ApecMSystemBase::DOF_SOLUTION_SYSTEM) ? dof_solution_dof_map_ : &sys->get_dof_map();
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     ApecMSystemBase::SystemType sys_type = static_cast<ApecMSystemBase::SystemType>(dof_map_index);
 

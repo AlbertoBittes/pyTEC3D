@@ -79,10 +79,8 @@ void ElementBuilder::build_solid97()
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
 
-    auto materials_object = this->context<MaterialsObject>();
-
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -213,8 +211,8 @@ void ElementBuilder::build_solid97()
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
+        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
         auto build_caa = [&]()
         {
@@ -268,8 +266,8 @@ void ElementBuilder::build_solid97()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
-        materials_object->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object->get_sigma_matrix();
+        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+        auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
         auto build_caa = [&]()
         {
@@ -319,11 +317,10 @@ void ElementBuilder::build_solid97()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        auto real_constants_object = this->context<RealConstantsObject>();
-        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
 
-        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -375,11 +372,10 @@ void ElementBuilder::build_solid97()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        auto real_constants_object = this->context<RealConstantsObject>();
-        if (!real_constants_object || !real_constants_object->has_constant(this->elem_data.real_constant_num))
+        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
 
-        const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -581,16 +577,6 @@ void ElementBuilder::build_solid97_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    System *main_system = &this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    System *nodal_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_LOADS);
-    System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
-
-    DofMap *dof_map_nodal_loads = &nodal_loads_system->get_dof_map();
-    DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
-
-    NumericVector<Number> *nodal_loads_vector = nodal_loads_system->current_local_solution.get();
-    NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
-
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
@@ -600,8 +586,8 @@ void ElementBuilder::build_solid97_rhs()
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
         // Pay attention here if you add other variables to elemental loads system
-        dof_map_element_loads->dof_indices(elem_data.elem, dof_indices_loads);
-        element_loads_vector->get(dof_indices_loads, loads_vec);
+        element_loads_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices_loads);
+        element_loads_system_->current_local_solution.get()->get(dof_indices_loads, loads_vec);
 
         auto build_fa = [&]()
         {
@@ -625,14 +611,14 @@ void ElementBuilder::build_solid97_rhs()
             volt_var_name = "V";
         else
             volt_var_name = "VOLT";
-        if (nodal_loads_system->has_variable("AMPS") && main_system->has_variable(volt_var_name))
+        if (nodal_loads_system_->has_variable("AMPS") && dof_solution_system_->has_variable(volt_var_name))
         {
             auto build_fv = [&]()
             {
-                unsigned int amps_var_num = nodal_loads_system->variable_number("AMPS");
-                unsigned int volt_var_num = main_system->variable_number(volt_var_name);
+                unsigned int amps_var_num = nodal_loads_system_->variable_number("AMPS");
+                unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
 
-                unsigned int proc_id = nodal_loads_system->comm().rank();
+                unsigned int proc_id = nodal_loads_system_->comm().rank();
                 dof_indices_loads.clear();
 
                 for (const auto &node : elem_data.elem->node_ref_range())
@@ -641,7 +627,7 @@ void ElementBuilder::build_solid97_rhs()
                             dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amps_var_num, 0));
 
                 // Apply nodal AMPS loads
-                nodal_loads_vector->get(dof_indices_loads, loads_vec);
+                nodal_loads_system_->current_local_solution.get()->get(dof_indices_loads, loads_vec);
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
@@ -678,14 +664,10 @@ void ElementBuilder::build_solid97_nodal_solution()
     if (api_vars.empty())
         return;
 
-    auto materials_object = this->context<MaterialsObject>();
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    auto *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    auto *nodal_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::NODAL_SOLUTION);
-
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
@@ -723,26 +705,9 @@ void ElementBuilder::build_solid97_nodal_solution()
         have_h = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::B:
-            build_b();
-            if (have_b)
-                nodal_vectors[k] = Bn;
-            break;
-        case APIVariableName::H:
-            build_h();
-            if (have_h)
-                nodal_vectors[k] = Hn;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_bh_nodal_vectors(api_vars, nodal_vectors, build_b, have_b, Bn, build_h, have_h, Hn);
 
-    this->append_and_write_solution(*nodal_solution_system, nodal_vectors);
+    this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
 
 void ElementBuilder::build_solid97_element_solution()
@@ -753,16 +718,10 @@ void ElementBuilder::build_solid97_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    auto materials_object = this->context<MaterialsObject>();
-    materials_object->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object->get_nu_matrix();
+    materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    auto real_constants_object = this->context<RealConstantsObject>();
-
-    auto *main_sys = dynamic_cast<ApecMLinearSystem *>(&this->get_parent_object()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    auto *element_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
-
-    this->fill_solution_vector_support(main_sys->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
@@ -823,11 +782,8 @@ void ElementBuilder::build_solid97_element_solution()
             break;
         case PhysicalRegionEnum::STRANDED_CONDUCTOR:
         {
-            System *element_loads_system = &this->get_parent_object()->get_system(ApecMSystemBase::ELEMENT_LOADS);
-            DofMap *dof_map_element_loads = &element_loads_system->get_dof_map();
-            dof_map_element_loads->dof_indices(elem_data.elem, dof_indices);
-            NumericVector<Number> *element_loads_vector = element_loads_system->current_local_solution.get();
-            element_loads_vector->get(dof_indices, Je.get_values());
+            element_loads_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices);
+            element_loads_system_->current_local_solution.get()->get(dof_indices, Je.get_values());
             break;
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
@@ -837,15 +793,15 @@ void ElementBuilder::build_solid97_element_solution()
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
             auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
 
-            materials_object->fill_sigma_matrix(this->elem_data.material_num);
-            auto &sigma_matrix = materials_object->get_sigma_matrix();
+            materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+            auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
             DenseVector<Number> Vn;
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
                 Vn = solution_vector_support.sol_vectors[3];
 
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), 0); // solution_derivative
+            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
 
             DenseVector<Number> An_dt;
             for (unsigned int k = 0; k < 3; k++)
@@ -882,7 +838,7 @@ void ElementBuilder::build_solid97_element_solution()
                 En = solution_vector_support.sol_vectors[4][0];
             }
 
-            fill_solution_vector_support(main_sys->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
             {
@@ -890,7 +846,7 @@ void ElementBuilder::build_solid97_element_solution()
                 En = solution_vector_support.sol_vectors[4][0];
             }
 
-            const auto &rc = real_constants_object->get_constant(this->elem_data.real_constant_num);
+            const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
             const Real sc = rc[1];
             const Real nc = rc[2];
 
@@ -919,36 +875,22 @@ void ElementBuilder::build_solid97_element_solution()
         have_psie = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::Jt:
-            build_je();
-            if (have_je)
-                element_vectors[k] = Je;
-            break;
-        case APIVariableName::Be:
-            build_be();
-            if (have_be)
-                element_vectors[k] = Be;
-            break;
-        case APIVariableName::He:
-            build_he();
-            if (have_he)
-                element_vectors[k] = He;
-            break;
-        case APIVariableName::PSIe:
-            build_psie();
-            if (have_psie)
-                element_vectors[k] = PSIe;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_element_vectors_jt_be_he_psie(api_vars,
+                                             element_vectors,
+                                             build_je,
+                                             have_je,
+                                             Je,
+                                             build_be,
+                                             have_be,
+                                             Be,
+                                             build_he,
+                                             have_he,
+                                             He,
+                                             build_psie,
+                                             have_psie,
+                                             PSIe);
 
-    this->append_and_write_solution(*element_solution_system, element_vectors);
+    this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
 
 void ElementBuilder::build_solid97_support_solution()
@@ -956,8 +898,6 @@ void ElementBuilder::build_solid97_support_solution()
     auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::SUPPORT_SOLUTION);
     if (api_vars.empty())
         return;
-
-    auto *support_solution_system = &this->get_parent_object()->get_system(ApecMSystemBase::SUPPORT_SOLUTION);
 
     std::vector<DenseVector<Number>> support_vectors;
     support_vectors.resize(api_vars.size());
@@ -972,19 +912,7 @@ void ElementBuilder::build_solid97_support_solution()
         have_psi = true;
     };
 
-    for (unsigned int k = 0; k < api_vars.size(); ++k)
-    {
-        switch (api_vars[k])
-        {
-        case APIVariableName::PSI:
-            build_psi();
-            if (have_psi)
-                support_vectors[k] = psi_values;
-            break;
-        default:
-            break;
-        }
-    }
+    this->fill_support_vectors_psi(api_vars, support_vectors, build_psi, have_psi, psi_values);
 
-    this->append_and_write_solution(*support_solution_system, support_vectors);
+    this->append_and_write_solution(*support_solution_system_, support_vectors);
 }
