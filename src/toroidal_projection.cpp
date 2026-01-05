@@ -1,18 +1,10 @@
 #include "toroidal_projection.h"
 #include "coordinate_system.h"
-#include "apec_m_mesh.h"
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "variables_map.h"
 
-#include <array>
-#include <cstdint>
-#include <cmath>
-#include <iomanip>
 #include <limits>
-#include <map>
-#include <set>
-#include <sstream>
 
 #include <libmesh/elem.h>
 #include <libmesh/libmesh.h>
@@ -67,26 +59,6 @@ namespace
         }
     }
 
-    std::map<dof_id_type, Point> map_mesh_local_coordinates(const ApecMMesh &mesh,
-                                                            bool is_nodal,
-                                                            const CylindricalCoordinateSystem &coordinate_system)
-    {
-        if (is_nodal)
-        {
-            const auto node_range = mesh.local_node_ptr_range();
-            return mesh.map_local_coordinates(node_range.begin(), node_range.end(), coordinate_system);
-        }
-
-        std::vector<const Elem *> elements;
-        elements.reserve(mesh.n_active_elem());
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            if (elem->infinite() || elem->type() == NODEELEM)
-                continue;
-            elements.push_back(elem);
-        }
-        return mesh.map_local_coordinates(elements.begin(), elements.end(), coordinate_system);
-    }
 
     struct ProjectionContext
     {
@@ -217,150 +189,52 @@ namespace
         target_vector.close();
     }
 
-}
-
-const ToroidalProjection::CachedEntry &ToroidalProjection::get_or_build_cache(
-    const MeshBase &input_mesh,
-    const MeshBase &target_mesh,
-    bool input_is_nodal,
-    bool target_is_nodal,
-    const CylindricalCoordinateSystem &coordinate_system,
-    Real tolerance)
-{
-    const std::size_t input_count = input_is_nodal ? input_mesh.n_nodes() : input_mesh.n_elem();
-    const std::size_t target_count = target_is_nodal ? target_mesh.n_nodes() : target_mesh.n_elem();
-
-    const auto key = make_cache_key(
-        input_mesh,
-        target_mesh,
-        input_is_nodal,
-        target_is_nodal,
-        coordinate_system,
-        tolerance,
-        input_count,
-        target_count);
-
-    auto it = cache_.find(key);
-    if (it != cache_.end())
-        return it->second;
-
-    CachedEntry entry = build_cache(
-        input_mesh,
-        target_mesh,
-        input_is_nodal,
-        target_is_nodal,
-        coordinate_system,
-        tolerance);
-
-    auto inserted = cache_.emplace(key, std::move(entry));
-    return inserted.first->second;
-}
-
-ToroidalProjection::CachedEntry ToroidalProjection::build_cache(
-    const MeshBase &input_mesh,
-    const MeshBase &target_mesh,
-    bool input_is_nodal,
-    bool target_is_nodal,
-    const CylindricalCoordinateSystem &coordinate_system,
-    Real tolerance) const
-{
-    if (tolerance <= 0.0)
-        libmesh_error_msg("tolerance must be positive.");
-
-    const std::size_t input_count = input_is_nodal ? input_mesh.n_nodes() : input_mesh.n_elem();
-    const std::size_t target_count = target_is_nodal ? target_mesh.n_nodes() : target_mesh.n_elem();
-
-    const auto *input_apec_mesh = dynamic_cast<const ApecMMesh *>(&input_mesh);
-    if (!input_apec_mesh)
-        libmesh_error_msg("ToroidalProjection: input mesh is not an ApecMMesh.");
-    const auto *target_apec_mesh = dynamic_cast<const ApecMMesh *>(&target_mesh);
-    if (!target_apec_mesh)
-        libmesh_error_msg("ToroidalProjection: target mesh is not an ApecMMesh.");
-
-    auto input_map = map_mesh_local_coordinates(*input_apec_mesh, input_is_nodal, coordinate_system);
-    auto target_map = map_mesh_local_coordinates(*target_apec_mesh, target_is_nodal, coordinate_system);
-
-    std::map<dof_id_type, std::array<Real, 3>> input_local_map;
-    std::map<dof_id_type, std::array<Real, 3>> target_local_map;
-    for (const auto &entry : input_map)
-        input_local_map.emplace(entry.first, std::array<Real, 3>{{entry.second(0), entry.second(1), entry.second(2)}});
-    for (const auto &entry : target_map)
-        target_local_map.emplace(entry.first, std::array<Real, 3>{{entry.second(0), entry.second(1), entry.second(2)}});
-
-    input_mesh.comm().set_union(input_local_map);
-    target_mesh.comm().set_union(target_local_map);
-
-    const Real scale = 1.0 / tolerance;
-    std::unordered_map<QuantKey, std::vector<dof_id_type>, QuantKeyHash> target_index;
-    target_index.reserve(target_count);
-
-    for (const auto &entry : target_local_map)
+    ToroidalProjection::Map build_reverse_map(const ToroidalProjection::Map &forward)
     {
-        if (entry.first >= target_count)
-            continue;
-        const auto &local = entry.second;
-        const Real radius = local[0];
-        const Real axial = local[2];
-        const auto key = QuantKey{
-            static_cast<long long>(std::llround(radius * scale)),
-            static_cast<long long>(std::llround(axial * scale))};
-        target_index[key].push_back(entry.first);
+        std::size_t max_target = 0;
+        for (const auto &row : forward)
+        {
+            if (row.size() <= 1)
+                continue;
+            for (std::size_t k = 1; k < row.size(); ++k)
+                max_target = std::max<std::size_t>(max_target, row[k]);
+        }
+
+        ToroidalProjection::Map reverse;
+        reverse.resize(max_target + 1);
+        for (std::size_t id = 0; id <= max_target; ++id)
+            reverse[id].push_back(static_cast<dof_id_type>(id));
+
+        for (const auto &row : forward)
+        {
+            if (row.empty())
+                continue;
+            const auto source_id = row.front();
+            for (std::size_t k = 1; k < row.size(); ++k)
+            {
+                const auto target_id = row[k];
+                if (target_id >= reverse.size())
+                    continue;
+                reverse[target_id].push_back(source_id);
+            }
+        }
+        return reverse;
     }
 
-    CachedEntry entry;
-    entry.map.resize(input_count);
-
-    for (std::size_t i = 0; i < input_count; ++i)
-    {
-        auto &row = entry.map[i];
-        row.push_back(static_cast<dof_id_type>(i));
-        const auto input_id = static_cast<dof_id_type>(i);
-        const auto map_it = input_local_map.find(input_id);
-        if (map_it == input_local_map.end())
-            continue;
-        const auto &local = map_it->second;
-        const Real radius = local[0];
-        const Real axial = local[2];
-        const auto key = QuantKey{
-            static_cast<long long>(std::llround(radius * scale)),
-            static_cast<long long>(std::llround(axial * scale))};
-        const auto it = target_index.find(key);
-        if (it == target_index.end())
-            continue;
-        const auto &matches = it->second;
-        row.insert(row.end(), matches.begin(), matches.end());
-    }
-
-    return entry;
 }
 
-std::string ToroidalProjection::make_cache_key(
-    const MeshBase &input_mesh,
-    const MeshBase &target_mesh,
-    bool input_is_nodal,
-    bool target_is_nodal,
-    const CylindricalCoordinateSystem &coordinate_system,
-    Real tolerance,
-    std::size_t input_count,
-    std::size_t target_count) const
+void ToroidalProjection::set_maps(const Map &nodal_map, const Map &elem_map)
 {
-    const Point origin = coordinate_system.origin();
-    const auto rotation = coordinate_system.local_to_global_rotation(origin);
-    std::ostringstream oss;
-    oss.setf(std::ios::fixed);
-    oss << reinterpret_cast<std::uintptr_t>(&input_mesh) << '|'
-        << reinterpret_cast<std::uintptr_t>(&target_mesh) << '|'
-        << input_is_nodal << '|'
-        << target_is_nodal << '|'
-        << input_count << '|'
-        << target_count << '|'
-        << std::setprecision(12)
-        << origin(0) << ',' << origin(1) << ',' << origin(2) << '|'
-        << rotation(0, 0) << ',' << rotation(0, 1) << ',' << rotation(0, 2) << ','
-        << rotation(1, 0) << ',' << rotation(1, 1) << ',' << rotation(1, 2) << ','
-        << rotation(2, 0) << ',' << rotation(2, 1) << ',' << rotation(2, 2) << '|'
-        << tolerance;
-    return oss.str();
+    if (!nodal_map.empty())
+    {
+        nodal_map_fwd_ = nodal_map;
+        nodal_map_rev_ = build_reverse_map(nodal_map);
+    }
+    if (!elem_map.empty())
+    {
+        elem_map_fwd_ = elem_map;
+        elem_map_rev_ = build_reverse_map(elem_map);
+    }
 }
 
 void ToroidalProjection::project(
@@ -368,23 +242,19 @@ void ToroidalProjection::project(
     ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
     const std::string &target_variable_label,
-    const CylindricalCoordinateSystem &coordinate_system,
-    Real tolerance)
+    const CylindricalCoordinateSystem &coordinate_system)
 {
     const auto context = build_projection_context(input_eq,
                                                   target_eq,
                                                   input_variable_label,
                                                   target_variable_label);
+    (void)coordinate_system;
 
-    const auto &cached = get_or_build_cache(
-        context.input_mesh,
-        context.target_mesh,
-        context.input_is_nodal,
-        context.target_is_nodal,
-        coordinate_system,
-        tolerance);
-    const auto &active_map = cached.map;
-    // target_vector.zero();
+    const auto &active_map = context.input_is_nodal ? nodal_map_fwd_ : elem_map_fwd_;
+    if (active_map.empty())
+        libmesh_error_msg("ToroidalProjection: projection map is empty.");
+    if (active_map.size() != context.input_count)
+        libmesh_error_msg("ToroidalProjection: projection map row count does not match input mesh.");
 
     std::vector<Real> input_values = build_input_values(context);
 
@@ -423,24 +293,19 @@ void ToroidalProjection::toroidal_average(
     ApecMEquationSystems &target_eq,
     const std::string &input_variable_label,
     const std::string &target_variable_label,
-    const CylindricalCoordinateSystem &coordinate_system,
-    Real tolerance)
+    const CylindricalCoordinateSystem &coordinate_system)
 {
     const auto context = build_projection_context(input_eq,
                                                   target_eq,
                                                   input_variable_label,
                                                   target_variable_label);
+    (void)coordinate_system;
 
-    const auto &cached = get_or_build_cache(
-        context.target_mesh,
-        context.input_mesh,
-        context.target_is_nodal,
-        context.input_is_nodal,
-        coordinate_system,
-        tolerance);
-    const auto &active_map = cached.map;
-    // target_vector.close();
-    // target_vector.zero();
+    const auto &active_map = context.target_is_nodal ? nodal_map_rev_ : elem_map_rev_;
+    if (active_map.empty())
+        libmesh_error_msg("ToroidalProjection: projection map is empty.");
+    if (active_map.size() != context.target_count)
+        libmesh_error_msg("ToroidalProjection: projection map row count does not match target mesh.");
 
     std::vector<Real> input_values = build_input_values(context);
 

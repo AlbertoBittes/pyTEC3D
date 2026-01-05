@@ -17,6 +17,8 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 {
     auto settings = this->context<ApecMSettingsObject>();
     bool print_full_output = settings->print_full_output();
+    const auto &toroidal_map_nodes = settings->toroidal_projection_map_nodes();
+    const auto &toroidal_map_elems = settings->toroidal_projection_map_elems();
 
     APEC_M *program = this->get_parent_object();
 
@@ -42,6 +44,10 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     const std::string jtor_lab = (main_mesh_dim == 2) ? "_z" : "_y";
     const std::string brad_lab = "_x";
     const std::string bver_lab = (main_mesh_dim == 2) ? "_y" : "_z";
+
+    if (first_absolute_iteration)
+        if (!toroidal_map_nodes.empty() || !toroidal_map_elems.empty())
+            toroidal_proj->set_maps(toroidal_map_nodes, toroidal_map_elems);
 
     if (!first_absolute_iteration)
     {
@@ -88,6 +94,9 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "PSI",
         cylindrical_coordinate_system);
 
+    main_sys_element_sol.global_to_local_coordinate_system_solution(
+        cylindrical_coordinate_system,
+        "Jt");
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
@@ -109,6 +118,9 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "PSIe",
         cylindrical_coordinate_system);
 
+    main_sys_element_sol.global_to_local_coordinate_system_solution(
+        cylindrical_coordinate_system,
+        "B");
     // Project B
     toroidal_proj->toroidal_average(
         *main_eq_sys,
@@ -123,6 +135,14 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "Be" + bver_lab,
         "Be_y",
         cylindrical_coordinate_system);
+
+    main_sys_element_sol.local_to_global_coordinate_system_solution(
+        cylindrical_coordinate_system,
+        "B");
+
+    main_sys_element_sol.local_to_global_coordinate_system_solution(
+        cylindrical_coordinate_system,
+        "Jt");
 
     find_separatrix();
 

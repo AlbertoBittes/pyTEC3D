@@ -49,7 +49,7 @@ apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
 apec.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
+    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem", n_slices=1
 )
 
 # Write loads and BCs and save the static mesh

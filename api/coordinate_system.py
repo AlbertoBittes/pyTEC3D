@@ -206,8 +206,10 @@ class CylindricalCoordinateSystem(CoordinateSystem):
 
         e_r = np.zeros_like(local_positions)
         e_theta = np.zeros_like(local_positions)
+        e_z = np.zeros_like(local_positions)
         e_r[:, 0] = 1.0
         e_theta[:, 1] = 1.0
+        e_z[:, 2] = 1.0
         e_z = np.zeros_like(local_positions)
         e_z[:, 2] = 1.0
 
@@ -234,8 +236,10 @@ class CylindricalCoordinateSystem(CoordinateSystem):
 
         e_r = np.zeros_like(local_positions)
         e_theta = np.zeros_like(local_positions)
+        e_z = np.zeros_like(local_positions)
         e_r[:, 0] = 1.0
         e_theta[:, 1] = 1.0
+        e_z[:, 2] = 1.0
 
         nonzero = r > 0.0
         if np.any(nonzero):

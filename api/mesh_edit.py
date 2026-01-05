@@ -725,12 +725,15 @@ class MeshEdit:
 
         Each input point/cell centroid is associated with target points/cell centroids that share
         the same radial distance from the rotation axis and the same axial coordinate within
-        the given tolerance. The tolerance is increased until each input ID has at least n_slices
-        corresponding target IDs, then matches are sorted by poloidal distance and trimmed to
-        n_slices.
+        the given tolerance. Target points/cell centroids are also filtered to exclude matches
+        on the same poloidal plane (theta within tolerance). For points on the rotation axis
+        (r=0), the map assumes a single match. The tolerance is increased until each input ID has
+        at least n_slices corresponding target IDs, then matches are sorted by poloidal distance
+        and trimmed to n_slices.
         The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
         the remaining columns hold the corresponding target IDs.
-        If the input mesh has a selection array for the chosen location, only selected IDs are used.
+        If selection arrays exist on the input/target mesh for the chosen location, only selected
+        IDs are used.
 
         Args:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
@@ -746,8 +749,6 @@ class MeshEdit:
         Raises:
             ValueError: If inputs are invalid or the input mesh is not 2D.
         """
-        from selector import Selector
-
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
@@ -770,6 +771,8 @@ class MeshEdit:
                 "coordinate_system must be cylindrical for toroidal projection."
             )
 
+        from selector import Selector
+
         Selector.ensure_selection_arrays(input_mesh)
         input_local, input_ids = MeshEdit.to_local_coordinates(
             input_mesh,
@@ -777,19 +780,21 @@ class MeshEdit:
             location=location,
             selected_only=True,
         )
-        target_local, _ = MeshEdit.to_local_coordinates(
+        target_local, target_ids = MeshEdit.to_local_coordinates(
             target_mesh,
             coordinate_system,
             location=location,
-            selected_only=False,
+            selected_only=True,
         )
 
         if input_local.size == 0:
             return np.empty((0, 1), dtype=float)
 
         input_radius = input_local[:, 0]
+        input_theta = input_local[:, 1]
         input_axial = input_local[:, 2]
         target_radius = target_local[:, 0]
+        target_theta = target_local[:, 1]
         target_axial = target_local[:, 2]
 
         target_count = target_radius.shape[0]
@@ -802,33 +807,67 @@ class MeshEdit:
 
         num_input = input_radius.shape[0]
         tolerance_current = tolerance
+        theta_exclusion = tolerance
         matches_per_input: List[np.ndarray] = []
         counts: List[int] = []
 
-        while True:
+        axis_mask = input_radius <= tolerance
+        required_counts = np.where(axis_mask, 1, n_slices)
+
+        for input_id in range(num_input):
+            if axis_mask[input_id]:
+                continue
+            dtheta = np.abs(target_theta - input_theta[input_id])
+            eligible = int(np.count_nonzero(dtheta > theta_exclusion))
+            if eligible < n_slices:
+                raise ValueError(
+                    "Not enough target points/cells outside the theta exclusion "
+                    "tolerance to satisfy n_slices."
+                )
+
+        max_iterations = 50
+        for _ in range(max_iterations):
             matches_per_input = []
             counts = []
             for input_id in range(num_input):
                 dr = np.abs(target_radius - input_radius[input_id])
                 dz = np.abs(target_axial - input_axial[input_id])
-                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-                candidate_ids = np.where(mask)[0]
-                if candidate_ids.size:
-                    poloidal_dist = np.hypot(dr[candidate_ids], dz[candidate_ids])
+                dtheta = np.abs(target_theta - input_theta[input_id])
+                if axis_mask[input_id]:
+                    mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+                else:
+                    mask = (
+                        (dr <= tolerance_current)
+                        & (dz <= tolerance_current)
+                        & (dtheta > theta_exclusion)
+                    )
+                candidate_idx = np.where(mask)[0]
+                if candidate_idx.size:
+                    poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
                     order = np.argsort(poloidal_dist)
-                    candidate_ids = candidate_ids[order]
+                    candidate_idx = candidate_idx[order]
+                candidate_ids = target_ids[candidate_idx]
                 matches_per_input.append(candidate_ids)
                 counts.append(candidate_ids.size)
-            if all(count >= n_slices for count in counts):
+            if all(counts[i] >= required_counts[i] for i in range(num_input)):
                 break
             tolerance_current *= 2.0
+        else:
+            raise ValueError(
+                "Toroidal projection map did not converge within the "
+                "tolerance expansion limit."
+            )
 
         mapping = np.full((num_input, 1 + n_slices), np.nan)
         mapping[:, 0] = input_ids
         for row_idx, matches in enumerate(matches_per_input):
-            if matches.size:
+            if matches.size == 0:
+                continue
+            if axis_mask[row_idx]:
+                trimmed = np.full((n_slices,), matches[0], dtype=matches.dtype)
+            else:
                 trimmed = matches[:n_slices]
-                mapping[row_idx, 1 : 1 + trimmed.size] = trimmed
+            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed
 
         return mapping.astype(int)
 

@@ -1,8 +1,11 @@
 #include "apec_m_settings.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <sstream>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include <libmesh/libmesh.h>
@@ -145,4 +148,107 @@ void ApecMSettingsObject::parse_columns()
 
     if (this->has_column("equilibrium_mesh"))
         equilibrium_mesh_ = this->get_string("equilibrium_mesh");
+
+    if (this->has_column("n_slices"))
+        n_slices_ = static_cast<unsigned int>(this->get_int("n_slices"));
+
+    const auto parse_toroidal_map = [this](const std::string &key,
+                                           std::vector<std::vector<dof_id_type>> &out)
+    {
+        out.clear();
+        if (!this->has_column(key))
+            return;
+
+        const auto &array = this->get_column(key);
+        if (array.shape.size() != 2 && array.shape.size() != 3)
+            libmesh_error_msg("ApecMSettingsObject: '" + key + "' must be a 2D array.");
+
+        std::size_t entry_dim = 0;
+        std::size_t rows = 0;
+        std::size_t cols = 0;
+        if (array.shape.size() == 3)
+        {
+            entry_dim = array.shape[0];
+            rows = array.shape[1];
+            cols = array.shape[2];
+        }
+        else
+        {
+            rows = array.shape[0];
+            cols = array.shape[1];
+        }
+
+        if (rows == 0 || cols == 0)
+            return;
+        if (array.shape.size() == 3 && entry_dim == 0)
+            libmesh_error_msg("ApecMSettingsObject: '" + key + "' has no entries.");
+
+        out.assign(rows, {});
+        const std::size_t entry_stride = rows * cols;
+        const std::size_t base_offset = 0;
+
+        std::visit(
+            [&](const auto &vec)
+            {
+                using VecType = std::decay_t<decltype(vec)>;
+                using ElemType = typename VecType::value_type;
+                if constexpr (std::is_same_v<ElemType, int>)
+                {
+                    for (std::size_t r = 0; r < rows; ++r)
+                    {
+                        auto &row = out[r];
+                        row.reserve(cols);
+                        for (std::size_t c = 0; c < cols; ++c)
+                        {
+                            const std::size_t idx = base_offset + r * cols + c;
+                            const int value = vec[idx];
+                            if (c == 0)
+                            {
+                                if (value < 0)
+                                    libmesh_error_msg("ApecMSettingsObject: invalid input id in '" + key + "'.");
+                                row.push_back(static_cast<dof_id_type>(value));
+                            }
+                            else if (value >= 0)
+                            {
+                                row.push_back(static_cast<dof_id_type>(value));
+                            }
+                        }
+                    }
+                }
+                else if constexpr (std::is_same_v<ElemType, Real>)
+                {
+                    for (std::size_t r = 0; r < rows; ++r)
+                    {
+                        auto &row = out[r];
+                        row.reserve(cols);
+                        for (std::size_t c = 0; c < cols; ++c)
+                        {
+                            const std::size_t idx = base_offset + r * cols + c;
+                            const Real value = vec[idx];
+                            if (!std::isfinite(static_cast<double>(value)))
+                                continue;
+                            const auto rounded = static_cast<long long>(std::llround(value));
+                            if (c == 0)
+                            {
+                                if (rounded < 0)
+                                    libmesh_error_msg("ApecMSettingsObject: invalid input id in '" + key + "'.");
+                                row.push_back(static_cast<dof_id_type>(rounded));
+                            }
+                            else if (rounded >= 0)
+                            {
+                                row.push_back(static_cast<dof_id_type>(rounded));
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    libmesh_error_msg("ApecMSettingsObject: '" + key + "' must store numeric data.");
+                }
+            },
+            array.values);
+    };
+
+    parse_toroidal_map("toroidal_projection_map_nodes", toroidal_projection_map_nodes_);
+    parse_toroidal_map("toroidal_projection_map_elems", toroidal_projection_map_elems_);
 }

@@ -1,6 +1,8 @@
 #ifndef APEC_M_SETTINGS_H
 #define APEC_M_SETTINGS_H
 
+#include <vector>
+
 #include <libmesh/point.h>
 
 #include "fe_data_object.h"
@@ -32,6 +34,8 @@ public:
     bool print_full_output() const { return print_full_output_; }
     const std::string &evolution_mesh() const { return evolution_mesh_; }
     const std::string &equilibrium_mesh() const { return equilibrium_mesh_; }
+    const std::vector<std::vector<dof_id_type>> &toroidal_projection_map_nodes() const { return toroidal_projection_map_nodes_; }
+    const std::vector<std::vector<dof_id_type>> &toroidal_projection_map_elems() const { return toroidal_projection_map_elems_; }
 
 private:
     void parse_columns();
@@ -53,6 +57,9 @@ private:
     bool print_full_output_ = false;
     std::string evolution_mesh_ = "";
     std::string equilibrium_mesh_ = "";
+    unsigned int n_slices_ = 3;
+    std::vector<std::vector<dof_id_type>> toroidal_projection_map_nodes_;
+    std::vector<std::vector<dof_id_type>> toroidal_projection_map_elems_;
 };
 
 #endif // APEC_M_SETTINGS_H
