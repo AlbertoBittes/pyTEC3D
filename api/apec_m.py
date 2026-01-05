@@ -755,9 +755,16 @@ class APEC_M:
         """
         Selector.select(self.mesh, array_name, value, component, type, mode)
 
-    def select_pos(self, axis: int, value: Any, mode: str = "s") -> None:
+    def select_pos(
+        self,
+        axis: int,
+        value: Any,
+        mode: str = "s",
+        coordinate_system: Optional["CoordinateSystem"] = None,
+        type: str = "node",
+    ) -> None:
         """
-        Select points based on their position along a given axis.
+        Select points or cell centroids based on their position along a given axis.
 
         Uses `Selector.select_pos` to update `selection_point` using the same value semantics
         and combination modes as `select`.
@@ -766,6 +773,8 @@ class APEC_M:
             axis: Coordinate axis (0,1,2).
             value: Target value(s) (scalar, tuple for range, set for membership).
             mode: Selection mode ('s','a','r','u').
+            coordinate_system: Optional coordinate system for local coordinates.
+            type: 'elem' or 'node' selection mask to update.
 
         Returns:
             None
@@ -773,7 +782,7 @@ class APEC_M:
         Raises:
             ValueError: If the mode is invalid or the range tuple length is not 2.
         """
-        Selector.select_pos(self.mesh, axis, value, mode)
+        Selector.select_pos(self.mesh, axis, value, mode, coordinate_system, type)
 
     def select_all(self, type: Optional[str] = None) -> None:
         """

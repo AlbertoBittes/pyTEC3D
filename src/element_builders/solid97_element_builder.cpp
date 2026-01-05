@@ -957,7 +957,8 @@ void ElementBuilder::build_solid97_support_solution()
             const Real radius = local(0);
             const VectorValue<Real> A_global(Ax(i), Ay(i), Az(i));
             const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(node) * A_global;
-            const Real a_theta = -A_local(2);
+            // const Real a_theta = -A_local(2);
+            const Real a_theta = A_local(2);
             psi_values(i) = radius * a_theta;
         }
         have_psi = true;

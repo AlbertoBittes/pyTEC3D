@@ -334,7 +334,7 @@ VTK_ARRAYS_TO_INIT = {
     },
     "E": {
         "location": "node",
-        "components": 3,
+        "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
