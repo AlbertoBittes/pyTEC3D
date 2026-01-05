@@ -16,7 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from coordinate_system import CoordinateSystem
 
 
-class VTKGridHelper:
+class MeshEdit:
     @staticmethod
     def _get_positions(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -27,7 +27,7 @@ class VTKGridHelper:
             if points is None:
                 return np.empty((0, 3))
             return vtknp.vtk_to_numpy(points.GetData())
-        return VTKGridHelper.compute_cell_centroids(mesh)
+        return MeshEdit.compute_cell_centroids(mesh)
 
     @staticmethod
     def map_local_coordinates(
@@ -53,7 +53,7 @@ class VTKGridHelper:
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
 
-        positions = VTKGridHelper._get_positions(mesh, location)
+        positions = MeshEdit._get_positions(mesh, location)
         if positions.size == 0:
             return np.empty((0, 3)), np.empty((0,), dtype=int)
 
@@ -129,7 +129,7 @@ class VTKGridHelper:
             raise ValueError("Array must have exactly 3 components for rotation.")
 
         vecs = vtknp.vtk_to_numpy(vtk_array)
-        positions = VTKGridHelper._get_positions(mesh, location)
+        positions = MeshEdit._get_positions(mesh, location)
         if positions.size == 0:
             return vecs
 
@@ -180,13 +180,13 @@ class VTKGridHelper:
         if reset_arrays:
             # Avoid circular import at module load time
             from selector import Selector
-            from tree_gauge_helper import TreeGaugeHelper
+            from tree_gauge import TreeGauge
 
-            VTKGridHelper.initialize_vtk_arrays(mesh)
+            MeshEdit.initialize_vtk_arrays(mesh)
             Selector.ensure_selection_arrays(mesh)
-            VTKGridHelper.store_cell_centroids(mesh)
-            TreeGaugeHelper.add_midside_nodes_mask_array(mesh)
-            VTKGridHelper.reset_vtk_arrays_to_default(mesh)
+            MeshEdit.store_cell_centroids(mesh)
+            TreeGauge.add_midside_nodes_mask_array(mesh)
+            MeshEdit.reset_vtk_arrays_to_default(mesh)
 
         print(f"VTK unstructured grid loaded from '{path}'.")
         print(f"Number of points: {mesh.GetNumberOfPoints()}")
@@ -315,7 +315,7 @@ class VTKGridHelper:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         for name, info in arrays_to_init.items():
-            VTKGridHelper.add_array_to_grid(
+            MeshEdit.add_array_to_grid(
                 mesh,
                 name=name,
                 location=info["location"],
@@ -352,7 +352,7 @@ class VTKGridHelper:
                 "dtype": dtype,
             }
         }
-        VTKGridHelper.initialize_vtk_arrays(mesh, arrays_to_init)
+        MeshEdit.initialize_vtk_arrays(mesh, arrays_to_init)
 
     @staticmethod
     def reset_vtk_arrays_to_default(
@@ -449,7 +449,7 @@ class VTKGridHelper:
             next_index = max(existing) + 1
 
         array_name = f"boundary_id_{next_index}"
-        VTKGridHelper.add_array_to_grid(
+        MeshEdit.add_array_to_grid(
             mesh,
             name=array_name,
             location="node",
@@ -620,13 +620,13 @@ class VTKGridHelper:
             )
 
         Selector.ensure_selection_arrays(input_mesh)
-        input_local, input_ids = VTKGridHelper.map_local_coordinates(
+        input_local, input_ids = MeshEdit.map_local_coordinates(
             input_mesh,
             coordinate_system,
             location=location,
             selected_only=True,
         )
-        target_local, _ = VTKGridHelper.map_local_coordinates(
+        target_local, _ = MeshEdit.map_local_coordinates(
             target_mesh,
             coordinate_system,
             location=location,
@@ -739,7 +739,7 @@ class VTKGridHelper:
             input_values = input_np[:, input_component]
 
         if projection_map is None:
-            projection_map = VTKGridHelper.build_toroidal_projection_map(
+            projection_map = MeshEdit.build_toroidal_projection_map(
                 input_mesh,
                 target_mesh,
                 location=location,
@@ -760,7 +760,7 @@ class VTKGridHelper:
         target_array = target_data.GetArray(target_array_name)
         if target_array is None:
             target_components = max(1, target_component + 1)
-            target_array = VTKGridHelper.add_array_to_grid(
+            target_array = MeshEdit.add_array_to_grid(
                 target_mesh,
                 name=target_array_name,
                 location=location,
@@ -855,7 +855,7 @@ class VTKGridHelper:
             raise ValueError("input_component out of range for input array.")
 
         if projection_map is None:
-            projection_map = VTKGridHelper.build_toroidal_projection_map(
+            projection_map = MeshEdit.build_toroidal_projection_map(
                 target_mesh,
                 input_mesh,
                 location=location,
@@ -876,7 +876,7 @@ class VTKGridHelper:
         target_array = target_data.GetArray(target_array_name)
         if target_array is None:
             target_components = max(1, target_component + 1)
-            target_array = VTKGridHelper.add_array_to_grid(
+            target_array = MeshEdit.add_array_to_grid(
                 target_mesh,
                 name=target_array_name,
                 location=location,
@@ -931,8 +931,8 @@ class VTKGridHelper:
         Side Effects:
             Adds/overwrites the centroid array on mesh.GetCellData().
         """
-        np_centers = VTKGridHelper.compute_cell_centroids(mesh)
-        VTKGridHelper.add_array_to_grid(
+        np_centers = MeshEdit.compute_cell_centroids(mesh)
+        MeshEdit.add_array_to_grid(
             mesh,
             name=array_name,
             location="elem",
@@ -988,8 +988,8 @@ class VTKGridHelper:
         Side Effects:
             Adds/overwrites the volume/area array on mesh.GetCellData().
         """
-        volumes = VTKGridHelper.compute_cell_volumes(mesh)
-        VTKGridHelper.add_array_to_grid(
+        volumes = MeshEdit.compute_cell_volumes(mesh)
+        MeshEdit.add_array_to_grid(
             mesh,
             name=array_name,
             location="elem",
@@ -1030,7 +1030,7 @@ class VTKGridHelper:
             )
 
         selection_mask = vtknp.vtk_to_numpy(selection_array)
-        new_array = VTKGridHelper.add_array_to_grid(
+        new_array = MeshEdit.add_array_to_grid(
             mesh,
             name=component_name,
             location=type,

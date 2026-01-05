@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -13,7 +13,7 @@ apec.read_mesh(
     r"D:\PlasmaArc\simulations\two_wires_3D_flux_boundary\two_wires_3D_flux_boundary.vtu"
 )
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 

@@ -9,16 +9,16 @@ if TYPE_CHECKING:
     from apec_m import APEC_M
 
 
-class CLIObject:
+class Solver:
     """
-    Thin Python helper for driving the C++ solver CLI.
+    Thin Python helper for driving the C++ solver.
     """
 
     prompt: str = "apec_m>"
 
     def __init__(self, apec: "APEC_M", num_processors: int = 1) -> None:
         """
-        Initialize a CLI helper bound to an ``APEC_M`` instance.
+        Initialize a solver bound to an ``APEC_M`` instance.
 
         Args:
             apec: The ``APEC_M`` instance this CLI helper is associated with.
@@ -54,7 +54,9 @@ class CLIObject:
         print(f"Process started: {' '.join(cmd_list)}")
         self._consume_output(wait_for_prompt=True)
 
-    def exec(self, command: str, *, wait_for_prompt: bool = True, echo: bool = True) -> str:
+    def exec(
+        self, command: str, *, wait_for_prompt: bool = True, echo: bool = True
+    ) -> str:
         """
         Send a CLI command to the running solver.
 
@@ -256,7 +258,9 @@ class CLIObject:
         grid_path = (
             os.path.join(folder, grid_filename)
             if grid_filename
-            else os.path.join(folder, jobname, "input", f"{jobname}_grid_{load_step_number}.bin")
+            else os.path.join(
+                folder, jobname, "input", f"{jobname}_grid_{load_step_number}.bin"
+            )
         )
 
         self.apec.write_time_step(load_step_number, filename=time_filename)

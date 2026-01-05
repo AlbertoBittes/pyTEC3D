@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
@@ -13,11 +13,11 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_3D"
 
-filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 

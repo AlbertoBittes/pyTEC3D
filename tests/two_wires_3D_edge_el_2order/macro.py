@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import os
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -10,11 +10,11 @@ apec = APEC_M()
 # )
 filename = "two_wires_3D_edge_el_2order"
 
-filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 
@@ -47,7 +47,7 @@ apec.set_value_on_selection("VOLT", 0)
 # apec.select("UPPER_FACE_ROD", 1)
 # apec.set_value_on_selection("AMPS", 1)
 
-apec.build_tree_cotree_gauge()
+apec.tree_gauge()
 
 apec.select("ansys_material_type", 23, type="elem")
 apec.set_value_on_selection("Js", 1, 2, type="elem")

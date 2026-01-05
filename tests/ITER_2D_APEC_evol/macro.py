@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from selector import Selector
@@ -18,7 +18,14 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 static_mesh_filepath = os.path.join(os.getcwd(), "tests", filename, filename + "_1.vtu")
 
 # Read the output of the equilibrium analysis
-output_eq_mesh_filepath = os.path.join(os.getcwd(), "tests", eq_filename, eq_filename, "output", eq_filename + "_out_0.pvtu")
+output_eq_mesh_filepath = os.path.join(
+    os.getcwd(),
+    "tests",
+    eq_filename,
+    eq_filename,
+    "output",
+    eq_filename + "_out_0.pvtu",
+)
 apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
 # Read the static mesh
@@ -41,12 +48,9 @@ apec.set_value_on_selection("A", 0, 2)
 apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec.toroidal_projection(apec_equilibrium_output.mesh,
-                         "Jt_z",
-                         0,
-                         "Js",
-                         2,
-                         location="cell")
+apec.toroidal_projection(
+    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
+)
 
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
@@ -76,12 +80,9 @@ apec.set_value_on_selection("A", 0, 2)
 apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec.toroidal_projection(apec_equilibrium_output.mesh,
-                         "Jt_z",
-                         0,
-                         "Js",
-                         2,
-                         location="cell")
+apec.toroidal_projection(
+    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
+)
 
 apec.write_loads_bcs()
 

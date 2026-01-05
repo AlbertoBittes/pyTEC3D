@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
@@ -13,11 +13,11 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_3D_period"
 
-filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 
@@ -43,7 +43,12 @@ apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 2)
 
 # periodic matrix of a 90 degrees rotation around Y axis
-matrix_90deg = [[0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+matrix_90deg = [
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [-1.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+]
 
 apec.periodic_boundaries.append(
     {

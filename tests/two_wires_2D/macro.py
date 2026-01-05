@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import os
 
 # from convert_mesh import convert_mesh_from_cdb
@@ -11,11 +11,11 @@ apec = APEC_M()
 # )
 filename = "two_wires_2D"
 
-filepath = os.path.join(os.getcwd(),"tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.read_excel("input_template.xlsx")
 

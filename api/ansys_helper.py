@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import vtk.util.numpy_support as vtknp
 
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 from excel_io_helper import ExcelIOHelper
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
@@ -16,7 +16,9 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 class AnsysHelper:
     @staticmethod
-    def read_bfelist(mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]) -> None:
+    def read_bfelist(
+        mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]
+    ) -> None:
         """
         Reads and maps ANSYS element load data from a BFELIST file to the VTK mesh's CellData.
 
@@ -39,7 +41,7 @@ class AnsysHelper:
             mesh.GetCellData(), "ansys_elem_num"
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_elem_num")
-        VTKGridHelper.update_vtk_grid(mesh.GetCellData(), df)
+        MeshEdit.update_vtk_grid(mesh.GetCellData(), df)
         print(f"Grid updated with element loads from '{file_path}'.")
 
     @staticmethod
@@ -77,7 +79,9 @@ class AnsysHelper:
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
 
     @staticmethod
-    def read_dlist(mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]) -> None:
+    def read_dlist(
+        mesh: "vtk.vtkUnstructuredGrid", file_path: Union[str, PathLike[str]]
+    ) -> None:
         """
         Reads and maps ANSYS node data from a DLIST file to the VTK mesh's PointData.
 
@@ -101,7 +105,7 @@ class AnsysHelper:
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_node_num")
 
-        VTKGridHelper.update_vtk_grid(mesh.GetPointData(), df)
+        MeshEdit.update_vtk_grid(mesh.GetPointData(), df)
         print(f"Grid updated with node data from '{file_path}'.")
 
     @staticmethod
@@ -133,7 +137,7 @@ class AnsysHelper:
         AnsysHelper.read_dlist(mesh, dlist_file)
 
         ExcelIOHelper.write_excel_cell_point_data(
-            mesh, output_excel_file, data_type='node'
+            mesh, output_excel_file, data_type="node"
         )
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
 

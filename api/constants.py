@@ -263,7 +263,7 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
-    'node': CELL_POINT_DATA_COLUMNS_TYPES,
+    "node": CELL_POINT_DATA_COLUMNS_TYPES,
     "elem": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
     "periodic_boundaries": PERIODIC_BOUNDARIES_COLUMNS_TYPES,
@@ -279,7 +279,7 @@ SHEET_PROCESSING_MAP = {
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
     "apec_settings": "read_excel_dict",
-    'node': ("update_vtk_grid_from_excel", 'node'),
+    "node": ("update_vtk_grid_from_excel", "node"),
     "elem": ("update_vtk_grid_from_excel", "elem"),
     "transient_analysis": "read_excel_df",
     "periodic_boundaries": "read_periodic_boundaries",
@@ -291,11 +291,11 @@ WRITING_FUNCTIONS_MAP = {
     "solver_settings": "_write_to_binary",
     "materials": "_write_to_binary",
     "real_constants": "_write_to_binary",
-    'node': "_write_numpy_array_to_binary",
+    "node": "_write_numpy_array_to_binary",
     "elem": "_write_numpy_array_to_binary",
     "periodic_boundaries": "_write_to_binary",
     "dof_couplings": "_write_to_binary",
-    "apec_settings": "_write_to_binary"
+    "apec_settings": "_write_to_binary",
 }
 
 WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())
@@ -303,55 +303,55 @@ WRITING_LABEL_TO_ID = {label: idx for idx, label in enumerate(WRITING_LABELS)}
 
 VTK_ARRAYS_TO_INIT = {
     "A": {
-        "location": "point",
+        "location": "node",
         "components": 3,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Az": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "VOLT": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "V": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "EMF": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "E": {
-        "location": "point",
+        "location": "node",
         "components": 3,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "AMPS": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Js": {
-        "location": "cell",
+        "location": "elem",
         "components": 3,
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
     "boundary_id_0": {
-        "location": "point",
+        "location": "node",
         "components": 1,
         "fill": 0,
         "dtype": vtk.VTK_INT,
@@ -362,11 +362,11 @@ ARRAYS_TO_REMOVE = [
     "selection_point",
     "selection_cell",
     "cell_centroids",
-    "cell_volume"
+    "cell_volume",
 ]
 
 # Labels to read for each load step from Excel
 EXCEL_LOAD_STEP_LABELS = [
-    'node',
+    "node",
     "elem",
 ]

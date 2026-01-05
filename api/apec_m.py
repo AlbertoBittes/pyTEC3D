@@ -3,22 +3,33 @@ import sys
 import copy
 import struct
 from os import PathLike
-from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from typing import (
+    Any,
+    BinaryIO,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
 
-from tree_gauge_helper import TreeGaugeHelper
+from tree_gauge import TreeGauge
 from ansys_helper import AnsysHelper
 from selector import Selector
-from vtk_grid_helper import VTKGridHelper
-from binary_helper import BinaryHelper
+from mesh_edit import MeshEdit
+from binary import Binary
 from excel_io_helper import ExcelIOHelper
-from cli_object import CLIObject
+from solver import Solver
 from constants import *
-from dof_coupling_helper import DOFCouplingHelper
+from dof_coupling import DOFCoupling
 
 
 # Add the current directory to the Python path to ensure imports work
@@ -56,7 +67,9 @@ class APEC_M:
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
         )
-        self.materials: pd.DataFrame = pd.DataFrame(columns=list(MATERIALS_COLUMNS_TYPES.keys()))
+        self.materials: pd.DataFrame = pd.DataFrame(
+            columns=list(MATERIALS_COLUMNS_TYPES.keys())
+        )
         self.real_constants: pd.DataFrame = pd.DataFrame(
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
@@ -71,7 +84,7 @@ class APEC_M:
         )
         self.periodic_boundaries: List[Any] = []
         self.dof_couplings: List[Dict[str, Any]] = []
-        self.cli: CLIObject = CLIObject(self)
+        self.cli: Solver = Solver(self)
 
     #
     #
@@ -84,7 +97,9 @@ class APEC_M:
     #
     #
     #
-    def read_mesh(self, vtk_file_path: Union[str, PathLike[str]], reset_arrays: bool = True) -> None:
+    def read_mesh(
+        self, vtk_file_path: Union[str, PathLike[str]], reset_arrays: bool = True
+    ) -> None:
         """
         Reads a VTK unstructured grid from a file in XML format.
 
@@ -92,7 +107,7 @@ class APEC_M:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
-        self.mesh = VTKGridHelper.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
+        self.mesh = MeshEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
         mesh_path = os.fspath(vtk_file_path)
         self.jobname = os.path.splitext(os.path.basename(mesh_path))[0]
@@ -120,7 +135,9 @@ class APEC_M:
         """
         return self.refresh_dof_couplings(print_summary=print_summary)
 
-    def refresh_dof_couplings(self, print_summary: bool = False) -> List[Dict[str, Any]]:
+    def refresh_dof_couplings(
+        self, print_summary: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Recompute DOF coupling forests and optionally print a summary.
 
@@ -130,16 +147,18 @@ class APEC_M:
         Returns:
             List[Dict[str, Any]]: Updated list of coupling forests.
         """
-        forests = DOFCouplingHelper.build_dof_couplings(
+        forests = DOFCoupling.build_dof_couplings(
             self.mesh,
             coupled_variables=self.coupled_variables,
         )
         self.dof_couplings = forests
         if print_summary:
-            DOFCouplingHelper.print_dof_couplings(forests)
+            DOFCoupling.print_dof_couplings(forests)
         return forests
 
-    def save_mesh(self, output_file: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def save_mesh(
+        self, output_file: Optional[Union[str, PathLike[str]]] = None
+    ) -> None:
         """
         Saves the unstructured grid in self.mesh to a .vtu file.
         Before writing, attaches the element_types DataFrame as field data to the grid.
@@ -165,14 +184,14 @@ class APEC_M:
 
         # Remove arrays listed in ARRAYS_TO_REMOVE using safe_remove_array
         for arr in ARRAYS_TO_REMOVE:
-            VTKGridHelper.safe_remove_array(self.mesh, arr)
+            MeshEdit.safe_remove_array(self.mesh, arr)
 
         # Define the output file name
         if output_file is None:
             output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 
         # Write the unstructured grid to the .vtu file
-        VTKGridHelper.save_mesh(self.mesh, output_file, binary=True)
+        MeshEdit.save_mesh(self.mesh, output_file, binary=True)
 
         print(f"Mesh saved to '{output_file}'.")
 
@@ -187,7 +206,7 @@ class APEC_M:
     #
     #
     #
-    def get_cli(self) -> CLIObject:
+    def get_cli(self) -> Solver:
         """
         Return the CLI helper attached to this instance.
         """
@@ -233,7 +252,9 @@ class APEC_M:
             except ValueError as e:
                 print(f"Warning: {e}")
 
-    def read_excel_sheet(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> None:
+    def read_excel_sheet(
+        self, excel_file: Union[str, PathLike[str]], sheet_name: str
+    ) -> None:
         """
         Processes an Excel sheet by determining the appropriate method to call
         (read_excel_df, read_excel_dict, or update_vtk_grid_from_excel) based on a global dictionary.
@@ -262,7 +283,10 @@ class APEC_M:
             func(excel_file, sheet_name, data_type)
 
     def update_vtk_grid_from_excel(
-        self, excel_file: Union[str, PathLike[str]], sheet_name: str, data_type: Optional[str] = None
+        self,
+        excel_file: Union[str, PathLike[str]],
+        sheet_name: str,
+        data_type: Optional[str] = None,
     ) -> None:
         """
         Load a sheet from Excel and write values into the mesh CellData/PointData.
@@ -287,7 +311,9 @@ class APEC_M:
             self.mesh, excel_file, sheet_name, data_type
         )
 
-    def read_excel_df(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[pd.DataFrame]:
+    def read_excel_df(
+        self, excel_file: Union[str, PathLike[str]], sheet_name: str
+    ) -> Optional[pd.DataFrame]:
         """
         Read a sheet into a DataFrame with column validation.
 
@@ -307,7 +333,9 @@ class APEC_M:
         """
         return ExcelIOHelper.read_excel_df(excel_file, sheet_name)
 
-    def read_excel_dict(self, excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[Dict[str, Any]]:
+    def read_excel_dict(
+        self, excel_file: Union[str, PathLike[str]], sheet_name: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Read a sheet into a dictionary with key/type validation.
 
@@ -391,7 +419,9 @@ class APEC_M:
     #
     #
     def write_to_binary(
-        self, output_file: Union[str, PathLike[str]], labels_to_write: Optional[Sequence[str]] = None
+        self,
+        output_file: Union[str, PathLike[str]],
+        labels_to_write: Optional[Sequence[str]] = None,
     ) -> None:
         """
         Writes the current load step data to a single binary file based on the provided labels.
@@ -429,7 +459,11 @@ class APEC_M:
 
         print(f"Binary written to '{output_file}'.")
 
-    def write_load_step(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_load_step(
+        self,
+        load_step_number: int,
+        filename: Optional[Union[str, PathLike[str]]] = None,
+    ) -> None:
         """
         Write both time and grid data for a specific load step.
 
@@ -451,7 +485,11 @@ class APEC_M:
         self.write_time_step(load_step_number)
         self.write_loads_bcs(load_step_number, filename=filename)
 
-    def write_time_step(self, load_step_number: int, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_time_step(
+        self,
+        load_step_number: int,
+        filename: Optional[Union[str, PathLike[str]]] = None,
+    ) -> None:
         """
         Writes a time step binary containing time parameters and APEC settings
         in the same folder as the mesh file.
@@ -485,7 +523,11 @@ class APEC_M:
             labels_to_write=["time_parameters", "apec_settings"],
         )
 
-    def write_loads_bcs(self, load_step_number: int = 1, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_loads_bcs(
+        self,
+        load_step_number: int = 1,
+        filename: Optional[Union[str, PathLike[str]]] = None,
+    ) -> None:
         """
         Writes a grid binary containing point and cell data in the mesh input folder.
 
@@ -518,10 +560,12 @@ class APEC_M:
         os.makedirs(target_dir, exist_ok=True)
         self.write_to_binary(
             grid_path,
-            labels_to_write=['node', "elem"],
+            labels_to_write=["node", "elem"],
         )
 
-    def write_model_data(self, filename: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_model_data(
+        self, filename: Optional[Union[str, PathLike[str]]] = None
+    ) -> None:
         """
         Write model-wide metadata (element types, materials, etc.) to a binary file.
 
@@ -557,7 +601,7 @@ class APEC_M:
                 "real_constants",
                 "solver_settings",
                 "periodic_boundaries",
-                "dof_couplings"
+                "dof_couplings",
             ],
         )
 
@@ -625,7 +669,7 @@ class APEC_M:
         function_name = WRITING_FUNCTIONS_MAP[label]
 
         # Always call the function with (mesh or data, binary_file, label)
-        if label in ["elem", 'node']:
+        if label in ["elem", "node"]:
             getattr(self, function_name)(self.mesh, binary_file, label)
         else:
             data = getattr(self, label, None)
@@ -634,7 +678,9 @@ class APEC_M:
             getattr(self, function_name)(data, binary_file, label)
 
     # Wrapper methods for binary output functions to match WRITING_FUNCTIONS_MAP
-    def _write_to_binary(self, settings: Any, binary_file: BinaryIO, label: str) -> None:
+    def _write_to_binary(
+        self, settings: Any, binary_file: BinaryIO, label: str
+    ) -> None:
         """
         Wrapper dispatch to BinaryHelper.write_to_binary.
 
@@ -643,9 +689,11 @@ class APEC_M:
             binary_file: Open binary stream.
             label: Label used for serialization.
         """
-        BinaryHelper.write_to_binary(settings, binary_file, label)
+        Binary.write_to_binary(settings, binary_file, label)
 
-    def _write_numpy_array_to_binary(self, mesh: vtk.vtkUnstructuredGrid, binary_file: BinaryIO, label: str) -> None:
+    def _write_numpy_array_to_binary(
+        self, mesh: vtk.vtkUnstructuredGrid, binary_file: BinaryIO, label: str
+    ) -> None:
         """
         Wrapper dispatch to BinaryHelper.write_numpy_array_to_binary.
 
@@ -654,7 +702,7 @@ class APEC_M:
             binary_file: Open binary stream.
             label: 'elem' or 'node'.
         """
-        BinaryHelper.write_numpy_array_to_binary(mesh, binary_file, label)
+        Binary.write_numpy_array_to_binary(mesh, binary_file, label)
 
     #
     #
@@ -672,7 +720,7 @@ class APEC_M:
         array_name: str,
         value: Any,
         component: Union[int, str] = 0,
-        type: str = 'node',
+        type: str = "node",
         mode: str = "s",
     ) -> None:
         """
@@ -764,7 +812,7 @@ class APEC_M:
         array_name: str,
         value: Any,
         component: int = 0,
-        type: str = 'node',
+        type: str = "node",
     ) -> None:
         """
         Assign a value to all selected cells or points in the given array.
@@ -781,9 +829,7 @@ class APEC_M:
         Raises:
             ValueError: If the target array is missing.
         """
-        Selector.set_value_on_selection(
-            self.mesh, array_name, value, component, type
-        )
+        Selector.set_value_on_selection(self.mesh, array_name, value, component, type)
 
     def nsle(self, mode: str = "s") -> None:
         """
@@ -869,7 +915,11 @@ class APEC_M:
         """
         AnsysHelper.read_bfelist(self.mesh, file_path)
 
-    def convert_bfelist(self, bfelist_file: Union[str, PathLike[str]], output_excel_file: Union[str, PathLike[str]]) -> None:
+    def convert_bfelist(
+        self,
+        bfelist_file: Union[str, PathLike[str]],
+        output_excel_file: Union[str, PathLike[str]],
+    ) -> None:
         """
         Wrapper for AnsysHelpers.convert_bfelist to allow getattr and consistent API.
 
@@ -902,7 +952,11 @@ class APEC_M:
         """
         AnsysHelper.read_dlist(self.mesh, file_path)
 
-    def convert_dlist(self, dlist_file: Union[str, PathLike[str]], output_excel_file: Union[str, PathLike[str]]) -> None:
+    def convert_dlist(
+        self,
+        dlist_file: Union[str, PathLike[str]],
+        output_excel_file: Union[str, PathLike[str]],
+    ) -> None:
         """
         Wrapper for AnsysHelpers.convert_dlist to allow getattr and consistent API.
 
@@ -949,7 +1003,7 @@ class APEC_M:
         Returns:
             None
         """
-        VTKGridHelper.store_cell_centroids(self.mesh)
+        MeshEdit.store_cell_centroids(self.mesh)
 
     def compute_and_store_cell_volumes(self, array_name: str = "cell_volume") -> None:
         """
@@ -962,7 +1016,7 @@ class APEC_M:
         Returns:
             None
         """
-        VTKGridHelper.store_cell_volumes(self.mesh, array_name=array_name)
+        MeshEdit.store_cell_volumes(self.mesh, array_name=array_name)
         print(
             f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
         )
@@ -970,7 +1024,7 @@ class APEC_M:
     def map_local_coordinates(
         self,
         coordinate_system: "CoordinateSystem",
-        location: str = "point",
+        location: str = "node",
         selected_only: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -978,13 +1032,13 @@ class APEC_M:
 
         Args:
             coordinate_system: Coordinate system used for local coordinates.
-            location: "point" to map point IDs or "cell" to map cell IDs.
+            location: "node" to map point IDs or "elem" to map cell IDs.
             selected_only: When True, use selection arrays to filter IDs.
 
         Returns:
             Tuple[np.ndarray, np.ndarray]: (local_coordinates, ids)
         """
-        return VTKGridHelper.map_local_coordinates(
+        return MeshEdit.map_local_coordinates(
             self.mesh,
             coordinate_system,
             location=location,
@@ -995,7 +1049,7 @@ class APEC_M:
         self,
         array_name: str,
         coordinate_system: "CoordinateSystem",
-        location: str = "point",
+        location: str = "node",
         to_local: bool = True,
     ) -> np.ndarray:
         """
@@ -1004,13 +1058,13 @@ class APEC_M:
         Args:
             array_name: Name of the array to rotate.
             coordinate_system: Coordinate system used for rotation.
-            location: "point" or "cell".
+            location: "node" or "elem".
             to_local: When True, rotate from global to local; otherwise local to global.
 
         Returns:
             np.ndarray: The rotated array (NumPy view).
         """
-        return VTKGridHelper.rotate_vector_array_to_coordinate_system(
+        return MeshEdit.rotate_vector_array_to_coordinate_system(
             self.mesh,
             array_name,
             coordinate_system,
@@ -1021,7 +1075,7 @@ class APEC_M:
     def build_toroidal_projection_map(
         self,
         input_mesh: "vtk.vtkUnstructuredGrid",
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
@@ -1030,7 +1084,7 @@ class APEC_M:
 
         Args:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            location: "point" to map point IDs or "cell" to map cell IDs.
+            location: "node" to map point IDs or "elem" to map cell IDs.
             tolerance: Absolute tolerance for matching radial distance and axial coordinate.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
@@ -1039,7 +1093,7 @@ class APEC_M:
                 If a selection array exists on the input mesh for the chosen location,
                 only selected IDs are included.
         """
-        return VTKGridHelper.build_toroidal_projection_map(
+        return MeshEdit.build_toroidal_projection_map(
             input_mesh,
             self.mesh,
             location=location,
@@ -1055,7 +1109,7 @@ class APEC_M:
         target_array_name: str,
         target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
@@ -1068,7 +1122,7 @@ class APEC_M:
             input_component: Component index to read from the input array.
             target_array_name: Name of the target array on self.mesh.
             projection_map: Optional precomputed toroidal projection map.
-            location: "point" to map point data or "cell" to map cell data.
+            location: "node" to map point data or "elem" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
             target_component: Component index to write for scalar copy mode.
@@ -1076,7 +1130,7 @@ class APEC_M:
         Returns:
             None
         """
-        VTKGridHelper.toroidal_projection(
+        MeshEdit.toroidal_projection(
             input_mesh,
             input_array_name,
             input_component,
@@ -1097,7 +1151,7 @@ class APEC_M:
         target_array_name: str,
         target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
@@ -1111,14 +1165,14 @@ class APEC_M:
             target_array_name: Name of the target array on self.mesh.
             target_component: Component index to write for scalar targets.
             projection_map: Optional precomputed toroidal projection map.
-            location: "point" to map point data or "cell" to map cell data.
+            location: "node" to map point data or "elem" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
             None
         """
-        VTKGridHelper.toroidal_projection_inverse(
+        MeshEdit.toroidal_projection_inverse(
             input_mesh,
             input_array_name,
             input_component,
@@ -1141,8 +1195,7 @@ class APEC_M:
         Returns:
             None
         """
-        VTKGridHelper.safe_remove_array(self.mesh, array_name)
-
+        MeshEdit.safe_remove_array(self.mesh, array_name)
 
     def add_boundary_array(self) -> str:
         """
@@ -1151,9 +1204,11 @@ class APEC_M:
         The array is initialized with zeros and appended after the highest existing
         `boundary_id_*` to avoid collisions.
         """
-        return VTKGridHelper.add_boundary_array(self.mesh)
+        return MeshEdit.add_boundary_array(self.mesh)
 
-    def add_midside_nodes_mask_array(self, array_name: str = "MidsideNodes") -> "vtk.vtkIntArray":
+    def add_midside_nodes_mask_array(
+        self, array_name: str = "MidsideNodes"
+    ) -> "vtk.vtkIntArray":
         """
         Add a midside-node mask array to PointData (1 at midside nodes, 0 otherwise).
 
@@ -1163,12 +1218,12 @@ class APEC_M:
         Returns:
             vtkIntArray: Added mask array.
         """
-        return TreeGaugeHelper.add_midside_nodes_mask_array(self.mesh, array_name=array_name)
+        return TreeGauge.add_midside_nodes_mask_array(self.mesh, array_name=array_name)
 
     def add_array_to_grid(
         self,
         name: str,
-        location: str = "point",
+        location: str = "node",
         components: int = 1,
         fill: Any = 0,
         dtype: Optional[int] = vtk.VTK_DOUBLE,
@@ -1179,7 +1234,7 @@ class APEC_M:
 
         Args:
             name: Array name.
-            location: 'cell' or 'point'.
+            location: 'elem' or 'node'.
             components: Number of components.
             fill: Default fill value if no values provided.
             dtype: VTK dtype for the array.
@@ -1188,7 +1243,7 @@ class APEC_M:
         Returns:
             vtkDataArray: The created or existing array.
         """
-        return VTKGridHelper.add_array_to_grid(
+        return MeshEdit.add_array_to_grid(
             self.mesh,
             name=name,
             location=location,
@@ -1198,25 +1253,31 @@ class APEC_M:
             values=values,
         )
 
-    def initialize_arrays(self, arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+    def initialize_arrays(
+        self, arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> None:
         """
         Initialize required arrays on the mesh (CellData/PointData).
 
         Args:
             arrays_to_init: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
         """
-        VTKGridHelper.initialize_vtk_arrays(self.mesh, arrays_to_init)
+        MeshEdit.initialize_vtk_arrays(self.mesh, arrays_to_init)
 
-    def reset_arrays(self, arrays_to_reset: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+    def reset_arrays(
+        self, arrays_to_reset: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> None:
         """
         Reset arrays on the mesh to their default fill values.
 
         Args:
             arrays_to_reset: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
         """
-        VTKGridHelper.reset_vtk_arrays_to_default(self.mesh, arrays_to_reset)
+        MeshEdit.reset_vtk_arrays_to_default(self.mesh, arrays_to_reset)
 
-    def validate_dataframe_with_vtk_data(self, df: pd.DataFrame, array_name: str) -> None:
+    def validate_dataframe_with_vtk_data(
+        self, df: pd.DataFrame, array_name: str
+    ) -> None:
         """
         Validate a DataFrame's first column against a VTK array for uniqueness and coverage.
 
@@ -1230,17 +1291,19 @@ class APEC_M:
         Raises:
             ValueError: If validation fails or the VTK array is missing.
         """
-        VTKGridHelper.validate_dataframe_with_vtk_data(
+        MeshEdit.validate_dataframe_with_vtk_data(
             self.mesh.GetCellData(), df, array_name
         )
 
-    def add_component_from_selection(self, component_name: str, type: str = "cell") -> "vtk.vtkDataArray":
+    def add_component_from_selection(
+        self, component_name: str, type: str = "elem"
+    ) -> "vtk.vtkDataArray":
         """
         Create a component mask array from the current selection for cells/points.
 
         Args:
             component_name: Name for the component array to create.
-            type: 'cell' to use CellData selection, 'point' for PointData selection.
+            type: 'elem' to use CellData selection, 'node' for PointData selection.
 
         Returns:
             vtkDataArray: The created component mask array.
@@ -1248,9 +1311,11 @@ class APEC_M:
         Raises:
             ValueError: If selection arrays are missing or type is invalid.
         """
-        return VTKGridHelper.add_component(self.mesh, component_name, type)
+        return MeshEdit.add_component(self.mesh, component_name, type)
 
-    def update_vtk_grid_from_dataframe(self, vtk_data: "vtk.vtkDataSetAttributes", df: pd.DataFrame) -> None:
+    def update_vtk_grid_from_dataframe(
+        self, vtk_data: "vtk.vtkDataSetAttributes", df: pd.DataFrame
+    ) -> None:
         """
         Wrapper for VTKGridHelper.update_vtk_grid to write DataFrame values into arrays.
 
@@ -1264,7 +1329,8 @@ class APEC_M:
         Raises:
             ValueError: If any referenced VTK array is missing.
         """
-        VTKGridHelper.update_vtk_grid(vtk_data, df)
+        MeshEdit.update_vtk_grid(vtk_data, df)
+
     #
     #
     #
@@ -1277,7 +1343,7 @@ class APEC_M:
     #
     #
     #
-    def build_tree_cotree_gauge(
+    def tree_gauge(
         self,
         array_name: str = "Az",
         tree_name: str = "TREE",
@@ -1316,11 +1382,11 @@ class APEC_M:
 
         # Instead of adding constrained Az to forced_cotree_mask,
         # generate constrained corner node set from Az and pass to tree-cotree builder
-        constrained_corners = TreeGaugeHelper.constrained_corners_from_midside_array(
+        constrained_corners = TreeGauge.constrained_corners_from_midside_array(
             self.mesh, array_name
         )
 
-        info = TreeGaugeHelper.build_tree_cotree_on_grid(
+        info = TreeGauge.build_tree_cotree_on_grid(
             self.mesh,
             constrained_point_ids=constrained_corners,
             tree_name=tree_name,

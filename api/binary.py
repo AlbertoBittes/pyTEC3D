@@ -26,8 +26,7 @@ SettingsInput = Union[SettingsType, Iterable[SettingsType]]
 ColumnValues = Union[np.ndarray, List[str]]
 
 
-class BinaryHelper:
-
+class Binary:
     @staticmethod
     def _ensure_settings_list(settings: SettingsInput) -> List[SettingsType]:
         """
@@ -106,7 +105,9 @@ class BinaryHelper:
         return column_dict
 
     @staticmethod
-    def _write_flattened_series(binary_file: BinaryIO, values: Sequence[Any], key: str) -> None:
+    def _write_flattened_series(
+        binary_file: BinaryIO, values: Sequence[Any], key: str
+    ) -> None:
         """
         Write a sequence of values under the same key to the binary stream.
 
@@ -128,20 +129,18 @@ class BinaryHelper:
         """
         if all(isinstance(v, (int, np.integer)) for v in values):
             data = np.asarray(values, dtype=np.int64)
-            BinaryHelper._write_ndarray_payload(
-                binary_file, "int64", [len(values)], 0, data
-            )
+            Binary._write_ndarray_payload(binary_file, "int64", [len(values)], 0, data)
             return
 
         if all(isinstance(v, (int, float, np.integer, np.floating)) for v in values):
             data = np.asarray(values, dtype=np.float64)
-            BinaryHelper._write_ndarray_payload(
+            Binary._write_ndarray_payload(
                 binary_file, "float64", [len(values)], 1, data
             )
             return
 
         if all(isinstance(v, str) for v in values):
-            BinaryHelper._write_ndarray_payload(
+            Binary._write_ndarray_payload(
                 binary_file, "str", [len(values)], 2, list(values)
             )
             return
@@ -186,7 +185,7 @@ class BinaryHelper:
             else:
                 flattened = np.empty(0, dtype=arrays[0].dtype)
             cast_dtype = np.int64 if element_kind == 0 else np.float64
-            BinaryHelper._write_ndarray_payload(
+            Binary._write_ndarray_payload(
                 binary_file,
                 dtype_str,
                 full_shape,
@@ -198,7 +197,7 @@ class BinaryHelper:
             for arr in arrays:
                 flattened = arr.reshape(-1)
                 str_values.extend(str(item) for item in flattened)
-            BinaryHelper._write_ndarray_payload(
+            Binary._write_ndarray_payload(
                 binary_file,
                 dtype_str,
                 full_shape,
@@ -282,23 +281,25 @@ class BinaryHelper:
         Returns:
             None
         """
-        settings_list = BinaryHelper._ensure_settings_list(settings)
+        settings_list = Binary._ensure_settings_list(settings)
         if not settings_list:
             binary_file.write(struct.pack("I", 0))
             return
 
-        keys = BinaryHelper._validate_settings_keys(settings_list)
+        keys = Binary._validate_settings_keys(settings_list)
         binary_file.write(struct.pack("I", len(keys)))
 
         for key in keys:
             binary_file.write(struct.pack("I", len(key)))
             binary_file.write(key.encode("utf-8"))
             values = [settings[key] for settings in settings_list]
-            BinaryHelper._write_flattened_series(binary_file, values, key)
+            Binary._write_flattened_series(binary_file, values, key)
 
     @staticmethod
     def write_to_binary(
-        obj: Union[SettingsType, pd.DataFrame, Iterable[Union[SettingsType, pd.DataFrame]]],
+        obj: Union[
+            SettingsType, pd.DataFrame, Iterable[Union[SettingsType, pd.DataFrame]]
+        ],
         binary_file: BinaryIO,
         label: str,
     ) -> None:
@@ -321,14 +322,14 @@ class BinaryHelper:
         if isinstance(obj, dict):
             obj_list = [obj]
         elif isinstance(obj, pd.DataFrame):
-            obj_list = [BinaryHelper._dataframe_to_column_dict(obj)]
+            obj_list = [Binary._dataframe_to_column_dict(obj)]
         elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
             obj_list = []
             for item in obj:
                 if isinstance(item, dict):
                     obj_list.append(item)
                 elif isinstance(item, pd.DataFrame):
-                    obj_list.append(BinaryHelper._dataframe_to_column_dict(item))
+                    obj_list.append(Binary._dataframe_to_column_dict(item))
                 else:
                     raise TypeError("Iterable must contain only dicts or DataFrames.")
         else:
@@ -338,10 +339,12 @@ class BinaryHelper:
         if not obj_list:
             return
 
-        BinaryHelper.write_data_to_binary(obj_list, binary_file, label)
+        Binary.write_data_to_binary(obj_list, binary_file, label)
 
     @staticmethod
-    def create_numpy_array_for_binary(cell_point_data: "vtk.vtkDataSetAttributes") -> np.ndarray:
+    def create_numpy_array_for_binary(
+        cell_point_data: "vtk.vtkDataSetAttributes",
+    ) -> np.ndarray:
         """
         Build a structured NumPy array representing loads or nodal DOFs from VTK data.
 
@@ -422,11 +425,9 @@ class BinaryHelper:
             ValueError: If `label` is unsupported or the extracted payload is not a NumPy array.
         """
         if label == "elem":
-            numpy_array = BinaryHelper.create_numpy_array_for_binary(mesh.GetCellData())
-        elif label == 'node':
-            numpy_array = BinaryHelper.create_numpy_array_for_binary(
-                mesh.GetPointData()
-            )
+            numpy_array = Binary.create_numpy_array_for_binary(mesh.GetCellData())
+        elif label == "node":
+            numpy_array = Binary.create_numpy_array_for_binary(mesh.GetPointData())
         else:
             raise ValueError(f"Unsupported label for numpy array binary write: {label}")
         if not isinstance(numpy_array, np.ndarray):

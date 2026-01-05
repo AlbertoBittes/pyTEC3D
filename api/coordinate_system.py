@@ -11,7 +11,9 @@ def _normalize_or_error(vec: np.ndarray, error_message: str) -> np.ndarray:
     return vec / norm
 
 
-def _build_rotation_from_basis(e0: np.ndarray, e1: np.ndarray, e2: np.ndarray) -> np.ndarray:
+def _build_rotation_from_basis(
+    e0: np.ndarray, e1: np.ndarray, e2: np.ndarray
+) -> np.ndarray:
     rotation = np.zeros((3, 3), dtype=float)
     rotation[0, :] = e0
     rotation[1, :] = e1
@@ -33,16 +35,22 @@ def _build_local_to_global_from_points(
     origin: np.ndarray, nxax: np.ndarray, nxypl: np.ndarray
 ) -> np.ndarray:
     origin_vec = np.asarray(origin, dtype=float)
-    x_axis = _normalize_or_error(nxax - origin_vec, "Coordinate system x-axis is invalid.")
-    plane_vec = _normalize_or_error(nxypl - origin_vec, "Coordinate system xy-plane vector is invalid.")
+    x_axis = _normalize_or_error(
+        nxax - origin_vec, "Coordinate system x-axis is invalid."
+    )
+    plane_vec = _normalize_or_error(
+        nxypl - origin_vec, "Coordinate system xy-plane vector is invalid."
+    )
     z_axis = _normalize_or_error(
         np.cross(x_axis, plane_vec), "Coordinate system axes are collinear."
     )
-    y_axis = _normalize_or_error(np.cross(z_axis, x_axis), "Coordinate system y-axis is invalid.")
+    y_axis = _normalize_or_error(
+        np.cross(z_axis, x_axis), "Coordinate system y-axis is invalid."
+    )
     return _build_local_to_global_from_axes(x_axis, y_axis, z_axis)
 
 
-def build_ansys_rotation_matrix(
+def build_rotation_matrix(
     angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
 ) -> np.ndarray:
     def snap_trig_value(value: float) -> float:
@@ -81,9 +89,13 @@ def build_ansys_rotation_matrix(
 
 
 class CoordinateSystem:
-    def __init__(self, origin: Sequence[float], local_to_global_cart: np.ndarray, cs_type: str):
+    def __init__(
+        self, origin: Sequence[float], local_to_global_cart: np.ndarray, cs_type: str
+    ):
         self._origin = np.asarray(origin, dtype=float).reshape(3)
-        self._local_to_global_cart = np.asarray(local_to_global_cart, dtype=float).reshape(3, 3)
+        self._local_to_global_cart = np.asarray(
+            local_to_global_cart, dtype=float
+        ).reshape(3, 3)
         self._type = cs_type
 
     @property
@@ -115,7 +127,9 @@ class CoordinateSystem:
         raise NotImplementedError
 
     def global_to_local_rotation_array(self, global_points: np.ndarray) -> np.ndarray:
-        return np.stack([self.global_to_local_rotation(point) for point in global_points], axis=0)
+        return np.stack(
+            [self.global_to_local_rotation(point) for point in global_points], axis=0
+        )
 
     def local_to_global_rotation(self, global_point: Sequence[float]) -> np.ndarray:
         return self.global_to_local_rotation(global_point).T
@@ -136,7 +150,7 @@ class CartesianCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_ansys_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
@@ -168,7 +182,7 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_ansys_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
@@ -264,7 +278,7 @@ class SphericalCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_ansys_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
@@ -380,32 +394,38 @@ class SphericalCoordinateSystem(CoordinateSystem):
         return np.stack((r, theta, phi), axis=1)
 
 
-def make_coordinate_system_local(
-    kcs: int,
+def make_coordinate_system_angles(
+    coord_sys_type: int,
     origin: Sequence[float],
     thxy_deg: float,
     thyz_deg: float,
     thzx_deg: float,
 ) -> CoordinateSystem:
-    if kcs == 0:
-        return CartesianCoordinateSystem(origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg)
-    if kcs == 1:
-        return CylindricalCoordinateSystem(origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg)
-    if kcs == 2:
-        return SphericalCoordinateSystem(origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg)
+    if coord_sys_type == 0:
+        return CartesianCoordinateSystem(
+            origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg
+        )
+    if coord_sys_type == 1:
+        return CylindricalCoordinateSystem(
+            origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg
+        )
+    if coord_sys_type == 2:
+        return SphericalCoordinateSystem(
+            origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg
+        )
     raise ValueError("Unsupported coordinate system type.")
 
 
-def make_coordinate_system_cs(
-    kcs: int,
+def make_coordinate_system_three_points(
+    coord_sys_type: int,
     origin: Sequence[float],
     nxax: Sequence[float],
     nxypl: Sequence[float],
 ) -> CoordinateSystem:
-    if kcs == 0:
+    if coord_sys_type == 0:
         return CartesianCoordinateSystem(origin, nxax=nxax, nxypl=nxypl)
-    if kcs == 1:
+    if coord_sys_type == 1:
         return CylindricalCoordinateSystem(origin, nxax=nxax, nxypl=nxypl)
-    if kcs == 2:
+    if coord_sys_type == 2:
         return SphericalCoordinateSystem(origin, nxax=nxax, nxypl=nxypl)
     raise ValueError("Unsupported coordinate system type.")

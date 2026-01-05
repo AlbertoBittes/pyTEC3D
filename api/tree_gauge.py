@@ -120,7 +120,7 @@ class DSU:
 # ------------------------------
 # Core builder
 # ------------------------------
-class TreeGaugeHelper:
+class TreeGauge:
     @staticmethod
     def build_tree_cotree_for_midside_edges(
         ugrid: "vtk.vtkUnstructuredGrid",
@@ -244,14 +244,12 @@ class TreeGaugeHelper:
         Returns:
             Dict[str, int]: Diagnostic info from `build_tree_cotree_for_midside_edges`.
         """
-        tree_arr, cotree_arr, info = (
-            TreeGaugeHelper.build_tree_cotree_for_midside_edges(
-                ugrid,
-                constrained_point_ids=constrained_point_ids,
-                forced_cotree_mask=forced_cotree_mask,
-                tree_name=tree_name,
-                cotree_name=cotree_name,
-            )
+        tree_arr, cotree_arr, info = TreeGauge.build_tree_cotree_for_midside_edges(
+            ugrid,
+            constrained_point_ids=constrained_point_ids,
+            forced_cotree_mask=forced_cotree_mask,
+            tree_name=tree_name,
+            cotree_name=cotree_name,
         )
         ugrid.GetPointData().AddArray(tree_arr)
         ugrid.GetPointData().AddArray(cotree_arr)

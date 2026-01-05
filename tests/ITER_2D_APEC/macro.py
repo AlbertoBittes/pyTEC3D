@@ -1,12 +1,12 @@
 from apec_m import APEC_M
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 import os
 
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
 
-aplasma=0
+aplasma = 0
 
 filename = "ITER_2D_APEC"
 
@@ -14,7 +14,7 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-VTKGridHelper.reset_vtk_arrays_to_default((apec.mesh))
+MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
 
 apec.apec_settings = {
     "target_central_axis_x": 6.52136102486433,
@@ -26,38 +26,38 @@ apec.apec_settings = {
     "min_distance": 0.6,
     "cp_gain": 0.250,
     "tolerance_value": 1e-3,
-    "bradx_value":  -3.873415861E-08,
-    "brady_value":  5.313857037E-09,
-    "bverx_value": 1.822467692E-10,
-    "bvery_value": 1.133287835E-07,
+    "bradx_value": -3.873415861e-08,
+    "brady_value": 5.313857037e-09,
+    "bverx_value": 1.822467692e-10,
+    "bvery_value": 1.133287835e-07,
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
     "print_full_output": 0,
 }
 
-i_CS3U=-4.8204e+06
-i_CS2U=-4.0480e+06
-i_CS1U=-2.0804e+07
-i_CS1L=-2.0804e+07
-i_CS2L=-1.0297e+07
-i_CS3L=5.3012e+06
+i_CS3U = -4.8204e06
+i_CS2U = -4.0480e06
+i_CS1U = -2.0804e07
+i_CS1L = -2.0804e07
+i_CS2L = -1.0297e07
+i_CS3L = 5.3012e06
 
-i_PF1=5.7325e+06
-i_PF2=-2.8834e+06
-i_PF3=-5.8084e+06
-i_PF4=-4.7762e+06
-i_PF5=-7.8133e+06
-i_PF6=1.6941e+07
+i_PF1 = 5.7325e06
+i_PF2 = -2.8834e06
+i_PF3 = -5.8084e06
+i_PF4 = -4.7762e06
+i_PF5 = -7.8133e06
+i_PF6 = 1.6941e07
 
-a_PF1=0.94375190
-a_PF2=0.41453946
-a_PF3=0.66413094
-a_PF4=0.60871516
-a_PF5=0.77496250
-a_PF6=1.72659250
-a_CS=1.55608
-a_plasma=28.6027095
+a_PF1 = 0.94375190
+a_PF2 = 0.41453946
+a_PF3 = 0.66413094
+a_PF4 = 0.60871516
+a_PF5 = 0.77496250
+a_PF6 = 1.72659250
+a_CS = 1.55608
+a_plasma = 28.6027095
 
 apec.read_excel("input_template.xlsx")
 

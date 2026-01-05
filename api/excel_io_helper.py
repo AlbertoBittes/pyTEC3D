@@ -5,9 +5,9 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 import numpy as np
 import pandas as pd
 
-from binary_helper import BinaryHelper
+from binary import Binary
 from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
-from vtk_grid_helper import VTKGridHelper
+from mesh_edit import MeshEdit
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     import vtk
@@ -38,13 +38,13 @@ class ExcelIOHelper:
         # Determine the VTK data and mapping based on the data_type
         if data_type == "elem":
             vtk_data = mesh.GetCellData()
-        elif data_type == 'node':
+        elif data_type == "node":
             vtk_data = mesh.GetPointData()
         else:
             raise ValueError("Invalid data_type. Must be 'elem' or 'node'.")
 
         # Retrieve the final_data NumPy array
-        final_data = BinaryHelper.create_numpy_array_for_binary(vtk_data)
+        final_data = Binary.create_numpy_array_for_binary(vtk_data)
 
         # Convert the NumPy array to a pandas DataFrame
         df = pd.DataFrame(final_data)
@@ -72,7 +72,9 @@ class ExcelIOHelper:
         print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
 
     @staticmethod
-    def read_excel_dict(excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[Dict[str, Any]]:
+    def read_excel_dict(
+        excel_file: Union[str, PathLike[str]], sheet_name: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Reads a specific sheet from an Excel file into a dictionary and returns it.
         Ensures that the keys in the 'SETTING' column match the default keys defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
@@ -130,7 +132,9 @@ class ExcelIOHelper:
         return result_dict
 
     @staticmethod
-    def read_excel_df(excel_file: Union[str, PathLike[str]], sheet_name: str) -> Optional[pd.DataFrame]:
+    def read_excel_df(
+        excel_file: Union[str, PathLike[str]], sheet_name: str
+    ) -> Optional[pd.DataFrame]:
         """
         Reads a specific sheet from an Excel file into a pandas DataFrame and returns it.
         Ensures that the columns in the sheet match the default columns defined in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.
@@ -313,12 +317,12 @@ class ExcelIOHelper:
         # Determine the VTK data type to update
         if data_type == "elem":
             vtk_data = mesh.GetCellData()
-        elif data_type == 'node':
+        elif data_type == "node":
             vtk_data = mesh.GetPointData()
         else:
             raise ValueError(
                 f"Invalid data_type '{data_type}'. Must be 'elem' or 'node'."
             )
 
-        VTKGridHelper.update_vtk_grid(vtk_data, df)
+        MeshEdit.update_vtk_grid(vtk_data, df)
         print(f"VTK grid updated with data from sheet '{sheet_name}'.")

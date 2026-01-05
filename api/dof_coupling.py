@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    TYPE_CHECKING,
+)
 import warnings
 
 import numpy as np
@@ -15,7 +25,7 @@ Coordinates = Sequence[Tuple[float, float, float]]
 Forest = Dict[str, Any]
 
 
-class DOFCouplingHelper:
+class DOFCoupling:
     """Construct coupling forests from CP_* point data arrays in a VTK mesh."""
 
     CP_PREFIX = "CP_"
@@ -49,15 +59,15 @@ class DOFCouplingHelper:
         if npoints == 0:
             return []
 
-        cp_sets = DOFCouplingHelper._collect_cp_sets(grid, npoints)
+        cp_sets = DOFCoupling._collect_cp_sets(grid, npoints)
         if not cp_sets:
             return []
 
-        coupled_variables_map = DOFCouplingHelper._collect_coupled_variables(
+        coupled_variables_map = DOFCoupling._collect_coupled_variables(
             coupled_variables
         )
-        adjacency = DOFCouplingHelper._build_node_adjacency(grid, npoints)
-        coords = DOFCouplingHelper._collect_point_coordinates(grid, npoints)
+        adjacency = DOFCoupling._build_node_adjacency(grid, npoints)
+        coords = DOFCoupling._collect_point_coordinates(grid, npoints)
 
         forests: List[Dict[str, Any]] = []
         for array_name, groups in cp_sets.items():
@@ -69,7 +79,7 @@ class DOFCouplingHelper:
                         RuntimeWarning,
                     )
                 forests.append(
-                    DOFCouplingHelper._build_forest_for_nodes(
+                    DOFCoupling._build_forest_for_nodes(
                         array_name=array_name,
                         cp_id=cp_id,
                         nodes=nodes,
@@ -105,7 +115,9 @@ class DOFCouplingHelper:
             print(header)
 
             if "coupled_variables" in forest and forest["coupled_variables"].size:
-                vars_str = ", ".join(str(var) for var in forest["coupled_variables"].tolist())
+                vars_str = ", ".join(
+                    str(var) for var in forest["coupled_variables"].tolist()
+                )
                 print(f"  variables: {vars_str}")
 
             if forest["pairs"].size:
@@ -149,19 +161,19 @@ class DOFCouplingHelper:
         isolated: List[int] = []
 
         while remaining:
-            seed = DOFCouplingHelper._pick_seed_node(remaining, adjacency, nodes_set)
+            seed = DOFCoupling._pick_seed_node(remaining, adjacency, nodes_set)
             remaining.remove(seed)
 
-            component = DOFCouplingHelper._collect_component(seed, remaining, adjacency)
+            component = DOFCoupling._collect_component(seed, remaining, adjacency)
             component_set = set(component)
 
             if len(component_set) == 1:
                 isolated.append(seed)
                 continue
 
-            root = DOFCouplingHelper._pick_root(component_set, adjacency)
+            root = DOFCoupling._pick_root(component_set, adjacency)
             roots.append(root)
-            component_edges, visited = DOFCouplingHelper._build_tree_edges(
+            component_edges, visited = DOFCoupling._build_tree_edges(
                 root, component_set, adjacency, coords
             )
             edges.extend(component_edges)
@@ -211,16 +223,16 @@ class DOFCouplingHelper:
                 continue
 
             name = array.GetName()
-            if not name or not name.startswith(DOFCouplingHelper.CP_PREFIX):
+            if not name or not name.startswith(DOFCoupling.CP_PREFIX):
                 continue
 
-            suffix = name[len(DOFCouplingHelper.CP_PREFIX) :]
+            suffix = name[len(DOFCoupling.CP_PREFIX) :]
             if not suffix.isdigit():
                 continue
 
             groups: Dict[int, List[int]] = defaultdict(list)
             for pid in range(npoints):
-                value = DOFCouplingHelper._safe_get_scalar(array, pid)
+                value = DOFCoupling._safe_get_scalar(array, pid)
                 if value is None:
                     continue
                 cp_id = int(round(value))
@@ -281,7 +293,9 @@ class DOFCouplingHelper:
         return mapping
 
     @staticmethod
-    def _build_node_adjacency(grid: "vtk.vtkUnstructuredGrid", npoints: int) -> Adjacency:
+    def _build_node_adjacency(
+        grid: "vtk.vtkUnstructuredGrid", npoints: int
+    ) -> Adjacency:
         """
         Build an undirected adjacency list of mesh nodes based on cell connectivity.
 
@@ -389,7 +403,7 @@ class DOFCouplingHelper:
                 if child in component_set and child not in visited
             ]
             neighbors.sort(
-                key=lambda child: DOFCouplingHelper._squared_distance(
+                key=lambda child: DOFCoupling._squared_distance(
                     coords[parent], coords[child]
                 )
             )
@@ -426,12 +440,16 @@ class DOFCouplingHelper:
 
         for node in candidates:
             score = len(adjacency[node] & allowed)
-            if score > best_score or (score == best_score and (best is None or node < best)):
+            if score > best_score or (
+                score == best_score and (best is None or node < best)
+            ):
                 best = node
                 best_score = score
 
         if best is None:
-            raise RuntimeError("Failed to pick a seed node for coupling forest construction.")
+            raise RuntimeError(
+                "Failed to pick a seed node for coupling forest construction."
+            )
 
         return best
 
@@ -455,7 +473,9 @@ class DOFCouplingHelper:
 
         for node in component_set:
             score = len(adjacency[node] & component_set)
-            if score > best_score or (score == best_score and (best is None or node < best)):
+            if score > best_score or (
+                score == best_score and (best is None or node < best)
+            ):
                 best = node
                 best_score = score
 
