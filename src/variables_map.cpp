@@ -199,6 +199,28 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
     return labels;
 }
 
+VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
+    const ElementTypesMap &element_types_map,
+    ApecMSystemBase::SystemType system_type)
+{
+    VariableToElementIdsMapType variable_to_element_ids;
+    for (const auto &pair : element_types_map)
+    {
+        subdomain_id_type element_id = pair.first;
+        const auto &element_type = pair.second;
+        if (!element_type)
+            continue;
+
+        const auto vars = VariablesMap::get_variables_for_element(*element_type);
+        for (const auto &var : vars)
+        {
+            if (VariablesMap::get_variable_system_type(*element_type, var) == system_type)
+                variable_to_element_ids[var].insert(element_id);
+        }
+    }
+    return variable_to_element_ids;
+}
+
 std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const ElementType &element)
 {
     std::vector<GlobalVariableName> vars;

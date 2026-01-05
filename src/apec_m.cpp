@@ -490,6 +490,11 @@ bool APEC_M::validate_model_for_analysis()
         }
     }
 
+    std::vector<bool> periodic_pair_found;
+    bool any_mesh_has_boundary_ids = false;
+    if (!periodic_boundary_pairs.empty())
+        periodic_pair_found.assign(periodic_boundary_pairs.size(), false);
+
     for (const auto &entry : mesh_repositories)
     {
         const auto &mesh_name = entry.first;
@@ -615,25 +620,38 @@ bool APEC_M::validate_model_for_analysis()
                 mesh->apply_boundary_info();
 
             const auto &side_ids = boundary_info.get_side_boundary_ids();
-            if (side_ids.empty())
-            {
-                libMesh::out << "Mesh '" << mesh_name << "' has no boundary IDs but periodic boundaries are defined." << std::endl;
-                valid = false;
-            }
+            if (!side_ids.empty())
+                any_mesh_has_boundary_ids = true;
 
-            for (const auto &pair : periodic_boundary_pairs)
+            for (std::size_t i = 0; i < periodic_boundary_pairs.size(); ++i)
             {
+                const auto &pair = periodic_boundary_pairs[i];
                 const boundary_id_type main_id = static_cast<boundary_id_type>(pair.first);
                 const boundary_id_type paired_id = static_cast<boundary_id_type>(pair.second);
 
-                if (side_ids.find(main_id) == side_ids.end())
+                if (!periodic_pair_found[i] && side_ids.find(main_id) != side_ids.end() &&
+                    side_ids.find(paired_id) != side_ids.end())
+                    periodic_pair_found[i] = true;
+            }
+        }
+    }
+
+    if (!periodic_boundary_pairs.empty())
+    {
+        if (!any_mesh_has_boundary_ids)
+        {
+            libMesh::out << "Periodic boundaries are defined but no mesh has boundary IDs." << std::endl;
+            valid = false;
+        }
+        else
+        {
+            for (std::size_t i = 0; i < periodic_boundary_pairs.size(); ++i)
+            {
+                if (!periodic_pair_found[i])
                 {
-                    libMesh::out << "Periodic boundary main ID " << main_id << " not found on mesh '" << mesh_name << "'." << std::endl;
-                    valid = false;
-                }
-                if (side_ids.find(paired_id) == side_ids.end())
-                {
-                    libMesh::out << "Periodic boundary paired ID " << paired_id << " not found on mesh '" << mesh_name << "'." << std::endl;
+                    const auto &pair = periodic_boundary_pairs[i];
+                    libMesh::out << "Periodic boundary pair (main=" << pair.first << ", paired=" << pair.second
+                                 << ") not found together on any mesh." << std::endl;
                     valid = false;
                 }
             }

@@ -1,7 +1,5 @@
 #include "element_types_factory.h"
 
-#include "variables_map.h"
-
 #include <algorithm>
 #include <cmath>
 #include <regex>
@@ -89,27 +87,6 @@ ElementType *ElementTypesFactory::get_element_type(subdomain_id_type element_id)
     if (it != element_types_map->end())
         return it->second.get();
     libmesh_error_msg("Element type not found for subdomain ID: " + std::to_string(element_id));
-}
-
-// --------------------------------------------------------
-// Variable → Element ID associations
-// --------------------------------------------------------
-std::unique_ptr<VariableToElementIdsMapType>
-ElementTypesFactory::associate_variables_with_element_IDs(ApecMSystemBase::SystemType system_type) const
-{
-    auto variableToElementIds = std::make_unique<VariableToElementIdsMapType>();
-    for (const auto &pair : *element_types_map)
-    {
-        subdomain_id_type elementId = pair.first;
-        const auto &elementType = pair.second;
-        const auto vars = VariablesMap::get_variables_for_element(*elementType);
-        for (const auto &var : vars)
-        {
-            if (VariablesMap::get_variable_system_type(*elementType, var) == system_type)
-                (*variableToElementIds)[var].insert(elementId);
-        }
-    }
-    return variableToElementIds;
 }
 
 // --------------------------------------------------------

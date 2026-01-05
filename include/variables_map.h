@@ -5,6 +5,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 #include <libmesh/enum_order.h>
 
 #include "apec_m_system.h"
+#include "element_types.h"
 
 namespace libMesh
 {
@@ -122,6 +124,10 @@ public:
     static void sort_vector_components(
         std::map<std::string, std::vector<VectorComponent>> &vector_variables);
     static std::vector<std::string> get_global_labels_for_label(const std::string &label);
+
+    static VariableToElementIdsMapType associate_variables_with_element_IDs(
+        const ElementTypesMap &element_types_map,
+        ApecMSystemBase::SystemType system_type);
 
     static std::vector<GlobalVariableName> get_variables_for_element(const ElementType &element);
     static std::vector<GlobalVariableName> get_active_variables_for_element(const ElementType &element,

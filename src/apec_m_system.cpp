@@ -1,6 +1,7 @@
 #include "apec_m_system.h"
 
 #include <array>
+#include <set>
 #include <vector>
 
 #include "system_matrix_reduction.h"
@@ -247,12 +248,28 @@ void ApecMSystem<SysType>::init_variables()
     if (type == ApecMSystemBase::NUM_SYSTEMS)
         libmesh_error_msg("System type not found for system name: " + sys_name);
 
-    auto vars_to_subdomain_ids = element_types_collector->associate_variables_with_element_IDs(type);
+    if (!element_types_collector || !element_types_collector->get_element_types_map())
+        libmesh_error_msg("Element types map not available for system variables.");
+    auto vars_to_subdomain_ids = VariablesMap::associate_variables_with_element_IDs(
+        *element_types_collector->get_element_types_map(),
+        type);
 
-    for (const auto &pair : *vars_to_subdomain_ids)
+    std::set<subdomain_id_type> mesh_subdomain_ids;
+    this->get_mesh().subdomain_ids(mesh_subdomain_ids);
+
+    for (auto &pair : vars_to_subdomain_ids)
     {
         const auto &variable_string = VariablesMap::get_info_by_key(pair.first).global_label;
-        const std::set<subdomain_id_type> &subdomain_ids = pair.second;
+        auto &subdomain_ids = pair.second;
+        for (auto it = subdomain_ids.begin(); it != subdomain_ids.end();)
+        {
+            if (!mesh_subdomain_ids.count(*it))
+                it = subdomain_ids.erase(it);
+            else
+                ++it;
+        }
+        if (subdomain_ids.empty())
+            continue;
         auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
         auto fe_family = VariablesMap::get_variable_fe_family(*elem_type, pair.first);
         auto order = VariablesMap::get_variable_order(*elem_type, pair.first);

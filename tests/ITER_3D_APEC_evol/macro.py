@@ -47,14 +47,6 @@ apec.select_pos(
 # Far field zero boundary conditions
 apec.set_value_on_selection("A", 0, 2)
 
-# Initial loads: Project the current density from the equilibrium output to the static mesh
-apec.select_all()
-apec_equilibrium_output.select_all()
-apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
-)
-
 apec.write_loads_bcs()
 apec.save_mesh()
 
@@ -155,6 +147,14 @@ apec.select_pos(
 apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 1)
 apec.set_value_on_selection("A", 0, 2)
+
+# Initial loads: Project the current density from the equilibrium output to the static mesh
+apec.select_all()
+apec_equilibrium_output.select_all()
+apec_equilibrium_output.select("subdomain_id", 23, type="elem")
+apec.toroidal_projection(
+    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
+)
 
 apec.write_loads_bcs()
 apec.save_mesh()
