@@ -114,11 +114,28 @@ class CoordinateSystem:
     def to_local_coordinates_array(self, global_points: np.ndarray) -> np.ndarray:
         return np.vstack([self.to_local_coordinates(point) for point in global_points])
 
+    def to_global_coordinates(self, local_point: Sequence[float]) -> np.ndarray:
+        local = np.asarray(local_point, dtype=float)
+        return self._origin + local @ self._local_to_global_cart.T
+
+    def to_global_coordinates_array(self, local_points: np.ndarray) -> np.ndarray:
+        local = np.asarray(local_points, dtype=float)
+        if local.size == 0:
+            return np.empty((0, 3), dtype=float)
+        return self._origin + local @ self._local_to_global_cart.T
+
     def vector_components_from_global(
         self, global_vectors: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
         _ = global_positions
         local_vectors = np.asarray(global_vectors, dtype=float)
+        return local_vectors @ self._local_to_global_cart.T
+
+    def vector_components_to_global(
+        self, local_components: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        _ = global_positions
+        local_vectors = np.asarray(local_components, dtype=float)
         return local_vectors @ self._local_to_global_cart.T
 
 
@@ -191,6 +208,8 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         e_theta = np.zeros_like(local_positions)
         e_r[:, 0] = 1.0
         e_theta[:, 1] = 1.0
+        e_z = np.zeros_like(local_positions)
+        e_z[:, 2] = 1.0
 
         nonzero = r > 0.0
         if np.any(nonzero):
@@ -204,6 +223,38 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         comp_theta = np.einsum("ij,ij->i", e_theta, local_vectors)
         comp_z = local_vectors[:, 2]
         return np.stack((comp_r, comp_theta, comp_z), axis=1)
+
+    def vector_components_to_global(
+        self, local_components: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        local_positions = self._to_local_vectors(global_positions)
+        x = local_positions[:, 0]
+        y = local_positions[:, 1]
+        r = np.sqrt(x * x + y * y)
+
+        e_r = np.zeros_like(local_positions)
+        e_theta = np.zeros_like(local_positions)
+        e_r[:, 0] = 1.0
+        e_theta[:, 1] = 1.0
+
+        nonzero = r > 0.0
+        if np.any(nonzero):
+            inv_r = 1.0 / r[nonzero]
+            e_r[nonzero, 0] = x[nonzero] * inv_r
+            e_r[nonzero, 1] = y[nonzero] * inv_r
+            e_theta[nonzero, 0] = -y[nonzero] * inv_r
+            e_theta[nonzero, 1] = x[nonzero] * inv_r
+
+        local_components = np.asarray(local_components, dtype=float)
+        comp_r = local_components[:, 0]
+        comp_theta = local_components[:, 1]
+        comp_z = local_components[:, 2]
+        local_vectors = (
+            e_r * comp_r[:, np.newaxis]
+            + e_theta * comp_theta[:, np.newaxis]
+            + e_z * comp_z[:, np.newaxis]
+        )
+        return local_vectors @ self._local_to_global_cart.T
 
     def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
         local = self._to_local_vector(global_point)
@@ -222,6 +273,27 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         nonzero = r > 0.0
         theta[nonzero] = np.arctan2(y[nonzero], x[nonzero])
         return np.stack((r, theta, local[:, 2]), axis=1)
+
+    def to_global_coordinates(self, local_point: Sequence[float]) -> np.ndarray:
+        local = np.asarray(local_point, dtype=float)
+        r = float(local[0])
+        theta = float(local[1])
+        z = float(local[2])
+        x = r * math.cos(theta)
+        y = r * math.sin(theta)
+        return self._origin + np.array([x, y, z], dtype=float) @ self._local_to_global_cart.T
+
+    def to_global_coordinates_array(self, local_points: np.ndarray) -> np.ndarray:
+        local = np.asarray(local_points, dtype=float)
+        if local.size == 0:
+            return np.empty((0, 3), dtype=float)
+        r = local[:, 0]
+        theta = local[:, 1]
+        z = local[:, 2]
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+        local_cart = np.stack((x, y, z), axis=1)
+        return self._origin + local_cart @ self._local_to_global_cart.T
 
 
 class SphericalCoordinateSystem(CoordinateSystem):
@@ -294,6 +366,55 @@ class SphericalCoordinateSystem(CoordinateSystem):
         comp_phi = np.einsum("ij,ij->i", e_phi, local_vectors)
         return np.stack((comp_r, comp_theta, comp_phi), axis=1)
 
+    def vector_components_to_global(
+        self, local_components: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        local_positions = self._to_local_vectors(global_positions)
+        x = local_positions[:, 0]
+        y = local_positions[:, 1]
+        z = local_positions[:, 2]
+        r = np.sqrt(x * x + y * y + z * z)
+        rho = np.sqrt(x * x + y * y)
+
+        e_r = np.zeros_like(local_positions)
+        e_theta = np.zeros_like(local_positions)
+        e_phi = np.zeros_like(local_positions)
+        e_r[:, 2] = 1.0
+        e_theta[:, 0] = 1.0
+        e_phi[:, 1] = 1.0
+
+        nonzero_r = r > 0.0
+        if np.any(nonzero_r):
+            inv_r = 1.0 / r[nonzero_r]
+            e_r[nonzero_r, 0] = x[nonzero_r] * inv_r
+            e_r[nonzero_r, 1] = y[nonzero_r] * inv_r
+            e_r[nonzero_r, 2] = z[nonzero_r] * inv_r
+
+            nonzero_rho = nonzero_r & (rho > 0.0)
+            if np.any(nonzero_rho):
+                inv_rho = 1.0 / rho[nonzero_rho]
+                cos_theta = z[nonzero_rho] * inv_r[nonzero_rho]
+                sin_theta = rho[nonzero_rho] * inv_r[nonzero_rho]
+                cos_phi = x[nonzero_rho] * inv_rho
+                sin_phi = y[nonzero_rho] * inv_rho
+                e_theta[nonzero_rho, 0] = cos_theta * cos_phi
+                e_theta[nonzero_rho, 1] = cos_theta * sin_phi
+                e_theta[nonzero_rho, 2] = -sin_theta
+                e_phi[nonzero_rho, 0] = -sin_phi
+                e_phi[nonzero_rho, 1] = cos_phi
+                e_phi[nonzero_rho, 2] = 0.0
+
+        local_components = np.asarray(local_components, dtype=float)
+        comp_r = local_components[:, 0]
+        comp_theta = local_components[:, 1]
+        comp_phi = local_components[:, 2]
+        local_vectors = (
+            e_r * comp_r[:, np.newaxis]
+            + e_theta * comp_theta[:, np.newaxis]
+            + e_phi * comp_phi[:, np.newaxis]
+        )
+        return local_vectors @ self._local_to_global_cart.T
+
     def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
         local = self._to_local_vector(global_point)
         x = float(local[0])
@@ -318,6 +439,31 @@ class SphericalCoordinateSystem(CoordinateSystem):
         theta[nonzero] = np.arccos(z[nonzero] / r[nonzero])
         phi[nonzero] = np.arctan2(y[nonzero], x[nonzero])
         return np.stack((r, theta, phi), axis=1)
+
+    def to_global_coordinates(self, local_point: Sequence[float]) -> np.ndarray:
+        local = np.asarray(local_point, dtype=float)
+        r = float(local[0])
+        theta = float(local[1])
+        phi = float(local[2])
+        sin_theta = math.sin(theta)
+        x = r * sin_theta * math.cos(phi)
+        y = r * sin_theta * math.sin(phi)
+        z = r * math.cos(theta)
+        return self._origin + np.array([x, y, z], dtype=float) @ self._local_to_global_cart.T
+
+    def to_global_coordinates_array(self, local_points: np.ndarray) -> np.ndarray:
+        local = np.asarray(local_points, dtype=float)
+        if local.size == 0:
+            return np.empty((0, 3), dtype=float)
+        r = local[:, 0]
+        theta = local[:, 1]
+        phi = local[:, 2]
+        sin_theta = np.sin(theta)
+        x = r * sin_theta * np.cos(phi)
+        y = r * sin_theta * np.sin(phi)
+        z = r * np.cos(theta)
+        local_cart = np.stack((x, y, z), axis=1)
+        return self._origin + local_cart @ self._local_to_global_cart.T
 
 
 def make_coordinate_system_angles(

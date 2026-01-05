@@ -1,8 +1,8 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from selector import Selector
+from coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 
 # from convert_mesh import convert_mesh_from_cdb
@@ -12,7 +12,8 @@ apec = APEC_M()
 apec_equilibrium_output = APEC_M()
 
 eq_filename = "ITER_2D_APEC"
-filename = "ITER_2D_APEC_evol"
+filename = "ITER_3D_APEC_evol"
+
 eq_filepath = os.path.join(os.getcwd(), "tests", eq_filename, eq_filename + ".vtu")
 filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 static_mesh_filepath = os.path.join(os.getcwd(), "tests", filename, filename + "_1.vtu")
@@ -29,22 +30,18 @@ output_eq_mesh_filepath = os.path.join(
 apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
 # Read the static mesh
-apec.read_mesh(static_mesh_filepath)
-apec.read_excel("input_template.xlsx")
-apec.write_model_data()
-
-# # Set conductors to non conductors
-# apec.select("ansys_material_type", 24, type="elem")
-# apec.set_value_on_selection("ansys_material_type", 23, type="elem")
-# apec.select("ansys_etype", 24, type="elem")
-# apec.set_value_on_selection("ansys_etype", 23, type="elem")
+apec.read_mesh(static_mesh_filepath, False)
 
 # Set Boundary conditions
-apec.select_all()
-apec.nsel_ext()
+apec.select_pos(0, 0.0, coordinate_system=CylindricalCoordinateSystem())
+# Az bound to 0 on vertical axis
 apec.set_value_on_selection("A", 0, 2)
 
-# Project the current density from the equilibrium output to the static mesh
+apec.select_pos(0, 100, coordinate_system=SphericalCoordinateSystem())
+# Far field zero boundary conditions
+apec.set_value_on_selection("A", 0, 2)
+
+# Initial loads: Project the current density from the equilibrium output to the static mesh
 apec.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
@@ -52,15 +49,84 @@ apec.toroidal_projection(
     apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
 )
 
-# Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
 apec.save_mesh()
 
 # Now start the evolution analysis
-apec.read_mesh(filepath)
+apec.read_mesh(filepath, False)
 
+# Define periodic boundaries
+apec.select_all()
+apec.nsel_ext()
 apec.select("ansys_material_type", 24, type="elem")
-apec.select("ansys_material_type", 24, type="elem", mode="a")
+apec.nsle(mode = "r")
+apec.select_pos(1, 0.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
+apec.set_value_on_selection("boundary_id_0", 4)
+
+apec.select_all()
+apec.nsel_ext()
+apec.select("ansys_material_type", 24, type="elem")
+apec.nsle(mode = "r")
+apec.select_pos(1, 2 * np.pi / 180.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
+apec.set_value_on_selection("boundary_id_0", 5)
+
+apec.select_all()
+apec.nsel_ext()
+apec.select_pos(1, 0.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(0, 100, mode="u", coordinate_system=SphericalCoordinateSystem())
+apec.set_value_on_selection("boundary_id_0", 2)
+
+apec.select_all()
+apec.nsel_ext()
+apec.select_pos(1, 2 * np.pi / 180.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(0, 0.0, mode="u", coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(0, 100, mode="u", coordinate_system=SphericalCoordinateSystem())
+apec.set_value_on_selection("boundary_id_0", 3)
+
+# Set Boundary conditions
+apec.select_pos(0, 0.0, coordinate_system=CylindricalCoordinateSystem())
+# Ax and Az bound to 0 on vertical axis
+apec.set_value_on_selection("A", 0, 0)
+apec.set_value_on_selection("A", 0, 2)
+
+apec.select_all()
+apec.select_pos(0, 100, coordinate_system=CylindricalCoordinateSystem())
+# Far field zero boundary conditions
+apec.set_value_on_selection("A", 0, 0)
+apec.set_value_on_selection("A", 0, 1)
+apec.set_value_on_selection("A", 0, 2)
+
+apec.write_loads_bcs()
+apec.save_mesh()
+# Minus 2 degrees rotation
+matrix_2deg = [
+    [np.cos(np.deg2rad(-2)), 0.0, np.sin(np.deg2rad(-2)), 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [-np.sin(np.deg2rad(-2)), 0.0, np.cos(np.deg2rad(-2)), 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+]
+
+apec.periodic_boundaries.append(
+    {
+        "main_boundary": 3,
+        "paired_boundary": 2,
+        "periodic_matrix": matrix_2deg,
+        "variable": "A",
+    }
+)
+
+apec.periodic_boundaries.append(
+    {
+        "main_boundary": 5,
+        "paired_boundary": 4,
+        "periodic_matrix": matrix_2deg,
+        "variable": "VOLT",
+    }
+)
+
+apec.read_excel("input_template.xlsx")
+apec.write_model_data()
+
 apec.apec_settings = {
     "R0": 6.2,
     "max_picard_iterations": 70,
@@ -68,23 +134,11 @@ apec.apec_settings = {
     "alpha_value": 8.3197e-01,
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
-    "evolution_mesh": "ITER_2D_APEC_evol",
-    "equilibrium_mesh": "ITER_2D_APEC_evol_1",
+    "evolution_mesh": "ITER_3D_APEC_evol",
+    "equilibrium_mesh": "ITER_3D_APEC_evol_1",
     "print_full_output": 1,
 }
 
-apec.select_all()
-apec.nsel_ext()
-apec.set_value_on_selection("A", 0, 2)
-
-apec.select_all()
-apec_equilibrium_output.select_all()
-apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
-)
-
-apec.write_loads_bcs()
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt("time_steps.txt")
@@ -101,5 +155,3 @@ for step_idx in range(len(time_steps)):
     apec.apec_settings["plasma_current"] = currents[step_idx]
     apec.apec_settings["beta_p"] = betas[step_idx]
     apec.write_time_step(step_idx + 1)
-
-apec.save_mesh()

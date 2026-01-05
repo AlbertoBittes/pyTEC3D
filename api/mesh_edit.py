@@ -95,6 +95,70 @@ class MeshEdit:
         return local_positions, ids
 
     @staticmethod
+    def to_global_coordinates(
+        mesh: "vtk.vtkUnstructuredGrid",
+        local_positions: np.ndarray,
+        coordinate_system: "CoordinateSystem",
+        location: str = "node",
+        selected_only: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Map local coordinates back into the global coordinate system.
+
+        Args:
+            mesh: The VTK unstructured grid used for IDs/selection.
+            local_positions: Local coordinates to map into global coordinates.
+            coordinate_system: Coordinate system used for the mapping.
+            location: "node" or "elem".
+            selected_only: When True, use selection arrays to filter IDs.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: (global_coordinates, ids)
+        """
+        from selector import Selector
+
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
+
+        count = (
+            mesh.GetNumberOfPoints()
+            if location == "node"
+            else mesh.GetNumberOfCells()
+        )
+        ids = np.arange(count, dtype=int)
+
+        if selected_only:
+            Selector.ensure_selection_arrays(mesh)
+            if location == "node":
+                data = mesh.GetPointData()
+                selection_name = "selection_point"
+            else:
+                data = mesh.GetCellData()
+                selection_name = "selection_cell"
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                selection_mask = np.ones((ids.size,), dtype=bool)
+            else:
+                selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+                if selection_mask.size != ids.size:
+                    raise ValueError(
+                        f"Selection array '{selection_name}' has unexpected length."
+                    )
+            if selection_array is not None and np.any(selection_mask):
+                ids = ids[selection_mask]
+            elif selection_array is not None:
+                return np.empty((0, 3), dtype=float), ids[:0]
+
+        local_positions = np.asarray(local_positions, dtype=float)
+        if local_positions.shape[0] != ids.size:
+            raise ValueError(
+                "local_positions must match the number of selected ids."
+            )
+
+        global_positions = coordinate_system.to_global_coordinates_array(local_positions)
+        return global_positions, ids
+
+    @staticmethod
     def map_vector_field_to_local_components(
         mesh: "vtk.vtkUnstructuredGrid",
         array_name: str,
@@ -157,6 +221,77 @@ class MeshEdit:
             cleaned[valid_mask], positions[valid_mask]
         )
         vecs[valid_mask] = local_components
+        vtk_array.Modified()
+        return vecs
+
+    @staticmethod
+    def map_vector_field_to_global_components(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        coordinate_system: "CoordinateSystem",
+        location: str = "node",
+        selected_only: bool = False,
+    ) -> np.ndarray:
+        """
+        Map a 3-component vector field from local components to global components.
+
+        Args:
+            mesh: Mesh containing the array.
+            array_name: Name of the array to rotate.
+            coordinate_system: Coordinate system used for rotation.
+            location: "node" or "elem".
+            selected_only: When True, apply to selected IDs only.
+
+        Returns:
+            np.ndarray: The rotated array (NumPy view).
+        """
+        from selector import Selector
+
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
+
+        data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
+        vtk_array = data.GetArray(array_name) if data is not None else None
+        if vtk_array is None:
+            raise ValueError(f"Array '{array_name}' not found in {location} data.")
+        if vtk_array.GetNumberOfComponents() != 3:
+            raise ValueError("Array must have exactly 3 components.")
+
+        vecs = vtknp.vtk_to_numpy(vtk_array)
+        positions = MeshEdit._get_positions(mesh, location)
+        if positions.size == 0:
+            return vecs
+
+        selection_mask = np.ones((vecs.shape[0],), dtype=bool)
+        if selected_only:
+            Selector.ensure_selection_arrays(mesh)
+            if location == "node":
+                data = mesh.GetPointData()
+                selection_name = "selection_point"
+            else:
+                data = mesh.GetCellData()
+                selection_name = "selection_cell"
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                return vecs
+            selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+            if selection_mask.size != vecs.shape[0]:
+                raise ValueError(
+                    f"Selection array '{selection_name}' has unexpected length."
+                )
+            if not np.any(selection_mask):
+                return vecs
+
+        valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        if not np.any(valid_mask):
+            return vecs
+
+        cleaned = vecs.copy()
+        cleaned[valid_mask] = np.nan_to_num(cleaned[valid_mask], nan=0.0)
+        global_components = coordinate_system.vector_components_to_global(
+            cleaned[valid_mask], positions[valid_mask]
+        )
+        vecs[valid_mask] = global_components
         vtk_array.Modified()
         return vecs
 
