@@ -6,6 +6,7 @@ import vtk.util.numpy_support as vtknp
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
+    from coordinate_system import CoordinateSystem
 
 
 class Selector:
@@ -103,27 +104,39 @@ class Selector:
         axis: int,
         value: Any,
         mode: str = "s",
+        coordinate_system: Optional["CoordinateSystem"] = None,
+        type: str = "node",
     ) -> None:
         """
-        Selects points in the mesh based on their position along a given axis.
+        Selects points or cell centroids in the mesh based on their position along a given axis.
 
         Args:
             mesh: The mesh to operate on.
             axis: Axis index (0 for x, 1 for y, 2 for z).
             value: Value(s) to match (scalar, tuple for range, or set).
             mode: Selection mode ('s', 'a', 'r', 'u').
+            coordinate_system: Optional coordinate system to transform coordinates before selection.
+            type: 'elem' or 'node' to specify selection type (default 'node').
 
         Returns:
             None
 
         Side Effects:
-            Updates selection arrays in mesh PointData.
+            Updates selection arrays in mesh data.
         """
         Selector.ensure_selection_arrays(mesh)
-        coords = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+        if type == "elem":
+            from vtk_grid_helper import VTKGridHelper
+
+            coords = VTKGridHelper.compute_cell_centroids(mesh)
+            data = mesh.GetCellData()
+        else:
+            coords = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+            data = mesh.GetPointData()
+        if coordinate_system is not None:
+            coords = coordinate_system.to_local_coordinates_array(coords)
         arr = coords[:, axis]
-        data = mesh.GetPointData()
-        Selector.apply_selection_mask(arr, value, data, 'node', mode)
+        Selector.apply_selection_mask(arr, value, data, type, mode)
 
     @staticmethod
     def apply_selection_mask(
