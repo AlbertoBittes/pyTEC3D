@@ -96,7 +96,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan(ind)
+              -nan
             </Value>
           </InformationKey>
         </DataArray>
