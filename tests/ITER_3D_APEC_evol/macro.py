@@ -33,23 +33,23 @@ apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 eps = 1e-1
 theta_eps = 1e-3
 # Read the static mesh
-apec.read_mesh(static_mesh_filepath)
+apec_equilibrium = APEC_M()
+apec_equilibrium.read_mesh(static_mesh_filepath)
 
 # Set Boundary conditions
-apec.select_pos(
+apec_equilibrium.select_pos(
     0, (0.0 - eps, 0.0 + eps), coordinate_system=CylindricalCoordinateSystem()
 )
 # Az bound to 0 on vertical axis
-apec.set_value_on_selection("A", 0, 2)
-
-apec.select_pos(
+apec_equilibrium.set_value_on_selection("A", 0, 2)
+apec_equilibrium.select_pos(
     0, (100.0 - eps, 100.0 + eps), coordinate_system=SphericalCoordinateSystem()
 )
 # Far field zero boundary conditions
-apec.set_value_on_selection("A", 0, 2)
+apec_equilibrium.set_value_on_selection("A", 0, 2)
 
-apec.write_loads_bcs()
-apec.save_mesh()
+apec_equilibrium.write_loads_bcs()
+apec_equilibrium.save_mesh()
 
 # Now start the evolution analysis
 apec.read_mesh(filepath)
@@ -150,7 +150,7 @@ apec.set_value_on_selection("A", 0, 1)
 apec.set_value_on_selection("A", 0, 2)
 
 apec.select_all()
-apec_equilibrium_output.select_all()
+apec_equilibrium.select_all()
 apec.apec_settings = {
     "R0": 6.2,
     "max_picard_iterations": 70,
@@ -162,8 +162,8 @@ apec.apec_settings = {
     "equilibrium_mesh": "ITER_3D_APEC_evol_1",
     "print_full_output": 1,
     "n_slices": 3,
-    "toroidal_projection_map_nodes": apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, "node", n_slices=3),
-    "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium_output.mesh, "elem", n_slices=3),
+    "toroidal_projection_map_nodes": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "node", n_slices=3),
+    "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "elem", n_slices=3),
 }
 
 # Initial loads: Project the current density from the equilibrium output to the static mesh
