@@ -29,15 +29,21 @@ output_eq_mesh_filepath = os.path.join(
 )
 apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
+eps = 1e-1
+theta_eps = 1e-3
 # Read the static mesh
 apec.read_mesh(static_mesh_filepath, False)
 
 # Set Boundary conditions
-apec.select_pos(0, 0.0, coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(
+    0, (0.0 - eps, 0.0 + eps), coordinate_system=CylindricalCoordinateSystem()
+)
 # Az bound to 0 on vertical axis
 apec.set_value_on_selection("A", 0, 2)
 
-apec.select_pos(0, 100, coordinate_system=SphericalCoordinateSystem())
+apec.select_pos(
+    0, (100.0 - eps, 100.0 + eps), coordinate_system=SphericalCoordinateSystem()
+)
 # Far field zero boundary conditions
 apec.set_value_on_selection("A", 0, 2)
 
@@ -54,43 +60,97 @@ apec.save_mesh()
 
 # Now start the evolution analysis
 apec.read_mesh(filepath, False)
+apec.remove_array("boundary_id_0")
+apec.remove_array("boundary_id_1")
+apec.remove_array("boundary_id_2")
+apec.add_boundary_array()
+apec.add_boundary_array()
 
 # Define periodic boundaries
 apec.select_all()
 apec.nsel_ext()
 apec.select("ansys_material_type", 24, type="elem")
-apec.nsle(mode = "r")
-apec.select_pos(1, 0.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
-apec.set_value_on_selection("boundary_id_0", 4)
+apec.nsle(mode="r")
+apec.select_pos(
+    1,
+    (0.0 - theta_eps, 0.0 + theta_eps),
+    mode="r",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.set_value_on_selection("boundary_id_1", 4)
 
 apec.select_all()
 apec.nsel_ext()
 apec.select("ansys_material_type", 24, type="elem")
-apec.nsle(mode = "r")
-apec.select_pos(1, 2 * np.pi / 180.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
-apec.set_value_on_selection("boundary_id_0", 5)
+apec.nsle(mode="r")
+apec.select_pos(
+    1,
+    (2 * np.pi / 180.0 - theta_eps, 2 * np.pi / 180.0 + theta_eps),
+    mode="r",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.set_value_on_selection("boundary_id_1", 5)
 
 apec.select_all()
 apec.nsel_ext()
-apec.select_pos(1, 0.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
-apec.select_pos(0, 100, mode="u", coordinate_system=SphericalCoordinateSystem())
+apec.select_pos(
+    1,
+    (0.0 - theta_eps, 0.0 + theta_eps),
+    mode="r",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.select_pos(
+    0,
+    (0.0 - eps, 0.0 + eps),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.select_pos(
+    0,
+    (100.0 - eps, 100.0 + eps),
+    mode="u",
+    coordinate_system=SphericalCoordinateSystem(),
+)
 apec.set_value_on_selection("boundary_id_0", 2)
 
 apec.select_all()
 apec.nsel_ext()
-apec.select_pos(1, 2 * np.pi / 180.0, mode="r", coordinate_system=CylindricalCoordinateSystem())
-apec.select_pos(0, 0.0, mode="u", coordinate_system=CylindricalCoordinateSystem())
-apec.select_pos(0, 100, mode="u", coordinate_system=SphericalCoordinateSystem())
+apec.select_pos(
+    1,
+    (2 * np.pi / 180.0 - theta_eps, 2 * np.pi / 180.0 + theta_eps),
+    mode="r",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.select_pos(
+    0,
+    (0.0 - eps, 0.0 + eps),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+apec.select_pos(
+    0,
+    (100.0 - eps, 100.0 + eps),
+    mode="u",
+    coordinate_system=SphericalCoordinateSystem(),
+)
 apec.set_value_on_selection("boundary_id_0", 3)
 
 # Set Boundary conditions
-apec.select_pos(0, 0.0, coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(
+    0,
+    (0.0 - eps, 0.0 + eps),
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 # Ax and Az bound to 0 on vertical axis
 apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 2)
 
 apec.select_all()
-apec.select_pos(0, 100, coordinate_system=CylindricalCoordinateSystem())
+apec.select_pos(
+    0,
+    (100.0 - eps, 100.0 + eps),
+    coordinate_system=SphericalCoordinateSystem(),
+)
 # Far field zero boundary conditions
 apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 1)

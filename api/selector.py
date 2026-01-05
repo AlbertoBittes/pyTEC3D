@@ -28,13 +28,17 @@ class Selector:
         cell_data = mesh.GetCellData()
         if cell_data.GetArray("selection_cell") is None:
             arr = np.zeros(mesh.GetNumberOfCells(), dtype=np.uint8)
-            vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
+            vtk_arr = vtknp.numpy_to_vtk(
+                arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR
+            )
             vtk_arr.SetName("selection_cell")
             cell_data.AddArray(vtk_arr)
         point_data = mesh.GetPointData()
         if point_data.GetArray("selection_point") is None:
             arr = np.zeros(mesh.GetNumberOfPoints(), dtype=np.uint8)
-            vtk_arr = vtknp.numpy_to_vtk(arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
+            vtk_arr = vtknp.numpy_to_vtk(
+                arr, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR
+            )
             vtk_arr.SetName("selection_point")
             point_data.AddArray(vtk_arr)
 
@@ -44,7 +48,7 @@ class Selector:
         array_name: str,
         value: Any,
         component: Union[int, str] = 0,
-        type: str = 'node',
+        type: str = "node",
         mode: str = "s",
     ) -> None:
         """
@@ -82,7 +86,9 @@ class Selector:
         Selector.ensure_selection_arrays(mesh)
         data = mesh.GetCellData() if type == "elem" else mesh.GetPointData()
         if array_name == "ID":
-            count = mesh.GetNumberOfCells() if type == "elem" else mesh.GetNumberOfPoints()
+            count = (
+                mesh.GetNumberOfCells() if type == "elem" else mesh.GetNumberOfPoints()
+            )
             arr = np.arange(count, dtype=np.int64)
         else:
             vtk_array = data.GetArray(array_name)
@@ -126,9 +132,9 @@ class Selector:
         """
         Selector.ensure_selection_arrays(mesh)
         if type == "elem":
-            from vtk_grid_helper import VTKGridHelper
+            from mesh_edit import MeshEdit
 
-            coords = VTKGridHelper.compute_cell_centroids(mesh)
+            coords = MeshEdit.compute_cell_centroids(mesh)
             data = mesh.GetCellData()
         else:
             coords = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
@@ -167,14 +173,18 @@ class Selector:
         """
         if isinstance(value, tuple):
             if len(value) != 2:
-                raise ValueError("Tuple for range selection must have exactly two elements.")
+                raise ValueError(
+                    "Tuple for range selection must have exactly two elements."
+                )
             mask = (arr >= value[0]) & (arr <= value[1])
         elif isinstance(value, set):
             mask = np.isin(arr, list(value))
         else:
             mask = arr == value
         mask = mask.astype(np.uint8)
-        sel_array = data.GetArray("selection_cell" if type == "elem" else "selection_point")
+        sel_array = data.GetArray(
+            "selection_cell" if type == "elem" else "selection_point"
+        )
         sel_np = vtknp.vtk_to_numpy(sel_array)
         if mode == "s":
             sel_np[:] = mask
@@ -230,7 +240,9 @@ class Selector:
         extract_selection.Update()
         selected_mesh = extract_selection.GetOutput()
 
-        original_ids_array = selected_mesh.GetPointData().GetArray("vtkOriginalPointIds")
+        original_ids_array = selected_mesh.GetPointData().GetArray(
+            "vtkOriginalPointIds"
+        )
         if original_ids_array is None:
             return
         original_point_ids = vtknp.vtk_to_numpy(original_ids_array)
@@ -313,24 +325,30 @@ class Selector:
             Sets all selection array values to 1 (selected).
         """
         Selector.ensure_selection_arrays(mesh)
-        if type is None or type not in ["elem", 'node']:
+        if type is None or type not in ["elem", "node"]:
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 1
             mesh.GetCellData().GetArray("selection_cell").Modified()
-            point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
+            point_sel = vtknp.vtk_to_numpy(
+                mesh.GetPointData().GetArray("selection_point")
+            )
             point_sel[:] = 1
             mesh.GetPointData().GetArray("selection_point").Modified()
         elif type == "elem":
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 1
             mesh.GetCellData().GetArray("selection_cell").Modified()
-        elif type == 'node':
-            point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
+        elif type == "node":
+            point_sel = vtknp.vtk_to_numpy(
+                mesh.GetPointData().GetArray("selection_point")
+            )
             point_sel[:] = 1
             mesh.GetPointData().GetArray("selection_point").Modified()
 
     @staticmethod
-    def unselect_all(mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None) -> None:
+    def unselect_all(
+        mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None
+    ) -> None:
         """
         Unselects all cells or points in the mesh.
 
@@ -345,19 +363,23 @@ class Selector:
             Sets all selection array values to 0 (unselected).
         """
         Selector.ensure_selection_arrays(mesh)
-        if type is None or type not in ["elem", 'node']:
+        if type is None or type not in ["elem", "node"]:
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 0
             mesh.GetCellData().GetArray("selection_cell").Modified()
-            point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
+            point_sel = vtknp.vtk_to_numpy(
+                mesh.GetPointData().GetArray("selection_point")
+            )
             point_sel[:] = 0
             mesh.GetPointData().GetArray("selection_point").Modified()
         elif type == "elem":
             cell_sel = vtknp.vtk_to_numpy(mesh.GetCellData().GetArray("selection_cell"))
             cell_sel[:] = 0
             mesh.GetCellData().GetArray("selection_cell").Modified()
-        elif type == 'node':
-            point_sel = vtknp.vtk_to_numpy(mesh.GetPointData().GetArray("selection_point"))
+        elif type == "node":
+            point_sel = vtknp.vtk_to_numpy(
+                mesh.GetPointData().GetArray("selection_point")
+            )
             point_sel[:] = 0
             mesh.GetPointData().GetArray("selection_point").Modified()
 
@@ -384,7 +406,9 @@ class Selector:
         Selector.ensure_selection_arrays(mesh)
         cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
         if cell_sel_array is None:
-            raise ValueError("Cell selection array 'selection_cell' not found. Run ensure_selection_arrays first.")
+            raise ValueError(
+                "Cell selection array 'selection_cell' not found. Run ensure_selection_arrays first."
+            )
         cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
         selected_cell_ids = np.where(cell_sel == 1)[0]
         if selected_cell_ids.size == 0:
@@ -458,7 +482,7 @@ class Selector:
         array_name: str,
         value: Any,
         component: int = 0,
-        type: str = 'node',
+        type: str = "node",
     ) -> None:
         """
         Sets the value of the specified array for all selected cells or points in the mesh.
@@ -485,7 +509,9 @@ class Selector:
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {type}.")
         arr_np = vtknp.vtk_to_numpy(vtk_array)
-        sel_array = data.GetArray("selection_cell" if type == "elem" else "selection_point")
+        sel_array = data.GetArray(
+            "selection_cell" if type == "elem" else "selection_point"
+        )
         sel_np = vtknp.vtk_to_numpy(sel_array)
         selected_ids = np.where(sel_np == 1)[0]
         if arr_np.ndim == 1:

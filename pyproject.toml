@@ -36,7 +36,7 @@ py-modules = [
     "excel_io_helper",
     "selector",
     "tree_gauge_helper",
-    "vtk_grid_helper",
+    "mesh_edit",
     "vtk_tables_helper",
 ]
 include-package-data = true

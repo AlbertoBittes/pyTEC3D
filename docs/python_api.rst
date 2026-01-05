@@ -36,4 +36,4 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    excel_io_helper
    selector
    tree_gauge_helper
-   vtk_grid_helper
+   mesh_edit

@@ -307,9 +307,7 @@ class APEC_M:
             ValueError: If `data_type` is invalid or the sheet is missing required columns.
             FileNotFoundError: If the Excel file is missing.
         """
-        Excel.update_vtk_grid_from_excel(
-            self.mesh, excel_file, sheet_name, data_type
-        )
+        Excel.update_vtk_grid_from_excel(self.mesh, excel_file, sheet_name, data_type)
 
     def read_excel_df(
         self, excel_file: Union[str, PathLike[str]], sheet_name: str
@@ -376,9 +374,7 @@ class APEC_M:
             FileNotFoundError: If the Excel file is missing.
             ValueError: If the sheet is malformed or missing required values.
         """
-        periodic_boundaries = Excel.read_periodic_boundaries(
-            excel_file, sheet_name
-        )
+        periodic_boundaries = Excel.read_periodic_boundaries(excel_file, sheet_name)
         if periodic_boundaries is not None:
             self.periodic_boundaries = periodic_boundaries
         return periodic_boundaries
@@ -403,9 +399,7 @@ class APEC_M:
         Raises:
             ValueError: If `data_type` is invalid.
         """
-        Excel.write_excel_cell_point_data(
-            self.mesh, output_excel_file, data_type
-        )
+        Excel.write_excel_cell_point_data(self.mesh, output_excel_file, data_type)
 
     #
     #
@@ -1169,7 +1163,7 @@ class APEC_M:
 
     def remove_array(self, array_name: str) -> None:
         """
-        Removes an array from CellData or PointData using VTKGridHelpers.safe_remove_array.
+        Removes an array from CellData or PointData using MeshEdits.safe_remove_array.
 
         Args:
             array_name: The name of the array to remove.
@@ -1212,7 +1206,7 @@ class APEC_M:
         values: Optional[np.ndarray] = None,
     ) -> "vtk.vtkDataArray":
         """
-        Wrapper to add an array to the mesh via VTKGridHelper for a consistent API.
+        Wrapper to add an array to the mesh via MeshEdit for a consistent API.
 
         Args:
             name: Array name.
@@ -1299,7 +1293,7 @@ class APEC_M:
         self, vtk_data: "vtk.vtkDataSetAttributes", df: pd.DataFrame
     ) -> None:
         """
-        Wrapper for VTKGridHelper.update_vtk_grid to write DataFrame values into arrays.
+        Wrapper for MeshEdit.update_vtk_grid to write DataFrame values into arrays.
 
         Args:
             vtk_data: Target VTK DataSetAttributes (CellData or PointData).
