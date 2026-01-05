@@ -1090,6 +1090,7 @@ class APEC_M:
         projection_map: Optional[np.ndarray] = None,
         location: str = "node",
         tolerance: float = 1e-6,
+        n_slices: int = 1,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
         """
@@ -1105,6 +1106,7 @@ class APEC_M:
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
             target_component: Component index to write for scalar copy mode.
+            n_slices: Minimum number of corresponding target IDs per input ID.
 
         Returns:
             None
@@ -1118,6 +1120,7 @@ class APEC_M:
             projection_map=projection_map,
             location=location,
             tolerance=tolerance,
+            n_slices=n_slices,
             coordinate_system=coordinate_system,
             target_component=target_component,
         )
@@ -1132,6 +1135,7 @@ class APEC_M:
         projection_map: Optional[np.ndarray] = None,
         location: str = "node",
         tolerance: float = 1e-6,
+        n_slices: int = 1,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
         """
@@ -1147,6 +1151,7 @@ class APEC_M:
             location: "node" to map point data or "elem" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
+            n_slices: Minimum number of corresponding target IDs per input ID.
 
         Returns:
             None
@@ -1161,6 +1166,7 @@ class APEC_M:
             projection_map=projection_map,
             location=location,
             tolerance=tolerance,
+            n_slices=n_slices,
             coordinate_system=coordinate_system,
         )
 
