@@ -94,6 +94,18 @@ Point CoordinateSystem::axis_direction() const
                  local_to_global_cart_(2, 2));
 }
 
+Point CoordinateSystem::to_local_coordinates(const Point &global_point) const
+{
+    const Point local = to_local_vector(global_point);
+    return Point(local(0), local(1), local(2));
+}
+
+ApecMTensorValue CoordinateSystem::global_to_local_rotation(const Point &global_point) const
+{
+    static_cast<void>(global_point);
+    return local_to_global_cart_.transpose();
+}
+
 Point CoordinateSystem::to_local_vector(const Point &global_point) const
 {
     const Point rel = global_point - origin_;
@@ -115,18 +127,6 @@ CartesianCoordinateSystem::CartesianCoordinateSystem(const Point &origin,
 {
 }
 
-ApecMTensorValue CartesianCoordinateSystem::global_to_local_rotation(const Point &global_point) const
-{
-    static_cast<void>(global_point);
-    return local_to_global_cartesian().transpose();
-}
-
-Point CartesianCoordinateSystem::to_local_coordinates(const Point &global_point) const
-{
-    const Point local = to_local_vector(global_point);
-    return Point(local(0), local(1), local(2));
-}
-
 CylindricalCoordinateSystem::CylindricalCoordinateSystem(const Point &origin,
                                                          const Point &nxax,
                                                          const Point &nxypl)
@@ -146,36 +146,35 @@ ApecMTensorValue CylindricalCoordinateSystem::global_to_local_rotation(const Poi
 {
     const Point local = to_local_vector(global_point);
     const Real x = local(0);
-    const Real z = local(2);
-    const Real r = std::sqrt(x * x + z * z);
+    const Real y = local(1);
+    const Real r = std::sqrt(x * x + y * y);
 
     Point e_r_local(1.0, 0.0, 0.0);
-    Point e_theta_local(0.0, 0.0, -1.0);
+    Point e_theta_local(0.0, 1.0, 0.0);
     if (r > 0.0)
     {
         const Real inv_r = 1.0 / r;
-        e_r_local = Point(x * inv_r, 0.0, z * inv_r);
-        e_theta_local = Point(z * inv_r, 0.0, -x * inv_r);
+        e_r_local = Point(x * inv_r, y * inv_r, 0.0);
+        e_theta_local = Point(-y * inv_r, x * inv_r, 0.0);
     }
-    const Point e_y_local(0.0, 1.0, 0.0);
-    const Point e_z_local = -e_theta_local;
+    const Point e_z_local(0.0, 0.0, 1.0);
 
     const auto &local_to_global = local_to_global_cartesian();
     const Point e_r_global = local_to_global * e_r_local;
-    const Point e_y_global = local_to_global * e_y_local;
+    const Point e_theta_global = local_to_global * e_theta_local;
     const Point e_z_global = local_to_global * e_z_local;
 
-    return build_rotation_from_basis(e_r_global, e_y_global, e_z_global);
+    return build_rotation_from_basis(e_r_global, e_theta_global, e_z_global);
 }
 
 Point CylindricalCoordinateSystem::to_local_coordinates(const Point &global_point) const
 {
     const Point local = to_local_vector(global_point);
     const Real x = local(0);
-    const Real z = local(2);
-    const Real r = std::sqrt(x * x + z * z);
-    const Real theta = (r > 0.0) ? std::atan2(-z, x) : 0.0;
-    return Point(r, theta, local(1));
+    const Real y = local(1);
+    const Real r = std::sqrt(x * x + y * y);
+    const Real theta = (r > 0.0) ? std::atan2(y, x) : 0.0;
+    return Point(r, theta, local(2));
 }
 
 SphericalCoordinateSystem::SphericalCoordinateSystem(const Point &origin,

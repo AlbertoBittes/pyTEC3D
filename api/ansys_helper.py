@@ -8,7 +8,7 @@ import pandas as pd
 import vtk.util.numpy_support as vtknp
 
 from mesh_edit import MeshEdit
-from excel_io_helper import ExcelIOHelper
+from excel import Excel
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtk
@@ -73,7 +73,7 @@ class AnsysHelper:
             raise FileNotFoundError(f"BFELIST file '{bfelist_file}' not found.")
         AnsysHelper.read_bfelist(mesh, bfelist_file)
 
-        ExcelIOHelper.write_excel_cell_point_data(
+        Excel.write_excel_cell_point_data(
             mesh, output_excel_file, data_type="elem"
         )
         print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
@@ -136,7 +136,7 @@ class AnsysHelper:
             raise FileNotFoundError(f"DLIST file '{dlist_file}' not found.")
         AnsysHelper.read_dlist(mesh, dlist_file)
 
-        ExcelIOHelper.write_excel_cell_point_data(
+        Excel.write_excel_cell_point_data(
             mesh, output_excel_file, data_type="node"
         )
         print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")

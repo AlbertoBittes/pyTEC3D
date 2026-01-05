@@ -23,9 +23,8 @@ public:
     const Point &origin() const { return origin_; }
 
     Point axis_direction() const;
-    virtual Point to_local_coordinates(const Point &global_point) const = 0;
-
-    virtual ApecMTensorValue global_to_local_rotation(const Point &global_point) const = 0;
+    virtual Point to_local_coordinates(const Point &global_point) const;
+    virtual ApecMTensorValue global_to_local_rotation(const Point &global_point) const;
 
     ApecMTensorValue local_to_global_rotation(const Point &global_point) const
     {
@@ -64,9 +63,6 @@ public:
                               Real thxy_deg,
                               Real thyz_deg,
                               Real thzx_deg);
-
-    ApecMTensorValue global_to_local_rotation(const Point &global_point) const override;
-    Point to_local_coordinates(const Point &global_point) const override;
 };
 
 class CylindricalCoordinateSystem : public CoordinateSystem
@@ -74,7 +70,7 @@ class CylindricalCoordinateSystem : public CoordinateSystem
 public:
     CylindricalCoordinateSystem(const Point &origin = Point(0.0, 0.0, 0.0),
                                 const Point &nxax = Point(1.0, 0.0, 0.0),
-                                const Point &nxypl = Point(0.0, 1.0, 0.0));
+                                const Point &nxypl = Point(0.0, 0.0, -1.0));
 
     CylindricalCoordinateSystem(const Point &origin,
                                 Real thxy_deg,
@@ -83,6 +79,7 @@ public:
 
     ApecMTensorValue global_to_local_rotation(const Point &global_point) const override;
     Point to_local_coordinates(const Point &global_point) const override;
+
 };
 
 class SphericalCoordinateSystem : public CoordinateSystem
@@ -90,7 +87,7 @@ class SphericalCoordinateSystem : public CoordinateSystem
 public:
     SphericalCoordinateSystem(const Point &origin = Point(0.0, 0.0, 0.0),
                               const Point &nxax = Point(1.0, 0.0, 0.0),
-                              const Point &nxypl = Point(0.0, 1.0, 0.0));
+                              const Point &nxypl = Point(0.0, 0.0, -1.0));
 
     SphericalCoordinateSystem(const Point &origin,
                               Real thxy_deg,
@@ -99,6 +96,7 @@ public:
 
     ApecMTensorValue global_to_local_rotation(const Point &global_point) const override;
     Point to_local_coordinates(const Point &global_point) const override;
+
 };
 
 std::unique_ptr<CoordinateSystem> make_coordinate_system_local(int kcs,

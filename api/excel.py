@@ -13,7 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     import vtk
 
 
-class ExcelIOHelper:
+class Excel:
     @staticmethod
     def write_excel_cell_point_data(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -268,7 +268,7 @@ class ExcelIOHelper:
                     )
 
                 if column == "periodic_matrix":
-                    boundary[column] = ExcelIOHelper._evaluate_periodic_matrix(value)
+                    boundary[column] = Excel._evaluate_periodic_matrix(value)
                 elif typ == int:
                     boundary[column] = int(value)
                 elif typ == float:

@@ -30,7 +30,7 @@ class MeshEdit:
         return MeshEdit.compute_cell_centroids(mesh)
 
     @staticmethod
-    def map_local_coordinates(
+    def to_local_coordinates(
         mesh: "vtk.vtkUnstructuredGrid",
         coordinate_system: "CoordinateSystem",
         location: str = "node",
@@ -95,29 +95,23 @@ class MeshEdit:
         return local_positions, ids
 
     @staticmethod
-    def rotate_vector_array_to_coordinate_system(
+    def map_vector_field_to_local_components(
         mesh: "vtk.vtkUnstructuredGrid",
         array_name: str,
         coordinate_system: "CoordinateSystem",
         location: str = "node",
-        to_local: bool = True,
+        selected_only: bool = False,
     ) -> np.ndarray:
         """
-        Rotate a 3-component array to/from the provided coordinate system.
+        Map a 3-component vector field into local coordinate components.
 
-        NaNs are handled by treating any row with at least one finite component as valid,
-        replacing NaNs with 0.0 before rotation. Rows that are entirely NaN remain NaN.
-
-        Args:
-            mesh: Mesh containing the array.
-            array_name: Name of the array to rotate.
-            coordinate_system: Coordinate system used for rotation.
-            location: "node" or "elem".
-            to_local: When True, rotate from global to local; otherwise local to global.
-
-        Returns:
-            np.ndarray: The rotated array (NumPy view).
+        For cartesian, this returns local x/y/z. For cylindrical, r/theta/z.
+        For spherical, r/theta/phi. Local axes come from the coordinate system
+        orientation; cylindrical/spherical components are computed in that
+        local Cartesian frame.
         """
+        from selector import Selector
+
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
 
@@ -126,25 +120,43 @@ class MeshEdit:
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {location} data.")
         if vtk_array.GetNumberOfComponents() != 3:
-            raise ValueError("Array must have exactly 3 components for rotation.")
+            raise ValueError("Array must have exactly 3 components.")
 
         vecs = vtknp.vtk_to_numpy(vtk_array)
         positions = MeshEdit._get_positions(mesh, location)
         if positions.size == 0:
             return vecs
 
-        rotations = (
-            coordinate_system.global_to_local_rotation_array(positions)
-            if to_local
-            else coordinate_system.local_to_global_rotation_array(positions)
-        )
+        selection_mask = np.ones((vecs.shape[0],), dtype=bool)
+        if selected_only:
+            Selector.ensure_selection_arrays(mesh)
+            if location == "node":
+                data = mesh.GetPointData()
+                selection_name = "selection_point"
+            else:
+                data = mesh.GetCellData()
+                selection_name = "selection_cell"
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                return vecs
+            selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+            if selection_mask.size != vecs.shape[0]:
+                raise ValueError(
+                    f"Selection array '{selection_name}' has unexpected length."
+                )
+            if not np.any(selection_mask):
+                return vecs
 
-        mask = np.any(~np.isnan(vecs), axis=1)
-        if np.any(mask):
-            cleaned = vecs.copy()
-            cleaned[mask] = np.nan_to_num(cleaned[mask], nan=0.0)
-            rotated = np.einsum("nij,nj->ni", rotations[mask], cleaned[mask])
-            vecs[mask] = rotated
+        valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        if not np.any(valid_mask):
+            return vecs
+
+        cleaned = vecs.copy()
+        cleaned[valid_mask] = np.nan_to_num(cleaned[valid_mask], nan=0.0)
+        local_components = coordinate_system.vector_components_from_global(
+            cleaned[valid_mask], positions[valid_mask]
+        )
+        vecs[valid_mask] = local_components
         vtk_array.Modified()
         return vecs
 
@@ -620,13 +632,13 @@ class MeshEdit:
             )
 
         Selector.ensure_selection_arrays(input_mesh)
-        input_local, input_ids = MeshEdit.map_local_coordinates(
+        input_local, input_ids = MeshEdit.to_local_coordinates(
             input_mesh,
             coordinate_system,
             location=location,
             selected_only=True,
         )
-        target_local, _ = MeshEdit.map_local_coordinates(
+        target_local, _ = MeshEdit.to_local_coordinates(
             target_mesh,
             coordinate_system,
             location=location,

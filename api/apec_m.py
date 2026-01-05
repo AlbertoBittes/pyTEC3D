@@ -26,7 +26,7 @@ from ansys_helper import AnsysHelper
 from selector import Selector
 from mesh_edit import MeshEdit
 from binary import Binary
-from excel_io_helper import ExcelIOHelper
+from excel import Excel
 from solver import Solver
 from constants import *
 from dof_coupling import DOFCoupling
@@ -307,7 +307,7 @@ class APEC_M:
             ValueError: If `data_type` is invalid or the sheet is missing required columns.
             FileNotFoundError: If the Excel file is missing.
         """
-        ExcelIOHelper.update_vtk_grid_from_excel(
+        Excel.update_vtk_grid_from_excel(
             self.mesh, excel_file, sheet_name, data_type
         )
 
@@ -331,7 +331,7 @@ class APEC_M:
             FileNotFoundError: If the Excel file is missing.
             ValueError: If the sheet is not found or columns do not match expectations.
         """
-        return ExcelIOHelper.read_excel_df(excel_file, sheet_name)
+        return Excel.read_excel_df(excel_file, sheet_name)
 
     def read_excel_dict(
         self, excel_file: Union[str, PathLike[str]], sheet_name: str
@@ -353,7 +353,7 @@ class APEC_M:
             FileNotFoundError: If the Excel file is missing.
             ValueError: If the sheet is missing, malformed, or contains invalid keys.
         """
-        return ExcelIOHelper.read_excel_dict(excel_file, sheet_name)
+        return Excel.read_excel_dict(excel_file, sheet_name)
 
     def read_periodic_boundaries(
         self, excel_file: Union[str, PathLike[str]], sheet_name: str
@@ -376,7 +376,7 @@ class APEC_M:
             FileNotFoundError: If the Excel file is missing.
             ValueError: If the sheet is malformed or missing required values.
         """
-        periodic_boundaries = ExcelIOHelper.read_periodic_boundaries(
+        periodic_boundaries = Excel.read_periodic_boundaries(
             excel_file, sheet_name
         )
         if periodic_boundaries is not None:
@@ -403,7 +403,7 @@ class APEC_M:
         Raises:
             ValueError: If `data_type` is invalid.
         """
-        ExcelIOHelper.write_excel_cell_point_data(
+        Excel.write_excel_cell_point_data(
             self.mesh, output_excel_file, data_type
         )
 
@@ -1047,38 +1047,11 @@ class APEC_M:
         Returns:
             Tuple[np.ndarray, np.ndarray]: (local_coordinates, ids)
         """
-        return MeshEdit.map_local_coordinates(
+        return MeshEdit.to_local_coordinates(
             self.mesh,
             coordinate_system,
             location=location,
             selected_only=selected_only,
-        )
-
-    def rotate_vector_array_to_coordinate_system(
-        self,
-        array_name: str,
-        coordinate_system: "CoordinateSystem",
-        location: str = "node",
-        to_local: bool = True,
-    ) -> np.ndarray:
-        """
-        Rotate a 3-component array to/from the provided coordinate system.
-
-        Args:
-            array_name: Name of the array to rotate.
-            coordinate_system: Coordinate system used for rotation.
-            location: "node" or "elem".
-            to_local: When True, rotate from global to local; otherwise local to global.
-
-        Returns:
-            np.ndarray: The rotated array (NumPy view).
-        """
-        return MeshEdit.rotate_vector_array_to_coordinate_system(
-            self.mesh,
-            array_name,
-            coordinate_system,
-            location=location,
-            to_local=to_local,
         )
 
     def build_toroidal_projection_map(

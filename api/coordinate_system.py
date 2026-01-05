@@ -11,16 +11,6 @@ def _normalize_or_error(vec: np.ndarray, error_message: str) -> np.ndarray:
     return vec / norm
 
 
-def _build_rotation_from_basis(
-    e0: np.ndarray, e1: np.ndarray, e2: np.ndarray
-) -> np.ndarray:
-    rotation = np.zeros((3, 3), dtype=float)
-    rotation[0, :] = e0
-    rotation[1, :] = e1
-    rotation[2, :] = e2
-    return rotation
-
-
 def _build_local_to_global_from_axes(
     x_axis: np.ndarray, y_axis: np.ndarray, z_axis: np.ndarray
 ) -> np.ndarray:
@@ -50,7 +40,7 @@ def _build_local_to_global_from_points(
     return _build_local_to_global_from_axes(x_axis, y_axis, z_axis)
 
 
-def build_rotation_matrix(
+def build_local_to_global_matrix(
     angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
 ) -> np.ndarray:
     def snap_trig_value(value: float) -> float:
@@ -75,17 +65,17 @@ def build_rotation_matrix(
     c3 = snap_trig_value(math.cos(angle_xz))
     s3 = snap_trig_value(math.sin(angle_xz))
 
-    rotation = np.zeros((3, 3), dtype=float)
-    rotation[0, 0] = c1 * c3 - s1 * s2 * s3
-    rotation[0, 1] = -s1 * c2
-    rotation[0, 2] = c1 * s3 + s1 * s2 * c3
-    rotation[1, 0] = s1 * c3 + c1 * s2 * s3
-    rotation[1, 1] = c1 * c2
-    rotation[1, 2] = s1 * s3 - c1 * s2 * c3
-    rotation[2, 0] = -c2 * s3
-    rotation[2, 1] = s2
-    rotation[2, 2] = c2 * c3
-    return rotation
+    local_to_global = np.zeros((3, 3), dtype=float)
+    local_to_global[0, 0] = c1 * c3 - s1 * s2 * s3
+    local_to_global[0, 1] = -s1 * c2
+    local_to_global[0, 2] = c1 * s3 + s1 * s2 * c3
+    local_to_global[1, 0] = s1 * c3 + c1 * s2 * s3
+    local_to_global[1, 1] = c1 * c2
+    local_to_global[1, 2] = s1 * s3 - c1 * s2 * c3
+    local_to_global[2, 0] = -c2 * s3
+    local_to_global[2, 1] = s2
+    local_to_global[2, 2] = c2 * c3
+    return local_to_global
 
 
 class CoordinateSystem:
@@ -118,25 +108,18 @@ class CoordinateSystem:
         return rel @ self._local_to_global_cart
 
     def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
-        raise NotImplementedError
+        local = self._to_local_vector(global_point)
+        return np.asarray(local, dtype=float)
 
     def to_local_coordinates_array(self, global_points: np.ndarray) -> np.ndarray:
         return np.vstack([self.to_local_coordinates(point) for point in global_points])
 
-    def global_to_local_rotation(self, global_point: Sequence[float]) -> np.ndarray:
-        raise NotImplementedError
-
-    def global_to_local_rotation_array(self, global_points: np.ndarray) -> np.ndarray:
-        return np.stack(
-            [self.global_to_local_rotation(point) for point in global_points], axis=0
-        )
-
-    def local_to_global_rotation(self, global_point: Sequence[float]) -> np.ndarray:
-        return self.global_to_local_rotation(global_point).T
-
-    def local_to_global_rotation_array(self, global_points: np.ndarray) -> np.ndarray:
-        rotations = self.global_to_local_rotation_array(global_points)
-        return np.transpose(rotations, axes=(0, 2, 1))
+    def vector_components_from_global(
+        self, global_vectors: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        _ = global_positions
+        local_vectors = np.asarray(global_vectors, dtype=float)
+        return local_vectors @ self._local_to_global_cart.T
 
 
 class CartesianCoordinateSystem(CoordinateSystem):
@@ -150,7 +133,7 @@ class CartesianCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_local_to_global_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
@@ -163,12 +146,10 @@ class CartesianCoordinateSystem(CoordinateSystem):
             )
         super().__init__(origin, rotation, "cartesian")
 
-    def global_to_local_rotation(self, global_point: Sequence[float]) -> np.ndarray:
-        return self._local_to_global_cart.T.copy()
-
-    def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
-        local = self._to_local_vector(global_point)
-        return np.asarray(local, dtype=float)
+    def vector_components_from_global(
+        self, global_vectors: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        return super().vector_components_from_global(global_vectors, global_positions)
 
 
 class CylindricalCoordinateSystem(CoordinateSystem):
@@ -182,12 +163,12 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_local_to_global_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
             if nxypl is None:
-                nxypl = (0.0, 1.0, 0.0)
+                nxypl = (0.0, 0.0, -1.0)
             rotation = _build_local_to_global_from_points(
                 np.asarray(origin, dtype=float),
                 np.asarray(nxax, dtype=float),
@@ -195,76 +176,52 @@ class CylindricalCoordinateSystem(CoordinateSystem):
             )
         super().__init__(origin, rotation, "cylindrical")
 
-    def global_to_local_rotation(self, global_point: Sequence[float]) -> np.ndarray:
-        local = self._to_local_vector(global_point)
-        x = float(local[0])
-        z = float(local[2])
-        r = math.sqrt(x * x + z * z)
+    def vector_components_from_global(
+        self, global_vectors: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        local_vectors = super().vector_components_from_global(
+            global_vectors, global_positions
+        )
+        local_positions = self._to_local_vectors(global_positions)
+        x = local_positions[:, 0]
+        y = local_positions[:, 1]
+        r = np.sqrt(x * x + y * y)
 
-        e_r_local = np.array([1.0, 0.0, 0.0], dtype=float)
-        e_theta_local = np.array([0.0, 0.0, -1.0], dtype=float)
-        if r > 0.0:
-            inv_r = 1.0 / r
-            e_r_local = np.array([x * inv_r, 0.0, z * inv_r], dtype=float)
-            e_theta_local = np.array([z * inv_r, 0.0, -x * inv_r], dtype=float)
-        e_y_local = np.array([0.0, 1.0, 0.0], dtype=float)
-        e_z_local = -e_theta_local
-
-        e_r_global = e_r_local @ self._local_to_global_cart.T
-        e_y_global = e_y_local @ self._local_to_global_cart.T
-        e_z_global = e_z_local @ self._local_to_global_cart.T
-        return _build_rotation_from_basis(e_r_global, e_y_global, e_z_global)
-
-    def global_to_local_rotation_array(self, global_points: np.ndarray) -> np.ndarray:
-        local = self._to_local_vectors(global_points)
-        x = local[:, 0]
-        z = local[:, 2]
-        r = np.sqrt(x * x + z * z)
-
-        e_r_local = np.zeros_like(local)
-        e_theta_local = np.zeros_like(local)
-        e_r_local[:, 0] = 1.0
-        e_theta_local[:, 2] = -1.0
+        e_r = np.zeros_like(local_positions)
+        e_theta = np.zeros_like(local_positions)
+        e_r[:, 0] = 1.0
+        e_theta[:, 1] = 1.0
 
         nonzero = r > 0.0
         if np.any(nonzero):
             inv_r = 1.0 / r[nonzero]
-            e_r_local[nonzero, 0] = x[nonzero] * inv_r
-            e_r_local[nonzero, 2] = z[nonzero] * inv_r
-            e_theta_local[nonzero, 0] = z[nonzero] * inv_r
-            e_theta_local[nonzero, 2] = -x[nonzero] * inv_r
+            e_r[nonzero, 0] = x[nonzero] * inv_r
+            e_r[nonzero, 1] = y[nonzero] * inv_r
+            e_theta[nonzero, 0] = -y[nonzero] * inv_r
+            e_theta[nonzero, 1] = x[nonzero] * inv_r
 
-        e_y_local = np.zeros_like(local)
-        e_y_local[:, 1] = 1.0
-        e_z_local = -e_theta_local
-
-        e_r_global = e_r_local @ self._local_to_global_cart.T
-        e_y_global = e_y_local @ self._local_to_global_cart.T
-        e_z_global = e_z_local @ self._local_to_global_cart.T
-
-        rotations = np.zeros((local.shape[0], 3, 3), dtype=float)
-        rotations[:, 0, :] = e_r_global
-        rotations[:, 1, :] = e_y_global
-        rotations[:, 2, :] = e_z_global
-        return rotations
+        comp_r = np.einsum("ij,ij->i", e_r, local_vectors)
+        comp_theta = np.einsum("ij,ij->i", e_theta, local_vectors)
+        comp_z = local_vectors[:, 2]
+        return np.stack((comp_r, comp_theta, comp_z), axis=1)
 
     def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
         local = self._to_local_vector(global_point)
         x = float(local[0])
-        z = float(local[2])
-        r = math.sqrt(x * x + z * z)
-        theta = math.atan2(-z, x) if r > 0.0 else 0.0
-        return np.array([r, theta, float(local[1])], dtype=float)
+        y = float(local[1])
+        r = math.sqrt(x * x + y * y)
+        theta = math.atan2(y, x) if r > 0.0 else 0.0
+        return np.array([r, theta, float(local[2])], dtype=float)
 
     def to_local_coordinates_array(self, global_points: np.ndarray) -> np.ndarray:
         local = self._to_local_vectors(global_points)
         x = local[:, 0]
-        z = local[:, 2]
-        r = np.sqrt(x * x + z * z)
+        y = local[:, 1]
+        r = np.sqrt(x * x + y * y)
         theta = np.zeros_like(r)
         nonzero = r > 0.0
-        theta[nonzero] = np.arctan2(-z[nonzero], x[nonzero])
-        return np.stack((r, theta, local[:, 1]), axis=1)
+        theta[nonzero] = np.arctan2(y[nonzero], x[nonzero])
+        return np.stack((r, theta, local[:, 2]), axis=1)
 
 
 class SphericalCoordinateSystem(CoordinateSystem):
@@ -278,12 +235,12 @@ class SphericalCoordinateSystem(CoordinateSystem):
         thzx_deg: Optional[float] = None,
     ):
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
-            rotation = build_rotation_matrix(thxy_deg, thyz_deg, thzx_deg)
+            rotation = build_local_to_global_matrix(thxy_deg, thyz_deg, thzx_deg)
         else:
             if nxax is None:
                 nxax = (1.0, 0.0, 0.0)
             if nxypl is None:
-                nxypl = (0.0, 1.0, 0.0)
+                nxypl = (0.0, 0.0, -1.0)
             rotation = _build_local_to_global_from_points(
                 np.asarray(origin, dtype=float),
                 np.asarray(nxax, dtype=float),
@@ -291,58 +248,32 @@ class SphericalCoordinateSystem(CoordinateSystem):
             )
         super().__init__(origin, rotation, "spherical")
 
-    def global_to_local_rotation(self, global_point: Sequence[float]) -> np.ndarray:
-        local = self._to_local_vector(global_point)
-        x = float(local[0])
-        y = float(local[1])
-        z = float(local[2])
-        r = math.sqrt(x * x + y * y + z * z)
-        rho = math.sqrt(x * x + y * y)
-
-        e_r_local = np.array([0.0, 0.0, 1.0], dtype=float)
-        e_theta_local = np.array([1.0, 0.0, 0.0], dtype=float)
-        e_phi_local = np.array([0.0, 1.0, 0.0], dtype=float)
-
-        if r > 0.0:
-            inv_r = 1.0 / r
-            e_r_local = np.array([x * inv_r, y * inv_r, z * inv_r], dtype=float)
-            if rho > 0.0:
-                inv_rho = 1.0 / rho
-                cos_theta = z * inv_r
-                sin_theta = rho * inv_r
-                cos_phi = x * inv_rho
-                sin_phi = y * inv_rho
-                e_theta_local = np.array(
-                    [cos_theta * cos_phi, cos_theta * sin_phi, -sin_theta], dtype=float
-                )
-                e_phi_local = np.array([-sin_phi, cos_phi, 0.0], dtype=float)
-
-        e_r_global = e_r_local @ self._local_to_global_cart.T
-        e_theta_global = e_theta_local @ self._local_to_global_cart.T
-        e_phi_global = e_phi_local @ self._local_to_global_cart.T
-        return _build_rotation_from_basis(e_r_global, e_theta_global, e_phi_global)
-
-    def global_to_local_rotation_array(self, global_points: np.ndarray) -> np.ndarray:
-        local = self._to_local_vectors(global_points)
-        x = local[:, 0]
-        y = local[:, 1]
-        z = local[:, 2]
+    def vector_components_from_global(
+        self, global_vectors: np.ndarray, global_positions: np.ndarray
+    ) -> np.ndarray:
+        local_vectors = super().vector_components_from_global(
+            global_vectors, global_positions
+        )
+        local_positions = self._to_local_vectors(global_positions)
+        x = local_positions[:, 0]
+        y = local_positions[:, 1]
+        z = local_positions[:, 2]
         r = np.sqrt(x * x + y * y + z * z)
         rho = np.sqrt(x * x + y * y)
 
-        e_r_local = np.zeros_like(local)
-        e_theta_local = np.zeros_like(local)
-        e_phi_local = np.zeros_like(local)
-        e_r_local[:, 2] = 1.0
-        e_theta_local[:, 0] = 1.0
-        e_phi_local[:, 1] = 1.0
+        e_r = np.zeros_like(local_positions)
+        e_theta = np.zeros_like(local_positions)
+        e_phi = np.zeros_like(local_positions)
+        e_r[:, 2] = 1.0
+        e_theta[:, 0] = 1.0
+        e_phi[:, 1] = 1.0
 
         nonzero_r = r > 0.0
         if np.any(nonzero_r):
             inv_r = 1.0 / r[nonzero_r]
-            e_r_local[nonzero_r, 0] = x[nonzero_r] * inv_r
-            e_r_local[nonzero_r, 1] = y[nonzero_r] * inv_r
-            e_r_local[nonzero_r, 2] = z[nonzero_r] * inv_r
+            e_r[nonzero_r, 0] = x[nonzero_r] * inv_r
+            e_r[nonzero_r, 1] = y[nonzero_r] * inv_r
+            e_r[nonzero_r, 2] = z[nonzero_r] * inv_r
 
             nonzero_rho = nonzero_r & (rho > 0.0)
             if np.any(nonzero_rho):
@@ -351,22 +282,17 @@ class SphericalCoordinateSystem(CoordinateSystem):
                 sin_theta = rho[nonzero_rho] * inv_r[nonzero_rho]
                 cos_phi = x[nonzero_rho] * inv_rho
                 sin_phi = y[nonzero_rho] * inv_rho
-                e_theta_local[nonzero_rho, 0] = cos_theta * cos_phi
-                e_theta_local[nonzero_rho, 1] = cos_theta * sin_phi
-                e_theta_local[nonzero_rho, 2] = -sin_theta
-                e_phi_local[nonzero_rho, 0] = -sin_phi
-                e_phi_local[nonzero_rho, 1] = cos_phi
-                e_phi_local[nonzero_rho, 2] = 0.0
+                e_theta[nonzero_rho, 0] = cos_theta * cos_phi
+                e_theta[nonzero_rho, 1] = cos_theta * sin_phi
+                e_theta[nonzero_rho, 2] = -sin_theta
+                e_phi[nonzero_rho, 0] = -sin_phi
+                e_phi[nonzero_rho, 1] = cos_phi
+                e_phi[nonzero_rho, 2] = 0.0
 
-        e_r_global = e_r_local @ self._local_to_global_cart.T
-        e_theta_global = e_theta_local @ self._local_to_global_cart.T
-        e_phi_global = e_phi_local @ self._local_to_global_cart.T
-
-        rotations = np.zeros((local.shape[0], 3, 3), dtype=float)
-        rotations[:, 0, :] = e_r_global
-        rotations[:, 1, :] = e_theta_global
-        rotations[:, 2, :] = e_phi_global
-        return rotations
+        comp_r = np.einsum("ij,ij->i", e_r, local_vectors)
+        comp_theta = np.einsum("ij,ij->i", e_theta, local_vectors)
+        comp_phi = np.einsum("ij,ij->i", e_phi, local_vectors)
+        return np.stack((comp_r, comp_theta, comp_phi), axis=1)
 
     def to_local_coordinates(self, global_point: Sequence[float]) -> np.ndarray:
         local = self._to_local_vector(global_point)
