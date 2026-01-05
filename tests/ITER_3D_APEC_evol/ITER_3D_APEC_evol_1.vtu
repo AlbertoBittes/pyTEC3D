@@ -50,7 +50,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan
+              -nan(ind)
             </Value>
           </InformationKey>
         </DataArray>
@@ -73,7 +73,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan
+              -nan(ind)
             </Value>
           </InformationKey>
         </DataArray>
@@ -184,7 +184,7 @@
               3.1622776602e+149
             </Value>
             <Value index="1">
-              -nan
+              -nan(ind)
             </Value>
           </InformationKey>
         </DataArray>
