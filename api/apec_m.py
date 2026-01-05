@@ -1053,6 +1053,7 @@ class APEC_M:
         input_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "node",
         tolerance: float = 1e-6,
+        n_slices: int = 1,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
         """
@@ -1062,6 +1063,7 @@ class APEC_M:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
             location: "node" to map point IDs or "elem" to map cell IDs.
             tolerance: Absolute tolerance for matching radial distance and axial coordinate.
+            n_slices: Minimum number of corresponding target IDs per input ID.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
@@ -1074,6 +1076,7 @@ class APEC_M:
             self.mesh,
             location=location,
             tolerance=tolerance,
+            n_slices=n_slices,
             coordinate_system=coordinate_system,
         )
 

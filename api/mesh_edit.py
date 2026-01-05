@@ -1,8 +1,6 @@
-from collections import defaultdict
 import os
 from os import PathLike
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -719,16 +717,19 @@ class MeshEdit:
         target_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "node",
         tolerance: float = 1e-6,
+        n_slices: int = 1,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
         """
         Build a toroidal projection map from a 2D input mesh to a 3D target mesh.
 
-        Each input point/cell centroid is associated with all target points/cell centroids that share
+        Each input point/cell centroid is associated with target points/cell centroids that share
         the same radial distance from the rotation axis and the same axial coordinate within
-        the given tolerance.
+        the given tolerance. The tolerance is increased until each input ID has at least n_slices
+        corresponding target IDs, then matches are sorted by poloidal distance and trimmed to
+        n_slices.
         The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
-        the remaining columns hold the corresponding target IDs (padded with NaNs when needed).
+        the remaining columns hold the corresponding target IDs.
         If the input mesh has a selection array for the chosen location, only selected IDs are used.
 
         Args:
@@ -736,6 +737,7 @@ class MeshEdit:
             target_mesh: Target unstructured grid (typically 3D).
             location: "node" to map point IDs or "elem" to map cell IDs.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
+            n_slices: Minimum number of corresponding target IDs per input ID.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
@@ -750,6 +752,8 @@ class MeshEdit:
             raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
             raise ValueError("tolerance must be positive.")
+        if not isinstance(n_slices, int) or n_slices <= 0:
+            raise ValueError("n_slices must be a positive integer.")
 
         if (
             input_mesh.GetNumberOfCells() > 0
@@ -788,39 +792,43 @@ class MeshEdit:
         target_radius = target_local[:, 0]
         target_axial = target_local[:, 2]
 
-        scale = 1.0 / tolerance
-
-        def quantize(r: float, axial: float) -> tuple:
-            return (int(round(r * scale)), int(round(axial * scale)))
-
-        target_index: Dict[tuple, List[int]] = defaultdict(list)
-        for idx, (r, axial) in enumerate(zip(target_radius, target_axial)):
-            target_index[quantize(r, axial)].append(idx)
+        target_count = target_radius.shape[0]
+        if target_count == 0:
+            raise ValueError("Target mesh has no points/cells to map.")
+        if n_slices > target_count:
+            raise ValueError(
+                "n_slices cannot exceed the number of available target points/cells."
+            )
 
         num_input = input_radius.shape[0]
-        matches_per_input: List[List[int]] = []
-        for input_id in range(num_input):
-            matches = target_index.get(
-                quantize(input_radius[input_id], input_axial[input_id]), []
-            )
-            matches_per_input.append(sorted(matches))
+        tolerance_current = tolerance
+        matches_per_input: List[np.ndarray] = []
+        counts: List[int] = []
 
-        max_matches = max((len(m) for m in matches_per_input), default=0)
-        mapping = np.full((num_input, 1 + max_matches), np.nan)
+        while True:
+            matches_per_input = []
+            counts = []
+            for input_id in range(num_input):
+                dr = np.abs(target_radius - input_radius[input_id])
+                dz = np.abs(target_axial - input_axial[input_id])
+                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+                candidate_ids = np.where(mask)[0]
+                if candidate_ids.size:
+                    poloidal_dist = np.hypot(dr[candidate_ids], dz[candidate_ids])
+                    order = np.argsort(poloidal_dist)
+                    candidate_ids = candidate_ids[order]
+                matches_per_input.append(candidate_ids)
+                counts.append(candidate_ids.size)
+            if all(count >= n_slices for count in counts):
+                break
+            tolerance_current *= 2.0
+
+        mapping = np.full((num_input, 1 + n_slices), np.nan)
         mapping[:, 0] = input_ids
-
-        counts = []
         for row_idx, matches in enumerate(matches_per_input):
-            counts.append(len(matches))
-            if matches:
-                mapping[row_idx, 1 : 1 + len(matches)] = matches
-
-        if max_matches > 0 and any(count != max_matches for count in counts):
-            warnings.warn(
-                "Toroidal projection map has varying numbers of target IDs per source ID; "
-                "rows were padded with NaNs. This should not happen for an extruded mesh.",
-                RuntimeWarning,
-            )
+            if matches.size:
+                trimmed = matches[:n_slices]
+                mapping[row_idx, 1 : 1 + trimmed.size] = trimmed
 
         return mapping.astype(int)
 
