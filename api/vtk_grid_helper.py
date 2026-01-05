@@ -15,13 +15,14 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
     from coordinate_system import CoordinateSystem
 
+
 class VTKGridHelper:
     @staticmethod
     def _get_positions(
         mesh: "vtk.vtkUnstructuredGrid",
         location: str,
     ) -> np.ndarray:
-        if location == "point":
+        if location == "node":
             points = mesh.GetPoints()
             if points is None:
                 return np.empty((0, 3))
@@ -32,7 +33,7 @@ class VTKGridHelper:
     def map_local_coordinates(
         mesh: "vtk.vtkUnstructuredGrid",
         coordinate_system: "CoordinateSystem",
-        location: str = "point",
+        location: str = "node",
         selected_only: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -41,7 +42,7 @@ class VTKGridHelper:
         Args:
             mesh: The VTK unstructured grid to sample.
             coordinate_system: Coordinate system used for local coordinates.
-            location: "point" or "cell".
+            location: "node" or "elem".
             selected_only: When True, use selection arrays to filter IDs.
 
         Returns:
@@ -49,8 +50,8 @@ class VTKGridHelper:
         """
         from selector import Selector
 
-        if location not in ["point", "cell"]:
-            raise ValueError("location must be 'point' or 'cell'.")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
 
         positions = VTKGridHelper._get_positions(mesh, location)
         if positions.size == 0:
@@ -58,7 +59,7 @@ class VTKGridHelper:
 
         if selected_only:
             Selector.ensure_selection_arrays(mesh)
-            if location == "point":
+            if location == "node":
                 count = mesh.GetNumberOfPoints()
                 data = mesh.GetPointData()
                 selection_name = "selection_point"
@@ -67,19 +68,27 @@ class VTKGridHelper:
                 data = mesh.GetCellData()
                 selection_name = "selection_cell"
             ids = np.arange(count, dtype=int)
-            selection_array = data.GetArray(selection_name) if data is not None else None
+            selection_array = (
+                data.GetArray(selection_name) if data is not None else None
+            )
             if selection_array is None:
                 return positions, ids
             selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
             if selection_mask.size != ids.size:
-                raise ValueError(f"Selection array '{selection_name}' has unexpected length.")
+                raise ValueError(
+                    f"Selection array '{selection_name}' has unexpected length."
+                )
             if np.any(selection_mask):
                 positions = positions[selection_mask]
                 ids = ids[selection_mask]
             else:
                 return positions[:0], ids[:0]
         else:
-            count = mesh.GetNumberOfPoints() if location == "point" else mesh.GetNumberOfCells()
+            count = (
+                mesh.GetNumberOfPoints()
+                if location == "node"
+                else mesh.GetNumberOfCells()
+            )
             ids = np.arange(count, dtype=int)
 
         local_positions = coordinate_system.to_local_coordinates_array(positions)
@@ -90,7 +99,7 @@ class VTKGridHelper:
         mesh: "vtk.vtkUnstructuredGrid",
         array_name: str,
         coordinate_system: "CoordinateSystem",
-        location: str = "point",
+        location: str = "node",
         to_local: bool = True,
     ) -> np.ndarray:
         """
@@ -103,16 +112,16 @@ class VTKGridHelper:
             mesh: Mesh containing the array.
             array_name: Name of the array to rotate.
             coordinate_system: Coordinate system used for rotation.
-            location: "point" or "cell".
+            location: "node" or "elem".
             to_local: When True, rotate from global to local; otherwise local to global.
 
         Returns:
             np.ndarray: The rotated array (NumPy view).
         """
-        if location not in ["point", "cell"]:
-            raise ValueError("location must be 'point' or 'cell'.")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
 
-        data = mesh.GetPointData() if location == "point" else mesh.GetCellData()
+        data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
         vtk_array = data.GetArray(array_name) if data is not None else None
         if vtk_array is None:
             raise ValueError(f"Array '{array_name}' not found in {location} data.")
@@ -138,6 +147,7 @@ class VTKGridHelper:
             vecs[mask] = rotated
         vtk_array.Modified()
         return vecs
+
     @staticmethod
     def read_mesh(
         vtk_file_path: Union[str, PathLike[str]],
@@ -191,7 +201,7 @@ class VTKGridHelper:
     def add_array_to_grid(
         mesh: "vtk.vtkUnstructuredGrid",
         name: str,
-        location: str = "point",
+        location: str = "node",
         components: int = 1,
         fill: Any = 0,
         dtype: Optional[int] = vtk.VTK_DOUBLE,
@@ -204,7 +214,7 @@ class VTKGridHelper:
         Args:
             mesh: The VTK unstructured grid to add the array to.
             name: Name of the array.
-            location: "cell" or "point" (default "point").
+            location: "elem" or "node" (default "node").
             components: Number of components (default 1).
             fill: Default value to fill the array if values are not provided (default 0).
             dtype: VTK data type (default vtk.VTK_DOUBLE). If None, dtype validation is skipped.
@@ -216,13 +226,17 @@ class VTKGridHelper:
         Raises:
             ValueError: If location is invalid, shapes/components mismatch, or dtype differs.
         """
-        if location not in ["cell", "point"]:
-            raise ValueError(f"Unknown location '{location}'. Use 'cell' or 'point'.")
+        if location not in ["elem", "node"]:
+            raise ValueError(f"Unknown location '{location}'. Use 'elem' or 'node'.")
 
-        data_obj = mesh.GetCellData() if location == "cell" else mesh.GetPointData()
-        num_entries = mesh.GetNumberOfCells() if location == "cell" else mesh.GetNumberOfPoints()
+        data_obj = mesh.GetCellData() if location == "elem" else mesh.GetPointData()
+        num_entries = (
+            mesh.GetNumberOfCells() if location == "elem" else mesh.GetNumberOfPoints()
+        )
         num_components = max(1, components)
-        expected_shape = (num_entries,) if num_components == 1 else (num_entries, num_components)
+        expected_shape = (
+            (num_entries,) if num_components == 1 else (num_entries, num_components)
+        )
 
         vtk_array = data_obj.GetArray(name)
         if vtk_array is not None and not replace:
@@ -281,6 +295,7 @@ class VTKGridHelper:
         else:
             writer.SetDataModeToAscii()
         writer.Write()
+
     @staticmethod
     def initialize_vtk_arrays(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -313,7 +328,7 @@ class VTKGridHelper:
     def initialize_vtk_array(
         mesh: "vtk.vtkUnstructuredGrid",
         name: str,
-        location: str = "point",
+        location: str = "node",
         components: int = 1,
         fill: Any = 0,
         dtype: int = vtk.VTK_DOUBLE,
@@ -324,7 +339,7 @@ class VTKGridHelper:
         Args:
             mesh: The VTK unstructured grid to initialize the array for.
             name: Name of the array.
-            location: "cell" or "point" (default "point").
+            location: "elem" or "node" (default "node").
             components: Number of components (default 1).
             fill: Default value to fill the array (default 0).
             dtype: VTK data type (default vtk.VTK_DOUBLE).
@@ -353,18 +368,19 @@ class VTKGridHelper:
         """
         if arrays_to_init is None:
             from constants import VTK_ARRAYS_TO_INIT
+
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         cell_data = mesh.GetCellData()
         point_data = mesh.GetPointData()
 
         for name, info in arrays_to_init.items():
-            data_obj = cell_data if info["location"] == "cell" else point_data
+            data_obj = cell_data if info["location"] == "elem" else point_data
             vtk_array = data_obj.GetArray(name)
             if vtk_array is not None and "fill" in info:
                 num = (
                     mesh.GetNumberOfCells()
-                    if info["location"] == "cell"
+                    if info["location"] == "elem"
                     else mesh.GetNumberOfPoints()
                 )
                 shape = (num, info["components"]) if info["components"] > 1 else num
@@ -386,7 +402,7 @@ class VTKGridHelper:
         Args:
             mesh (vtk.vtkUnstructuredGrid): The mesh from which to remove the array.
             array_name: The name of the array to remove.
-            location: "cell", "point", or None. If None, tries to guess location.
+            location: "elem", "node", or None. If None, tries to guess location.
 
         Side Effects:
             Removes the array from the detected or specified data location if present.
@@ -404,12 +420,14 @@ class VTKGridHelper:
             else:
                 print(f"Array '{array_name}' not found in CellData or PointData.")
                 return
-        elif location == "cell":
+        elif location == "elem":
             data = mesh.GetCellData()
-        elif location == "point":
+        elif location == "node":
             data = mesh.GetPointData()
         else:
-            raise ValueError(f"Unknown location '{location}'. Use 'cell', 'point', or None.")
+            raise ValueError(
+                f"Unknown location '{location}'. Use 'elem', 'node', or None."
+            )
         if data.HasArray(array_name):
             data.RemoveArray(array_name)
 
@@ -422,7 +440,7 @@ class VTKGridHelper:
             name = point_data.GetArrayName(i)
             if name and name.startswith("boundary_id_"):
                 try:
-                    existing.append(int(name[len("boundary_id_"):]))
+                    existing.append(int(name[len("boundary_id_") :]))
                 except ValueError:
                     continue
 
@@ -434,13 +452,12 @@ class VTKGridHelper:
         VTKGridHelper.add_array_to_grid(
             mesh,
             name=array_name,
-            location="point",
+            location="node",
             components=1,
             fill=0,
             dtype=vtk.VTK_INT,
         )
         return array_name
-
 
     @staticmethod
     def validate_dataframe_with_vtk_data(
@@ -553,7 +570,7 @@ class VTKGridHelper:
     def build_toroidal_projection_map(
         input_mesh: "vtk.vtkUnstructuredGrid",
         target_mesh: "vtk.vtkUnstructuredGrid",
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
@@ -570,7 +587,7 @@ class VTKGridHelper:
         Args:
             input_mesh: 2D unstructured grid used to generate a surface of revolution.
             target_mesh: Target unstructured grid (typically 3D).
-            location: "point" to map point IDs or "cell" to map cell IDs.
+            location: "node" to map point IDs or "elem" to map cell IDs.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
@@ -582,19 +599,25 @@ class VTKGridHelper:
         """
         from selector import Selector
 
-        if location not in ["point", "cell"]:
-            raise ValueError("location must be 'point' or 'cell'.")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
             raise ValueError("tolerance must be positive.")
 
-        if input_mesh.GetNumberOfCells() > 0 and input_mesh.GetMaxSpatialDimension() > 2:
+        if (
+            input_mesh.GetNumberOfCells() > 0
+            and input_mesh.GetMaxSpatialDimension() > 2
+        ):
             raise ValueError("Input mesh must be 2D.")
 
         if coordinate_system is None:
             from coordinate_system import CylindricalCoordinateSystem
+
             coordinate_system = CylindricalCoordinateSystem()
         if coordinate_system.type != "cylindrical":
-            raise ValueError("coordinate_system must be cylindrical for toroidal projection.")
+            raise ValueError(
+                "coordinate_system must be cylindrical for toroidal projection."
+            )
 
         Selector.ensure_selection_arrays(input_mesh)
         input_local, input_ids = VTKGridHelper.map_local_coordinates(
@@ -619,6 +642,7 @@ class VTKGridHelper:
         target_axial = target_local[:, 2]
 
         scale = 1.0 / tolerance
+
         def quantize(r: float, axial: float) -> tuple:
             return (int(round(r * scale)), int(round(axial * scale)))
 
@@ -662,7 +686,7 @@ class VTKGridHelper:
         target_array_name: str,
         target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
@@ -679,7 +703,7 @@ class VTKGridHelper:
             target_mesh: Target unstructured grid (typically 3D).
             target_array_name: Name of the target array to write on the target mesh.
             projection_map: Optional precomputed toroidal projection map.
-            location: "point" to map point data or "cell" to map cell data.
+            location: "node" to map point data or "elem" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
             target_component: Component index to write for scalar copy mode.
@@ -687,13 +711,21 @@ class VTKGridHelper:
         Returns:
             None
         """
-        if location not in ["point", "cell"]:
-            raise ValueError("location must be 'point' or 'cell'.")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
 
-        input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
-        input_array = input_data.GetArray(input_array_name) if input_data is not None else None
+        input_data = (
+            input_mesh.GetPointData()
+            if location == "node"
+            else input_mesh.GetCellData()
+        )
+        input_array = (
+            input_data.GetArray(input_array_name) if input_data is not None else None
+        )
         if input_array is None:
-            raise ValueError(f"Array '{input_array_name}' not found in input {location} data.")
+            raise ValueError(
+                f"Array '{input_array_name}' not found in input {location} data."
+            )
 
         input_np = vtknp.vtk_to_numpy(input_array)
         input_components = input_array.GetNumberOfComponents()
@@ -718,7 +750,11 @@ class VTKGridHelper:
         if projection_map.size == 0:
             return
 
-        target_data = target_mesh.GetPointData() if location == "point" else target_mesh.GetCellData()
+        target_data = (
+            target_mesh.GetPointData()
+            if location == "node"
+            else target_mesh.GetCellData()
+        )
         if target_data is None:
             raise ValueError(f"Target mesh has no {location} data.")
         target_array = target_data.GetArray(target_array_name)
@@ -771,7 +807,7 @@ class VTKGridHelper:
         target_array_name: str,
         target_component: int = 0,
         projection_map: Optional[np.ndarray] = None,
-        location: str = "point",
+        location: str = "node",
         tolerance: float = 1e-6,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> None:
@@ -788,20 +824,28 @@ class VTKGridHelper:
             target_array_name: Name of the target array on the target mesh.
             target_component: Component index to write for scalar targets.
             projection_map: Optional precomputed toroidal projection map.
-            location: "point" to map point data or "cell" to map cell data.
+            location: "node" to map point data or "elem" to map cell data.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
             None
         """
-        if location not in ["point", "cell"]:
-            raise ValueError("location must be 'point' or 'cell'.")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
 
-        input_data = input_mesh.GetPointData() if location == "point" else input_mesh.GetCellData()
-        input_array = input_data.GetArray(input_array_name) if input_data is not None else None
+        input_data = (
+            input_mesh.GetPointData()
+            if location == "node"
+            else input_mesh.GetCellData()
+        )
+        input_array = (
+            input_data.GetArray(input_array_name) if input_data is not None else None
+        )
         if input_array is None:
-            raise ValueError(f"Array '{input_array_name}' not found in input {location} data.")
+            raise ValueError(
+                f"Array '{input_array_name}' not found in input {location} data."
+            )
         input_np = vtknp.vtk_to_numpy(input_array)
         input_components = input_array.GetNumberOfComponents()
         if input_components == 1:
@@ -822,7 +866,11 @@ class VTKGridHelper:
         if projection_map.size == 0:
             return
 
-        target_data = target_mesh.GetPointData() if location == "point" else target_mesh.GetCellData()
+        target_data = (
+            target_mesh.GetPointData()
+            if location == "node"
+            else target_mesh.GetCellData()
+        )
         if target_data is None:
             raise ValueError(f"Target mesh has no {location} data.")
         target_array = target_data.GetArray(target_array_name)
@@ -887,7 +935,7 @@ class VTKGridHelper:
         VTKGridHelper.add_array_to_grid(
             mesh,
             name=array_name,
-            location="cell",
+            location="elem",
             components=3,
             dtype=vtk.VTK_DOUBLE,
             values=np_centers,
@@ -944,7 +992,7 @@ class VTKGridHelper:
         VTKGridHelper.add_array_to_grid(
             mesh,
             name=array_name,
-            location="cell",
+            location="elem",
             components=1,
             dtype=vtk.VTK_DOUBLE,
             values=volumes,
@@ -952,7 +1000,7 @@ class VTKGridHelper:
 
     @staticmethod
     def add_component(
-        mesh: "vtk.vtkUnstructuredGrid", component_name: str, type: str = "cell"
+        mesh: "vtk.vtkUnstructuredGrid", component_name: str, type: str = "elem"
     ) -> "vtk.vtkDataArray":
         """
         Adds a component array marking the current selection.
@@ -960,22 +1008,26 @@ class VTKGridHelper:
         Args:
             mesh: The mesh to operate on.
             component_name: Name of the component array to create.
-            type: "cell" to use CellData selection, "point" for PointData selection.
+            type: "elem" to use CellData selection, "node" for PointData selection.
 
         Returns:
             vtkDataArray: The created component array.
         """
-        if type not in ["cell", "point"]:
-            raise ValueError("type must be 'cell' or 'point'.")
+        if type not in ["elem", "node"]:
+            raise ValueError("type must be 'elem' or 'node'.")
 
         # Avoid circular import at module load time
         from selector import Selector
 
         Selector.ensure_selection_arrays(mesh)
-        data_obj = mesh.GetCellData() if type == "cell" else mesh.GetPointData()
-        selection_array = data_obj.GetArray("selection_cell" if type == "cell" else "selection_point")
+        data_obj = mesh.GetCellData() if type == "elem" else mesh.GetPointData()
+        selection_array = data_obj.GetArray(
+            "selection_cell" if type == "elem" else "selection_point"
+        )
         if selection_array is None:
-            raise ValueError("Selection array not found; ensure selection arrays are initialized.")
+            raise ValueError(
+                "Selection array not found; ensure selection arrays are initialized."
+            )
 
         selection_mask = vtknp.vtk_to_numpy(selection_array)
         new_array = VTKGridHelper.add_array_to_grid(
