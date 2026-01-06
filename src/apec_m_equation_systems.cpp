@@ -54,6 +54,7 @@ void ApecMEquationSystems::solve_equation_systems(Substep &substep, bool nodal_s
 
     system.solve();
     system.get_dof_map().enforce_constraints_exactly(system);
+    system.update();
     system.compute_solution_time_derivative(substep);
     if (nodal_solution)
         assembler->write_nodal_solution();

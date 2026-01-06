@@ -68,13 +68,9 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     libMesh::out << "Solving evolution step..." << std::endl;
     solve_equation_systems(substep, true);
 
-    if (print_full_output)
-        print_output(substep, true);
-
-    program->set_active_mesh(equilibrium_mesh);
-
     libMesh::out << "Projection from main mesh to static mesh..." << std::endl;
     // Rotate the J and B to cylindrical coordinates
+
     main_sys_nodal_sol.global_to_local_coordinate_system_solution(
         cylindrical_coordinate_system,
         "B");
@@ -82,8 +78,8 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         cylindrical_coordinate_system,
         "Jt");
 
-    // if (print_full_output)
-    //     print_output(substep, true);
+    program->set_active_mesh(equilibrium_mesh);
+
     // Project back to the static mesh
     // Project J, from plasma, coils and vessel
     // Project PSI
@@ -94,9 +90,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "PSI",
         cylindrical_coordinate_system);
 
-    main_sys_element_sol.global_to_local_coordinate_system_solution(
-        cylindrical_coordinate_system,
-        "Jt");
     toroidal_proj->toroidal_average(
         *main_eq_sys,
         *static_eq_sys,
@@ -118,9 +111,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "PSIe",
         cylindrical_coordinate_system);
 
-    main_sys_element_sol.global_to_local_coordinate_system_solution(
-        cylindrical_coordinate_system,
-        "B");
     // Project B
     toroidal_proj->toroidal_average(
         *main_eq_sys,
@@ -136,18 +126,11 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         "Be_y",
         cylindrical_coordinate_system);
 
-    main_sys_element_sol.local_to_global_coordinate_system_solution(
-        cylindrical_coordinate_system,
-        "B");
-
-    main_sys_element_sol.local_to_global_coordinate_system_solution(
-        cylindrical_coordinate_system,
-        "Jt");
-
     find_separatrix();
 
     apply_jplasma_gradshafranov();
 
+    // Can this be moved?
     bool converged = check_poloidal_flux_convergence();
 
     if (converged)
@@ -155,9 +138,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 
     libMesh::out << "Solving equilibrium step..." << std::endl;
     solve_equation_systems(substep, true);
-
-    if (print_full_output)
-        print_output(substep, true);
 
     first_absolute_iteration = false;
     return false;

@@ -162,17 +162,20 @@ apec.apec_settings = {
     "evolution_mesh": "ITER_3D_APEC_evol",
     "equilibrium_mesh": "ITER_3D_APEC_evol_1",
     "print_full_output": 1,
-    "n_slices": 3,
     "toroidal_projection_map_nodes": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "node", n_slices=3, tolerance=1e-3),
-    "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "elem", n_slices=3, tolerance=1e-3),
+    "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "elem", n_slices=2, tolerance=1e-3),
 }
+
+# Save the toroidal projection maps to files
+np.savetxt("toroidal_projection_map_nodes.txt", apec.apec_settings["toroidal_projection_map_nodes"].astype(int), fmt="%d")
+np.savetxt("toroidal_projection_map_elems.txt", apec.apec_settings["toroidal_projection_map_elems"].astype(int), fmt="%d")
 
 # Initial loads: Project the current density from the equilibrium output to the static mesh
 apec.select("ansys_material_type", 23, type="elem")
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
 apec.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 1, location="elem", n_slices=3, tolerance=1e-3
+    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 1, location="elem", n_slices=2, tolerance=1e-3
 )
 MeshEdit.map_vector_field_to_global_components(apec.mesh, "Js", CylindricalCoordinateSystem(), location="elem")
 

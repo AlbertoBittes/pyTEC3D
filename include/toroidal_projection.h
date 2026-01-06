@@ -32,9 +32,7 @@ public:
 
 private:
     Map nodal_map_fwd_;
-    Map nodal_map_rev_;
     Map elem_map_fwd_;
-    Map elem_map_rev_;
 };
 
 #endif // TOROIDAL_PROJECTION_H

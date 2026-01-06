@@ -725,11 +725,9 @@ class MeshEdit:
 
         Each input point/cell centroid is associated with target points/cell centroids that share
         the same radial distance from the rotation axis and the same axial coordinate within
-        the given tolerance. Target points/cell centroids are also filtered to exclude matches
-        on the same poloidal plane (theta within tolerance). For points on the rotation axis
-        (r=0), the map assumes a single match. The tolerance is increased until each input ID has
-        at least n_slices corresponding target IDs, then matches are sorted by poloidal distance
-        and trimmed to n_slices.
+        the given tolerance. For points on the rotation axis (r=0), the map assumes a single
+        match. The tolerance is increased until each input ID has at least n_slices corresponding
+        target IDs, then matches are sorted by poloidal distance and trimmed to n_slices.
         The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
         the remaining columns hold the corresponding target IDs.
         If selection arrays exist on the input/target mesh for the chosen location, only selected
@@ -791,10 +789,8 @@ class MeshEdit:
             return np.empty((0, 1), dtype=float)
 
         input_radius = input_local[:, 0]
-        input_theta = input_local[:, 1]
         input_axial = input_local[:, 2]
         target_radius = target_local[:, 0]
-        target_theta = target_local[:, 1]
         target_axial = target_local[:, 2]
 
         target_count = target_radius.shape[0]
@@ -807,49 +803,19 @@ class MeshEdit:
 
         num_input = input_radius.shape[0]
         tolerance_current = tolerance
-        theta_exclusion = tolerance
-        matches_per_input: List[np.ndarray] = []
-        counts: List[int] = []
+        counts = np.empty(num_input, dtype=int)
 
         axis_mask = input_radius <= tolerance
         required_counts = np.where(axis_mask, 1, n_slices)
 
-        for input_id in range(num_input):
-            if axis_mask[input_id]:
-                continue
-            dtheta = np.abs(target_theta - input_theta[input_id])
-            eligible = int(np.count_nonzero(dtheta > theta_exclusion))
-            if eligible < n_slices:
-                raise ValueError(
-                    "Not enough target points/cells outside the theta exclusion "
-                    "tolerance to satisfy n_slices."
-                )
-
         max_iterations = 50
         for _ in range(max_iterations):
-            matches_per_input = []
-            counts = []
             for input_id in range(num_input):
                 dr = np.abs(target_radius - input_radius[input_id])
                 dz = np.abs(target_axial - input_axial[input_id])
-                dtheta = np.abs(target_theta - input_theta[input_id])
-                if axis_mask[input_id]:
-                    mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-                else:
-                    mask = (
-                        (dr <= tolerance_current)
-                        & (dz <= tolerance_current)
-                        & (dtheta > theta_exclusion)
-                    )
-                candidate_idx = np.where(mask)[0]
-                if candidate_idx.size:
-                    poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
-                    order = np.argsort(poloidal_dist)
-                    candidate_idx = candidate_idx[order]
-                candidate_ids = target_ids[candidate_idx]
-                matches_per_input.append(candidate_ids)
-                counts.append(candidate_ids.size)
-            if all(counts[i] >= required_counts[i] for i in range(num_input)):
+                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+                counts[input_id] = int(np.count_nonzero(mask))
+            if np.all(counts >= required_counts):
                 break
             tolerance_current *= 2.0
         else:
@@ -860,14 +826,26 @@ class MeshEdit:
 
         mapping = np.full((num_input, 1 + n_slices), np.nan)
         mapping[:, 0] = input_ids
-        for row_idx, matches in enumerate(matches_per_input):
-            if matches.size == 0:
+        for row_idx in range(num_input):
+            dr = np.abs(target_radius - input_radius[row_idx])
+            dz = np.abs(target_axial - input_axial[row_idx])
+            mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+            candidate_idx = np.where(mask)[0]
+            if candidate_idx.size == 0:
                 continue
+            candidate_ids = target_ids[candidate_idx]
             if axis_mask[row_idx]:
-                trimmed = np.full((n_slices,), matches[0], dtype=matches.dtype)
+                trimmed = np.full((n_slices,), candidate_ids[0], dtype=candidate_ids.dtype)
             else:
-                trimmed = matches[:n_slices]
-            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed
+                poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
+                if candidate_idx.size > n_slices:
+                    pick = np.argpartition(poloidal_dist, n_slices - 1)[:n_slices]
+                    pick = pick[np.argsort(poloidal_dist[pick])]
+                    trimmed = candidate_ids[pick]
+                else:
+                    order = np.argsort(poloidal_dist)
+                    trimmed = candidate_ids[order]
+            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:n_slices]
 
         return mapping.astype(int)
 

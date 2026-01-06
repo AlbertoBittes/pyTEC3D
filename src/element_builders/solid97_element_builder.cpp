@@ -796,7 +796,7 @@ void ElementBuilder::build_solid97_element_solution()
         {
             const VectorValue<Real> A_global(Aq(qp), Aq(qp + n_qp), Aq(qp + 2 * n_qp));
             const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(centroid) * A_global;
-            const Real a_theta = -A_local(2);
+            const Real a_theta = A_local(1);
             a_theta_avg += a_theta;
         }
         if (n_qp > 0)
@@ -958,7 +958,7 @@ void ElementBuilder::build_solid97_support_solution()
             const VectorValue<Real> A_global(Ax(i), Ay(i), Az(i));
             const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(node) * A_global;
             // const Real a_theta = -A_local(2);
-            const Real a_theta = A_local(2);
+            const Real a_theta = A_local(1);
             psi_values(i) = radius * a_theta;
         }
         have_psi = true;

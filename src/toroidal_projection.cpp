@@ -189,38 +189,6 @@ namespace
         target_vector.close();
     }
 
-    ToroidalProjection::Map build_reverse_map(const ToroidalProjection::Map &forward)
-    {
-        std::size_t max_target = 0;
-        for (const auto &row : forward)
-        {
-            if (row.size() <= 1)
-                continue;
-            for (std::size_t k = 1; k < row.size(); ++k)
-                max_target = std::max<std::size_t>(max_target, row[k]);
-        }
-
-        ToroidalProjection::Map reverse;
-        reverse.resize(max_target + 1);
-        for (std::size_t id = 0; id <= max_target; ++id)
-            reverse[id].push_back(static_cast<dof_id_type>(id));
-
-        for (const auto &row : forward)
-        {
-            if (row.empty())
-                continue;
-            const auto source_id = row.front();
-            for (std::size_t k = 1; k < row.size(); ++k)
-            {
-                const auto target_id = row[k];
-                if (target_id >= reverse.size())
-                    continue;
-                reverse[target_id].push_back(source_id);
-            }
-        }
-        return reverse;
-    }
-
 }
 
 void ToroidalProjection::set_maps(const Map &nodal_map, const Map &elem_map)
@@ -228,12 +196,10 @@ void ToroidalProjection::set_maps(const Map &nodal_map, const Map &elem_map)
     if (!nodal_map.empty())
     {
         nodal_map_fwd_ = nodal_map;
-        nodal_map_rev_ = build_reverse_map(nodal_map);
     }
     if (!elem_map.empty())
     {
         elem_map_fwd_ = elem_map;
-        elem_map_rev_ = build_reverse_map(elem_map);
     }
 }
 
@@ -301,7 +267,7 @@ void ToroidalProjection::toroidal_average(
                                                   target_variable_label);
     (void)coordinate_system;
 
-    const auto &active_map = context.target_is_nodal ? nodal_map_rev_ : elem_map_rev_;
+    const auto &active_map = context.target_is_nodal ? nodal_map_fwd_ : elem_map_fwd_;
     if (active_map.empty())
         libmesh_error_msg("ToroidalProjection: projection map is empty.");
     if (active_map.size() != context.target_count)
