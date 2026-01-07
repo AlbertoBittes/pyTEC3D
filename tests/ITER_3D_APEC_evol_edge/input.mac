@@ -1,6 +1,6 @@
--read_mesh ITER_3D_APEC_evol_1.vtu
--read_mesh ITER_3D_APEC_evol.vtu
--active_mesh ITER_3D_APEC_evol
+-read_mesh ITER_3D_APEC_evol_edge_1.vtu
+-read_mesh ITER_3D_APEC_evol_edge.vtu
+-active_mesh ITER_3D_APEC_evol_edge
 -load_data model_data.bin
 -mode analysis apec_evolution
 -solve_transient
