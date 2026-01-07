@@ -500,16 +500,17 @@ class APEC_M:
         """
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write time step binary.")
+        time_folder = os.path.join(self.folderpath, "_time_")
         if filename:
-            timestep_path = os.path.join(self.folderpath, filename)
-            target_dir = os.path.dirname(timestep_path) or self.folderpath
+            timestep_path = os.path.join(time_folder, filename)
+            target_dir = os.path.dirname(timestep_path) or time_folder
         else:
             if not self.jobname:
                 raise ValueError("Job name is not set. Cannot write time step binary.")
             timestep_path = os.path.join(
-                self.folderpath, f"{self.jobname}_timestep_{load_step_number}.bin"
+                time_folder, f"{self.jobname}_timestep_{load_step_number}.bin"
             )
-            target_dir = self.folderpath
+            target_dir = time_folder
 
         os.makedirs(target_dir, exist_ok=True)
         self.write_to_binary(
@@ -576,16 +577,17 @@ class APEC_M:
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write model data.")
 
+        model_data_folder = os.path.join(self.folderpath, "_model_data_")
         if filename:
-            output_path = os.path.join(self.folderpath, filename)
-            target_dir = os.path.dirname(output_path) or self.folderpath
+            output_path = os.path.join(model_data_folder, filename)
+            target_dir = os.path.dirname(output_path) or model_data_folder
             os.makedirs(target_dir, exist_ok=True)
         else:
             if not self.jobname:
                 raise ValueError("Job name is not set. Cannot write model data.")
 
-            os.makedirs(self.folderpath, exist_ok=True)
-            output_path = os.path.join(self.folderpath, "model_data.bin")
+            os.makedirs(model_data_folder, exist_ok=True)
+            output_path = os.path.join(model_data_folder, "model_data.bin")
 
         self.write_to_binary(
             output_path,

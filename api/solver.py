@@ -230,7 +230,8 @@ class Solver:
         folder = self.apec.folderpath
         if not folder:
             raise ValueError("Folder path is not set; cannot write model data.")
-        output_path = os.path.join(folder, filename)
+        model_data_folder = os.path.join(folder, "_model_data_")
+        output_path = os.path.join(model_data_folder, filename)
         self.apec.write_model_data(filename=filename)
         return output_path
 
@@ -250,10 +251,11 @@ class Solver:
         if not jobname and (grid_filename is None or time_filename is None):
             raise ValueError("Job name is not set; cannot infer default binary paths.")
 
+        time_folder = os.path.join(folder, "_time_")
         time_path = (
-            os.path.join(folder, time_filename)
+            os.path.join(time_folder, time_filename)
             if time_filename
-            else os.path.join(folder, f"{jobname}_timestep_{load_step_number}.bin")
+            else os.path.join(time_folder, f"{jobname}_timestep_{load_step_number}.bin")
         )
         grid_path = (
             os.path.join(folder, grid_filename)

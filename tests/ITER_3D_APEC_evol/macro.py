@@ -150,6 +150,9 @@ apec.set_value_on_selection("A", 0, 0)
 apec.set_value_on_selection("A", 0, 1)
 apec.set_value_on_selection("A", 0, 2)
 
+apec.select("ID", 16170)
+apec.set_value_on_selection("VOLT", 0)
+
 apec.select_all()
 apec_equilibrium.select_all()
 apec.apec_settings = {

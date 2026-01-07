@@ -91,6 +91,7 @@ void APECMEvolutionAnalysis::toroidal_average()
 
     ApecMExplicitSystem &main_sys_element_sol = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
+    ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
     auto toroidal_proj = toroidal_projection.get();
 
@@ -98,10 +99,15 @@ void APECMEvolutionAnalysis::toroidal_average()
     auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
 
     {
-        ApecMFieldRotation element_sol_rotation(main_sys_element_sol,
-                                                cylindrical_coordinate_system,
-                                                {"Be", "Jt"});
-
+        VectorFieldCoordinateTransformation element_sol_rotation(main_sys_element_sol,
+                                                                 cylindrical_coordinate_system,
+                                                                 {"Be", "Jt"});
+        VectorFieldCoordinateTransformation static_element_sol_rotation(static_sys_element_sol,
+                                                                        cylindrical_coordinate_system,
+                                                                        {"Be", "Jt"});
+        VectorFieldCoordinateTransformation static_element_loads_rotation(static_sys_element_loads,
+                                                                          cylindrical_coordinate_system,
+                                                                          {"Js"});
         // Project back to the static mesh
         // Project J, from plasma, coils and vessel
         // Project PSI
@@ -148,9 +154,13 @@ void APECMEvolutionAnalysis::toroidal_projection_current()
     auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
 
     {
-        ApecMFieldRotation element_loads_rotation(main_sys_element_loads,
-                                                  cylindrical_coordinate_system,
-                                                  {"Js"});
+        VectorFieldCoordinateTransformation static_element_loads_rotation(static_sys_element_loads,
+                                                                          cylindrical_coordinate_system,
+                                                                          {"Jt"});
+        VectorFieldCoordinateTransformation element_loads_rotation(main_sys_element_loads,
+                                                                   cylindrical_coordinate_system,
+                                                                   {"Js"});
+
         // Project back to the static mesh
         // Project J, from plasma, coils and vessel
         const std::pair<std::string, std::string> toroidal_proj_pairs[] = {
@@ -194,7 +204,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     solve_equation_systems(substep, false);
 
     if (print_full_output)
-        print_output(substep, false);
+        print_output(substep, true);
 
     program->set_active_mesh(equilibrium_mesh);
 
@@ -213,7 +223,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         return true;
 
     if (print_full_output)
-        print_output(substep, false);
+        print_output(substep, true);
 
     first_absolute_iteration = false;
     return false;

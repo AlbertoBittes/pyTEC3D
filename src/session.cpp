@@ -37,6 +37,14 @@ void Session::initialize_folder_paths()
     if (!load_steps_folder.empty())
         std::filesystem::create_directories(load_steps_folder);
 
+    const auto &time_steps_folder = paths_map["time_steps_folderpath"];
+    if (!time_steps_folder.empty())
+        std::filesystem::create_directories(time_steps_folder);
+
+    const auto &model_data_folder = paths_map["model_data_folderpath"];
+    if (!model_data_folder.empty())
+        std::filesystem::create_directories(model_data_folder);
+
     create_temp_folder();
     create_output_folder();
     create_emat_folder();
@@ -274,7 +282,8 @@ void Session::update_dynamic_paths()
         mesh_root = effective_working_directory / mesh_token;
 
     paths_map["working_folderpath"] = effective_working_directory;
-    paths_map["time_steps_folderpath"] = effective_working_directory;
+    paths_map["time_steps_folderpath"] = effective_working_directory / "_time_";
+    paths_map["model_data_folderpath"] = effective_working_directory / "_model_data_";
     paths_map["mesh_folderpath"] = mesh_root;
 
     if (!mesh_root.empty())

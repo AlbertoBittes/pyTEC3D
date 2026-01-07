@@ -61,18 +61,18 @@ public:
     static const std::string &system_name_from_type(SystemType system_type);
 };
 
-class ApecMFieldRotation : public FEParentObjectBase<ApecMSystemBase>
+class VectorFieldCoordinateTransformation : public FEParentObjectBase<ApecMSystemBase>
 {
 public:
-    ApecMFieldRotation(ApecMSystemBase &system,
-                       const CoordinateSystem &coordinate_system,
-                       std::vector<std::string> variable_labels);
-    ~ApecMFieldRotation();
+    VectorFieldCoordinateTransformation(ApecMSystemBase &system,
+                                        const CoordinateSystem &coordinate_system,
+                                        std::vector<std::string> variable_labels);
+    ~VectorFieldCoordinateTransformation();
 
-    ApecMFieldRotation(const ApecMFieldRotation &) = delete;
-    ApecMFieldRotation &operator=(const ApecMFieldRotation &) = delete;
-    ApecMFieldRotation(ApecMFieldRotation &&) = delete;
-    ApecMFieldRotation &operator=(ApecMFieldRotation &&) = delete;
+    VectorFieldCoordinateTransformation(const VectorFieldCoordinateTransformation &) = delete;
+    VectorFieldCoordinateTransformation &operator=(const VectorFieldCoordinateTransformation &) = delete;
+    VectorFieldCoordinateTransformation(VectorFieldCoordinateTransformation &&) = delete;
+    VectorFieldCoordinateTransformation &operator=(VectorFieldCoordinateTransformation &&) = delete;
 
 private:
     const CoordinateSystem *coordinate_system = nullptr;
