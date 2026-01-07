@@ -265,11 +265,11 @@ void ElementBuilder::build_plane233()
                     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                         {
-                            Ce(dof_i, dof_j + n_dofs_var) -=
+                            Ce(dof_i, dof_j + n_dofs_var) +=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                         }
                 }
@@ -317,11 +317,11 @@ void ElementBuilder::build_plane233()
                     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                         {
-                            Ke(dof_i, dof_j + n_dofs_var) -=
+                            Ke(dof_i, dof_j + n_dofs_var) +=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                         }
                 }
