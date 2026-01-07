@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <unordered_map>
 #include <set>
 #include <vector>
 
@@ -186,6 +187,7 @@ private:
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
+    std::unordered_map<dof_id_type, unsigned int> psi_node_counts;
     CylindricalCoordinateSystem cylindrical_coordinate_system_;
 
     ApecMEquationSystems *equation_systems_ = nullptr;

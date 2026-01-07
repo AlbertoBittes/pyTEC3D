@@ -668,9 +668,33 @@ void ElementBuilder::build_solid236_element_solution()
     auto build_psie = [&]()
     {
         PSIe.resize(1);
-        PSIe(0) = 0.0;
+        auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
+
+        unsigned int n_qp = JAe.m() / 3;
+
+        auto &Az = solution_vector_support.sol_vectors[0];
+
+        DenseVector<Number> Aq;
+        JAe.vector_mult(Aq, Az);
+        const Point centroid = elem_data.elem->centroid();
+        const Point local_centroid = cylindrical_coordinate_system_.to_local_coordinates(centroid);
+
+        Real a_theta_avg = 0.0;
+        for (unsigned int qp = 0; qp < n_qp; qp++)
+        {
+            const VectorValue<Real> A_global(Aq(qp), Aq(qp + n_qp), Aq(qp + 2 * n_qp));
+            const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(centroid) * A_global;
+            const Real a_theta = A_local(1);
+            a_theta_avg += a_theta;
+        }
+        if (n_qp > 0)
+            a_theta_avg /= static_cast<Real>(n_qp);
+
+        const Real radius = cylindrical_coordinate_system_.to_local_coordinates(centroid)(0);
+        PSIe(0) = radius * a_theta_avg;
         have_psie = true;
     };
+
     auto build_je = [&]()
     {
         auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
@@ -806,9 +830,36 @@ void ElementBuilder::build_solid236_support_solution()
 
     auto build_psi = [&]()
     {
-        psi_values.resize(elem_data.elem->n_nodes());
-        for (unsigned int i = 0; i < psi_values.size(); ++i)
-            psi_values(i) = 0.0;
+        const auto &Az = solution_vector_support.sol_vectors[0];
+        psi_values.resize(0);
+
+        std::vector<dof_id_type> dof_indices;
+        unsigned int psie_var_num = element_solution_system_->variable_number("PSIe");
+        unsigned int psi_var_num = support_solution_system_->variable_number("PSI");
+        element_solution_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices, psie_var_num);
+        Real psi_val = element_solution_system_->current_local_solution->el(dof_indices[0]);
+
+        for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
+        {
+            dof_id_type dof_index = libMesh::invalid_uint;
+            try
+            {
+                dof_index = elem_data.elem->node_ptr(i)->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, 0, 0);
+            }
+            catch (...)
+            {
+                continue;
+            }
+            const unsigned int previous_count = psi_node_counts[dof_index];
+            const unsigned int next_count = previous_count + 1;
+            const Number previous_avg = support_solution_system_->solution->el(dof_index);
+            const Number next_avg = (previous_avg * previous_count + psi_val) / static_cast<Real>(next_count);
+
+            psi_node_counts[dof_index] = next_count;
+            DenseVector<Number> psi_entry(1);
+            psi_entry(0) = next_avg;
+            psi_values.append(psi_entry);
+        }
         have_psi = true;
     };
 

@@ -184,7 +184,22 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
     for (const auto &raw_path : filepaths)
     {
         std::filesystem::path input_path(raw_path);
-        std::filesystem::path resolved = input_path.is_absolute() ? input_path : base_dir / input_path;
+        std::filesystem::path resolved;
+        if (input_path.is_absolute())
+        {
+            resolved = input_path;
+        }
+        else
+        {
+            std::filesystem::path effective_base = base_dir;
+            if (session && input_path.parent_path().empty() && input_path.filename() == "model_data.bin")
+            {
+                const auto &model_data_folder = session->get_path("model_data_folderpath");
+                if (!model_data_folder.empty())
+                    effective_base = model_data_folder;
+            }
+            resolved = effective_base / input_path;
+        }
         resolved = resolved.lexically_normal();
 
         auto equation_systems = get_active_equation_system();
