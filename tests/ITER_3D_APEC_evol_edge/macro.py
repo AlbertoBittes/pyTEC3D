@@ -32,7 +32,7 @@ apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
 eps = 1e-1
 theta_eps = 1e-3
-max_rad = 86.9598
+max_rad = 100
 # Read the static mesh
 apec_equilibrium = APEC_M()
 apec_equilibrium.read_mesh(static_mesh_filepath)
