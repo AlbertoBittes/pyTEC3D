@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <type_traits> // Add this include for std::is_base_of
+#include <vector>
 
 #include <libmesh/equation_systems.h>
 #include <libmesh/transient_system.h>
@@ -25,6 +26,7 @@
 #include "solver_configuration.h"
 #include "coordinate_system.h"
 #include "time_step.h"
+#include "fe_parent_object.h"
 using namespace libMesh;
 
 class ElementTypesFactory;
@@ -57,6 +59,24 @@ public:
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
     static bool is_nodal_system(SystemType system_type);
     static const std::string &system_name_from_type(SystemType system_type);
+};
+
+class ApecMFieldRotation : public FEParentObjectBase<ApecMSystemBase>
+{
+public:
+    ApecMFieldRotation(ApecMSystemBase &system,
+                       const CoordinateSystem &coordinate_system,
+                       std::vector<std::string> variable_labels);
+    ~ApecMFieldRotation();
+
+    ApecMFieldRotation(const ApecMFieldRotation &) = delete;
+    ApecMFieldRotation &operator=(const ApecMFieldRotation &) = delete;
+    ApecMFieldRotation(ApecMFieldRotation &&) = delete;
+    ApecMFieldRotation &operator=(ApecMFieldRotation &&) = delete;
+
+private:
+    const CoordinateSystem *coordinate_system = nullptr;
+    std::vector<std::string> variable_labels;
 };
 
 #include "variables_map.h"

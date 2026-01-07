@@ -59,8 +59,7 @@ void ApecMEquationSystems::solve_equation_systems(Substep &substep, bool nodal_s
     if (nodal_solution)
         assembler->write_nodal_solution();
     assembler->write_element_solution();
-    if (nodal_solution)
-        assembler->write_support_solution();
+    assembler->write_support_solution();
 }
 
 void ApecMEquationSystems::print_output(Substep &substep, bool picard_iteration_print)

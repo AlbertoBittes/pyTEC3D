@@ -545,20 +545,18 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
     {
         find_separatrix();
         apply_jplasma_gradshafranov();
-    }
-    bool converged = check_poloidal_flux_convergence();
-
-    if (converged)
-        return true;
-
-    if (!first_absolute_iteration)
-    {
         set_b_target_axis();
         auto correction_currents = compute_correction_currents();
         apply_control_currents(correction_currents);
     }
 
     solve_equation_systems(substep, true);
+
+    bool converged = check_poloidal_flux_convergence();
+
+    if (converged)
+        return true;
+
     if (print_full_output)
         print_output(substep, true);
 

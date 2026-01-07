@@ -36,10 +36,10 @@ apec_equilibrium.read_excel("input_template.xlsx")
 apec_equilibrium.write_model_data()
 
 # # Set conductors to non conductors
-# apec.select("ansys_material_type", 24, type="elem")
-# apec.set_value_on_selection("ansys_material_type", 23, type="elem")
-# apec.select("ansys_etype", 24, type="elem")
-# apec.set_value_on_selection("ansys_etype", 23, type="elem")
+apec_equilibrium.select("ansys_material_type", 24, type="elem")
+apec_equilibrium.set_value_on_selection("ansys_material_type", 23, type="elem")
+apec_equilibrium.select("ansys_etype", 24, type="elem")
+apec_equilibrium.set_value_on_selection("ansys_etype", 23, type="elem")
 
 # Set Boundary conditions
 apec_equilibrium.select_all()
@@ -67,7 +67,7 @@ apec.apec_settings = {
     "beta_p": 6.8216e-001,
     "evolution_mesh": "ITER_2D_APEC_evol",
     "equilibrium_mesh": "ITER_2D_APEC_evol_1",
-    "print_full_output": 1,
+    "print_full_output": 0,
     "toroidal_projection_map_nodes": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "node", n_slices=1, tolerance=1e-3),
     "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "elem", n_slices=1, tolerance=1e-3),
 
