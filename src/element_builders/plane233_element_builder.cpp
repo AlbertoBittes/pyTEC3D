@@ -114,6 +114,7 @@ void ElementBuilder::build_plane233()
     {
         for (unsigned int qp = 0; qp < nq; qp++)
         {
+            // Here maybe is more suited the centroid radius
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -336,9 +337,11 @@ void ElementBuilder::build_plane233()
             libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
 
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
+
         const Real sc = rc[1];
         const Real nc = rc[2];
-        const Real vc = rc[3];
+        const Real rad = rc[4];
+        const Real vc = 2 * libMesh::pi * rad * sc;
         const Real tz = rc[7];
         const Real r_coil = rc[8];
         const Real sym = rc[9];
