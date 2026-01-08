@@ -53,7 +53,8 @@ public:
     bool generate_nodal_couplings();
     const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> &get_cp_pairs() const;
     AngleDataIndices detect_angle_indices() const;
-    ApecMTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
+    CartesianCoordinateSystem node_coordinate_system(dof_id_type node_id) const;
+    CartesianCoordinateSystem node_coordinate_system(const Node &node) const;
 
     template <typename Iterator>
     std::map<dof_id_type, Point> map_local_coordinates(Iterator begin,
@@ -73,6 +74,7 @@ public:
     }
 
 private:
+    std::vector<std::string> collect_node_integer_arrays(const std::string &prefix) const;
     std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> cp_pairs;
     template <typename T>
     static const T *to_entity_ptr(const T *ptr)

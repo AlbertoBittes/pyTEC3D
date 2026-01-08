@@ -48,20 +48,7 @@ void ApecMMesh::apply_boundary_info()
     BoundaryInfo &boundary_info = this->get_boundary_info();
     boundary_info.clear();
 
-    std::vector<std::string> boundary_arrays;
-    for (const auto &name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
-    {
-        if (name.find("boundary_id_") == 0)
-        {
-            for (unsigned int idx = 0;; ++idx)
-            {
-                std::string generated = name + std::to_string(idx);
-                if (!this->has_node_integer(generated))
-                    break;
-                boundary_arrays.push_back(generated);
-            }
-        }
-    }
+    std::vector<std::string> boundary_arrays = collect_node_integer_arrays("boundary_id_");
 
     for (const auto &array : boundary_arrays)
     {
@@ -125,13 +112,12 @@ void ApecMMesh::generate_infinite_elements(const std::shared_ptr<ElementTypesFac
     }
 }
 
-bool ApecMMesh::generate_nodal_couplings()
+std::vector<std::string> ApecMMesh::collect_node_integer_arrays(const std::string &prefix) const
 {
-    std::vector<unsigned int> cp_integer_indices;
-    std::vector<std::string> cp_arrays;
+    std::vector<std::string> arrays;
     for (const auto &name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
     {
-        if (name.rfind("CP_", 0) != 0)
+        if (name.rfind(prefix, 0) != 0)
             continue;
 
         if (!name.empty() && name.back() == '_')
@@ -141,15 +127,21 @@ bool ApecMMesh::generate_nodal_couplings()
                 std::string generated = name + std::to_string(idx);
                 if (!this->has_node_integer(generated))
                     break;
-                cp_arrays.push_back(generated);
+                arrays.push_back(generated);
             }
         }
         else if (this->has_node_integer(name))
         {
-            cp_arrays.push_back(name);
+            arrays.push_back(name);
         }
     }
+    return arrays;
+}
 
+bool ApecMMesh::generate_nodal_couplings()
+{
+    std::vector<unsigned int> cp_integer_indices;
+    std::vector<std::string> cp_arrays = collect_node_integer_arrays("CP_");
     for (const auto &name : cp_arrays)
         cp_integer_indices.push_back(this->get_node_integer_index(name));
 
@@ -251,15 +243,36 @@ ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
     return info;
 }
 
-ApecMTensorValue ApecMMesh::node_ansys_rotation_matrix(dof_id_type node_id) const
+CartesianCoordinateSystem ApecMMesh::node_coordinate_system(dof_id_type node_id) const
 {
-    VectorValue<Real> angles_deg(0., 0., 0.);
     const Node *node_ptr = this->query_node_ptr(node_id);
     const AngleDataIndices angle_data = detect_angle_indices();
     if (node_ptr && angle_data.available)
     {
+        VectorValue<Real> angles_deg(0., 0., 0.);
         for (unsigned int i = 0; i < 3; ++i)
             angles_deg(i) = node_ptr->get_extra_datum<Real>(angle_data.indices(i));
+        return CartesianCoordinateSystem(Point(0.0, 0.0, 0.0),
+                                         angles_deg(0),
+                                         angles_deg(1),
+                                         angles_deg(2));
     }
-    return ApecMTensorValue::build_ansys_rotation_matrix(angles_deg(0), angles_deg(1), angles_deg(2));
+
+    return CartesianCoordinateSystem();
+}
+
+CartesianCoordinateSystem ApecMMesh::node_coordinate_system(const Node &node) const
+{
+    const AngleDataIndices angle_data = detect_angle_indices();
+    if (!angle_data.available)
+        return CartesianCoordinateSystem();
+
+    VectorValue<Real> angles_deg(0., 0., 0.);
+    for (unsigned int i = 0; i < 3; ++i)
+        angles_deg(i) = node.get_extra_datum<Real>(angle_data.indices(i));
+
+    return CartesianCoordinateSystem(Point(0.0, 0.0, 0.0),
+                                     angles_deg(0),
+                                     angles_deg(1),
+                                     angles_deg(2));
 }

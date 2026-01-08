@@ -5,6 +5,7 @@
 #include "apec_m_system.h"
 #include "apec_m_tensor_value.h"
 #include "dof_couplings_factory.h"
+#include "coordinate_system.h"
 
 #include "fem_data_repository.h"
 #include "fe_data_object.h"
@@ -71,7 +72,6 @@ GlobalConstraintsObject::build_point_constraints()
 
     std::map<std::string, std::vector<VariablesMap::VectorComponent>> vector_variables =
         VariablesMap::get_vector_variables_for_system(*system);
-
     std::set<dof_id_type> constrained_dofs;
 
     for (const auto &node_ptr : mesh->local_node_ptr_range())
@@ -132,7 +132,8 @@ GlobalConstraintsObject::build_point_constraints()
 
             if (!rotation_ready)
             {
-                rotation = mesh->node_ansys_rotation_matrix(node_ptr->id()).transpose();
+                const auto coord_system = mesh->node_coordinate_system(*node_ptr);
+                rotation = coord_system.global_to_local_rotation(*node_ptr);
             }
 
             if (full_vector_constraint)
@@ -383,8 +384,8 @@ GlobalConstraintsObject::build_coupling_constraints()
             if (!node_first || !node_second)
                 continue;
 
-            const auto rotation_first = mesh->node_ansys_rotation_matrix(node_first->id());
-            const auto rotation_second = mesh->node_ansys_rotation_matrix(node_second->id());
+            const auto coord_first = mesh->node_coordinate_system(*node_first);
+            const auto coord_second = mesh->node_coordinate_system(*node_second);
 
             for (const auto &vec_entry : coupled_vectors)
             {
@@ -427,7 +428,11 @@ GlobalConstraintsObject::build_coupling_constraints()
                 if (!complete)
                     continue;
 
-                TensorValue<Real> transform = rotation_second.transpose() * rotation_first;
+                const Point &point_first = *node_first;
+                const Point &point_second = *node_second;
+                TensorValue<Real> transform =
+                    coord_second.global_to_local_rotation(point_second) *
+                    coord_first.local_to_global_rotation(point_first);
 
                 for (unsigned int i = 0; i < 3; ++i)
                 {
