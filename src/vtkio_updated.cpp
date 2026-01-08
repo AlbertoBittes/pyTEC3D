@@ -82,6 +82,7 @@ const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
     // "periodic_boundary",
     "angles",
     "boundary_id_",
+    "CP_",
     "PLASMA",
     "VACUUM_CHAMBER",
     "VACUUM_CHAMBER_NODES",
@@ -450,6 +451,7 @@ void VTKIO_Updated::add_ugrid_data_vtk(MeshBase &mesh)
                         data_indices[comp] = is_real_array ? mesh.add_elem_datum<Real>(component_names[comp]) : mesh.add_elem_datum<dof_id_type>(component_names[comp]);
                     }
                 }
+
 
                 if (is_point_data)
                 {

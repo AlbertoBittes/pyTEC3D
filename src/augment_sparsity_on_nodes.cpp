@@ -1,4 +1,5 @@
 #include "augment_sparsity_on_nodes.h"
+#include "apec_m_mesh.h"
 
 #include <algorithm>
 #include <unordered_set>
@@ -21,24 +22,19 @@ namespace
     }
 }
 
-AugmentSparsityOnNodes::AugmentSparsityOnNodes(MeshBase &mesh, const DofCouplingsObject &couplings)
+AugmentSparsityOnNodes::AugmentSparsityOnNodes(ApecMMesh &mesh)
     : _mesh(mesh)
 {
-    build_node_sets(couplings);
+    build_node_sets();
     rebuild_elem_neighbors();
 }
 
-void AugmentSparsityOnNodes::build_node_sets(const DofCouplingsObject &couplings)
+void AugmentSparsityOnNodes::build_node_sets()
 {
     node_pairs.clear();
-    const auto &entries = couplings.get_couplings();
-    node_pairs.reserve(entries.size());
-
-    for (const auto &entry : entries)
-    {
-        for (const auto &pair : entry.pairs)
-            node_pairs.emplace_back(pair.first, pair.second);
-    }
+    const auto &pairs_by_cp = _mesh.get_cp_pairs();
+    for (const auto &entry : pairs_by_cp)
+        node_pairs.insert(node_pairs.end(), entry.second.begin(), entry.second.end());
 }
 
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()

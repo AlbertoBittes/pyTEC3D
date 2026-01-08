@@ -165,8 +165,7 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
                                       BinaryLabelId::MATERIALS,
                                       BinaryLabelId::REAL_CONSTANTS,
                                       BinaryLabelId::SOLVER_SETTINGS,
-                                      BinaryLabelId::PERIODIC_BOUNDARIES,
-                                      BinaryLabelId::DOF_COUPLINGS};
+                                      BinaryLabelId::PERIODIC_BOUNDARIES};
     }
 
     auto base_dir = session->get_working_directory();
@@ -747,10 +746,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
         mesh->apply_boundary_info();
 
-        if (couplings_object)
-            mesh->generate_nodal_couplings(*couplings_object, name);
-        else
-            libMesh::out << "No DOF couplings object available. Skipping nodal coupling generation for mesh '" << name << "'." << std::endl;
+        mesh->generate_nodal_couplings();
 
         auto equation_system = repository->get_object<ApecMEquationSystems>();
         if (!equation_system)
@@ -773,7 +769,7 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
         // if (couplings_object)
         // {
         //     auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-        //     AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh, *couplings_object);
+        //     AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh);
         //     main_system.get_dof_map().add_coupling_functor(*gf);
         //     libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
         // }

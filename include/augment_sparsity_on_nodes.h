@@ -7,14 +7,14 @@
 #include <libmesh/ghosting_functor.h>
 #include <libmesh/mesh_base.h>
 
-#include "dof_couplings_factory.h"
-
 using namespace libMesh;
+
+class ApecMMesh;
 
 class AugmentSparsityOnNodes : public GhostingFunctor
 {
 public:
-    AugmentSparsityOnNodes(MeshBase &mesh, const DofCouplingsObject &couplings);
+    AugmentSparsityOnNodes(ApecMMesh &mesh);
 
     virtual void operator()(const MeshBase::const_element_iterator &range_begin,
                             const MeshBase::const_element_iterator &range_end,
@@ -25,10 +25,10 @@ public:
     virtual void redistribute() override;
 
 private:
-    void build_node_sets(const DofCouplingsObject &couplings);
+    void build_node_sets();
     void rebuild_elem_neighbors();
 
-    MeshBase &_mesh;
+    ApecMMesh &_mesh;
     std::vector<std::pair<unsigned int, unsigned int>> node_pairs;
     std::vector<std::pair<dof_id_type, dof_id_type>> elem_pairs;
 };

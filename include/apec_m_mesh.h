@@ -6,6 +6,8 @@
 #include <set>
 #include <string>
 #include <type_traits>
+#include <vector>
+#include <unordered_map>
 
 #include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
@@ -48,7 +50,8 @@ public:
 
     void apply_boundary_info();
     void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
-    bool generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name);
+    bool generate_nodal_couplings();
+    const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> &get_cp_pairs() const;
     AngleDataIndices detect_angle_indices() const;
     ApecMTensorValue node_ansys_rotation_matrix(dof_id_type node_id) const;
 
@@ -70,6 +73,7 @@ public:
     }
 
 private:
+    std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> cp_pairs;
     template <typename T>
     static const T *to_entity_ptr(const T *ptr)
     {

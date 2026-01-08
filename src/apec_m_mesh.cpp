@@ -14,6 +14,8 @@
 #include <libmesh/vector_value.h>
 
 #include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
 
 #include "fem_data_repository.h"
 
@@ -32,7 +34,6 @@ std::shared_ptr<ApecMMesh> ApecMMesh::read_mesh(libMesh::Parallel::Communicator 
         mesh = std::make_shared<ApecMMesh>(comm);
         mesh_repository.set_object<ApecMMesh>(mesh);
     }
-
     VTKIO_Updated vtkio(*mesh, mesh_filepath);
     MeshCommunication().broadcast(*mesh);
     MeshTools::Modification::orient_elements(*mesh);
@@ -124,14 +125,57 @@ void ApecMMesh::generate_infinite_elements(const std::shared_ptr<ElementTypesFac
     }
 }
 
-bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, const std::string &mesh_name)
+bool ApecMMesh::generate_nodal_couplings()
 {
-    const auto &entries = couplings.get_couplings();
-    if (entries.empty())
+    std::vector<unsigned int> cp_integer_indices;
+    std::vector<std::string> cp_arrays;
+    for (const auto &name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
     {
-        libMesh::out << "No DOF couplings defined. Skipping nodal coupling generation for mesh '"
-                     << mesh_name << "'." << std::endl;
-        return true;
+        if (name.rfind("CP_", 0) != 0)
+            continue;
+
+        if (!name.empty() && name.back() == '_')
+        {
+            for (unsigned int idx = 0;; ++idx)
+            {
+                std::string generated = name + std::to_string(idx);
+                if (!this->has_node_integer(generated))
+                    break;
+                cp_arrays.push_back(generated);
+            }
+        }
+        else if (this->has_node_integer(name))
+        {
+            cp_arrays.push_back(name);
+        }
+    }
+
+    for (const auto &name : cp_arrays)
+        cp_integer_indices.push_back(this->get_node_integer_index(name));
+
+    if (cp_integer_indices.empty())
+    {
+        libMesh::out << "No CP_* sets found. Skipping nodal coupling generation." << std::endl;
+        return false;
+    }
+
+    std::unordered_map<int, std::unordered_set<unsigned int>> cp_nodes;
+
+    cp_pairs.clear();
+
+    for (const auto &node_ptr : this->node_ptr_range())
+    {
+        if (!node_ptr)
+            continue;
+
+        for (unsigned int data_index : cp_integer_indices)
+        {
+            const int cp_value = static_cast<int>(node_ptr->get_extra_integer(data_index));
+            if (cp_value <= 0)
+                continue;
+
+            cp_nodes[cp_value].insert(static_cast<unsigned int>(node_ptr->id()));
+        }
     }
 
     std::unordered_set<unsigned int> nodeelem_nodes;
@@ -145,8 +189,8 @@ bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, co
         Node *node = this->query_node_ptr(node_id);
         if (!node)
         {
-            libMesh::out << "Warning: node " << node_id << " not found in mesh '" << mesh_name
-                         << "' while creating nodal couplings." << std::endl;
+            libMesh::out << "Warning: node " << node_id
+                         << " not found while creating nodal couplings." << std::endl;
             nodeelem_nodes.erase(node_id);
             return;
         }
@@ -156,20 +200,35 @@ bool ApecMMesh::generate_nodal_couplings(const DofCouplingsObject &couplings, co
         ++created;
     };
 
-    for (const auto &entry : entries)
+    for (const auto &entry : cp_nodes)
     {
-        for (const auto &pair : entry.pairs)
+        const int cp_id = entry.first;
+        const auto &nodes = entry.second;
+        if (nodes.empty())
+            continue;
+
+        unsigned int master_node = *std::min_element(nodes.begin(), nodes.end());
+        auto &pairs = cp_pairs[cp_id];
+        pairs.clear();
+
+        for (unsigned int node_id : nodes)
         {
-            ensure_nodeelem(pair.first);
-            ensure_nodeelem(pair.second);
+            if (node_id == master_node)
+                continue;
+            pairs.emplace_back(master_node, node_id);
+            ensure_nodeelem(node_id);
         }
 
-        for (unsigned int node_id : entry.isolated)
-            ensure_nodeelem(node_id);
+        ensure_nodeelem(master_node);
     }
 
-    libMesh::out << "Generated " << created << " nodeelems for mesh '" << mesh_name << "'." << std::endl;
+    libMesh::out << "Generated " << created << " nodeelems." << std::endl;
     return true;
+}
+
+const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> &ApecMMesh::get_cp_pairs() const
+{
+    return cp_pairs;
 }
 
 ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const

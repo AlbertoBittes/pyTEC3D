@@ -324,13 +324,29 @@ GlobalConstraintsObject::build_coupling_constraints()
     if (entries.empty())
         return constraints;
 
+    const auto &pairs_by_cp = mesh->get_cp_pairs();
+    if (pairs_by_cp.empty())
+        return constraints;
+
     std::map<std::string, std::vector<VariablesMap::VectorComponent>> vector_variables =
         VariablesMap::get_vector_variables_for_system(*system);
     // TODO: the coupling part should be done after serializing the mesh
     for (const auto &entry : entries)
     {
-        std::set<std::string> coupled_labels(entry.coupled_variables.begin(),
-                                             entry.coupled_variables.end());
+        if (entry.variable.empty())
+        {
+            libMesh::out << "Warning: DOF coupling entry for CP set " << entry.cp_id
+                         << " has no variable defined." << std::endl;
+            continue;
+        }
+
+        auto pairs_it = pairs_by_cp.find(entry.cp_id);
+        if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
+            continue;
+
+        std::set<std::string> coupled_labels;
+        for (const auto &label : VariablesMap::get_global_labels_for_label(entry.variable))
+            coupled_labels.insert(label);
         if (coupled_labels.empty())
             continue;
 
@@ -359,7 +375,7 @@ GlobalConstraintsObject::build_coupling_constraints()
                 coupled_labels.erase(component.global_label);
         }
 
-        for (const auto &pair : entry.pairs)
+        for (const auto &pair : pairs_it->second)
         {
             const Node *node_first = mesh->node_ptr(pair.first);
             const Node *node_second = mesh->node_ptr(pair.second);

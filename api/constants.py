@@ -191,8 +191,8 @@ MATERIALS_COLUMNS_TYPES = {
     "MGZZ": float,
 }
 
-# Assign types to coupled variables columns
-COUPLED_VARIABLES_COLUMNS_TYPES = {
+# Assign types to DOF coupling columns
+DOF_COUPLINGS_COLUMNS_TYPES = {
     "cp_id": int,
     "variable": str,
 }
@@ -264,7 +264,6 @@ TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
-    "coupled_variables": COUPLED_VARIABLES_COLUMNS_TYPES,
     "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
@@ -273,13 +272,13 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
     "periodic_boundaries": PERIODIC_BOUNDARIES_COLUMNS_TYPES,
     "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
+    "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
 }
 
 # Define the mapping of sheet names to processing methods
 SHEET_PROCESSING_MAP = {
     "element_types": "read_excel_df",
     "materials": "read_excel_df",
-    "coupled_variables": "read_excel_df",
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
     "time_parameters": "read_excel_dict",
@@ -288,6 +287,7 @@ SHEET_PROCESSING_MAP = {
     "elem": ("update_vtk_grid_from_excel", "elem"),
     "transient_analysis": "read_excel_df",
     "periodic_boundaries": "read_periodic_boundaries",
+    "dof_couplings": "read_excel_df",
 }
 
 WRITING_FUNCTIONS_MAP = {

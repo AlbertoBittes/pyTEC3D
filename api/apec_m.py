@@ -29,7 +29,6 @@ from binary import Binary
 from excel import Excel
 from solver import Solver
 from constants import *
-from dof_coupling import DOFCoupling
 
 
 # Add the current directory to the Python path to ensure imports work
@@ -73,9 +72,6 @@ class APEC_M:
         self.real_constants: pd.DataFrame = pd.DataFrame(
             columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
         )
-        self.coupled_variables: pd.DataFrame = pd.DataFrame(
-            columns=list(COUPLED_VARIABLES_COLUMNS_TYPES.keys())
-        )
         self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.apec_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_APEC_SETTINGS)
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
@@ -83,7 +79,9 @@ class APEC_M:
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
         self.periodic_boundaries: List[Any] = []
-        self.dof_couplings: List[Dict[str, Any]] = []
+        self.dof_couplings: pd.DataFrame = pd.DataFrame(
+            columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
+        )
         self.cli: Solver = Solver(self)
 
     #
@@ -122,39 +120,6 @@ class APEC_M:
 
         # Ensure relative paths resolve from the mesh directory
         os.chdir(self.folderpath)
-
-    def build_dof_couplings(self, print_summary: bool = False) -> List[Dict[str, Any]]:
-        """
-        Construct and cache DOF coupling forests from CP_* point-data arrays.
-
-        Args:
-            print_summary: When True, print a human-readable summary of the computed forests.
-
-        Returns:
-            List[Dict[str, Any]]: Cached coupling forests, one per CP_* id combination.
-        """
-        return self.refresh_dof_couplings(print_summary=print_summary)
-
-    def refresh_dof_couplings(
-        self, print_summary: bool = False
-    ) -> List[Dict[str, Any]]:
-        """
-        Recompute DOF coupling forests and optionally print a summary.
-
-        Args:
-            print_summary: When True, print a human-readable summary of the computed forests.
-
-        Returns:
-            List[Dict[str, Any]]: Updated list of coupling forests.
-        """
-        forests = DOFCoupling.build_dof_couplings(
-            self.mesh,
-            coupled_variables=self.coupled_variables,
-        )
-        self.dof_couplings = forests
-        if print_summary:
-            DOFCoupling.print_dof_couplings(forests)
-        return forests
 
     def save_mesh(
         self, output_file: Optional[Union[str, PathLike[str]]] = None
@@ -515,7 +480,7 @@ class APEC_M:
         os.makedirs(target_dir, exist_ok=True)
         self.write_to_binary(
             timestep_path,
-            labels_to_write=["time_parameters", "apec_settings"],
+            labels_to_write=["time_parameters", "apec_settings", "dof_couplings"],
         )
 
     def write_loads_bcs(
@@ -597,7 +562,6 @@ class APEC_M:
                 "real_constants",
                 "solver_settings",
                 "periodic_boundaries",
-                "dof_couplings",
             ],
         )
 
