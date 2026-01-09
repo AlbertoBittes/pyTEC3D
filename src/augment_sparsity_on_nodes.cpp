@@ -77,15 +77,13 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
         if (!elem)
             continue;
 
-        if (elem->processor_id() == p)
-            continue;
+        if (elem->processor_id() != p)
+            coupled_elements.emplace(elem, null_mat);
 
         for (const auto &pair : elem_pairs)
         {
             if (elem->id() != pair.first && elem->id() != pair.second)
                 continue;
-
-            coupled_elements.emplace(elem, null_mat);
 
             const dof_id_type neighbor_id = (elem->id() == pair.first) ? pair.second : pair.first;
             const Elem *neighbor = _mesh.elem_ptr(neighbor_id);

@@ -378,8 +378,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
         for (const auto &pair : pairs_it->second)
         {
-            const Node *node_first = mesh->node_ptr(pair.first);
-            const Node *node_second = mesh->node_ptr(pair.second);
+            const Node *node_first = mesh->query_node_ptr(pair.first);
+            const Node *node_second = mesh->query_node_ptr(pair.second);
 
             if (!node_first || !node_second)
                 continue;
