@@ -64,7 +64,7 @@ namespace
         {
             for (const auto &elem : mesh.active_local_element_ptr_range())
             {
-                if (elem->infinite() || elem->type() == NODEELEM)
+                if (elem->infinite())
                     continue;
                 std::array<dof_id_type, 3> dofs{};
                 bool complete = true;

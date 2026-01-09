@@ -50,7 +50,7 @@ namespace
         std::vector<dof_id_type> dof_indices;
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->infinite() || elem->type() == NODEELEM)
+            if (elem->infinite())
                 continue;
             const auto id = elem->id();
             dof_map.dof_indices(elem, dof_indices, var_number);
@@ -176,8 +176,8 @@ namespace
         {
             for (const auto &elem : context.target_mesh.active_local_element_ptr_range())
             {
-                if (elem->infinite() || elem->type() == NODEELEM)
-                    continue;
+            if (elem->infinite())
+                continue;
                 const auto id = elem->id();
                 if (id >= context.target_count || target_mask[id] == 0.0)
                     continue;

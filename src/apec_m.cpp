@@ -526,8 +526,7 @@ bool APEC_M::validate_model_for_analysis()
             if (index == libMesh::invalid_uint)
                 return used;
             for (const auto elem : mesh->element_ptr_range())
-                if (elem->type() != NODEELEM) // Skip NODEELEM types
-                    used.insert(elem->get_extra_integer(index));
+                used.insert(elem->get_extra_integer(index));
             return used;
         };
 

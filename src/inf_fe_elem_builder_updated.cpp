@@ -68,9 +68,8 @@ void InfElemBuilderUpdated::build_inf_elem(const Point &origin,
     // boundary sides in the faces set. Skip sides which lie in symmetry planes.
     // Later, sides of the inner boundary will be sorted out.
     for (const auto &elem : mesh_.active_element_ptr_range())
-        if (elem->type() != NODEELEM) // Skip NODEELEM types
-            for (auto s : elem->side_index_range())
-                if (elem->neighbor_ptr(s) == nullptr)
+        for (auto s : elem->side_index_range())
+            if (elem->neighbor_ptr(s) == nullptr)
                 {
                     boundary_info.boundary_ids(elem, s, side_boundary_ids);
                     if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), this->infinite_elem_side_boundary_id) != side_boundary_ids.end())

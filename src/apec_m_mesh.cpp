@@ -170,28 +170,6 @@ bool ApecMMesh::generate_nodal_couplings()
         }
     }
 
-    std::unordered_set<unsigned int> nodeelem_nodes;
-    std::size_t created = 0;
-
-    auto ensure_nodeelem = [&](unsigned int node_id)
-    {
-        if (!nodeelem_nodes.insert(node_id).second)
-            return;
-
-        Node *node = this->query_node_ptr(node_id);
-        if (!node)
-        {
-            libMesh::out << "Warning: node " << node_id
-                         << " not found while creating nodal couplings." << std::endl;
-            nodeelem_nodes.erase(node_id);
-            return;
-        }
-
-        auto node_elem = this->add_elem(Elem::build(NODEELEM));
-        node_elem->set_node(0, node);
-        ++created;
-    };
-
     for (const auto &entry : cp_nodes)
     {
         const int cp_id = entry.first;
@@ -208,13 +186,9 @@ bool ApecMMesh::generate_nodal_couplings()
             if (node_id == master_node)
                 continue;
             pairs.emplace_back(master_node, node_id);
-            ensure_nodeelem(node_id);
         }
-
-        ensure_nodeelem(master_node);
     }
 
-    libMesh::out << "Generated " << created << " nodeelems." << std::endl;
     return true;
 }
 

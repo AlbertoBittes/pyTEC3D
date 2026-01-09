@@ -32,9 +32,6 @@ namespace
     {
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->type() == NODEELEM)
-                continue;
-
             builder.set_element_data(elem);
             prepare_fn();
             build_fn();
@@ -116,9 +113,6 @@ void AssemblerLinear::assemble()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->type() == NODEELEM)
-            continue;
-
         dof_map.dof_indices(elem, dof_indices);
 
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -273,9 +267,6 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->type() == NODEELEM)
-                continue;
-
             dof_map.dof_indices(elem, dof_indices);
 
             builder->set_element_data(elem);
@@ -310,8 +301,6 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->type() == NODEELEM)
-            continue;
 
         dof_map.dof_indices(elem, dof_indices);
 
