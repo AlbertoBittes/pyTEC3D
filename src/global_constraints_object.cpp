@@ -381,7 +381,11 @@ GlobalConstraintsObject::build_coupling_constraints()
             const Node *node_first = mesh->query_node_ptr(pair.first);
             const Node *node_second = mesh->query_node_ptr(pair.second);
 
-            if (!node_first || !node_second)
+            if (!node_first && node_second)
+                libmesh_error_msg("Coupling constraint: slave node " << pair.second
+                                                                     << " found without master node " << pair.first
+                                                                     << ".");
+            if (!node_second)
                 continue;
 
             const auto coord_first = mesh->node_coordinate_system(*node_first);
