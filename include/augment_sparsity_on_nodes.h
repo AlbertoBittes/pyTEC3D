@@ -31,6 +31,8 @@ private:
     ApecMMesh &_mesh;
     std::vector<std::pair<unsigned int, unsigned int>> node_pairs;
     std::vector<std::pair<dof_id_type, dof_id_type>> elem_pairs;
+    std::unordered_map<unsigned int, dof_id_type> node_to_elem;
+    std::unordered_map<dof_id_type, dof_id_type> slave_to_master_elem;
 };
 
 #endif // AUGMENT_SPARSITY_ON_NODES_H
