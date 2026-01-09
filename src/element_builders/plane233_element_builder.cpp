@@ -520,14 +520,6 @@ void ElementBuilder::build_plane233_rhs()
             auto build_fv = [&]()
             {
                 unsigned int amp_var_num = nodal_loads_system_->variable_number("AMPS");
-                unsigned int v_var_num = dof_solution_system_->variable_number(volt_var_name);
-                unsigned int az_var_num = dof_solution_system_->variable_number("A_z");
-
-                unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
-                unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, v_var_num);
-
-                if (n_dofs_V != n_dofs_A)
-                    libmesh_error_msg("Number of DOFs for V and A_z do not match in stranded coil solenoidal elements");
 
                 unsigned int proc_id = dof_solution_system_->comm().rank();
                 dof_indices_loads.clear();
@@ -538,12 +530,14 @@ void ElementBuilder::build_plane233_rhs()
 
                 nodal_loads_system_->current_local_solution.get()->get(dof_indices_loads, loads_vec);
 
-                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                unsigned int n_dofs_var = dof_indices_loads.size();
+
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
                     const dof_id_type dof_id = dof_indices_loads[dof_i];
                     if (!nodal_loads_dof_cache.insert(dof_id).second)
                         continue;
-                    Fe(dof_i + n_dofs_A) = loads_vec[dof_i];
+                    Fe(dof_i + n_dofs_var) = loads_vec[dof_i];
                 }
             };
             build_fv();

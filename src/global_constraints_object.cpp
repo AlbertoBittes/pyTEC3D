@@ -388,6 +388,10 @@ GlobalConstraintsObject::build_coupling_constraints()
             if (!node_second)
                 continue;
 
+            unsigned int proc_id = mesh->comm().rank();
+            if (node_second->processor_id() != proc_id)
+                continue;
+
             const auto coord_first = mesh->node_coordinate_system(*node_first);
             const auto coord_second = mesh->node_coordinate_system(*node_second);
 
@@ -475,7 +479,7 @@ GlobalConstraintsObject::build_coupling_constraints()
             }
         }
     }
-
+    // mesh->comm().set_union(constraints);
     return constraints;
 }
 
