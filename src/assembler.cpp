@@ -121,15 +121,8 @@ void AssemblerLinear::assemble()
 
         Ce.scale(1 / (dt * theta));
 
-        if (update_matrix)
-        {
-            if (time_substep->get_transient_effect())
-                Ke += Ce;
-
-            auto constrained_indices = dof_indices;
-            dof_map.constrain_element_matrix(Ke, constrained_indices);
-            matrix.add_matrix(Ke, constrained_indices);
-        }
+        if (time_substep->get_transient_effect())
+            Ke += Ce;
 
         BinaryReader::read_element_vectors(*builder, *rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
         auto &rhs = builder->get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
@@ -146,7 +139,13 @@ void AssemblerLinear::assemble()
             }
         }
 
-        dof_map.constrain_element_vector(rhs, dof_indices);
+        if (update_matrix)
+        {
+            dof_map.heterogeneously_constrain_element_matrix_and_vector(Ke, rhs, dof_indices);
+            matrix.add_matrix(Ke, dof_indices);
+        }
+        else
+            dof_map.heterogeneously_constrain_element_vector(Ke, rhs, dof_indices);
         system.rhs->add_vector(rhs, dof_indices);
     }
 
@@ -354,11 +353,8 @@ void AssemblerLinear::write_nodal_solution()
         return;
     }
 
-    run_for_elements(mesh,
-                     *builder,
-                     [&]()
-                     { BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); },
-                     [&]()
+    run_for_elements(mesh, *builder, [&]()
+                     { BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); }, [&]()
                      { builder->build_nodal_solution(); });
 
     reader.close_file_streams(inp_streams);
@@ -408,11 +404,8 @@ void AssemblerLinear::write_element_solution()
         return;
     }
 
-    run_for_elements(mesh,
-                     *builder,
-                     [&]()
-                     { BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); },
-                     [&]()
+    run_for_elements(mesh, *builder, [&]()
+                     { BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); }, [&]()
                      { builder->build_element_solution(); });
 
     reader.close_file_streams(inp_streams);
@@ -442,10 +435,7 @@ void AssemblerLinear::write_support_solution()
 
     const MeshBase &mesh = eq_sys->get_mesh();
 
-    run_for_elements(mesh,
-                     *builder,
-                     [&]() {},
-                     [&]()
+    run_for_elements(mesh, *builder, [&]() {}, [&]()
                      { builder->build_support_solution(); });
 
     const auto &support_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::SUPPORT_SOLUTION);
@@ -454,7 +444,6 @@ void AssemblerLinear::write_support_solution()
     support_system.solution->close();
     support_system.update();
 }
-
 
 bool AssemblerLinear::check_update_element_matrices()
 {
