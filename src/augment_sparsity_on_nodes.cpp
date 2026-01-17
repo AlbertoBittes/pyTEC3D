@@ -40,28 +40,25 @@ void AugmentSparsityOnNodes::build_node_sets()
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()
 {
     elem_pairs.clear();
+    slave_to_master_elem.clear();
 
-    std::unordered_map<unsigned int, std::vector<dof_id_type>> node_to_elems;
-
+    std::unordered_map<unsigned int, dof_id_type> node_to_elem;
     for (const auto *elem : _mesh.element_ptr_range())
     {
-        if (elem->n_nodes() == 0)
+        if (!elem || elem->type() != NODEELEM || elem->n_nodes() == 0)
             continue;
-
-        for (auto node_idx : elem->node_index_range())
-            node_to_elems[static_cast<unsigned int>(elem->node_id(node_idx))].push_back(elem->id());
+        node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(0)), elem->id());
     }
 
     for (const auto &node_pair : node_pairs)
     {
-        const auto master_elems_it = node_to_elems.find(node_pair.first);
-        const auto slave_elems_it = node_to_elems.find(node_pair.second);
-        if (master_elems_it == node_to_elems.end() || slave_elems_it == node_to_elems.end())
+        const auto master_elem_it = node_to_elem.find(node_pair.first);
+        const auto slave_elem_it = node_to_elem.find(node_pair.second);
+        if (master_elem_it == node_to_elem.end() || slave_elem_it == node_to_elem.end())
             continue;
 
-        for (const auto master_elem_id : master_elems_it->second)
-            for (const auto slave_elem_id : slave_elems_it->second)
-                add_pair(elem_pairs, master_elem_id, slave_elem_id);
+        add_pair(elem_pairs, master_elem_it->second, slave_elem_it->second);
+        slave_to_master_elem.emplace(slave_elem_it->second, master_elem_it->second);
     }
 }
 
@@ -77,19 +74,16 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
         if (!elem)
             continue;
 
-        if (elem->processor_id() != p)
-            coupled_elements.emplace(elem, null_mat);
+        if (elem->type() != NODEELEM || elem->processor_id() != p)
+            continue;
 
-        for (const auto &pair : elem_pairs)
-        {
-            if (elem->id() != pair.first && elem->id() != pair.second)
-                continue;
+        const auto master_it = slave_to_master_elem.find(elem->id());
+        if (master_it == slave_to_master_elem.end())
+            continue;
 
-            const dof_id_type neighbor_id = (elem->id() == pair.first) ? pair.second : pair.first;
-            const Elem *neighbor = _mesh.elem_ptr(neighbor_id);
-            if (neighbor && neighbor->processor_id() != p)
-                coupled_elements.emplace(neighbor, null_mat);
-        }
+        const Elem *master_elem = _mesh.elem_ptr(master_it->second);
+        if (master_elem && master_elem->processor_id() != p)
+            coupled_elements.emplace(master_elem, null_mat);
     }
 }
 

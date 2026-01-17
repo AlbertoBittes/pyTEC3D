@@ -9,6 +9,7 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/dense_matrix.h>
 #include <libmesh/dense_vector.h>
+#include <libmesh/elem.h>
 #include <libmesh/perf_log.h>
 
 #include <algorithm>
@@ -27,11 +28,18 @@ using namespace libMesh;
 
 namespace
 {
+    bool is_node_elem(const Elem *elem)
+    {
+        return elem && elem->type() == NODEELEM;
+    }
+
     template <typename PrepareFn, typename BuildFn>
     void run_for_elements(const MeshBase &mesh, ElementBuilder &builder, PrepareFn &&prepare_fn, BuildFn &&build_fn)
     {
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
+            if (is_node_elem(elem))
+                continue;
             builder.set_element_data(elem);
             prepare_fn();
             build_fn();
@@ -113,6 +121,8 @@ void AssemblerLinear::assemble()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
+        if (is_node_elem(elem))
+            continue;
         dof_map.dof_indices(elem, dof_indices);
 
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -266,6 +276,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
+            if (is_node_elem(elem))
+                continue;
             dof_map.dof_indices(elem, dof_indices);
 
             builder->set_element_data(elem);
@@ -300,6 +312,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
+        if (is_node_elem(elem))
+            continue;
 
         dof_map.dof_indices(elem, dof_indices);
 

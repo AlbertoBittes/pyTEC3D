@@ -239,11 +239,7 @@ public:
     void add_matrices() override
     {
         ImplicitSystem::add_matrices();
-
-        if (this->get_dof_map().get_periodic_boundaries()->size() > 0)
-        {
-            this->get_system_matrix().use_hash_table(true);
-        }
+        this->get_system_matrix().use_hash_table(true);
     }
 
     void post_init() override
