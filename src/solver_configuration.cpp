@@ -20,10 +20,10 @@ void PetscSolverConfiguration::configure_solver()
     ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver->ksp(), PETSC_FALSE);
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
     // Set the preconditioner type to MUMPS
-    // ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCLU));
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCCHOLESKY));
+    ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCLU));
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    // ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCCHOLESKY));
+    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
 
     ierr = PCFactorSetMatSolverType(_petsc_linear_solver->pc(), MATSOLVERMUMPS);
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);

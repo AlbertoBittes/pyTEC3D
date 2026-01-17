@@ -42,11 +42,11 @@ for i in range(1, 3):
     apec.time_parameters["time"] = i * 0.0001
     if i == 1:
         apec.select("ID", master_node)
-        apec.set_value_on_selection("AMPS", 100)
+        apec.set_value_on_selection("VOLT", 10000)
     else:
         apec.select("ID", master_node)
-        apec.set_value_on_selection("AMPS", 0)
-        apec.set_value_on_selection("VOLT", 10000)
+        apec.set_value_on_selection("VOLT", np.nan)
+        apec.set_value_on_selection("AMPS", 100000)
     apec.write_load_step(i)
 
 apec.save_mesh()

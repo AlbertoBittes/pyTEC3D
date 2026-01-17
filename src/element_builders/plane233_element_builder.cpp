@@ -79,7 +79,10 @@ void ElementBuilder::build_plane233()
     unsigned int nq = fe->n_quadrature_points();
 
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
+    materials_object_->fill_sigma_matrix(this->elem_data.material_num);
+
     auto &nu_matrix = materials_object_->get_nu_matrix();
+    auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -94,12 +97,18 @@ void ElementBuilder::build_plane233()
 
     Real r_sign = pow(-1, axisymm);
 
+    Real thk = 1.0;
+    if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
+        thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
+    if (thk == 0.0)
+        thk = 1.0;
+
     auto build_ke = [&]()
     {
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(r, axisymm);
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
             Real r_sq = pow(r, 2);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -137,7 +146,7 @@ void ElementBuilder::build_plane233()
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(r, axisymm);
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -147,7 +156,7 @@ void ElementBuilder::build_plane233()
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(r, axisymm);
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -161,7 +170,7 @@ void ElementBuilder::build_plane233()
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(r, axisymm);
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -177,6 +186,20 @@ void ElementBuilder::build_plane233()
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     Me(dof_i + n_dofs_var, dof_j + n_dofs_var) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
         }
+    };
+
+    auto build_caa = [&]()
+    {
+        for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
+        }
+        Ce.scale(sigma_matrix[0]);
     };
 
     build_ke();
@@ -198,8 +221,10 @@ void ElementBuilder::build_plane233()
             for (unsigned int qp = 0; qp < nq; qp++)
             {
                 Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * pow(r, axisymm); // * js_loads[elem->id()][2];
+                    Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * r_mult; // * js_loads[elem->id()][2];
             }
         };
         build_fa();
@@ -207,20 +232,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     {
-        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object_->get_sigma_matrix();
-        auto build_caa = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-            {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp] * pow(r, axisymm));
-            }
-        };
         build_caa();
-        Ce.scale(sigma_matrix[0]);
         break;
         // Here when you will implement loads with F
         // for (unsigned int qp = 0; qp < nq; qp++)
@@ -229,29 +241,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object_->get_sigma_matrix();
-
-        Real thk = 1.0;
-        if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
-            thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
-        if (thk == 0.0)
-            libmesh_error_msg("THK is zero for SOLID_CONDUCTOR elements.");
-
-        auto build_caa = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-            {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(r, axisymm);
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-            }
-        };
         build_caa();
-        Ce.scale(sigma_matrix[0]);
 
         if (n_dofs >= 2 * n_dofs_var)
         {
@@ -261,17 +251,18 @@ void ElementBuilder::build_plane233()
                 for (unsigned int qp = 0; qp < nq; qp++)
                 {
                     Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(r, axisymm);
+                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                    Real inv_thk = 1.0 / thk / r_mult;
 
                     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                         {
-                            Ce(dof_i, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                            Ce(dof_i, dof_j + n_dofs_var) -=
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                         }
                 }
             };
@@ -281,49 +272,28 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
-        materials_object_->fill_sigma_matrix(this->elem_data.material_num);
-        auto &sigma_matrix = materials_object_->get_sigma_matrix();
-
-        Real thk = 1.0;
-        if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
-            thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
-        if (thk == 0.0)
-            libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
-
-        auto build_caa = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-            {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(r, axisymm);
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-            }
-        };
         build_caa();
         Ce.scale(sigma_matrix[0]);
 
         if (n_dofs >= 2 * n_dofs_var)
         {
-            const Real inv_thk = 1.0 / thk;
             auto build_coupling = [&]()
             {
                 for (unsigned int qp = 0; qp < nq; qp++)
                 {
                     Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(r, axisymm);
+                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                    Real inv_thk = 1.0 / thk / r_mult;
 
                     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                         {
-                            Ke(dof_i, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                            Ke(dof_i, dof_j + n_dofs_var) -=
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                         }
                 }
             };
