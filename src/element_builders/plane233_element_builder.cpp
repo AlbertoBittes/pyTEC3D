@@ -180,7 +180,7 @@ void ElementBuilder::build_plane233()
         for (unsigned int qp = 0; qp < nq; qp++)
         {
             Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(r, axisymm);
+            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -260,9 +260,9 @@ void ElementBuilder::build_plane233()
                             Ce(dof_i, dof_j + n_dofs_var) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
                             Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                         }
                 }
             };
@@ -273,7 +273,6 @@ void ElementBuilder::build_plane233()
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
         build_caa();
-        Ce.scale(sigma_matrix[0]);
 
         if (n_dofs >= 2 * n_dofs_var)
         {
@@ -306,6 +305,7 @@ void ElementBuilder::build_plane233()
         if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
 
+        build_caa();
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
@@ -356,7 +356,7 @@ void ElementBuilder::build_plane233()
     {
         if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
             libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
-
+        build_caa();
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];

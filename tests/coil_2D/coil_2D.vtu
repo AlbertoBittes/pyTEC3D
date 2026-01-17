@@ -45,8 +45,8 @@
         <DataArray type="Float64" Name="Az" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
         </DataArray>
-        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
-          AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
+        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="10000" RangeMax="10000">
+          AQAAAACAAADITgAARQAAAA==eJztzjERACAQBLGThjPa94UpSgYX/JBt0m5y2zMkSZIkSZIkSZIkSZJkV2uNJz5IkiRJkiRJkiRJkiRJkiTJTzzJ423G
         </DataArray>
         <DataArray type="Float64" Name="V" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
@@ -57,8 +57,8 @@
         <DataArray type="Float64" Name="E" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
         </DataArray>
-        <DataArray type="Float64" Name="AMPS" format="binary" RangeMin="100000" RangeMax="100000">
-          AQAAAACAAADITgAARAAAAA==eJztzjERACAMBMGXhh5MxHZKBhcw2Wu2veTWFZIkSZIkSZIkSZIkSfJXd68nPkiSJEmSJEmSJEmSJEmSJMkhHrhvbd0=
+        <DataArray type="Float64" Name="AMPS" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAADITgAAQgAAAA==eJztzrENACAMBLHfPGtTIorMgKL4GreXvE6FJEmSJEmSJEmSJEmSHGv3+4MkSZIkSZIkSZIkSZIkSZLc4QVBWGw7
         </DataArray>
         <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAABkJwAAIQAAAA==eJztwYEAAAAAw6D5U1/gCFUBAAAAAAAAAAAAzwAnZAAB
