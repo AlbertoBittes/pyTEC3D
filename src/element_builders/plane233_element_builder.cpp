@@ -290,9 +290,9 @@ void ElementBuilder::build_plane233()
                             Ke(dof_i, dof_j + n_dofs_var) -=
                                 JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
                             Ce(dof_i + n_dofs_var, dof_j) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
                             Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
+                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
                         }
                 }
             };
