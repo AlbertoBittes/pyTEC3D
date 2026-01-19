@@ -124,32 +124,32 @@ void AssemblerLinear::assemble()
         auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
 
-        auto check_id = elem->id();
-        auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
-        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
-        {
-            auto filename = "element_Ke_elem_par_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ke.print(file_stream);
-        }
-        else if (elem->id() == check_id && first_step)
-        {
-            auto filename = "element_Ke_elem_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ke.print(file_stream);
-        }
-        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
-        {
-            auto filename = "element_Ce_elem_par_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ce.print(file_stream);
-        }
-        else if (elem->id() == check_id && first_step)
-        {
-            auto filename = "element_Ce_elem_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ce.print(file_stream);
-        }
+        // auto check_id = elem->id();
+        // auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
+        // if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        // {
+        //     auto filename = "element_Ke_elem_par_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ke.print(file_stream);
+        // }
+        // else if (elem->id() == check_id && first_step)
+        // {
+        //     auto filename = "element_Ke_elem_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ke.print(file_stream);
+        // }
+        // if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        // {
+        //     auto filename = "element_Ce_elem_par_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ce.print(file_stream);
+        // }
+        // else if (elem->id() == check_id && first_step)
+        // {
+        //     auto filename = "element_Ce_elem_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ce.print(file_stream);
+        // }
         Ce.scale(1 / (dt * theta));
 
         if (time_substep->get_transient_effect())
@@ -179,31 +179,31 @@ void AssemblerLinear::assemble()
             dof_map.heterogeneously_constrain_element_vector(Ke, rhs, dof_indices);
         system.rhs->add_vector(rhs, dof_indices);
 
-        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
-        {
-            auto filename = "element_matrix_elem_par_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ke.print(file_stream);
-        }
-        else if (elem->id() == check_id && first_step)
-        {
-            auto filename = "element_matrix_elem_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            Ke.print(file_stream);
-        }
+        // if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        // {
+        //     auto filename = "element_matrix_elem_par_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ke.print(file_stream);
+        // }
+        // else if (elem->id() == check_id && first_step)
+        // {
+        //     auto filename = "element_matrix_elem_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     Ke.print(file_stream);
+        // }
 
-        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
-        {
-            auto filename = "element_rhs_elem_par_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            rhs.print(file_stream);
-        }
-        else if (elem->id() == check_id && first_step)
-        {
-            auto filename = "element_rhs_elem_" + std::to_string(elem->id()) + ".txt";
-            std::ofstream file_stream(filename);
-            rhs.print(file_stream);
-        }
+        // if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        // {
+        //     auto filename = "element_rhs_elem_par_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     rhs.print(file_stream);
+        // }
+        // else if (elem->id() == check_id && first_step)
+        // {
+        //     auto filename = "element_rhs_elem_" + std::to_string(elem->id()) + ".txt";
+        //     std::ofstream file_stream(filename);
+        //     rhs.print(file_stream);
+        // }
     }
 
     reader.close_file_streams(streams);

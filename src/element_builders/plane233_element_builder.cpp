@@ -722,7 +722,16 @@ void ElementBuilder::build_plane233_element_solution()
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
             Real V_factor = sigma_matrix[0] * Vn / thk;
             if (axisymm)
-                V_factor /= 2 * libMesh::pi * centroid(0);
+            {
+                FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
+                const std::vector<Point> &xyz = fe->get_xyz();
+                fe->reinit(elem_data.elem);
+                Real Jv = 0.0;
+                for (unsigned int qp = 0; qp < JAe.m(); qp++)
+                    for (unsigned int dof_i = 0; dof_i < JAe.n(); dof_i++)
+                        Jv += JAe(qp, dof_i) / (2 * libMesh::pi * xyz[qp](0));
+                V_factor *= Jv / n_qp;
+            }
             Je(0) += V_factor;
             break;
         }

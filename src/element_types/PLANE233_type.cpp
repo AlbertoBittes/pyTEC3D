@@ -38,6 +38,15 @@ void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe
         false,                          // is_infinite
         false                           // is_vector (scalar FE)
     });
+    fe_structs.push_back({
+        static_cast<Order>(keyopts[2]), // order
+        LAGRANGE,                       // family
+        2,                              // dimension (plane element)
+        INVALID_ORDER,                  // quadrature_order (use default)
+        2,                              // quadrature_dim
+        false,                          // is_infinite
+        false                           // is_vector (scalar FE)
+    });
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE233Type::get_solution_matrix_idx_size_map(bool nodal_solution)
