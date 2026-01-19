@@ -568,7 +568,7 @@ void ElementBuilder::build_plane233_nodal_solution()
         if (!have_b)
             build_b();
         Hn.resize(Bn.size());
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        for (unsigned int dof_i = 0; dof_i < Bn.size(); dof_i++)
             Hn(dof_i) += Bn(dof_i) * nu_matrix[0];
         have_h = true;
     };
@@ -720,7 +720,7 @@ void ElementBuilder::build_plane233_element_solution()
                 thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
             if (thk == 0.0)
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
-            Real V_factor = Vn / thk;
+            Real V_factor = sigma_matrix[0] * Vn / thk;
             if (axisymm)
                 V_factor /= 2 * libMesh::pi * centroid(0);
             Je(0) += V_factor;

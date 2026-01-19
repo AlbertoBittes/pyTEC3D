@@ -39,7 +39,7 @@ apec.time_parameters["number_of_substeps"] = 4
 
 for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i
-    apec.time_parameters["time"] = i * 0.0001
+    apec.time_parameters["time"] = i * 0.00001
     if i == 1:
         apec.select("ID", master_node)
         apec.set_value_on_selection("AMPS", 100)
