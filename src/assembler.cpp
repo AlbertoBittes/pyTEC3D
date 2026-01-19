@@ -28,17 +28,12 @@ using namespace libMesh;
 
 namespace
 {
-    bool is_node_elem(const Elem *elem)
-    {
-        return elem && elem->type() == NODEELEM;
-    }
-
     template <typename PrepareFn, typename BuildFn>
     void run_for_elements(const MeshBase &mesh, ElementBuilder &builder, PrepareFn &&prepare_fn, BuildFn &&build_fn)
     {
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (is_node_elem(elem))
+            if (elem->type() == NODEELEM)
                 continue;
             builder.set_element_data(elem);
             prepare_fn();
@@ -121,14 +116,40 @@ void AssemblerLinear::assemble()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (is_node_elem(elem))
+        if (elem->type() == NODEELEM)
             continue;
         dof_map.dof_indices(elem, dof_indices);
+
+        auto check_id = elem->id();
+        auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
 
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
         auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
-
+        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        {
+            auto filename = "element_Ke_elem_par_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ke.print(file_stream);
+        }
+        else if (elem->id() == check_id && first_step)
+        {
+            auto filename = "element_Ke_elem_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ke.print(file_stream);
+        }
+        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        {
+            auto filename = "element_Ce_elem_par_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ce.print(file_stream);
+        }
+        else if (elem->id() == check_id && first_step)
+        {
+            auto filename = "element_Ce_elem_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ce.print(file_stream);
+        }
         Ce.scale(1 / (dt * theta));
 
         if (time_substep->get_transient_effect())
@@ -157,6 +178,32 @@ void AssemblerLinear::assemble()
         else
             dof_map.heterogeneously_constrain_element_vector(Ke, rhs, dof_indices);
         system.rhs->add_vector(rhs, dof_indices);
+
+        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        {
+            auto filename = "element_matrix_elem_par_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ke.print(file_stream);
+        }
+        else if (elem->id() == check_id && first_step)
+        {
+            auto filename = "element_matrix_elem_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            Ke.print(file_stream);
+        }
+
+        if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
+        {
+            auto filename = "element_rhs_elem_par_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            rhs.print(file_stream);
+        }
+        else if (elem->id() == check_id && first_step)
+        {
+            auto filename = "element_rhs_elem_" + std::to_string(elem->id()) + ".txt";
+            std::ofstream file_stream(filename);
+            rhs.print(file_stream);
+        }
     }
 
     reader.close_file_streams(streams);
@@ -276,7 +323,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (is_node_elem(elem))
+            if (elem->type() == NODEELEM)
                 continue;
             dof_map.dof_indices(elem, dof_indices);
 
@@ -312,7 +359,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (is_node_elem(elem))
+        if (elem->type() == NODEELEM)
             continue;
 
         dof_map.dof_indices(elem, dof_indices);
