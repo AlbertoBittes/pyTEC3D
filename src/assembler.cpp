@@ -120,12 +120,12 @@ void AssemblerLinear::assemble()
             continue;
         dof_map.dof_indices(elem, dof_indices);
 
-        auto check_id = elem->id();
-        auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
-
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
         auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
+
+        auto check_id = elem->id();
+        auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
         if (elem->id() == check_id && mesh.comm().size() > 1 && first_step)
         {
             auto filename = "element_Ke_elem_par_" + std::to_string(elem->id()) + ".txt";
