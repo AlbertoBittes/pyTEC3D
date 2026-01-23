@@ -44,82 +44,33 @@ public:
     {
         _dof_ids.clear();
 
-        std::vector<std::vector<dof_id_type>> dof_ids_per_processor(this->n_processors());
-        std::vector<std::vector<dof_id_type>> constrained_dof_ids_per_processor(this->n_processors());
-
         const DofMap &dof_map = _system.get_dof_map();
-        // std::vector<dof_id_type> dof_indices;
+        const processor_id_type proc = this->processor_id();
+        const dof_id_type first = dof_map.first_dof(proc);
+        const dof_id_type last = dof_map.end_dof(proc);
 
+        std::vector<dof_id_type> constrained_dofs;
         for (auto it = dof_map.constraint_rows_begin(); it != dof_map.constraint_rows_end(); ++it)
         {
-            // 'it' is a DofConstraints::const_iterator
-            // If _dof_constraints is a std::map, then:
-            // *it is a std::pair<const dof_id_type, DofConstraintRow>
-            dof_id_type constrained_dof = it->first;  // key
-            const DofConstraintRow &row = it->second; // value
-
-            for (auto proc : make_range(this->n_processors()))
-                if ((constrained_dof >= dof_map.first_dof(proc)) && (constrained_dof < dof_map.end_dof(proc)))
-                    constrained_dof_ids_per_processor[proc].push_back(constrained_dof);
+            const dof_id_type constrained_dof = it->first;
+            if (constrained_dof >= first && constrained_dof < last)
+                constrained_dofs.push_back(constrained_dof);
         }
+        std::sort(constrained_dofs.begin(), constrained_dofs.end());
+        constrained_dofs.erase(std::unique(constrained_dofs.begin(), constrained_dofs.end()),
+                               constrained_dofs.end());
 
-        // For each processor, compute unconstrained DOFs
-        for (auto proc : make_range(this->n_processors()))
-        {
-            dof_id_type first = dof_map.first_dof(proc);
-            dof_id_type last = dof_map.end_dof(proc);
+        std::vector<dof_id_type> all_dofs(last - first);
+        for (dof_id_type dof = first; dof < last; ++dof)
+            all_dofs[dof - first] = dof;
 
-            // Efficiently fill all_dofs with pre-sizing
-            std::vector<dof_id_type> all_dofs(last - first);
-            for (dof_id_type dof = first; dof < last; ++dof)
-                all_dofs[dof - first] = dof;
+        std::vector<dof_id_type> unconstrained_dofs;
+        std::set_difference(
+            all_dofs.begin(), all_dofs.end(),
+            constrained_dofs.begin(), constrained_dofs.end(),
+            std::back_inserter(unconstrained_dofs));
 
-            // Get the constrained DOFs for this processor
-            std::vector<dof_id_type> &constrained_dofs = constrained_dof_ids_per_processor[proc];
-            std::sort(constrained_dofs.begin(), constrained_dofs.end());
-
-            // Compute unconstrained DOFs: all_dofs - constrained_dofs, move result directly
-            std::vector<dof_id_type> unconstrained_dofs;
-            std::set_difference(
-                all_dofs.begin(), all_dofs.end(),
-                constrained_dofs.begin(), constrained_dofs.end(),
-                std::back_inserter(unconstrained_dofs));
-
-            dof_ids_per_processor[proc] = std::move(unconstrained_dofs); // move instead of copy
-            // Now unconstrained_dofs contains the indices of unconstrained DOFs for this processor
-            // (You can store or use unconstrained_dofs as needed here)
-            // Example: print the number of unconstrained DOFs for this processor
-            // std::cout << "Processor " << proc << " has " << unconstrained_dofs.size() << " unconstrained DOFs." << std::endl;
-        }
-        /* Distribute information among processors.  */
-        std::vector<Parallel::Request> request_per_processor(this->n_processors());
-        for (auto proc : make_range(this->n_processors()))
-            if (proc != this->processor_id())
-                this->comm().send(proc, dof_ids_per_processor[proc], request_per_processor[proc]);
-        for (auto proc : make_range(this->n_processors()))
-        {
-            std::vector<dof_id_type> received_dofs;
-            if (proc == this->processor_id())
-                received_dofs = dof_ids_per_processor[proc];
-            else
-                this->comm().receive(proc, received_dofs);
-            _dof_ids.insert(_dof_ids.end(), received_dofs.begin(), received_dofs.end());
-        }
-
-        /* Sort and unique the vector (using the same mechanism as in \p
-           DofMap::prepare_send_list()).  */
-        std::sort(_dof_ids.begin(), _dof_ids.end());
-        std::vector<unsigned int>::iterator new_end = std::unique(_dof_ids.begin(), _dof_ids.end());
-        std::vector<unsigned int>(_dof_ids.begin(), new_end).swap(_dof_ids);
-
-        /* Wait for sends to be complete.  */
-        for (auto proc : make_range(this->n_processors()))
-        {
-            if (proc != this->processor_id())
-            {
-                request_per_processor[proc].wait();
-            }
-        }
+        _dof_ids.assign(unconstrained_dofs.begin(), unconstrained_dofs.end());
     }
 
 protected:
