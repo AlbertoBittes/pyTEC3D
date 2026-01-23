@@ -54,11 +54,6 @@ apec_equilibrium.save_mesh()
 
 # Now start the evolution analysis
 apec.read_mesh(filepath)
-apec.remove_array("boundary_id_0")
-apec.remove_array("boundary_id_1")
-apec.remove_array("boundary_id_2")
-apec.add_boundary_array()
-apec.add_boundary_array()
 
 apec.select_all()
 apec.nsel_ext()

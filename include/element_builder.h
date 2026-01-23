@@ -40,21 +40,6 @@ struct ElemData
     unsigned int real_constant_num = 0;  // Real constant number
 };
 
-struct SolutionVectorSupport
-{
-    // std::vector<unsigned int> var_nums;
-    // std::vector<std::vector<dof_id_type>> dof_indices_var;
-    std::vector<DenseVector<Number>> sol_vectors;
-    std::vector<std::vector<dof_id_type>> dof_indices_var;
-    void clear(unsigned int idx = 0)
-    {
-        // var_nums.clear();
-        // dof_indices_var.clear();
-        sol_vectors.clear();
-        dof_indices_var.clear();
-    }
-};
-
 // This is probably the most important class of the program. Given the MAterials, the Loads, etc. it builds the
 // Elements' matrices and RHS, or solution vectors (B, J, etc.), and writes the m down to files, which will then be
 // Assembled by the assembler.
@@ -107,56 +92,34 @@ public:
     void build_solid97();
     void build_solid236();
     void build_plane233();
-    void build_infin110();
-    void build_infin111();
-    void build_infin112();
 
     // Methods to build elements
     void build_element_rhs();
     void build_solid97_rhs();
     void build_solid236_rhs();
     void build_plane233_rhs();
-    void build_infin110_rhs();
-    void build_infin111_rhs();
-    void build_infin112_rhs();
 
-    void build_solution_vectors();
     void build_nodal_solution();
     void build_element_solution();
     void build_support_solution();
-    bool build_solution_vectors_from_emat_files(dof_id_type element_id,
-                                                const std::filesystem::path &emat_folderpath);
 
     void build_solid97_solution_vectors();
     void build_solid236_solution_vectors();
     void build_plane233_solution_vectors();
-    void build_infin110_solution_vectors();
-    void build_infin111_solution_vectors();
-    void build_infin112_solution_vectors();
 
     void build_solid97_nodal_solution();
     void build_solid236_nodal_solution();
     void build_plane233_nodal_solution();
-    void build_infin110_nodal_solution();
-    void build_infin111_nodal_solution();
-    void build_infin112_nodal_solution();
 
     void build_solid97_element_solution();
     void build_solid236_element_solution();
     void build_plane233_element_solution();
-    void build_infin110_element_solution();
-    void build_infin111_element_solution();
-    void build_infin112_element_solution();
 
     void build_solid97_support_solution();
     void build_solid236_support_solution();
     void build_plane233_support_solution();
-    void build_infin110_support_solution();
-    void build_infin111_support_solution();
-    void build_infin112_support_solution();
 
-    // WARNING: This fill solution vector support I can do it once, not twice for nodeal and element solution vectors
-    void fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index);
+    std::vector<DenseVector<Number>> get_variables_solution(const NumericVector<Number> *solution, int dof_map_index);
 
     bool get_compute_nodal_solution_vectors() const { return compute_nodal_solution_vectors; }
     void set_compute_nodal_solution_vectors(bool compute) { compute_nodal_solution_vectors = compute; }
@@ -183,7 +146,6 @@ private:
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
 
     ElemData elem_data; // Element data structure
-    SolutionVectorSupport solution_vector_support;
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;

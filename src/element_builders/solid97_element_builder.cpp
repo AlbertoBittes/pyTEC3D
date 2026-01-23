@@ -6,13 +6,11 @@
 // Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
-#include <libmesh/boundary_info.h>
 
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system.h"
-#include <libmesh/boundary_info.h>
 #include "element_types_factory.h"
 
 #include "variables_map.h"
@@ -430,123 +428,6 @@ void ElementBuilder::build_solid97()
     default:
         libmesh_error_msg("Physical region not implemented");
     }
-    // The penalty values, for solution boundary trace and flux.
-
-    // Here use the formula for quadrature
-    std::vector<boundary_id_type> side_boundary_ids;
-    FEBase *fe_face = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
-
-    // The following loops over the sides of the element.
-    // If the element has no neighbor on a side then that
-    // side MUST live on a boundary of the domain.
-    Real penalty_base;
-    char cont = 0;
-    auto boundary_info = &this->get_parent_object()->get_mesh().get_boundary_info();
-
-    for (auto s : elem_data.elem->side_index_range())
-        if (elem_data.elem->neighbor_ptr(s) == nullptr)
-        {
-            boundary_info->boundary_ids(elem_data.elem, s, side_boundary_ids);
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), 32760) != side_boundary_ids.end())
-            {
-                if (cont == 0)
-                {
-                    penalty_base = 1e20 * Ke.max() + 1e20 * Ce.max();
-                    cont++;
-                }
-                // The value of the shape functions at the quadrature
-                // points.
-                const std::vector<std::vector<Real>> &phi_face =
-                    fe_face->get_phi();
-
-                // The value of the shape function derivatives at the
-                // quadrature points.
-                // const std::vector<std::vector<RealGradient>> &dphi_face =
-                //     fe_face->get_dphi();
-
-                // The Jacobian * Quadrature Weight at the quadrature
-                // points on the face.
-                const std::vector<Real> &JxW_face = fe_face->get_JxW();
-
-                // The XYZ locations (in physical space) of the
-                // quadrature points on the face.  This is where
-                // we will interpolate the boundary value function.
-                // const std::vector<Point> &qface_point = fe_face->get_xyz();
-                const std::vector<std::vector<Point>> &face_tangents = fe_face->get_tangents();
-
-                // Compute the shape function values on the element
-                // face.
-                fe_face->reinit(elem_data.elem, s);
-
-                // Loop over the face quadrature points for integration.
-                for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                {
-                    // Matrix contribution of the L2 projection.
-                    // Note that the basis function values are
-                    // integrated against test function values while
-                    // basis fluxes are integrated against test function
-                    // fluxes.
-                    for (unsigned int i = 0; i < n_dofs_var; i++)
-                        for (unsigned int j = 0; j < n_dofs_var; j++)
-                            for (unsigned int l = 0; l < 3; l++)
-                                for (unsigned int k = 0; k < 3; k++)
-                                    for (unsigned int h = 0; h < face_tangents[0].size(); h++)
-                                        Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
-                                                                                      (penalty_base * phi_face[i][qp] *
-                                                                                       phi_face[j][qp] * face_tangents[qp][h](k) *
-                                                                                       face_tangents[qp][h](l));
-                }
-            }
-            if (std::find(side_boundary_ids.begin(), side_boundary_ids.end(), 32761) != side_boundary_ids.end())
-            {
-                if (cont == 0)
-                {
-                    penalty_base = 1e20 * Ke.max() + 1e20 * Ce.max();
-                    cont++;
-                }
-                // The value of the shape functions at the quadrature
-                // points.
-                const std::vector<std::vector<Real>> &phi_face =
-                    fe_face->get_phi();
-
-                // The value of the shape function derivatives at the
-                // quadrature points.
-                // const std::vector<std::vector<RealGradient>> &dphi_face =
-                //     fe_face->get_dphi();
-
-                // The Jacobian * Quadrature Weight at the quadrature
-                // points on the face.
-                const std::vector<Real> &JxW_face = fe_face->get_JxW();
-
-                // The XYZ locations (in physical space) of the
-                // quadrature points on the face.  This is where
-                // we will interpolate the boundary value function.
-                // const std::vector<Point> &qface_point = fe_face->get_xyz();
-                const std::vector<Point> &face_normals = fe_face->get_normals();
-
-                // Compute the shape function values on the element
-                // face.
-                fe_face->reinit(elem_data.elem, s);
-
-                // Loop over the face quadrature points for integration.
-                for (unsigned int qp = 0; qp < fe_face->n_quadrature_points(); qp++)
-                {
-                    // Matrix contribution of the L2 projection.
-                    // Note that the basis function values are
-                    // integrated against test function values while
-                    // basis fluxes are integrated against test function
-                    // fluxes.
-                    for (unsigned int i = 0; i < n_dofs_var; i++)
-                        for (unsigned int j = 0; j < n_dofs_var; j++)
-                            for (unsigned int l = 0; l < 3; l++)
-                                for (unsigned int k = 0; k < 3; k++)
-                                    Ke(i + k * n_dofs_var, j + l * n_dofs_var) += JxW_face[qp] *
-                                                                                  (penalty_base * phi_face[i][qp] *
-                                                                                   phi_face[j][qp] * face_normals[qp](k) *
-                                                                                   face_normals[qp](l));
-                }
-            }
-        }
 }
 
 void ElementBuilder::build_solid97_rhs()
@@ -667,11 +548,13 @@ void ElementBuilder::build_solid97_nodal_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
-        An.append(solution_vector_support.sol_vectors[k]);
+        An.append(sol_vectors[k]);
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
@@ -733,11 +616,13 @@ void ElementBuilder::build_solid97_element_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     DenseVector<Number> An;
     for (unsigned int k = 0; k < 3; k++)
-        An.append(solution_vector_support.sol_vectors[k]);
+        An.append(sol_vectors[k]);
 
     auto &element_vectors = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS];
     element_vectors.clear();
@@ -839,16 +724,17 @@ void ElementBuilder::build_solid97_element_solution()
             DenseVector<Number> Vn;
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
-                Vn = solution_vector_support.sol_vectors[3];
+                Vn = sol_vectors[3];
 
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
 
             DenseVector<Number> An_dt;
             for (unsigned int k = 0; k < 3; k++)
-                An_dt.append(solution_vector_support.sol_vectors[k]);
+                An_dt.append(sol_vectors_dt[k]);
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR || physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
-                Vn = solution_vector_support.sol_vectors[3];
+                Vn = sol_vectors_dt[3];
 
             DenseVector<Number> Jq_A;
             JAe.vector_mult(Jq_A, An_dt);
@@ -874,16 +760,18 @@ void ElementBuilder::build_solid97_element_solution()
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL)
             {
-                Vn = solution_vector_support.sol_vectors[3][0];
-                En = solution_vector_support.sol_vectors[4][0];
+                Vn = sol_vectors[3][0];
+                En = sol_vectors[4][0];
             }
 
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
+                                       ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
             {
-                Vn = solution_vector_support.sol_vectors[3][0];
-                En = solution_vector_support.sol_vectors[4][0];
+                Vn = sol_vectors_dt[3][0];
+                En = sol_vectors_dt[4][0];
             }
 
             const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
@@ -937,7 +825,9 @@ void ElementBuilder::build_solid97_support_solution()
     if (api_vars.empty())
         return;
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
 
     std::vector<DenseVector<Number>> support_vectors;
     support_vectors.resize(api_vars.size());
@@ -946,9 +836,9 @@ void ElementBuilder::build_solid97_support_solution()
 
     auto build_psi = [&]()
     {
-        const auto &Ax = solution_vector_support.sol_vectors[0];
-        const auto &Ay = solution_vector_support.sol_vectors[1];
-        const auto &Az = solution_vector_support.sol_vectors[2];
+        const auto &Ax = sol_vectors[0];
+        const auto &Ay = sol_vectors[1];
+        const auto &Az = sol_vectors[2];
         psi_values.resize(elem_data.elem->n_nodes());
         for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
         {

@@ -540,8 +540,10 @@ void ElementBuilder::build_plane233_nodal_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    auto &An = solution_vector_support.sol_vectors[0];
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &An = sol_vectors[0];
 
     auto &nodal_vectors = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS];
     nodal_vectors.clear();
@@ -601,8 +603,10 @@ void ElementBuilder::build_plane233_element_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    auto &An = solution_vector_support.sol_vectors[0];
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &An = sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
     Point centroid = this->elem_data.elem->centroid();
@@ -691,19 +695,21 @@ void ElementBuilder::build_plane233_element_solution()
         {
             Real Vn = 0.0;
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
-                Vn = solution_vector_support.sol_vectors[1][0];
+                Vn = sol_vectors[1][0];
 
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
+                                       ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
-                Vn = solution_vector_support.sol_vectors[1][0];
+                Vn = sol_vectors_dt[1][0];
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
             materials_object_->fill_sigma_matrix(this->elem_data.material_num);
             auto &sigma_matrix = materials_object_->get_sigma_matrix();
 
-            auto &An_dt = solution_vector_support.sol_vectors[0];
+            const auto &An_dt = sol_vectors_dt[0];
 
             DenseVector<Number> Jq_A(n_qp);
             JAe.vector_mult(Jq_A, An_dt);
@@ -743,16 +749,18 @@ void ElementBuilder::build_plane233_element_solution()
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL)
             {
-                Vn = solution_vector_support.sol_vectors[1][0];
-                En = solution_vector_support.sol_vectors[2][0];
+                Vn = sol_vectors[1][0];
+                En = sol_vectors[2][0];
             }
 
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
+                                       ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
             {
-                Vn = solution_vector_support.sol_vectors[1][0];
-                En = solution_vector_support.sol_vectors[2][0];
+                Vn = sol_vectors_dt[1][0];
+                En = sol_vectors_dt[2][0];
             }
 
             const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
@@ -802,8 +810,10 @@ void ElementBuilder::build_plane233_support_solution()
     if (api_vars.empty())
         return;
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    auto &An = solution_vector_support.sol_vectors[0];
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &An = sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
 

@@ -156,16 +156,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
 
     auto session = model_data_repository->get_object<Session>();
 
-    const bool analysis_mode = session->get_mode() == Session::Mode::Analysis;
-    std::unordered_set<BinaryLabelId> analysis_disallowed_labels;
-    if (analysis_mode)
-    {
-        analysis_disallowed_labels = {BinaryLabelId::ELEMENT_TYPES,
-                                      BinaryLabelId::MATERIALS,
-                                      BinaryLabelId::REAL_CONSTANTS,
-                                      BinaryLabelId::SOLVER_SETTINGS};
-    }
-
     auto base_dir = session->get_working_directory();
     std::error_code ec;
     if (!base_dir.is_absolute())
@@ -204,8 +194,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
         try
         {
             BinaryReader reader;
-            if (analysis_mode)
-                reader.set_disallowed_labels(analysis_disallowed_labels);
             reader.read_binary_fem_data(resolved.string(), model_data_repository, equation_systems);
         }
         catch (const BinaryLabelDisallowedError &ex)
@@ -552,7 +540,6 @@ bool APEC_M::validate_model_for_analysis()
                 }
             }
         }
-
     }
 
     return valid;
@@ -582,7 +569,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
 
     bool initialized_any = false;
 
-    auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
     auto analysis_context = std::make_shared<AnalysisBase::ContextView>(AnalysisBase::ContextView::from(model_data_repository));
 
     if (!analysis_context)
@@ -613,18 +599,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
             continue;
 
         libMesh::out << "Preparing mesh '" << name << "' for analysis." << std::endl;
-
-        if (element_factory)
-        {
-            mesh->generate_infinite_elements(element_factory);
-            libMesh::out << "Generated infinite elements for mesh '" << name << "'." << std::endl;
-        }
-        else
-        {
-            libMesh::out << "No ElementTypesFactory available. Skipping infinite elements for mesh '" << name << "'." << std::endl;
-        }
-
-        mesh->apply_boundary_info();
 
         mesh->generate_nodal_couplings();
 

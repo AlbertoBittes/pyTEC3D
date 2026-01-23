@@ -71,16 +71,10 @@
 
 using namespace libMesh;
 const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
-    // "ansys_node_num",
-    // "ansys_elem_num",
     "ansys_etype",
     "ansys_material_type",
     "ansys_real_constant",
-    // "infinite_boundary",
-    // "flux_normal",
-    // "flux_parallel",
     "angles",
-    "boundary_id_",
     "CP_",
     "PLASMA",
     "VACUUM_CHAMBER",
@@ -861,18 +855,6 @@ void VTKIO_Updated::node_values_to_vtk(const std::string &name,
     _vtk_grid->GetPointData()->AddArray(data);
 }
 
-// void VTKIO_Updated::read_apec_m_model(const std::string &mesh_filepath)
-// {
-//     MeshBase &mesh = MeshInput<MeshBase>::mesh();
-
-//     if (mesh.comm().rank() == 0)
-//     {
-
-//     }
-
-//     // broadcast_all_fe_data_objects();
-// }
-
 void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
                                           std::size_t variable,
                                           const std::vector<Number> &soln,
@@ -892,71 +874,6 @@ void VTKIO_Updated::get_local_node_values(std::vector<Number> &local_values,
             local_node_it != _local_node_map.end())
             local_values[local_node_it->second] = soln[k * num_vars + variable];
 }
-
-/**
- * FIXME: This is known to write nonsense on AMR meshes
- * and it strips the imaginary parts of complex Numbers
- *
- * This function is not currently used by anything, so it is commented
- * out, and may eventually be removed entirely.
- */
-// void VTKIO_Updated::system_vectors_to_vtk(const EquationSystems & es,
-//                                   vtkUnstructuredGrid *& grid)
-// {
-//   if (MeshOutput<MeshBase>::mesh().processor_id() == 0)
-//     {
-//       std::map<std::string, std::vector<Number>> vecs;
-//       for (unsigned int i=0; i<es.n_systems(); ++i)
-//         {
-//           const System & sys = es.get_system(i);
-//           System::const_vectors_iterator v_end = sys.vectors_end();
-//           System::const_vectors_iterator it = sys.vectors_begin();
-//           for (; it!= v_end; ++it)
-//             {
-//               // for all vectors on this system
-//               std::vector<Number> values;
-//               // libMesh::out<<"it "<<it->first<<std::endl;
-//
-//               it->second->localize_to_one(values, 0);
-//               // libMesh::out<<"finish localize"<<std::endl;
-//               vecs[it->first] = values;
-//             }
-//         }
-//
-//       std::map<std::string, std::vector<Number>>::iterator it = vecs.begin();
-//
-//       for (; it!=vecs.end(); ++it)
-//         {
-//           vtkSmartPointer<vtkDoubleArray> data = vtkSmartPointer<vtkDoubleArray>::New();
-//           data->SetName(it->first.c_str());
-//           libmesh_assert_equal_to (it->second.size(), es.get_mesh().n_nodes());
-//           data->SetNumberOfValues(it->second.size());
-//
-//           for (auto i : index_range(it->second))
-//             {
-// #ifdef LIBMESH_USE_COMPLEX_NUMBERS
-//               libmesh_do_once (libMesh::err << "Only writing the real part for complex numbers!\n"
-//                                << "if you need this support contact " << LIBMESH_PACKAGE_BUGREPORT
-//                                << std::endl);
-//               data->SetValue(i, it->second[i].real());
-// #else
-//               data->SetValue(i, it->second[i]);
-// #endif
-//
-//             }
-//           grid->GetPointData()->AddArray(data);
-//         }
-//     }
-// }
-// void VTKIO_Updated::broadcast_all_fe_data_objects()
-// {
-//     MeshBase &mesh = MeshInput<MeshBase>::mesh();
-//     const libMesh::Parallel::Communicator &comm = mesh.comm();
-//     for (const auto &[type_idx, obj_ptr] : objects)
-//     {
-//         obj_ptr->broadcast(comm);
-//     }
-// }
 
 void VTKIO_Updated::merge_vector_components()
 {

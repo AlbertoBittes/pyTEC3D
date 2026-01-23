@@ -28,16 +28,6 @@ SOLID97Type::SOLID97Type(const std::vector<unsigned int> &keyopts,
 void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                          const std::vector<unsigned int> &keyopts)
 {
-    // Example: add a scalar and a vector FE struct
-    // fe_structs.push_back({
-    //     static_cast<Order>(keyopts[2]), // order
-    //     LAGRANGE,                       // family
-    //     3,                              // dimension
-    //     INVALID_ORDER,                  // quadrature_order
-    //     3,                              // quadrature_dim
-    //     false,                          // is_infinite
-    //     false                           // is_vector
-    // });
     fe_structs.push_back({
         static_cast<Order>(keyopts[2]), // order
         LAGRANGE_VEC,                   // family
@@ -46,15 +36,6 @@ void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_s
         3,                              // quadrature_dim
         false,                          // is_infinite
         true                            // is_vector (vector FE)
-    });
-    fe_structs.push_back({
-        static_cast<Order>(keyopts[2]), // order
-        LAGRANGE,                       // family
-        3,                              // dimension
-        INVALID_ORDER,                  // quadrature_order (use default)
-        2,                              // quadrature_dim
-        false,                          // is_infinite
-        false                           // is_vector (vector FE)
     });
 }
 

@@ -1120,15 +1120,6 @@ class APEC_M:
         """
         MeshEdit.safe_remove_array(self.mesh, array_name)
 
-    def add_boundary_array(self) -> str:
-        """
-        Add a new sequential `boundary_id_N` array to PointData and return its name.
-
-        The array is initialized with zeros and appended after the highest existing
-        `boundary_id_*` to avoid collisions.
-        """
-        return MeshEdit.add_boundary_array(self.mesh)
-
     def add_midside_nodes_mask_array(
         self, array_name: str = "MidsideNodes"
     ) -> "vtk.vtkIntArray":

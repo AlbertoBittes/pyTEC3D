@@ -22,11 +22,8 @@ enum class GlobalVariableName;
 enum ElementTypeEnum : unsigned int
 {
     SOLID97 = 97,
-    SOLID236 = 236,
     PLANE233 = 233,
-    INFIN110 = 110,
-    INFIN111 = 111,
-    INFIN112 = 112
+    SOLID236 = 236
 };
 
 enum PhysicalRegionEnum : unsigned int

@@ -153,15 +153,6 @@ void ElementBuilder::build_element()
     case ElementTypeEnum::PLANE233:
         this->build_plane233();
         break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112();
-        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
@@ -182,15 +173,6 @@ void ElementBuilder::build_element_rhs()
     case ElementTypeEnum::PLANE233:
         this->build_plane233_rhs();
         break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110_rhs();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111_rhs();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112_rhs();
-        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
@@ -201,13 +183,6 @@ void ElementBuilder::build_element_rhs()
 // solution calculation methods
 //
 //
-
-void ElementBuilder::build_solution_vectors()
-{
-    this->build_nodal_solution();
-    this->build_element_solution();
-    this->build_support_solution();
-}
 
 void ElementBuilder::build_nodal_solution()
 {
@@ -226,15 +201,6 @@ void ElementBuilder::build_nodal_solution()
         break;
     case ElementTypeEnum::PLANE233:
         this->build_plane233_nodal_solution();
-        break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110_nodal_solution();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111_nodal_solution();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112_nodal_solution();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -256,15 +222,6 @@ void ElementBuilder::build_element_solution()
     case ElementTypeEnum::PLANE233:
         this->build_plane233_element_solution();
         break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110_element_solution();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111_element_solution();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112_element_solution();
-        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
@@ -285,73 +242,40 @@ void ElementBuilder::build_support_solution()
     case ElementTypeEnum::PLANE233:
         this->build_plane233_support_solution();
         break;
-    case ElementTypeEnum::INFIN110:
-        this->build_infin110_support_solution();
-        break;
-    case ElementTypeEnum::INFIN111:
-        this->build_infin111_support_solution();
-        break;
-    case ElementTypeEnum::INFIN112:
-        this->build_infin112_support_solution();
-        break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
-bool ElementBuilder::build_solution_vectors_from_emat_files(dof_id_type element_id,
-                                                            const std::filesystem::path &emat_folderpath)
+std::vector<DenseVector<Number>> ElementBuilder::get_variables_solution(const NumericVector<Number> *solution,
+                                                                        int dof_map_index)
 {
-    const auto elem_id_uint = static_cast<unsigned int>(element_id);
-    auto &mesh = equation_systems_->get_mesh();
-    Elem *elem_ptr = mesh.query_elem_ptr(elem_id_uint);
-    if (!elem_ptr)
-        return false;
-
-    this->set_element_data(elem_ptr);
-
-    BinaryReader reader;
-    if (!reader.read_solution_matrices_for_element(*this, element_id, emat_folderpath))
-        return false;
-
-    this->build_solution_vectors();
-    return true;
-}
-
-void ElementBuilder::fill_solution_vector_support(const NumericVector<Number> *solution, int dof_map_index)
-{
-    solution_vector_support.clear();
-
     System *sys = &equation_systems_->get_system(dof_map_index);
     DofMap *dof_map = (dof_map_index == ApecMSystemBase::DOF_SOLUTION_SYSTEM) ? dof_solution_dof_map_ : &sys->get_dof_map();
     // Cast dof_map_index to SystemType for SYSTEM_INFO_MAP lookup
     ApecMSystemBase::SystemType sys_type = static_cast<ApecMSystemBase::SystemType>(dof_map_index);
 
+    std::vector<DenseVector<Number>> sol_vectors;
+    if (!solution || !dof_map)
+        return sol_vectors;
+
     // This is now maybe too slow, but it works for now
     // TODO: Check if there is room for optimization later
     const auto vars = VariablesMap::get_active_variables_for_element(*elem_data.element_type, sys_type);
+    sol_vectors.reserve(vars.size());
 
     for (const auto &var_enum : vars)
     {
         unsigned int system_var_num = sys->variable_number(VariablesMap::get_info_by_key(var_enum).global_label);
         std::vector<dof_id_type> dof_indices_variable;
-        if (dof_map)
-        {
-            dof_map->dof_indices(elem_data.elem, dof_indices_variable, system_var_num);
-        }
-        solution_vector_support.dof_indices_var.emplace_back(std::move(dof_indices_variable));
-
-        if (solution && dof_map)
-        {
-            const auto &dof_indices_ref = solution_vector_support.dof_indices_var.back();
-            DenseVector<Number> local_sol(dof_indices_ref.size());
-            for (unsigned int i = 0; i < dof_indices_ref.size(); ++i)
-            {
-                local_sol(i) = solution->el(dof_indices_ref[i]);
-            }
-            solution_vector_support.sol_vectors.emplace_back(std::move(local_sol));
-        }
+        dof_map->dof_indices(elem_data.elem, dof_indices_variable, system_var_num);
+        DenseVector<Number> local_sol(dof_indices_variable.size());
+        for (unsigned int i = 0; i < dof_indices_variable.size(); ++i)
+            local_sol(i) = solution->el(dof_indices_variable[i]);
+        sol_vectors.emplace_back(std::move(local_sol));
     }
+
+    return sol_vectors;
 }
 
 void ElementBuilder::append_and_write_solution(System &system,

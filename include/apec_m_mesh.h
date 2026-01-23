@@ -9,7 +9,6 @@
 #include <vector>
 #include <unordered_map>
 
-#include <libmesh/boundary_info.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh.h>
 #include <libmesh/node.h>
@@ -48,8 +47,6 @@ public:
                                                 FEMDataRepository &mesh_repository,
                                                 const std::string &mesh_filepath);
 
-    void apply_boundary_info();
-    void generate_infinite_elements(const std::shared_ptr<ElementTypesFactory> &element_types_factory);
     bool generate_nodal_couplings();
     const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> &get_cp_pairs() const;
     AngleDataIndices detect_angle_indices() const;

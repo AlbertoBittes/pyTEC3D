@@ -470,36 +470,6 @@ class MeshEdit:
             )
 
     @staticmethod
-    def initialize_vtk_array(
-        mesh: "vtk.vtkUnstructuredGrid",
-        name: str,
-        location: str = "node",
-        components: int = 1,
-        fill: Any = 0,
-        dtype: int = vtk.VTK_DOUBLE,
-    ) -> None:
-        """
-        Initializes a single VTK array in cell or point data.
-
-        Args:
-            mesh: The VTK unstructured grid to initialize the array for.
-            name: Name of the array.
-            location: "elem" or "node" (default "node").
-            components: Number of components (default 1).
-            fill: Default value to fill the array (default 0).
-            dtype: VTK data type (default vtk.VTK_DOUBLE).
-        """
-        arrays_to_init = {
-            name: {
-                "location": location,
-                "components": components,
-                "fill": fill,
-                "dtype": dtype,
-            }
-        }
-        MeshEdit.initialize_vtk_arrays(mesh, arrays_to_init)
-
-    @staticmethod
     def reset_vtk_arrays_to_default(
         mesh: "vtk.vtkUnstructuredGrid",
         arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -575,34 +545,6 @@ class MeshEdit:
             )
         if data.HasArray(array_name):
             data.RemoveArray(array_name)
-
-    @staticmethod
-    def add_boundary_array(mesh: "vtk.vtkUnstructuredGrid") -> str:
-        """Add a new boundary_id_N array to point data with default zeros."""
-        point_data = mesh.GetPointData()
-        existing = []
-        for i in range(point_data.GetNumberOfArrays()):
-            name = point_data.GetArrayName(i)
-            if name and name.startswith("boundary_id_"):
-                try:
-                    existing.append(int(name[len("boundary_id_") :]))
-                except ValueError:
-                    continue
-
-        next_index = 0
-        if existing:
-            next_index = max(existing) + 1
-
-        array_name = f"boundary_id_{next_index}"
-        MeshEdit.add_array_to_grid(
-            mesh,
-            name=array_name,
-            location="node",
-            components=1,
-            fill=0,
-            dtype=vtk.VTK_INT,
-        )
-        return array_name
 
     @staticmethod
     def validate_dataframe_with_vtk_data(

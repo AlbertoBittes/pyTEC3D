@@ -6,7 +6,6 @@
 // Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
-#include <libmesh/boundary_info.h>
 
 // Define Gauss quadrature rules.
 #include "session.h"       // Ensure the Session class is included
@@ -559,8 +558,10 @@ void ElementBuilder::build_solid236_nodal_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    auto &Az = solution_vector_support.sol_vectors[0];
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &Az = sol_vectors[0];
 
     auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalMe];
     auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalAAe];
@@ -622,8 +623,10 @@ void ElementBuilder::build_solid236_element_solution()
     materials_object_->fill_nu_matrix(this->elem_data.material_num);
     auto &nu_matrix = materials_object_->get_nu_matrix();
 
-    this->fill_solution_vector_support(dof_solution_system_->current_local_solution.get(), ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    auto &Az = solution_vector_support.sol_vectors[0];
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &Az = sol_vectors[0];
 
     auto &element_vectors = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS];
     element_vectors.clear();
@@ -672,7 +675,7 @@ void ElementBuilder::build_solid236_element_solution()
 
         unsigned int n_qp = JAe.m() / 3;
 
-        auto &Az = solution_vector_support.sol_vectors[0];
+        const auto &Az = sol_vectors[0];
 
         DenseVector<Number> Aq;
         JAe.vector_mult(Aq, Az);
@@ -728,13 +731,14 @@ void ElementBuilder::build_solid236_element_solution()
             DenseVector<Number> Vn;
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
-                Vn = solution_vector_support.sol_vectors[1];
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
+                Vn = sol_vectors[1];
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
 
-            auto &A_dt = solution_vector_support.sol_vectors[0];
+            const auto &A_dt = sol_vectors_dt[0];
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR || physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
-                Vn = solution_vector_support.sol_vectors[1];
+                Vn = sol_vectors_dt[1];
 
             DenseVector<Number> Jq_A;
             JAe.vector_mult(Jq_A, A_dt);
@@ -760,16 +764,18 @@ void ElementBuilder::build_solid236_element_solution()
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
             {
-                Vn = solution_vector_support.sol_vectors[1][0];
-                En = solution_vector_support.sol_vectors[2][0];
+                Vn = sol_vectors[1][0];
+                En = sol_vectors[2][0];
             }
 
-            fill_solution_vector_support(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
+            const auto sol_vectors_dt =
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
+                                       ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
             {
-                Vn = solution_vector_support.sol_vectors[1][0];
-                En = solution_vector_support.sol_vectors[2][0];
+                Vn = sol_vectors_dt[1][0];
+                En = sol_vectors_dt[2][0];
             }
 
             const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
@@ -830,7 +836,6 @@ void ElementBuilder::build_solid236_support_solution()
 
     auto build_psi = [&]()
     {
-        const auto &Az = solution_vector_support.sol_vectors[0];
         psi_values.resize(0);
 
         std::vector<dof_id_type> dof_indices;

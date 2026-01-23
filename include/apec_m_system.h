@@ -139,17 +139,8 @@ public:
             if (it->second)
                 it->second->zero();
 
-        auto zero_optional = [](NumericVector<Number> *vec)
-        {
-            if (vec)
-                vec->zero();
-        };
-
-        zero_optional(this->solution.get());
+        this->solution.zero();
         this->update();
-        // zero_optional(this->old_local_solution.get());
-        // zero_optional(this->older_local_solution.get());
-        // zero_optional(this->rhs.get());
     }
 
     bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
@@ -213,8 +204,6 @@ public:
         this->add_vector("ramped_node_dof_constraints");
         this->add_vector("solution_time_derivative", true, GHOSTED);
         auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
-        if (!equation_systems)
-            libmesh_error_msg("ApecMLinearSystem: equation systems is not ApecMEquationSystems.");
         assembler = std::make_shared<AssemblerLinear>(equation_systems);
         this->attach_assemble_object(*assembler);
     }

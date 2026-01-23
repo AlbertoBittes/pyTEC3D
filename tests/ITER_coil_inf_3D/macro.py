@@ -41,10 +41,8 @@ apec.set_value_on_selection("VOLT", 0)
 apec.select("ROD_2", 1)
 apec.set_value_on_selection("VOLT", 0)
 
-# apec.remove_array("boundary_id_0")
-# apec.add_boundary_array()
 apec.select("INFINITY_BOUNDARY_INNER", 1)
-apec.set_value_on_selection("boundary_id_0", 111)
+# apec.set_value_on_selection("boundary_id_0", 111)
 
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.75

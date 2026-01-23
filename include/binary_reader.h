@@ -34,7 +34,7 @@ public:
 class BinaryReader
 {
 public:
-    explicit BinaryReader() = default;
+    BinaryReader();
 
     std::unique_ptr<std::ios> open_file_stream(const std::filesystem::path &filepath,
                                                FileMode mode);
@@ -55,10 +55,6 @@ public:
     static void write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set);
     static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
 
-    bool read_solution_matrices_for_element(ElementBuilder &builder,
-                                            dof_id_type element_id,
-                                            const std::filesystem::path &emat_folderpath);
-
 private:
     void read_binary_fem_data_from_stream(std::ifstream &file,
                                           const std::shared_ptr<FEMDataRepository> &repository,
@@ -67,6 +63,8 @@ private:
                        std::ifstream &file,
                        const std::shared_ptr<FEMDataRepository> &repository,
                        const std::shared_ptr<ApecMEquationSystems> &equation_systems);
+
+    void set_disallowed_labels_for_analysis_mode(bool analysis_mode);
 
     std::unordered_set<BinaryLabelId> disallowed_labels;
 };

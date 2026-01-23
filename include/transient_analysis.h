@@ -8,9 +8,6 @@
 
 #include "static_analysis.h"
 
-// class ApecMLinearSystem;
-// class ApecMExplicitSystem;
-
 class TransientAnalysis : public StaticAnalysis
 {
 public:

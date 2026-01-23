@@ -345,7 +345,7 @@ VTK_ARRAYS_TO_INIT = {
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
-    "boundary_id_0": {
+    "CP_0": {
         "location": "node",
         "components": 1,
         "fill": 0,
