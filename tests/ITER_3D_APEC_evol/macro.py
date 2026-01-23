@@ -60,7 +60,6 @@ apec.remove_array("boundary_id_2")
 apec.add_boundary_array()
 apec.add_boundary_array()
 
-# Define periodic boundaries
 apec.select_all()
 apec.nsel_ext()
 apec.select("ansys_material_type", 24, type="elem")
@@ -184,32 +183,6 @@ MeshEdit.map_vector_field_to_global_components(apec.mesh, "Js", CylindricalCoord
 
 apec.write_loads_bcs()
 apec.save_mesh()
-# Minus 2 degrees rotation
-matrix_2deg = [
-    [np.cos(np.deg2rad(-2)), 0.0, np.sin(np.deg2rad(-2)), 0.0],
-    [0.0, 1.0, 0.0, 0.0],
-    [-np.sin(np.deg2rad(-2)), 0.0, np.cos(np.deg2rad(-2)), 0.0],
-    [0.0, 0.0, 0.0, 1.0],
-]
-
-apec.periodic_boundaries.append(
-    {
-        "main_boundary": 3,
-        "paired_boundary": 2,
-        "periodic_matrix": matrix_2deg,
-        "variable": "A",
-    }
-)
-
-apec.periodic_boundaries.append(
-    {
-        "main_boundary": 5,
-        "paired_boundary": 4,
-        "periodic_matrix": matrix_2deg,
-        "variable": "VOLT",
-    }
-)
-
 apec.read_excel("input_template.xlsx")
 apec.write_model_data()
 

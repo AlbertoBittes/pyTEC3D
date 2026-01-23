@@ -7,7 +7,6 @@
 #include <libmesh/equation_systems.h>
 #include <libmesh/numeric_vector.h>
 
-#include "apec_m_periodic_boundary_factory.h"
 #include "fem_service.h"
 #include "fem_data_repository.h"
 #include "time_step.h"

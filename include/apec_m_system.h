@@ -14,7 +14,6 @@
 #include <libmesh/linear_implicit_system.h>
 #include <libmesh/system_subset.h>
 #include <libmesh/numeric_vector.h>
-#include <libmesh/periodic_boundaries.h>
 #include <libmesh/sparse_matrix.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/petsc_matrix.h>

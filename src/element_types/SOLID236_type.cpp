@@ -69,7 +69,6 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
 std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
-    // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[3]->n_shape_functions();
     unsigned int n_sf_vec = 3 * n_sf;
     unsigned int n_sf_edge = fe_array[0]->n_shape_functions();

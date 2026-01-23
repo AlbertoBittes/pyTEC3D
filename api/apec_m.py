@@ -78,7 +78,6 @@ class APEC_M:
         self.transient_analysis: pd.DataFrame = pd.DataFrame(
             columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
         )
-        self.periodic_boundaries: List[Any] = []
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
@@ -318,32 +317,6 @@ class APEC_M:
         """
         return Excel.read_excel_dict(excel_file, sheet_name)
 
-    def read_periodic_boundaries(
-        self, excel_file: Union[str, PathLike[str]], sheet_name: str
-    ) -> Optional[List[Dict[str, Any]]]:
-        """
-        Read periodic boundary mappings from Excel.
-
-        Delegates to ExcelIOHelper.read_periodic_boundaries to validate required
-        columns and evaluate periodic matrices into NumPy arrays. On success, the
-        parsed list is stored on self.periodic_boundaries.
-
-        Args:
-            excel_file: Path to the Excel file.
-            sheet_name: Sheet name containing periodic boundary definitions.
-
-        Returns:
-            Optional[List[Dict[str, Any]]]: Parsed periodic boundaries or None if the sheet is missing.
-
-        Raises:
-            FileNotFoundError: If the Excel file is missing.
-            ValueError: If the sheet is malformed or missing required values.
-        """
-        periodic_boundaries = Excel.read_periodic_boundaries(excel_file, sheet_name)
-        if periodic_boundaries is not None:
-            self.periodic_boundaries = periodic_boundaries
-        return periodic_boundaries
-
     def write_excel_cell_point_data(
         self, output_excel_file: Union[str, PathLike[str]], data_type: str = "elem"
     ) -> None:
@@ -561,7 +534,6 @@ class APEC_M:
                 "materials",
                 "real_constants",
                 "solver_settings",
-                "periodic_boundaries",
             ],
         )
 

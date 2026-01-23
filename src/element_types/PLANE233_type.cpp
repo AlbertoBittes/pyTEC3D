@@ -51,7 +51,6 @@ void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE233Type::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
-    // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
 

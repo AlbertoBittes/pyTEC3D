@@ -60,7 +60,6 @@ void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_s
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
-    // Check this when you have periodic BCs
     unsigned int n_sf = fe_array[2]->n_shape_functions();
     unsigned int n_sf_vec = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[2]->n_quadrature_points();

@@ -79,7 +79,6 @@ const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
     // "infinite_boundary",
     // "flux_normal",
     // "flux_parallel",
-    // "periodic_boundary",
     "angles",
     "boundary_id_",
     "CP_",

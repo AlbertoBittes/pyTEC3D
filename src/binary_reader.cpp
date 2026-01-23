@@ -12,7 +12,6 @@
 #include <libmesh/petsc_linear_solver.h>
 
 #include "apec_m_equation_systems.h"
-#include "apec_m_periodic_boundary_factory.h"
 #include "apec_m_settings.h"
 #include "apec_m_system.h"
 #include "element_builder.h"
@@ -230,12 +229,6 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
     {
         auto element_types = std::make_shared<ElementTypesFactory>(file);
         repository->set_object(element_types);
-        break;
-    }
-    case BinaryLabelId::PERIODIC_BOUNDARIES:
-    {
-        auto factory = std::make_shared<ApecMPeriodicBoundaryFactory>(file);
-        repository->set_object(factory);
         break;
     }
     case BinaryLabelId::SOLVER_SETTINGS:

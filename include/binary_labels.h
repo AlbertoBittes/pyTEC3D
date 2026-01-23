@@ -18,7 +18,6 @@ enum class BinaryLabelId : std::uint32_t
     REAL_CONSTANTS = 4,
     POINT_DATA = 5,
     CELL_DATA = 6,
-    PERIODIC_BOUNDARIES = 7,
     DOF_COUPLINGS = 8,
     APEC_SETTINGS = 9,
     DOF_INTERPOLATION_SETTINGS = 10,
@@ -27,7 +26,7 @@ enum class BinaryLabelId : std::uint32_t
 
 struct BinaryLabelTraits
 {
-    static constexpr std::array<std::pair<BinaryLabelId, std::string_view>, 11> LABEL_TABLE = {{
+    static constexpr std::array<std::pair<BinaryLabelId, std::string_view>, 10> LABEL_TABLE = {{
         {BinaryLabelId::ELEMENT_TYPES, "element_types"},
         {BinaryLabelId::TIME_PARAMETERS, "time_parameters"},
         {BinaryLabelId::SOLVER_SETTINGS, "solver_settings"},
@@ -35,7 +34,6 @@ struct BinaryLabelTraits
         {BinaryLabelId::REAL_CONSTANTS, "real_constants"},
         {BinaryLabelId::POINT_DATA, "node"},
         {BinaryLabelId::CELL_DATA, "elem"},
-        {BinaryLabelId::PERIODIC_BOUNDARIES, "periodic_boundaries"},
         {BinaryLabelId::DOF_COUPLINGS, "dof_couplings"},
         {BinaryLabelId::APEC_SETTINGS, "apec_settings"},
         {BinaryLabelId::DOF_INTERPOLATION_SETTINGS, "dof_interpolation_settings"},

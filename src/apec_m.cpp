@@ -1,7 +1,6 @@
 #include "apec_m.h"
 
 #include "augment_sparsity_on_nodes.h"
-#include "apec_m_periodic_boundary_factory.h"
 #include "apec_m_settings.h"
 #include "dof_couplings_factory.h"
 #include "element_types_factory.h"
@@ -164,8 +163,7 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
         analysis_disallowed_labels = {BinaryLabelId::ELEMENT_TYPES,
                                       BinaryLabelId::MATERIALS,
                                       BinaryLabelId::REAL_CONSTANTS,
-                                      BinaryLabelId::SOLVER_SETTINGS,
-                                      BinaryLabelId::PERIODIC_BOUNDARIES};
+                                      BinaryLabelId::SOLVER_SETTINGS};
     }
 
     auto base_dir = session->get_working_directory();
@@ -243,7 +241,6 @@ void APEC_M::print_model_data() const
         {typeid(RealConstantsObject), "Real Constants"},
         {typeid(ElementTypesFactory), "Element Types"},
         {typeid(TimeStep), "Time Parameters"},
-        {typeid(ApecMPeriodicBoundaryFactory), "Periodic Boundaries"},
         {typeid(PetscSolverConfiguration), "Solver Settings"},
         {typeid(DofInterpolationSettingsObject), "DOF Interpolation Settings"}};
 
@@ -402,12 +399,9 @@ bool APEC_M::validate_model_for_analysis()
     auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
     auto materials_object = model_data_repository->get_object<MaterialsObject>();
     auto real_constants_object = model_data_repository->get_object<RealConstantsObject>();
-    auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
-
     std::unordered_set<int> available_etypes;
     std::unordered_set<int> available_materials;
     std::unordered_set<int> available_real_constants;
-    std::vector<std::pair<int, int>> periodic_boundary_pairs;
 
     if (!element_factory || !element_factory->get_element_types_map() || element_factory->get_element_types_map()->empty())
     {
@@ -441,73 +435,6 @@ bool APEC_M::validate_model_for_analysis()
         for (const auto &entry : real_constants_object->get_constants_map())
             available_real_constants.insert(static_cast<int>(entry.first));
     }
-
-    if (periodic_factory)
-    {
-        const auto *data_map = periodic_factory->get_data_map();
-        if (data_map && !data_map->columns.empty())
-        {
-            auto main_it = data_map->columns.find("main_boundary");
-            auto paired_it = data_map->columns.find("paired_boundary");
-            if (main_it == data_map->columns.end() || paired_it == data_map->columns.end())
-            {
-                libMesh::out << "Periodic boundary data present but required columns are missing." << std::endl;
-                valid = false;
-            }
-            else
-            {
-                auto extract_ids = [&](const NDArray &array, const std::string &column_label) -> std::optional<std::vector<int>>
-                {
-                    return std::visit(
-                        [&](const auto &vec) -> std::optional<std::vector<int>>
-                        {
-                            using VecType = std::decay_t<decltype(vec)>;
-                            if constexpr (std::is_same_v<VecType, std::vector<int>>)
-                                return vec;
-                            else if constexpr (std::is_same_v<VecType, std::vector<Real>>)
-                            {
-                                std::vector<int> converted;
-                                converted.reserve(vec.size());
-                                for (Real value : vec)
-                                    converted.push_back(static_cast<int>(value));
-                                return converted;
-                            }
-                            else
-                            {
-                                libMesh::out << "Periodic boundary column '" << column_label << "' is not numeric." << std::endl;
-                                return std::nullopt;
-                            }
-                        },
-                        array.values);
-                };
-
-                auto main_ids_opt = extract_ids(main_it->second, "main_boundary");
-                auto paired_ids_opt = extract_ids(paired_it->second, "paired_boundary");
-
-                if (!main_ids_opt || !paired_ids_opt)
-                {
-                    valid = false;
-                }
-                else if (main_ids_opt->size() != paired_ids_opt->size())
-                {
-                    libMesh::out << "Periodic boundary arrays have mismatched sizes (" << main_ids_opt->size()
-                                 << " vs " << paired_ids_opt->size() << ")." << std::endl;
-                    valid = false;
-                }
-                else
-                {
-                    periodic_boundary_pairs.reserve(main_ids_opt->size());
-                    for (std::size_t i = 0; i < main_ids_opt->size(); ++i)
-                        periodic_boundary_pairs.emplace_back((*main_ids_opt)[i], (*paired_ids_opt)[i]);
-                }
-            }
-        }
-    }
-
-    std::vector<bool> periodic_pair_found;
-    bool any_mesh_has_boundary_ids = false;
-    if (!periodic_boundary_pairs.empty())
-        periodic_pair_found.assign(periodic_boundary_pairs.size(), false);
 
     for (const auto &entry : mesh_repositories)
     {
@@ -626,49 +553,6 @@ bool APEC_M::validate_model_for_analysis()
             }
         }
 
-        if (!periodic_boundary_pairs.empty())
-        {
-            auto &boundary_info = mesh->get_boundary_info();
-            if (boundary_info.get_side_boundary_ids().empty())
-                mesh->apply_boundary_info();
-
-            const auto &side_ids = boundary_info.get_side_boundary_ids();
-            if (!side_ids.empty())
-                any_mesh_has_boundary_ids = true;
-
-            for (std::size_t i = 0; i < periodic_boundary_pairs.size(); ++i)
-            {
-                const auto &pair = periodic_boundary_pairs[i];
-                const boundary_id_type main_id = static_cast<boundary_id_type>(pair.first);
-                const boundary_id_type paired_id = static_cast<boundary_id_type>(pair.second);
-
-                if (!periodic_pair_found[i] && side_ids.find(main_id) != side_ids.end() &&
-                    side_ids.find(paired_id) != side_ids.end())
-                    periodic_pair_found[i] = true;
-            }
-        }
-    }
-
-    if (!periodic_boundary_pairs.empty())
-    {
-        if (!any_mesh_has_boundary_ids)
-        {
-            libMesh::out << "Periodic boundaries are defined but no mesh has boundary IDs." << std::endl;
-            valid = false;
-        }
-        else
-        {
-            for (std::size_t i = 0; i < periodic_boundary_pairs.size(); ++i)
-            {
-                if (!periodic_pair_found[i])
-                {
-                    const auto &pair = periodic_boundary_pairs[i];
-                    libMesh::out << "Periodic boundary pair (main=" << pair.first << ", paired=" << pair.second
-                                 << ") not found together on any mesh." << std::endl;
-                    valid = false;
-                }
-            }
-        }
     }
 
     return valid;
@@ -699,8 +583,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
     bool initialized_any = false;
 
     auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
-    auto periodic_factory = model_data_repository->get_object<ApecMPeriodicBoundaryFactory>();
-
     auto analysis_context = std::make_shared<AnalysisBase::ContextView>(AnalysisBase::ContextView::from(model_data_repository));
 
     if (!analysis_context)
@@ -753,16 +635,6 @@ bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type
             repository->set_object<ApecMEquationSystems>(equation_system);
         }
         equation_system->initialize_systems(model_data_repository);
-
-        if (periodic_factory)
-        {
-            periodic_factory->initialize(&equation_system.get()->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-            libMesh::out << "Periodic boundaries generated for mesh '" << name << "'." << std::endl;
-        }
-        else
-        {
-            libMesh::out << "No periodic boundary factory available for mesh '" << name << "'." << std::endl;
-        }
 
         auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
         AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh);

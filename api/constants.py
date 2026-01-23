@@ -243,13 +243,6 @@ CELL_POINT_DATA_COLUMNS_TYPES = {
     "value": float,
 }
 
-PERIODIC_BOUNDARIES_COLUMNS_TYPES = {
-    "main_boundary": int,
-    "paired_boundary": int,
-    "periodic_matrix": str,
-    "variable": str,
-}
-
 TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
     "time_step_number": int,
     "time": float,
@@ -270,7 +263,6 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "node": CELL_POINT_DATA_COLUMNS_TYPES,
     "elem": CELL_POINT_DATA_COLUMNS_TYPES,
     "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
-    "periodic_boundaries": PERIODIC_BOUNDARIES_COLUMNS_TYPES,
     "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
     "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
 }
@@ -286,7 +278,6 @@ SHEET_PROCESSING_MAP = {
     "node": ("update_vtk_grid_from_excel", "node"),
     "elem": ("update_vtk_grid_from_excel", "elem"),
     "transient_analysis": "read_excel_df",
-    "periodic_boundaries": "read_periodic_boundaries",
     "dof_couplings": "read_excel_df",
 }
 
@@ -298,7 +289,6 @@ WRITING_FUNCTIONS_MAP = {
     "real_constants": "_write_to_binary",
     "node": "_write_numpy_array_to_binary",
     "elem": "_write_numpy_array_to_binary",
-    "periodic_boundaries": "_write_to_binary",
     "dof_couplings": "_write_to_binary",
     "apec_settings": "_write_to_binary",
 }
