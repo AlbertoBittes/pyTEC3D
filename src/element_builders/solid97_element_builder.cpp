@@ -46,7 +46,7 @@ void ElementBuilder::build_solid97()
     // computation separately.
     //
     // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[2].get());
+    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
     FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[0].get());
     // The element Jacobian * quadrature weight at each integration point.
     const std::vector<Real> &JxW = fe->get_JxW();

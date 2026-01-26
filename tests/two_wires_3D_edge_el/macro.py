@@ -1,5 +1,6 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
+from tree_gauge import TreeGauge
+from selector import Selector
 import os
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -15,43 +16,41 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
-
 apec.read_excel("input_template.xlsx")
 
 apec.write_model_data()
 
-apec.select_pos(0, (0.499, 0.50001))
-apec.select_pos(0, (-0.501, -0.49999), mode="a")
-apec.select("MidsideNodes", 1, mode="r")
-apec.set_value_on_selection("Az", 0, 0)
+Selector.select_pos(apec.mesh, 0, (0.499, 0.50001))
+Selector.select_pos(apec.mesh, 0, (-0.501, -0.49999), mode="a")
+Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-apec.select_pos(1, (0.499, 0.50001))
-apec.select_pos(1, (-0.501, -0.49999), mode="a")
-apec.select("MidsideNodes", 1, mode="r")
-apec.set_value_on_selection("Az", 0, 0)
+Selector.select_pos(apec.mesh, 1, (0.499, 0.50001))
+Selector.select_pos(apec.mesh, 1, (-0.501, -0.49999), mode="a")
+Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-apec.select_pos(2, (0.499, 0.50001))
-apec.select_pos(2, (-0.501, -0.49999), mode="a")
-apec.select("MidsideNodes", 1, mode="r")
-apec.set_value_on_selection("Az", 0, 0)
+Selector.select_pos(apec.mesh, 2, (0.499, 0.50001))
+Selector.select_pos(apec.mesh, 2, (-0.501, -0.49999), mode="a")
+Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-# apec.nsel_ext()
-# apec.select("MidsideNodes", 1, mode="r")
-# apec.set_value_on_selection("Az", 0, 0)
+# Selector.nsel_ext(apec.mesh)
+# Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+# Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-apec.select("ansys_material_type", 23, type="elem")
-apec.set_value_on_selection("Js", 1, 2, type="elem")
-apec.select("LOWER_FACE_ROD", 1)
-apec.select("MidsideNodes", 0, mode="r")
-apec.set_value_on_selection("VOLT", 0)
-apec.select("UPPER_FACE_ROD", 1)
-apec.select("MidsideNodes", 0, mode="r")
-apec.set_value_on_selection("VOLT", 0)
-# apec.select("UPPER_FACE_ROD", 1)
-# apec.set_value_on_selection("AMPS", 1)
+Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.set_value_on_selection(apec.mesh, "Js", 1, 2, type="elem")
+Selector.select(apec.mesh, "LOWER_FACE_ROD", 1)
+Selector.select(apec.mesh, "MidsideNodes", 0, mode="r")
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+Selector.select(apec.mesh, "UPPER_FACE_ROD", 1)
+Selector.select(apec.mesh, "MidsideNodes", 0, mode="r")
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+# Selector.select(apec.mesh, "UPPER_FACE_ROD", 1)
+# Selector.set_value_on_selection(apec.mesh, "AMPS", 1)
 
-apec.tree_gauge()
+TreeGauge.tree_gauge(apec.mesh)
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 1e-3

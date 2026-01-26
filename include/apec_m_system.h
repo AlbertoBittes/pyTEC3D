@@ -139,7 +139,7 @@ public:
             if (it->second)
                 it->second->zero();
 
-        this->solution.zero();
+        this->solution->zero();
         this->update();
     }
 

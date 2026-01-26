@@ -6,7 +6,7 @@ import pandas as pd
 
 from binary import Binary
 from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
-from mesh_edit import MeshEdit
+from model_edit import ModelEdit
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     import vtk
@@ -219,5 +219,5 @@ class Excel:
                 f"Invalid data_type '{data_type}'. Must be 'elem' or 'node'."
             )
 
-        MeshEdit.update_vtk_grid(vtk_data, df)
+        ModelEdit.update_vtk_grid(vtk_data, df)
         print(f"VTK grid updated with data from sheet '{sheet_name}'.")

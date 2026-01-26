@@ -18,9 +18,9 @@ enum class BinaryLabelId : std::uint32_t
     REAL_CONSTANTS = 4,
     POINT_DATA = 5,
     CELL_DATA = 6,
-    DOF_COUPLINGS = 8,
-    APEC_SETTINGS = 9,
-    DOF_INTERPOLATION_SETTINGS = 10,
+    DOF_COUPLINGS = 7,
+    APEC_SETTINGS = 8,
+    DOF_INTERPOLATION_SETTINGS = 9,
     UNKNOWN = std::numeric_limits<std::uint32_t>::max()
 };
 

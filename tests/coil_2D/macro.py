@@ -1,5 +1,6 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
+from model_edit import ModelEdit
+from selector import Selector
 import os
 import vtk
 import vtk.util.numpy_support as vtknp
@@ -20,18 +21,17 @@ apec.read_mesh(filepath)
 apec.read_excel("input_template.xlsx")
 apec.write_model_data()
 
-apec.select_all()
-apec.nsel_ext()
-apec.set_value_on_selection("A", 0, 2)
+Selector.select_all(apec.mesh)
+Selector.nsel_ext(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec.add_array_to_grid("CP_0", dtype=vtk.VTK_INT)
-apec.select("ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
 apec.nsle()
-apec.set_value_on_selection("CP_0", 1)
+Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
-apec.select_all()
+Selector.select_all(apec.mesh)
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.5
 apec.time_parameters["write_substep_results"] = 1
@@ -41,12 +41,12 @@ for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i
     apec.time_parameters["time"] = i * 0.00001
     if i == 1:
-        apec.select("ID", master_node)
-        apec.set_value_on_selection("AMPS", 100)
+        Selector.select(apec.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
     else:
-        apec.select("ID", master_node)
-        apec.set_value_on_selection("AMPS", 0)
-        apec.set_value_on_selection("VOLT", 10000)
+        Selector.select(apec.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "VOLT", 10000)
     apec.write_load_step(i)
 
 apec.save_mesh()

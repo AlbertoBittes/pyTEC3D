@@ -1,6 +1,8 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
+from coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from model_edit import ModelEdit
 import os
+import vtk
 import vtk.util.numpy_support as vtknp
 import numpy as np
 
@@ -17,34 +19,41 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
-
 apec.read_excel("input_template.xlsx")
+
+Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
+Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
+Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 2)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+
+Selector.select_pos(apec.mesh, 1, (89.999 / 180 * np.pi, 90.0001 / 180 * np.pi), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
+Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
+Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 0)
+Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+
+Selector.select(apec.mesh, "ROD_2", 1)
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+
+Selector.select(apec.mesh, "ROD_1", 1)
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+
+Selector.select(apec.mesh, "AXIS_NODES", 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
+# Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+
 
 apec.write_model_data()
 
-apec.select("X_BOUND", 1)
-apec.set_value_on_selection("A", 0, 1)
-apec.set_value_on_selection("A", 0, 2)
-
-apec.select("Z_BOUND", 1)
-apec.set_value_on_selection("A", 0, 0)
-apec.set_value_on_selection("A", 0, 1)
-
-apec.select("AXIS_NODES", 1)
-apec.set_value_on_selection("A", 0, 0)
-apec.set_value_on_selection("A", 0, 1)
-apec.set_value_on_selection("A", 0, 2)
-
-apec.select("ROD_1", 1)
-apec.set_value_on_selection("VOLT", 0)
-apec.select("ROD_2", 1)
-apec.set_value_on_selection("VOLT", 0)
-
-apec.select("INFINITY_BOUNDARY_INNER", 1)
-apec.set_value_on_selection("A", 0, 0)
-apec.set_value_on_selection("A", 0, 1)
-apec.set_value_on_selection("A", 0, 2)
+Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="s", coordinate_system=SphericalCoordinateSystem())
+Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.75
@@ -90,31 +99,18 @@ for i in range(1, 10):
         apec.time_parameters["theta"] = 0.75  # autots,off (default)
 
     # select coil elements
-    apec.select("ansys_material_type", 23, type="elem")
+    Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
     selection_cells = vtknp.vtk_to_numpy(
         apec.mesh.GetCellData().GetArray("selection_cell")
     )
-    selected_ids = np.where(selection_cells == 1)[0]
-    centroids_array = vtknp.vtk_to_numpy(
-        apec.mesh.GetCellData().GetArray("cell_centroids")
-    )
-    js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-    for l in selected_ids:
-        # Get the center coordinates of the element (el_num)
-        # This depends on your mesh structure; assuming apec.mesh.get_element_center(el_num) returns (x, z)
-        x_coord = centroids_array[l, 0]
-        z_coord = centroids_array[l, 2]
-        module_square = x_coord**2 + z_coord**2
-        module = np.sqrt(module_square)
-        cos_theta = z_coord / module
-        sin_theta = x_coord / module
-        fact = i**6
-        js_x = cos_theta * fact
-        js_z = -sin_theta * fact
-        # Apply Js vector to the element (cell_data)
-        js_array[l, 0] = js_x
-        js_array[l, 2] = js_z
-
+    Selector.set_value_on_selection(apec.mesh, "Js", 0, 0, type="elem")
+    Selector.set_value_on_selection(apec.mesh, "Js", 0, 1, type="elem")
+    Selector.set_value_on_selection(apec.mesh, "Js", 0, 2, type="elem")
+    fact = i**6
+    Selector.set_value_on_selection(apec.mesh, "Js", fact, 1, type="elem")
+    ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js",
+                                                   coordinate_system=CylindricalCoordinateSystem(),
+                                                   location="elem")
     apec.write_load_step(i)
 
 apec.save_mesh()

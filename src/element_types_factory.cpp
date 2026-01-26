@@ -110,10 +110,6 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
         return std::make_unique<SOLID236Type>(keyopts);
     case ElementTypeEnum::PLANE233:
         return std::make_unique<PLANE233Type>(keyopts);
-    case ElementTypeEnum::INFIN110:
-        return std::make_unique<INFIN110Type>(keyopts);
-    case ElementTypeEnum::INFIN111:
-        return std::make_unique<INFIN111Type>(keyopts);
     default:
         libmesh_error_msg("Unknown element type");
     }

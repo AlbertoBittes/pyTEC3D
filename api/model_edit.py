@@ -14,7 +14,7 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from coordinate_system import CoordinateSystem
 
 
-class MeshEdit:
+class ModelEdit:
     @staticmethod
     def _get_positions(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -25,7 +25,7 @@ class MeshEdit:
             if points is None:
                 return np.empty((0, 3))
             return vtknp.vtk_to_numpy(points.GetData())
-        return MeshEdit.compute_cell_centroids(mesh)
+        return ModelEdit.compute_cell_centroids(mesh)
 
     @staticmethod
     def to_local_coordinates(
@@ -51,7 +51,7 @@ class MeshEdit:
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
 
-        positions = MeshEdit._get_positions(mesh, location)
+        positions = ModelEdit._get_positions(mesh, location)
         if positions.size == 0:
             return np.empty((0, 3)), np.empty((0,), dtype=int)
 
@@ -89,7 +89,7 @@ class MeshEdit:
             )
             ids = np.arange(count, dtype=int)
 
-        local_positions = coordinate_system.to_local_coordinates_array(positions)
+        local_positions = coordinate_system.to_local(positions)
         return local_positions, ids
 
     @staticmethod
@@ -153,7 +153,7 @@ class MeshEdit:
                 "local_positions must match the number of selected ids."
             )
 
-        global_positions = coordinate_system.to_global_coordinates_array(local_positions)
+        global_positions = coordinate_system.to_global(local_positions)
         return global_positions, ids
 
     @staticmethod
@@ -185,7 +185,7 @@ class MeshEdit:
             raise ValueError("Array must have exactly 3 components.")
 
         vecs = vtknp.vtk_to_numpy(vtk_array)
-        positions = MeshEdit._get_positions(mesh, location)
+        positions = ModelEdit._get_positions(mesh, location)
         if positions.size == 0:
             return vecs
 
@@ -215,7 +215,7 @@ class MeshEdit:
 
         cleaned = vecs.copy()
         cleaned[valid_mask] = np.nan_to_num(cleaned[valid_mask], nan=0.0)
-        local_components = coordinate_system.vector_components_from_global(
+        local_components = coordinate_system.vector_components_to_local(
             cleaned[valid_mask], positions[valid_mask]
         )
         vecs[valid_mask] = local_components
@@ -256,7 +256,7 @@ class MeshEdit:
             raise ValueError("Array must have exactly 3 components.")
 
         vecs = vtknp.vtk_to_numpy(vtk_array)
-        positions = MeshEdit._get_positions(mesh, location)
+        positions = ModelEdit._get_positions(mesh, location)
         if positions.size == 0:
             return vecs
 
@@ -327,11 +327,11 @@ class MeshEdit:
             from selector import Selector
             from tree_gauge import TreeGauge
 
-            MeshEdit.initialize_vtk_arrays(mesh)
+            ModelEdit.initialize_vtk_arrays(mesh)
             Selector.ensure_selection_arrays(mesh)
-            MeshEdit.store_cell_centroids(mesh)
+            ModelEdit.store_cell_centroids(mesh)
             TreeGauge.add_midside_nodes_mask_array(mesh)
-            MeshEdit.reset_vtk_arrays_to_default(mesh)
+            ModelEdit.reset_vtk_arrays_to_default(mesh)
 
         print(f"VTK unstructured grid loaded from '{path}'.")
         print(f"Number of points: {mesh.GetNumberOfPoints()}")
@@ -460,7 +460,7 @@ class MeshEdit:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         for name, info in arrays_to_init.items():
-            MeshEdit.add_array_to_grid(
+            ModelEdit.add_array_to_grid(
                 mesh,
                 name=name,
                 location=info["location"],
@@ -506,7 +506,7 @@ class MeshEdit:
                 vtk_array.Modified()
 
     @staticmethod
-    def safe_remove_array(
+    def remove_array(
         mesh: "vtk.vtkUnstructuredGrid",
         array_name: str,
         location: Optional[str] = None,
@@ -545,50 +545,6 @@ class MeshEdit:
             )
         if data.HasArray(array_name):
             data.RemoveArray(array_name)
-
-    @staticmethod
-    def validate_dataframe_with_vtk_data(
-        vtk_data: "vtk.vtkDataSetAttributes",
-        df: pd.DataFrame,
-        array_name: str,
-    ) -> None:
-        """
-        Validates that the first column of a DataFrame has unique values,
-        all values have a correspondence in the specified VTK data array,
-        and there are no undefined values in the VTK data array. Useful
-        to check 1-to-1 correspondence between IDs.
-
-        Args:
-            vtk_data: The VTK cell or point data to validate against.
-            df (pd.DataFrame): The DataFrame to validate.
-            array_name: The name of the VTK data array to check.
-
-        Raises:
-            ValueError: If the DataFrame is empty, the first column is not unique, the VTK data array is missing,
-                or the checks fail.
-        """
-        if df.empty:
-            print("The DataFrame is empty.")
-            return
-        first_column = df.iloc[:, 0]
-        if not first_column.is_unique:
-            raise ValueError(
-                "The first column of the DataFrame must have unique values."
-            )
-        vtk_array = vtk_data.GetArray(array_name)
-        if vtk_array is None:
-            raise ValueError(f"The '{array_name}' array is missing in the VTK data.")
-        vtk_array_np = vtknp.vtk_to_numpy(vtk_array)
-        if not set(first_column).issubset(set(vtk_array_np)):
-            raise ValueError(
-                f"Some values in the first column of the DataFrame do not have a correspondence in the '{array_name}' array."
-            )
-        undefined_values = set(vtk_array_np) - set(first_column)
-        if undefined_values:
-            raise ValueError(
-                f"The VTK data contains undefined values: {undefined_values}."
-            )
-        print(f"Validation passed for '{array_name}' array and DataFrame.")
 
     @staticmethod
     def update_vtk_grid(data: "vtk.vtkDataSetAttributes", df) -> None:
@@ -654,390 +610,6 @@ class MeshEdit:
         return np_centers
 
     @staticmethod
-    def build_toroidal_projection_map(
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        target_mesh: "vtk.vtkUnstructuredGrid",
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> np.ndarray:
-        """
-        Build a toroidal projection map from a 2D input mesh to a 3D target mesh.
-
-        Each input point/cell centroid is associated with target points/cell centroids that share
-        the same radial distance from the rotation axis and the same axial coordinate within
-        the given tolerance. For points on the rotation axis (r=0), the map assumes a single
-        match. The tolerance is increased until each input ID has at least n_slices corresponding
-        target IDs, then matches are sorted by poloidal distance and trimmed to n_slices.
-        The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
-        the remaining columns hold the corresponding target IDs.
-        If selection arrays exist on the input/target mesh for the chosen location, only selected
-        IDs are used.
-
-        Args:
-            input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            target_mesh: Target unstructured grid (typically 3D).
-            location: "node" to map point IDs or "elem" to map cell IDs.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-
-        Returns:
-            np.ndarray: 2D array with shape (num_input, 1 + max_matches).
-
-        Raises:
-            ValueError: If inputs are invalid or the input mesh is not 2D.
-        """
-        if location not in ["node", "elem"]:
-            raise ValueError("location must be 'node' or 'elem'.")
-        if tolerance <= 0:
-            raise ValueError("tolerance must be positive.")
-        if not isinstance(n_slices, int) or n_slices <= 0:
-            raise ValueError("n_slices must be a positive integer.")
-
-        if (
-            input_mesh.GetNumberOfCells() > 0
-            and input_mesh.GetMaxSpatialDimension() > 2
-        ):
-            raise ValueError("Input mesh must be 2D.")
-
-        if coordinate_system is None:
-            from coordinate_system import CylindricalCoordinateSystem
-
-            coordinate_system = CylindricalCoordinateSystem()
-        if coordinate_system.type != "cylindrical":
-            raise ValueError(
-                "coordinate_system must be cylindrical for toroidal projection."
-            )
-
-        from selector import Selector
-
-        Selector.ensure_selection_arrays(input_mesh)
-        input_local, input_ids = MeshEdit.to_local_coordinates(
-            input_mesh,
-            coordinate_system,
-            location=location,
-            selected_only=True,
-        )
-        target_local, target_ids = MeshEdit.to_local_coordinates(
-            target_mesh,
-            coordinate_system,
-            location=location,
-            selected_only=True,
-        )
-
-        if input_local.size == 0:
-            return np.empty((0, 1), dtype=float)
-
-        input_radius = input_local[:, 0]
-        input_axial = input_local[:, 2]
-        target_radius = target_local[:, 0]
-        target_axial = target_local[:, 2]
-
-        target_count = target_radius.shape[0]
-        if target_count == 0:
-            raise ValueError("Target mesh has no points/cells to map.")
-        if n_slices > target_count:
-            raise ValueError(
-                "n_slices cannot exceed the number of available target points/cells."
-            )
-
-        num_input = input_radius.shape[0]
-        tolerance_current = tolerance
-        counts = np.empty(num_input, dtype=int)
-
-        axis_mask = input_radius <= tolerance
-        required_counts = np.where(axis_mask, 1, n_slices)
-
-        max_iterations = 50
-        for _ in range(max_iterations):
-            for input_id in range(num_input):
-                dr = np.abs(target_radius - input_radius[input_id])
-                dz = np.abs(target_axial - input_axial[input_id])
-                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-                counts[input_id] = int(np.count_nonzero(mask))
-            if np.all(counts >= required_counts):
-                break
-            tolerance_current *= 2.0
-        else:
-            raise ValueError(
-                "Toroidal projection map did not converge within the "
-                "tolerance expansion limit."
-            )
-
-        mapping = np.full((num_input, 1 + n_slices), np.nan)
-        mapping[:, 0] = input_ids
-        for row_idx in range(num_input):
-            dr = np.abs(target_radius - input_radius[row_idx])
-            dz = np.abs(target_axial - input_axial[row_idx])
-            mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-            candidate_idx = np.where(mask)[0]
-            if candidate_idx.size == 0:
-                continue
-            candidate_ids = target_ids[candidate_idx]
-            if axis_mask[row_idx]:
-                trimmed = np.full((n_slices,), candidate_ids[0], dtype=candidate_ids.dtype)
-            else:
-                poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
-                if candidate_idx.size > n_slices:
-                    pick = np.argpartition(poloidal_dist, n_slices - 1)[:n_slices]
-                    pick = pick[np.argsort(poloidal_dist[pick])]
-                    trimmed = candidate_ids[pick]
-                else:
-                    order = np.argsort(poloidal_dist)
-                    trimmed = candidate_ids[order]
-            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:n_slices]
-
-        return mapping.astype(int)
-
-    @staticmethod
-    def toroidal_projection(
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        input_array_name: str,
-        input_component: int,
-        target_mesh: "vtk.vtkUnstructuredGrid",
-        target_array_name: str,
-        target_component: int = 0,
-        projection_map: Optional[np.ndarray] = None,
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> None:
-        """
-        Project a 2D scalar component onto a 3D toroidal mesh.
-
-        Input values are treated as a scalar field and copied into the target component for
-        each matched position.
-
-        Args:
-            input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array.
-            target_mesh: Target unstructured grid (typically 3D).
-            target_array_name: Name of the target array to write on the target mesh.
-            projection_map: Optional precomputed toroidal projection map.
-            location: "node" to map point data or "elem" to map cell data.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-            target_component: Component index to write for scalar copy mode.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-
-        Returns:
-            None
-        """
-        if location not in ["node", "elem"]:
-            raise ValueError("location must be 'node' or 'elem'.")
-
-        input_data = (
-            input_mesh.GetPointData()
-            if location == "node"
-            else input_mesh.GetCellData()
-        )
-        input_array = (
-            input_data.GetArray(input_array_name) if input_data is not None else None
-        )
-        if input_array is None:
-            raise ValueError(
-                f"Array '{input_array_name}' not found in input {location} data."
-            )
-
-        input_np = vtknp.vtk_to_numpy(input_array)
-        input_components = input_array.GetNumberOfComponents()
-        if input_components == 1:
-            if input_component != 0:
-                raise ValueError("input_component must be 0 for scalar arrays.")
-            input_values = input_np
-        else:
-            if input_component < 0 or input_component >= input_components:
-                raise ValueError("input_component out of range for input array.")
-            input_values = input_np[:, input_component]
-
-        if projection_map is None:
-            projection_map = MeshEdit.build_toroidal_projection_map(
-                input_mesh,
-                target_mesh,
-                location=location,
-                tolerance=tolerance,
-                n_slices=n_slices,
-                coordinate_system=coordinate_system,
-            )
-
-        if projection_map.size == 0:
-            return
-
-        target_data = (
-            target_mesh.GetPointData()
-            if location == "node"
-            else target_mesh.GetCellData()
-        )
-        if target_data is None:
-            raise ValueError(f"Target mesh has no {location} data.")
-        target_array = target_data.GetArray(target_array_name)
-        if target_array is None:
-            target_components = max(1, target_component + 1)
-            target_array = MeshEdit.add_array_to_grid(
-                target_mesh,
-                name=target_array_name,
-                location=location,
-                components=target_components,
-                fill=0.0,
-                dtype=vtk.VTK_DOUBLE,
-            )
-        if target_component < 0:
-            raise ValueError("target_component must be non-negative.")
-        if target_array.GetNumberOfComponents() == 1 and target_component != 0:
-            raise ValueError("target_component must be 0 for scalar target arrays.")
-        if target_component >= target_array.GetNumberOfComponents():
-            raise ValueError("target_component out of range for target array.")
-
-        target_np = vtknp.vtk_to_numpy(target_array)
-
-        for row in projection_map:
-            input_id = row[0]
-            if np.isnan(input_id):
-                continue
-            input_id_int = int(input_id)
-            if input_id_int < 0 or input_id_int >= input_values.shape[0]:
-                continue
-            value = input_values[input_id_int]
-            for target_id in row[1:]:
-                if np.isnan(target_id):
-                    continue
-                target_id_int = int(target_id)
-                if target_id_int < 0 or target_id_int >= target_np.shape[0]:
-                    continue
-                if target_np.ndim == 1:
-                    target_np[target_id_int] = value
-                else:
-                    target_np[target_id_int, target_component] = value
-
-        target_array.Modified()
-
-    @staticmethod
-    def toroidal_projection_inverse(
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        input_array_name: str,
-        input_component: int,
-        target_mesh: "vtk.vtkUnstructuredGrid",
-        target_array_name: str,
-        target_component: int = 0,
-        projection_map: Optional[np.ndarray] = None,
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> None:
-        """
-        Average scalar fields from a 3D input mesh onto a 2D target mesh.
-
-        Treat the input as a scalar field (component) and average it into the target component.
-
-        Args:
-            input_mesh: 3D unstructured grid providing the vector field.
-            input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array.
-            target_mesh: 2D unstructured grid used to generate a surface of revolution.
-            target_array_name: Name of the target array on the target mesh.
-            target_component: Component index to write for scalar targets.
-            projection_map: Optional precomputed toroidal projection map.
-            location: "node" to map point data or "elem" to map cell data.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-
-        Returns:
-            None
-        """
-        if location not in ["node", "elem"]:
-            raise ValueError("location must be 'node' or 'elem'.")
-
-        input_data = (
-            input_mesh.GetPointData()
-            if location == "node"
-            else input_mesh.GetCellData()
-        )
-        input_array = (
-            input_data.GetArray(input_array_name) if input_data is not None else None
-        )
-        if input_array is None:
-            raise ValueError(
-                f"Array '{input_array_name}' not found in input {location} data."
-            )
-        input_np = vtknp.vtk_to_numpy(input_array)
-        input_components = input_array.GetNumberOfComponents()
-        if input_components == 1:
-            if input_component != 0:
-                raise ValueError("input_component must be 0 for scalar input arrays.")
-        elif input_component < 0 or input_component >= input_components:
-            raise ValueError("input_component out of range for input array.")
-
-        if projection_map is None:
-            projection_map = MeshEdit.build_toroidal_projection_map(
-                target_mesh,
-                input_mesh,
-                location=location,
-                tolerance=tolerance,
-                n_slices=n_slices,
-                coordinate_system=coordinate_system,
-            )
-
-        if projection_map.size == 0:
-            return
-
-        target_data = (
-            target_mesh.GetPointData()
-            if location == "node"
-            else target_mesh.GetCellData()
-        )
-        if target_data is None:
-            raise ValueError(f"Target mesh has no {location} data.")
-        target_array = target_data.GetArray(target_array_name)
-        if target_array is None:
-            target_components = max(1, target_component + 1)
-            target_array = MeshEdit.add_array_to_grid(
-                target_mesh,
-                name=target_array_name,
-                location=location,
-                components=target_components,
-                fill=np.nan,
-                dtype=vtk.VTK_DOUBLE,
-            )
-        target_components = target_array.GetNumberOfComponents()
-        if target_components == 1 and target_component != 0:
-            raise ValueError("target_component must be 0 for scalar target arrays.")
-        if target_component < 0 or target_component >= target_components:
-            raise ValueError("target_component out of range for target array.")
-
-        target_np = vtknp.vtk_to_numpy(target_array)
-
-        for row in projection_map:
-            target_id = row[0]
-            if np.isnan(target_id):
-                continue
-            target_id_int = int(target_id)
-            target_ids = row[1:]
-            target_ids = target_ids[~np.isnan(target_ids)]
-            if target_ids.size == 0:
-                if target_np.ndim == 1:
-                    target_np[target_id_int] = np.nan
-                else:
-                    target_np[target_id_int, target_component] = np.nan
-                continue
-            input_ids = target_ids.astype(int)
-            if input_components == 1:
-                value = float(np.mean(input_np[input_ids]))
-            else:
-                value = float(np.mean(input_np[input_ids, input_component]))
-            if target_np.ndim == 1:
-                target_np[target_id_int] = value
-            else:
-                target_np[target_id_int, target_component] = value
-
-        target_array.Modified()
-
-    @staticmethod
     def store_cell_centroids(
         mesh: "vtk.vtkUnstructuredGrid", array_name: str = "cell_centroids"
     ) -> None:
@@ -1051,8 +623,8 @@ class MeshEdit:
         Side Effects:
             Adds/overwrites the centroid array on mesh.GetCellData().
         """
-        np_centers = MeshEdit.compute_cell_centroids(mesh)
-        MeshEdit.add_array_to_grid(
+        np_centers = ModelEdit.compute_cell_centroids(mesh)
+        ModelEdit.add_array_to_grid(
             mesh,
             name=array_name,
             location="elem",
@@ -1108,8 +680,8 @@ class MeshEdit:
         Side Effects:
             Adds/overwrites the volume/area array on mesh.GetCellData().
         """
-        volumes = MeshEdit.compute_cell_volumes(mesh)
-        MeshEdit.add_array_to_grid(
+        volumes = ModelEdit.compute_cell_volumes(mesh)
+        ModelEdit.add_array_to_grid(
             mesh,
             name=array_name,
             location="elem",
@@ -1150,7 +722,7 @@ class MeshEdit:
             )
 
         selection_mask = vtknp.vtk_to_numpy(selection_array)
-        new_array = MeshEdit.add_array_to_grid(
+        new_array = ModelEdit.add_array_to_grid(
             mesh,
             name=component_name,
             location=type,

@@ -1,5 +1,6 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
+from model_edit import ModelEdit
+from cyclic import Cyclic
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from selector import Selector
@@ -50,13 +51,21 @@ apec_equilibrium.set_value_on_selection("A", 0, 2)
 apec_equilibrium.select_all()
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec_equilibrium.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem", n_slices=1, tolerance=1e-3
+Cyclic.toroidal_projection(
+    apec_equilibrium_output.mesh,
+    "Jt_z",
+    0,
+    apec_equilibrium.mesh,
+    "Js",
+    2,
+    location="elem",
+    n_slices=1,
+    tolerance=1e-3,
 )
 
 # Now start the evolution analysis
 apec.read_mesh(filepath)
-apec.select_all()
+Selector.select_all(apec.mesh)
 
 apec.apec_settings = {
     "R0": 6.2,
@@ -68,8 +77,12 @@ apec.apec_settings = {
     "evolution_mesh": "ITER_2D_APEC_evol",
     "equilibrium_mesh": "ITER_2D_APEC_evol_1",
     "print_full_output": 0,
-    "toroidal_projection_map_nodes": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "node", n_slices=1, tolerance=1e-3),
-    "toroidal_projection_map_elems": apec.build_toroidal_projection_map(apec_equilibrium.mesh, "elem", n_slices=1, tolerance=1e-3),
+    "toroidal_projection_map_nodes": Cyclic.build_toroidal_projection_map(
+        apec_equilibrium.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
+    ),
+    "toroidal_projection_map_elems": Cyclic.build_toroidal_projection_map(
+        apec_equilibrium.mesh, apec.mesh, "elem", n_slices=1, tolerance=1e-3
+    ),
 
 }
 
@@ -81,15 +94,21 @@ apec_equilibrium.save_mesh()
 np.savetxt("toroidal_projection_map_nodes.txt", apec.apec_settings["toroidal_projection_map_nodes"].astype(int), fmt="%d")
 np.savetxt("toroidal_projection_map_elems.txt", apec.apec_settings["toroidal_projection_map_elems"].astype(int), fmt="%d")
 
-apec.select_all()
-apec.nsel_ext()
-apec.set_value_on_selection("A", 0, 2)
+Selector.select_all(apec.mesh)
+Selector.nsel_ext(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec.select_all()
+Selector.select_all(apec.mesh)
 apec_equilibrium_output.select_all()
 apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-apec.toroidal_projection(
-    apec_equilibrium_output.mesh, "Jt_z", 0, "Js", 2, location="elem"
+Cyclic.toroidal_projection(
+    apec_equilibrium_output.mesh,
+    "Jt_z",
+    0,
+    apec.mesh,
+    "Js",
+    2,
+    location="elem",
 )
 
 apec.write_loads_bcs()

@@ -20,7 +20,7 @@ void DofCouplingsObject::parse_couplings_from_map()
         return;
 
     if (!has_column("cp_id") || !has_column("variable"))
-        libmesh_error_msg("Dof couplings: required keys missing from settings data.");
+        return;
 
     const auto &cp_id_array = get_column("cp_id");
     const auto &variable_array = get_column("variable");

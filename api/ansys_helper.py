@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import vtk.util.numpy_support as vtknp
 
-from mesh_edit import MeshEdit
+from model_edit import ModelEdit
 from excel import Excel
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
@@ -41,7 +41,7 @@ class AnsysHelper:
             mesh.GetCellData(), "ansys_elem_num"
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_elem_num")
-        MeshEdit.update_vtk_grid(mesh.GetCellData(), df)
+        ModelEdit.update_vtk_grid(mesh.GetCellData(), df)
         print(f"Grid updated with element loads from '{file_path}'.")
 
     @staticmethod
@@ -105,7 +105,7 @@ class AnsysHelper:
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_node_num")
 
-        MeshEdit.update_vtk_grid(mesh.GetPointData(), df)
+        ModelEdit.update_vtk_grid(mesh.GetPointData(), df)
         print(f"Grid updated with node data from '{file_path}'.")
 
     @staticmethod

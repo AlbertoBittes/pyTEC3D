@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from mesh_edit import MeshEdit
+from selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
@@ -17,32 +17,30 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-MeshEdit.reset_vtk_arrays_to_default((apec.mesh))
-
 apec.read_excel("input_template.xlsx")
 
 apec.write_model_data()
 
-apec.select("X_BOUND", 1)
-apec.set_value_on_selection("A", 0, 1)
-apec.set_value_on_selection("A", 0, 2)
+Selector.select(apec.mesh, "X_BOUND", 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec.select("Z_BOUND", 1)
-apec.set_value_on_selection("A", 0, 0)
-apec.set_value_on_selection("A", 0, 1)
+Selector.select(apec.mesh, "Z_BOUND", 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
 
-apec.select("AXIS_NODES", 1)
-apec.set_value_on_selection("A", 0, 0)
-apec.set_value_on_selection("A", 0, 1)
-apec.set_value_on_selection("A", 0, 2)
+Selector.select(apec.mesh, "AXIS_NODES", 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec.select("ROD_1", 1)
-apec.set_value_on_selection("VOLT", 0)
-apec.select("ROD_2", 1)
-apec.set_value_on_selection("VOLT", 0)
+Selector.select(apec.mesh, "ROD_1", 1)
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+Selector.select(apec.mesh, "ROD_2", 1)
+Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 
-apec.select("INFINITY_BOUNDARY_INNER", 1)
-# apec.set_value_on_selection("boundary_id_0", 111)
+Selector.select(apec.mesh, "INFINITY_BOUNDARY_INNER", 1)
+# Selector.set_value_on_selection(apec.mesh, "boundary_id_0", 111)
 
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.75
@@ -88,7 +86,7 @@ for i in range(1, 10):
         apec.time_parameters["theta"] = 0.75  # autots,off (default)
 
     # select coil elements
-    apec.select("ansys_material_type", 23, type="elem")
+    Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
     selection_cells = vtknp.vtk_to_numpy(
         apec.mesh.GetCellData().GetArray("selection_cell")
     )

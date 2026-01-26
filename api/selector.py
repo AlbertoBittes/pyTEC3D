@@ -132,15 +132,15 @@ class Selector:
         """
         Selector.ensure_selection_arrays(mesh)
         if type == "elem":
-            from mesh_edit import MeshEdit
+            from model_edit import ModelEdit
 
-            coords = MeshEdit.compute_cell_centroids(mesh)
+            coords = ModelEdit.compute_cell_centroids(mesh)
             data = mesh.GetCellData()
         else:
             coords = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
             data = mesh.GetPointData()
         if coordinate_system is not None:
-            coords = coordinate_system.to_local_coordinates_array(coords)
+            coords = coordinate_system.to_local(coords)
         arr = coords[:, axis]
         Selector.apply_selection_mask(arr, value, data, type, mode)
 

@@ -157,23 +157,4 @@ public:
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
-class INFIN110Type : public PLANE233Type
-{
-public:
-    INFIN110Type(const std::vector<unsigned int> &keyopts);
-};
-
-class INFIN111Type : public SOLID97Type
-{
-public:
-    INFIN111Type(const std::vector<unsigned int> &keyopts);
-
-    virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
-};
-
-class INFIN112Type : public SOLID236Type
-{
-public:
-    INFIN112Type(const std::vector<unsigned int> &keyopts);
-};
 #endif // ELEMENT_TYPES_H

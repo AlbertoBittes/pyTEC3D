@@ -243,17 +243,6 @@ CELL_POINT_DATA_COLUMNS_TYPES = {
     "value": float,
 }
 
-TRANSIENT_ANALYSIS_COLUMNS_TYPES = {
-    "time_step_number": int,
-    "time": float,
-    "number_of_substeps": int,
-    "transient_effects": int,
-    "ramped_loads": int,
-    "theta": float,
-    "write_substep_results": int,
-    "load_step_input_file": str,
-}
-
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
@@ -262,7 +251,6 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
     "node": CELL_POINT_DATA_COLUMNS_TYPES,
     "elem": CELL_POINT_DATA_COLUMNS_TYPES,
-    "transient_analysis": TRANSIENT_ANALYSIS_COLUMNS_TYPES,
     "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
     "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
 }
@@ -277,7 +265,6 @@ SHEET_PROCESSING_MAP = {
     "apec_settings": "read_excel_dict",
     "node": ("update_vtk_grid_from_excel", "node"),
     "elem": ("update_vtk_grid_from_excel", "elem"),
-    "transient_analysis": "read_excel_df",
     "dof_couplings": "read_excel_df",
 }
 

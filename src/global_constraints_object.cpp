@@ -63,8 +63,6 @@ GlobalConstraintsObject::build_point_constraints()
     ApecMMesh *mesh = dynamic_cast<ApecMMesh *>(&equation_systems.get_mesh());
 
     auto node_dof_constraints = system->request_vector("ramped_node_dof_constraints");
-    if (!node_dof_constraints)
-        return constraints;
 
     NumericVector<Number> &node_dof_constraints_ref = *node_dof_constraints;
     const auto first_local = node_dof_constraints_ref.first_local_index();
@@ -73,6 +71,7 @@ GlobalConstraintsObject::build_point_constraints()
     std::map<std::string, std::vector<VariablesMap::VectorComponent>> vector_variables =
         VariablesMap::get_vector_variables_for_system(*system);
     std::set<dof_id_type> constrained_dofs;
+    std::set<dof_id_type> vector_dofs;
 
     for (const auto &node_ptr : mesh->local_node_ptr_range())
     {
@@ -109,6 +108,7 @@ GlobalConstraintsObject::build_point_constraints()
 
                 dofs(comp.component_index) = dof;
                 values(comp.component_index) = node_dof_constraints_ref(dof);
+                vector_dofs.insert(dof);
             }
 
             bool any_constraint = false;
@@ -138,7 +138,7 @@ GlobalConstraintsObject::build_point_constraints()
 
             if (full_vector_constraint)
             {
-                const VectorValue<Real> global_values = rotation * values;
+                const VectorValue<Real> global_values = rotation.transpose() * values;
 
                 for (unsigned int i = 0; i < max_components; ++i)
                 {
@@ -188,7 +188,7 @@ GlobalConstraintsObject::build_point_constraints()
                         {
                             const unsigned int j0 = candidate_dofs[a];
                             const unsigned int j1 = candidate_dofs[b];
-                            const ApecMTensor2Value sub(rotation, j0, j1, eq0, eq1);
+                            const ApecMTensor2Value sub(rotation, eq0, eq1, j0, j1);
                             const Real det = sub.det();
                             const Real abs_det = std::abs(det);
                             if (abs_det > best_det)
@@ -202,7 +202,7 @@ GlobalConstraintsObject::build_point_constraints()
 
                     if (best_det >= tol)
                     {
-                        const ApecMTensor2Value sub(rotation, s0, s1, eq0, eq1);
+                        const ApecMTensor2Value sub(rotation, eq0, eq1, s0, s1);
                         ApecMTensor2Value inv;
                         if (!sub.inverse(inv, tol))
                             continue;
@@ -225,7 +225,7 @@ GlobalConstraintsObject::build_point_constraints()
                                     continue;
                                 if (dofs(j) == libMesh::invalid_uint)
                                     continue;
-                                const Real coeff = -(inv0 * rotation(j, eq0) + inv1 * rotation(j, eq1));
+                                const Real coeff = -(inv0 * rotation(eq0, j) + inv1 * rotation(eq1, j));
                                 entry.row[dofs(j)] = coeff;
                             }
 
@@ -245,14 +245,14 @@ GlobalConstraintsObject::build_point_constraints()
 
             for (unsigned int i = 0; i < max_components; ++i)
             {
-                const VectorValue<Real> column = rotation.column(i);
+                const VectorValue<Real> row(rotation(i, 0), rotation(i, 1), rotation(i, 2));
 
                 const Real constraint_value = values(i);
                 if (std::isnan(constraint_value))
                     continue;
 
                 unsigned int pivot_index = i;
-                Real pivot_coeff = column(pivot_index);
+                Real pivot_coeff = row(pivot_index);
 
                 if (dofs(pivot_index) == libMesh::invalid_uint || std::abs(pivot_coeff) < 1e-12)
                 {
@@ -261,11 +261,11 @@ GlobalConstraintsObject::build_point_constraints()
                     {
                         if (dofs(j) == libMesh::invalid_uint)
                             continue;
-                        const Real abs_coeff = std::abs(column(j));
+                        const Real abs_coeff = std::abs(row(j));
                         if (abs_coeff > best)
                         {
                             best = abs_coeff;
-                            pivot_coeff = column(j);
+                            pivot_coeff = row(j);
                             pivot_index = j;
                         }
                     }
@@ -281,7 +281,7 @@ GlobalConstraintsObject::build_point_constraints()
                         continue;
                     if (dofs(j) == libMesh::invalid_uint)
                         continue;
-                    entry.row[dofs(j)] = -column(j) / pivot_coeff;
+                    entry.row[dofs(j)] = -row(j) / pivot_coeff;
                 }
 
                 entry.value = constraint_value / pivot_coeff;
@@ -294,6 +294,8 @@ GlobalConstraintsObject::build_point_constraints()
 
     for (numeric_index_type k = first_local; k < last_local; ++k)
     {
+        if (vector_dofs.count(k) != 0)
+            continue;
         Real value = node_dof_constraints_ref(k);
         if (!std::isnan(value) && constrained_dofs.count(k) == 0)
         {

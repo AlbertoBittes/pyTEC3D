@@ -233,7 +233,6 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
     switch (type)
     {
     case ElementTypeEnum::SOLID97:
-    case ElementTypeEnum::INFIN111:
         vars = add_av3d_variables();
         {
             auto extra = add_solid97_variables(region);
@@ -241,7 +240,6 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
         }
         break;
     case ElementTypeEnum::SOLID236:
-    case ElementTypeEnum::INFIN112:
         vars = add_av3d_variables();
         {
             auto extra = add_solid236_variables(region);
@@ -249,7 +247,6 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
         }
         break;
     case ElementTypeEnum::PLANE233:
-    case ElementTypeEnum::INFIN110:
         vars = add_av_variables();
         {
             auto extra = add_plane233_variables(keyopts);

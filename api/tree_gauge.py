@@ -255,6 +255,52 @@ class TreeGauge:
         ugrid.GetPointData().AddArray(cotree_arr)
         return info
 
+    @staticmethod
+    def tree_gauge(
+        ugrid: "vtk.vtkUnstructuredGrid",
+        array_name: str = "Az",
+        tree_name: str = "TREE",
+        cotree_name: str = "COTREE",
+    ) -> Dict[str, int]:
+        """
+        Build tree/cotree masks and zero out the tree-marked entries in a PointData array.
+
+        This mirrors the APEC_M.tree_gauge behavior but operates directly on the mesh.
+
+        Args:
+            ugrid: Target mesh to analyze and annotate.
+            array_name: PointData array used to derive constrained midside edges.
+            tree_name: Name for the output tree mask array.
+            cotree_name: Name for the output cotree mask array.
+
+        Returns:
+            Dict[str, int]: Diagnostic info from the tree/cotree build.
+        """
+        arr = ugrid.GetPointData().GetArray(array_name)
+        if arr is None:
+            raise ValueError(f"Array '{array_name}' not found in PointData.")
+        arr_np = vtknp.vtk_to_numpy(arr)
+
+        constrained_corners = TreeGauge.constrained_corners_from_midside_array(
+            ugrid, array_name
+        )
+
+        info = TreeGauge.build_tree_cotree_on_grid(
+            ugrid,
+            constrained_point_ids=constrained_corners,
+            tree_name=tree_name,
+            cotree_name=cotree_name,
+        )
+        print(f"Tree–cotree gauge built. Info: {info}")
+
+        tree_arr = ugrid.GetPointData().GetArray(tree_name)
+        if tree_arr is not None:
+            tree_np = vtknp.vtk_to_numpy(tree_arr)
+            arr_np[tree_np == 1] = 0
+            arr.Modified()
+
+        return info
+
     # ------------------------------
     # Optional: helper to create a forced_cotree_mask from a set of midside ids
     # ------------------------------

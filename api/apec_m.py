@@ -7,24 +7,17 @@ from typing import (
     Any,
     BinaryIO,
     Dict,
-    Iterable,
-    List,
     Optional,
     Sequence,
-    Set,
-    Tuple,
     Union,
 )
 
-import numpy as np
 import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
 
 from tree_gauge import TreeGauge
-from ansys_helper import AnsysHelper
-from selector import Selector
-from mesh_edit import MeshEdit
+from model_edit import ModelEdit
 from binary import Binary
 from excel import Excel
 from solver import Solver
@@ -75,13 +68,10 @@ class APEC_M:
         self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.apec_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_APEC_SETTINGS)
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
-        self.transient_analysis: pd.DataFrame = pd.DataFrame(
-            columns=list(TRANSIENT_ANALYSIS_COLUMNS_TYPES.keys())
-        )
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
-        self.cli: Solver = Solver(self)
+        self.solver: Solver = Solver(self)
 
     #
     #
@@ -104,7 +94,7 @@ class APEC_M:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
-        self.mesh = MeshEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
+        self.mesh = ModelEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
         mesh_path = os.fspath(vtk_file_path)
         self.jobname = os.path.splitext(os.path.basename(mesh_path))[0]
@@ -148,33 +138,16 @@ class APEC_M:
 
         # Remove arrays listed in ARRAYS_TO_REMOVE using safe_remove_array
         for arr in ARRAYS_TO_REMOVE:
-            MeshEdit.safe_remove_array(self.mesh, arr)
+            ModelEdit.remove_array(self.mesh, arr)
 
         # Define the output file name
         if output_file is None:
             output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
 
         # Write the unstructured grid to the .vtu file
-        MeshEdit.save_mesh(self.mesh, output_file, binary=True)
+        ModelEdit.save_mesh(self.mesh, output_file, binary=True)
 
         print(f"Mesh saved to '{output_file}'.")
-
-    #
-    #
-    #
-    #
-    #
-    #  Methods for CLI interaction with solver (not used or tested yet).
-    #
-    #
-    #
-    #
-    #
-    def get_cli(self) -> Solver:
-        """
-        Return the CLI helper attached to this instance.
-        """
-        return self.cli
 
     #
     #
@@ -237,107 +210,14 @@ class APEC_M:
         processing_info = SHEET_PROCESSING_MAP[sheet_name]
         print(f"Reading sheet '{sheet_name}' from '{excel_file}'...")
         if isinstance(processing_info, str):
-            func = getattr(self, processing_info)
+            func = getattr(Excel, processing_info)
             result = func(excel_file, sheet_name)
             if result is not None:
                 setattr(self, sheet_name, result)
         elif isinstance(processing_info, tuple):
             method_name, data_type = processing_info
-            func = getattr(self, method_name)
-            func(excel_file, sheet_name, data_type)
-
-    def update_vtk_grid_from_excel(
-        self,
-        excel_file: Union[str, PathLike[str]],
-        sheet_name: str,
-        data_type: Optional[str] = None,
-    ) -> None:
-        """
-        Load a sheet from Excel and write values into the mesh CellData/PointData.
-
-        Mirrors `ExcelIOHelper.update_vtk_grid_from_excel`, reading `sheet_name` and
-        writing into the VTK arrays specified there. If `data_type` is None, the sheet
-        name is used to decide whether to update cell or point data.
-
-        Args:
-            excel_file: Path to the Excel file.
-            sheet_name: Sheet containing the grid data.
-            data_type: Target VTK data type ('elem' or 'node'); defaults to sheet name.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If `data_type` is invalid or the sheet is missing required columns.
-            FileNotFoundError: If the Excel file is missing.
-        """
-        Excel.update_vtk_grid_from_excel(self.mesh, excel_file, sheet_name, data_type)
-
-    def read_excel_df(
-        self, excel_file: Union[str, PathLike[str]], sheet_name: str
-    ) -> Optional[pd.DataFrame]:
-        """
-        Read a sheet into a DataFrame with column validation.
-
-        Behaves like `ExcelIOHelper.read_excel_df`, ensuring columns match the expected
-        schema defined in `DEFAULT_COLUMNS_ATTRIBUTES_TYPES` and coercing types.
-
-        Args:
-            excel_file: Path to the Excel file.
-            sheet_name: Sheet name to parse.
-
-        Returns:
-            Optional[pd.DataFrame]: Parsed DataFrame or None if missing.
-
-        Raises:
-            FileNotFoundError: If the Excel file is missing.
-            ValueError: If the sheet is not found or columns do not match expectations.
-        """
-        return Excel.read_excel_df(excel_file, sheet_name)
-
-    def read_excel_dict(
-        self, excel_file: Union[str, PathLike[str]], sheet_name: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Read a sheet into a dictionary with key/type validation.
-
-        Behaves like `ExcelIOHelper.read_excel_dict`, ensuring 'SETTING'/'VALUE' columns
-        exist, keys match the expected schema, and values are coerced to the declared types.
-
-        Args:
-            excel_file: Path to the Excel file.
-            sheet_name: Sheet name to parse.
-
-        Returns:
-            Optional[Dict[str, Any]]: Parsed dictionary or None if missing.
-
-        Raises:
-            FileNotFoundError: If the Excel file is missing.
-            ValueError: If the sheet is missing, malformed, or contains invalid keys.
-        """
-        return Excel.read_excel_dict(excel_file, sheet_name)
-
-    def write_excel_cell_point_data(
-        self, output_excel_file: Union[str, PathLike[str]], data_type: str = "elem"
-    ) -> None:
-        """
-        Export loads/boundary conditions to Excel, one sheet per data type.
-
-        Mirrors `ExcelIOHelper.write_excel_cell_point_data`, flattening the structured
-        load/bc array into a DataFrame with columns `vtk_id`, `label`, `component`, `value`
-        and writing it to `output_excel_file` under the sheet `data_type`.
-
-        Args:
-            output_excel_file: Destination Excel path.
-            data_type: 'elem' or 'node'.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If `data_type` is invalid.
-        """
-        Excel.write_excel_cell_point_data(self.mesh, output_excel_file, data_type)
+            func = getattr(Excel, method_name)
+            func(self.mesh, excel_file, sheet_name, data_type)
 
     #
     #
@@ -537,52 +417,6 @@ class APEC_M:
             ],
         )
 
-    def generate_transient_analysis(self) -> None:
-        """
-        Generates and writes load steps for transient analysis based on the rows in self.transient_analysis.
-
-        For each row in the transient_analysis DataFrame:
-            - Updates self.time_parameters with the values from the current row.
-            - If a valid 'load_step_input_file' is provided, reads the corresponding Excel file and updates
-              materials, real_constants, solver_settings, point_data, and cell_data using EXCEL_LOAD_STEP_LABELS.
-            - Writes the current load step data to a binary file inside the input folder.
-            - Prints progress and warnings for missing input files.
-
-        Side Effects:
-            - Updates self.time_parameters for each load step.
-            - Reads and processes Excel files for each load step if provided.
-            - Writes binary files for each load step inside the input folder.
-            - Prints progress information to the console.
-
-        Returns:
-            None
-        """
-        for idx, row in self.transient_analysis.iterrows():
-            # Step 1: Update self.time_parameters with the values from the current row
-            for column in DEFAULT_TIME_PARAMETERS.keys():
-                if column in row:
-                    self.time_parameters[column] = row[column]
-
-            # Only read Excel if load_step_input_file is provided and not empty/NaN/"nan"
-            input_file = row.get("load_step_input_file", None)
-            if (
-                input_file
-                and pd.notna(input_file)
-                and str(input_file).strip()
-                and str(input_file).strip().lower() != "nan"
-            ):
-                self.read_excel(
-                    input_file,
-                    EXCEL_LOAD_STEP_LABELS,
-                )
-            else:
-                print(
-                    f"Skipping Excel read for load step {idx + 1}: no input file provided."
-                )
-
-            self.write_time_step(idx + 1)
-            self.write_loads_bcs(idx + 1)
-
     def _write_label_to_binary(self, binary_file: BinaryIO, label: str) -> None:
         """
         Writes a specific label to the binary file using the appropriate function.
@@ -597,211 +431,14 @@ class APEC_M:
         if label not in WRITING_FUNCTIONS_MAP:
             raise ValueError(f"Unrecognized label '{label}'.")
 
-        # Get the function name from the map
-        function_name = WRITING_FUNCTIONS_MAP[label]
-
         # Always call the function with (mesh or data, binary_file, label)
         if label in ["elem", "node"]:
-            getattr(self, function_name)(self.mesh, binary_file, label)
+            Binary.write_numpy_array_to_binary(self.mesh, binary_file, label)
         else:
             data = getattr(self, label, None)
             if data is None:
                 raise ValueError(f"Data for '{label}' is missing.")
-            getattr(self, function_name)(data, binary_file, label)
-
-    # Wrapper methods for binary output functions to match WRITING_FUNCTIONS_MAP
-    def _write_to_binary(
-        self, settings: Any, binary_file: BinaryIO, label: str
-    ) -> None:
-        """
-        Wrapper dispatch to BinaryHelper.write_to_binary.
-
-        Args:
-            settings: Data payload to serialize.
-            binary_file: Open binary stream.
-            label: Label used for serialization.
-        """
-        Binary.write_to_binary(settings, binary_file, label)
-
-    def _write_numpy_array_to_binary(
-        self, mesh: vtk.vtkUnstructuredGrid, binary_file: BinaryIO, label: str
-    ) -> None:
-        """
-        Wrapper dispatch to BinaryHelper.write_numpy_array_to_binary.
-
-        Args:
-            mesh: Mesh providing point/cell data to serialize.
-            binary_file: Open binary stream.
-            label: 'elem' or 'node'.
-        """
-        Binary.write_numpy_array_to_binary(mesh, binary_file, label)
-
-    #
-    #
-    #
-    #
-    # Selection methods
-    #
-    #
-    #
-    #
-    #
-
-    def select(
-        self,
-        array_name: str,
-        value: Any,
-        component: Union[int, str] = 0,
-        type: str = "node",
-        mode: str = "s",
-    ) -> None:
-        """
-        Select cells or points whose array values match the provided criteria.
-
-        Mirrors `Selector.select` and supports multiple matching strategies:
-            - Scalar equality for single values.
-            - Inclusive range checks for tuples of length 2 (low, high).
-            - Membership tests for sets.
-            - Magnitude checks for vector arrays when `component='magnitude'`.
-
-        The resulting boolean mask is written into `selection_cell` or `selection_point`
-        (created if missing). How the new mask combines with the existing selection is
-        controlled by `mode`:
-            - 's' (set): replace the selection with the new mask.
-            - 'a' (add): logical OR with the existing selection.
-            - 'r' (reselect): logical AND with the existing selection.
-            - 'u' (unselect): remove matches from the existing selection.
-
-        Args:
-            array_name: Data array used for filtering.
-            value: Target value(s); scalar for equality, tuple(len=2) for range, set for membership.
-            component: Component index or 'magnitude' for vector arrays.
-            type: 'elem' or 'node' selection mask to update.
-            mode: Selection mode — 's' replace, 'a' union, 'r' intersection, 'u' subtraction.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If the target array is missing, mode is invalid, or a range tuple is malformed.
-        """
-        Selector.select(self.mesh, array_name, value, component, type, mode)
-
-    def select_pos(
-        self,
-        axis: int,
-        value: Any,
-        mode: str = "s",
-        coordinate_system: Optional["CoordinateSystem"] = None,
-        type: str = "node",
-    ) -> None:
-        """
-        Select points or cell centroids based on their position along a given axis.
-
-        Uses `Selector.select_pos` to update `selection_point` using the same value semantics
-        and combination modes as `select`.
-
-        Args:
-            axis: Coordinate axis (0,1,2).
-            value: Target value(s) (scalar, tuple for range, set for membership).
-            mode: Selection mode ('s','a','r','u').
-            coordinate_system: Optional coordinate system for local coordinates.
-            type: 'elem' or 'node' selection mask to update.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If the mode is invalid or the range tuple length is not 2.
-        """
-        Selector.select_pos(self.mesh, axis, value, mode, coordinate_system, type)
-
-    def select_all(self, type: Optional[str] = None) -> None:
-        """
-        Mark all cells and/or points as selected.
-
-        Args:
-            type: 'elem', 'node', or None for both.
-
-        Returns:
-            None
-        """
-        Selector.select_all(self.mesh, type)
-
-    def unselect_all(self, type: Optional[str] = None) -> None:
-        """
-        Clear selections for cells and/or points.
-
-        Args:
-            type: 'elem', 'node', or None for both.
-
-        Returns:
-            None
-        """
-        Selector.unselect_all(self.mesh, type)
-
-    def nsel_ext(self) -> None:
-        """
-        Select external nodes of the currently selected cells.
-
-        Sets `selection_point` for nodes on the exterior surface of selected cells using `Selector.nsel_ext`.
-        """
-        Selector.nsel_ext(self.mesh)
-
-    def set_value_on_selection(
-        self,
-        array_name: str,
-        value: Any,
-        component: int = 0,
-        type: str = "node",
-    ) -> None:
-        """
-        Assign a value to all selected cells or points in the given array.
-
-        Args:
-            array_name: Array to modify.
-            value: Value to assign to selected entries.
-            component: Component index for multi-component arrays.
-            type: 'elem' or 'node'.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If the target array is missing.
-        """
-        Selector.set_value_on_selection(self.mesh, array_name, value, component, type)
-
-    def nsle(self, mode: str = "s") -> None:
-        """
-        Select nodes attached to the currently selected cells.
-
-        Args:
-            mode: Combination mode for updating `selection_point` ('s','a','r','u').
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If required selection arrays are missing.
-        """
-        Selector.nsle(self.mesh, mode=mode)
-
-    def esln(self, all_nodes: bool = True, mode: str = "s") -> None:
-        """
-        Select cells based on the current node selection.
-
-        Args:
-            all_nodes: When True, select cells only if all their nodes are selected; otherwise if any node is selected.
-            mode: Combination mode for updating `selection_cell` ('s','a','r','u').
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If required selection arrays are missing.
-        """
-        Selector.esln(self.mesh, all_nodes=all_nodes, mode=mode)
+            Binary.write_to_binary(data, binary_file, label)
 
     #
     #
@@ -825,497 +462,9 @@ class APEC_M:
         print("Plotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
-        RenameSource("Mesh", producer)
+        RenameSource(self.jobname, producer)
         Show(producer)
         Render()
-
-    #
-    #
-    #
-    #
-    #
-    #  ANSYS files processing functions
-    #
-    #
-    #
-    #
-    #
-    def read_bfelist(self, file_path: Union[str, PathLike[str]]) -> None:
-        """
-        Wrapper for AnsysHelpers.read_bfelist to allow getattr and consistent API.
-
-        Args:
-            file_path: Path to the BFELIST file.
-
-        Returns:
-            None
-
-        Raises:
-            FileNotFoundError: If the BFELIST file does not exist.
-            ValueError: If required identifiers are missing in the mesh CellData.
-        """
-        AnsysHelper.read_bfelist(self.mesh, file_path)
-
-    def convert_bfelist(
-        self,
-        bfelist_file: Union[str, PathLike[str]],
-        output_excel_file: Union[str, PathLike[str]],
-    ) -> None:
-        """
-        Wrapper for AnsysHelpers.convert_bfelist to allow getattr and consistent API.
-
-        Args:
-            bfelist_file: Path to the BFELIST file.
-            output_excel_file: Destination Excel file path.
-
-        Returns:
-            None
-
-        Raises:
-            FileNotFoundError: If the BFELIST file does not exist.
-            ValueError: If required identifiers are missing in the mesh CellData.
-        """
-        AnsysHelper.convert_bfelist(self.mesh, bfelist_file, output_excel_file)
-
-    def read_dlist(self, file_path: Union[str, PathLike[str]]) -> None:
-        """
-        Wrapper for AnsysHelpers.read_dlist to allow getattr and consistent API.
-
-        Args:
-            file_path: Path to the DLIST file.
-
-        Returns:
-            None
-
-        Raises:
-            FileNotFoundError: If the DLIST file does not exist.
-            ValueError: If required identifiers are missing in the mesh PointData.
-        """
-        AnsysHelper.read_dlist(self.mesh, file_path)
-
-    def convert_dlist(
-        self,
-        dlist_file: Union[str, PathLike[str]],
-        output_excel_file: Union[str, PathLike[str]],
-    ) -> None:
-        """
-        Wrapper for AnsysHelpers.convert_dlist to allow getattr and consistent API.
-
-        Args:
-            dlist_file: Path to the DLIST file.
-            output_excel_file: Destination Excel file path.
-
-        Returns:
-            None
-
-        Raises:
-            FileNotFoundError: If the DLIST file does not exist.
-            ValueError: If required identifiers are missing in the mesh PointData.
-        """
-        AnsysHelper.convert_dlist(self.mesh, dlist_file, output_excel_file)
-
-    def map_ansys_ids_to_vtk(
-        self, data: "vtk.vtkDataSetAttributes", label: str
-    ) -> np.ndarray:
-        """
-        Wrapper around AnsysHelper.map_data_to_vtk for convenience.
-
-        Args:
-            data: VTK CellData or PointData containing the ANSYS id array.
-            label: Array name to map (e.g., 'ansys_elem_num', 'ansys_node_num').
-
-        Returns:
-            np.ndarray: 2D mapping array [vtk_id, ansys_id].
-        """
-        return AnsysHelper.map_data_to_vtk(data, label)
-
-    #
-    #
-    #
-    #
-    # General grid tools
-    #
-    #
-    #
-    def compute_and_store_cell_centroids(self) -> None:
-        """
-        Computes centroids for all cells and stores them in a VTK array 'cell_centroids' in CellData.
-
-        Returns:
-            None
-        """
-        MeshEdit.store_cell_centroids(self.mesh)
-
-    def compute_and_store_cell_volumes(self, array_name: str = "cell_volume") -> None:
-        """
-        Computes the volume (for 3D cells) or area (for 2D cells) for each cell in self.mesh,
-        and stores the result as a cell data array named `array_name`.
-
-        Args:
-            array_name: Name for the output CellData array.
-
-        Returns:
-            None
-        """
-        MeshEdit.store_cell_volumes(self.mesh, array_name=array_name)
-        print(
-            f"Cell volumes/areas computed and stored in CellData array '{array_name}'."
-        )
-
-    def map_local_coordinates(
-        self,
-        coordinate_system: "CoordinateSystem",
-        location: str = "node",
-        selected_only: bool = False,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Map mesh points or cell centroids into the provided coordinate system.
-
-        Args:
-            coordinate_system: Coordinate system used for local coordinates.
-            location: "node" to map point IDs or "elem" to map cell IDs.
-            selected_only: When True, use selection arrays to filter IDs.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: (local_coordinates, ids)
-        """
-        return MeshEdit.to_local_coordinates(
-            self.mesh,
-            coordinate_system,
-            location=location,
-            selected_only=selected_only,
-        )
-
-    def build_toroidal_projection_map(
-        self,
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> np.ndarray:
-        """
-        Build a toroidal projection map from a 2D input mesh to self.mesh.
-
-        Args:
-            input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            location: "node" to map point IDs or "elem" to map cell IDs.
-            tolerance: Absolute tolerance for matching radial distance and axial coordinate.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-
-        Returns:
-            np.ndarray: 2D array with input IDs in column 0 and mapped target IDs in the remaining columns.
-                If a selection array exists on the input mesh for the chosen location,
-                only selected IDs are included.
-        """
-        return MeshEdit.build_toroidal_projection_map(
-            input_mesh,
-            self.mesh,
-            location=location,
-            tolerance=tolerance,
-            n_slices=n_slices,
-            coordinate_system=coordinate_system,
-        )
-
-    def toroidal_projection(
-        self,
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        input_array_name: str,
-        input_component: int,
-        target_array_name: str,
-        target_component: int = 0,
-        projection_map: Optional[np.ndarray] = None,
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> None:
-        """
-        Project a 2D scalar component onto self.mesh.
-
-        Args:
-            input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array.
-            target_array_name: Name of the target array on self.mesh.
-            projection_map: Optional precomputed toroidal projection map.
-            location: "node" to map point data or "elem" to map cell data.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-            target_component: Component index to write for scalar copy mode.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-
-        Returns:
-            None
-        """
-        MeshEdit.toroidal_projection(
-            input_mesh,
-            input_array_name,
-            input_component,
-            self.mesh,
-            target_array_name,
-            projection_map=projection_map,
-            location=location,
-            tolerance=tolerance,
-            n_slices=n_slices,
-            coordinate_system=coordinate_system,
-            target_component=target_component,
-        )
-
-    def toroidal_projection_inverse(
-        self,
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        input_array_name: str,
-        input_component: int,
-        target_array_name: str,
-        target_component: int = 0,
-        projection_map: Optional[np.ndarray] = None,
-        location: str = "node",
-        tolerance: float = 1e-6,
-        n_slices: int = 1,
-        coordinate_system: Optional["CoordinateSystem"] = None,
-    ) -> None:
-        """
-        Average scalar fields from a 3D input mesh onto self.mesh.
-
-        Args:
-            input_mesh: 3D unstructured grid providing the field.
-            input_array_name: Name of the input array on the input mesh.
-            input_component: Component index to read from the input array.
-            target_array_name: Name of the target array on self.mesh.
-            target_component: Component index to write for scalar targets.
-            projection_map: Optional precomputed toroidal projection map.
-            location: "node" to map point data or "elem" to map cell data.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-            n_slices: Minimum number of corresponding target IDs per input ID.
-
-        Returns:
-            None
-        """
-        MeshEdit.toroidal_projection_inverse(
-            input_mesh,
-            input_array_name,
-            input_component,
-            self.mesh,
-            target_array_name,
-            target_component=target_component,
-            projection_map=projection_map,
-            location=location,
-            tolerance=tolerance,
-            n_slices=n_slices,
-            coordinate_system=coordinate_system,
-        )
-
-    def remove_array(self, array_name: str) -> None:
-        """
-        Removes an array from CellData or PointData using MeshEdits.safe_remove_array.
-
-        Args:
-            array_name: The name of the array to remove.
-
-        Returns:
-            None
-        """
-        MeshEdit.safe_remove_array(self.mesh, array_name)
-
-    def add_midside_nodes_mask_array(
-        self, array_name: str = "MidsideNodes"
-    ) -> "vtk.vtkIntArray":
-        """
-        Add a midside-node mask array to PointData (1 at midside nodes, 0 otherwise).
-
-        Args:
-            array_name: Name for the mask array (default "MidsideNodes").
-
-        Returns:
-            vtkIntArray: Added mask array.
-        """
-        return TreeGauge.add_midside_nodes_mask_array(self.mesh, array_name=array_name)
-
-    def add_array_to_grid(
-        self,
-        name: str,
-        location: str = "node",
-        components: int = 1,
-        fill: Any = 0,
-        dtype: Optional[int] = vtk.VTK_DOUBLE,
-        values: Optional[np.ndarray] = None,
-    ) -> "vtk.vtkDataArray":
-        """
-        Wrapper to add an array to the mesh via MeshEdit for a consistent API.
-
-        Args:
-            name: Array name.
-            location: 'elem' or 'node'.
-            components: Number of components.
-            fill: Default fill value if no values provided.
-            dtype: VTK dtype for the array.
-            values: Explicit values to assign.
-
-        Returns:
-            vtkDataArray: The created or existing array.
-        """
-        return MeshEdit.add_array_to_grid(
-            self.mesh,
-            name=name,
-            location=location,
-            components=components,
-            fill=fill,
-            dtype=dtype,
-            values=values,
-        )
-
-    def initialize_arrays(
-        self, arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None
-    ) -> None:
-        """
-        Initialize required arrays on the mesh (CellData/PointData).
-
-        Args:
-            arrays_to_init: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
-        """
-        MeshEdit.initialize_vtk_arrays(self.mesh, arrays_to_init)
-
-    def reset_arrays(
-        self, arrays_to_reset: Optional[Dict[str, Dict[str, Any]]] = None
-    ) -> None:
-        """
-        Reset arrays on the mesh to their default fill values.
-
-        Args:
-            arrays_to_reset: Custom array spec; defaults to constants.VTK_ARRAYS_TO_INIT when None.
-        """
-        MeshEdit.reset_vtk_arrays_to_default(self.mesh, arrays_to_reset)
-
-    def validate_dataframe_with_vtk_data(
-        self, df: pd.DataFrame, array_name: str
-    ) -> None:
-        """
-        Validate a DataFrame's first column against a VTK array for uniqueness and coverage.
-
-        Args:
-            df: DataFrame whose first column will be validated.
-            array_name: VTK array name to validate against (CellData).
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If validation fails or the VTK array is missing.
-        """
-        MeshEdit.validate_dataframe_with_vtk_data(
-            self.mesh.GetCellData(), df, array_name
-        )
-
-    def add_component_from_selection(
-        self, component_name: str, type: str = "elem"
-    ) -> "vtk.vtkDataArray":
-        """
-        Create a component mask array from the current selection for cells/points.
-
-        Args:
-            component_name: Name for the component array to create.
-            type: 'elem' to use CellData selection, 'node' for PointData selection.
-
-        Returns:
-            vtkDataArray: The created component mask array.
-
-        Raises:
-            ValueError: If selection arrays are missing or type is invalid.
-        """
-        return MeshEdit.add_component(self.mesh, component_name, type)
-
-    def update_vtk_grid_from_dataframe(
-        self, vtk_data: "vtk.vtkDataSetAttributes", df: pd.DataFrame
-    ) -> None:
-        """
-        Wrapper for MeshEdit.update_vtk_grid to write DataFrame values into arrays.
-
-        Args:
-            vtk_data: Target VTK DataSetAttributes (CellData or PointData).
-            df: DataFrame with columns 'vtk_id', 'label', 'component', 'value'.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If any referenced VTK array is missing.
-        """
-        MeshEdit.update_vtk_grid(vtk_data, df)
-
-    #
-    #
-    #
-    #
-    #
-    #
-    # caller for tree-cotree gauge helper
-    #
-    #
-    #
-    #
-    #
-    def tree_gauge(
-        self,
-        array_name: str = "Az",
-        tree_name: str = "TREE",
-        cotree_name: str = "COTREE",
-    ) -> Dict[str, int]:
-        """
-        Build the tree–cotree decomposition for midside edges in the mesh using TreeGaugeHelper.
-        It analyzes the specified array in PointData (default "Az") to determine constrained edges
-        (where the array value is not NaN). These are used to generate a set of constrained
-        corner nodes, which are passed to the tree-cotree builder.
-
-        After building the tree–cotree decomposition, all nodes with value 1 in the tree mask array
-        (tree_name, default "TREE") will have their value in the selected array (array_name, default "Az") set to 0.
-
-        Args:
-            array_name: Name of the PointData array to use for constrained edges (default "Az").
-            tree_name: Name for the output tree mask array (default "TREE").
-            cotree_name: Name for the output cotree mask array (default "COTREE").
-
-        Returns:
-            Dict[str, int]: Information about the tree/cotree decomposition (from TreeGaugeHelper).
-
-        Raises:
-            ValueError: If required array (array_name) is missing in PointData.
-
-        Side Effects:
-            Adds/updates tree and cotree mask arrays in mesh PointData.
-            Sets values in array_name to 0 for all nodes with value 1 in tree_name.
-            Prints summary information about the decomposition.
-        """
-        arr = self.mesh.GetPointData().GetArray(array_name)
-        if arr is None:
-            raise ValueError(f"Array '{array_name}' not found in PointData.")
-        arr_np = vtknp.vtk_to_numpy(arr)
-        npts = self.mesh.GetNumberOfPoints()
-
-        # Instead of adding constrained Az to forced_cotree_mask,
-        # generate constrained corner node set from Az and pass to tree-cotree builder
-        constrained_corners = TreeGauge.constrained_corners_from_midside_array(
-            self.mesh, array_name
-        )
-
-        info = TreeGauge.build_tree_cotree_on_grid(
-            self.mesh,
-            constrained_point_ids=constrained_corners,
-            tree_name=tree_name,
-            cotree_name=cotree_name,
-        )
-        print(f"Tree–cotree gauge built. Info: {info}")
-
-        # Set value in array_name to 0 for all nodes with value 1 in tree_name
-        tree_arr = self.mesh.GetPointData().GetArray(tree_name)
-        if tree_arr is not None:
-            tree_np = vtknp.vtk_to_numpy(tree_arr)
-            arr_np[tree_np == 1] = 0
-            arr.Modified()
-
-        return info
 
 
 # Only execute this block if the script is run directly
