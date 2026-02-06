@@ -323,6 +323,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
     auto couplings_object = repo->get_object<DofCouplingsObject>();
 
+    unsigned int proc_id = mesh->comm().rank();
+
     const auto &entries = couplings_object->get_couplings();
     if (entries.empty())
         return constraints;
@@ -383,7 +385,6 @@ GlobalConstraintsObject::build_coupling_constraints()
             const Node *node_first = mesh->query_node_ptr(pair.first);
             const Node *node_second = mesh->query_node_ptr(pair.second);
 
-            unsigned int proc_id = mesh->comm().rank();
             if (node_second)
             {
                 if (node_second->processor_id() != proc_id)

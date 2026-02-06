@@ -20,6 +20,7 @@ namespace
         pairs.push_back(candidate);
         return true;
     }
+
 }
 
 AugmentSparsityOnNodes::AugmentSparsityOnNodes(ApecMMesh &mesh)
@@ -45,9 +46,10 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
     std::unordered_map<unsigned int, dof_id_type> node_to_elem;
     for (const auto *elem : _mesh.element_ptr_range())
     {
-        if (!elem || elem->type() != NODEELEM || elem->n_nodes() == 0)
+        if (!elem)
             continue;
-        node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(0)), elem->id());
+        for (unsigned int i = 0; i < elem->n_nodes(); ++i)
+            node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(i)), elem->id());
     }
 
     for (const auto &node_pair : node_pairs)
@@ -57,7 +59,9 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
         if (master_elem_it == node_to_elem.end() || slave_elem_it == node_to_elem.end())
             continue;
 
-        add_pair(elem_pairs, master_elem_it->second, slave_elem_it->second);
+        if (!add_pair(elem_pairs, master_elem_it->second, slave_elem_it->second))
+            continue;
+
         slave_to_master_elem.emplace(slave_elem_it->second, master_elem_it->second);
     }
 }
@@ -74,7 +78,7 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
         if (!elem)
             continue;
 
-        if (elem->type() != NODEELEM || elem->processor_id() != p)
+        if (elem->processor_id() != p)
             continue;
 
         const auto master_it = slave_to_master_elem.find(elem->id());
