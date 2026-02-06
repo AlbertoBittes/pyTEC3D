@@ -120,6 +120,13 @@ void AssemblerLinear::assemble()
             continue;
         dof_map.dof_indices(elem, dof_indices);
 
+        // for (int n = 0; n < elem->n_nodes(); n++)
+        // {
+        //     const auto node_id = elem->node_id(n);
+        //     auto node_ptr = elem->node_ptr(n);
+        //     dof_id_type dof_id = node_ptr->dof_number(system.number(), 0, 0);
+        //     int a = 1;
+        // }
         BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
         auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];

@@ -1,6 +1,6 @@
 import math
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Sequence, TypeVar, cast
+from typing import Any, Optional, Sequence, Type, TypeVar, cast
 
 import numpy as np
 
@@ -43,6 +43,14 @@ class CoordinateSystem(ABC):
         self, local_components: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
         return local_components @ self._local_to_global_cart.T
+
+    @staticmethod
+    def _deg_to_rad(values: np.ndarray) -> np.ndarray:
+        return np.deg2rad(values)
+
+    @staticmethod
+    def _rad_to_deg(values: np.ndarray) -> np.ndarray:
+        return np.rad2deg(values)
 
     @staticmethod
     def _normalize_or_error(vec: np.ndarray, error_message: str) -> np.ndarray:
@@ -94,10 +102,9 @@ class CoordinateSystem(ABC):
                 return -1.0
             return value
 
-        to_rad = math.pi / 180.0
-        angle_xy = angle_xy_deg * to_rad
-        angle_yz = angle_yz_deg * to_rad
-        angle_xz = angle_xz_deg * to_rad
+        angle_xy, angle_yz, angle_xz = CoordinateSystem._deg_to_rad(
+            np.array([angle_xy_deg, angle_yz_deg, angle_xz_deg], dtype=float)
+        )
 
         c1 = snap_trig_value(math.cos(angle_xy))
         s1 = snap_trig_value(math.sin(angle_xy))
@@ -120,7 +127,7 @@ class CoordinateSystem(ABC):
 
     @classmethod
     def from_angles(
-        cls: type[TCoordinateSystem],
+        cls: Type[TCoordinateSystem],
         origin: Sequence[float],
         angles_deg: Sequence[float],
     ) -> TCoordinateSystem:
@@ -130,7 +137,7 @@ class CoordinateSystem(ABC):
 
     @classmethod
     def from_points(
-        cls: type[TCoordinateSystem],
+        cls: Type[TCoordinateSystem],
         origin: Sequence[float],
         nxax: Sequence[float],
         nxypl: Sequence[float],
@@ -269,11 +276,12 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         theta = np.zeros_like(r)
         nonzero = r > 0.0
         theta[nonzero] = np.arctan2(y[nonzero], x[nonzero])
-        return np.stack((r, theta, local[:, 2]), axis=1)
+        theta_deg = CoordinateSystem._rad_to_deg(theta)
+        return np.stack((r, theta_deg, local[:, 2]), axis=1)
 
     def to_global(self, local_points: np.ndarray) -> np.ndarray:
         r = local_points[:, 0]
-        theta = local_points[:, 1]
+        theta = CoordinateSystem._deg_to_rad(local_points[:, 1])
         z = local_points[:, 2]
         x = r * np.cos(theta)
         y = r * np.sin(theta)
@@ -413,12 +421,14 @@ class SphericalCoordinateSystem(CoordinateSystem):
         nonzero = r > 0.0
         theta[nonzero] = np.arccos(z[nonzero] / r[nonzero])
         phi[nonzero] = np.arctan2(y[nonzero], x[nonzero])
-        return np.stack((r, theta, phi), axis=1)
+        theta_deg = CoordinateSystem._rad_to_deg(theta)
+        phi_deg = CoordinateSystem._rad_to_deg(phi)
+        return np.stack((r, theta_deg, phi_deg), axis=1)
 
     def to_global(self, local_points: np.ndarray) -> np.ndarray:
         r = local_points[:, 0]
-        theta = local_points[:, 1]
-        phi = local_points[:, 2]
+        theta = CoordinateSystem._deg_to_rad(local_points[:, 1])
+        phi = CoordinateSystem._deg_to_rad(local_points[:, 2])
         sin_theta = np.sin(theta)
         x = r * sin_theta * np.cos(phi)
         y = r * sin_theta * np.sin(phi)

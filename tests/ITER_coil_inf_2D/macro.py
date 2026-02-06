@@ -19,12 +19,8 @@ apec.read_excel("input_template.xlsx")
 
 apec.write_model_data()
 
-Selector.select_pos(apec.mesh, 0, 0)
+Selector.nsel_ext(apec.mesh, "s")
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
-Selector.select(apec.mesh, "BASE_INF_NODES", 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
-
-b = 2**0.5 / 2
 
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.5

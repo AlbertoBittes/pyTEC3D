@@ -492,6 +492,29 @@ class ModelEdit:
         for name, info in arrays_to_init.items():
             data_obj = cell_data if info["location"] == "elem" else point_data
             vtk_array = data_obj.GetArray(name)
+            if vtk_array is not None:
+                expected_components = max(1, info["components"])
+                expected_dtype = info.get("dtype", vtk.VTK_DOUBLE)
+                if (
+                    vtk_array.GetNumberOfComponents() != expected_components
+                    or (
+                        expected_dtype is not None
+                        and vtk_array.GetDataType() != expected_dtype
+                    )
+                ):
+                    ModelEdit.remove_array(
+                        mesh, name, location=info["location"]
+                    )
+                    ModelEdit.add_array_to_grid(
+                        mesh,
+                        name=name,
+                        location=info["location"],
+                        components=expected_components,
+                        fill=info.get("fill", 0),
+                        dtype=expected_dtype,
+                        replace=True,
+                    )
+                    continue
             if vtk_array is not None and "fill" in info:
                 num = (
                     mesh.GetNumberOfCells()

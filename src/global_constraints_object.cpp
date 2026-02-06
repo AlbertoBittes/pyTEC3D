@@ -383,16 +383,19 @@ GlobalConstraintsObject::build_coupling_constraints()
             const Node *node_first = mesh->query_node_ptr(pair.first);
             const Node *node_second = mesh->query_node_ptr(pair.second);
 
-            if (!node_first && node_second)
+            unsigned int proc_id = mesh->comm().rank();
+            if (node_second)
+            {
+                if (node_second->processor_id() != proc_id)
+                    continue;
+            }
+            else
+                continue;
+
+            if (!node_first)
                 libmesh_error_msg("Coupling constraint: slave node " << pair.second
                                                                      << " found without master node " << pair.first
                                                                      << ".");
-            if (!node_second)
-                continue;
-
-            unsigned int proc_id = mesh->comm().rank();
-            if (node_second->processor_id() != proc_id)
-                continue;
 
             const auto coord_first = mesh->node_coordinate_system(*node_first);
             const auto coord_second = mesh->node_coordinate_system(*node_second);
@@ -441,8 +444,8 @@ GlobalConstraintsObject::build_coupling_constraints()
                 const Point &point_first = *node_first;
                 const Point &point_second = *node_second;
                 TensorValue<Real> transform =
-                    coord_second.global_to_local_rotation(point_second) *
-                    coord_first.local_to_global_rotation(point_first);
+                    coord_second.local_to_global_rotation(point_second) *
+                    coord_first.global_to_local_rotation(point_first);
 
                 for (unsigned int i = 0; i < 3; ++i)
                 {

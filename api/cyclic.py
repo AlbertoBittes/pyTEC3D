@@ -1,6 +1,7 @@
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, Sequence, TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
 
@@ -404,7 +405,8 @@ class Cyclic:
         theta_rotation: float,
         array_name: str = "CP_0",
         tolerance: float = 1e-6,
-    ) -> None:
+        variables: Optional[Sequence[str]] = None,
+    ) -> Optional[pd.DataFrame]:
         """
         Assign incremental pair IDs for selected points based on rotated positions.
 
@@ -416,17 +418,27 @@ class Cyclic:
         Args:
             mesh: VTK unstructured grid to operate on.
             coordinate_system: Cylindrical coordinate system used for the rotation.
-            theta_rotation: Rotation (radians) added to the local theta coordinate.
+            theta_rotation: Rotation (degrees) added to the local theta coordinate.
             array_name: Point data array name to store pair IDs (default "CP_0").
             tolerance: Absolute tolerance for theta == 0 check (default 1e-6).
+            variables: Optional sequence of DOF variable names to couple.
 
         Returns:
-            None
+            Optional[pd.DataFrame]: DataFrame with columns ["cp_id", "variable"] when
+                variables are provided, otherwise None.
         """
         if coordinate_system.type != "cylindrical":
             raise ValueError("coordinate_system must be cylindrical.")
         if tolerance <= 0:
             raise ValueError("tolerance must be positive.")
+
+        variables_list: Optional[list[str]]
+        if variables is None:
+            variables_list = None
+        elif isinstance(variables, str):
+            variables_list = [variables]
+        else:
+            variables_list = [str(var) for var in variables]
 
         Selector.ensure_selection_arrays(mesh)
 
@@ -434,7 +446,11 @@ class Cyclic:
         selection_array = point_data.GetArray("selection_point")
         selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
         if not np.any(selection_mask):
-            return
+            if variables_list is None:
+                return None
+            return pd.DataFrame(columns=["cp_id", "variable"]).astype(
+                {"cp_id": int, "variable": str}
+            )
 
         points = mesh.GetPoints()
         coords = vtknp.vtk_to_numpy(points.GetData())
@@ -460,6 +476,7 @@ class Cyclic:
         while next_value in existing_values:
             next_value += 1
 
+        new_cp_ids: list[int] = []
         assigned = set()
         for src_id, target_coord in zip(selected_ids, rotated_coords):
             if src_id in assigned or cp_np[src_id] != 0:
@@ -470,13 +487,23 @@ class Cyclic:
             if tgt_id in assigned or cp_np[tgt_id] != 0:
                 continue
 
-            cp_np[src_id] = next_value
-            cp_np[tgt_id] = next_value
+            cp_id = next_value
+            cp_np[src_id] = cp_id
+            cp_np[tgt_id] = cp_id
             assigned.add(src_id)
             assigned.add(tgt_id)
-            existing_values.add(next_value)
+            existing_values.add(cp_id)
+            new_cp_ids.append(cp_id)
             next_value += 1
             while next_value in existing_values:
                 next_value += 1
 
         cp_array.Modified()
+
+        if variables_list is None:
+            return None
+
+        rows = [(cp_id, var) for cp_id in new_cp_ids for var in variables_list]
+        return pd.DataFrame(rows, columns=["cp_id", "variable"]).astype(
+            {"cp_id": int, "variable": str}
+        )

@@ -132,14 +132,20 @@
         <DataArray type="Float64" Name="V" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
         </DataArray>
-        <DataArray type="Float64" Name="E" NumberOfComponents="3" format="binary" RangeMin="3.1622776601683796e+149" RangeMax="NaN">
-          AQAAAACAAAA4KAAAKwAAAA==eJztxbENAAAIA6B+7tuOjW8YWEjOTmzbtm3btm3btm3btm3b9vsL4ytdqw==
+        <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="47">
+          AQAAAACAAAC0BgAA0QAAAA==eJzN1UcOwjAUANGE3iEECL0ltIRy/9sxHGAWkUDiS28zC9uSLTkMgqCCKmqoo4EmWsHvpo0OuuihjwGGGCHCGDEmmGKGBHMssMQKa2ywxQ57HHBEigwnnHHBFTfkKHDHA0+85Lyh9Ir0qvSa9Lr0hvSmdLuzpfSz9FR6Ij2SnktfS99Jn0rfSI+lF9Kv0m/SL9Lv0m3svY2lP6TPpWfSt9Kf0o/Sy85J+l5690v7/tscpM9KrtOTPpE+Krn+SvpA+kJ6X3pb+lD65894A0L9CNE=
+        </DataArray>
+        <DataArray type="Float64" Name="E" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
+          AQAAAACAAABoDQAAIQAAAA==eJztxbENAAAIA6B+7tuOjT84wkJydmLbtm3bfrmjfHSK
+        </DataArray>
+        <DataArray type="Float64" Name="angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="90">
+          AQAAAACAAAA4KAAAZAAAAA==eJzt1LENhAAQA0GqpJ4vjdKIP9kUI2YqWPmkOw4A+KjfeT2d8EdP09P0ND1NT9PT9DQ9TU/T0/S0tZ41a/voaXqanrbWQ1u7lx6ATWv/cK1nzdo+et5lbR89TU8b7LkBVZpKiw==
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">
-              3.1622776602e+149
+              0
             </Value>
             <Value index="1">
-              -nan
+              90
             </Value>
           </InformationKey>
         </DataArray>
@@ -160,14 +166,14 @@
         <DataArray type="Int64" IdType="1" Name="vtkOriginalCellIds" format="binary" RangeMin="0" RangeMax="671">
           AQAAAACAAAAAFQAAIAQAAA==eJw118MWGAYARcHYtm3btm3btm3btm21sc02tm130cnbzCe8cwME+H8BGYiBGYRBGYzBGYIhGYqhGYZhGY7hGYERGYmRGYVRGY3RGYMxGYuxGYdxGY/xmYAJmYiJmYRJmYzJmYIpmYqpmYZpmY7pmYEZmYmZmYVZmY3ZmYM5mYu5mYd5mY/5WYAFWYiFWYRFWYzFWYIlWYqlWYZlWY7lWYEVWYmVWYVVWY3VWYM1WYu1WYd1WY/12YAN2YiN2YRN2YzN2YIt2Yqt2YZt2Y7t2YEd2Ymd2YVd2Y3d2YM92Yu92Yd92Y/9OYADOYiDOYRDOYzDOYIjOYqjOYZjOY7jOYETOYmTOYVTOY3TOYMzOYuzOYdzOY/zuYALuYiLuYRLuYzLuYIruYqruYZruY7ruYEbuYmbuYVbuY3buYM7uYu7uYd7uY9/8W/u5wEe5CEe5hEe5TEe5wme5Cme5hme5Tme5wVe5CVe5hVe5TX+w395nTd4k7d4m3d4l/d4nw/4kI/4mE/4lM/4nC/4kq/4mm/4lu/4nh/4kZ/4mV/4ld/4nT/4k7/4m3+OPyADMTCDMCiDMThDMCRDMTTDMCzDMTwjMCIjMTKjMCqjMTpjMCZjMTbjMC7jMT4TMCETMTGTMCmTMTlTMCVTMTXTMC3TMT0zMCMzMTOzMCuzMTtzMCdzMTfzMC/zMT8LsCALsTCLsCiLsThLsCRLsTTLsCzLsTwrsCIrsTKrsCqrsTprsCZrsTbrsC7rsT4bsCEbsTGbsCmbsTlbsCVbsTXbsC3bsT07sCM7sTO7sCu7sTt7sCd7sTf7sC/7sT8HcCAHcTCHcCiHcThHcCRHcTTHcCzHcTwncCIncTKncCqncTpncCZncTbncC7ncT4XcCEXcTGXcCmXcTlXcCVXcTXXcC3XcT03cCM3cTO3cCu3cTt3cCd3cTf3cC/38S/+zf08wIM8xMM8wqM8xuM8wZM8xdM8w7M8x/O8wIu8xMu8wqu8xn/4L6/zBm/yFm/zDu/yHu/zAR/yER/zCZ/yGZ/zBV/yFV/zDd/yHd/zAz/yEz/zC7/yG7/zB3/yF3/zT/AHZCAGZhAGZTAGZwiGZCiGZhiGZTiGZwRGZCRGZhRGZTRGZwzGZCzGZhzGZTzGZwImZCImZhImZTImZwqmZCqmZhqmZTqmZwZmZCZmZhZmZTZmZw7mZC7mZh7mZT7mZwEWZCEWZhEWZTEWZwmWZCmWZhmWZTmWZwVWZCVWZhVWZTVWZw3WZC3WZh3WZT3WZwM2ZCM2ZhM2ZTM2Zwu2ZCu2Zhu2ZTu2Zwd2ZCd2Zhd2ZTd2Zw/2ZC/2Zh/2ZT/25wAO5CAO5hAO5TAO5wiO5CiO5hiO5TiO5wRO5CRO5hRO5TRO5wzO5CzO5hzO5TzO53/sTzMA
         </DataArray>
-        <DataArray type="Float64" Name="Js" NumberOfComponents="3" format="binary" RangeMin="3.1622776601683796e+149" RangeMax="NaN">
-          AQAAAACAAAAAPwAArAAAAA==eJzt1iGqQlEQBmB3YBC7QVyAyeZFk0GMLsAiiMkmyFuACCKIgs0gWGwG29mByWbxRnEB7zXhXb3BYhEs3ykf8zNzYNqc1v1sfl+IMv/v92fVvc2uh1Z41iRJkuQnHWx3m3hUiZ51bVI+9qbNcMnNq3/Depovi+1xqdMIi8Q0j5O+UE/mopd/w+OeTfNzcu+Gb+9NkiRJkiRJkiRJkiRJkiRJkiRJ8r13BGmm9A==
+        <DataArray type="Float64" Name="Js" NumberOfComponents="3" format="binary" RangeMin="63.99999999999999" RangeMax="64">
+          AQAAAACAAAAAPwAAqAAAAA==eJzt1rEKwVEUB2BvYJDdIA9gshGTQUYPYFEy2ZQ8gJSUEptBWWwG230Dk8nEKA/AZrj//qtFWb6zfN1f59w627lsB9n8sVDLJLXpPRePUzvE12tCkiRJ/tLh/rC7jyu1TFKNWfncn7fCLbesvkeNNF8VO9NStxkS0/we+0I9zqV58m9Yx3s2za/x3g3/3pskSZIkSZIkSZIkSZIkSZIkSZLkdz/D854p
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">
-              3.1622776602e+149
+              64
             </Value>
             <Value index="1">
-              -nan
+              64
             </Value>
           </InformationKey>
         </DataArray>
