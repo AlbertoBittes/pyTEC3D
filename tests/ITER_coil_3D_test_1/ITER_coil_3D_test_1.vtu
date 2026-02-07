@@ -114,16 +114,11 @@
         <DataArray type="Float64" Name="V" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAACgCgAAIAAAAA==eJztxbENAAAIA6B+7tuOjV84wEJydmLbtm0/uPhb8hw=
         </DataArray>
-        <DataArray type="Float64" Name="E" NumberOfComponents="3" format="binary" RangeMin="3.1622776601683796e+149" RangeMax="NaN">
-          AQAAAACAAADgHwAAKAAAAA==eJztxbENAAAIA6B+7tuOjV84wEJydmLbtm3btm3btm3btt9eyhjWcA==
-          <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
-            <Value index="0">
-              3.1622776602e+149
-            </Value>
-            <Value index="1">
-              -nan
-            </Value>
-          </InformationKey>
+        <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="0">
+          AQAAAACAAABQBQAAFAAAAA==eJxjYBgFo2AUjIJRQA0AAAVQAAE=
+        </DataArray>
+        <DataArray type="Float64" Name="E" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
+          AQAAAACAAACgCgAAIAAAAA==eJztxbENAAAIA6B+7tuOjV84wEJydmLbtm0/uPhb8hw=
         </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">

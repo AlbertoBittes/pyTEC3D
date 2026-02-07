@@ -46,7 +46,7 @@ Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 # Selector.select(apec.mesh, "UPPER_FACE_ROD", 1)
 # Selector.set_value_on_selection(apec.mesh, "AMPS", 1)
 
-TreeGauge.tree_gauge()
+TreeGauge.tree_gauge(apec.mesh)
 
 Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 1, 2, type="elem")

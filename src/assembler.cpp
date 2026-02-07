@@ -255,6 +255,9 @@ bool AssemblerLinear::check_update_system_matrix()
         if (bc_object->check_update_boundary_conditions())
             update_matrix = true;
 
+        // this should not happen
+        if (!old_time_substep)
+            update_matrix = true;
         // If first substep but time integration parameters have changed, we need to update the matrix
         else
         {

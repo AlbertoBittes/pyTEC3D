@@ -19,6 +19,7 @@ apec.read_excel("input_template.xlsx")
 
 apec.write_model_data()
 
+Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh, "s")
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
