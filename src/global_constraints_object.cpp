@@ -134,6 +134,7 @@ GlobalConstraintsObject::build_point_constraints()
             {
                 const auto coord_system = mesh->node_coordinate_system(*node_ptr);
                 rotation = coord_system.global_to_local_rotation(*node_ptr);
+                rotation_ready = true;
             }
 
             if (full_vector_constraint)

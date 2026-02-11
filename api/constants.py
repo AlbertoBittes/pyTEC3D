@@ -284,6 +284,12 @@ WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())
 WRITING_LABEL_TO_ID = {label: idx for idx, label in enumerate(WRITING_LABELS)}
 
 VTK_ARRAYS_TO_INIT = {
+    "angles": {
+        "location": "node",
+        "components": 3,
+        "fill": 0.0,
+        "dtype": vtk.VTK_DOUBLE,
+    },
     "A": {
         "location": "node",
         "components": 3,
