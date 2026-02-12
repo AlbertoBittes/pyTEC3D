@@ -249,6 +249,6 @@ void ApecMSettingsObject::parse_columns()
             array.values);
     };
 
-    parse_toroidal_map("toroidal_projection_map_nodes", toroidal_projection_map_nodes_);
-    parse_toroidal_map("toroidal_projection_map_elems", toroidal_projection_map_elems_);
+    parse_toroidal_map("toroidal_slices_nodes", toroidal_slices_nodes_);
+    parse_toroidal_map("toroidal_slices_elems", toroidal_slices_elems_);
 }

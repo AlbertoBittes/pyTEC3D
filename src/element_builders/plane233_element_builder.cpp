@@ -360,7 +360,8 @@ void ElementBuilder::build_plane233()
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
-        const Real vc = rc[3];
+        const Real rad = rc[4];
+        const Real vc = 2 * libMesh::pi * rad * sc;
         const Real tz = rc[7];
         const Real r_coil = rc[8];
         const Real sym = rc[9];

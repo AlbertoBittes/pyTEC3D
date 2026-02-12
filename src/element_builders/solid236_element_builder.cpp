@@ -855,6 +855,8 @@ void ElementBuilder::build_solid236_support_solution()
             {
                 continue;
             }
+            if (dof_index < support_solution_system_->solution->first_local_index() || dof_index >= support_solution_system_->solution->last_local_index())
+                continue;
             const unsigned int previous_count = psi_node_counts[dof_index];
             const unsigned int next_count = previous_count + 1;
             const Number previous_avg = support_solution_system_->solution->el(dof_index);

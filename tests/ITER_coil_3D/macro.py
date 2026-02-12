@@ -31,7 +31,7 @@ Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 2)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select_pos(apec.mesh, 1, (-90.0001, -89.999), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (89.999, 90.001), mode="s", coordinate_system=CylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 0)

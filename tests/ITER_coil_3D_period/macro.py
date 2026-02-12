@@ -37,7 +37,7 @@ Selector.set_value_on_selection(apec.mesh, "angles", -90.0, 2)
 Selector.select_pos(apec.mesh, 1, 0.0, coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
-apec.dof_couplings = Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), -90.0, variables=("A"))
+apec.dof_couplings = Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), -90.0, variables=("A", "VOLT"))
 
 Selector.select(apec.mesh, "ansys_etype", 24, type="elem")
 Selector.nsle(apec.mesh, "r")

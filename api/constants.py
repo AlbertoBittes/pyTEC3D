@@ -136,8 +136,8 @@ DEFAULT_APEC_SETTINGS = {
     "main_mesh": "",
     "static_mesh": "",
     "n_slices": 3,
-    "toroidal_projection_map_nodes": np.zeros((0, 0), dtype=np.int64),
-    "toroidal_projection_map_elems": np.zeros((0, 0), dtype=np.int64),
+    "toroidal_slices_nodes": np.zeros((0, 0), dtype=np.int64),
+    "toroidal_slices_elems": np.zeros((0, 0), dtype=np.int64),
 }
 
 REQUIRED_APEC_SETTINGS = [
@@ -168,8 +168,8 @@ DEFAULT_APEC_SETTINGS_TYPES = {
     "beta_p": float,
     "print_full_output": int,
     "main_mesh": str,
-    "toroidal_projection_map_nodes": np.ndarray,
-    "toroidal_projection_map_elems": np.ndarray,
+    "toroidal_slices_nodes": np.ndarray,
+    "toroidal_slices_elems": np.ndarray,
 }
 # Backwards compatibility with earlier naming
 APEC_SETTINGS_TYPES = DEFAULT_APEC_SETTINGS_TYPES

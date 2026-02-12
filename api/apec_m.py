@@ -51,10 +51,11 @@ class APEC_M:
         """
         Initialize the APEC object without requiring a file path.
         """
-        self.mesh: vtk.vtkUnstructuredGrid = vtk.vtkUnstructuredGrid()
+        self.meshes: Dict[str, vtk.vtkUnstructuredGrid] = {}
+        self.mesh_filepaths: Dict[str, str] = {}
+        self._active_mesh_name: Optional[str] = None
 
         self.jobname: Optional[str] = None
-        self.folderpath: Optional[str] = None
 
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
@@ -73,6 +74,84 @@ class APEC_M:
         )
         self.solver: Solver = Solver(self)
 
+    @property
+    def mesh(self) -> vtk.vtkUnstructuredGrid:
+        """
+        Active mesh accessor.
+        """
+        if not self._active_mesh_name:
+            raise RuntimeError("No active mesh is set.")
+        if self._active_mesh_name not in self.meshes:
+            raise RuntimeError(
+                f"Active mesh '{self._active_mesh_name}' is not available."
+            )
+        return self.meshes[self._active_mesh_name]
+
+    @mesh.setter
+    def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
+        """
+        Direct mesh assignment is disallowed.
+        """
+        raise AttributeError("Direct mesh assignment is not allowed. Use read_mesh().")
+
+    @property
+    def active_mesh_name(self) -> Optional[str]:
+        """
+        Name of the active mesh.
+        """
+        return self._active_mesh_name
+
+    @property
+    def folderpath(self) -> Optional[str]:
+        return os.getcwd() if self._active_mesh_name else None
+
+    @property
+    def load_steps_folder(self) -> Optional[str]:
+        if not self._active_mesh_name:
+            return None
+        mesh_token = self._sanitize_path_token(self._active_mesh_name)
+        return os.path.join(os.getcwd(), mesh_token, "input")
+
+    @staticmethod
+    def _sanitize_path_token(value: str) -> str:
+        return "".join(ch if (ch.isalnum() or ch in "_-") else "_" for ch in value)
+
+    def set_active_mesh(self, mesh_name: str) -> bool:
+        """
+        Set the active mesh by name.
+
+        Returns:
+            True when the mesh exists and is activated, otherwise False.
+        """
+        if mesh_name not in self.meshes:
+            return False
+
+        self._active_mesh_name = mesh_name
+        self.jobname = mesh_name
+        return True
+
+    def get_mesh(self, mesh_name: str) -> Optional[vtk.vtkUnstructuredGrid]:
+        """
+        Fetch a mesh by name.
+        """
+        return self.meshes.get(mesh_name)
+
+    def clear_mesh(self, mesh_name: str) -> None:
+        """
+        Remove a mesh by name and update the active mesh if needed.
+        """
+        self.meshes.pop(mesh_name, None)
+        self.mesh_filepaths.pop(mesh_name, None)
+
+        if self._active_mesh_name == mesh_name:
+            if self.meshes:
+                next_mesh = next(iter(self.meshes))
+                self._active_mesh_name = next_mesh
+                self.jobname = next_mesh
+            else:
+                self._active_mesh_name = None
+                self.jobname = None
+
     #
     #
     #
@@ -85,7 +164,9 @@ class APEC_M:
     #
     #
     def read_mesh(
-        self, vtk_file_path: Union[str, PathLike[str]], reset_arrays: bool = True
+        self,
+        vtk_file_path: Union[str, PathLike[str]],
+        reset_arrays: bool = True,
     ) -> None:
         """
         Reads a VTK unstructured grid from a file in XML format.
@@ -94,21 +175,19 @@ class APEC_M:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
-        self.mesh = ModelEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
+        first_mesh = len(self.meshes) == 0
+        loaded_mesh = ModelEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
-        mesh_path = os.fspath(vtk_file_path)
-        self.jobname = os.path.splitext(os.path.basename(mesh_path))[0]
-        self.folderpath = os.path.dirname(mesh_path)
+        mesh_path = os.path.abspath(os.fspath(vtk_file_path))
+        resolved_name = os.path.splitext(os.path.basename(mesh_path))[0]
+        mesh_folder = os.path.dirname(mesh_path) or os.getcwd()
 
-        # Prepare per-mesh folders inside the project directory
-        mesh_root = os.path.join(self.folderpath, self.jobname)
-        input_folder = os.path.join(mesh_root, "input")
-        os.makedirs(input_folder, exist_ok=True)
+        if first_mesh:
+            os.chdir(mesh_folder)
 
-        self.load_steps_folder = input_folder
-
-        # Ensure relative paths resolve from the mesh directory
-        os.chdir(self.folderpath)
+        self.meshes[resolved_name] = loaded_mesh
+        self.mesh_filepaths[resolved_name] = mesh_path
+        self.set_active_mesh(resolved_name)
 
     def save_mesh(
         self, output_file: Optional[Union[str, PathLike[str]]] = None
@@ -363,7 +442,8 @@ class APEC_M:
         else:
             if not self.jobname:
                 raise ValueError("Job name is not set. Cannot write grid step binary.")
-            load_steps_folder = os.path.join(self.folderpath, self.jobname, "input")
+            mesh_token = self._sanitize_path_token(self.jobname)
+            load_steps_folder = os.path.join(self.folderpath, mesh_token, "input")
             os.makedirs(load_steps_folder, exist_ok=True)
             grid_path = os.path.join(
                 load_steps_folder, f"{self.jobname}_grid_{load_step_number}.bin"
@@ -394,7 +474,6 @@ class APEC_M:
 
         if not self.folderpath:
             raise ValueError("Folder path is not set. Cannot write model data.")
-
         model_data_folder = os.path.join(self.folderpath, "_model_data_")
         if filename:
             output_path = os.path.join(model_data_folder, filename)

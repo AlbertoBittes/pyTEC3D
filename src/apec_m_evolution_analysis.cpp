@@ -54,12 +54,12 @@ void APECMEvolutionAnalysis::set_poloidal_currents()
     // auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
 }
 
-void APECMEvolutionAnalysis::set_toroidal_projection_map()
+void APECMEvolutionAnalysis::set_toroidal_slices()
 {
     auto settings = this->context<ApecMSettingsObject>();
 
-    const auto &toroidal_map_nodes = settings->toroidal_projection_map_nodes();
-    const auto &toroidal_map_elems = settings->toroidal_projection_map_elems();
+    const auto &toroidal_map_nodes = settings->toroidal_slices_nodes();
+    const auto &toroidal_map_elems = settings->toroidal_slices_elems();
 
     ToroidalProjection::Map nodal_map, elem_map;
 
@@ -185,7 +185,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     auto toroidal_proj = toroidal_projection.get();
 
     if (first_absolute_iteration)
-        set_toroidal_projection_map();
+        set_toroidal_slices();
 
     APEC_M *program = this->get_parent_object();
 

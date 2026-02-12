@@ -10,99 +10,64 @@ import os
 
 apec = APEC_M()
 
-apec_equilibrium_output = APEC_M()
+apec_evolution_mesh = "ITER_2D_APEC_evol"
+apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_1"
+apec_equilibrium_output = "ITER_2D_APEC_out_0"
 
-eq_filename = "ITER_2D_APEC"
-filename = "ITER_2D_APEC_evol"
-eq_filepath = os.path.join(os.getcwd(), "tests", eq_filename, eq_filename + ".vtu")
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
-static_mesh_filepath = os.path.join(os.getcwd(), "tests", filename, filename + "_1.vtu")
 
+evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+static_mesh_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu")
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
     "tests",
-    eq_filename,
-    eq_filename,
+    "ITER_2D_APEC",
+    "ITER_2D_APEC",
     "output",
-    eq_filename + "_out_0.pvtu",
+    apec_equilibrium_output + ".pvtu",
 )
-apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
-# Read the static mesh
-apec_equilibrium = APEC_M()
-apec_equilibrium.read_mesh(static_mesh_filepath, False)
-apec_equilibrium.read_mesh(static_mesh_filepath)
-apec_equilibrium.read_excel("input_template.xlsx")
-apec_equilibrium.write_model_data()
 
-# # Set conductors to non conductors
-apec_equilibrium.select("ansys_material_type", 24, type="elem")
-apec_equilibrium.set_value_on_selection("ansys_material_type", 23, type="elem")
-apec_equilibrium.select("ansys_etype", 24, type="elem")
-apec_equilibrium.set_value_on_selection("ansys_etype", 23, type="elem")
+apec.read_mesh(evol_filepath)
+apec.read_mesh(static_mesh_filepath)
+apec.read_mesh(output_eq_mesh_filepath, False)
+
+apec.read_excel("input_template.xlsx")
+apec.write_model_data()
+
 
 # Set Boundary conditions
-apec_equilibrium.select_all()
-apec_equilibrium.nsel_ext()
-apec_equilibrium.set_value_on_selection("A", 0, 2)
-
-# Project the current density from the equilibrium output to the static mesh
-apec_equilibrium.select_all()
-apec_equilibrium_output.select_all()
-apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec_equilibrium_output.mesh,
-    "Jt_z",
-    0,
-    apec_equilibrium.mesh,
-    "Js",
-    2,
-    location="elem",
-    n_slices=1,
-    tolerance=1e-3,
-)
-
-# Now start the evolution analysis
-apec.read_mesh(filepath)
-Selector.select_all(apec.mesh)
-
-apec.apec_settings = {
-    "R0": 6.2,
-    "max_picard_iterations": 70,
-    "tolerance_value": 1e-3,
-    "alpha_value": 8.3197e-01,
-    "plasma_current": 15e6,
-    "beta_p": 6.8216e-001,
-    "evolution_mesh": "ITER_2D_APEC_evol",
-    "equilibrium_mesh": "ITER_2D_APEC_evol_1",
-    "print_full_output": 0,
-    "toroidal_projection_map_nodes": Cyclic.build_toroidal_projection_map(
-        apec_equilibrium.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
-    ),
-    "toroidal_projection_map_elems": Cyclic.build_toroidal_projection_map(
-        apec_equilibrium.mesh, apec.mesh, "elem", n_slices=1, tolerance=1e-3
-    ),
-
-}
-
-# Write loads and BCs and save the static mesh
-apec_equilibrium.write_loads_bcs()
-apec_equilibrium.save_mesh()
-
-# Save the toroidal projection maps to files
-np.savetxt("toroidal_projection_map_nodes.txt", apec.apec_settings["toroidal_projection_map_nodes"].astype(int), fmt="%d")
-np.savetxt("toroidal_projection_map_elems.txt", apec.apec_settings["toroidal_projection_map_elems"].astype(int), fmt="%d")
-
+apec.set_active_mesh(apec_evolution_mesh_notrans)
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
+# # Project the current density from the equilibrium output to the static mesh
+# Selector.select(apec.mesh, "subdomain_id", 23, type="elem")
+# Cyclic.toroidal_projection(
+#     apec.get_mesh(apec_equilibrium_output),
+#     "Jt_z",
+#     0,
+#     apec.mesh,
+#     "Js",
+#     2,
+#     location="elem",
+#     n_slices=1,
+#     tolerance=1e-3,
+# )
+# Write loads and BCs and save the static mesh
+apec.write_loads_bcs()
+
+
+# Now start the evolution analysis
+apec.set_active_mesh(apec_evolution_mesh)
 Selector.select_all(apec.mesh)
-apec_equilibrium_output.select_all()
-apec_equilibrium_output.select("subdomain_id", 23, type="elem")
+Selector.nsel_ext(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+
+Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
 Cyclic.toroidal_projection(
-    apec_equilibrium_output.mesh,
+    apec.get_mesh(apec_equilibrium_output),
     "Jt_z",
     0,
     apec.mesh,
@@ -112,6 +77,34 @@ Cyclic.toroidal_projection(
 )
 
 apec.write_loads_bcs()
+
+Selector.select_all(apec.mesh)
+apec.apec_settings = {
+    "R0": 6.2,
+    "max_picard_iterations": 70,
+    "tolerance_value": 1e-3,
+    "alpha_value": 8.3197e-01,
+    "plasma_current": 15e6,
+    "beta_p": 6.8216e-001,
+    "evolution_mesh": apec_evolution_mesh,
+    "equilibrium_mesh": apec_evolution_mesh_notrans,
+    "print_full_output": 0,
+    "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
+        apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
+    ),
+    "toroidal_slices_elems": Cyclic.build_toroidal_slices(
+        apec.mesh, apec.mesh, "elem", n_slices=1, tolerance=1e-3
+    ),
+
+}
+
+
+
+# Save the toroidal projection maps to files
+np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
+np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
+
+
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt("time_steps.txt")
@@ -129,6 +122,5 @@ for step_idx in range(len(time_steps)):
     apec.apec_settings["beta_p"] = betas[step_idx]
     apec.write_time_step(step_idx + 1)
     if step_idx == 0:
-        apec.apec_settings.pop("toroidal_projection_map_nodes", None)
-        apec.apec_settings.pop("toroidal_projection_map_elems", None)
-apec.save_mesh()
+        apec.apec_settings.pop("toroidal_slices_nodes", None)
+        apec.apec_settings.pop("toroidal_slices_elems", None)

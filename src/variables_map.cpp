@@ -447,7 +447,7 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
     case STRANDED_COIL:
         vars.insert(vars.end(), {GlobalVariableName::VOLT,
                                  GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_SOLENOIDAL)
+        if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     case STRANDED_COIL_SOLENOIDAL:

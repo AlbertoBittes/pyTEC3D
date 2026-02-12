@@ -130,7 +130,7 @@
           AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
         </DataArray>
         <DataArray type="Float64" Name="angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="127.27922061357856">
-          AQAAAACAAAA4KAAAeAAAAA==eJzt1LENgCAUAFFGcwrncTRHszJicy1Hcq8h+dXlQxhjcp3H79xtnsxs77N58+br/+2v417a8aqH1cPqYfWwelg9rB5WD6uH1cPqYbYeG9t+6mH1sHqYrSfMdl/1JImT7T+09djY9lPPXmz7qYfVwzboeQAQw+Op
+          AQAAAACAAAA4KAAAdwAAAA==eJzt1LENwCAQBMEvjSqoh9JcGhESgbUp99JOeNHqsVx1WXPUny67dEv7Pt3d3d87HWt+TzsOe5g9zB5mD7OH2cPsYfYwe5g9zB6W1pMm7T72MHuYPSytRyztveyRpExp/8O0njRp97Gnl7T72MPsYQ16NqhbsJ8=
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">
               0

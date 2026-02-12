@@ -98,6 +98,9 @@
         <DataArray type="Float64" Name="E" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AwAAAACAAADoXwAASwAAAEsAAABAAAAAeJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxbENAAAIA6B+7tuOjXcIC8nZiW3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3bjy+V73FaeJztxTENAAAIA7A5xzbnggIMtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btm3btv1e+umQmw==
         </DataArray>
+        <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="0">
+          AgAAAACAAAD0LwAANAAAACMAAAA=eJztwQEBAAAAgJD+r+4ICgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYgAAAAXic7cExAQAAAMKg9U9tDQ+gAAAAAAAAAAAAAACARwMv9AAB
+        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="11240">

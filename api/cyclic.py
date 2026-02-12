@@ -15,7 +15,7 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 class Cyclic:
     @staticmethod
-    def build_toroidal_projection_map(
+    def build_toroidal_slices(
         input_mesh: "vtk.vtkUnstructuredGrid",
         target_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "node",
@@ -216,7 +216,7 @@ class Cyclic:
             input_values = input_np[:, input_component]
 
         if projection_map is None:
-            projection_map = Cyclic.build_toroidal_projection_map(
+            projection_map = Cyclic.build_toroidal_slices(
                 input_mesh,
                 target_mesh,
                 location=location,
@@ -335,7 +335,7 @@ class Cyclic:
             raise ValueError("input_component out of range for input array.")
 
         if projection_map is None:
-            projection_map = Cyclic.build_toroidal_projection_map(
+            projection_map = Cyclic.build_toroidal_slices(
                 target_mesh,
                 input_mesh,
                 location=location,

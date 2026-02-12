@@ -160,17 +160,17 @@ apec.apec_settings = {
     "evolution_mesh": "ITER_3D_APEC_evol",
     "equilibrium_mesh": "ITER_3D_APEC_evol_1",
     "print_full_output": 1,
-    "toroidal_projection_map_nodes": Cyclic.build_toroidal_projection_map(
+    "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
         apec_equilibrium.mesh, apec.mesh, "node", n_slices=3, tolerance=1e-3
     ),
-    "toroidal_projection_map_elems": Cyclic.build_toroidal_projection_map(
+    "toroidal_slices_elems": Cyclic.build_toroidal_slices(
         apec_equilibrium.mesh, apec.mesh, "elem", n_slices=2, tolerance=1e-3
     ),
 }
 
 # Save the toroidal projection maps to files
-np.savetxt("toroidal_projection_map_nodes.txt", apec.apec_settings["toroidal_projection_map_nodes"].astype(int), fmt="%d")
-np.savetxt("toroidal_projection_map_elems.txt", apec.apec_settings["toroidal_projection_map_elems"].astype(int), fmt="%d")
+np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
+np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
 
 # Initial loads: Project the current density from the equilibrium output to the static mesh
 Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
@@ -211,5 +211,5 @@ for step_idx in range(len(time_steps)):
     apec.apec_settings["beta_p"] = betas[step_idx]
     apec.write_time_step(step_idx + 1)
     if step_idx == 0:
-        apec.apec_settings.pop("toroidal_projection_map_nodes", None)
-        apec.apec_settings.pop("toroidal_projection_map_elems", None)
+        apec.apec_settings.pop("toroidal_slices_nodes", None)
+        apec.apec_settings.pop("toroidal_slices_elems", None)
