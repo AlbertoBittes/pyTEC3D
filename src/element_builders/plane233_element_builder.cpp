@@ -243,69 +243,61 @@ void ElementBuilder::build_plane233()
     {
         build_caa();
 
-        if (n_dofs >= 2 * n_dofs_var)
+        const Real inv_thk = 1.0 / thk;
+        auto build_coupling = [&]()
         {
-            const Real inv_thk = 1.0 / thk;
-            auto build_coupling = [&]()
+            for (unsigned int qp = 0; qp < nq; qp++)
             {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                {
-                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
-                    Real inv_thk = 1.0 / thk / r_mult;
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                Real inv_thk = 1.0 / thk / r_mult;
 
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            Ce(dof_i, dof_j + n_dofs_var) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
-                            Ce(dof_i + n_dofs_var, dof_j) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
-                        }
-                }
-            };
-            build_coupling();
-        }
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        Ce(dof_i, dof_j + n_dofs_var) -=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
+                        Ce(dof_i + n_dofs_var, dof_j) -=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                    }
+            }
+        };
+        build_coupling();
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     {
         build_caa();
 
-        if (n_dofs >= 2 * n_dofs_var)
+        auto build_coupling = [&]()
         {
-            auto build_coupling = [&]()
+            for (unsigned int qp = 0; qp < nq; qp++)
             {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                {
-                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
-                    Real inv_thk = 1.0 / thk / r_mult;
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                Real inv_thk = 1.0 / thk / r_mult;
 
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            Ke(dof_i, dof_j + n_dofs_var) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
-                            Ce(dof_i + n_dofs_var, dof_j) -=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
-                        }
-                }
-            };
-            build_coupling();
-        }
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        Ke(dof_i, dof_j + n_dofs_var) -=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * inv_thk;
+                        Ce(dof_i + n_dofs_var, dof_j) -=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) * inv_thk;
+                    }
+            }
+        };
+        build_coupling();
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
-            libmesh_error_msg("Missing real constants for STRANDED_COIL elements.");
-
         build_caa();
+
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
@@ -354,14 +346,15 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        if (!real_constants_object_ || !real_constants_object_->has_constant(this->elem_data.real_constant_num))
-            libmesh_error_msg("Missing real constants for STRANDED_COIL_SOLENOIDAL elements.");
-        build_caa();
         const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
+        const Real thk = rc[0];
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real rad = rc[4];
-        const Real vc = 2 * libMesh::pi * rad * sc;
+        Real rad_factor = 1.0;
+        if (axisymm)
+            rad_factor = 2 * libMesh::pi * rad;
+        const Real vc = rad_factor * sc * thk;
         const Real tz = rc[7];
         const Real r_coil = rc[8];
         const Real sym = rc[9];
@@ -372,37 +365,34 @@ void ElementBuilder::build_plane233()
         const Real kav_scale = -(nc / (sc * r_coil)) * tz;
         const Real kvv_scale = 1.0 / (r_coil * vc);
 
-        if (n_dofs >= 3 * n_dofs_var)
+        auto build_coil_coupling = [&]()
         {
-            auto build_coil_coupling = [&]()
+            for (unsigned int qp = 0; qp < nq; qp++)
             {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                {
-                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(r, axisymm);
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(r, axisymm);
 
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult;
-                            const Real kav = kav_scale * nn;
-                            const Real kvv = kvv_scale * nn;
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        const Real kav = kav_scale * nn;
+                        const Real kvv = kvv_scale * nn;
 
-                            // Non-time-integrated A-VOLT-EMF formulation (KEYOPT(2)=0/1).
-                            Ke(dof_i, dof_j + n_dofs_var) += kav;
-                            Ke(dof_i, dof_j + 2 * n_dofs_var) -= kav;
-                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
-                            Ke(dof_i + n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
-                            Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_var) -= kvv;
-                            Ke(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) += kvv;
+                        // Non-time-integrated A-VOLT-EMF formulation (KEYOPT(2)=0/1).
+                        Ke(dof_i, dof_j + n_dofs_var) += kav * r_mult;
+                        Ke(dof_i, dof_j + 2 * n_dofs_var) -= kav * r_mult;
+                        Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
+                        // Ke(dof_i + n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
+                        // Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_var) -= kvv;
+                        Ke(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
 
-                            Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
-                            Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
-                        }
-                }
-            };
-            build_coil_coupling();
-        }
+                        Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
+                    }
+            }
+        };
+        build_coil_coupling();
         break;
     }
     default:

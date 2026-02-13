@@ -33,7 +33,7 @@ master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_po
 
 Selector.select_all(apec.mesh)
 apec.time_parameters["ramped_loads"] = 1
-apec.time_parameters["theta"] = 0.5
+apec.time_parameters["theta"] = 1.0
 apec.time_parameters["write_substep_results"] = 1
 apec.time_parameters["number_of_substeps"] = 4
 
