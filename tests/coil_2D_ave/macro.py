@@ -31,6 +31,13 @@ Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
+Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
+Selector.nsle(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "CP_0", 2)
+master_node_ground = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+Selector.select(apec.mesh, "ID", master_node_ground)
+Selector.set_value_on_selection(apec.mesh, "V", 0)
+
 Selector.select_all(apec.mesh)
 apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 1.0

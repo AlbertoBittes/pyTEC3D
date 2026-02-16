@@ -45,8 +45,8 @@
         <DataArray type="Float64" Name="Az" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
         </DataArray>
-        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="10000" RangeMax="10000">
-          AQAAAACAAADITgAARQAAAA==eJztzjERACAQBLGThjPa94UpSgYX/JBt0m5y2zMkSZIkSZIkSZIkSZJkV2uNJz5IkiRJkiRJkiRJkiRJkiTJTzzJ423G
+        <DataArray type="Float64" Name="VOLT" format="binary" RangeMin="0" RangeMax="10000">
+          AQAAAACAAADITgAASwAAAA==eJztzqENACAQBMErjc6w9EVTSIKgBvhk1ozd5LR6SJIkSZIkSZIkSZIkyaqO2b74KOvt9QdJkiRJkiRJkiRJkiRJkiSruAGCUmxP
         </DataArray>
         <DataArray type="Float64" Name="V" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAADITgAAOgAAAA==eJztxTENAAAIA7A5xzbnggMEtE+TsxPbtm3btm3btm3btm3btm3btm3btm3btm3btm3bth8XXcdtsg==
@@ -66,8 +66,8 @@
         <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAABkJwAAdgAAAA==eJzt0MEJAEAIxECv/6bvYRFJQCHMV3Zm750npOGHqvbofarao/epao/ep6o9ep+q9uh9qtqj96lqj96nqj16n6r26H2q2qP3qWqP3qeqPXqfqvbofarao/epao/ep6o9ep+q9uh9qtqj96lqj96nqrkPAqcGfQ==
         </DataArray>
-        <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="1">
-          AQAAAACAAABkJwAAOwAAAA==eJzt0cEJACAQA8Gz/6atIOBHITgDaSA7AwAAAMBN62C/av5C16z5C12z5i90zZq/0BUAAIBXNr+kAEI=
+        <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="2">
+          AQAAAACAAABkJwAAQQAAAA==eJzt0TEKADAIBEGT/z86ReqABMVmBq4XNwIAAACATiuxSTuxLtW/mL5d10vXPrr+0fVN1z6TXQEAAKh1AKtzAMQ=
         </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
