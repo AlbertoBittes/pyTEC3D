@@ -275,7 +275,6 @@ void ElementBuilder::build_plane233()
             {
                 Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
                 Real r_mult = pow(2 * libMesh::pi * r, axisymm);
-                Real inv_thk = 1.0 / thk / r_mult;
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
@@ -313,34 +312,34 @@ void ElementBuilder::build_plane233()
         const Real kav_scale = -(nc / (sc * r_coil)) * tz;
         const Real kvv_scale = 1.0 / (r_coil * vc);
 
-        if (n_dofs >= 3 * n_dofs_var)
+        auto build_coil_coupling = [&]()
         {
-            auto build_coil_coupling = [&]()
+            for (unsigned int qp = 0; qp < nq; qp++)
             {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                {
-                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * thk;
-                            const Real kav = kav_scale * nn;
-                            const Real kvv = kvv_scale * nn;
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * thk;
+                        const Real kav = kav_scale * nn;
+                        const Real kvv = kvv_scale * nn;
 
-                            // Time-integrated A-VOLT-EMF formulation (KEYOPT(2)=2).
-                            Ce(dof_i, dof_j + n_dofs_var) += kav;
-                            Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
-                            Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
-                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
-                            Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
-                            Ce(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
-                        }
-                }
-            };
-            build_coil_coupling();
-        }
+                        // Non-time-integrated A-VOLT-EMF formulation (KEYOPT(2)=0/1).
+                        Ce(dof_i, dof_j + n_dofs_var) += kav;
+                        Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
+                        Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
+                        // Ke(dof_i + n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
+                        // Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_var) -= kvv;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + 2 * n_dofs_var) -= kvv;
+
+                        Ce(dof_i + n_dofs_var, dof_j) += sym * kav;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j) -= kav;
+                    }
+            }
+        };
+        build_coil_coupling();
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:

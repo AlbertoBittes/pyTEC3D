@@ -1,5 +1,5 @@
 /clear
-/filname,coil_2D
+/filname,coil_2D_ave
 /prep7
 
 size = 1
@@ -7,7 +7,7 @@ coil = 0.2
 
 et,21,plane233,0,0,1
 et,23,plane233,2,0,1
-et,24,plane233,0,0,1
+et,24,plane233,1,0,1
 
 ! air/non conducting
 mp,murx,21,1
@@ -27,7 +27,7 @@ mp,murz,24,1
 
 RECTNG,0,size,-size,size
 
-r,1,1,coil*coil,1000,size/2,,50
+r,1,1,coil*coil,1000,size/2,1,50
 
 alls
 Asel,all
@@ -45,10 +45,12 @@ alls
 esel,s,cent,x,size/2-coil/2,size/2+coil/2
 esel,r,cent,y,-size/2-coil/2,-size/2+coil/2
 emodif,all,mat,23
+emodif,all,type,23
 
 esel,s,cent,x,size/2-coil/2,size/2+coil/2
 esel,r,cent,y,+size/2-coil/2,+size/2+coil/2
 emodif,all,mat,24
+emodif,all,type,24
 alls
 
 nummrg,node,1e-5
@@ -72,7 +74,7 @@ timint,on
 kbc,0
 outres,all,all
 pivcheck,on,every
-tintp,,,,0.5
+! tintp,,,,1
 
 *do,i,1,2
     time, i*0.00001
