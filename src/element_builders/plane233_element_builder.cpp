@@ -598,7 +598,7 @@ void ElementBuilder::build_plane233_element_solution()
     const auto &An = sol_vectors[0];
 
     bool axisymm = this->elem_data.element_type->get_keyopts()[3];
-    Point centroid = this->elem_data.elem->centroid();
+    Point centroid = this->elem_data.elem->vertex_average();
 
     auto &element_vectors = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS];
     element_vectors.clear();

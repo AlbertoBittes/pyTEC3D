@@ -24,7 +24,7 @@ diff --git a/src/fe/fe_nedelec_one.C b/src/fe/fe_nedelec_one.C
 @@ -165,6 +165,18 @@ unsigned int nedelec_one_n_dofs(const ElemType t, const Order o)
          case HEX27:
            return 12;
-
+ 
 +        case PRISM15:
 +        case PRISM18:
 +          return 9;
@@ -35,7 +35,7 @@ diff --git a/src/fe/fe_nedelec_one.C b/src/fe/fe_nedelec_one.C
 +
          case INVALID_ELEM:
            return 0;
-
+ 
          default:
            libmesh_error_msg("ERROR: Bad ElemType = " << Utility::enum_to_string(t) << " for " << Utility::enum_to_string(o) << " order approximation!");
 @@ -347,6 +359,90 @@ unsigned int nedelec_one_n_dofs_at_node(const ElemType t,
@@ -45,7 +45,7 @@ diff --git a/src/fe/fe_nedelec_one.C b/src/fe/fe_nedelec_one.C
 @@ -417,6 +513,84 @@ unsigned int nedelec_one_n_dofs_at_node(const ElemType t,
            }
          }
-
+ 
 +        case PRISM15:
 +        {
 +          switch (n)
@@ -104,7 +104,7 @@ diff --git a/src/fe/fe_nedelec_one.C b/src/fe/fe_nedelec_one.C
 +
          case INVALID_ELEM:
            return 0;
-
+ 
          default:
            libmesh_error_msg("ERROR: Bad ElemType = " << Utility::enum_to_string(t) << " for " << Utility::enum_to_string(o) << " order approximation!");
 diff --git a/src/fe/fe_nedelec_one_shape_3D.C b/src/fe/fe_nedelec_one_shape_3D.C
@@ -113,7 +113,7 @@ diff --git a/src/fe/fe_nedelec_one_shape_3D.C b/src/fe/fe_nedelec_one_shape_3D.C
 @@ -355,6 +355,136 @@ RealGradient FE<3,NEDELEC_ONE>::shape(const Elem * elem,
            } // switch(i)
          } // HEX20/HEX27
-
+ 
 +        case PRISM15:
 +        case PRISM18:
 +        {
@@ -250,48 +250,84 @@ diff --git a/src/fe/fe_nedelec_one_shape_3D.C b/src/fe/fe_nedelec_one_shape_3D.C
 +          switch (i)
 +          {
 +            case 0:
-+              if (j == 0) dv = RealGradient(0.0, f0, 0.0);
-+              else if (j == 1) dv = RealGradient(-f0, 0.0, 0.0);
-+              else dv = RealGradient(df0*(1.0-eta), df0*xi, 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0,  f0,  0.0); break;
++                case 1: dv = RealGradient(-f0, 0.0, 0.0); break;
++                default: dv = RealGradient(df0*(1.0-eta), df0*xi, 0.0); break;
++              }
 +              break;
++
 +            case 1:
-+              if (j == 0) dv = RealGradient(0.0, f0, 0.0);
-+              else if (j == 1) dv = RealGradient(-f0, 0.0, 0.0);
-+              else dv = RealGradient(df0*(-eta), df0*xi, 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0,  f0,  0.0); break;
++                case 1: dv = RealGradient(-f0, 0.0, 0.0); break;
++                default: dv = RealGradient(df0*(-eta), df0*xi, 0.0); break;
++              }
 +              break;
++
 +            case 2:
-+              if (j == 0) dv = RealGradient(0.0, -f0, 0.0);
-+              else if (j == 1) dv = RealGradient(f0, 0.0, 0.0);
-+              else dv = RealGradient(df0*(eta), df0*(1.0-xi), 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0, -f0, 0.0); break;
++                case 1: dv = RealGradient( f0, 0.0, 0.0); break;
++                default: dv = RealGradient(df0*(eta), df0*(1.0-xi), 0.0); break;
++              }
 +              break;
++
 +            case 3:
-+              if (j == 0) dv = RealGradient(0.0, 0.0, -0.5);
-+              else if (j == 1) dv = RealGradient(0.0, 0.0, -0.5);
-+              else dv = RealGradient();
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0, 0.0, -0.5); break;
++                case 1: dv = RealGradient(0.0, 0.0, -0.5); break;
++                default: dv = RealGradient(); break;
++              }
 +              break;
++
 +            case 4:
-+              if (j == 0) dv = RealGradient(0.0, 0.0, 0.5);
-+              else dv = RealGradient();
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0, 0.0, 0.5); break;
++                default: dv = RealGradient(); break;
++              }
 +              break;
++
 +            case 5:
-+              if (j == 1) dv = RealGradient(0.0, 0.0, 0.5);
-+              else dv = RealGradient();
++              switch (j)
++              {
++                case 1: dv = RealGradient(0.0, 0.0, 0.5); break;
++                default: dv = RealGradient(); break;
++              }
 +              break;
++
 +            case 6:
-+              if (j == 0) dv = RealGradient(0.0, f1, 0.0);
-+              else if (j == 1) dv = RealGradient(-f1, 0.0, 0.0);
-+              else dv = RealGradient(df1*(1.0-eta), df1*xi, 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0,  f1,  0.0); break;
++                case 1: dv = RealGradient(-f1, 0.0, 0.0); break;
++                default: dv = RealGradient(df1*(1.0-eta), df1*xi, 0.0); break;
++              }
 +              break;
++
 +            case 7:
-+              if (j == 0) dv = RealGradient(0.0, f1, 0.0);
-+              else if (j == 1) dv = RealGradient(-f1, 0.0, 0.0);
-+              else dv = RealGradient(df1*(-eta), df1*xi, 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0,  f1,  0.0); break;
++                case 1: dv = RealGradient(-f1, 0.0, 0.0); break;
++                default: dv = RealGradient(df1*(-eta), df1*xi, 0.0); break;
++              }
 +              break;
++
 +            case 8:
-+              if (j == 0) dv = RealGradient(0.0, -f1, 0.0);
-+              else if (j == 1) dv = RealGradient(f1, 0.0, 0.0);
-+              else dv = RealGradient(df1*(eta), df1*(1.0-xi), 0.0);
++              switch (j)
++              {
++                case 0: dv = RealGradient(0.0, -f1, 0.0); break;
++                case 1: dv = RealGradient( f1, 0.0, 0.0); break;
++                default: dv = RealGradient(df1*(eta), df1*(1.0-xi), 0.0); break;
++              }
 +              break;
++
 +            default:
 +              libmesh_error_msg("Invalid i = " << i);
 +          }
@@ -389,7 +425,7 @@ diff --git a/src/fe/fe_nedelec_one_shape_3D.C b/src/fe/fe_nedelec_one_shape_3D.C
 +            dv = -dv;
 +          return dv;
 +        }
-
+ 
          default:
            libmesh_error_msg("ERROR: Unsupported 3D element type!: " << Utility::enum_to_string(elem->type()));
          }

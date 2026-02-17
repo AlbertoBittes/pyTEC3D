@@ -81,7 +81,7 @@ namespace
                 if (!complete)
                     continue;
 
-                transform(elem->centroid(), dofs);
+                transform(elem->vertex_average(), dofs);
             }
         }
     }

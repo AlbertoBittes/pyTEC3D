@@ -124,6 +124,48 @@ const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>
     return cp_pairs;
 }
 
+const std::map<dof_id_type, Real> &ApecMMesh::edge_midside_orientation_map()
+{
+    if (!edge_midside_orientation_cache_built)
+        build_edge_midside_orientation_map();
+
+    return edge_midside_orientation_cache;
+}
+
+void ApecMMesh::build_edge_midside_orientation_map()
+{
+    edge_midside_orientation_cache.clear();
+
+    for (const auto &elem_ptr : this->active_local_element_ptr_range())
+    {
+        if (!elem_ptr)
+            continue;
+
+        const auto n_edges = elem_ptr->n_edges();
+        for (unsigned int edge = 0; edge < n_edges; ++edge)
+        {
+            const Real orientation = elem_ptr->positive_edge_orientation(edge) ? 1.0 : -1.0;
+            const auto n_nodes = elem_ptr->n_nodes();
+            for (unsigned int node_i = 0; node_i < n_nodes; ++node_i)
+            {
+                if (elem_ptr->is_vertex(node_i))
+                    continue;
+                if (!elem_ptr->is_node_on_edge(node_i, edge))
+                    continue;
+
+                const Node *node_ptr = elem_ptr->node_ptr(node_i);
+                if (!node_ptr)
+                    continue;
+
+                const dof_id_type node_id = node_ptr->id();
+                edge_midside_orientation_cache.emplace(node_id, orientation);
+            }
+        }
+    }
+
+    edge_midside_orientation_cache_built = true;
+}
+
 ApecMMesh::AngleDataIndices ApecMMesh::detect_angle_indices() const
 {
     AngleDataIndices info;

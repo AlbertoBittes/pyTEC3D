@@ -135,8 +135,8 @@ void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
         Real bx_value = element_solution_system.current_local_solution->el(bx_dof);
         Real by_value = element_solution_system.current_local_solution->el(by_dof);
 
-        Real x_centroid = elem->centroid()(0);
-        Real y_centroid = elem->centroid()(1);
+        Real x_centroid = elem->vertex_average()(0);
+        Real y_centroid = elem->vertex_average()(1);
 
         Real b_rot = current_sign * (by_value * (x_centroid - magnetic_axis(0)) - bx_value * (y_centroid - magnetic_axis(1)));
 
@@ -312,7 +312,7 @@ Real APECMEquilibriumAnalysis::check_X_point()
         if (elem->get_extra_integer(vacuum_chamber_region_component) != 1)
             continue;
 
-        Real dist = (elem->centroid() - magnetic_axis).norm();
+        Real dist = (elem->vertex_average() - magnetic_axis).norm();
         if (dist < min_distance_to_axis)
             continue;
         // Process the element as needed
@@ -455,7 +455,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
 
         Real psi_elem = element_solution_system.current_local_solution->el(psi_dof);
-        Real elem_centroid_rad = elem->centroid()(0);
+        Real elem_centroid_rad = elem->vertex_average()(0);
 
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
         Real grad_shafranov_current_density = (1 - std::pow(psi_segn, alpha)) *

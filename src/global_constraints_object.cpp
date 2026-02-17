@@ -336,6 +336,15 @@ GlobalConstraintsObject::build_coupling_constraints()
 
     std::map<std::string, std::vector<VariablesMap::VectorComponent>> vector_variables =
         VariablesMap::get_vector_variables_for_system(*system);
+    const std::map<dof_id_type, Real> *edge_orientation_map = nullptr;
+
+    auto get_edge_orientation = [&]() -> const std::map<dof_id_type, Real> &
+    {
+        if (!edge_orientation_map)
+            edge_orientation_map = &mesh->edge_midside_orientation_map();
+        return *edge_orientation_map;
+    };
+
     // TODO: the coupling part should be done after serializing the mesh
     for (const auto &entry : entries)
     {
@@ -480,8 +489,21 @@ GlobalConstraintsObject::build_coupling_constraints()
                 if (dof_first == libMesh::invalid_uint)
                     continue;
 
+                Real coupling_val = 1.0;
+                if (label == "Az")
+                {
+                    const auto &orientation = get_edge_orientation();
+                    const auto it_first = orientation.find(pair.first);
+                    const auto it_second = orientation.find(pair.second);
+                    if (it_first != orientation.end() && it_second != orientation.end())
+                    {
+                        if (it_first->second != it_second->second)
+                            coupling_val = -1.0;
+                    }
+                }
+
                 ConstraintEntry constraint_entry;
-                constraint_entry.row[dof_first] = 1.0;
+                constraint_entry.row[dof_first] = coupling_val;
                 constraints.emplace(dof_second, constraint_entry);
             }
         }

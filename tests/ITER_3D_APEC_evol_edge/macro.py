@@ -4,6 +4,7 @@ import numpy as np
 from selector import Selector
 from model_edit import ModelEdit
 from cyclic import Cyclic
+from tree_gauge import TreeGauge
 from coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 
@@ -11,50 +12,47 @@ import os
 
 apec = APEC_M()
 
-apec_equilibrium_output = APEC_M()
+apec_evolution_mesh = "ITER_3D_APEC_evol_edge"
+apec_evolution_mesh_notrans = "ITER_3D_APEC_evol_edge_1"
+apec_equilibrium_output = "ITER_2D_APEC_out_0"
 
-eq_filename = "ITER_2D_APEC"
-filename = "ITER_3D_APEC_evol_edge"
 
-eq_filepath = os.path.join(os.getcwd(), "tests", eq_filename, eq_filename + ".vtu")
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
-static_mesh_filepath = os.path.join(os.getcwd(), "tests", filename, filename + "_1.vtu")
-
+evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+static_mesh_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu")
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
     "tests",
-    eq_filename,
-    eq_filename,
+    "ITER_2D_APEC",
+    "ITER_2D_APEC",
     "output",
-    eq_filename + "_out_0.pvtu",
+    apec_equilibrium_output + ".pvtu",
 )
-apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
+
 
 eps = 1e-1
 theta_eps = 1e-3
 max_rad = 100
 # Read the static mesh
-apec_equilibrium = APEC_M()
-apec_equilibrium.read_mesh(static_mesh_filepath)
+apec.read_mesh(static_mesh_filepath)
 
 # Set Boundary conditions
-apec_equilibrium.select_pos(
-    0, (0.0 - eps, 0.0 + eps), coordinate_system=CylindricalCoordinateSystem()
+Selector().select_pos(
+    apec.mesh, 0, (0.0 - eps, 0.0 + eps), coordinate_system=CylindricalCoordinateSystem()
 )
 # Az bound to 0 on vertical axis
-apec_equilibrium.set_value_on_selection("A", 0, 2)
-apec_equilibrium.select_pos(
-    0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.select_pos(
+    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
 )
 # Far field zero boundary conditions
-apec_equilibrium.set_value_on_selection("A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec_equilibrium.write_loads_bcs()
-apec_equilibrium.save_mesh()
+apec.write_loads_bcs()
+apec.save_mesh()
 
 # Now start the evolution analysis
-apec.read_mesh(filepath)
+apec.read_mesh(evol_filepath)
 
 # Set Boundary conditions
 Selector.select_all(apec.mesh)
@@ -62,13 +60,12 @@ Selector.nsel_ext(apec.mesh)
 Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
 Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-apec.tree_gauge()
+TreeGauge.tree_gauge(apec.mesh)
 
 Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 
 Selector.select_all(apec.mesh)
-apec_equilibrium.select_all()
 apec.apec_settings = {
     "R0": 6.2,
     "max_picard_iterations": 70,
@@ -80,10 +77,10 @@ apec.apec_settings = {
     "equilibrium_mesh": "ITER_3D_APEC_evol_edge_1",
     "print_full_output": 1,
     "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
-        apec_equilibrium.mesh, apec.mesh, "node", n_slices=3, tolerance=1e-3
+        apec.get_mesh(apec_evolution_mesh_notrans), apec.mesh, "node", n_slices=3, tolerance=1e-3
     ),
     "toroidal_slices_elems": Cyclic.build_toroidal_slices(
-        apec_equilibrium.mesh, apec.mesh, "elem", n_slices=2, tolerance=1e-3
+        apec.get_mesh(apec_evolution_mesh_notrans), apec.mesh, "elem", n_slices=2, tolerance=1e-3
     ),
 }
 
@@ -92,11 +89,14 @@ np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_node
 np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
 
 # Initial loads: Project the current density from the equilibrium output to the static mesh
+apec.read_mesh(output_eq_mesh_filepath)
+apec.set_active_mesh(apec_evolution_mesh)
+Selector.select_all(apec.mesh)
+Selector.select_all(apec.get_mesh(apec_equilibrium_output))
+Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
 Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
-apec_equilibrium_output.select_all()
-apec_equilibrium_output.select("subdomain_id", 23, type="elem")
 Cyclic.toroidal_projection(
-    apec_equilibrium_output.mesh,
+    apec.get_mesh(apec_equilibrium_output),
     "Jt_z",
     0,
     apec.mesh,

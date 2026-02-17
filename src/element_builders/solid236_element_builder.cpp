@@ -285,56 +285,53 @@ void ElementBuilder::build_solid236()
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
 
-        if (n_dofs >= n_dofs_A + 2 * n_dofs_V)
+        auto build_cav = [&]()
         {
-            auto build_cav = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
-                        {
-                            const Real t_dot_w =
-                                tx * phi_edge[dof_i][qp](0) +
-                                ty * phi_edge[dof_i][qp](1) +
-                                tz * phi_edge[dof_i][qp](2);
-                            const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
-                            Ce(dof_i, dof_j + n_dofs_A) += kav;
-                            Ce(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
-                        }
-            };
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_i][qp](0) +
+                            ty * phi_edge[dof_i][qp](1) +
+                            tz * phi_edge[dof_i][qp](2);
+                        const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
+                        Ce(dof_i, dof_j + n_dofs_A) += kav;
+                        Ce(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
+                    }
+        };
 
-            auto build_cva = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-                        {
-                            const Real t_dot_w =
-                                tx * phi_edge[dof_j][qp](0) +
-                                ty * phi_edge[dof_j][qp](1) +
-                                tz * phi_edge[dof_j][qp](2);
-                            const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
-                            Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
-                            Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
-                        }
-            };
+        auto build_cva = [&]()
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_j][qp](0) +
+                            ty * phi_edge[dof_j][qp](1) +
+                            tz * phi_edge[dof_j][qp](2);
+                        const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
+                    }
+        };
 
-            auto build_cvv = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
-                        {
-                            const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
-                            Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
-                            Ce(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) -= kvv;
-                        }
-            };
+        auto build_cvv = [&]()
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) -= kvv;
+                    }
+        };
 
-            build_cav();
-            build_cva();
-            build_cvv();
-        }
+        build_cav();
+        build_cva();
+        build_cvv();
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
@@ -355,60 +352,55 @@ void ElementBuilder::build_solid236()
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
 
-        if (n_dofs >= n_dofs_A + 2 * n_dofs_V)
+        auto build_kav = [&]()
         {
-            auto build_kav = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
-                        {
-                            const Real t_dot_w =
-                                tx * phi_edge[dof_i][qp](0) +
-                                ty * phi_edge[dof_i][qp](1) +
-                                tz * phi_edge[dof_i][qp](2);
-                            const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
-                            Ke(dof_i, dof_j + n_dofs_A) += kav;
-                            Ke(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
-                        }
-            };
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_i][qp](0) +
+                            ty * phi_edge[dof_i][qp](1) +
+                            tz * phi_edge[dof_i][qp](2);
+                        const Real kav = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_j][qp]);
+                        Ke(dof_i, dof_j + n_dofs_A) += kav;
+                        Ke(dof_i, dof_j + n_dofs_A + n_dofs_V) -= kav;
+                    }
+        };
 
-            auto build_cva = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-                        {
-                            const Real t_dot_w =
-                                tx * phi_edge[dof_j][qp](0) +
-                                ty * phi_edge[dof_j][qp](1) +
-                                tz * phi_edge[dof_j][qp](2);
-                            const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
-                            Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
-                            Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
-                        }
-            };
+        auto build_cva = [&]()
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
+                    {
+                        const Real t_dot_w =
+                            tx * phi_edge[dof_j][qp](0) +
+                            ty * phi_edge[dof_j][qp](1) +
+                            tz * phi_edge[dof_j][qp](2);
+                        const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
+                        Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
+                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
+                    }
+        };
 
-            auto build_kvv = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
-                        {
-                            const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
-                            Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
-                            Ke(dof_i + n_dofs_A, dof_j + n_dofs_A + n_dofs_V) -= kvv;
-                            Ke(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A) -= kvv;
-                            Ke(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) += kvv;
-                        }
-            };
+        auto build_kvv = [&]()
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
+                    {
+                        const Real kvv = JxW[qp] * ((1.0 / (r_coil * vc)) * phi[dof_i][qp] * phi[dof_j][qp]);
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_V, dof_j + n_dofs_A + n_dofs_V) -= kvv;
+                    }
+        };
 
-            build_kav();
-            build_cva();
-            build_kvv();
-        }
-        break;
+        build_kav();
+        build_cva();
+        build_kvv();
     }
+    break;
     default:
         libmesh_error_msg("Physical region not implemented");
     }
@@ -679,7 +671,7 @@ void ElementBuilder::build_solid236_element_solution()
 
         DenseVector<Number> Aq;
         JAe.vector_mult(Aq, Az);
-        const Point centroid = elem_data.elem->centroid();
+        const Point centroid = elem_data.elem->vertex_average();
         const Point local_centroid = cylindrical_coordinate_system_.to_local_coordinates(centroid);
 
         Real a_theta_avg = 0.0;

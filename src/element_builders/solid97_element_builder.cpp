@@ -64,7 +64,7 @@ void ElementBuilder::build_solid97()
 
     const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
 
-    const std::vector<std::vector<Real>> &div_phi_vec = fe_vec->get_div_phi();
+    // const std::vector<std::vector<Real>> &div_phi_vec = fe_vec->get_div_phi();
 
     const std::vector<std::vector<RealTensor>> &dphi_vec = fe_vec->get_dphi();
     fe->reinit(elem_data.elem);
@@ -332,40 +332,38 @@ void ElementBuilder::build_solid97()
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
 
         const unsigned int n_dofs_A = n_dofs_var * 3;
-        if (n_dofs >= n_dofs_A + 2 * n_dofs_var)
+
+        auto build_coil_coupling = [&]()
         {
-            auto build_coil_coupling = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                            const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
-                            const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
-                            const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
-                            const Real kvv = (1.0 / (r_coil * vc)) * nn;
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
+                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
+                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
+                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
 
-                            Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
-                            Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
-                            Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
-                            Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
-                            Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
-                            Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
+                        Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
+                        Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
+                        Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
+                        Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
+                        Ce(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
 
-                            Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
-                            Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
-                            Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
+                        Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
+                        Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
+                        Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
 
-                            Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kvv;
-                        }
-            };
-            build_coil_coupling();
-        }
+                        Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kvv;
+                    }
+        };
+        build_coil_coupling();
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
@@ -387,42 +385,38 @@ void ElementBuilder::build_solid97()
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
 
         const unsigned int n_dofs_A = n_dofs_var * 3;
-        if (n_dofs >= n_dofs_A + 2 * n_dofs_var)
+
+        auto build_coil_coupling = [&]()
         {
-            auto build_coil_coupling = [&]()
-            {
-                for (unsigned int qp = 0; qp < nq; qp++)
-                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        {
-                            const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                            const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
-                            const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
-                            const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
-                            const Real kvv = (1.0 / (r_coil * vc)) * nn;
+            for (unsigned int qp = 0; qp < nq; qp++)
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                    {
+                        const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
+                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
+                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
+                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
 
-                            Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
-                            Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
-                            Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
-                            Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
-                            Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
-                            Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
+                        Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
+                        Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
+                        Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A) += kav_z;
+                        Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_x;
+                        Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_y;
+                        Ke(dof_i + 2 * n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kav_z;
 
-                            Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
-                            Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
-                            Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
-                            Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
+                        Ce(dof_i + n_dofs_A, dof_j + 0 * n_dofs_var) += sym * kav_x;
+                        Ce(dof_i + n_dofs_A, dof_j + 1 * n_dofs_var) += sym * kav_y;
+                        Ce(dof_i + n_dofs_A, dof_j + 2 * n_dofs_var) += sym * kav_z;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 0 * n_dofs_var) -= kav_x;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 1 * n_dofs_var) -= kav_y;
+                        Ce(dof_i + n_dofs_A + n_dofs_var, dof_j + 2 * n_dofs_var) -= kav_z;
 
-                            Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
-                            Ke(dof_i + n_dofs_A, dof_j + n_dofs_A + n_dofs_var) -= kvv;
-                            Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A) -= kvv;
-                            Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) += kvv;
-                        }
-            };
-            build_coil_coupling();
-        }
+                        Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += sym * kvv;
+                        Ke(dof_i + n_dofs_A + n_dofs_var, dof_j + n_dofs_A + n_dofs_var) -= kvv;
+                    }
+        };
+        build_coil_coupling();
         break;
     }
     default:
@@ -673,7 +667,7 @@ void ElementBuilder::build_solid97_element_solution()
         DenseVector<Number> Aq;
         JAe.vector_mult(Aq, An);
 
-        const Point centroid = elem_data.elem->centroid();
+        const Point centroid = elem_data.elem->vertex_average();
         const Point local_centroid = cylindrical_coordinate_system_.to_local_coordinates(centroid);
 
         Real a_theta_avg = 0.0;

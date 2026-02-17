@@ -49,6 +49,7 @@ public:
 
     bool generate_nodal_couplings();
     const std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> &get_cp_pairs() const;
+    const std::map<dof_id_type, Real> &edge_midside_orientation_map();
     AngleDataIndices detect_angle_indices() const;
     CartesianCoordinateSystem node_coordinate_system(dof_id_type node_id) const;
     CartesianCoordinateSystem node_coordinate_system(const Node &node) const;
@@ -71,8 +72,11 @@ public:
     }
 
 private:
+    void build_edge_midside_orientation_map();
     std::vector<std::string> collect_node_integer_arrays(const std::string &prefix) const;
     std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> cp_pairs;
+    std::map<dof_id_type, Real> edge_midside_orientation_cache;
+    bool edge_midside_orientation_cache_built = false;
     template <typename T>
     static const T *to_entity_ptr(const T *ptr)
     {
@@ -91,7 +95,7 @@ private:
         if constexpr (std::is_base_of_v<Node, T>)
             return Point(entity(0), entity(1), entity(2));
         else
-            return entity.centroid();
+            return entity.vertex_average();
     }
 };
 
