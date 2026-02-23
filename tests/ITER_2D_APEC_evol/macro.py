@@ -41,20 +41,8 @@ apec.set_active_mesh(apec_evolution_mesh_notrans)
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.select_all(apec.mesh)
 
-# # Project the current density from the equilibrium output to the static mesh
-# Selector.select(apec.mesh, "subdomain_id", 23, type="elem")
-# Cyclic.toroidal_projection(
-#     apec.get_mesh(apec_equilibrium_output),
-#     "Jt_z",
-#     0,
-#     apec.mesh,
-#     "Js",
-#     2,
-#     location="elem",
-#     n_slices=1,
-#     tolerance=1e-3,
-# )
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
 
@@ -75,6 +63,7 @@ Cyclic.toroidal_projection(
     2,
     location="elem",
 )
+Selector.select_all(apec.mesh)
 
 apec.write_loads_bcs()
 
@@ -82,7 +71,7 @@ Selector.select_all(apec.mesh)
 apec.apec_settings = {
     "R0": 6.2,
     "max_picard_iterations": 70,
-    "tolerance_value": 1e-3,
+    "tolerance_value": 1e-5,
     "alpha_mp": 1.0001,
     "alpha_np": 0.83197,    
     "plasma_current": 15e6,
