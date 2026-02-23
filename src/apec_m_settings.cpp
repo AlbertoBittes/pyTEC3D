@@ -41,7 +41,8 @@ void ApecMSettingsObject::parse_columns()
     brady_value = 0.0;
     bverx_value = 0.0;
     bvery_value = 0.0;
-    alpha_value = 1.0;
+    alpha_mp = 1.0001;
+    alpha_np = 0.83197;
     plasma_current = 0.0;
     beta_p = 0.0;
 
@@ -52,7 +53,8 @@ void ApecMSettingsObject::parse_columns()
             "R0",
             "max_picard_iterations",
             "tolerance_value",
-            "alpha_value",
+            "alpha_mp",
+            "alpha_np",
             "plasma_current",
             "beta_p"};
         std::vector<std::string> missing;
@@ -131,8 +133,11 @@ void ApecMSettingsObject::parse_columns()
     if (this->has_column("bvery_value"))
         bvery_value = this->get_real("bvery_value");
 
-    if (this->has_column("alpha_value"))
-        alpha_value = this->get_real("alpha_value");
+    if (this->has_column("alpha_mp"))
+        alpha_mp = this->get_real("alpha_mp");
+
+    if (this->has_column("alpha_np"))
+        alpha_np = this->get_real("alpha_np");
 
     if (this->has_column("plasma_current"))
         plasma_current = this->get_real("plasma_current");

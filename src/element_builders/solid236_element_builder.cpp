@@ -62,7 +62,9 @@ void ElementBuilder::build_solid236()
     // The velocity shape function gradients at interior
     // quadrature points.
     const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
-
+    const std::vector<std::vector<RealVectorValue>> &dphi_dxi_edge = fe_edge->get_dphidxi();
+    const std::vector<std::vector<RealVectorValue>> &dphi_deta_edge = fe_edge->get_dphideta();
+    const std::vector<std::vector<RealVectorValue>> &dphi_dzeta_edge = fe_edge->get_dphidzeta();
     const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
 
     const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
@@ -832,7 +834,7 @@ void ElementBuilder::build_solid236_support_solution()
 
         std::vector<dof_id_type> dof_indices;
         unsigned int psie_var_num = element_solution_system_->variable_number("PSIe");
-        unsigned int psi_var_num = support_solution_system_->variable_number("PSI");
+        // unsigned int psi_var_num = support_solution_system_->variable_number("PSI");
         element_solution_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices, psie_var_num);
         Real psi_val = element_solution_system_->current_local_solution->el(dof_indices[0]);
 

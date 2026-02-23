@@ -8,6 +8,7 @@ import vtk.util.numpy_support as vtknp
 
 from selector import Selector
 from model_edit import ModelEdit
+from constants import REAL_CONSTANTS_COLUMNS_TYPES
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from coordinate_system import CoordinateSystem
@@ -507,3 +508,74 @@ class Cyclic:
         return pd.DataFrame(rows, columns=["cp_id", "variable"]).astype(
             {"cp_id": int, "variable": str}
         )
+
+    @staticmethod
+    def coil_winding(
+        mesh: "vtk.vtkUnstructuredGrid",
+        coordinate_system: "CoordinateSystem",
+        winding_parameters: Optional[Sequence[float]] = None,
+    ) -> pd.DataFrame:
+        """
+        Assign per-cell real constants for selected coil elements in a cylindrical frame.
+
+        For each selected cell, a new increasing real-constant ID is written to the mesh
+        cell-data array, and a matching row is returned in a real_constants DataFrame with
+        directional cosines TX/TY/TZ aligned with the local theta axis.
+
+        Args:
+            mesh: Mesh containing selected cells (selection_cell == 1).
+            coordinate_system: Cylindrical coordinate system used for theta direction.
+            winding_parameters: Optional tuple (SC, NC, VC, R, SYM).
+
+        Returns:
+            pd.DataFrame: Rows ready to assign into apec.real_constants.
+        """
+        if coordinate_system.type != "cylindrical":
+            raise ValueError("coordinate_system must be cylindrical.")
+
+        if winding_parameters is not None and len(winding_parameters) != 5:
+            raise ValueError("winding_values must be a tuple of 5 values: (SC, NC, VC, R, SYM).")
+
+        Selector.ensure_selection_arrays(mesh)
+
+        cell_data = mesh.GetCellData()
+        selection_array = cell_data.GetArray("selection_cell")
+        selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+        selected_ids = np.flatnonzero(selection_mask)
+
+        dtype_map = dict(REAL_CONSTANTS_COLUMNS_TYPES)
+        columns = list(dtype_map.keys())
+        if selected_ids.size == 0:
+            return pd.DataFrame(columns=columns).astype(dtype_map)
+
+        real_constant_np = vtknp.vtk_to_numpy(cell_data.GetArray("ansys_real_constant"))
+        current_max = int(np.max(real_constant_np)) if real_constant_np.size else 0
+        new_real_constants = np.arange(
+            current_max + 1, current_max + 1 + selected_ids.size, dtype=int
+        )
+        real_constant_np[selected_ids] = new_real_constants
+        cell_data.GetArray("ansys_real_constant").Modified()
+
+        centroids = ModelEdit.compute_cell_centroids(mesh)
+        selected_centroids = centroids[selected_ids]
+        local_components = np.zeros((selected_ids.size, 3), dtype=float)
+        local_components[:, 1] = 1.0  # theta axis
+        coil_directions = coordinate_system.vector_components_to_global(
+            local_components, selected_centroids
+        )
+
+        real_constants_df = pd.DataFrame(0.0, index=np.arange(selected_ids.size), columns=columns)
+        real_constants_df["ansys_real_constant"] = new_real_constants
+        real_constants_df["TX"] = coil_directions[:, 0]
+        real_constants_df["TY"] = coil_directions[:, 1]
+        real_constants_df["TZ"] = coil_directions[:, 2]
+
+        if winding_parameters is not None:
+            sc, nc, vc, r_value, sym = winding_parameters
+            real_constants_df["SC"] = sc
+            real_constants_df["NC"] = nc
+            real_constants_df["VC"] = vc
+            real_constants_df["R"] = r_value
+            real_constants_df["SYM"] = sym
+
+        return real_constants_df.astype(dtype_map)

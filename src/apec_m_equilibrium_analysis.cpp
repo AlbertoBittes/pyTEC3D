@@ -428,7 +428,8 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
     auto eq_sys = this->active_equation_system();
     auto settings = this->context<ApecMSettingsObject>();
     const Real beta_profile = settings->beta_profile();
-    const Real alpha = settings->alpha();
+    const Real alpha_mp = settings->alpha_mp_();
+    const Real alpha_np = settings->alpha_np_();
     const Real R0 = settings->major_radius();
 
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
@@ -458,7 +459,7 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         Real elem_centroid_rad = elem->vertex_average()(0);
 
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
-        Real grad_shafranov_current_density = (1 - std::pow(psi_segn, alpha)) *
+        Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
                                               (beta_profile * elem_centroid_rad / R0 + (1 - beta_profile) * R0 / elem_centroid_rad);
         total_plasma_current += grad_shafranov_current_density * elem->volume();
         plasma_current_vector.set(elem_current_density_dof, grad_shafranov_current_density);

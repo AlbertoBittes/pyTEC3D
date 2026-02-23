@@ -138,11 +138,11 @@ namespace libMesh
         // Vertical edges: (0,3), (1,4), (2,5)
         // 0.5 factor ensures unit tangential integral on zeta in [-1,1]
         case 3:
-          return sign * RealGradient(0.0, 0.0, 1.0 - xi - eta);
+          return sign * RealGradient(0.0, 0.0, 0.5 * (1.0 - xi - eta));
         case 4:
-          return sign * RealGradient(0.0, 0.0, xi);
+          return sign * RealGradient(0.0, 0.0, 0.5 * xi);
         case 5:
-          return sign * RealGradient(0.0, 0.0, eta);
+          return sign * RealGradient(0.0, 0.0, 0.5 * eta);
 
         // Top face edges: (3,4), (4,5), (3,5)
         case 6:
@@ -490,12 +490,7 @@ namespace libMesh
       case PRISM15:
       case PRISM18:
       {
-        libmesh_assert_less(i, 9);
-
-        const Real xi = p(0);
-        const Real eta = p(1);
-        const Real zeta = p(2);
-
+        // Reference prism: triangle in (xi,eta) and zeta in [-1,1]
         libmesh_assert_greater_equal(xi, -10. * TOLERANCE);
         libmesh_assert_greater_equal(eta, -10. * TOLERANCE);
         libmesh_assert_less_equal(xi + eta, 1.0 + 10. * TOLERANCE);
@@ -506,10 +501,9 @@ namespace libMesh
         const Real df0 = -0.5;
         const Real df1 = 0.5;
 
-        RealGradient dv;
         switch (j)
         {
-          // d()/dxi
+        // d/dxi
         case 0:
         {
           switch (i)
@@ -517,23 +511,30 @@ namespace libMesh
           case 0:
             return sign * RealGradient(0.0, f0, 0.0);
           case 1:
-            return sign * RealGradient(0.0, -1.0, 0.0);
+            return sign * RealGradient(0.0, f0, 0.0);
           case 2:
-            return sign * RealGradient(0.0, 1.0, 0.0);
+            return sign * RealGradient(0.0, -f0, 0.0);
+
           case 3:
-            return sign * RealGradient(0.0, 0.0, 1.0);
+            return sign * RealGradient(0.0, 0.0, -0.5);
           case 4:
-            return sign * RealGradient(0.0, 0.0, -1.0);
+            return sign * RealGradient(0.0, 0.0, 0.5);
           case 5:
-            return RealGradient();
+            return sign * RealGradient(0.0, 0.0, 0.0);
+
+          case 6:
+            return sign * RealGradient(0.0, f1, 0.0);
+          case 7:
+            return sign * RealGradient(0.0, f1, 0.0);
+          case 8:
+            return sign * RealGradient(0.0, -f1, 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
-          } // switch(i)
+          }
+        }
 
-        } // j = 0
-
-          // d()/deta
+        // d/deta
         case 1:
         {
           switch (i)
@@ -541,23 +542,30 @@ namespace libMesh
           case 0:
             return sign * RealGradient(-f0, 0.0, 0.0);
           case 1:
-            return sign * RealGradient(1.0, 0.0, 0.0);
+            return sign * RealGradient(-f0, 0.0, 0.0);
           case 2:
-            return sign * RealGradient(-1.0, 0.0, -1.0);
+            return sign * RealGradient(f0, 0.0, 0.0);
+
           case 3:
-            return sign * RealGradient(0.0, 0.0, 1.0);
+            return sign * RealGradient(0.0, 0.0, -0.5);
           case 4:
-            return RealGradient();
+            return sign * RealGradient(0.0, 0.0, 0.0);
           case 5:
-            return sign * RealGradient(0.0, 0.0, -1.0);
+            return sign * RealGradient(0.0, 0.0, 0.5);
+
+          case 6:
+            return sign * RealGradient(-f1, 0.0, 0.0);
+          case 7:
+            return sign * RealGradient(-f1, 0.0, 0.0);
+          case 8:
+            return sign * RealGradient(f1, 0.0, 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
-          } // switch(i)
+          }
+        }
 
-        } // j = 1
-
-          // d()/dzeta
+        // d/dzeta
         case 2:
         {
           switch (i)
@@ -565,159 +573,32 @@ namespace libMesh
           case 0:
             return sign * RealGradient(df0 * (1.0 - eta), df0 * xi, 0.0);
           case 1:
-            return RealGradient();
+            return sign * RealGradient(df0 * (-eta), df0 * xi, 0.0);
           case 2:
-          case 5:
-            return sign * RealGradient(0.0, 1.0, 0.0);
+            return sign * RealGradient(df0 * (eta), df0 * (1.0 - xi), 0.0);
+
           case 3:
-            return sign * RealGradient(-1.0, -1.0, 0.0);
+            return sign * RealGradient(0.0, 0.0, 0.0);
           case 4:
-            return sign * RealGradient(1.0, 0.0, 0.0);
+            return sign * RealGradient(0.0, 0.0, 0.0);
+          case 5:
+            return sign * RealGradient(0.0, 0.0, 0.0);
+
+          case 6:
+            return sign * RealGradient(df1 * (1.0 - eta), df1 * xi, 0.0);
+          case 7:
+            return sign * RealGradient(df1 * (-eta), df1 * xi, 0.0);
+          case 8:
+            return sign * RealGradient(df1 * (eta), df1 * (1.0 - xi), 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
-          } // switch(i)
-
-        } // j = 2
+          }
+        }
 
         default:
           libmesh_error_msg("Invalid j = " << j);
         }
-        switch (i)
-        {
-        case 0:
-          switch (j)
-          {
-          case 1:
-            dv =
-                break;
-          default:
-            dv =
-                break;
-          }
-          break;
-
-        case 1:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, f0, 0.0);
-            break;
-          case 1:
-            dv = RealGradient(-f0, 0.0, 0.0);
-            break;
-          default:
-            dv = RealGradient(df0 * (-eta), df0 * xi, 0.0);
-            break;
-          }
-          break;
-
-        case 2:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, -f0, 0.0);
-            break;
-          case 1:
-            dv = RealGradient(f0, 0.0, 0.0);
-            break;
-          default:
-            dv = RealGradient(df0 * (eta), df0 * (1.0 - xi), 0.0);
-            break;
-          }
-          break;
-
-        case 3:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, 0.0, -0.5);
-            break;
-          case 1:
-            dv = RealGradient(0.0, 0.0, -0.5);
-            break;
-          default:
-            dv = RealGradient();
-            break;
-          }
-          break;
-
-        case 4:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, 0.0, 0.5);
-            break;
-          default:
-            dv = RealGradient();
-            break;
-          }
-          break;
-
-        case 5:
-          switch (j)
-          {
-          case 1:
-            dv = RealGradient(0.0, 0.0, 0.5);
-            break;
-          default:
-            dv = RealGradient();
-            break;
-          }
-          break;
-
-        case 6:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, f1, 0.0);
-            break;
-          case 1:
-            dv = RealGradient(-f1, 0.0, 0.0);
-            break;
-          default:
-            dv = RealGradient(df1 * (1.0 - eta), df1 * xi, 0.0);
-            break;
-          }
-          break;
-
-        case 7:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, f1, 0.0);
-            break;
-          case 1:
-            dv = RealGradient(-f1, 0.0, 0.0);
-            break;
-          default:
-            dv = RealGradient(df1 * (-eta), df1 * xi, 0.0);
-            break;
-          }
-          break;
-
-        case 8:
-          switch (j)
-          {
-          case 0:
-            dv = RealGradient(0.0, -f1, 0.0);
-            break;
-          case 1:
-            dv = RealGradient(f1, 0.0, 0.0);
-            break;
-          default:
-            dv = RealGradient(df1 * (eta), df1 * (1.0 - xi), 0.0);
-            break;
-          }
-          break;
-
-        default:
-          libmesh_error_msg("Invalid i = " << i);
-        }
-
-        if (!elem->positive_edge_orientation(i))
-          dv = -dv;
-        return dv;
       }
 
       case PYRAMID13:
