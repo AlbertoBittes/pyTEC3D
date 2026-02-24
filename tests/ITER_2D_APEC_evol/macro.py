@@ -70,8 +70,8 @@ apec.write_loads_bcs()
 Selector.select_all(apec.mesh)
 apec.apec_settings = {
     "R0": 6.2,
-    "max_picard_iterations": 70,
-    "tolerance_value": 1e-5,
+    "max_picard_iterations": 30,
+    "tolerance_value": 1e-3,
     "alpha_mp": 1.0001,
     "alpha_np": 0.83197,    
     "plasma_current": 15e6,

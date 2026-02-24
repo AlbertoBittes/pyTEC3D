@@ -306,7 +306,6 @@ Real APECMEquilibriumAnalysis::check_X_point()
 
     dof_id_type vacuum_chamber_region_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
-    unsigned int X_point_elem = 0;
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->get_extra_integer(vacuum_chamber_region_component) != 1)
@@ -326,7 +325,6 @@ Real APECMEquilibriumAnalysis::check_X_point()
             min_b_sum = b_sum;
             dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
             psi_X_point = element_solution_system.current_local_solution->el(psi_dof);
-            X_point_elem = elem->id();
         }
     }
     mesh.comm().min(psi_X_point);
@@ -461,6 +459,9 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
         Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
                                               (beta_profile * elem_centroid_rad / R0 + (1 - beta_profile) * R0 / elem_centroid_rad);
+        // Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
+        //                                           (beta_profile * elem_centroid_rad / R0) +
+        //                                       std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np + 1) * ((1 - beta_profile) * R0 / elem_centroid_rad);
         total_plasma_current += grad_shafranov_current_density * elem->volume();
         plasma_current_vector.set(elem_current_density_dof, grad_shafranov_current_density);
         plasma_elem_count++;
