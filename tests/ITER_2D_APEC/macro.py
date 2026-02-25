@@ -15,26 +15,24 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-apec.apec_settings = {
-    "target_central_axis_x": 6.52136102486433,
-    "target_central_axis_y": 0.536537145137914,
-    "target_central_axis_z": 0.0,
-    "target_central_axis_element_id": 651,
-    "R0": 6.2,
-    "max_picard_iterations": 70,
-    "min_distance": 0.6,
-    "cp_gain": 0.250,
-    "tolerance_value": 1e-6,
-    "bradx_value": -3.873415861e-08,
-    "brady_value": 5.313857037e-09,
-    "bverx_value": 1.822467692e-10,
-    "bvery_value": 1.133287835e-07,
-    "alpha_mp": 1.0001,
-    "alpha_np": 0.83197,
-    "plasma_current": 15e6,
-    "beta_p": 6.8216e-001,
-    "print_full_output": 0,
-}
+apec.apec_settings["target_central_axis_x"] = 6.52136102486433
+apec.apec_settings["target_central_axis_y"] = 0.536537145137914
+apec.apec_settings["target_central_axis_z"] = 0.0
+apec.apec_settings["target_central_axis_element_id"] = 651
+apec.apec_settings["R0"] = 6.2
+apec.apec_settings["max_picard_iterations"] = 70
+apec.apec_settings["min_distance"] = 0.6
+apec.apec_settings["cp_gain"] = 0.250
+apec.apec_settings["tolerance_value"] = 1e-6
+apec.apec_settings["bradx_value"] = -3.873415861e-08
+apec.apec_settings["brady_value"] = 5.313857037e-09
+apec.apec_settings["bverx_value"] = 1.822467692e-10
+apec.apec_settings["bvery_value"] = 1.133287835e-07
+apec.apec_settings["alpha_mp"] = 1.0001
+apec.apec_settings["alpha_np"] = 0.83197
+apec.apec_settings["plasma_current"] = 15e6
+apec.apec_settings["beta_p"] = 6.8216e-001
+apec.apec_settings["print_full_output"] = 0
 
 i_CS3U = -4.8204e06
 i_CS2U = -4.0480e06

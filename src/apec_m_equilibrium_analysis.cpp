@@ -4,7 +4,116 @@
 #include "session.h"
 
 #include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <libmesh/libmesh.h>
+
+namespace
+{
+    constexpr Real diagnostic_sentinel_coord()
+    {
+        return -std::numeric_limits<Real>::max();
+    }
+
+    Real diagnostic_sentinel_scalar()
+    {
+        return std::numeric_limits<Real>::quiet_NaN();
+    }
+
+    bool nearly_equal_rel(Real a, Real b, Real rel_tol = 1e-12)
+    {
+        const Real scale = std::max<Real>(1.0, std::max(std::abs(a), std::abs(b)));
+        return std::abs(a - b) <= rel_tol * scale;
+    }
+} // namespace
+
+void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
+                                                            bool converged)
+{
+    auto eq_sys = this->active_equation_system();
+    if (!eq_sys)
+        return;
+
+    const auto &mesh = eq_sys->get_mesh();
+    if (mesh.comm().rank() != 0)
+        return;
+
+    auto session = this->context<Session>();
+    auto settings = this->context<ApecMSettingsObject>();
+    if (!session || !settings)
+        return;
+
+    const std::filesystem::path log_path = session->get_path("time_steps_folderpath") / "apec_iteration_diagnostics.csv";
+    std::filesystem::create_directories(log_path.parent_path());
+
+    const bool write_header = !std::filesystem::exists(log_path) ||
+                              std::filesystem::file_size(log_path) == 0;
+
+    std::ofstream out(log_path, std::ios::app);
+    if (!out)
+        return;
+
+    if (write_header)
+    {
+        out << "substep_time,picard_iteration,"
+            << "converged,flux_metric,flux_threshold,"
+            << "psi_magnetic_axis,psi_min,psi_limiter,psi_x_point,separatrix_configuration,"
+            << "magnetic_axis_x,magnetic_axis_y,magnetic_axis_z,"
+            << "limiter_x,limiter_y,limiter_z,x_point_x,x_point_y,x_point_z,"
+            << "b_target_axis_x,b_target_axis_y,"
+            << "radial_correction_current,vertical_correction_current,"
+            << "plasma_current_target,beta_profile,"
+            << "total_plasma_current_before_scaling,plasma_current_scaling_lambda,plasma_element_count"
+            << '\n';
+    }
+
+    out << std::setprecision(17);
+    const unsigned int picard_iteration = substep.get_number_picard_iterations() + 1;
+
+    const auto point_or_sentinel = [](const Point &p, bool valid) -> Point
+    {
+        if (valid)
+            return p;
+        return Point(diagnostic_sentinel_coord(),
+                     diagnostic_sentinel_coord(),
+                     diagnostic_sentinel_coord());
+    };
+
+    const Point limiter_point = point_or_sentinel(last_limiter_point, has_last_limiter_point);
+    const Point x_point = point_or_sentinel(last_x_point, has_last_x_point);
+
+    out << substep.get_time() << ','
+        << picard_iteration << ','
+        << (converged ? 1 : 0) << ','
+        << last_poloidal_flux_convergence_metric << ','
+        << last_poloidal_flux_convergence_threshold << ','
+        << psi_magnetic_axis << ','
+        << psi_min << ','
+        << last_psi_limiter << ','
+        << last_psi_x_point << ','
+        << last_separatrix_configuration << ','
+        << magnetic_axis(0) << ','
+        << magnetic_axis(1) << ','
+        << magnetic_axis(2) << ','
+        << limiter_point(0) << ','
+        << limiter_point(1) << ','
+        << limiter_point(2) << ','
+        << x_point(0) << ','
+        << x_point(1) << ','
+        << x_point(2) << ','
+        << b_target_axis(0) << ','
+        << b_target_axis(1) << ','
+        << last_radial_correction_current << ','
+        << last_vertical_correction_current << ','
+        << settings->plasma_currents() << ','
+        << settings->beta_profile() << ','
+        << last_total_plasma_current_before_scaling << ','
+        << last_plasma_current_scaling_lambda << ','
+        << last_plasma_element_count
+        << '\n';
+}
 
 bool APECMEquilibriumAnalysis::run_picard_iterations(Substep &substep)
 {
@@ -270,25 +379,52 @@ Real APECMEquilibriumAnalysis::check_limiter()
     Real psi_limiter = -std::numeric_limits<Real>::max();
 
     dof_id_type vacuum_boundary_region_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
-
-    auto settings_ptr = this->context<ApecMSettingsObject>();
-    int current_sign = (settings_ptr->plasma_currents() >= 0) ? 1 : -1;
-
-    unsigned int limiter_node = 0;
+    std::pair<dof_id_type, Real> limiter_data{0, -std::numeric_limits<Real>::max()};
     for (const auto &node : mesh.local_node_ptr_range())
     {
         if (node->get_extra_integer(vacuum_boundary_region_component) != 1)
             continue;
-        // Process the element as needed
         dof_id_type psi_dof = node->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
         Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
         if (psi_value > psi_limiter)
         {
-            limiter_node = node->id();
             psi_limiter = psi_value;
+            limiter_data = std::make_pair(node->id(), psi_value);
         }
     }
-    mesh.comm().max(psi_limiter);
+    std::set<std::pair<dof_id_type, Real>> limiter_data_all;
+    limiter_data_all.insert(limiter_data);
+    mesh.comm().set_union(limiter_data_all);
+
+    dof_id_type limiter_node = 0;
+    psi_limiter = -std::numeric_limits<Real>::max();
+    for (const auto &data : limiter_data_all)
+    {
+        if (data.second > psi_limiter)
+        {
+            psi_limiter = data.second;
+            limiter_node = data.first;
+        }
+    }
+
+    Real lx = diagnostic_sentinel_coord();
+    Real ly = diagnostic_sentinel_coord();
+    Real lz = diagnostic_sentinel_coord();
+    if (const Node *limiter_node_ptr = mesh.query_node_ptr(limiter_node))
+    {
+        lx = (*limiter_node_ptr)(0);
+        ly = (*limiter_node_ptr)(1);
+        lz = (*limiter_node_ptr)(2);
+    }
+    mesh.comm().max(lx);
+    mesh.comm().max(ly);
+    mesh.comm().max(lz);
+
+    has_last_limiter_point = (lx != diagnostic_sentinel_coord());
+    if (has_last_limiter_point)
+        last_limiter_point = Point(lx, ly, lz);
+
+    last_psi_limiter = psi_limiter;
     return psi_limiter;
 }
 
@@ -302,7 +438,10 @@ Real APECMEquilibriumAnalysis::check_X_point()
     unsigned int by_var_number = element_solution_system.variable_number("Be_y");
     const auto &mesh = eq_sys->get_mesh();
     Real min_b_sum = std::numeric_limits<Real>::max();
-    Real psi_X_point;
+    Real psi_X_point = std::numeric_limits<Real>::max();
+    Point x_point_local(diagnostic_sentinel_coord(),
+                        diagnostic_sentinel_coord(),
+                        diagnostic_sentinel_coord());
 
     dof_id_type vacuum_chamber_region_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
@@ -325,9 +464,35 @@ Real APECMEquilibriumAnalysis::check_X_point()
             min_b_sum = b_sum;
             dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
             psi_X_point = element_solution_system.current_local_solution->el(psi_dof);
+            x_point_local = elem->vertex_average();
         }
     }
-    mesh.comm().min(psi_X_point);
+    const Real global_min_b_sum = min_b_sum;
+    mesh.comm().min(min_b_sum);
+
+    Real xpx = diagnostic_sentinel_coord();
+    Real xpy = diagnostic_sentinel_coord();
+    Real xpz = diagnostic_sentinel_coord();
+    Real psi_x_candidate = std::numeric_limits<Real>::max();
+    if (x_point_local(0) != diagnostic_sentinel_coord() && nearly_equal_rel(global_min_b_sum, min_b_sum))
+    {
+        xpx = x_point_local(0);
+        xpy = x_point_local(1);
+        xpz = x_point_local(2);
+        psi_x_candidate = psi_X_point;
+    }
+
+    mesh.comm().max(xpx);
+    mesh.comm().max(xpy);
+    mesh.comm().max(xpz);
+    mesh.comm().min(psi_x_candidate);
+
+    has_last_x_point = (xpx != diagnostic_sentinel_coord());
+    if (has_last_x_point)
+        last_x_point = Point(xpx, xpy, xpz);
+
+    psi_X_point = psi_x_candidate;
+    last_psi_x_point = psi_X_point;
     return psi_X_point;
 }
 
@@ -341,9 +506,15 @@ void APECMEquilibriumAnalysis::find_separatrix()
     Real psi_limiter = this->check_limiter();
     Real psi_X_point = this->check_X_point();
     if (psi_X_point < psi_limiter)
+    {
         psi_min = psi_limiter;
+        last_separatrix_configuration = "limiter";
+    }
     else
+    {
         psi_min = psi_X_point;
+        last_separatrix_configuration = "x_point";
+    }
 
     this->identify_plasma_region();
 }
@@ -376,6 +547,8 @@ std::pair<Real, Real> APECMEquilibriumAnalysis::compute_correction_currents()
     // libMesh::out << "Radial correction current: " << xirad << " A" << std::endl;
     // libMesh::out << "Vertical correction current: " << xiver << " A" << std::endl;
 
+    last_radial_correction_current = xirad;
+    last_vertical_correction_current = xiver;
     return std::make_pair(xirad, xiver);
 }
 
@@ -469,8 +642,15 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     // Take total current across all processors
     comm.sum(total_plasma_current);
+    comm.sum(plasma_elem_count);
 
-    Real lambda = settings_ptr->plasma_currents() / total_plasma_current;
+    last_total_plasma_current_before_scaling = total_plasma_current;
+    last_plasma_element_count = plasma_elem_count;
+
+    Real lambda = 0.0;
+    if (std::abs(total_plasma_current) > std::numeric_limits<Real>::epsilon())
+        lambda = settings_ptr->plasma_currents() / total_plasma_current;
+    last_plasma_current_scaling_lambda = lambda;
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->get_extra_integer(plasma_component) != 1)
@@ -500,6 +680,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
 
     auto settings = this->context<ApecMSettingsObject>();
 
+    // if(0 == substep.get_number_picard_iterations())
     if (first_absolute_iteration)
     {
         for (auto &elem : mesh.active_local_element_ptr_range())
@@ -511,29 +692,44 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
             }
         }
         prev_it_vacuum_chamber_psi_vector.resize(vacuum_chamber_psi_dofs.size(), 0.0);
+        element_solution_system.solution->get(vacuum_chamber_psi_dofs, prev_it_vacuum_chamber_psi_vector);
+        last_poloidal_flux_convergence_metric = diagnostic_sentinel_scalar();
+        last_poloidal_flux_convergence_threshold = settings->tolerance();
         return false;
     }
 
     bool converged = true;
     const Real tolerance = settings->tolerance();
+    last_poloidal_flux_convergence_threshold = tolerance;
 
     element_solution_system.solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
     // Removed incorrect vectorized relative difference calculation.
-    Real tot_norm = 0.0;
+    Real max_norm = 0.0;
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
-        Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / std::min(std::abs(curr_it_vacuum_chamber_psi_vector[i]), std::abs(prev_it_vacuum_chamber_psi_vector[i]));
-        tot_norm += rel_diff;
+        const Real denom = std::max(std::numeric_limits<Real>::epsilon(),
+                                    std::min(std::abs(curr_it_vacuum_chamber_psi_vector[i]),
+                                             std::abs(prev_it_vacuum_chamber_psi_vector[i])));
+        // Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / denom;
+        Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]);
+        max_norm = std::max(max_norm, rel_diff);
     }
+    comm.max(max_norm);
+    last_poloidal_flux_convergence_metric = max_norm;
 
-    if (tot_norm > tolerance * curr_it_vacuum_chamber_psi_vector.size())
+    if (max_norm > tolerance)
     {
         converged = false;
     }
-    // Check if converged in all processors
-    comm.min(converged);
+    if (std::abs(max_norm - prev_norm) < 0.1 * tolerance)
+    {
+        converged = true;
+    }
+    // // Check if converged in all processors
+    // comm.min(converged);
 
     std::swap(prev_it_vacuum_chamber_psi_vector, curr_it_vacuum_chamber_psi_vector);
+    prev_norm = max_norm;
 
     return converged;
 }
@@ -555,6 +751,8 @@ bool APECMEquilibriumAnalysis::picard_loop(Substep &substep)
     solve_equation_systems(substep, true);
 
     bool converged = check_poloidal_flux_convergence();
+
+    append_iteration_diagnostics(substep, converged);
 
     if (converged)
         return true;

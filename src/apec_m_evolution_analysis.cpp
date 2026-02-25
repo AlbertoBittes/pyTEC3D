@@ -179,26 +179,33 @@ void APECMEvolutionAnalysis::toroidal_projection_current()
 
 bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 {
+    APEC_M *program = this->get_parent_object();
+
     auto settings = this->context<ApecMSettingsObject>();
     bool print_full_output = settings->print_full_output();
-
-    auto toroidal_proj = toroidal_projection.get();
-
-    if (first_absolute_iteration)
-        set_toroidal_slices();
-
-    APEC_M *program = this->get_parent_object();
 
     const std::string &evolution_mesh = settings->evolution_mesh();
     const std::string &equilibrium_mesh = settings->equilibrium_mesh();
 
+    auto toroidal_proj = toroidal_projection.get();
+    if (first_absolute_iteration)
+        set_toroidal_slices();
+
+    if (substep.get_parent_object()->get_previous_time_step() == nullptr)
+    {
+        program->set_active_mesh(equilibrium_mesh);
+        bool conv = APECMEquilibriumAnalysis::picard_loop(substep);
+        program->set_active_mesh(evolution_mesh);
+        toroidal_projection_current();
+        solve_equation_systems(substep, false);
+        return conv;
+    }
+
     program->set_active_mesh(evolution_mesh);
 
-    if (!first_absolute_iteration)
-    {
-        toroidal_projection_current();
-        set_poloidal_currents();
-    }
+    toroidal_projection_current();
+
+    set_poloidal_currents();
 
     libMesh::out << "Solving evolution step..." << std::endl;
     solve_equation_systems(substep, false);
@@ -219,12 +226,13 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 
     bool converged = check_poloidal_flux_convergence();
 
+    append_iteration_diagnostics(substep, converged);
+
     if (converged)
         return true;
 
     if (print_full_output)
         print_output(substep, true);
 
-    first_absolute_iteration = false;
     return false;
 }

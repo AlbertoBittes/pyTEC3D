@@ -42,6 +42,16 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 Selector.select_all(apec.mesh)
+Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
+Cyclic.toroidal_projection(
+    apec.get_mesh(apec_equilibrium_output),
+    "Jt_z",
+    0,
+    apec.mesh,
+    "Js",
+    2,
+    location="elem",
+)
 
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
@@ -68,33 +78,36 @@ Selector.select_all(apec.mesh)
 apec.write_loads_bcs()
 
 Selector.select_all(apec.mesh)
-apec.apec_settings = {
-    "R0": 6.2,
-    "max_picard_iterations": 30,
-    "tolerance_value": 1e-3,
-    "alpha_mp": 1.0001,
-    "alpha_np": 0.83197,    
-    "plasma_current": 15e6,
-    "beta_p": 6.8216e-001,
-    "evolution_mesh": apec_evolution_mesh,
-    "equilibrium_mesh": apec_evolution_mesh_notrans,
-    "print_full_output": 0,
-    "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
-        apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
-    ),
-    "toroidal_slices_elems": Cyclic.build_toroidal_slices(
-        apec.mesh, apec.mesh, "elem", n_slices=1, tolerance=1e-3
-    ),
-
-}
-
-
+apec.apec_settings["target_central_axis_x"] = 6.52136102486433
+apec.apec_settings["target_central_axis_y"] = 0.536537145137914
+apec.apec_settings["target_central_axis_z"] = 0.0
+apec.apec_settings["target_central_axis_element_id"] = 651
+apec.apec_settings["R0"] = 6.2
+apec.apec_settings["max_picard_iterations"] = 70
+apec.apec_settings["min_distance"] = 0.3
+apec.apec_settings["cp_gain"] = 0.250
+apec.apec_settings["tolerance_value"] = 1e-4
+apec.apec_settings["bradx_value"] = -3.873415861e-08
+apec.apec_settings["brady_value"] = 5.313857037e-09
+apec.apec_settings["bverx_value"] = 1.822467692e-10
+apec.apec_settings["bvery_value"] = 1.133287835e-07
+apec.apec_settings["alpha_mp"] = 1.0001
+apec.apec_settings["alpha_np"] = 0.83197
+apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
+apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
+# apec.apec_settings["plasma_current"] = 15e6
+# apec.apec_settings["beta_p"] = 6.8216e-001
+apec.apec_settings["print_full_output"] = 1
+apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
+    apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
+)
+apec.apec_settings["toroidal_slices_elems"] = Cyclic.build_toroidal_slices(
+    apec.mesh, apec.mesh, "elem", n_slices=1, tolerance=1e-3
+)
 
 # Save the toroidal projection maps to files
 np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
 np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
-
-
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt("time_steps.txt")
@@ -102,12 +115,17 @@ currents = np.loadtxt("plasma_current.txt")
 betas = np.loadtxt("beta_p.txt")
 
 # Consider only the time steps every 5 in the list
-time_steps = time_steps[::5][1:]
-currents = currents[::5][1:]
-betas = betas[::5][1:]
+time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
+currents = np.concatenate((currents[0:1], currents[1::5]))
+betas = np.concatenate((betas[0:1], betas[1::5]))
 
 for step_idx in range(len(time_steps)):
     apec.time_parameters["time"] = time_steps[step_idx]
+    if step_idx == 0:
+        apec.time_parameters["transient_effects"] = 0
+        apec.time_parameters["time"] = 1e-10
+    else:
+        apec.time_parameters["transient_effects"] = 1
     apec.apec_settings["plasma_current"] = currents[step_idx]
     apec.apec_settings["beta_p"] = betas[step_idx]
     apec.write_time_step(step_idx + 1)

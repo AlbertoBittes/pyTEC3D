@@ -46,6 +46,7 @@ protected:
     // };
 
     virtual bool run_picard_iterations(Substep &substep) override;
+    void append_iteration_diagnostics(Substep &substep, bool converged);
 
 protected:
     Real psi_magnetic_axis = 0.0;
@@ -62,6 +63,26 @@ protected:
     std::vector<dof_id_type> vacuum_chamber_psi_dofs;
     std::vector<Number> prev_it_vacuum_chamber_psi_vector;
     std::vector<Number> curr_it_vacuum_chamber_psi_vector;
+
+    Real last_psi_limiter = 0.0;
+    Real last_psi_x_point = 0.0;
+    std::string last_separatrix_configuration = "uninitialized";
+
+    Point last_limiter_point = Point();
+    Point last_x_point = Point();
+    bool has_last_limiter_point = false;
+    bool has_last_x_point = false;
+
+    Real last_poloidal_flux_convergence_metric = std::numeric_limits<Real>::quiet_NaN();
+    Real last_poloidal_flux_convergence_threshold = std::numeric_limits<Real>::quiet_NaN();
+
+    Real last_radial_correction_current = 0.0;
+    Real last_vertical_correction_current = 0.0;
+    Real last_total_plasma_current_before_scaling = 0.0;
+    Real last_plasma_current_scaling_lambda = 0.0;
+    unsigned int last_plasma_element_count = 0;
+
+    Real prev_norm = std::numeric_limits<Real>::max();
 };
 
 #endif // APECM_EQUILIBRIUM_ANALYSIS_H
