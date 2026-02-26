@@ -84,7 +84,7 @@ apec.apec_settings["target_central_axis_z"] = 0.0
 apec.apec_settings["target_central_axis_element_id"] = 651
 apec.apec_settings["R0"] = 6.2
 apec.apec_settings["max_picard_iterations"] = 70
-apec.apec_settings["min_distance"] = 0.3
+apec.apec_settings["min_distance"] = 0.1
 apec.apec_settings["cp_gain"] = 0.250
 apec.apec_settings["tolerance_value"] = 1e-4
 apec.apec_settings["bradx_value"] = -3.873415861e-08
@@ -97,7 +97,7 @@ apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
-apec.apec_settings["print_full_output"] = 1
+apec.apec_settings["print_full_output"] = 0
 apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
     apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
 )
@@ -118,7 +118,7 @@ betas = np.loadtxt("beta_p.txt")
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-
+apec.time_parameters["theta"] = 0.5
 for step_idx in range(len(time_steps)):
     apec.time_parameters["time"] = time_steps[step_idx]
     if step_idx == 0:

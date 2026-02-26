@@ -339,32 +339,24 @@ void APECMEquilibriumAnalysis::identify_plasma_region()
     dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
-    // auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
-    // unsigned int psi_var_number = nodal_solution_system.variable_number("PSI");
-
-    auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
-    unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
 
     for (auto &elem : mesh.active_local_element_ptr_range())
     {
         if (elem->get_extra_integer(plasma_region_component) != 1)
             continue;
 
-        dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
-        Real psi_value = element_solution_system.current_local_solution->el(psi_dof);
-        if (psi_value < psi_min)
-            elem->set_extra_integer(plasma_region_component, 0);
-
-        // for (auto &node : elem->node_ref_range())
-        // {
-        //     dof_id_type psi_dof = node.dof_number(ApecMSystemBase::NODAL_SOLUTION, psi_var_number, 0);
-        //     Real psi_value = nodal_solution_system.current_local_solution->el(psi_dof);
-        //     if (psi_value < psi_min)
-        //     {
-        //         elem->set_extra_integer(plasma_region_component, 0);
-        //         break;
-        //     }
-        // }
+        for (auto &node : elem->node_ref_range())
+        {
+            dof_id_type psi_dof = node.dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+            Real psi_value = support_solution_system.current_local_solution->el(psi_dof);
+            if (psi_value < psi_min)
+            {
+                elem->set_extra_integer(plasma_region_component, 0);
+                break;
+            }
+        }
     }
 }
 
@@ -433,11 +425,16 @@ Real APECMEquilibriumAnalysis::check_X_point()
     libMesh::out << "Checking X-point configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
-    unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
     unsigned int bx_var_number = element_solution_system.variable_number("Be_x");
     unsigned int by_var_number = element_solution_system.variable_number("Be_y");
+    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
+    unsigned int nodal_bx_var_number = nodal_solution_system.variable_number("B_x");
+    unsigned int nodal_by_var_number = nodal_solution_system.variable_number("B_y");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
     Real min_b_sum = std::numeric_limits<Real>::max();
+    dof_id_type x_point_elem_id = std::numeric_limits<dof_id_type>::max();
     Real psi_X_point = std::numeric_limits<Real>::max();
     Point x_point_local(diagnostic_sentinel_coord(),
                         diagnostic_sentinel_coord(),
@@ -462,19 +459,61 @@ Real APECMEquilibriumAnalysis::check_X_point()
         if (b_sum < min_b_sum)
         {
             min_b_sum = b_sum;
-            dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
-            psi_X_point = element_solution_system.current_local_solution->el(psi_dof);
-            x_point_local = elem->vertex_average();
+            x_point_elem_id = elem->id();
         }
     }
-    const Real global_min_b_sum = min_b_sum;
-    mesh.comm().min(min_b_sum);
+
+    std::set<std::pair<dof_id_type, Real>> x_point_elem_data_all;
+    x_point_elem_data_all.insert(std::make_pair(x_point_elem_id, min_b_sum));
+    mesh.comm().set_union(x_point_elem_data_all);
+
+    min_b_sum = std::numeric_limits<Real>::max();
+    x_point_elem_id = std::numeric_limits<dof_id_type>::max();
+    for (const auto &data : x_point_elem_data_all)
+    {
+        if (data.second < min_b_sum)
+        {
+            min_b_sum = data.second;
+            x_point_elem_id = data.first;
+        }
+    }
+
+    Real local_min_node_b_sum = std::numeric_limits<Real>::max();
+    const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id);
+    if (x_elem_ptr)
+    {
+        for (const auto &node : x_elem_ptr->node_ref_range())
+        {
+            Point node_point(node(0), node(1), node(2));
+            const Real bx_value = nodal_solution_system.point_value(
+                nodal_bx_var_number,
+                node_point,
+                x_point_elem_id,
+                nodal_solution_system.solution.get());
+            const Real by_value = nodal_solution_system.point_value(
+                nodal_by_var_number,
+                node_point,
+                x_point_elem_id,
+                nodal_solution_system.solution.get());
+            const Real node_b_sum = std::sqrt(bx_value * bx_value + by_value * by_value);
+            if (node_b_sum < local_min_node_b_sum)
+            {
+                local_min_node_b_sum = node_b_sum;
+                x_point_local = node_point;
+                dof_id_type psi_dof = node.dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+                psi_X_point = support_solution_system.current_local_solution->el(psi_dof);
+            }
+        }
+    }
 
     Real xpx = diagnostic_sentinel_coord();
     Real xpy = diagnostic_sentinel_coord();
     Real xpz = diagnostic_sentinel_coord();
     Real psi_x_candidate = std::numeric_limits<Real>::max();
-    if (x_point_local(0) != diagnostic_sentinel_coord() && nearly_equal_rel(global_min_b_sum, min_b_sum))
+    const Real global_min_node_b_sum = local_min_node_b_sum;
+    mesh.comm().min(local_min_node_b_sum);
+    if (x_point_local(0) != diagnostic_sentinel_coord() &&
+        nearly_equal_rel(global_min_node_b_sum, local_min_node_b_sum))
     {
         xpx = x_point_local(0);
         xpy = x_point_local(1);
@@ -721,10 +760,10 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     {
         converged = false;
     }
-    if (std::abs(max_norm - prev_norm) < 0.1 * tolerance)
-    {
-        converged = true;
-    }
+    // if (std::abs(max_norm - prev_norm) < 0.1 * tolerance)
+    // {
+    //     converged = true;
+    // }
     // // Check if converged in all processors
     // comm.min(converged);
 
