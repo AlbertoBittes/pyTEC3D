@@ -97,7 +97,7 @@ apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
-apec.apec_settings["print_full_output"] = 0
+apec.apec_settings["print_full_output"] = 1
 apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
     apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
 )

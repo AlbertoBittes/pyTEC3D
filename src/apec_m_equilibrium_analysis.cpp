@@ -627,6 +627,8 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         // Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
         //                                           (beta_profile * elem_centroid_rad / R0) +
         //                                       std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np + 1) * ((1 - beta_profile) * R0 / elem_centroid_rad);
+        if (std::isnan(grad_shafranov_current_density))
+            grad_shafranov_current_density = 0.0;
         total_plasma_current += grad_shafranov_current_density * elem->volume();
         plasma_current_vector.set(elem_current_density_dof, grad_shafranov_current_density);
         plasma_elem_count++;
