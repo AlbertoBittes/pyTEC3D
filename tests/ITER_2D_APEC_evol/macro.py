@@ -115,10 +115,10 @@ currents = np.loadtxt("plasma_current.txt")
 betas = np.loadtxt("beta_p.txt")
 
 # Consider only the time steps every 5 in the list
-time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
-currents = np.concatenate((currents[0:1], currents[1::5]))
-betas = np.concatenate((betas[0:1], betas[1::5]))
-apec.time_parameters["theta"] = 0.5
+time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
+currents = np.concatenate((currents[0:1], currents[1::10]))
+betas = np.concatenate((betas[0:1], betas[1::10]))
+apec.time_parameters["theta"] = 1.0
 for step_idx in range(len(time_steps)):
     apec.time_parameters["time"] = time_steps[step_idx]
     if step_idx == 0:
