@@ -130,6 +130,10 @@ void ElementBuilder::set_element_data(Elem *elem)
         elem_data.real_constant_num = elem->get_extra_integer(2);
     }
     elem_data.elem = elem;
+
+    std::vector<dof_id_type> dof_indices;
+    dof_solution_dof_map_->dof_indices(elem, dof_indices);
+    this->n_dofs = static_cast<unsigned int>(dof_indices.size());
 }
 
 //

@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     }
 
     // {
-    //     if (init.comm().rank() == 1)
+    //     if (init.comm().rank() == 0)
     //     {
     //         int i = 0;
     //         while (0 == i)

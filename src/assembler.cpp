@@ -116,8 +116,6 @@ void AssemblerLinear::assemble()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->type() == NODEELEM)
-            continue;
         dof_map.dof_indices(elem, dof_indices);
 
         // for (int n = 0; n < elem->n_nodes(); n++)
@@ -333,12 +331,8 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->type() == NODEELEM)
-                continue;
-            dof_map.dof_indices(elem, dof_indices);
-
             builder->set_element_data(elem);
-            builder->set_n_dofs(dof_indices.size());
+
             builder->build_element();
 
             BinaryReader::write_element_matrices(*builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -369,12 +363,6 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        if (elem->type() == NODEELEM)
-            continue;
-
-        dof_map.dof_indices(elem, dof_indices);
-
-        builder->set_n_dofs(dof_indices.size());
         builder->set_element_data(elem);
 
         BinaryReader::read_element_vectors(*builder, *base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);

@@ -89,6 +89,8 @@ void APECMEvolutionAnalysis::toroidal_average()
     auto main_eq_sys = program->get_equation_system(evolution_mesh);
     auto static_eq_sys = program->get_equation_system(equilibrium_mesh);
 
+    ApecMLinearSystem &main_sys = main_eq_sys->get_system<ApecMLinearSystem>(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    ApecMLinearSystem &static_sys = static_eq_sys->get_system<ApecMLinearSystem>(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     ApecMExplicitSystem &main_sys_element_sol = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
@@ -99,6 +101,12 @@ void APECMEvolutionAnalysis::toroidal_average()
     auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
 
     {
+        VectorFieldCoordinateTransformation sol_rotation(main_sys,
+                                                         cylindrical_coordinate_system,
+                                                         {"A"});
+        VectorFieldCoordinateTransformation static_sol_rotation(static_sys,
+                                                                cylindrical_coordinate_system,
+                                                                {"A"});
         VectorFieldCoordinateTransformation element_sol_rotation(main_sys_element_sol,
                                                                  cylindrical_coordinate_system,
                                                                  {"Be", "Jt"});
@@ -113,6 +121,7 @@ void APECMEvolutionAnalysis::toroidal_average()
         // Project PSI
         const std::pair<std::string, std::string> toroidal_avg_pairs[] = {
             {"PSI", "PSI"},
+            {"A" + j_b_labels_evol[0], "A" + j_b_labels_stat[0]},
             {"Jt" + j_b_labels_evol[0], "Js" + j_b_labels_stat[0]},
             {"PSIe", "PSIe"},
             {"Be" + j_b_labels_evol[1], "Be" + j_b_labels_stat[1]},

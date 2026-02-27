@@ -10,25 +10,6 @@
 #include <iomanip>
 #include <libmesh/libmesh.h>
 
-namespace
-{
-    constexpr Real diagnostic_sentinel_coord()
-    {
-        return -std::numeric_limits<Real>::max();
-    }
-
-    Real diagnostic_sentinel_scalar()
-    {
-        return std::numeric_limits<Real>::quiet_NaN();
-    }
-
-    bool nearly_equal_rel(Real a, Real b, Real rel_tol = 1e-12)
-    {
-        const Real scale = std::max<Real>(1.0, std::max(std::abs(a), std::abs(b)));
-        return std::abs(a - b) <= rel_tol * scale;
-    }
-} // namespace
-
 void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
                                                             bool converged)
 {
@@ -76,9 +57,9 @@ void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
     {
         if (valid)
             return p;
-        return Point(diagnostic_sentinel_coord(),
-                     diagnostic_sentinel_coord(),
-                     diagnostic_sentinel_coord());
+        return Point(-std::numeric_limits<Real>::max(),
+                     -std::numeric_limits<Real>::max(),
+                     -std::numeric_limits<Real>::max());
     };
 
     const Point limiter_point = point_or_sentinel(last_limiter_point, has_last_limiter_point);
@@ -371,7 +352,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
     Real psi_limiter = -std::numeric_limits<Real>::max();
 
     dof_id_type vacuum_boundary_region_component = mesh.get_node_integer_index("NEW_VACUUM_CHAMBER_BOUNDARY");
-    std::pair<dof_id_type, Real> limiter_data{0, -std::numeric_limits<Real>::max()};
+    std::pair<dof_id_type, Real> limiter_data{libMesh::invalid_uint, -std::numeric_limits<Real>::max()};
     for (const auto &node : mesh.local_node_ptr_range())
     {
         if (node->get_extra_integer(vacuum_boundary_region_component) != 1)
@@ -388,7 +369,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
     limiter_data_all.insert(limiter_data);
     mesh.comm().set_union(limiter_data_all);
 
-    dof_id_type limiter_node = 0;
+    dof_id_type limiter_node = libMesh::invalid_uint;
     psi_limiter = -std::numeric_limits<Real>::max();
     for (const auto &data : limiter_data_all)
     {
@@ -399,9 +380,9 @@ Real APECMEquilibriumAnalysis::check_limiter()
         }
     }
 
-    Real lx = diagnostic_sentinel_coord();
-    Real ly = diagnostic_sentinel_coord();
-    Real lz = diagnostic_sentinel_coord();
+    Real lx = -std::numeric_limits<Real>::max();
+    Real ly = -std::numeric_limits<Real>::max();
+    Real lz = -std::numeric_limits<Real>::max();
     if (const Node *limiter_node_ptr = mesh.query_node_ptr(limiter_node))
     {
         lx = (*limiter_node_ptr)(0);
@@ -412,11 +393,10 @@ Real APECMEquilibriumAnalysis::check_limiter()
     mesh.comm().max(ly);
     mesh.comm().max(lz);
 
-    has_last_limiter_point = (lx != diagnostic_sentinel_coord());
-    if (has_last_limiter_point)
-        last_limiter_point = Point(lx, ly, lz);
+    last_limiter_point = Point(lx, ly, lz);
 
     last_psi_limiter = psi_limiter;
+
     return psi_limiter;
 }
 
@@ -425,15 +405,23 @@ Real APECMEquilibriumAnalysis::check_X_point()
     libMesh::out << "Checking X-point configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
-    unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
     unsigned int bx_var_number = element_solution_system.variable_number("Be_x");
     unsigned int by_var_number = element_solution_system.variable_number("Be_y");
+    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
+    unsigned int nodal_bx_var_number = nodal_solution_system.variable_number("B_x");
+    unsigned int nodal_by_var_number = nodal_solution_system.variable_number("B_y");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
-    Real min_b_sum = std::numeric_limits<Real>::max();
+    const auto proc_id = mesh.comm().rank();
+
+    // 1) Find local candidate element with minimum |B| from element solution.
+    // Real min_b_sum = std::numeric_limits<Real>::max();
+    // dof_id_type x_point_elem_id = libMesh::invalid_uint;
     Real psi_X_point = std::numeric_limits<Real>::max();
-    Point x_point_local(diagnostic_sentinel_coord(),
-                        diagnostic_sentinel_coord(),
-                        diagnostic_sentinel_coord());
+    std::pair<dof_id_type, Real> x_point_data{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
+
+    Real min_b_sum = std::numeric_limits<Real>::max();
 
     dof_id_type vacuum_chamber_region_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
 
@@ -454,37 +442,96 @@ Real APECMEquilibriumAnalysis::check_X_point()
         if (b_sum < min_b_sum)
         {
             min_b_sum = b_sum;
-            dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
-            psi_X_point = element_solution_system.current_local_solution->el(psi_dof);
-            x_point_local = elem->vertex_average();
+            x_point_data = std::make_pair(elem->id(), b_sum);
         }
     }
-    const Real global_min_b_sum = min_b_sum;
-    mesh.comm().min(min_b_sum);
 
-    Real xpx = diagnostic_sentinel_coord();
-    Real xpy = diagnostic_sentinel_coord();
-    Real xpz = diagnostic_sentinel_coord();
-    Real psi_x_candidate = std::numeric_limits<Real>::max();
-    if (x_point_local(0) != diagnostic_sentinel_coord() && nearly_equal_rel(global_min_b_sum, min_b_sum))
+    // Global element selection by minimum field across processors.
+    std::set<std::pair<dof_id_type, Real>> x_point_elem_data_all;
+    x_point_elem_data_all.insert(x_point_data);
+    mesh.comm().set_union(x_point_elem_data_all);
+
+    min_b_sum = std::numeric_limits<Real>::max();
+    dof_id_type x_point_elem_id = libMesh::invalid_uint;
+    for (const auto &data : x_point_elem_data_all)
     {
-        xpx = x_point_local(0);
-        xpy = x_point_local(1);
-        xpz = x_point_local(2);
-        psi_x_candidate = psi_X_point;
+        if (data.second < min_b_sum)
+        {
+            min_b_sum = data.second;
+            x_point_elem_id = data.first;
+        }
+    }
+
+    // 2-4) On the owning processor: build element + nodal solution and scan nodes.
+    Real local_min_node_b_norm_sq = std::numeric_limits<Real>::max();
+    std::pair<dof_id_type, Real> x_point_data_nodes{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
+    const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id);
+    if (x_elem_ptr && x_elem_ptr->processor_id() == proc_id)
+    {
+        auto builder = ElementBuilder::make_element_builder(eq_sys);
+        builder->set_element_data(const_cast<Elem *>(x_elem_ptr));
+        builder->build_element();
+        builder->build_nodal_solution();
+
+        for (const auto &node : x_elem_ptr->node_ref_range())
+        {
+            Point node_point(node(0), node(1), node(2));
+            const Real bx_value = nodal_solution_system.point_value(
+                nodal_bx_var_number,
+                node_point,
+                *x_elem_ptr,
+                nodal_solution_system.solution.get());
+            const Real by_value = nodal_solution_system.point_value(
+                nodal_by_var_number,
+                node_point,
+                *x_elem_ptr,
+                nodal_solution_system.solution.get());
+
+            const Real b_norm = std::sqrt(bx_value * bx_value + by_value * by_value);
+            if (b_norm < local_min_node_b_norm_sq)
+            {
+                local_min_node_b_norm_sq = b_norm;
+                dof_id_type psi_dof = node.dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+                x_point_data_nodes = std::make_pair(node.id(), support_solution_system.current_local_solution->el(psi_dof));
+            }
+        }
+    }
+
+    nodal_solution_system.solution->close();
+
+    std::set<std::pair<dof_id_type, Real>> x_point_node_data_all;
+    x_point_node_data_all.insert(x_point_data_nodes);
+    mesh.comm().set_union(x_point_node_data_all);
+
+    dof_id_type x_point_node_id = libMesh::invalid_uint;
+    for (const auto &data : x_point_node_data_all)
+    {
+        if (data.first != libMesh::invalid_uint)
+        {
+            psi_X_point = data.second;
+            x_point_node_id = data.first;
+        }
+    }
+
+    Real xpx = -std::numeric_limits<Real>::max();
+    Real xpy = -std::numeric_limits<Real>::max();
+    Real xpz = -std::numeric_limits<Real>::max();
+
+    const Node *x_node_ptr = mesh.query_node_ptr(x_point_node_id);
+    if (x_node_ptr)
+    {
+        xpx = x_node_ptr->operator()(0);
+        xpy = x_node_ptr->operator()(1);
+        xpz = x_node_ptr->operator()(2);
     }
 
     mesh.comm().max(xpx);
     mesh.comm().max(xpy);
     mesh.comm().max(xpz);
-    mesh.comm().min(psi_x_candidate);
 
-    has_last_x_point = (xpx != diagnostic_sentinel_coord());
-    if (has_last_x_point)
-        last_x_point = Point(xpx, xpy, xpz);
-
-    psi_X_point = psi_x_candidate;
+    last_x_point = Point(xpx, xpy, xpz);
     last_psi_x_point = psi_X_point;
+
     return psi_X_point;
 }
 
@@ -687,7 +734,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
         }
         prev_it_vacuum_chamber_psi_vector.resize(vacuum_chamber_psi_dofs.size(), 0.0);
         element_solution_system.solution->get(vacuum_chamber_psi_dofs, prev_it_vacuum_chamber_psi_vector);
-        last_poloidal_flux_convergence_metric = diagnostic_sentinel_scalar();
+        last_poloidal_flux_convergence_metric = std::numeric_limits<Real>::quiet_NaN();
         last_poloidal_flux_convergence_threshold = settings->tolerance();
         return false;
     }
