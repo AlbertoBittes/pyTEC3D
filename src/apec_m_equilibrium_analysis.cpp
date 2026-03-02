@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <unordered_map>
+#include <unordered_set>
 #include <libmesh/libmesh.h>
 
 void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
@@ -394,6 +396,7 @@ Real APECMEquilibriumAnalysis::check_limiter()
     mesh.comm().max(lz);
 
     last_limiter_point = Point(lx, ly, lz);
+    has_last_limiter_point = (limiter_node != libMesh::invalid_uint);
 
     last_psi_limiter = psi_limiter;
 
@@ -408,8 +411,6 @@ Real APECMEquilibriumAnalysis::check_X_point()
     unsigned int bx_var_number = element_solution_system.variable_number("Be_x");
     unsigned int by_var_number = element_solution_system.variable_number("Be_y");
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
-    unsigned int nodal_bx_var_number = nodal_solution_system.variable_number("B_x");
-    unsigned int nodal_by_var_number = nodal_solution_system.variable_number("B_y");
     auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
     unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
@@ -463,36 +464,68 @@ Real APECMEquilibriumAnalysis::check_X_point()
     }
 
     // 2-4) On the owning processor: build element + nodal solution and scan nodes.
-    Real local_min_node_b_norm_sq = std::numeric_limits<Real>::max();
+    Real local_min_node_b_norm = std::numeric_limits<Real>::max();
     std::pair<dof_id_type, Real> x_point_data_nodes{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
     const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id);
     if (x_elem_ptr && x_elem_ptr->processor_id() == proc_id)
     {
         auto builder = ElementBuilder::make_element_builder(eq_sys);
-        builder->set_element_data(const_cast<Elem *>(x_elem_ptr));
-        builder->build_element();
-        builder->build_nodal_solution();
-
-        for (const auto &node : x_elem_ptr->node_ref_range())
+        std::vector<const Elem *> candidate_elements;
+        std::unordered_set<dof_id_type> candidate_element_ids;
+        candidate_elements.push_back(x_elem_ptr);
+        candidate_element_ids.insert(x_elem_ptr->id());
+        for (unsigned int k = 0; k < x_elem_ptr->n_neighbors(); ++k)
         {
-            Point node_point(node(0), node(1), node(2));
-            const Real bx_value = nodal_solution_system.point_value(
-                nodal_bx_var_number,
-                node_point,
-                *x_elem_ptr,
-                nodal_solution_system.solution.get());
-            const Real by_value = nodal_solution_system.point_value(
-                nodal_by_var_number,
-                node_point,
-                *x_elem_ptr,
-                nodal_solution_system.solution.get());
+            const Elem *neighbor = x_elem_ptr->neighbor_ptr(k);
+            if (!candidate_element_ids.insert(neighbor->id()).second)
+                continue;
+            candidate_elements.push_back(neighbor);
+        }
 
-            const Real b_norm = std::sqrt(bx_value * bx_value + by_value * by_value);
-            if (b_norm < local_min_node_b_norm_sq)
+        std::unordered_map<dof_id_type, std::pair<Real, Real>> node_b_sums;
+        std::unordered_map<dof_id_type, unsigned int> node_counts;
+
+        for (const Elem *elem_ptr : candidate_elements)
+        {
+            builder->set_element_data(const_cast<Elem *>(elem_ptr));
+            builder->build_element();
+            builder->build_nodal_solution();
+
+            unsigned int n_nodes = 0;
+            const unsigned int n_nodes_in_elem = elem_ptr->n_nodes();
+            for (const auto &node : elem_ptr->node_ref_range())
             {
-                local_min_node_b_norm_sq = b_norm;
-                dof_id_type psi_dof = node.dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
-                x_point_data_nodes = std::make_pair(node.id(), support_solution_system.current_local_solution->el(psi_dof));
+                const Real bx_value = builder->get_vectors()[ElementBuilder::NODAL_SOLUTION_VECTORS][0][n_nodes];
+                const Real by_value = builder->get_vectors()[ElementBuilder::NODAL_SOLUTION_VECTORS][0][n_nodes + n_nodes_in_elem];
+
+                auto &sum_pair = node_b_sums[node.id()];
+                sum_pair.first += bx_value;
+                sum_pair.second += by_value;
+                node_counts[node.id()] += 1;
+                n_nodes++;
+            }
+        }
+
+        for (const auto &node_sum_entry : node_b_sums)
+        {
+            const dof_id_type node_id = node_sum_entry.first;
+            const auto count_it = node_counts.find(node_id);
+            if (count_it == node_counts.end() || count_it->second == 0)
+                continue;
+
+            const Real inv_count = 1.0 / static_cast<Real>(count_it->second);
+            const Real avg_bx = node_sum_entry.second.first * inv_count;
+            const Real avg_by = node_sum_entry.second.second * inv_count;
+            const Real b_norm = std::sqrt(avg_bx * avg_bx + avg_by * avg_by);
+            if (b_norm < local_min_node_b_norm)
+            {
+                const Node *node_ptr = mesh.query_node_ptr(node_id);
+                if (!node_ptr)
+                    continue;
+
+                local_min_node_b_norm = b_norm;
+                dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+                x_point_data_nodes = std::make_pair(node_id, support_solution_system.current_local_solution->el(psi_dof));
             }
         }
     }
@@ -530,6 +563,7 @@ Real APECMEquilibriumAnalysis::check_X_point()
     mesh.comm().max(xpz);
 
     last_x_point = Point(xpx, xpy, xpz);
+    has_last_x_point = (x_point_node_id != libMesh::invalid_uint);
     last_psi_x_point = psi_X_point;
 
     return psi_X_point;
@@ -746,6 +780,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     element_solution_system.solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
     // Removed incorrect vectorized relative difference calculation.
     Real max_norm = 0.0;
+
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
         const Real denom = std::max(std::numeric_limits<Real>::epsilon(),
