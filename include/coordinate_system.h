@@ -2,6 +2,7 @@
 #define COORDINATE_SYSTEM_H
 
 #include <memory>
+#include <vector>
 
 #include <libmesh/point.h>
 
@@ -25,7 +26,6 @@ public:
     Point axis_direction() const;
     virtual Point to_local_coordinates(const Point &global_point) const;
     virtual ApecMTensorValue global_to_local_rotation(const Point &global_point) const;
-
     ApecMTensorValue local_to_global_rotation(const Point &global_point) const
     {
         return global_to_local_rotation(global_point).transpose();
@@ -79,7 +79,6 @@ public:
 
     ApecMTensorValue global_to_local_rotation(const Point &global_point) const override;
     Point to_local_coordinates(const Point &global_point) const override;
-
 };
 
 class SphericalCoordinateSystem : public CoordinateSystem
@@ -96,7 +95,6 @@ public:
 
     ApecMTensorValue global_to_local_rotation(const Point &global_point) const override;
     Point to_local_coordinates(const Point &global_point) const override;
-
 };
 
 std::unique_ptr<CoordinateSystem> make_coordinate_system_local(int kcs,

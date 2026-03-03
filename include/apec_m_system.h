@@ -26,6 +26,7 @@
 #include "coordinate_system.h"
 #include "time_step.h"
 #include "fe_parent_object.h"
+
 using namespace libMesh;
 
 class ElementTypesFactory;
@@ -41,15 +42,18 @@ public:
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
         SUPPORT_SOLUTION,
+        NODAL_B,
         NUM_SYSTEMS
     };
 
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
     virtual bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                            const std::string &variable_label) = 0;
+                                                            const std::string &variable_label,
+                                                            const std::vector<dof_id_type> &selected_dof_ids = {}) = 0;
     virtual bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                            const std::string &variable_label) = 0;
+                                                            const std::string &variable_label,
+                                                            const std::vector<dof_id_type> &selected_dof_ids = {}) = 0;
     virtual void ramp_vectors(const Substep &time_substep,
                               NumericVector<Number> &old_vector,
                               NumericVector<Number> &current_vector,
@@ -144,9 +148,16 @@ public:
     }
 
     bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                    const std::string &variable_label) override;
+                                                    const std::string &variable_label,
+                                                    const std::vector<dof_id_type> &selected_dof_ids = {}) override;
     bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                    const std::string &variable_label) override;
+                                                    const std::string &variable_label,
+                                                    const std::vector<dof_id_type> &selected_dof_ids = {}) override;
+    void dof_numbers_vars(const std::string &variable_name,
+                          bool select_elements,
+                          const std::vector<dof_id_type> &object_ids,
+                          std::vector<dof_id_type> &dof_ids,
+                          bool global);
 };
 
 template <typename SysLike>

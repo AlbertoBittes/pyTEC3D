@@ -2,6 +2,8 @@
 #include "apec_m.h"
 
 #include <filesystem>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <libmesh/libmesh.h>
@@ -24,7 +26,6 @@ namespace
 APECMEvolutionAnalysis::APECMEvolutionAnalysis(APEC_M *program,
                                                std::shared_ptr<AnalysisBase::ContextView> context_view)
     : APECMEquilibriumAnalysis(program, context_view),
-      toroidal_projection(std::make_unique<ToroidalProjection>()),
       cylindrical_coordinate_system(CylindricalCoordinateSystem())
 {
 }
@@ -57,22 +58,86 @@ void APECMEvolutionAnalysis::set_poloidal_currents()
 void APECMEvolutionAnalysis::set_toroidal_slices()
 {
     auto settings = this->context<ApecMSettingsObject>();
-
-    const auto &toroidal_map_nodes = settings->toroidal_slices_nodes();
-    const auto &toroidal_map_elems = settings->toroidal_slices_elems();
-
-    ToroidalProjection::Map nodal_map, elem_map;
-
-    if (!toroidal_map_nodes.empty())
+    if (!settings)
     {
-        nodal_map = toroidal_map_nodes;
-    }
-    if (!toroidal_map_elems.empty())
-    {
-        elem_map = toroidal_map_elems;
+        toroidal_slices.clear();
+        return;
     }
 
-    toroidal_projection->set_maps(nodal_map, elem_map);
+    const unsigned int n_slices = settings->has_column("n_slices")
+                                      ? static_cast<unsigned int>(settings->get_int("n_slices"))
+                                      : 0;
+    toroidal_slices.assign(n_slices, {});
+    if (n_slices == 0)
+        return;
+
+    APEC_M *program = this->get_parent_object();
+
+    const std::string &evolution_mesh = settings->evolution_mesh();
+    auto evolution_eq_sys = program->get_equation_system(evolution_mesh);
+    if (!evolution_eq_sys)
+        return;
+
+    const MeshBase &mesh = evolution_eq_sys->get_mesh();
+
+    std::vector<dof_id_type> slice_integer_indices(n_slices, libMesh::invalid_uint);
+    for (unsigned int slice = 0; slice < n_slices; ++slice)
+    {
+        const std::string integer_name = "slice_" + std::to_string(slice);
+        if (mesh.has_node_integer(integer_name))
+            slice_integer_indices[slice] = mesh.get_node_integer_index(integer_name);
+    }
+
+    const dof_id_type slice0_integer_index = slice_integer_indices[0];
+    if (slice0_integer_index == libMesh::invalid_uint)
+        return;
+
+    std::vector<dof_id_type> slice0_nodes;
+    std::unordered_map<dof_id_type, std::size_t> slice0_to_row;
+    for (const auto &node_ptr : mesh.node_ptr_range())
+    {
+        const long long slice0_node_id_signed = node_ptr->get_extra_datum<int>(slice0_integer_index);
+        if (slice0_node_id_signed < 0)
+            continue;
+
+        const dof_id_type slice0_node_id = static_cast<dof_id_type>(slice0_node_id_signed);
+        if (!mesh.query_node_ptr(slice0_node_id))
+            continue;
+
+        if (slice0_to_row.find(slice0_node_id) == slice0_to_row.end())
+        {
+            const std::size_t row = slice0_nodes.size();
+            slice0_nodes.push_back(slice0_node_id);
+            slice0_to_row.emplace(slice0_node_id, row);
+        }
+    }
+
+    for (unsigned int slice = 0; slice < n_slices; ++slice)
+        toroidal_slices[slice].assign(slice0_nodes.size(), libMesh::invalid_uint);
+
+    for (std::size_t row = 0; row < slice0_nodes.size(); ++row)
+        toroidal_slices[0][row] = slice0_nodes[row];
+
+    for (const auto &node_ptr : mesh.node_ptr_range())
+    {
+        for (unsigned int slice = 1; slice < n_slices; ++slice)
+        {
+            const dof_id_type integer_index = slice_integer_indices[slice];
+            if (integer_index == libMesh::invalid_uint)
+                continue;
+
+            const long long slice0_node_id_signed = node_ptr->get_extra_datum<int>(integer_index);
+            if (slice0_node_id_signed < 0)
+                continue;
+
+            const dof_id_type slice0_node_id = static_cast<dof_id_type>(slice0_node_id_signed);
+            const auto row_it = slice0_to_row.find(slice0_node_id);
+            if (row_it == slice0_to_row.end())
+                continue;
+
+            toroidal_slices[slice][row_it->second] = node_ptr->id();
+        }
+    }
 }
 
 void APECMEvolutionAnalysis::toroidal_average()
@@ -95,46 +160,25 @@ void APECMEvolutionAnalysis::toroidal_average()
     ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
-    auto toroidal_proj = toroidal_projection.get();
-
     auto j_b_labels_evol = get_j_b_labels(main_eq_sys->get_mesh().mesh_dimension());
     auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
 
     {
-        VectorFieldCoordinateTransformation sol_rotation(main_sys,
-                                                         cylindrical_coordinate_system,
-                                                         {"A"});
-        VectorFieldCoordinateTransformation static_sol_rotation(static_sys,
-                                                                cylindrical_coordinate_system,
-                                                                {"A"});
         VectorFieldCoordinateTransformation element_sol_rotation(main_sys_element_sol,
                                                                  cylindrical_coordinate_system,
                                                                  {"Be", "Jt"});
         VectorFieldCoordinateTransformation static_element_sol_rotation(static_sys_element_sol,
                                                                         cylindrical_coordinate_system,
                                                                         {"Be", "Jt"});
-        VectorFieldCoordinateTransformation static_element_loads_rotation(static_sys_element_loads,
-                                                                          cylindrical_coordinate_system,
-                                                                          {"Js"});
+
         // Project back to the static mesh
         // Project J, from plasma, coils and vessel
         // Project PSI
         const std::pair<std::string, std::string> toroidal_avg_pairs[] = {
             {"PSI", "PSI"},
-            {"A" + j_b_labels_evol[0], "A" + j_b_labels_stat[0]},
-            {"Jt" + j_b_labels_evol[0], "Js" + j_b_labels_stat[0]},
-            {"PSIe", "PSIe"},
-            {"Be" + j_b_labels_evol[1], "Be" + j_b_labels_stat[1]},
-            {"Be" + j_b_labels_evol[2], "Be" + j_b_labels_stat[2]},
+            {"Bn" + j_b_labels_evol[1], "Bn" + j_b_labels_stat[1]},
+            {"Bn" + j_b_labels_evol[2], "Bn" + j_b_labels_stat[2]},
         };
-
-        for (const auto &toroidal_avg_pair : toroidal_avg_pairs)
-            toroidal_proj->toroidal_average(
-                *main_eq_sys,
-                *static_eq_sys,
-                toroidal_avg_pair.first,
-                toroidal_avg_pair.second,
-                cylindrical_coordinate_system);
     }
 }
 
@@ -156,8 +200,6 @@ void APECMEvolutionAnalysis::toroidal_projection_current()
     ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &main_sys_element_loads = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
-
-    auto toroidal_proj = toroidal_projection.get();
 
     auto j_b_labels_evol = get_j_b_labels(main_eq_sys->get_mesh().mesh_dimension());
     auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
@@ -196,7 +238,6 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     const std::string &evolution_mesh = settings->evolution_mesh();
     const std::string &equilibrium_mesh = settings->equilibrium_mesh();
 
-    auto toroidal_proj = toroidal_projection.get();
     if (first_absolute_iteration)
         set_toroidal_slices();
 

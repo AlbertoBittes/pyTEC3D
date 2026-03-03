@@ -38,6 +38,7 @@ public:
 
     void write_element_matrices_and_rhs();
     void write_nodal_solution();
+    void write_bn_solution();
     void write_element_solution();
     void write_support_solution();
 

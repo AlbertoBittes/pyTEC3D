@@ -77,6 +77,11 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0}},
     {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1}},
     {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2}},
+
+    // Nodal B for APEC
+    {GlobalVariableName::Bn_x, {GlobalVariableName::Bn_x, APIVariableName::Bn, "Bn_x", "Bn", 0}},
+    {GlobalVariableName::Bn_y, {GlobalVariableName::Bn_y, APIVariableName::Bn, "Bn_y", "Bn", 1}},
+    {GlobalVariableName::Bn_z, {GlobalVariableName::Bn_z, APIVariableName::Bn, "Bn_z", "Bn", 2}},
 };
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
@@ -332,6 +337,10 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
     case GlobalVariableName::Jt_y:
     case GlobalVariableName::Jt_z:
         return ApecMSystemBase::ELEMENT_SOLUTION;
+    case GlobalVariableName::Bn_x:
+    case GlobalVariableName::Bn_y:
+    case GlobalVariableName::Bn_z:
+        return ApecMSystemBase::NODAL_B;
     default:
         libmesh_error_msg("VariablesMap: missing system type for variable.");
     }
@@ -349,6 +358,8 @@ std::vector<GlobalVariableName> VariablesMap::add_av_variables()
             GlobalVariableName::Be_y,
             GlobalVariableName::He_x,
             GlobalVariableName::He_y,
+            GlobalVariableName::Bn_x,
+            GlobalVariableName::Bn_y,
             GlobalVariableName::PSIe};
 }
 
@@ -360,7 +371,8 @@ std::vector<GlobalVariableName> VariablesMap::add_av3d_variables()
                              GlobalVariableName::Jt_x,
                              GlobalVariableName::Jt_y,
                              GlobalVariableName::Be_z,
-                             GlobalVariableName::He_z});
+                             GlobalVariableName::He_z,
+                             GlobalVariableName::Bn_z});
     return vars;
 }
 
@@ -573,6 +585,10 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::H_y:
     case GlobalVariableName::H_z:
         return L2_LAGRANGE;
+    case GlobalVariableName::Bn_x:
+    case GlobalVariableName::Bn_y:
+    case GlobalVariableName::Bn_z:
+        return LAGRANGE;
     default:
         libmesh_error_msg("VariablesMap: missing FE family for variable.");
     }

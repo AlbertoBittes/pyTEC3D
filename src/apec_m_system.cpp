@@ -2,88 +2,87 @@
 
 #include <array>
 #include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "system_matrix_reduction.h"
 #include "element_types_factory.h"
 #include "global_constraints_object.h"
+#include "apec_m_mesh.h"
 #include "libmesh/libmesh.h"
+#include "libmesh/mesh_serializer.h"
 #include "libmesh/numeric_vector.h"
 #include "variables_map.h"
 
 namespace
 {
-    VectorValue<Real> read_vector(const NumericVector<Number> &vec,
-                                  const std::array<dof_id_type, 3> &dofs)
+    template <typename SysLike>
+    bool transform_coordinate_system_solution(ApecMSystem<SysLike> &system,
+                                              NumericVector<Number> &solution,
+                                              const CoordinateSystem &coordinate_system,
+                                              const std::string &variable_label,
+                                              const std::vector<dof_id_type> &selected_entity_ids,
+                                              bool use_global_to_local_rotation)
     {
-        return VectorValue<Real>(vec(dofs[0]), vec(dofs[1]), vec(dofs[2]));
-    }
+        const bool is_nodal = ApecMSystemBase::is_nodal_system(system.system_type);
+        const ApecMMesh *mesh = dynamic_cast<const ApecMMesh *>(&system.get_mesh());
 
-    void write_vector(NumericVector<Number> &vec,
-                      const std::array<dof_id_type, 3> &dofs,
-                      const VectorValue<Real> &values)
-    {
-        vec.set(dofs[0], values(0));
-        vec.set(dofs[1], values(1));
-        vec.set(dofs[2], values(2));
-    }
+        const std::vector<std::string> vector_components = VariablesMap::get_global_labels_for_label(variable_label);
+        if (vector_components.size() < 3 || selected_entity_ids.empty())
+            return true;
 
-    template <typename TransformFn>
-    void apply_vector_transform(System &system,
-                                bool is_nodal,
-                                const std::array<unsigned int, 3> &var_numbers,
-                                TransformFn &&transform)
-    {
-        const auto &dof_map = system.get_dof_map();
-        std::vector<dof_id_type> dof_indices;
-        const auto &mesh = system.get_mesh();
-
-        if (is_nodal)
+        std::vector<Point> positions(selected_entity_ids.size());
+        for (std::size_t i = 0; i < selected_entity_ids.size(); ++i)
         {
-            for (const auto *node : mesh.local_node_ptr_range())
+            const dof_id_type object_id = selected_entity_ids[i];
+            if (is_nodal)
             {
-                std::array<dof_id_type, 3> dofs{};
-                bool complete = true;
-                for (unsigned int i = 0; i < 3; ++i)
-                {
-                    dof_map.dof_indices(node, dof_indices, var_numbers[i]);
-                    if (dof_indices.empty())
-                    {
-                        complete = false;
-                        break;
-                    }
-                    dofs[i] = dof_indices.front();
-                }
-                if (!complete)
-                    continue;
-
-                transform(*node, dofs);
+                const Node *node_ptr = mesh->query_node_ptr(object_id);
+                positions[i] = ApecMMesh::entity_point(*node_ptr);
+            }
+            else
+            {
+                const Elem *elem_ptr = mesh->query_elem_ptr(object_id);
+                positions[i] = ApecMMesh::entity_point(*elem_ptr);
             }
         }
-        else
-        {
-            for (const auto &elem : mesh.active_local_element_ptr_range())
-            {
-                if (elem->infinite())
-                    continue;
-                std::array<dof_id_type, 3> dofs{};
-                bool complete = true;
-                for (unsigned int i = 0; i < 3; ++i)
-                {
-                    dof_map.dof_indices(elem, dof_indices, var_numbers[i]);
-                    if (dof_indices.empty())
-                    {
-                        complete = false;
-                        break;
-                    }
-                    dofs[i] = dof_indices.front();
-                }
-                if (!complete)
-                    continue;
 
-                transform(elem->vertex_average(), dofs);
-            }
+        std::vector<std::vector<dof_id_type>> dofs(3);
+        system.dof_numbers_vars(vector_components[0], !is_nodal, selected_entity_ids, dofs[0], false);
+        system.dof_numbers_vars(vector_components[1], !is_nodal, selected_entity_ids, dofs[1], false);
+        system.dof_numbers_vars(vector_components[2], !is_nodal, selected_entity_ids, dofs[2], false);
+
+        std::vector<ApecMTensorValue> rotations(selected_entity_ids.size());
+        for (std::size_t i = 0; i < selected_entity_ids.size(); ++i)
+        {
+            if (use_global_to_local_rotation)
+                rotations[i] = coordinate_system.global_to_local_rotation(positions[i]);
+            else
+                rotations[i] = coordinate_system.local_to_global_rotation(positions[i]);
         }
+
+        std::vector<std::vector<Real>> values(3);
+        solution.get(dofs[0], values[0]);
+        solution.get(dofs[1], values[1]);
+        solution.get(dofs[2], values[2]);
+
+        for (std::size_t i = 0; i < selected_entity_ids.size(); ++i)
+        {
+            const auto &rotation = rotations[i];
+            const Point input_vec(values[0][i], values[1][i], values[2][i]);
+            const Point output_vec = rotation * input_vec;
+            values[0][i] = output_vec(0);
+            values[1][i] = output_vec(1);
+            values[2][i] = output_vec(2);
+        }
+
+        solution.insert(values[0], dofs[0]);
+        solution.insert(values[1], dofs[1]);
+        solution.insert(values[2], dofs[2]);
+
+        solution.close();
+        system.update();
+        return true;
     }
 } // namespace
 
@@ -94,6 +93,7 @@ const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM
     {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
     {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
     {ApecMSystemBase::SUPPORT_SOLUTION, "SolutionSupportSystem"},
+    {ApecMSystemBase::NODAL_B, "NodalBSolutionSystem"},
 };
 
 bool ApecMSystemBase::is_nodal_system(ApecMSystemBase::SystemType system_type)
@@ -101,7 +101,8 @@ bool ApecMSystemBase::is_nodal_system(ApecMSystemBase::SystemType system_type)
     return system_type == ApecMSystemBase::DOF_SOLUTION_SYSTEM ||
            system_type == ApecMSystemBase::NODAL_LOADS ||
            system_type == ApecMSystemBase::NODAL_SOLUTION ||
-           system_type == ApecMSystemBase::SUPPORT_SOLUTION;
+           system_type == ApecMSystemBase::SUPPORT_SOLUTION ||
+           system_type == ApecMSystemBase::NODAL_B;
 }
 
 const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::SystemType system_type)
@@ -134,56 +135,30 @@ VectorFieldCoordinateTransformation::~VectorFieldCoordinateTransformation()
 
 template <typename SysLike>
 bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                                      const std::string &variable_label)
+                                                                      const std::string &variable_label,
+                                                                      const std::vector<dof_id_type> &selected_dof_ids)
 {
-    std::array<unsigned int, 3> var_numbers{};
-
-    NumericVector<Number> &solution = *this->solution;
-    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
-
-    if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
-        return true;
-
-    auto transform_values = [&](const Point &point,
-                                const std::array<dof_id_type, 3> &dofs)
-    {
-        VectorValue<Real> global = read_vector(solution, dofs);
-        VectorValue<Real> local = coordinate_system.global_to_local_rotation(point) * global;
-        write_vector(solution, dofs, local);
-    };
-
-    apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
-
-    solution.close();
-    this->update();
-    return true;
+    return transform_coordinate_system_solution(
+        *this,
+        *this->solution,
+        coordinate_system,
+        variable_label,
+        selected_dof_ids,
+        true);
 }
 
 template <typename SysLike>
 bool ApecMSystem<SysLike>::local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                                      const std::string &variable_label)
+                                                                      const std::string &variable_label,
+                                                                      const std::vector<dof_id_type> &selected_dof_ids)
 {
-    std::array<unsigned int, 3> var_numbers{};
-
-    NumericVector<Number> &solution = *this->solution;
-    const bool is_nodal = ApecMSystemBase::is_nodal_system(system_type);
-
-    if (!VariablesMap::resolve_vector_var_numbers(*this, variable_label, var_numbers))
-        return true;
-
-    auto transform_values = [&](const Point &point,
-                                const std::array<dof_id_type, 3> &dofs)
-    {
-        VectorValue<Real> local = read_vector(solution, dofs);
-        VectorValue<Real> global = coordinate_system.local_to_global_rotation(point) * local;
-        write_vector(solution, dofs, global);
-    };
-
-    apply_vector_transform(*this, is_nodal, var_numbers, transform_values);
-
-    solution.close();
-    this->update();
-    return true;
+    return transform_coordinate_system_solution(
+        *this,
+        *this->solution,
+        coordinate_system,
+        variable_label,
+        selected_dof_ids,
+        false);
 }
 
 void ApecMLinearSystem::release_subset_solve()
@@ -302,6 +277,45 @@ void ApecMSystem<SysType>::init_variables()
             &subdomain_ids);
     }
     // Add more conditions as needed for other combinations
+}
+
+template <typename SysLike>
+void ApecMSystem<SysLike>::dof_numbers_vars(const std::string &variable_name,
+                                            bool select_elements,
+                                            const std::vector<dof_id_type> &object_ids,
+                                            std::vector<dof_id_type> &dof_ids,
+                                            bool global)
+{
+    dof_ids.assign(object_ids.size(), libMesh::invalid_uint);
+
+    EquationSystems &equation_systems = this->get_equation_systems();
+    MeshBase &mesh = equation_systems.get_mesh();
+    const unsigned int var_number = this->variable_number(variable_name);
+
+    auto append_dofs = [&](const MeshBase &mesh_view)
+    {
+        for (std::size_t i = 0; i < object_ids.size(); ++i)
+        {
+            const dof_id_type object_id = object_ids[i];
+            if (select_elements)
+            {
+                const Elem *elem_ptr = mesh_view.query_elem_ptr(object_id);
+                dof_ids[i] = elem_ptr->dof_number(this->number(), var_number, 0);
+            }
+            else
+            {
+                const Node *node_ptr = mesh_view.query_node_ptr(object_id);
+                dof_ids[i] = node_ptr->dof_number(this->number(), var_number, 0);
+            }
+        }
+    };
+
+    MeshBase &serial_mesh = mesh;
+    std::unique_ptr<MeshSerializer> serializer;
+    if (global)
+        serializer = std::make_unique<MeshSerializer>(serial_mesh, true);
+
+    append_dofs(serial_mesh);
 }
 
 template class ApecMSystem<libMesh::TransientSystem<libMesh::LinearImplicitSystem>>;

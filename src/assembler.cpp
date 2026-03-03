@@ -425,6 +425,34 @@ void AssemblerLinear::write_nodal_solution()
     nodal_system.update();
 }
 
+void AssemblerLinear::write_bn_solution()
+{
+    libMesh::out << "Computing nodal Bn values..." << std::endl;
+
+    auto eq_sys = this->get_parent_object();
+    if (!eq_sys)
+        return;
+
+    auto builder = make_element_builder();
+    if (!builder)
+    {
+        libMesh::out << "AssemblerLinear: unable to create element builder for nodal Bn values." << std::endl;
+        return;
+    }
+
+    const MeshBase &mesh = eq_sys->get_mesh();
+    builder->clear_bn_node_counts_cache();
+
+    run_for_elements(mesh, *builder, [&]() {}, [&]()
+                     { builder->build_bn_solution(); });
+
+    const auto &nodal_b_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_B);
+    auto &nodal_b_system = eq_sys->get_system<System>(nodal_b_name);
+
+    nodal_b_system.solution->close();
+    nodal_b_system.update();
+}
+
 void AssemblerLinear::write_element_solution()
 {
     libMesh::out << "Computing derived quantities..." << std::endl;

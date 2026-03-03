@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <type_traits>
+#include <variant>
 #include <vector>
 #include <unordered_map>
 
@@ -34,6 +35,9 @@ class ApecMMesh : public libMesh::Mesh,
 public:
     using libMesh::Mesh::Mesh;
     using FEParentObjectBase<APEC_M>::FEParentObjectBase;
+    using ConstElemPtrRange = libMesh::SimpleRange<libMesh::MeshBase::const_element_iterator>;
+    using ConstNodePtrRange = libMesh::SimpleRange<libMesh::MeshBase::const_node_iterator>;
+    using ConstEntityPtrRange = std::variant<ConstElemPtrRange, ConstNodePtrRange>;
 
     struct AngleDataIndices
     {
@@ -53,6 +57,12 @@ public:
     AngleDataIndices detect_angle_indices() const;
     CartesianCoordinateSystem node_coordinate_system(dof_id_type node_id) const;
     CartesianCoordinateSystem node_coordinate_system(const Node &node) const;
+    void select(const std::string &integer_name,
+                dof_id_type value,
+                bool select_elements,
+                std::vector<dof_id_type> &selected_ids,
+                bool global = false) const;
+    ConstEntityPtrRange entity_ptr_range(bool select_elements, bool global = false) const;
 
     template <typename Iterator>
     std::map<dof_id_type, Point> map_local_coordinates(Iterator begin,
@@ -71,12 +81,6 @@ public:
         return result;
     }
 
-private:
-    void build_edge_midside_orientation_map();
-    std::vector<std::string> collect_node_integer_arrays(const std::string &prefix) const;
-    std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> cp_pairs;
-    std::map<dof_id_type, Real> edge_midside_orientation_cache;
-    bool edge_midside_orientation_cache_built = false;
     template <typename T>
     static const T *to_entity_ptr(const T *ptr)
     {
@@ -97,6 +101,13 @@ private:
         else
             return entity.vertex_average();
     }
+
+private:
+    void build_edge_midside_orientation_map();
+    std::vector<std::string> collect_node_integer_arrays(const std::string &prefix) const;
+    std::unordered_map<int, std::vector<std::pair<unsigned int, unsigned int>>> cp_pairs;
+    std::map<dof_id_type, Real> edge_midside_orientation_cache;
+    bool edge_midside_orientation_cache_built = false;
 };
 
 #endif // APEC_M_MESH_H

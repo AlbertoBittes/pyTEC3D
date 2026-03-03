@@ -7,6 +7,7 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_modification.h>
+#include <libmesh/mesh_serializer.h>
 #include <libmesh/node.h>
 #include <libmesh/point.h>
 #include <libmesh/vector_value.h>
@@ -37,6 +38,61 @@ std::shared_ptr<ApecMMesh> ApecMMesh::read_mesh(libMesh::Parallel::Communicator 
     MeshTools::Modification::orient_elements(*mesh);
 
     return mesh;
+}
+
+ApecMMesh::ConstEntityPtrRange ApecMMesh::entity_ptr_range(bool select_elements, bool global) const
+{
+    if (select_elements)
+    {
+        if (global)
+            return this->active_element_ptr_range();
+        return this->active_local_element_ptr_range();
+    }
+
+    if (global)
+        return this->node_ptr_range();
+    return this->local_node_ptr_range();
+}
+
+void ApecMMesh::select(const std::string &integer_name,
+                       dof_id_type value,
+                       bool select_elements,
+                       std::vector<dof_id_type> &selected_ids,
+                       bool global) const
+{
+    selected_ids.clear();
+
+    ApecMMesh &serial_mesh = const_cast<ApecMMesh &>(*this);
+    std::unique_ptr<MeshSerializer> serializer;
+    if (global)
+        serializer = std::make_unique<MeshSerializer>(serial_mesh, true);
+
+    const ApecMMesh &mesh_view = serial_mesh;
+    const dof_id_type integer_index = [&]()
+    {
+        if (select_elements)
+        {
+            if (!mesh_view.has_elem_integer(integer_name))
+                libmesh_error_msg("Element integer array '" << integer_name << "' not found.");
+            return mesh_view.get_elem_integer_index(integer_name);
+        }
+
+        if (!mesh_view.has_node_integer(integer_name))
+            libmesh_error_msg("Node integer array '" << integer_name << "' not found.");
+        return mesh_view.get_node_integer_index(integer_name);
+    }();
+
+    const ConstEntityPtrRange object_range = mesh_view.entity_ptr_range(select_elements, global);
+    std::visit(
+        [&](const auto &range)
+        {
+            for (const auto &obj_ptr : range)
+            {
+                if (obj_ptr->get_extra_integer(integer_index) == value)
+                    selected_ids.push_back(obj_ptr->id());
+            }
+        },
+        object_range);
 }
 
 std::vector<std::string> ApecMMesh::collect_node_integer_arrays(const std::string &prefix) const

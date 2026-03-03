@@ -2,7 +2,6 @@
 #define APEC_M_EVOLUTION_ANALYSIS_H
 
 #include "apec_m_equilibrium_analysis.h"
-#include "toroidal_projection.h"
 #include "coordinate_system.h"
 
 class APECMEvolutionAnalysis : public APECMEquilibriumAnalysis
@@ -17,8 +16,8 @@ public:
     void set_poloidal_currents();
 
 private:
-    std::unique_ptr<ToroidalProjection> toroidal_projection;
     const CylindricalCoordinateSystem cylindrical_coordinate_system;
+    std::vector<std::vector<dof_id_type>> toroidal_slices;
 };
 
 #endif // APEC_M_EVOLUTION_ANALYSIS_H

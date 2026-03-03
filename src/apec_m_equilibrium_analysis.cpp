@@ -177,25 +177,25 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     // auto point_locator = mesh.sub_point_locator();
     // point_locator->enable_out_of_mesh_mode();
     auto settings = this->context<ApecMSettingsObject>();
-    dof_id_type target_axis_element_id = settings->target_axis_element_id();
     const auto &axis = settings->target_axis();
+
     // Here you will be able to restrict to the subdomain of stranded conductors for speedup
     // You can also find before the element where the center is in pre processing
     auto &comm = mesh.comm();
     // const Elem *target_elem = point_locator->operator()(axis);
 
-    b_target_axis(0) = -std::numeric_limits<Real>::max();
-    b_target_axis(1) = -std::numeric_limits<Real>::max();
+    b_target_axis(0) = 0.0;
+    b_target_axis(1) = 0.0;
     // b_target_axis(2) = -std::numeric_limits<Real>::max();
     // if (target_elem)
     // {
     // builder->build_solution_vectors_from_emat_files(target_elem->id(), session->get_path("emat_folderpath"));
     // }
-    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, target_axis_element_id, nodal_solution_system.solution.get());
-    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, target_axis_element_id, nodal_solution_system.solution.get());
+    b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, true);
+    b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, true);
     // }
-    comm.max(b_target_axis(0));
-    comm.max(b_target_axis(1));
+    comm.sum(b_target_axis(0));
+    comm.sum(b_target_axis(1));
 }
 
 void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
@@ -407,10 +407,9 @@ Real APECMEquilibriumAnalysis::check_X_point()
 {
     libMesh::out << "Checking X-point configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
-    unsigned int bx_var_number = element_solution_system.variable_number("Be_x");
-    unsigned int by_var_number = element_solution_system.variable_number("Be_y");
-    auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
+    auto &nodalbn_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
+    unsigned int bx_var_number = nodalbn_solution_system.variable_number("Bn_x");
+    unsigned int by_var_number = nodalbn_solution_system.variable_number("Bn_y");
     auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
     unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
@@ -420,129 +419,47 @@ Real APECMEquilibriumAnalysis::check_X_point()
     // Real min_b_sum = std::numeric_limits<Real>::max();
     // dof_id_type x_point_elem_id = libMesh::invalid_uint;
     Real psi_X_point = std::numeric_limits<Real>::max();
-    std::pair<dof_id_type, Real> x_point_data{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
+    std::tuple<dof_id_type, Real, Real> x_point_data{libMesh::invalid_uint, std::numeric_limits<Real>::max(), std::numeric_limits<Real>::max()};
 
     Real min_b_sum = std::numeric_limits<Real>::max();
 
-    dof_id_type vacuum_chamber_region_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
+    dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
 
-    for (const auto &elem : mesh.active_local_element_ptr_range())
+    for (const auto &node : mesh.local_node_ptr_range())
     {
-        if (elem->get_extra_integer(vacuum_chamber_region_component) != 1)
+        if (node->get_extra_integer(vacuum_chamber_region_component) != 1)
             continue;
 
-        Real dist = (elem->vertex_average() - magnetic_axis).norm();
+        Real dist = (*node - magnetic_axis).norm();
         if (dist < min_distance_to_axis)
             continue;
         // Process the element as needed
-        dof_id_type bx_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
-        dof_id_type by_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
-        Real bx_value = element_solution_system.current_local_solution->el(bx_dof);
-        Real by_value = element_solution_system.current_local_solution->el(by_dof);
+        dof_id_type bx_dof = node->dof_number(ApecMSystemBase::NODAL_B, bx_var_number, 0);
+        dof_id_type by_dof = node->dof_number(ApecMSystemBase::NODAL_B, by_var_number, 0);
+        Real bx_value = nodalbn_solution_system.current_local_solution->el(bx_dof);
+        Real by_value = nodalbn_solution_system.current_local_solution->el(by_dof);
         Real b_sum = std::sqrt(bx_value * bx_value + by_value * by_value);
         if (b_sum < min_b_sum)
         {
             min_b_sum = b_sum;
-            x_point_data = std::make_pair(elem->id(), b_sum);
+            dof_id_type psi_dof = node->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+            x_point_data = std::make_tuple(node->id(), b_sum, support_solution_system.current_local_solution->el(psi_dof));
         }
     }
 
-    // Global element selection by minimum field across processors.
-    std::set<std::pair<dof_id_type, Real>> x_point_elem_data_all;
-    x_point_elem_data_all.insert(x_point_data);
-    mesh.comm().set_union(x_point_elem_data_all);
-
-    min_b_sum = std::numeric_limits<Real>::max();
-    dof_id_type x_point_elem_id = libMesh::invalid_uint;
-    for (const auto &data : x_point_elem_data_all)
-    {
-        if (data.second < min_b_sum)
-        {
-            min_b_sum = data.second;
-            x_point_elem_id = data.first;
-        }
-    }
-
-    // 2-4) On the owning processor: build element + nodal solution and scan nodes.
-    Real local_min_node_b_norm = std::numeric_limits<Real>::max();
-    std::pair<dof_id_type, Real> x_point_data_nodes{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
-    const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id);
-    if (x_elem_ptr && x_elem_ptr->processor_id() == proc_id)
-    {
-        auto builder = ElementBuilder::make_element_builder(eq_sys);
-        std::vector<const Elem *> candidate_elements;
-        std::unordered_set<dof_id_type> candidate_element_ids;
-        candidate_elements.push_back(x_elem_ptr);
-        candidate_element_ids.insert(x_elem_ptr->id());
-        for (unsigned int k = 0; k < x_elem_ptr->n_neighbors(); ++k)
-        {
-            const Elem *neighbor = x_elem_ptr->neighbor_ptr(k);
-            if (!candidate_element_ids.insert(neighbor->id()).second)
-                continue;
-            candidate_elements.push_back(neighbor);
-        }
-
-        std::unordered_map<dof_id_type, std::pair<Real, Real>> node_b_sums;
-        std::unordered_map<dof_id_type, unsigned int> node_counts;
-
-        for (const Elem *elem_ptr : candidate_elements)
-        {
-            builder->set_element_data(const_cast<Elem *>(elem_ptr));
-            builder->build_element();
-            builder->build_nodal_solution();
-
-            unsigned int n_nodes = 0;
-            const unsigned int n_nodes_in_elem = elem_ptr->n_nodes();
-            for (const auto &node : elem_ptr->node_ref_range())
-            {
-                const Real bx_value = builder->get_vectors()[ElementBuilder::NODAL_SOLUTION_VECTORS][0][n_nodes];
-                const Real by_value = builder->get_vectors()[ElementBuilder::NODAL_SOLUTION_VECTORS][0][n_nodes + n_nodes_in_elem];
-
-                auto &sum_pair = node_b_sums[node.id()];
-                sum_pair.first += bx_value;
-                sum_pair.second += by_value;
-                node_counts[node.id()] += 1;
-                n_nodes++;
-            }
-        }
-
-        for (const auto &node_sum_entry : node_b_sums)
-        {
-            const dof_id_type node_id = node_sum_entry.first;
-            const auto count_it = node_counts.find(node_id);
-            if (count_it == node_counts.end() || count_it->second == 0)
-                continue;
-
-            const Real inv_count = 1.0 / static_cast<Real>(count_it->second);
-            const Real avg_bx = node_sum_entry.second.first * inv_count;
-            const Real avg_by = node_sum_entry.second.second * inv_count;
-            const Real b_norm = std::sqrt(avg_bx * avg_bx + avg_by * avg_by);
-            if (b_norm < local_min_node_b_norm)
-            {
-                const Node *node_ptr = mesh.query_node_ptr(node_id);
-                if (!node_ptr)
-                    continue;
-
-                local_min_node_b_norm = b_norm;
-                dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
-                x_point_data_nodes = std::make_pair(node_id, support_solution_system.current_local_solution->el(psi_dof));
-            }
-        }
-    }
-
-    nodal_solution_system.solution->close();
-
-    std::set<std::pair<dof_id_type, Real>> x_point_node_data_all;
-    x_point_node_data_all.insert(x_point_data_nodes);
+    // Global node selection by minimum field across processors.
+    std::set<std::tuple<dof_id_type, Real, Real>> x_point_node_data_all;
+    x_point_node_data_all.insert(x_point_data);
     mesh.comm().set_union(x_point_node_data_all);
 
+    min_b_sum = std::numeric_limits<Real>::max();
     dof_id_type x_point_node_id = libMesh::invalid_uint;
     for (const auto &data : x_point_node_data_all)
     {
-        if (data.first != libMesh::invalid_uint)
+        if (std::get<1>(data) < min_b_sum)
         {
-            psi_X_point = data.second;
-            x_point_node_id = data.first;
+            x_point_node_id = std::get<0>(data);
+            psi_X_point = std::get<2>(data);
         }
     }
 
