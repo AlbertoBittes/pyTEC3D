@@ -109,8 +109,8 @@
         <DataArray type="Int32" Name="ansys_real_constant" format="binary" RangeMin="1" RangeMax="20">
           AgAAAACAAAAoLwAAUQAAACYAAAA=eJzt0sENgCAUBbCvqAfO7D8rQ2AeIemhG7RXVQcAAAAAAAAAAAAAAAAAIGYAAAAAAHCEK+Be0AKegDfgC9j9FQAAAAAAAAAAAACAf0xNK+ZpeJztwwEJAAAMBKEL8f2zrsdQcNVUVVVVVVVVVVVVVfXJA5Q+68k=
         </DataArray>
-        <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="24">
-          AgAAAACAAAAoLwAARgAAACYAAAA=eJzt2EENACAMBLAzQTb/SlEBJKyPmmglKQAAAAAAAAAAAAAAAAAArmkAAACA4V7/DACcsAAAAAAAAAAAAAAA+MIGgyzNV3ic7cMBCQAADAShK/H9q67HUHDVVFVVVVVVVVVVVVX1yQOy5PeT
+        <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="23">
+          AgAAAACAAAAoLwAAPQAAACYAAAA=eJztw0EJAAAIBLArIde/qR18ygZrkqqqqqqqqqqqqqqqqqqqqqqqqqqqej6qqqqqqqqqqqqqqr642qTJD3ic7cMBCQAADAShK/H9q67HUHDVVFVVVVVVVVVVVVX1yQOy5PeT
           <InformationKey name="DISCRETE_VALUE_SAMPLE_PARAMETERS" location="vtkAbstractArray" length="2">
             <Value index="0">
               0
@@ -120,8 +120,8 @@
             </Value>
           </InformationKey>
         </DataArray>
-        <DataArray type="Int32" Name="ansys_etype" format="binary" RangeMin="21" RangeMax="24">
-          AgAAAACAAAAoLwAARgAAACYAAAA=eJzt2EENACAMBLAzQTb/SlEBJKyPmmglKQAAAAAAAAAAAAAAAAAArmkAAACA4V7/DACcsAAAAAAAAAAAAAAA+MIGgyzNV3ic7cMBCQAADAShK/H9q67HUHDVVFVVVVVVVVVVVVX1yQOy5PeT
+        <DataArray type="Int32" Name="ansys_etype" format="binary" RangeMin="21" RangeMax="23">
+          AgAAAACAAAAoLwAAPQAAACYAAAA=eJztw0EJAAAIBLArIde/qR18ygZrkqqqqqqqqqqqqqqqqqqqqqqqqqqqej6qqqqqqqqqqqqqqr642qTJD3ic7cMBCQAADAShK/H9q67HUHDVVFVVVVVVVVVVVVX1yQOy5PeT
         </DataArray>
         <DataArray type="UInt8" Name="CS1L" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAADKKwAAKQAAAA==eJztzjEBAAAIA6DZv7QZdukBCUgAAAAAgM7UrscAAAAAAMBHC+3lADM=
@@ -193,6 +193,9 @@
               -nan
             </Value>
           </InformationKey>
+        </DataArray>
+        <DataArray type="UInt8" Name="COILS" format="binary" RangeMin="0" RangeMax="1">
+          AQAAAACAAADKKwAAKQAAAA==eJzt0gENAAAIA6Dbv7Qx9BtkIAEAAACAv4ZK128AAAAAAKDDAr4dAbk=
         </DataArray>
       </CellData>
       <Points>

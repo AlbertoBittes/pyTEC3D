@@ -38,24 +38,23 @@ apec.write_model_data()
 
 # Set Boundary conditions
 apec.set_active_mesh(apec_evolution_mesh_notrans)
+
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 Selector.select_all(apec.mesh)
-Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec.get_mesh(apec_equilibrium_output),
-    "Jt_z",
-    0,
-    apec.mesh,
-    "Js",
-    2,
-    location="elem",
-)
+
+mat_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("ansys_material_type"))
+jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("Jt_z"))
+elem_ids = np.where(mat_array == 23)[0]
+js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
+js_array[elem_ids, 2] = jt_z_array[elem_ids]
+apec.mesh.GetCellData().GetArray("Js").Modified()
 
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
 
+apec.save_mesh()
 
 # Now start the evolution analysis
 apec.set_active_mesh(apec_evolution_mesh)
@@ -63,21 +62,17 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec.get_mesh(apec_equilibrium_output),
-    "Jt_z",
-    0,
-    apec.mesh,
-    "Js",
-    2,
-    location="elem",
-)
-Selector.select_all(apec.mesh)
+# Transfer Jt_z from output mesh to Js (component 2) in apec.mesh for elements with mat=23
+mat_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("ansys_material_type"))
+jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("Jt_z"))
+elem_ids = np.where(mat_array == 23)[0]
+js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
+js_array[elem_ids, 2] = jt_z_array[elem_ids]
+apec.mesh.GetCellData().GetArray("Js").Modified()
 
 apec.write_loads_bcs()
 
-Selector.select_all(apec.mesh)
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 apec.apec_settings["target_central_axis_x"] = 6.52136102486433
 apec.apec_settings["target_central_axis_y"] = 0.536537145137914
 apec.apec_settings["target_central_axis_z"] = 0.0
@@ -94,6 +89,7 @@ apec.apec_settings["bvery_value"] = 1.133287835e-07
 apec.apec_settings["alpha_mp"] = 1.0001
 apec.apec_settings["alpha_np"] = 0.83197
 apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
+apec.apec_settings["static_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
@@ -132,3 +128,5 @@ for step_idx in range(len(time_steps)):
     if step_idx == 0:
         apec.apec_settings.pop("toroidal_slices_nodes", None)
         apec.apec_settings.pop("toroidal_slices_elems", None)
+
+apec.save_mesh()

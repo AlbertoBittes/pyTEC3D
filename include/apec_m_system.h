@@ -20,7 +20,6 @@
 
 #include "fem_service.h"
 #include "assembler.h"
-
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
 #include "coordinate_system.h"
@@ -64,26 +63,7 @@ public:
     static const std::string &system_name_from_type(SystemType system_type);
 };
 
-class VectorFieldCoordinateTransformation : public FEParentObjectBase<ApecMSystemBase>
-{
-public:
-    VectorFieldCoordinateTransformation(ApecMSystemBase &system,
-                                        const CoordinateSystem &coordinate_system,
-                                        std::vector<std::string> variable_labels);
-    ~VectorFieldCoordinateTransformation();
-
-    VectorFieldCoordinateTransformation(const VectorFieldCoordinateTransformation &) = delete;
-    VectorFieldCoordinateTransformation &operator=(const VectorFieldCoordinateTransformation &) = delete;
-    VectorFieldCoordinateTransformation(VectorFieldCoordinateTransformation &&) = delete;
-    VectorFieldCoordinateTransformation &operator=(VectorFieldCoordinateTransformation &&) = delete;
-
-private:
-    const CoordinateSystem *coordinate_system = nullptr;
-    std::vector<std::string> variable_labels;
-};
-
 #include "variables_map.h"
-
 #include "apec_m_equation_systems.h"
 #include "element_types.h"
 

@@ -83,7 +83,9 @@ const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
     "VERTICAL_CONTROL_COILS",
     "RADIAL_CONTROL_COILS",
     "VACUUM_CHAMBER_BOUNDARY",
-    "NEW_VACUUM_CHAMBER_BOUNDARY"};
+    "NEW_VACUUM_CHAMBER_BOUNDARY",
+    "COILS",
+    "PASSIVE_STRUCTURES"};
 // A convenient macro for comparing VTK versions.  Returns 1 if the
 // current VTK version is < major.minor.subminor and zero otherwise.
 //
@@ -546,21 +548,25 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
         }
     }
 
-    auto add_vtk_data_arrays_from_mesh_extras = [&](bool point_data) {
+    auto add_vtk_data_arrays_from_mesh_extras = [&](bool point_data)
+    {
         vtkDataSetAttributes *vtk_data = point_data
                                              ? static_cast<vtkDataSetAttributes *>(_vtk_grid->GetPointData())
                                              : static_cast<vtkDataSetAttributes *>(_vtk_grid->GetCellData());
         if (!vtk_data)
             return;
 
-        auto has_extra = [&](const std::string &name) -> bool {
+        auto has_extra = [&](const std::string &name) -> bool
+        {
             return point_data ? mesh.has_node_integer(name) : mesh.has_elem_integer(name);
         };
-        auto get_extra_index = [&](const std::string &name) -> unsigned int {
+        auto get_extra_index = [&](const std::string &name) -> unsigned int
+        {
             return point_data ? mesh.get_node_integer_index(name) : mesh.get_elem_integer_index(name);
         };
 
-        auto all_extra_names = [&]() {
+        auto all_extra_names = [&]()
+        {
             std::vector<std::string> names_out;
             const unsigned int count = point_data ? mesh.n_node_integers() : mesh.n_elem_integers();
             names_out.reserve(count);
@@ -569,11 +575,13 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
             return names_out;
         }();
 
-        auto is_real_vtk_data_array = [](const std::string &base_name) {
+        auto is_real_vtk_data_array = [](const std::string &base_name)
+        {
             return base_name == "angles";
         };
 
-        auto collect_component_names = [&](const std::string &base_name) -> std::vector<std::string> {
+        auto collect_component_names = [&](const std::string &base_name) -> std::vector<std::string>
+        {
             if (has_extra(base_name))
                 return {base_name};
 
@@ -588,7 +596,8 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
             return components;
         };
 
-        auto add_array_from_base = [&](const std::string &base_name) {
+        auto add_array_from_base = [&](const std::string &base_name)
+        {
             if (base_name.empty())
                 return;
 
@@ -679,7 +688,8 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
                     {
                         const bool numeric_suffix = std::all_of(base_name.begin() + dash_pos + 1,
                                                                 base_name.end(),
-                                                                [](char ch) { return std::isdigit(static_cast<unsigned char>(ch)); });
+                                                                [](char ch)
+                                                                { return std::isdigit(static_cast<unsigned char>(ch)); });
                         if (numeric_suffix)
                             base_name = base_name.substr(0, dash_pos);
                     }

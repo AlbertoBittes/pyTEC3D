@@ -385,7 +385,7 @@ class ModelEdit:
 
         vtk_array = data_obj.GetArray(name)
         if vtk_array is not None and not replace:
-            return vtknp.vtk_to_numpy(vtk_array)
+            return vtk_array
 
         if replace and vtk_array is not None:
             data_obj.RemoveArray(name)

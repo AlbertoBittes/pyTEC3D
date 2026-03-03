@@ -113,26 +113,6 @@ const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::Syste
     return it->second;
 }
 
-VectorFieldCoordinateTransformation::VectorFieldCoordinateTransformation(ApecMSystemBase &system_in,
-                                                                         const CoordinateSystem &coordinate_system_in,
-                                                                         std::vector<std::string> variable_labels_in)
-    : FEParentObjectBase<ApecMSystemBase>(&system_in),
-      coordinate_system(&coordinate_system_in),
-      variable_labels(std::move(variable_labels_in))
-{
-    for (const auto &label : variable_labels)
-        get_parent_object()->global_to_local_coordinate_system_solution(*coordinate_system, label);
-}
-
-VectorFieldCoordinateTransformation::~VectorFieldCoordinateTransformation()
-{
-    if (!get_parent_object() || !coordinate_system)
-        return;
-
-    for (const auto &label : variable_labels)
-        get_parent_object()->local_to_global_coordinate_system_solution(*coordinate_system, label);
-}
-
 template <typename SysLike>
 bool ApecMSystem<SysLike>::global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
                                                                       const std::string &variable_label,

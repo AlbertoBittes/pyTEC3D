@@ -33,7 +33,10 @@ public:
     Real beta_profile() const { return beta_p; }
     bool print_full_output() const { return print_full_output_; }
     const std::string &evolution_mesh() const { return evolution_mesh_; }
+    const std::string &static_mesh() const { return static_mesh_; }
     const std::string &equilibrium_mesh() const { return equilibrium_mesh_; }
+    const std::vector<std::vector<dof_id_type>> &toroidal_slices_nodes() const { return toroidal_slices_nodes_; }
+    const std::vector<std::vector<dof_id_type>> &toroidal_slices_elems() const { return toroidal_slices_elems_; }
 
 private:
     void parse_columns();
@@ -54,8 +57,11 @@ private:
     Real beta_p = 0.0;
     bool print_full_output_ = false;
     std::string evolution_mesh_ = "";
+    std::string static_mesh_ = "";
     std::string equilibrium_mesh_ = "";
     unsigned int n_slices_ = 3;
+    std::vector<std::vector<dof_id_type>> toroidal_slices_nodes_;
+    std::vector<std::vector<dof_id_type>> toroidal_slices_elems_;
 };
 
 #endif // APEC_M_SETTINGS_H

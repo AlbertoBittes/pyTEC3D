@@ -407,7 +407,7 @@ Real APECMEquilibriumAnalysis::check_X_point()
 {
     libMesh::out << "Checking X-point configuration..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto &nodalbn_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
+    auto &nodalbn_solution_system = eq_sys->get_system<ExplicitSystem>("NodalBSolutionSystem");
     unsigned int bx_var_number = nodalbn_solution_system.variable_number("Bn_x");
     unsigned int by_var_number = nodalbn_solution_system.variable_number("Bn_y");
     auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
