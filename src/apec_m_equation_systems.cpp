@@ -59,7 +59,6 @@ void ApecMEquationSystems::solve_equation_systems(Substep &substep, bool nodal_s
     if (nodal_solution)
         assembler->write_nodal_solution();
     assembler->write_element_solution();
-    assembler->write_bn_solution();
     assembler->write_support_solution();
 }
 

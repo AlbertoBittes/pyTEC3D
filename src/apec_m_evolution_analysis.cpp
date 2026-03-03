@@ -89,10 +89,10 @@ void APECMEvolutionAnalysis::toroidal_average()
     std::unique_ptr<MeshSerializer> equilibrium_serializer = std::make_unique<MeshSerializer>(serial_equilibrium_mesh, true);
     std::unique_ptr<MeshSerializer> evolution_serializer = std::make_unique<MeshSerializer>(serial_evolution_mesh, true);
 
-    ApecMExplicitSystem &equilibrium_sys_nodal_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::NODAL_B);
+    ApecMExplicitSystem &equilibrium_sys_nodal_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::NODAL_SOLUTION);
     ApecMExplicitSystem &equilibrium_sys_support_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &equilibrium_sys_element_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
-    ApecMExplicitSystem &evolution_sys_nodal_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::NODAL_B);
+    ApecMExplicitSystem &evolution_sys_nodal_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::NODAL_SOLUTION);
     ApecMExplicitSystem &evolution_sys_support_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &evolution_sys_element_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
 
@@ -116,10 +116,10 @@ void APECMEvolutionAnalysis::toroidal_average()
     std::vector<dof_id_type> dofs_psi_equilibrium;
     std::vector<dof_id_type> dofs_psie_equilibrium;
 
-    equilibrium_sys_nodal_sol.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Bn");
+    equilibrium_sys_nodal_sol.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "B");
 
-    equilibrium_sys_nodal_sol.dof_numbers_vars("Bn" + j_b_labels_equilibrium[1], false, toroidal_slices_nodes_[0], dofs_b_rad_equilibrium, true);
-    equilibrium_sys_nodal_sol.dof_numbers_vars("Bn" + j_b_labels_equilibrium[2], false, toroidal_slices_nodes_[0], dofs_b_ver_equilibrium, true);
+    equilibrium_sys_nodal_sol.dof_numbers_vars("B" + j_b_labels_equilibrium[1], false, toroidal_slices_nodes_[0], dofs_b_rad_equilibrium, true);
+    equilibrium_sys_nodal_sol.dof_numbers_vars("B" + j_b_labels_equilibrium[2], false, toroidal_slices_nodes_[0], dofs_b_ver_equilibrium, true);
     equilibrium_sys_support_sol.dof_numbers_vars("PSI", false, toroidal_slices_nodes_[0], dofs_psi_equilibrium, true);
     equilibrium_sys_element_sol.dof_numbers_vars("PSIe", true, toroidal_slices_elems_[0], dofs_psie_equilibrium, true);
 
@@ -131,8 +131,8 @@ void APECMEvolutionAnalysis::toroidal_average()
     for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_nodes_.size(); ++slice_idx)
     {
         const auto &slice_node_ids = toroidal_slices_nodes_[slice_idx];
-        evolution_sys_nodal_sol.dof_numbers_vars("Bn" + j_b_labels_evolution[1], false, slice_node_ids, dofs_b_rad_evolution[slice_idx - 1], true);
-        evolution_sys_nodal_sol.dof_numbers_vars("Bn" + j_b_labels_evolution[2], false, slice_node_ids, dofs_b_ver_evolution[slice_idx - 1], true);
+        evolution_sys_nodal_sol.dof_numbers_vars("B" + j_b_labels_evolution[1], false, slice_node_ids, dofs_b_rad_evolution[slice_idx - 1], true);
+        evolution_sys_nodal_sol.dof_numbers_vars("B" + j_b_labels_evolution[2], false, slice_node_ids, dofs_b_ver_evolution[slice_idx - 1], true);
         evolution_sys_support_sol.dof_numbers_vars("PSI", false, slice_node_ids, dofs_psi_evolution[slice_idx - 1], true);
 
         std::vector<Real> b_rad_slice;

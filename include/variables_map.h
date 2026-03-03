@@ -55,9 +55,6 @@ enum class GlobalVariableName
     Jt_x,
     Jt_y,
     Jt_z,
-    Bn_x,
-    Bn_y,
-    Bn_z,
     UNKNOWN // Fallback for invalid strings
 };
 
@@ -78,7 +75,6 @@ enum class APIVariableName
     He,
     PSIe,
     Jt,
-    Bn,
     UNKNOWN // Fallback for invalid strings
 };
 

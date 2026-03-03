@@ -41,7 +41,6 @@ public:
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
         SUPPORT_SOLUTION,
-        NODAL_B,
         NUM_SYSTEMS
     };
 

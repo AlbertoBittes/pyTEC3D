@@ -100,7 +100,6 @@ public:
     void build_plane233_rhs();
 
     void build_nodal_solution();
-    void build_bn_solution();
     void build_element_solution();
     void build_support_solution();
 
@@ -129,7 +128,6 @@ public:
     unsigned int get_n_dofs() const { return n_dofs; }
 
     void clear_nodal_loads_dof_cache() { nodal_loads_dof_cache.clear(); }
-    void clear_bn_node_counts_cache() { bn_node_counts.clear(); }
 
     static std::unique_ptr<ElementBuilder> make_element_builder(ApecMEquationSystems *eq_sys);
 
@@ -152,7 +150,6 @@ private:
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
     std::unordered_map<dof_id_type, unsigned int> psi_node_counts;
-    std::unordered_map<dof_id_type, unsigned int> bn_node_counts;
     CylindricalCoordinateSystem cylindrical_coordinate_system_;
 
     ApecMEquationSystems *equation_systems_ = nullptr;
@@ -160,7 +157,6 @@ private:
     System *nodal_solution_system_ = nullptr;
     System *element_solution_system_ = nullptr;
     System *support_solution_system_ = nullptr;
-    System *nodal_b_system_ = nullptr;
     System *nodal_loads_system_ = nullptr;
     System *element_loads_system_ = nullptr;
     DofMap *dof_solution_dof_map_ = nullptr;

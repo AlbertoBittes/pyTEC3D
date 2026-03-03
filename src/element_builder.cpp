@@ -42,7 +42,6 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
     nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
     element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
     support_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::SUPPORT_SOLUTION);
-    nodal_b_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_B);
     nodal_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_LOADS);
     element_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_LOADS);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
@@ -210,84 +209,6 @@ void ElementBuilder::build_nodal_solution()
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
-}
-
-void ElementBuilder::build_bn_solution()
-{
-    if (!element_solution_system_ || !nodal_b_system_)
-        return;
-
-    const auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::NODAL_B);
-    if (api_vars.empty())
-        return;
-
-    std::vector<DenseVector<Number>> nodal_b_vectors;
-    nodal_b_vectors.resize(api_vars.size());
-    DenseVector<Number> bn_values;
-    bool have_bn = false;
-
-    auto build_bn = [&]()
-    {
-        bn_values.resize(0);
-
-        const auto append_component_average = [&](const std::string &be_label, const std::string &bn_label)
-        {
-            if (!element_solution_system_->has_variable(be_label) || !nodal_b_system_->has_variable(bn_label))
-                return;
-
-            std::vector<dof_id_type> dof_indices;
-            unsigned int be_var_num = element_solution_system_->variable_number(be_label);
-            unsigned int bn_var_num = nodal_b_system_->variable_number(bn_label);
-            element_solution_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices, be_var_num);
-            if (dof_indices.empty())
-                return;
-
-            Real be_val = element_solution_system_->current_local_solution->el(dof_indices[0]);
-
-            for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
-            {
-                dof_id_type dof_index = libMesh::invalid_uint;
-                try
-                {
-                    dof_index = elem_data.elem->node_ptr(i)->dof_number(ApecMSystemBase::NODAL_B, bn_var_num, 0);
-                }
-                catch (...)
-                {
-                    continue;
-                }
-                if (dof_index < nodal_b_system_->solution->first_local_index() || dof_index >= nodal_b_system_->solution->last_local_index())
-                    continue;
-
-                const unsigned int previous_count = bn_node_counts[dof_index];
-                const unsigned int next_count = previous_count + 1;
-                const Number previous_avg = nodal_b_system_->solution->el(dof_index);
-                const Number next_avg = (previous_avg * previous_count + be_val) / static_cast<Real>(next_count);
-
-                bn_node_counts[dof_index] = next_count;
-                DenseVector<Number> bn_entry(1);
-                bn_entry(0) = next_avg;
-                bn_values.append(bn_entry);
-            }
-        };
-
-        append_component_average("Be_x", "Bn_x");
-        append_component_average("Be_y", "Bn_y");
-        append_component_average("Be_z", "Bn_z");
-        have_bn = true;
-    };
-
-    this->fill_vectors_by_api(api_vars, nodal_b_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
-                              {
-                                  switch (api_var)
-                                  {
-                                  case APIVariableName::Bn:
-                                      build_bn();
-                                      return have_bn ? &bn_values : nullptr;
-                                  default:
-                                      return nullptr;
-                                  } });
-
-    this->append_and_write_solution(*nodal_b_system_, nodal_b_vectors);
 }
 
 void ElementBuilder::build_element_solution()
