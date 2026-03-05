@@ -11,7 +11,7 @@ import os
 apec = APEC_M()
 
 apec_evolution_mesh = "ITER_2D_APEC_evol"
-apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_1"
+apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_equilibrium"
 apec_equilibrium_output = "ITER_2D_APEC_out_0"
 
 
@@ -120,9 +120,10 @@ apec.apec_settings["alpha_np"] = 0.83197
 apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["static_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
+apec.apec_settings["AF0"] = 5.3 * 6.2
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
-apec.apec_settings["print_full_output"] = 0
+apec.apec_settings["print_full_output"] = 1
 apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
     apec.mesh, apec.mesh, "node", n_slices=1, tolerance=1e-3
 )

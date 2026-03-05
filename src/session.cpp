@@ -48,6 +48,7 @@ void Session::initialize_folder_paths()
     create_temp_folder();
     create_output_folder();
     create_emat_folder();
+    create_apec_folder();
     check_load_steps_folder();
 }
 
@@ -239,6 +240,32 @@ void Session::create_emat_folder()
     }
 }
 
+void Session::create_apec_folder()
+{
+    auto &paths_map = *this->get_data_map();
+    const auto &apec_folderpath = paths_map["apec_folderpath"];
+    if (apec_folderpath.empty())
+        return;
+
+    const auto diagnostics_file = apec_folderpath / "apec_iteration_diagnostics.csv";
+
+    if (!std::filesystem::exists(apec_folderpath))
+    {
+        std::filesystem::create_directories(apec_folderpath);
+        libMesh::out << "Apec folder created at " << apec_folderpath << std::endl;
+    }
+    else
+    {
+        libMesh::out << "Apec folder already exists at " << apec_folderpath << std::endl;
+    }
+
+    if (std::filesystem::exists(diagnostics_file))
+    {
+        std::filesystem::remove(diagnostics_file);
+        libMesh::out << "Deleted existing APEC diagnostics file at " << diagnostics_file << std::endl;
+    }
+}
+
 void Session::check_load_steps_folder()
 {
     auto &paths_map = *this->get_data_map();
@@ -284,6 +311,7 @@ void Session::update_dynamic_paths()
     paths_map["working_folderpath"] = effective_working_directory;
     paths_map["time_steps_folderpath"] = effective_working_directory / "_time_";
     paths_map["model_data_folderpath"] = effective_working_directory / "_model_data_";
+    paths_map["apec_folderpath"] = effective_working_directory / "_apec_";
     paths_map["mesh_folderpath"] = mesh_root;
 
     if (!mesh_root.empty())

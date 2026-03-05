@@ -28,7 +28,7 @@ void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
     if (!session || !settings)
         return;
 
-    const std::filesystem::path log_path = session->get_path("time_steps_folderpath") / "apec_iteration_diagnostics.csv";
+    const std::filesystem::path log_path = session->get_path("apec_folderpath") / "apec_iteration_diagnostics.csv";
     std::filesystem::create_directories(log_path.parent_path());
 
     const bool write_header = !std::filesystem::exists(log_path) ||
@@ -173,22 +173,11 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
 {
     libMesh::out << "Finding B field at axis point..." << std::endl;
     auto eq_sys = this->active_equation_system();
-    auto session = this->context<Session>();
-    auto &main_sys = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto &nodal_solution_system = eq_sys->get_system<ExplicitSystem>("NodalSolutionSystem");
     unsigned int bx_var_number = nodal_solution_system.variable_number("B_x");
     unsigned int by_var_number = nodal_solution_system.variable_number("B_y");
-    const auto &mesh = eq_sys->get_mesh();
-    // auto builder = ElementBuilder::make_element_builder(eq_sys);
-    // auto point_locator = mesh.sub_point_locator();
-    // point_locator->enable_out_of_mesh_mode();
     auto settings = this->context<ApecMSettingsObject>();
     const auto &axis = settings->target_axis();
-
-    // Here you will be able to restrict to the subdomain of stranded conductors for speedup
-    // You can also find before the element where the center is in pre processing
-    auto &comm = mesh.comm();
-    // const Elem *target_elem = point_locator->operator()(axis);
 
     b_target_axis(0) = 0.0;
     b_target_axis(1) = 0.0;
@@ -199,9 +188,6 @@ void APECMEquilibriumAnalysis::set_b_target_axis()
     // }
     b_target_axis(0) = nodal_solution_system.point_value(bx_var_number, axis, true);
     b_target_axis(1) = nodal_solution_system.point_value(by_var_number, axis, true);
-    // }
-    comm.sum(b_target_axis(0));
-    comm.sum(b_target_axis(1));
 }
 
 void APECMEquilibriumAnalysis::remove_plasma_out_of_X_point()
@@ -262,7 +248,7 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
 
     dof_id_type vacuum_chamber_region_component = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
 
-    std::pair<dof_id_type, Real> magnetic_axis_data;
+    std::pair<dof_id_type, Real> magnetic_axis_data{libMesh::invalid_uint, -std::numeric_limits<Real>::max()};
 
     auto &comm = mesh.comm();
 
@@ -286,11 +272,11 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
     magnetic_axis_data_all.insert(magnetic_axis_data);
     comm.set_union(magnetic_axis_data_all);
     // Find the global maximum
-    dof_id_type max_node_id = 0;
+    dof_id_type max_node_id = libMesh::invalid_uint;
     Real max_psi_value = -std::numeric_limits<Real>::max();
     for (const auto &data : magnetic_axis_data_all)
     {
-        if (data.second > max_psi_value)
+        if (data.first != libMesh::invalid_uint && data.second > max_psi_value)
         {
             max_psi_value = data.second;
             max_node_id = data.first;
@@ -748,7 +734,6 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         Real adjusted_current_density = existing_current_density * lambda;
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
 
-        dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
         dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
         Real psi_elem = element_solution_system.current_local_solution->el(psi_dof);
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);

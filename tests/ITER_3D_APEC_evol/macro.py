@@ -201,9 +201,9 @@ currents = np.loadtxt("plasma_current.txt")
 betas = np.loadtxt("beta_p.txt")
 
 # Consider only the time steps every 5 in the list
-time_steps = time_steps[::5][1:]
-currents = currents[::5][1:]
-betas = betas[::5][1:]
+time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
+currents = np.concatenate((currents[0:1], currents[1::10]))
+betas = np.concatenate((betas[0:1], betas[1::10]))
 
 for step_idx in range(len(time_steps)):
     apec.time_parameters["time"] = time_steps[step_idx]

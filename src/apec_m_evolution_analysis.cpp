@@ -62,31 +62,6 @@ APECMEvolutionAnalysis::APECMEvolutionAnalysis(APEC_M *program,
 {
 }
 
-void APECMEvolutionAnalysis::set_poloidal_currents()
-{
-    // libMesh::out << "Projection from main mesh to static mesh..." << std::endl;
-    // // Rotate the J and B to cylindrical coordinates
-    // auto settings = this->context<ApecMSettingsObject>();
-
-    // APEC_M *program = this->get_parent_object();
-
-    // const std::string &evolution_mesh = settings->evolution_mesh();
-    // const std::string &equilibrium_mesh = settings->equilibrium_mesh();
-
-    // auto main_eq_sys = program->get_equation_system(evolution_mesh);
-    // auto static_eq_sys = program->get_equation_system(equilibrium_mesh);
-
-    // ApecMExplicitSystem &main_sys_element_sol = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
-    // ApecMExplicitSystem &static_sys_element_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
-    // ApecMExplicitSystem &main_sys_element_loads = main_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
-    // ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
-
-    // auto toroidal_proj = toroidal_projection.get();
-
-    // auto j_b_labels_evol = get_j_b_labels(main_eq_sys->get_mesh().mesh_dimension());
-    // auto j_b_labels_stat = get_j_b_labels(static_eq_sys->get_mesh().mesh_dimension());
-}
-
 void APECMEvolutionAnalysis::set_toroidal_slices()
 {
     auto settings = this->context<ApecMSettingsObject>();
@@ -663,6 +638,8 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
     ApecMExplicitSystem &equilibrium_sys_element_loads = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
     this->cache_slice_dofs();
+    NumericVector<Number> *jp_rad_vector = equilibrium_sys_element_loads.request_vector("Jp_rad");
+    NumericVector<Number> *jp_ver_vector = equilibrium_sys_element_loads.request_vector("Jp_ver");
 
     auto &comm = static_mesh->comm();
     auto j_b_labels_static = get_j_b_labels(static_mesh->mesh_dimension());
@@ -670,7 +647,6 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
     const std::string js_component_2 = "Js" + j_b_labels_static[2];
     const bool has_js_component_1 = static_sys_element_loads.has_variable(js_component_1);
     const bool has_js_component_2 = static_sys_element_loads.has_variable(js_component_2);
-    const dof_id_type invalid_dof = libMesh::invalid_uint;
     const auto &eq_js_main_dofs = this->cached_dofs(KEY_TPROJ_EQ_JS_MAIN_DOFS);
     const auto &static_js_main_groups = this->cached_dof_groups(KEY_TPROJ_STATIC_JS_MAIN_DOF_GROUPS);
     const auto &static_local_elem_id_groups = this->cached_dof_groups(KEY_TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS);
@@ -679,18 +655,24 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
 
     const std::size_t n_rows = eq_js_main_dofs.size();
     std::vector<Real> js_main_sums(n_rows, 0.0);
+    std::vector<Real> jp_rad_sums(n_rows, 0.0);
+    std::vector<Real> jp_ver_sums(n_rows, 0.0);
     std::vector<Real> js_main_counts(n_rows, 0.0);
 
     for (std::size_t row = 0; row < n_rows; ++row)
     {
         const dof_id_type eq_dof = eq_js_main_dofs[row];
-        if (eq_dof == invalid_dof)
+        if (eq_dof == libMesh::invalid_uint)
             continue;
         js_main_sums[row] += equilibrium_sys_element_loads.current_local_solution->el(eq_dof);
+        jp_rad_sums[row] += jp_rad_vector->el(eq_dof);
+        jp_ver_sums[row] += jp_ver_vector->el(eq_dof);
         js_main_counts[row] += 1.0;
     }
 
     comm.sum(js_main_sums);
+    comm.sum(jp_rad_sums);
+    comm.sum(jp_ver_sums);
     comm.sum(js_main_counts);
 
     for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_elems_.size(); ++slice_idx)
@@ -701,7 +683,7 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
         for (std::size_t row = 0; row < n_slice_rows; ++row)
         {
             const dof_id_type js_main_dof = slice_js_main_dofs[row];
-            if (js_main_dof == invalid_dof)
+            if (js_main_dof == libMesh::invalid_uint)
                 continue;
 
             const Real js_value = (js_main_counts[row] > 0.0) ? (js_main_sums[row] / js_main_counts[row]) : 0.0;
@@ -710,15 +692,15 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
             if (has_js_component_1)
             {
                 const dof_id_type js1_dof = (*static_js_c1_groups)[slice_idx - 1][row];
-                if (js1_dof != invalid_dof)
-                    static_sys_element_loads.solution->set(js1_dof, 0.0);
+                if (js1_dof != libMesh::invalid_uint)
+                    static_sys_element_loads.solution->set(js1_dof, (js_main_counts[row] > 0.0) ? (jp_rad_sums[row] / js_main_counts[row]) : 0.0);
             }
 
             if (has_js_component_2)
             {
                 const dof_id_type js2_dof = (*static_js_c2_groups)[slice_idx - 1][row];
-                if (js2_dof != invalid_dof)
-                    static_sys_element_loads.solution->set(js2_dof, 0.0);
+                if (js2_dof != libMesh::invalid_uint)
+                    static_sys_element_loads.solution->set(js2_dof, (js_main_counts[row] > 0.0) ? (jp_ver_sums[row] / js_main_counts[row]) : 0.0);
             }
         }
 
@@ -752,13 +734,14 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
         program->set_active_mesh(evolution_mesh);
         // set_plasma_current();
         // set_poloidal_currents();
+        toroidal_projection_plasma_current();
+        set_plasma_current();
         solve_equation_systems(substep, false);
         return conv;
     }
 
     program->set_active_mesh(evolution_mesh);
     set_plasma_current();
-    set_poloidal_currents();
 
     libMesh::out << "Solving evolution step..." << std::endl;
     solve_equation_systems(substep, false);
