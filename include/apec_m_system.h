@@ -133,7 +133,6 @@ public:
                                                     const std::string &variable_label,
                                                     const std::vector<dof_id_type> &selected_dof_ids = {}) override;
     void dof_numbers_vars(const std::string &variable_name,
-                          bool select_elements,
                           const std::vector<dof_id_type> &object_ids,
                           std::vector<dof_id_type> &dof_ids,
                           bool global);
@@ -262,6 +261,12 @@ public:
         {
             this->add_vector("old_loads");
             this->add_vector("new_loads");
+            this->remove_vector("RHS");
+            if (system_type == ApecMSystemBase::ELEMENT_LOADS)
+            {
+                this->add_vector("Jp_rad");
+                this->add_vector("Jp_ver");
+            }
         }
     }
 };

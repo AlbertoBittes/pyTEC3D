@@ -18,7 +18,6 @@ apec.read_mesh(filepath)
 apec.apec_settings["target_central_axis_x"] = 6.52136102486433
 apec.apec_settings["target_central_axis_y"] = 0.536537145137914
 apec.apec_settings["target_central_axis_z"] = 0.0
-apec.apec_settings["target_central_axis_element_id"] = 651
 apec.apec_settings["R0"] = 6.2
 apec.apec_settings["max_picard_iterations"] = 70
 apec.apec_settings["min_distance"] = 0.6

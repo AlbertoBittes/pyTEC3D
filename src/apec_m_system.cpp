@@ -28,8 +28,13 @@ namespace
         const ApecMMesh *mesh = dynamic_cast<const ApecMMesh *>(&system.get_mesh());
 
         const std::vector<std::string> vector_components = VariablesMap::get_global_labels_for_label(variable_label);
-        if (vector_components.size() < 3 || selected_entity_ids.empty())
+        constexpr unsigned int n_vector_components = 3;
+        if (vector_components.size() < n_vector_components || selected_entity_ids.empty())
             return true;
+
+        for (unsigned int i = 0; i < n_vector_components; ++i)
+            if (!system.has_variable(vector_components[i]))
+                return true;
 
         std::vector<Point> positions(selected_entity_ids.size());
         for (std::size_t i = 0; i < selected_entity_ids.size(); ++i)
@@ -48,9 +53,9 @@ namespace
         }
 
         std::vector<std::vector<dof_id_type>> dofs(3);
-        system.dof_numbers_vars(vector_components[0], !is_nodal, selected_entity_ids, dofs[0], false);
-        system.dof_numbers_vars(vector_components[1], !is_nodal, selected_entity_ids, dofs[1], false);
-        system.dof_numbers_vars(vector_components[2], !is_nodal, selected_entity_ids, dofs[2], false);
+        system.dof_numbers_vars(vector_components[0], selected_entity_ids, dofs[0], false);
+        system.dof_numbers_vars(vector_components[1], selected_entity_ids, dofs[1], false);
+        system.dof_numbers_vars(vector_components[2], selected_entity_ids, dofs[2], false);
 
         std::vector<ApecMTensorValue> rotations(selected_entity_ids.size());
         for (std::size_t i = 0; i < selected_entity_ids.size(); ++i)
@@ -259,7 +264,6 @@ void ApecMSystem<SysType>::init_variables()
 
 template <typename SysLike>
 void ApecMSystem<SysLike>::dof_numbers_vars(const std::string &variable_name,
-                                            bool select_elements,
                                             const std::vector<dof_id_type> &object_ids,
                                             std::vector<dof_id_type> &dof_ids,
                                             bool global)
@@ -269,6 +273,7 @@ void ApecMSystem<SysLike>::dof_numbers_vars(const std::string &variable_name,
     EquationSystems &equation_systems = this->get_equation_systems();
     MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int var_number = this->variable_number(variable_name);
+    const bool select_elements = !ApecMSystemBase::is_nodal_system(this->system_type);
 
     auto append_dofs = [&](const MeshBase &mesh_view)
     {

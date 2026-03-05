@@ -136,6 +136,8 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
     NumericVector<Number> &plasma_current_vector = *element_loads_system.solution;
+    NumericVector<Number> &plasma_jp_rad_vector = element_loads_system.get_vector("Jp_rad");
+    NumericVector<Number> &plasma_jp_ver_vector = element_loads_system.get_vector("Jp_ver");
 
     dof_id_type plasma_region_component = mesh.get_elem_integer_index("PLASMA");
     dof_id_type vacuum_chamber_component = mesh.get_elem_integer_index("VACUUM_CHAMBER");
@@ -150,6 +152,8 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
             dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
 
             plasma_current_vector.set(elem_current_density_dof, 0.0);
+            plasma_jp_rad_vector.set(elem_current_density_dof, 0.0);
+            plasma_jp_ver_vector.set(elem_current_density_dof, 0.0);
 
             for (auto &node : elem->node_ref_range())
                 if (node.get_extra_integer(vacuum_boundary_component) == 1)
@@ -157,6 +161,8 @@ void APECMEquilibriumAnalysis::reset_plasma_components()
         }
 
     plasma_current_vector.close();
+    plasma_jp_rad_vector.close();
+    plasma_jp_ver_vector.close();
     element_loads_system.update();
     // for (auto &node : mesh.local_node_ptr_range())
     //     if (node->get_extra_integer(vacuum_boundary_component))
@@ -671,10 +677,15 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
     unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
+    unsigned int bx_var_number = element_solution_system.variable_number("Be_x");
+    unsigned int by_var_number = element_solution_system.variable_number("Be_y");
 
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int plasma_current_var_number = element_loads_system.variable_number("Js_z");
     NumericVector<Number> &plasma_current_vector = *element_loads_system.solution;
+
+    auto jp_rad = element_loads_system.request_vector("Jp_rad");
+    auto jp_ver = element_loads_system.request_vector("Jp_ver");
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
@@ -682,6 +693,9 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
 
     auto settings_ptr = this->context<ApecMSettingsObject>();
     Real total_plasma_current = 0.0;
+
+    const Real MU_0 = 4.0 * libMesh::pi * 1e-7; // Permeability of free space
+    const Real AF0 = settings_ptr->AF0_();
 
     unsigned int plasma_elem_count = 0;
     for (auto &elem : mesh.active_local_element_ptr_range())
@@ -696,8 +710,11 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         Real elem_centroid_rad = elem->vertex_average()(0);
 
         Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
-        Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
+
+        Real pprime_h2 = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np);
+        Real grad_shafranov_current_density = pprime_h2 *
                                               (beta_profile * elem_centroid_rad / R0 + (1 - beta_profile) * R0 / elem_centroid_rad);
+
         // Real grad_shafranov_current_density = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np) *
         //                                           (beta_profile * elem_centroid_rad / R0) +
         //                                       std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np + 1) * ((1 - beta_profile) * R0 / elem_centroid_rad);
@@ -724,10 +741,37 @@ void APECMEquilibriumAnalysis::apply_jplasma_gradshafranov()
         if (elem->get_extra_integer(plasma_component) != 1)
             continue;
 
+        Real elem_centroid_rad = elem->vertex_average()(0);
+
         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
         Real existing_current_density = plasma_current_vector.el(elem_current_density_dof);
         Real adjusted_current_density = existing_current_density * lambda;
         plasma_current_vector.set(elem_current_density_dof, adjusted_current_density);
+
+        dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, plasma_current_var_number, 0);
+        dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
+        Real psi_elem = element_solution_system.current_local_solution->el(psi_dof);
+        Real psi_segn = (psi_elem - psi_magnetic_axis) / (psi_min - psi_magnetic_axis);
+        Real pprime_h2 = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np);
+        Real FFprime_h2 = std::pow((1 - std::pow(psi_segn, alpha_mp)), alpha_np + 1);
+        Real C = 2 * MU_0 * R0 * (1 - beta_profile) * (psi_magnetic_axis - psi_min) * lambda / (alpha_np + 1);
+        Real F = std::sqrt(C * FFprime_h2 + std::pow(AF0, 2));
+        Real FFprime = pprime_h2 * (1 - beta_profile) * R0;
+        Real FFprime_L = FFprime * lambda * MU_0;
+        Real Fprime_1 = FFprime_L / F;
+        Real Fprime = Fprime_1 / MU_0;
+
+        Real bx_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
+        Real by_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
+
+        Real bx_value = element_solution_system.solution->el(bx_dof);
+        Real by_value = element_solution_system.solution->el(by_dof);
+
+        Real jp_radial = Fprime * bx_value;
+        Real jp_vertical = Fprime * by_value;
+
+        jp_rad->set(elem_current_density_dof, jp_radial);
+        jp_ver->set(elem_current_density_dof, jp_vertical);
     }
 
     plasma_current_vector.close();

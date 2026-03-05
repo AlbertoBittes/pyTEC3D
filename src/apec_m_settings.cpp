@@ -195,6 +195,9 @@ void ApecMSettingsObject::parse_columns()
     if (this->has_column("static_mesh"))
         static_mesh_ = this->get_string("static_mesh");
 
+    if (this->has_column("AF0"))
+        AF0 = this->get_real("AF0");
+
     if (data_map)
     {
         auto it_nodes = data_map->columns.find("toroidal_slices_nodes");

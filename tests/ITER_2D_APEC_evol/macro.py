@@ -44,11 +44,26 @@ Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 Selector.select_all(apec.mesh)
 
-mat_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("ansys_material_type"))
-jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("Jt_z"))
-elem_ids = np.where(mat_array == 23)[0]
+# 1. Select COILS and VACUUM_CHAMBER in output mesh
+Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
+Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
+
+# 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
+output_mesh = apec.get_mesh(apec_equilibrium_output)
+selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+
+# 3. Get selected libmesh ids and corresponding Jt_z values
+selected = selection_mask == 1
+selected_libmesh_ids = libmesh_elem_id_out[selected]
+selected_jt_z = jt_z_array[selected]
+
+# The libmesh_elem_id from output mesh corresponds directly to VTK cell ids in apec.mesh
 js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-js_array[elem_ids, 2] = jt_z_array[elem_ids]
+# Only update valid VTK cell ids (must be within js_array shape)
+valid_mask = (selected_libmesh_ids >= 0) & (selected_libmesh_ids < js_array.shape[0])
+js_array[selected_libmesh_ids[valid_mask], 2] = selected_jt_z[valid_mask]
 apec.mesh.GetCellData().GetArray("Js").Modified()
 
 # Write loads and BCs and save the static mesh
@@ -62,21 +77,35 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-# Transfer Jt_z from output mesh to Js (component 2) in apec.mesh for elements with mat=23
-mat_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("ansys_material_type"))
-jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("Jt_z"))
-elem_ids = np.where(mat_array == 23)[0]
+# 1. Select COILS and VACUUM_CHAMBER in output mesh
+Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
+Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
+
+# 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
+output_mesh = apec.get_mesh(apec_equilibrium_output)
+selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+
+# 3. Get selected libmesh ids and corresponding Jt_z values
+selected = selection_mask == 1
+selected_libmesh_ids = libmesh_elem_id_out[selected]
+selected_jt_z = jt_z_array[selected]
+
+# The libmesh_elem_id from output mesh corresponds directly to VTK cell ids in apec.mesh
 js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-js_array[elem_ids, 2] = jt_z_array[elem_ids]
+# Only update valid VTK cell ids (must be within js_array shape)
+valid_mask = (selected_libmesh_ids >= 0) & (selected_libmesh_ids < js_array.shape[0])
+js_array[selected_libmesh_ids[valid_mask], 2] = selected_jt_z[valid_mask]
 apec.mesh.GetCellData().GetArray("Js").Modified()
 
 apec.write_loads_bcs()
 
-Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.nsle(apec.mesh)
 apec.apec_settings["target_central_axis_x"] = 6.52136102486433
 apec.apec_settings["target_central_axis_y"] = 0.536537145137914
 apec.apec_settings["target_central_axis_z"] = 0.0
-apec.apec_settings["target_central_axis_element_id"] = 651
 apec.apec_settings["R0"] = 6.2
 apec.apec_settings["max_picard_iterations"] = 70
 apec.apec_settings["min_distance"] = 0.1

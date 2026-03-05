@@ -30,6 +30,7 @@ public:
     Real alpha_mp_() const { return alpha_mp; }
     Real alpha_np_() const { return alpha_np; }
     Real plasma_currents() const { return plasma_current; }
+    Real AF0_() const { return AF0; }
     Real beta_profile() const { return beta_p; }
     bool print_full_output() const { return print_full_output_; }
     const std::string &evolution_mesh() const { return evolution_mesh_; }
@@ -53,6 +54,7 @@ private:
     Real bvery_value = 0.0;
     Real alpha_mp = 1.0001;
     Real alpha_np = 0.83197;
+    Real AF0 = 0.0;
     Real plasma_current = 0.0;
     Real beta_p = 0.0;
     bool print_full_output_ = false;
