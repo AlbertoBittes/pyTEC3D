@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include <libmesh/libmesh.h>
@@ -13,35 +14,6 @@
 
 namespace
 {
-    constexpr const char *KEY_TAVG_EQ_PSI_DOFS = "tavg.eq.psi.dofs";
-    constexpr const char *KEY_TAVG_EQ_B_RAD_DOFS = "tavg.eq.b_rad.dofs";
-    constexpr const char *KEY_TAVG_EQ_B_VER_DOFS = "tavg.eq.b_ver.dofs";
-    constexpr const char *KEY_TAVG_EQ_PSIE_DOFS = "tavg.eq.psie.dofs";
-    constexpr const char *KEY_TAVG_EVOL_PSI_DOF_GROUPS = "tavg.evol.psi.dof_groups";
-    constexpr const char *KEY_TAVG_EVOL_B_RAD_DOF_GROUPS = "tavg.evol.b_rad.dof_groups";
-    constexpr const char *KEY_TAVG_EVOL_B_VER_DOF_GROUPS = "tavg.evol.b_ver.dof_groups";
-    constexpr const char *KEY_TAVG_EVOL_PSIE_DOF_GROUPS = "tavg.evol.psie.dof_groups";
-
-    constexpr const char *KEY_TPROJ_EQ_JS_MAIN_DOFS = "tproj.eq.js.main.dofs";
-    constexpr const char *KEY_TPROJ_STATIC_JS_MAIN_DOF_GROUPS = "tproj.static.js.main.dof_groups";
-    constexpr const char *KEY_TPROJ_STATIC_JS_C1_DOF_GROUPS = "tproj.static.js.c1.dof_groups";
-    constexpr const char *KEY_TPROJ_STATIC_JS_C2_DOF_GROUPS = "tproj.static.js.c2.dof_groups";
-    constexpr const char *KEY_TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS = "tproj.static.local.elem_id_groups";
-
-    constexpr const char *KEY_IMPRESSED_EVOL_JT_Z = "impressed.evolution.jt.z";
-    constexpr const char *KEY_IMPRESSED_STATIC_JS_Z = "impressed.static.js.z";
-    constexpr const char *KEY_IMPRESSED_EVOL_JT_X = "impressed.evolution.jt.x";
-    constexpr const char *KEY_IMPRESSED_STATIC_JS_X = "impressed.static.js.x";
-    constexpr const char *KEY_IMPRESSED_EVOL_JT_Y = "impressed.evolution.jt.y";
-    constexpr const char *KEY_IMPRESSED_STATIC_JS_Y = "impressed.static.js.y";
-
-    constexpr const char *KEY_SET_PLASMA_STATIC_JS_Z = "set_plasma.static.js.z";
-    constexpr const char *KEY_SET_PLASMA_EVOL_JS_Z = "set_plasma.evolution.js.z";
-    constexpr const char *KEY_SET_PLASMA_STATIC_JS_X = "set_plasma.static.js.x";
-    constexpr const char *KEY_SET_PLASMA_EVOL_JS_X = "set_plasma.evolution.js.x";
-    constexpr const char *KEY_SET_PLASMA_STATIC_JS_Y = "set_plasma.static.js.y";
-    constexpr const char *KEY_SET_PLASMA_EVOL_JS_Y = "set_plasma.evolution.js.y";
-
     std::vector<std::string> get_j_b_labels(unsigned int mesh_dim)
     {
         if (mesh_dim == 2)
@@ -75,19 +47,19 @@ void APECMEvolutionAnalysis::set_toroidal_slices()
     dofs_cache_.vector_groups.clear();
 }
 
-const std::vector<dof_id_type> &APECMEvolutionAnalysis::cached_dofs(const std::string &key) const
+const std::vector<dof_id_type> &APECMEvolutionAnalysis::cached_dofs(DofCacheKey key) const
 {
     const auto it = dofs_cache_.vectors.find(key);
     if (it == dofs_cache_.vectors.end())
-        libmesh_error_msg("APECMEvolutionAnalysis: missing cached DOFs for key '" + key + "'.");
+        libmesh_error_msg("APECMEvolutionAnalysis: missing cached DOFs for cache key.");
     return it->second;
 }
 
-const std::vector<std::vector<dof_id_type>> &APECMEvolutionAnalysis::cached_dof_groups(const std::string &key) const
+const std::vector<std::vector<dof_id_type>> &APECMEvolutionAnalysis::cached_dof_groups(DofCacheKey key) const
 {
     const auto it = dofs_cache_.vector_groups.find(key);
     if (it == dofs_cache_.vector_groups.end())
-        libmesh_error_msg("APECMEvolutionAnalysis: missing cached DOF group for key '" + key + "'.");
+        libmesh_error_msg("APECMEvolutionAnalysis: missing cached DOF group for cache key.");
     return it->second;
 }
 
@@ -97,8 +69,6 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
         return;
 
     auto settings = this->context<ApecMSettingsObject>();
-    if (!settings)
-        libmesh_error_msg("APECMEvolutionAnalysis: APEC settings are not available.");
 
     APEC_M *program = this->get_parent_object();
 
@@ -130,19 +100,20 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
     const processor_id_type proc_id = evolution_mesh->comm().rank();
-    const dof_id_type invalid_dof = libMesh::invalid_uint;
 
     dofs_cache_.vectors.clear();
     dofs_cache_.vector_groups.clear();
 
     std::vector<dof_id_type> passive_structure_elems_evolution;
     std::vector<dof_id_type> passive_structure_elems_static;
+    std::vector<dof_id_type> coils_elems_equilibrium;
     std::vector<dof_id_type> coils_elems_evolution;
     std::vector<dof_id_type> coils_elems_static;
     std::vector<dof_id_type> elems_evolution_impressed;
     std::vector<dof_id_type> elems_static_impressed;
     evolution_mesh->select("PASSIVE_STRUCTURES", 1, true, passive_structure_elems_evolution);
     static_mesh->select("PASSIVE_STRUCTURES", 1, true, passive_structure_elems_static);
+    equilibrium_mesh->select("COILS", 1, true, coils_elems_equilibrium);
     evolution_mesh->select("COILS", 1, true, coils_elems_evolution);
     static_mesh->select("COILS", 1, true, coils_elems_static);
     elems_evolution_impressed.insert(elems_evolution_impressed.end(), passive_structure_elems_evolution.begin(), passive_structure_elems_evolution.end());
@@ -150,14 +121,14 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     elems_static_impressed.insert(elems_static_impressed.end(), passive_structure_elems_static.begin(), passive_structure_elems_static.end());
     elems_static_impressed.insert(elems_static_impressed.end(), coils_elems_static.begin(), coils_elems_static.end());
 
-    evolution_sys_element_sol.dof_numbers_vars("Jt_z", elems_evolution_impressed, dofs_cache_.vectors[KEY_IMPRESSED_EVOL_JT_Z], false);
-    static_sys_element_loads.dof_numbers_vars("Js_z", elems_static_impressed, dofs_cache_.vectors[KEY_IMPRESSED_STATIC_JS_Z], false);
+    evolution_sys_element_sol.dof_numbers_vars("Jt_z", elems_evolution_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_EVOL_JT_Z], false);
+    static_sys_element_loads.dof_numbers_vars("Js_z", elems_static_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_STATIC_JS_Z], false);
     if (evolution_mesh->mesh_dimension() == 3)
     {
-        evolution_sys_element_sol.dof_numbers_vars("Jt_x", elems_evolution_impressed, dofs_cache_.vectors[KEY_IMPRESSED_EVOL_JT_X], false);
-        static_sys_element_loads.dof_numbers_vars("Js_x", elems_static_impressed, dofs_cache_.vectors[KEY_IMPRESSED_STATIC_JS_X], false);
-        evolution_sys_element_sol.dof_numbers_vars("Jt_y", elems_evolution_impressed, dofs_cache_.vectors[KEY_IMPRESSED_EVOL_JT_Y], false);
-        static_sys_element_loads.dof_numbers_vars("Js_y", elems_static_impressed, dofs_cache_.vectors[KEY_IMPRESSED_STATIC_JS_Y], false);
+        evolution_sys_element_sol.dof_numbers_vars("Jt_x", elems_evolution_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_EVOL_JT_X], false);
+        static_sys_element_loads.dof_numbers_vars("Js_x", elems_static_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_STATIC_JS_X], false);
+        evolution_sys_element_sol.dof_numbers_vars("Jt_y", elems_evolution_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_EVOL_JT_Y], false);
+        static_sys_element_loads.dof_numbers_vars("Js_y", elems_static_impressed, dofs_cache_.vectors[DofCacheKey::IMPRESSED_STATIC_JS_Y], false);
     }
 
     std::vector<dof_id_type> elems_evolution_vacuum;
@@ -165,14 +136,14 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     evolution_mesh->select("VACUUM_CHAMBER", 1, true, elems_evolution_vacuum);
     static_mesh->select("VACUUM_CHAMBER", 1, true, elems_static_vacuum);
 
-    evolution_sys_element_loads.dof_numbers_vars("Js_z", elems_evolution_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_EVOL_JS_Z], false);
-    static_sys_element_loads.dof_numbers_vars("Js_z", elems_static_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_STATIC_JS_Z], false);
+    evolution_sys_element_loads.dof_numbers_vars("Js_z", elems_evolution_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_EVOL_JS_Z], false);
+    static_sys_element_loads.dof_numbers_vars("Js_z", elems_static_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_STATIC_JS_Z], false);
     if (evolution_mesh->mesh_dimension() == 3)
     {
-        evolution_sys_element_loads.dof_numbers_vars("Js_x", elems_evolution_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_EVOL_JS_X], false);
-        static_sys_element_loads.dof_numbers_vars("Js_x", elems_static_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_STATIC_JS_X], false);
-        evolution_sys_element_loads.dof_numbers_vars("Js_y", elems_evolution_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_EVOL_JS_Y], false);
-        static_sys_element_loads.dof_numbers_vars("Js_y", elems_static_vacuum, dofs_cache_.vectors[KEY_SET_PLASMA_STATIC_JS_Y], false);
+        evolution_sys_element_loads.dof_numbers_vars("Js_x", elems_evolution_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_EVOL_JS_X], false);
+        static_sys_element_loads.dof_numbers_vars("Js_x", elems_static_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_STATIC_JS_X], false);
+        evolution_sys_element_loads.dof_numbers_vars("Js_y", elems_evolution_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_EVOL_JS_Y], false);
+        static_sys_element_loads.dof_numbers_vars("Js_y", elems_static_vacuum, dofs_cache_.vectors[DofCacheKey::SET_PLASMA_STATIC_JS_Y], false);
     }
 
     const auto j_b_labels_equilibrium = get_j_b_labels(equilibrium_mesh->mesh_dimension());
@@ -189,53 +160,75 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     const unsigned int evol_psie_var = evolution_sys_element_sol.variable_number("PSIe");
 
     const std::string js_eq_main_name = "Js" + j_b_labels_equilibrium[0];
+    const std::string jt_evol_main_name = "Jt" + j_b_labels_evolution[0];
     const std::string js_static_main_name = "Js" + j_b_labels_static[0];
     const std::string js_static_c1_name = "Js" + j_b_labels_static[1];
     const std::string js_static_c2_name = "Js" + j_b_labels_static[2];
-    const unsigned int eq_js_main_var = equilibrium_sys_element_loads.variable_number(js_eq_main_name);
+    const bool has_js_eq_main = equilibrium_sys_element_loads.has_variable(js_eq_main_name);
+    const bool has_jt_evol_main = evolution_sys_element_sol.has_variable(jt_evol_main_name);
+    const unsigned int eq_js_main_var = has_js_eq_main ? equilibrium_sys_element_loads.variable_number(js_eq_main_name) : libMesh::invalid_uint;
+    const unsigned int evol_jt_main_var = has_jt_evol_main ? evolution_sys_element_sol.variable_number(jt_evol_main_name) : libMesh::invalid_uint;
     const unsigned int static_js_main_var = static_sys_element_loads.variable_number(js_static_main_name);
     const bool has_js_static_c1 = static_sys_element_loads.has_variable(js_static_c1_name);
     const bool has_js_static_c2 = static_sys_element_loads.has_variable(js_static_c2_name);
     const unsigned int static_js_c1_var = has_js_static_c1 ? static_sys_element_loads.variable_number(js_static_c1_name) : libMesh::invalid_uint;
     const unsigned int static_js_c2_var = has_js_static_c2 ? static_sys_element_loads.variable_number(js_static_c2_name) : libMesh::invalid_uint;
 
-    const numeric_index_type eq_support_first = equilibrium_sys_support_sol.solution->first_local_index();
-    const numeric_index_type eq_support_last = equilibrium_sys_support_sol.solution->last_local_index();
-    const numeric_index_type eq_element_first = equilibrium_sys_element_sol.solution->first_local_index();
-    const numeric_index_type eq_element_last = equilibrium_sys_element_sol.solution->last_local_index();
-    const numeric_index_type evol_support_first = evolution_sys_support_sol.current_local_solution->first_local_index();
-    const numeric_index_type evol_support_last = evolution_sys_support_sol.current_local_solution->last_local_index();
-    const numeric_index_type evol_element_first = evolution_sys_element_sol.current_local_solution->first_local_index();
-    const numeric_index_type evol_element_last = evolution_sys_element_sol.current_local_solution->last_local_index();
-    const numeric_index_type eq_loads_first = equilibrium_sys_element_loads.current_local_solution->first_local_index();
-    const numeric_index_type eq_loads_last = equilibrium_sys_element_loads.current_local_solution->last_local_index();
-    const numeric_index_type static_loads_first = static_sys_element_loads.solution->first_local_index();
-    const numeric_index_type static_loads_last = static_sys_element_loads.solution->last_local_index();
+    // const numeric_index_type eq_support_first = equilibrium_sys_support_sol.solution->first_local_index();
+    // const numeric_index_type eq_support_last = equilibrium_sys_support_sol.solution->last_local_index();
+    // const numeric_index_type eq_element_first = equilibrium_sys_element_sol.solution->first_local_index();
+    // const numeric_index_type eq_element_last = equilibrium_sys_element_sol.solution->last_local_index();
+    // const numeric_index_type evol_support_first = evolution_sys_support_sol.current_local_solution->first_local_index();
+    // const numeric_index_type evol_support_last = evolution_sys_support_sol.current_local_solution->last_local_index();
+    // const numeric_index_type evol_element_first = evolution_sys_element_sol.current_local_solution->first_local_index();
+    // const numeric_index_type evol_element_last = evolution_sys_element_sol.current_local_solution->last_local_index();
+    // const numeric_index_type eq_loads_first = equilibrium_sys_element_loads.current_local_solution->first_local_index();
+    // const numeric_index_type eq_loads_last = equilibrium_sys_element_loads.current_local_solution->last_local_index();
+    // const numeric_index_type static_loads_first = static_sys_element_loads.solution->first_local_index();
+    // const numeric_index_type static_loads_last = static_sys_element_loads.solution->last_local_index();
 
     const std::size_t n_node_rows = toroidal_slices_nodes_.empty() ? 0 : toroidal_slices_nodes_[0].size();
     const std::size_t n_elem_rows = toroidal_slices_elems_.empty() ? 0 : toroidal_slices_elems_[0].size();
 
-    auto &eq_psi_dofs = dofs_cache_.vectors[KEY_TAVG_EQ_PSI_DOFS];
-    auto &eq_b_rad_dofs = dofs_cache_.vectors[KEY_TAVG_EQ_B_RAD_DOFS];
-    auto &eq_b_ver_dofs = dofs_cache_.vectors[KEY_TAVG_EQ_B_VER_DOFS];
-    auto &eq_psie_dofs = dofs_cache_.vectors[KEY_TAVG_EQ_PSIE_DOFS];
-    eq_psi_dofs.assign(n_node_rows, invalid_dof);
-    eq_b_rad_dofs.assign(n_elem_rows, invalid_dof);
-    eq_b_ver_dofs.assign(n_elem_rows, invalid_dof);
-    eq_psie_dofs.assign(n_elem_rows, invalid_dof);
+    auto &eq_psi_dofs = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_PSI_DOFS];
+    auto &eq_b_rad_dofs = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_B_RAD_DOFS];
+    auto &eq_b_ver_dofs = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_B_VER_DOFS];
+    auto &eq_psie_dofs = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_PSIE_DOFS];
+    eq_psi_dofs.assign(n_node_rows, libMesh::invalid_uint);
+    eq_b_rad_dofs.assign(n_elem_rows, libMesh::invalid_uint);
+    eq_b_ver_dofs.assign(n_elem_rows, libMesh::invalid_uint);
+    eq_psie_dofs.assign(n_elem_rows, libMesh::invalid_uint);
 
-    auto &evol_psi_groups = dofs_cache_.vector_groups[KEY_TAVG_EVOL_PSI_DOF_GROUPS];
-    auto &evol_b_rad_groups = dofs_cache_.vector_groups[KEY_TAVG_EVOL_B_RAD_DOF_GROUPS];
-    auto &evol_b_ver_groups = dofs_cache_.vector_groups[KEY_TAVG_EVOL_B_VER_DOF_GROUPS];
-    auto &evol_psie_groups = dofs_cache_.vector_groups[KEY_TAVG_EVOL_PSIE_DOF_GROUPS];
+    auto &evol_psi_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_PSI_DOF_GROUPS];
+    auto &evol_b_rad_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_B_RAD_DOF_GROUPS];
+    auto &evol_b_ver_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_B_VER_DOF_GROUPS];
+    auto &evol_psie_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_PSIE_DOF_GROUPS];
     evol_psi_groups.assign(toroidal_slices_nodes_.size() > 0 ? toroidal_slices_nodes_.size() - 1 : 0,
-                           std::vector<dof_id_type>(n_node_rows, invalid_dof));
+                           std::vector<dof_id_type>(n_node_rows, libMesh::invalid_uint));
     evol_b_rad_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                             std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+                             std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     evol_b_ver_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                             std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+                             std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     evol_psie_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                            std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+                            std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
+
+    auto &eq_js_main_tavg_dofs = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_JS_MAIN_DOFS];
+    auto &eq_local_elem_ids_tavg = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_LOCAL_ELEM_IDS];
+    auto &eq_coils_local_elem_ids_tavg = dofs_cache_.vectors[DofCacheKey::TAVG_EQ_COILS_LOCAL_ELEM_IDS];
+    auto &evol_jt_local_elem_ids_tavg = dofs_cache_.vectors[DofCacheKey::TAVG_EVOL_JT_LOCAL_ELEM_IDS];
+    auto &evol_jt_main_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_JT_MAIN_DOF_GROUPS];
+    eq_js_main_tavg_dofs.assign(n_elem_rows, libMesh::invalid_uint);
+    eq_local_elem_ids_tavg.clear();
+    eq_coils_local_elem_ids_tavg.clear();
+    evol_jt_local_elem_ids_tavg.clear();
+    evol_jt_main_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
+                               std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
+
+    const std::unordered_set<dof_id_type> equilibrium_coils_elem_ids(coils_elems_equilibrium.begin(), coils_elems_equilibrium.end());
+    const std::unordered_set<dof_id_type> evolution_coils_elem_ids(coils_elems_evolution.begin(), coils_elems_evolution.end());
+    std::unordered_set<dof_id_type> eq_local_elem_seen;
+    std::unordered_set<dof_id_type> eq_coils_local_seen;
+    std::unordered_set<dof_id_type> evol_jt_local_elem_seen;
 
     if (!toroidal_slices_nodes_.empty())
     {
@@ -248,8 +241,8 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
                 continue;
 
             const dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, eq_psi_var, 0);
-            if (psi_dof >= eq_support_first && psi_dof < eq_support_last)
-                eq_psi_dofs[row] = psi_dof;
+
+            eq_psi_dofs[row] = psi_dof;
         }
     }
 
@@ -265,8 +258,8 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
                 continue;
 
             const dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, evol_psi_var, 0);
-            if (psi_dof >= evol_support_first && psi_dof < evol_support_last)
-                slice_dofs[row] = psi_dof;
+
+            slice_dofs[row] = psi_dof;
         }
     }
 
@@ -283,12 +276,13 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
             const dof_id_type b_rad_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, eq_b_rad_var, 0);
             const dof_id_type b_ver_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, eq_b_ver_var, 0);
             const dof_id_type psie_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, eq_psie_var, 0);
-            if (b_rad_dof >= eq_element_first && b_rad_dof < eq_element_last)
-                eq_b_rad_dofs[row] = b_rad_dof;
-            if (b_ver_dof >= eq_element_first && b_ver_dof < eq_element_last)
-                eq_b_ver_dofs[row] = b_ver_dof;
-            if (psie_dof >= eq_element_first && psie_dof < eq_element_last)
-                eq_psie_dofs[row] = psie_dof;
+
+            eq_b_rad_dofs[row] = b_rad_dof;
+            eq_b_ver_dofs[row] = b_ver_dof;
+            eq_psie_dofs[row] = psie_dof;
+
+            if (eq_local_elem_seen.insert(base_elem_ids[row]).second)
+                eq_local_elem_ids_tavg.push_back(base_elem_ids[row]);
         }
     }
 
@@ -299,6 +293,7 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
         auto &slice_b_rad_dofs = evol_b_rad_groups[slice_idx - 1];
         auto &slice_b_ver_dofs = evol_b_ver_groups[slice_idx - 1];
         auto &slice_psie_dofs = evol_psie_groups[slice_idx - 1];
+        auto &slice_jt_main_dofs = evol_jt_main_groups[slice_idx - 1];
         for (std::size_t row = 0; row < n_rows; ++row)
         {
             const Elem *elem_ptr = evolution_mesh->query_elem_ptr(slice_elem_ids[row]);
@@ -308,30 +303,36 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
             const dof_id_type b_rad_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, evol_b_rad_var, 0);
             const dof_id_type b_ver_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, evol_b_ver_var, 0);
             const dof_id_type psie_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, evol_psie_var, 0);
-            if (b_rad_dof >= evol_element_first && b_rad_dof < evol_element_last)
-                slice_b_rad_dofs[row] = b_rad_dof;
-            if (b_ver_dof >= evol_element_first && b_ver_dof < evol_element_last)
-                slice_b_ver_dofs[row] = b_ver_dof;
-            if (psie_dof >= evol_element_first && psie_dof < evol_element_last)
-                slice_psie_dofs[row] = psie_dof;
+
+            slice_b_rad_dofs[row] = b_rad_dof;
+            slice_b_ver_dofs[row] = b_ver_dof;
+            slice_psie_dofs[row] = psie_dof;
+
+            if (has_jt_evol_main && evolution_coils_elem_ids.count(slice_elem_ids[row]) > 0)
+            {
+                const dof_id_type jt_main_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, evol_jt_main_var, 0);
+                slice_jt_main_dofs[row] = jt_main_dof;
+                if (evol_jt_local_elem_seen.insert(slice_elem_ids[row]).second)
+                    evol_jt_local_elem_ids_tavg.push_back(slice_elem_ids[row]);
+            }
         }
     }
 
-    auto &eq_js_main_dofs = dofs_cache_.vectors[KEY_TPROJ_EQ_JS_MAIN_DOFS];
-    eq_js_main_dofs.assign(n_elem_rows, invalid_dof);
-    auto &static_js_main_groups = dofs_cache_.vector_groups[KEY_TPROJ_STATIC_JS_MAIN_DOF_GROUPS];
-    auto &static_local_elem_id_groups = dofs_cache_.vector_groups[KEY_TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS];
+    auto &eq_js_main_dofs = dofs_cache_.vectors[DofCacheKey::TPROJ_EQ_JS_MAIN_DOFS];
+    eq_js_main_dofs.assign(n_elem_rows, libMesh::invalid_uint);
+    auto &static_js_main_groups = dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_MAIN_DOF_GROUPS];
+    auto &static_local_elem_id_groups = dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS];
     static_js_main_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                                 std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+                                 std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     static_local_elem_id_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
                                        std::vector<dof_id_type>());
 
     if (has_js_static_c1)
-        dofs_cache_.vector_groups[KEY_TPROJ_STATIC_JS_C1_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                                                                            std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+        dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C1_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
+                                                                            std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     if (has_js_static_c2)
-        dofs_cache_.vector_groups[KEY_TPROJ_STATIC_JS_C2_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                                                                            std::vector<dof_id_type>(n_elem_rows, invalid_dof));
+        dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C2_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
+                                                                            std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
 
     if (!toroidal_slices_elems_.empty())
     {
@@ -343,9 +344,19 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
             if (!elem_ptr || elem_ptr->processor_id() != proc_id)
                 continue;
 
+            if (!has_js_eq_main)
+                continue;
+
             const dof_id_type js_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_LOADS, eq_js_main_var, 0);
-            if (js_dof >= eq_loads_first && js_dof < eq_loads_last)
-                eq_js_main_dofs[row] = js_dof;
+
+            eq_js_main_dofs[row] = js_dof;
+
+            if (equilibrium_coils_elem_ids.count(base_elem_ids[row]) > 0)
+            {
+                eq_js_main_tavg_dofs[row] = js_dof;
+                if (eq_coils_local_seen.insert(base_elem_ids[row]).second)
+                    eq_coils_local_elem_ids_tavg.push_back(base_elem_ids[row]);
+            }
         }
     }
 
@@ -355,8 +366,8 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
         const std::size_t n_rows = std::min(n_elem_rows, slice_elem_ids.size());
         auto &slice_js_main_dofs = static_js_main_groups[slice_idx - 1];
         auto &slice_local_elem_ids = static_local_elem_id_groups[slice_idx - 1];
-        auto *slice_js_c1_dofs = has_js_static_c1 ? &dofs_cache_.vector_groups[KEY_TPROJ_STATIC_JS_C1_DOF_GROUPS] : nullptr;
-        auto *slice_js_c2_dofs = has_js_static_c2 ? &dofs_cache_.vector_groups[KEY_TPROJ_STATIC_JS_C2_DOF_GROUPS] : nullptr;
+        auto *slice_js_c1_dofs = has_js_static_c1 ? &dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C1_DOF_GROUPS] : nullptr;
+        auto *slice_js_c2_dofs = has_js_static_c2 ? &dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C2_DOF_GROUPS] : nullptr;
         for (std::size_t row = 0; row < n_rows; ++row)
         {
             const Elem *elem_ptr = static_mesh->query_elem_ptr(slice_elem_ids[row]);
@@ -366,21 +377,19 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
             slice_local_elem_ids.push_back(slice_elem_ids[row]);
 
             const dof_id_type js_main_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_LOADS, static_js_main_var, 0);
-            if (js_main_dof >= static_loads_first && js_main_dof < static_loads_last)
-                slice_js_main_dofs[row] = js_main_dof;
+
+            slice_js_main_dofs[row] = js_main_dof;
 
             if (has_js_static_c1)
             {
                 const dof_id_type js_c1_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_LOADS, static_js_c1_var, 0);
-                if (js_c1_dof >= static_loads_first && js_c1_dof < static_loads_last)
-                    (*slice_js_c1_dofs)[slice_idx - 1][row] = js_c1_dof;
+                (*slice_js_c1_dofs)[slice_idx - 1][row] = js_c1_dof;
             }
 
             if (has_js_static_c2)
             {
                 const dof_id_type js_c2_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_LOADS, static_js_c2_var, 0);
-                if (js_c2_dof >= static_loads_first && js_c2_dof < static_loads_last)
-                    (*slice_js_c2_dofs)[slice_idx - 1][row] = js_c2_dof;
+                (*slice_js_c2_dofs)[slice_idx - 1][row] = js_c2_dof;
             }
         }
     }
@@ -406,6 +415,7 @@ void APECMEvolutionAnalysis::toroidal_average()
 
     ApecMExplicitSystem &equilibrium_sys_support_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &equilibrium_sys_element_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
+    ApecMExplicitSystem &equilibrium_sys_element_loads = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
     ApecMExplicitSystem &evolution_sys_support_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &evolution_sys_element_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
 
@@ -413,15 +423,19 @@ void APECMEvolutionAnalysis::toroidal_average()
 
     auto &comm = evolution_mesh->comm();
 
-    const dof_id_type invalid_dof = libMesh::invalid_uint;
-    const auto &eq_psi_dofs = this->cached_dofs(KEY_TAVG_EQ_PSI_DOFS);
-    const auto &eq_b_rad_dofs = this->cached_dofs(KEY_TAVG_EQ_B_RAD_DOFS);
-    const auto &eq_b_ver_dofs = this->cached_dofs(KEY_TAVG_EQ_B_VER_DOFS);
-    const auto &eq_psie_dofs = this->cached_dofs(KEY_TAVG_EQ_PSIE_DOFS);
-    const auto &evol_psi_groups = this->cached_dof_groups(KEY_TAVG_EVOL_PSI_DOF_GROUPS);
-    const auto &evol_b_rad_groups = this->cached_dof_groups(KEY_TAVG_EVOL_B_RAD_DOF_GROUPS);
-    const auto &evol_b_ver_groups = this->cached_dof_groups(KEY_TAVG_EVOL_B_VER_DOF_GROUPS);
-    const auto &evol_psie_groups = this->cached_dof_groups(KEY_TAVG_EVOL_PSIE_DOF_GROUPS);
+    const auto &eq_psi_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_PSI_DOFS);
+    const auto &eq_b_rad_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_B_RAD_DOFS);
+    const auto &eq_b_ver_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_B_VER_DOFS);
+    const auto &eq_psie_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_PSIE_DOFS);
+    const auto &eq_js_main_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_JS_MAIN_DOFS);
+    const auto &eq_local_elem_ids = this->cached_dofs(DofCacheKey::TAVG_EQ_LOCAL_ELEM_IDS);
+    const auto &eq_coils_local_elem_ids = this->cached_dofs(DofCacheKey::TAVG_EQ_COILS_LOCAL_ELEM_IDS);
+    const auto &evol_jt_local_elem_ids = this->cached_dofs(DofCacheKey::TAVG_EVOL_JT_LOCAL_ELEM_IDS);
+    const auto &evol_psi_groups = this->cached_dof_groups(DofCacheKey::TAVG_EVOL_PSI_DOF_GROUPS);
+    const auto &evol_b_rad_groups = this->cached_dof_groups(DofCacheKey::TAVG_EVOL_B_RAD_DOF_GROUPS);
+    const auto &evol_b_ver_groups = this->cached_dof_groups(DofCacheKey::TAVG_EVOL_B_VER_DOF_GROUPS);
+    const auto &evol_psie_groups = this->cached_dof_groups(DofCacheKey::TAVG_EVOL_PSIE_DOF_GROUPS);
+    const auto &evol_jt_main_groups = this->cached_dof_groups(DofCacheKey::TAVG_EVOL_JT_MAIN_DOF_GROUPS);
 
     const std::size_t n_node_rows = eq_psi_dofs.size();
     const std::size_t n_elem_rows = eq_b_rad_dofs.size();
@@ -432,6 +446,8 @@ void APECMEvolutionAnalysis::toroidal_average()
     std::vector<Real> b_ver_sums(n_elem_rows, 0.0);
     std::vector<Real> psie_sums(n_elem_rows, 0.0);
     std::vector<Real> elem_counts(n_elem_rows, 0.0);
+    std::vector<Real> jt_main_sums(n_elem_rows, 0.0);
+    std::vector<Real> jt_main_counts(n_elem_rows, 0.0);
 
     for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_nodes_.size(); ++slice_idx)
     {
@@ -440,13 +456,16 @@ void APECMEvolutionAnalysis::toroidal_average()
         for (std::size_t row = 0; row < n_rows; ++row)
         {
             const dof_id_type psi_dof = slice_psi_dofs[row];
-            if (psi_dof == invalid_dof)
+            if (psi_dof == libMesh::invalid_uint)
                 continue;
 
             psi_sums[row] += evolution_sys_support_sol.current_local_solution->el(psi_dof);
             psi_counts[row] += 1.0;
         }
     }
+
+    if (!evol_jt_local_elem_ids.empty())
+        evolution_sys_element_sol.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Jt", evol_jt_local_elem_ids);
 
     for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_elems_.size(); ++slice_idx)
     {
@@ -459,7 +478,7 @@ void APECMEvolutionAnalysis::toroidal_average()
             const dof_id_type b_rad_dof = slice_b_rad_dofs[row];
             const dof_id_type b_ver_dof = slice_b_ver_dofs[row];
             const dof_id_type psie_dof = slice_psie_dofs[row];
-            if (b_rad_dof == invalid_dof || b_ver_dof == invalid_dof || psie_dof == invalid_dof)
+            if (b_rad_dof == libMesh::invalid_uint || b_ver_dof == libMesh::invalid_uint || psie_dof == libMesh::invalid_uint)
                 continue;
 
             b_rad_sums[row] += evolution_sys_element_sol.current_local_solution->el(b_rad_dof);
@@ -469,14 +488,36 @@ void APECMEvolutionAnalysis::toroidal_average()
         }
     }
 
+    for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_elems_.size(); ++slice_idx)
+    {
+        const auto &slice_jt_main_dofs = evol_jt_main_groups[slice_idx - 1];
+        const std::size_t n_rows = std::min(n_elem_rows, slice_jt_main_dofs.size());
+        for (std::size_t row = 0; row < n_rows; ++row)
+        {
+            const dof_id_type jt_main_dof = slice_jt_main_dofs[row];
+            if (jt_main_dof == libMesh::invalid_uint)
+                continue;
+
+            jt_main_sums[row] += evolution_sys_element_sol.current_local_solution->el(jt_main_dof);
+            jt_main_counts[row] += 1.0;
+        }
+    }
+
     comm.sum(psi_sums);
     comm.sum(psi_counts);
     comm.sum(b_rad_sums);
     comm.sum(b_ver_sums);
     comm.sum(psie_sums);
     comm.sum(elem_counts);
+    comm.sum(jt_main_sums);
+    comm.sum(jt_main_counts);
 
-    equilibrium_sys_element_sol.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Be");
+    if (!evol_jt_local_elem_ids.empty())
+        evolution_sys_element_sol.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Jt", evol_jt_local_elem_ids);
+    if (!eq_local_elem_ids.empty())
+        equilibrium_sys_element_sol.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Be", eq_local_elem_ids);
+    if (!eq_coils_local_elem_ids.empty())
+        equilibrium_sys_element_loads.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Js", eq_coils_local_elem_ids);
 
     for (std::size_t row = 0; row < n_node_rows; ++row)
     {
@@ -484,7 +525,7 @@ void APECMEvolutionAnalysis::toroidal_average()
             continue;
 
         const dof_id_type psi_dof = eq_psi_dofs[row];
-        if (psi_dof == invalid_dof)
+        if (psi_dof == libMesh::invalid_uint)
             continue;
 
         equilibrium_sys_support_sol.solution->set(psi_dof, psi_sums[row] / psi_counts[row]);
@@ -498,7 +539,7 @@ void APECMEvolutionAnalysis::toroidal_average()
         const dof_id_type b_rad_dof = eq_b_rad_dofs[row];
         const dof_id_type b_ver_dof = eq_b_ver_dofs[row];
         const dof_id_type psie_dof = eq_psie_dofs[row];
-        if (b_rad_dof == invalid_dof || b_ver_dof == invalid_dof || psie_dof == invalid_dof)
+        if (b_rad_dof == libMesh::invalid_uint || b_ver_dof == libMesh::invalid_uint || psie_dof == libMesh::invalid_uint)
             continue;
 
         const Real inv_count = 1.0 / elem_counts[row];
@@ -507,10 +548,31 @@ void APECMEvolutionAnalysis::toroidal_average()
         equilibrium_sys_element_sol.solution->set(psie_dof, psie_sums[row] * inv_count);
     }
 
+    for (std::size_t row = 0; row < n_elem_rows; ++row)
+    {
+        if (jt_main_counts[row] <= 0.0)
+            continue;
+
+        const dof_id_type js_main_dof = eq_js_main_dofs[row];
+        if (js_main_dof == libMesh::invalid_uint)
+            continue;
+
+        equilibrium_sys_element_loads.solution->set(js_main_dof, jt_main_sums[row] / jt_main_counts[row]);
+    }
+
     equilibrium_sys_support_sol.solution->close();
     equilibrium_sys_support_sol.update();
     equilibrium_sys_element_sol.solution->close();
     equilibrium_sys_element_sol.update();
+
+    if (!eq_local_elem_ids.empty())
+        equilibrium_sys_element_sol.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Be", eq_local_elem_ids);
+
+    equilibrium_sys_element_loads.solution->close();
+    equilibrium_sys_element_loads.update();
+
+    if (!eq_coils_local_elem_ids.empty())
+        equilibrium_sys_element_loads.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Js", eq_coils_local_elem_ids);
 }
 
 void APECMEvolutionAnalysis::impressed_eddy_currents_coils_currents()
@@ -540,8 +602,8 @@ void APECMEvolutionAnalysis::impressed_eddy_currents_coils_currents()
     std::vector<Real> jt_x;
     std::vector<Real> jt_y;
 
-    const auto &dofs_jt_z = this->cached_dofs(KEY_IMPRESSED_EVOL_JT_Z);
-    const auto &dofs_js_z = this->cached_dofs(KEY_IMPRESSED_STATIC_JS_Z);
+    const auto &dofs_jt_z = this->cached_dofs(DofCacheKey::IMPRESSED_EVOL_JT_Z);
+    const auto &dofs_js_z = this->cached_dofs(DofCacheKey::IMPRESSED_STATIC_JS_Z);
 
     evolution_sys_element_sol.solution->get(dofs_jt_z, jt_z);
 
@@ -549,10 +611,10 @@ void APECMEvolutionAnalysis::impressed_eddy_currents_coils_currents()
 
     if (dim == 3)
     {
-        const auto &dofs_jt_x = this->cached_dofs(KEY_IMPRESSED_EVOL_JT_X);
-        const auto &dofs_js_x = this->cached_dofs(KEY_IMPRESSED_STATIC_JS_X);
-        const auto &dofs_jt_y = this->cached_dofs(KEY_IMPRESSED_EVOL_JT_Y);
-        const auto &dofs_js_y = this->cached_dofs(KEY_IMPRESSED_STATIC_JS_Y);
+        const auto &dofs_jt_x = this->cached_dofs(DofCacheKey::IMPRESSED_EVOL_JT_X);
+        const auto &dofs_js_x = this->cached_dofs(DofCacheKey::IMPRESSED_STATIC_JS_X);
+        const auto &dofs_jt_y = this->cached_dofs(DofCacheKey::IMPRESSED_EVOL_JT_Y);
+        const auto &dofs_js_y = this->cached_dofs(DofCacheKey::IMPRESSED_STATIC_JS_Y);
 
         evolution_sys_element_sol.solution->get(dofs_jt_x, jt_x);
         evolution_sys_element_sol.solution->get(dofs_jt_y, jt_y);
@@ -593,8 +655,8 @@ void APECMEvolutionAnalysis::set_plasma_current()
     std::vector<Real> js_x;
     std::vector<Real> js_y;
 
-    const auto &dofs_js_z_evol = this->cached_dofs(KEY_SET_PLASMA_EVOL_JS_Z);
-    const auto &dofs_js_z_static = this->cached_dofs(KEY_SET_PLASMA_STATIC_JS_Z);
+    const auto &dofs_js_z_evol = this->cached_dofs(DofCacheKey::SET_PLASMA_EVOL_JS_Z);
+    const auto &dofs_js_z_static = this->cached_dofs(DofCacheKey::SET_PLASMA_STATIC_JS_Z);
 
     static_sys_element_loads.solution->get(dofs_js_z_static, js_z);
 
@@ -602,10 +664,10 @@ void APECMEvolutionAnalysis::set_plasma_current()
 
     if (dim == 3)
     {
-        const auto &dofs_js_x_evol = this->cached_dofs(KEY_SET_PLASMA_EVOL_JS_X);
-        const auto &dofs_js_x_static = this->cached_dofs(KEY_SET_PLASMA_STATIC_JS_X);
-        const auto &dofs_js_y_evol = this->cached_dofs(KEY_SET_PLASMA_EVOL_JS_Y);
-        const auto &dofs_js_y_static = this->cached_dofs(KEY_SET_PLASMA_STATIC_JS_Y);
+        const auto &dofs_js_x_evol = this->cached_dofs(DofCacheKey::SET_PLASMA_EVOL_JS_X);
+        const auto &dofs_js_x_static = this->cached_dofs(DofCacheKey::SET_PLASMA_STATIC_JS_X);
+        const auto &dofs_js_y_evol = this->cached_dofs(DofCacheKey::SET_PLASMA_EVOL_JS_Y);
+        const auto &dofs_js_y_static = this->cached_dofs(DofCacheKey::SET_PLASMA_STATIC_JS_Y);
 
         static_sys_element_loads.solution->get(dofs_js_x_static, js_x);
         static_sys_element_loads.solution->get(dofs_js_y_static, js_y);
@@ -647,11 +709,24 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
     const std::string js_component_2 = "Js" + j_b_labels_static[2];
     const bool has_js_component_1 = static_sys_element_loads.has_variable(js_component_1);
     const bool has_js_component_2 = static_sys_element_loads.has_variable(js_component_2);
-    const auto &eq_js_main_dofs = this->cached_dofs(KEY_TPROJ_EQ_JS_MAIN_DOFS);
-    const auto &static_js_main_groups = this->cached_dof_groups(KEY_TPROJ_STATIC_JS_MAIN_DOF_GROUPS);
-    const auto &static_local_elem_id_groups = this->cached_dof_groups(KEY_TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS);
-    const std::vector<std::vector<dof_id_type>> *static_js_c1_groups = has_js_component_1 ? &this->cached_dof_groups(KEY_TPROJ_STATIC_JS_C1_DOF_GROUPS) : nullptr;
-    const std::vector<std::vector<dof_id_type>> *static_js_c2_groups = has_js_component_2 ? &this->cached_dof_groups(KEY_TPROJ_STATIC_JS_C2_DOF_GROUPS) : nullptr;
+    const auto &eq_js_main_dofs = this->cached_dofs(DofCacheKey::TPROJ_EQ_JS_MAIN_DOFS);
+    const auto &static_js_main_groups = this->cached_dof_groups(DofCacheKey::TPROJ_STATIC_JS_MAIN_DOF_GROUPS);
+    const auto &static_local_elem_id_groups = this->cached_dof_groups(DofCacheKey::TPROJ_STATIC_LOCAL_ELEM_ID_GROUPS);
+    const std::vector<std::vector<dof_id_type>> *static_js_c1_groups = has_js_component_1 ? &this->cached_dof_groups(DofCacheKey::TPROJ_STATIC_JS_C1_DOF_GROUPS) : nullptr;
+    const std::vector<std::vector<dof_id_type>> *static_js_c2_groups = has_js_component_2 ? &this->cached_dof_groups(DofCacheKey::TPROJ_STATIC_JS_C2_DOF_GROUPS) : nullptr;
+
+    std::vector<dof_id_type> static_tproj_local_elem_ids;
+    std::unordered_set<dof_id_type> static_tproj_local_elem_seen;
+    for (const auto &slice_local_elem_ids : static_local_elem_id_groups)
+    {
+        for (const dof_id_type elem_id : slice_local_elem_ids)
+        {
+            if (static_tproj_local_elem_seen.insert(elem_id).second)
+                static_tproj_local_elem_ids.push_back(elem_id);
+        }
+    }
+    if (!static_tproj_local_elem_ids.empty())
+        static_sys_element_loads.global_to_local_coordinate_system_solution(cylindrical_coordinate_system, "Js", static_tproj_local_elem_ids);
 
     const std::size_t n_rows = eq_js_main_dofs.size();
     std::vector<Real> js_main_sums(n_rows, 0.0);
@@ -703,14 +778,12 @@ void APECMEvolutionAnalysis::toroidal_projection_plasma_current()
                     static_sys_element_loads.solution->set(js2_dof, (js_main_counts[row] > 0.0) ? (jp_ver_sums[row] / js_main_counts[row]) : 0.0);
             }
         }
-
-        const auto &local_slice_elem_ids = static_local_elem_id_groups[slice_idx - 1];
-        if (!local_slice_elem_ids.empty())
-            static_sys_element_loads.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Js", local_slice_elem_ids);
     }
 
     static_sys_element_loads.solution->close();
     static_sys_element_loads.update();
+    if (!static_tproj_local_elem_ids.empty())
+        static_sys_element_loads.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Js", static_tproj_local_elem_ids);
 }
 
 bool APECMEvolutionAnalysis::picard_loop(Substep &substep)

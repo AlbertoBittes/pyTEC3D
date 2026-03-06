@@ -77,8 +77,45 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
+for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
+    Selector.select(apec.mesh, comp, 1, type="elem", mode="a")
+    Selector.nsle(apec.mesh)
+    Selector.set_value_on_selection(apec.mesh, "CP_0", 11 + k)
+    master_node_cs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+    Selector.select(apec.mesh, "ID", master_node_cs)
+    mask = apec.real_constants["ansys_real_constant"] == 11 + k
+    n_turns = apec.real_constants[mask]["NC"].values[0]
+    resistance = apec.real_constants[mask]["R"].values[0]
+    Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")
+    output_mesh = apec.get_mesh(apec_equilibrium_output)
+    selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+    jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+    jt_z = jt_z_array[selection_mask == 1][0]
+    sc = apec.real_constants[mask]["SC"].values[0]
+    current = sc * jt_z
+    voltage = resistance * current / n_turns
+    Selector.set_value_on_selection(apec.mesh, "V", voltage)
+
+for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"]):
+    Selector.select(apec.mesh, comp, 1, type="elem", mode="a")
+    Selector.nsle(apec.mesh)
+    Selector.set_value_on_selection(apec.mesh, "CP_0", 1 + k)
+    master_node_pfcs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+    Selector.select(apec.mesh, "ID", master_node_pfcs)
+    mask = apec.real_constants["ansys_real_constant"] == 1 + k
+    n_turns = apec.real_constants[mask]["NC"].values[0]
+    resistance = apec.real_constants[mask]["R"].values[0]
+    Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")
+    output_mesh = apec.get_mesh(apec_equilibrium_output)
+    selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+    jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+    jt_z = jt_z_array[selection_mask == 1][0]
+    sc = apec.real_constants[mask]["SC"].values[0]
+    current = sc * jt_z
+    voltage = resistance * current / n_turns
+    Selector.set_value_on_selection(apec.mesh, "V", voltage)
+
 # 1. Select COILS and VACUUM_CHAMBER in output mesh
-Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
 Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
 
 # 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
