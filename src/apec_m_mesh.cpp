@@ -98,25 +98,14 @@ void ApecMMesh::select(const std::string &integer_name,
 std::vector<std::string> ApecMMesh::collect_node_integer_arrays(const std::string &prefix) const
 {
     std::vector<std::string> arrays;
-    for (const auto &name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
+    const unsigned int n_node_arrays = this->n_node_integers();
+    arrays.reserve(n_node_arrays);
+    for (unsigned int i = 0; i < n_node_arrays; ++i)
     {
+        const std::string &name = this->get_node_integer_name(i);
         if (name.rfind(prefix, 0) != 0)
             continue;
-
-        if (!name.empty() && name.back() == '_')
-        {
-            for (unsigned int idx = 0;; ++idx)
-            {
-                std::string generated = name + std::to_string(idx);
-                if (!this->has_node_integer(generated))
-                    break;
-                arrays.push_back(generated);
-            }
-        }
-        else if (this->has_node_integer(name))
-        {
-            arrays.push_back(name);
-        }
+        arrays.push_back(name);
     }
     return arrays;
 }

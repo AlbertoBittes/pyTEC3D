@@ -72,8 +72,6 @@ public:
 
     virtual void write(const std::string &) override;
 
-    static const std::vector<std::string> VTK_DATA_ARRAY_NAMES;
-
 #ifdef LIBMESH_HAVE_VTK
 
     void set_compression(bool b);

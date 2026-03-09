@@ -48,6 +48,10 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
 
     materials_object_ = this->context<MaterialsObject>();
     real_constants_object_ = this->context<RealConstantsObject>();
+
+    const auto &mesh = equation_systems_->get_mesh();
+    mat_index = mesh.get_elem_integer_index("ansys_material_type");
+    real_constant_index = mesh.get_elem_integer_index("ansys_real_constant");
 }
 
 std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
@@ -124,10 +128,11 @@ void ElementBuilder::set_element_data(Elem *elem)
     auto element_types = this->context<ElementTypesFactory>();
 
     elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
+
     if (!elem->infinite())
     {
-        elem_data.material_num = elem->get_extra_integer(1);
-        elem_data.real_constant_num = elem->get_extra_integer(2);
+        elem_data.material_num = elem->get_extra_integer(mat_index);
+        elem_data.real_constant_num = elem->get_extra_integer(real_constant_index);
     }
     elem_data.elem = elem;
 

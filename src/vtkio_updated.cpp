@@ -64,6 +64,7 @@
 #include "variables_map.h"
 #include "apec_m_system.h"
 // C++ includes
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <map>
@@ -71,21 +72,6 @@
 #include <set>
 
 using namespace libMesh;
-const std::vector<std::string> VTKIO_Updated::VTK_DATA_ARRAY_NAMES = {
-    "ansys_etype",
-    "ansys_material_type",
-    "ansys_real_constant",
-    "angles",
-    "CP_",
-    "PLASMA",
-    "VACUUM_CHAMBER",
-    "VACUUM_CHAMBER_NODES",
-    "VERTICAL_CONTROL_COILS",
-    "RADIAL_CONTROL_COILS",
-    "VACUUM_CHAMBER_BOUNDARY",
-    "NEW_VACUUM_CHAMBER_BOUNDARY",
-    "COILS",
-    "PASSIVE_STRUCTURES"};
 // A convenient macro for comparing VTK versions.  Returns 1 if the
 // current VTK version is < major.minor.subminor and zero otherwise.
 //
@@ -377,6 +363,10 @@ void VTKIO_Updated::read(const std::string &name)
 // Add the integers from the VTK file to the mesh
 void VTKIO_Updated::add_ugrid_data_vtk(MeshBase &mesh)
 {
+    const auto forbidden_label_list = VariablesMap::get_all_api_labels();
+    const std::set<std::string> forbidden_labels(forbidden_label_list.begin(),
+                                                 forbidden_label_list.end());
+
     auto process_dataset = [&](vtkDataSetAttributes *data, bool is_point_data)
     {
         if (!data)
@@ -394,92 +384,69 @@ void VTKIO_Updated::add_ugrid_data_vtk(MeshBase &mesh)
             available_arrays[name] = vtk_array;
         }
 
-        std::set<std::string> processed_names;
-
-        for (const auto &base_name : VTKIO_Updated::VTK_DATA_ARRAY_NAMES)
+        for (const auto &pair : available_arrays)
         {
-            if (base_name.empty())
+            const std::string &array_name = pair.first;
+            if (array_name.empty() || forbidden_labels.count(array_name))
                 continue;
 
-            std::vector<std::string> candidate_names;
-            if (base_name.back() == '_')
+            vtkDataArray *vtk_array = pair.second;
+            if (!vtk_array)
+                continue;
+
+            const int num_components = vtk_array->GetNumberOfComponents();
+            if (num_components <= 0)
+                continue;
+
+            const bool is_real_array = (vtk_array->GetDataType() == VTK_DOUBLE || vtk_array->GetDataType() == VTK_FLOAT);
+
+            std::vector<std::string> component_names(num_components);
+            std::vector<unsigned int> data_indices(num_components, libMesh::invalid_uint);
+
+            for (int comp = 0; comp < num_components; ++comp)
             {
-                const std::string prefix = base_name;
-                for (const auto &pair : available_arrays)
-                    if (pair.first.rfind(prefix, 0) == 0)
-                        candidate_names.push_back(pair.first);
-            }
-            else
-            {
-                auto it = available_arrays.find(base_name);
-                if (it != available_arrays.end())
-                    candidate_names.push_back(it->first);
-            }
-
-            for (const auto &array_name : candidate_names)
-            {
-                std::string signature = (is_point_data ? "P:" : "C:") + array_name;
-                if (!processed_names.insert(signature).second)
-                    continue;
-
-                vtkDataArray *vtk_array = available_arrays[array_name];
-                if (!vtk_array)
-                    continue;
-
-                const int num_components = vtk_array->GetNumberOfComponents();
-                if (num_components <= 0)
-                    continue;
-
-                const bool is_real_array = (vtk_array->GetDataType() == VTK_DOUBLE || vtk_array->GetDataType() == VTK_FLOAT);
-
-                std::vector<std::string> component_names(num_components);
-                std::vector<unsigned int> data_indices(num_components, libMesh::invalid_uint);
-
-                for (int comp = 0; comp < num_components; ++comp)
-                {
-                    component_names[comp] = (num_components == 1) ? array_name : array_name + "-" + std::to_string(comp);
-                    if (is_point_data)
-                    {
-                        data_indices[comp] = is_real_array ? mesh.add_node_datum<Real>(component_names[comp]) : mesh.add_node_integer(component_names[comp]);
-                    }
-                    else
-                    {
-                        data_indices[comp] = is_real_array ? mesh.add_elem_datum<Real>(component_names[comp]) : mesh.add_elem_integer(component_names[comp]);
-                    }
-                }
-
+                component_names[comp] = (num_components == 1) ? array_name : array_name + "-" + std::to_string(comp);
                 if (is_point_data)
                 {
-                    for (const auto &node : mesh.node_ptr_range())
-                    {
-                        const vtkIdType tuple_id = node->id();
-                        if (tuple_id < 0 || tuple_id >= vtk_array->GetNumberOfTuples())
-                            continue;
-
-                        for (int comp = 0; comp < num_components; ++comp)
-                        {
-                            if (is_real_array)
-                                node->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(tuple_id, comp)));
-                            else
-                                node->set_extra_integer(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(tuple_id, comp)));
-                        }
-                    }
+                    data_indices[comp] = is_real_array ? mesh.add_node_datum<Real>(component_names[comp]) : mesh.add_node_integer(component_names[comp]);
                 }
                 else
                 {
-                    for (const auto &elem : mesh.element_ptr_range())
-                    {
-                        const dof_id_type elem_id = elem->id();
-                        if (elem_id < 0 || elem_id >= vtk_array->GetNumberOfTuples())
-                            continue;
+                    data_indices[comp] = is_real_array ? mesh.add_elem_datum<Real>(component_names[comp]) : mesh.add_elem_integer(component_names[comp]);
+                }
+            }
 
-                        for (int comp = 0; comp < num_components; ++comp)
-                        {
-                            if (is_real_array)
-                                elem->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(elem_id, comp)));
-                            else
-                                elem->set_extra_integer(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(elem_id, comp)));
-                        }
+            if (is_point_data)
+            {
+                for (const auto &node : mesh.node_ptr_range())
+                {
+                    const vtkIdType tuple_id = node->id();
+                    if (tuple_id < 0 || tuple_id >= vtk_array->GetNumberOfTuples())
+                        continue;
+
+                    for (int comp = 0; comp < num_components; ++comp)
+                    {
+                        if (is_real_array)
+                            node->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(tuple_id, comp)));
+                        else
+                            node->set_extra_integer(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(tuple_id, comp)));
+                    }
+                }
+            }
+            else
+            {
+                for (const auto &elem : mesh.element_ptr_range())
+                {
+                    const dof_id_type elem_id = elem->id();
+                    if (elem_id < 0 || elem_id >= vtk_array->GetNumberOfTuples())
+                        continue;
+
+                    for (int comp = 0; comp < num_components; ++comp)
+                    {
+                        if (is_real_array)
+                            elem->set_extra_datum<Real>(data_indices[comp], static_cast<Real>(vtk_array->GetComponent(elem_id, comp)));
+                        else
+                            elem->set_extra_integer(data_indices[comp], static_cast<dof_id_type>(vtk_array->GetComponent(elem_id, comp)));
                     }
                 }
             }
@@ -548,6 +515,10 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
         }
     }
 
+    const auto forbidden_label_list = VariablesMap::get_all_api_labels();
+    const std::set<std::string> forbidden_labels(forbidden_label_list.begin(),
+                                                 forbidden_label_list.end());
+
     auto add_vtk_data_arrays_from_mesh_extras = [&](bool point_data)
     {
         vtkDataSetAttributes *vtk_data = point_data
@@ -575,9 +546,37 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
             return names_out;
         }();
 
-        auto is_real_vtk_data_array = [](const std::string &base_name)
+        auto is_internal_storage_name = [](const std::string &name)
         {
-            return base_name == "angles";
+            const std::size_t marker_pos = name.rfind("__");
+            if (marker_pos == std::string::npos || marker_pos + 2 >= name.size())
+                return false;
+
+            return std::all_of(name.begin() + marker_pos + 2,
+                               name.end(),
+                               [](char ch)
+                               { return std::isdigit(static_cast<unsigned char>(ch)); });
+        };
+
+        auto normalize_to_base_name = [&](const std::string &name) -> std::string
+        {
+            const auto dash_pos = name.rfind('-');
+            if (dash_pos == std::string::npos || dash_pos + 1 >= name.size())
+                return name;
+
+            const bool numeric_suffix = std::all_of(name.begin() + dash_pos + 1,
+                                                    name.end(),
+                                                    [](char ch)
+                                                    { return std::isdigit(static_cast<unsigned char>(ch)); });
+            if (!numeric_suffix)
+                return name;
+
+            const std::string candidate_base = name.substr(0, dash_pos);
+            const std::string first_component = candidate_base + "-0";
+            if (!has_extra(first_component))
+                return name;
+
+            return candidate_base;
         };
 
         auto collect_component_names = [&](const std::string &base_name) -> std::vector<std::string>
@@ -596,17 +595,31 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
             return components;
         };
 
+        auto is_real_array = [&](const std::vector<std::string> &component_names) -> bool
+        {
+            for (const auto &component_name : component_names)
+            {
+                if (has_extra(component_name + "__0"))
+                    return true;
+            }
+            return false;
+        };
+
         auto add_array_from_base = [&](const std::string &base_name)
         {
-            if (base_name.empty())
+            if (base_name.empty() || forbidden_labels.count(base_name))
                 return;
 
             const std::vector<std::string> component_names = collect_component_names(base_name);
             if (component_names.empty())
                 return;
 
+            if (vtk_data->HasArray(base_name.c_str()))
+                return;
+
+            const bool array_is_real = is_real_array(component_names);
             vtkSmartPointer<vtkDataArray> arr;
-            if (is_real_vtk_data_array(base_name))
+            if (array_is_real)
                 arr = vtkSmartPointer<vtkDoubleArray>::New();
             else
                 arr = vtkSmartPointer<vtkIntArray>::New();
@@ -637,7 +650,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
 
                     for (unsigned int c = 0; c < component_names.size(); ++c)
                     {
-                        if (is_real_vtk_data_array(base_name))
+                        if (array_is_real)
                             tuple[c] = static_cast<double>(node_ptr->get_extra_datum<Real>(comp_indices[c]));
                         else
                             tuple[c] = static_cast<double>(node_ptr->get_extra_integer(comp_indices[c]));
@@ -656,7 +669,7 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
 
                     for (unsigned int c = 0; c < component_names.size(); ++c)
                     {
-                        if (is_real_vtk_data_array(base_name))
+                        if (array_is_real)
                             tuple[c] = static_cast<double>(elem_ptr->get_extra_datum<Real>(comp_indices[c]));
                         else
                             tuple[c] = static_cast<double>(elem_ptr->get_extra_integer(comp_indices[c]));
@@ -669,40 +682,33 @@ void VTKIO_Updated::write_nodal_data(const std::string &fname,
             vtk_data->AddArray(arr);
         };
 
-        std::set<std::string> emitted_bases;
-        for (const auto &vtk_name : VTK_DATA_ARRAY_NAMES)
+        std::set<std::string> discovered_bases;
+        for (const auto &extra_name : all_extra_names)
         {
-            if (vtk_name.empty())
+            if (extra_name.empty() || is_internal_storage_name(extra_name))
                 continue;
+            discovered_bases.insert(normalize_to_base_name(extra_name));
+        }
 
-            if (!vtk_name.empty() && vtk_name.back() == '_')
-            {
-                for (const auto &extra_name : all_extra_names)
-                {
-                    if (extra_name.rfind(vtk_name, 0) != 0)
-                        continue;
+        libMesh::out << "VTKIO_Updated: mesh "
+                     << (point_data ? "point" : "cell")
+                     << " arrays found";
+        if (discovered_bases.empty())
+        {
+            libMesh::out << ": none." << std::endl;
+        }
+        else
+        {
+            libMesh::out << ":" << std::endl;
+            for (const auto &base_name : discovered_bases)
+                libMesh::out << "  " << base_name << std::endl;
+        }
 
-                    std::string base_name = extra_name;
-                    const auto dash_pos = base_name.rfind('-');
-                    if (dash_pos != std::string::npos && dash_pos + 1 < base_name.size())
-                    {
-                        const bool numeric_suffix = std::all_of(base_name.begin() + dash_pos + 1,
-                                                                base_name.end(),
-                                                                [](char ch)
-                                                                { return std::isdigit(static_cast<unsigned char>(ch)); });
-                        if (numeric_suffix)
-                            base_name = base_name.substr(0, dash_pos);
-                    }
-
-                    if (emitted_bases.insert(base_name).second)
-                        add_array_from_base(base_name);
-                }
-            }
-            else
-            {
-                if (emitted_bases.insert(vtk_name).second)
-                    add_array_from_base(vtk_name);
-            }
+        for (const auto &base_name : discovered_bases)
+        {
+            if (forbidden_labels.count(base_name))
+                continue;
+            add_array_from_base(base_name);
         }
     };
 

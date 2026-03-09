@@ -151,6 +151,8 @@ private:
     std::set<dof_id_type> nodal_loads_dof_cache;
     std::unordered_map<dof_id_type, unsigned int> psi_node_counts;
     CylindricalCoordinateSystem cylindrical_coordinate_system_;
+    dof_id_type mat_index;
+    dof_id_type real_constant_index;
 
     ApecMEquationSystems *equation_systems_ = nullptr;
     ApecMLinearSystem *dof_solution_system_ = nullptr;

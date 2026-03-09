@@ -124,6 +124,7 @@ public:
     static void sort_vector_components(
         std::map<std::string, std::vector<VectorComponent>> &vector_variables);
     static std::vector<std::string> get_global_labels_for_label(const std::string &label);
+    static std::vector<std::string> get_all_api_labels();
 
     static VariableToElementIdsMapType associate_variables_with_element_IDs(
         const ElementTypesMap &element_types_map,

@@ -2,6 +2,7 @@
 #include "element_types.h"
 #include <libmesh/equation_systems.h>
 #include <libmesh/system.h>
+#include <set>
 
 namespace
 {
@@ -197,6 +198,15 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
     for (const auto &key : matches_api)
         labels.push_back(VariablesMap::get_info_by_key(key).global_label);
     return labels;
+}
+
+std::vector<std::string> VariablesMap::get_all_api_labels()
+{
+    std::set<std::string> labels;
+    for (const auto &entry : GLOBAL_VARIABLE_INFO_MAP)
+        labels.insert(entry.second.api_label);
+
+    return std::vector<std::string>(labels.begin(), labels.end());
 }
 
 VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
