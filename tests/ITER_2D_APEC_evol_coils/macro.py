@@ -12,7 +12,7 @@ apec = APEC_M()
 
 apec_evolution_mesh = "ITER_2D_APEC_evol_coils"
 apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_coils_equilibrium"
-apec_equilibrium_output = "ITER_2D_APEC_out_0"
+apec_equilibrium_output = "ITER_2D_APEC_coils_out_0"
 
 
 evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
@@ -21,8 +21,8 @@ static_mesh_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, a
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
     "tests",
-    "ITER_2D_APEC",
-    "ITER_2D_APEC",
+    "ITER_2D_APEC_coils",
+    "ITER_2D_APEC_coils",
     "output",
     apec_equilibrium_output + ".pvtu",
 )
