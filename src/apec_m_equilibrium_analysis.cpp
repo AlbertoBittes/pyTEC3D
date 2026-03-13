@@ -8,8 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 #include <libmesh/libmesh.h>
 
 void APECMEquilibriumAnalysis::append_iteration_diagnostics(Substep &substep,
@@ -405,7 +405,6 @@ Real APECMEquilibriumAnalysis::check_X_point()
     auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
     unsigned int psi_var_number = support_solution_system.variable_number("PSI");
     const auto &mesh = eq_sys->get_mesh();
-    const auto proc_id = mesh.comm().rank();
 
     // 1) Find local candidate element with minimum |B| from element solution.
     // Real min_b_sum = std::numeric_limits<Real>::max();
@@ -454,80 +453,106 @@ Real APECMEquilibriumAnalysis::check_X_point()
         }
     }
 
-    // 2-4) On the owning processor: accumulate element Be contributions on nodes and scan nodes.
-    Real local_min_node_b_norm = std::numeric_limits<Real>::max();
-    std::pair<dof_id_type, Real> x_point_data_nodes{libMesh::invalid_uint, std::numeric_limits<Real>::max()};
-    const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id);
-    if (x_elem_ptr && x_elem_ptr->processor_id() == proc_id)
+    // 2) Collect X-point element nodes globally.
+    std::set<dof_id_type> x_point_elem_node_ids;
+    if (const Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id))
+        for (const auto &node : x_elem_ptr->node_ref_range())
+            x_point_elem_node_ids.insert(node.id());
+    mesh.comm().set_union(x_point_elem_node_ids);
+
+    // 3) On every processor, scan local chamber elements.
+    // Candidate elements are all local chamber elements that contain at least one X-point element node.
+    std::vector<dof_id_type> x_point_node_ids(x_point_elem_node_ids.begin(), x_point_elem_node_ids.end());
+    std::vector<Real> node_bx_sums(x_point_node_ids.size(), 0.0);
+    std::vector<Real> node_by_sums(x_point_node_ids.size(), 0.0);
+    std::vector<Real> node_counts(x_point_node_ids.size(), 0.0);
+
+    if (!x_point_node_ids.empty())
     {
-        std::vector<const Elem *> candidate_elements;
-        std::unordered_set<dof_id_type> candidate_element_ids;
-        candidate_elements.push_back(x_elem_ptr);
-        candidate_element_ids.insert(x_elem_ptr->id());
-        for (unsigned int k = 0; k < x_elem_ptr->n_neighbors(); ++k)
-        {
-            const Elem *neighbor = x_elem_ptr->neighbor_ptr(k);
-            if (!neighbor)
-                continue;
-            if (!candidate_element_ids.insert(neighbor->id()).second)
-                continue;
-            candidate_elements.push_back(neighbor);
-        }
+        std::unordered_map<dof_id_type, std::size_t> node_index;
+        node_index.reserve(x_point_node_ids.size());
+        for (std::size_t i = 0; i < x_point_node_ids.size(); ++i)
+            node_index.emplace(x_point_node_ids[i], i);
 
-        std::unordered_map<dof_id_type, std::pair<Real, Real>> node_b_sums;
-        std::unordered_map<dof_id_type, unsigned int> node_counts;
-
-        for (const Elem *elem_ptr : candidate_elements)
+        for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            dof_id_type bx_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
-            dof_id_type by_dof = elem_ptr->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
+            if (elem->get_extra_integer(vacuum_chamber_region_component) != 1)
+                continue;
+
+            std::vector<std::size_t> matched_nodes;
+            matched_nodes.reserve(elem->n_nodes());
+            for (const auto &node : elem->node_ref_range())
+            {
+                auto it = node_index.find(node.id());
+                if (it != node_index.end())
+                    matched_nodes.push_back(it->second);
+            }
+
+            if (matched_nodes.empty())
+                continue;
+
+            dof_id_type bx_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, bx_var_number, 0);
+            dof_id_type by_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, by_var_number, 0);
             const Real bx_value = element_solution_system.current_local_solution->el(bx_dof);
             const Real by_value = element_solution_system.current_local_solution->el(by_dof);
 
-            for (const auto &node : elem_ptr->node_ref_range())
+            for (const auto matched_idx : matched_nodes)
             {
-                auto &sum_pair = node_b_sums[node.id()];
-                sum_pair.first += bx_value;
-                sum_pair.second += by_value;
-                node_counts[node.id()] += 1;
+                node_bx_sums[matched_idx] += bx_value;
+                node_by_sums[matched_idx] += by_value;
+                node_counts[matched_idx] += 1.0;
             }
         }
 
-        for (const auto &node_sum_entry : node_b_sums)
+        // 4) Combine node contributions/counters from all processors.
+        mesh.comm().sum(node_bx_sums);
+        mesh.comm().sum(node_by_sums);
+        mesh.comm().sum(node_counts);
+    }
+
+    Real local_min_node_b_norm = std::numeric_limits<Real>::max();
+    dof_id_type local_min_node_id = libMesh::invalid_uint;
+    Real local_min_node_psi = std::numeric_limits<Real>::max();
+    for (std::size_t i = 0; i < x_point_node_ids.size(); ++i)
+    {
+        if (node_counts[i] <= 0.0)
+            continue;
+
+        const Real inv_count = 1.0 / node_counts[i];
+        const Real avg_bx = node_bx_sums[i] * inv_count;
+        const Real avg_by = node_by_sums[i] * inv_count;
+        const Real b_norm = std::sqrt(avg_bx * avg_bx + avg_by * avg_by);
+
+        if (b_norm < local_min_node_b_norm)
         {
-            const dof_id_type node_id = node_sum_entry.first;
-            const auto count_it = node_counts.find(node_id);
-            if (count_it == node_counts.end() || count_it->second == 0)
+            const dof_id_type node_id = x_point_node_ids[i];
+            const Node *node_ptr = mesh.query_node_ptr(node_id);
+            if (!node_ptr)
                 continue;
 
-            const Real inv_count = 1.0 / static_cast<Real>(count_it->second);
-            const Real avg_bx = node_sum_entry.second.first * inv_count;
-            const Real avg_by = node_sum_entry.second.second * inv_count;
-            const Real b_norm = std::sqrt(avg_bx * avg_bx + avg_by * avg_by);
-            if (b_norm < local_min_node_b_norm)
-            {
-                const Node *node_ptr = mesh.query_node_ptr(node_id);
-                if (!node_ptr)
-                    continue;
-
-                local_min_node_b_norm = b_norm;
-                dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
-                x_point_data_nodes = std::make_pair(node_id, support_solution_system.current_local_solution->el(psi_dof));
-            }
+            local_min_node_b_norm = b_norm;
+            dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+            local_min_node_id = node_id;
+            local_min_node_psi = support_solution_system.current_local_solution->el(psi_dof);
         }
     }
 
-    std::set<std::pair<dof_id_type, Real>> x_point_node_data_all;
-    x_point_node_data_all.insert(x_point_data_nodes);
+    std::set<std::tuple<Real, dof_id_type, Real>> x_point_node_data_all;
+    x_point_node_data_all.emplace(local_min_node_b_norm, local_min_node_id, local_min_node_psi);
     mesh.comm().set_union(x_point_node_data_all);
 
     dof_id_type x_point_node_id = libMesh::invalid_uint;
+    Real global_min_node_b_norm = std::numeric_limits<Real>::max();
     for (const auto &data : x_point_node_data_all)
     {
-        if (data.first != libMesh::invalid_uint)
+        const Real b_norm = std::get<0>(data);
+        const dof_id_type node_id = std::get<1>(data);
+        const Real psi_value = std::get<2>(data);
+        if (node_id != libMesh::invalid_uint && b_norm < global_min_node_b_norm)
         {
-            psi_X_point = data.second;
-            x_point_node_id = data.first;
+            global_min_node_b_norm = b_norm;
+            psi_X_point = psi_value;
+            x_point_node_id = node_id;
         }
     }
 
