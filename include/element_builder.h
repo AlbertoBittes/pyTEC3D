@@ -83,6 +83,8 @@ public:
     void prepare_element_matrix_building();
 
     void set_element_data(Elem *elem);
+    ElemData &get_elem_data();
+    const ElemData &get_elem_data() const;
 
     std::vector<std::vector<DenseMatrix<Number>>> &get_matrices() { return matrices; }
     std::vector<std::vector<DenseVector<Number>>> &get_vectors() { return vectors; }

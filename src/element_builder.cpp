@@ -141,6 +141,16 @@ void ElementBuilder::set_element_data(Elem *elem)
     this->n_dofs = static_cast<unsigned int>(dof_indices.size());
 }
 
+ElemData &ElementBuilder::get_elem_data()
+{
+    return elem_data;
+}
+
+const ElemData &ElementBuilder::get_elem_data() const
+{
+    return elem_data;
+}
+
 //
 //
 // Methods to build element matrices and rhs
