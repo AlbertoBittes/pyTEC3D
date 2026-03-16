@@ -78,9 +78,6 @@
         <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="47">
           AQAAAACAAAC0BgAA0QAAAA==eJzN1UcOwjAUANGE3iEECL0ltIRy/9sxHGAWkUDiS28zC9uSLTkMgqCCKmqoo4EmWsHvpo0OuuihjwGGGCHCGDEmmGKGBHMssMQKa2ywxQ57HHBEigwnnHHBFTfkKHDHA0+85Lyh9Ir0qvSa9Lr0hvSmdLuzpfSz9FR6Ij2SnktfS99Jn0rfSI+lF9Kv0m/SL9Lv0m3svY2lP6TPpWfSt9Kf0o/Sy85J+l5690v7/tscpM9KrtOTPpE+Krn+SvpA+kJ6X3pb+lD65894A0L9CNE=
         </DataArray>
-        <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="0">
-          AQAAAACAAAC0BgAAFgAAAA==eJxjYBgFo2AUjIJRMAqGBgAABrQAAQ==
-        </DataArray>
       </PointData>
       <CellData Scalars="ansys_elem_num">
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="672">

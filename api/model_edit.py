@@ -343,7 +343,7 @@ class ModelEdit:
         return mesh
 
     @staticmethod
-    def add_array_to_grid(
+    def add_array(
         mesh: "vtk.vtkUnstructuredGrid",
         name: str,
         location: str = "node",
@@ -460,7 +460,7 @@ class ModelEdit:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         for name, info in arrays_to_init.items():
-            ModelEdit.add_array_to_grid(
+            ModelEdit.add_array(
                 mesh,
                 name=name,
                 location=info["location"],
@@ -505,7 +505,7 @@ class ModelEdit:
                     ModelEdit.remove_array(
                         mesh, name, location=info["location"]
                     )
-                    ModelEdit.add_array_to_grid(
+                    ModelEdit.add_array(
                         mesh,
                         name=name,
                         location=info["location"],
@@ -647,7 +647,7 @@ class ModelEdit:
             Adds/overwrites the centroid array on mesh.GetCellData().
         """
         np_centers = ModelEdit.compute_cell_centroids(mesh)
-        ModelEdit.add_array_to_grid(
+        ModelEdit.add_array(
             mesh,
             name=array_name,
             location="elem",
@@ -704,7 +704,7 @@ class ModelEdit:
             Adds/overwrites the volume/area array on mesh.GetCellData().
         """
         volumes = ModelEdit.compute_cell_volumes(mesh)
-        ModelEdit.add_array_to_grid(
+        ModelEdit.add_array(
             mesh,
             name=array_name,
             location="elem",
@@ -745,7 +745,7 @@ class ModelEdit:
             )
 
         selection_mask = vtknp.vtk_to_numpy(selection_array)
-        new_array = ModelEdit.add_array_to_grid(
+        new_array = ModelEdit.add_array(
             mesh,
             name=component_name,
             location=type,

@@ -1,13 +1,10 @@
 from apec_m import APEC_M
-from model_edit import ModelEdit
 from selector import Selector
 from cyclic import Cyclic
 from coordinate_system import CylindricalCoordinateSystem
 import os
-import vtk
 import vtk.util.numpy_support as vtknp
 import numpy as np
-import pandas as pd
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
