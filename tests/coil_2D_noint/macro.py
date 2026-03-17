@@ -26,7 +26,7 @@ Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
 Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
-apec.nsle()
+Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]

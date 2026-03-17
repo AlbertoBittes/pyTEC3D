@@ -114,9 +114,6 @@
         <DataArray type="UInt8" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAAoFwAAHAAAAA==eJztwQEBAAAAgiD/r25IQAEAAAAAwK8BFygAAQ==
         </DataArray>
-        <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="1">
-          AQAAAACAAACgXAAAZwEAAA==eJztkkGOA0EIA8n/P53Dam9RaGjPxPRUJIscqDaYifj7vS6s6rcyXb3Pt9kU89+dF35av/jwf/U91Zw7M8CcyZyg/99KBt2qfmtlp19U5XeknAm/e/3iw//V91Rz7szgkCF+er8TpMqsWiffHT+dX3zhd3xVPdVsYOYxKM/tqqq8mXIm/O71U3l1ZlPMf/p9nuCHapl2cj+Jyfqj0duZe2c2/Gb6wTyDmTSrYr9dOe9KPuRDPl4M+ZAP+ZAP+XgyV2YRhd5puVWZrL9anXeFgbmbWVH27mrF7zd+7ursCePNuMs5O5ge4y7n7GB6jLucs4PpMU7K5o9C77Q7VJmsv1qV349yJvz8/J7ATLwLfnv3dFNnTxhvxl3O2cH0GHc5ZwfTY9zlnB1Mj3FSNn8Ueqfdocpk/dWq/H6UM+Hn5/cEZuJd8Nu7p5s6e8J4M+5yzg6mx7jLOTuYHuMu5+xgeoyT3ldQEPk=
-        </DataArray>
         <DataArray type="Int32" Name="TREE" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAACgXAAA8AAAAA==eJzt10EOwjAMBED6/09z4oZQaWt7E81IFae1KyOc8Hp9d9z8rHKceIBaV35zMs9mOnbwmX3b+fx6zzufVZxX0OufHfnEXtBvfs9+TJ9PK+327vfXjzOu7BCZNTLk2X1P7t5vdbt/P7v3AwD2deZ/35V7RlemokZHT/PJyFTU6OhpPhmZihodPc0nI1NRo6On+WRkAGA1O5x3yXcDmZoa05LnLVNTY1ryvGVqakxLnrcMALDD+Zl815CpqTEted4yNTWmJc9bpqbGtOR5ywAAO5yfyXcNmZoa05LnLVNTY1ryvGVqakxLnrdMvjekRwOE
         </DataArray>

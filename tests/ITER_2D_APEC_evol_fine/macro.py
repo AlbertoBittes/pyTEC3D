@@ -11,7 +11,7 @@ import os
 apec = APEC_M()
 
 apec_evolution_mesh = "ITER_2D_APEC_evol_fine"
-apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_fine_1"
+apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_fine_equilibrium"
 apec_equilibrium_output = "ITER_2D_APEC_fine_out_0"
 
 
@@ -38,23 +38,38 @@ apec.write_model_data()
 
 # Set Boundary conditions
 apec.set_active_mesh(apec_evolution_mesh_notrans)
+
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 Selector.select_all(apec.mesh)
-Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec.get_mesh(apec_equilibrium_output),
-    "Jt_z",
-    0,
-    apec.mesh,
-    "Js",
-    2,
-    location="elem",
-)
+
+# 1. Select COILS and VACUUM_CHAMBER in output mesh
+Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
+Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
+
+# 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
+output_mesh = apec.get_mesh(apec_equilibrium_output)
+selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+
+# 3. Get selected libmesh ids and corresponding Jt_z values
+selected = selection_mask == 1
+selected_libmesh_ids = libmesh_elem_id_out[selected]
+selected_jt_z = jt_z_array[selected]
+
+# The libmesh_elem_id from output mesh corresponds directly to VTK cell ids in apec.mesh
+js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
+# Only update valid VTK cell ids (must be within js_array shape)
+valid_mask = (selected_libmesh_ids >= 0) & (selected_libmesh_ids < js_array.shape[0])
+js_array[selected_libmesh_ids[valid_mask], 2] = selected_jt_z[valid_mask]
+apec.mesh.GetCellData().GetArray("Js").Modified()
 
 # Write loads and BCs and save the static mesh
 apec.write_loads_bcs()
+
+apec.save_mesh()
 
 # Now start the evolution analysis
 apec.set_active_mesh(apec_evolution_mesh)
@@ -62,30 +77,40 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec.get_mesh(apec_equilibrium_output),
-    "Jt_z",
-    0,
-    apec.mesh,
-    "Js",
-    2,
-    location="elem",
-)
-Selector.select_all(apec.mesh)
+# 1. Select COILS and VACUUM_CHAMBER in output mesh
+Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
+Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
+
+# 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
+output_mesh = apec.get_mesh(apec_equilibrium_output)
+selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
+libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+
+# 3. Get selected libmesh ids and corresponding Jt_z values
+selected = selection_mask == 1
+selected_libmesh_ids = libmesh_elem_id_out[selected]
+selected_jt_z = jt_z_array[selected]
+
+# The libmesh_elem_id from output mesh corresponds directly to VTK cell ids in apec.mesh
+js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
+# Only update valid VTK cell ids (must be within js_array shape)
+valid_mask = (selected_libmesh_ids >= 0) & (selected_libmesh_ids < js_array.shape[0])
+js_array[selected_libmesh_ids[valid_mask], 2] = selected_jt_z[valid_mask]
+apec.mesh.GetCellData().GetArray("Js").Modified()
 
 apec.write_loads_bcs()
 
-Selector.select_all(apec.mesh)
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.nsle(apec.mesh)
 apec.apec_settings["target_central_axis_x"] = 6.52136102486433
 apec.apec_settings["target_central_axis_y"] = 0.536537145137914
 apec.apec_settings["target_central_axis_z"] = 0.0
-apec.apec_settings["target_central_axis_element_id"] = 3659
 apec.apec_settings["R0"] = 6.2
 apec.apec_settings["max_picard_iterations"] = 70
 apec.apec_settings["min_distance"] = 0.1
 apec.apec_settings["cp_gain"] = 0.250
-apec.apec_settings["tolerance_value"] = 1e-4
+apec.apec_settings["tolerance_value"] = 1e-3
 apec.apec_settings["bradx_value"] = -3.873415861e-08
 apec.apec_settings["brady_value"] = 5.313857037e-09
 apec.apec_settings["bverx_value"] = 1.822467692e-10
@@ -93,7 +118,9 @@ apec.apec_settings["bvery_value"] = 1.133287835e-07
 apec.apec_settings["alpha_mp"] = 1.0001
 apec.apec_settings["alpha_np"] = 0.83197
 apec.apec_settings["equilibrium_mesh"] = apec_evolution_mesh_notrans
+apec.apec_settings["static_mesh"] = apec_evolution_mesh_notrans
 apec.apec_settings["evolution_mesh"] = apec_evolution_mesh
+apec.apec_settings["AF0"] = 5.3 * 6.2
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
 apec.apec_settings["print_full_output"] = 0
@@ -131,3 +158,5 @@ for step_idx in range(len(time_steps)):
     if step_idx == 0:
         apec.apec_settings.pop("toroidal_slices_nodes", None)
         apec.apec_settings.pop("toroidal_slices_elems", None)
+
+apec.save_mesh()

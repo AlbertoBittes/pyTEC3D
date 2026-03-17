@@ -90,9 +90,6 @@
         <DataArray type="UInt8" Name="flux_parallel" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAAVCgAAGAAAAA==eJztwQEBAAAAgiD/r25IQAEAcG8KFQAB
         </DataArray>
-        <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="1">
-          AQAAAACAAABUKAAAPgAAAA==eJzt0DEKACAMBMHk/5+2sFeEhCDMwnCFYmHELhv3dpbD9+Jwr2r9gX3d6rcAAAAAAACAGZIkST+1AI8DB3k=
-        </DataArray>
         <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAABUKAAAHwAAAA==eJztwQEBAAAAgJD+r+4ICgAAAAAAAAAAAKAGKFQAAQ==
         </DataArray>

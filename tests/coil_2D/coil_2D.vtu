@@ -63,9 +63,6 @@
         <DataArray type="Int32" Name="boundary_id_0" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAABkJwAAIQAAAA==eJztwYEAAAAAw6D5U1/gCFUBAAAAAAAAAAAAzwAnZAAB
         </DataArray>
-        <DataArray type="Int32" Name="MidsideNodes" format="binary" RangeMin="0" RangeMax="1">
-          AQAAAACAAABkJwAAdgAAAA==eJzt0MEJAEAIxECv/6bvYRFJQCHMV3Zm750npOGHqvbofarao/epao/ep6o9ep+q9uh9qtqj96lqj96nqj16n6r26H2q2qP3qWqP3qeqPXqfqvbofarao/epao/ep6o9ep+q9uh9qtqj96lqj96nqrkPAqcGfQ==
-        </DataArray>
         <DataArray type="Int32" Name="CP_0" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAABkJwAAOwAAAA==eJzt0cEJACAQA8Gz/6atIOBHITgDaSA7AwAAAMBN62C/av5C16z5C12z5i90zZq/0BUAAIBXNr+kAEI=
         </DataArray>

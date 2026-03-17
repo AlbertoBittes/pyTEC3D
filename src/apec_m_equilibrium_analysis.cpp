@@ -328,37 +328,41 @@ void APECMEquilibriumAnalysis::set_psi_magnetic_axis()
         {
             if (Elem *elem_ptr = mesh.query_elem_ptr(max_elem_id))
             {
-                builder->set_element_data(elem_ptr);
-                builder->build_element();
-
-                FEBase *fe = dynamic_cast<FEBase *>(builder->get_elem_data().element_type->fe_array[0].get());
-                if (fe)
+                // PSI point evaluation must only run on the processor owning the element.
+                if (elem_ptr->processor_id() == comm.rank())
                 {
-                    const std::vector<Point> &xyz = fe->get_xyz();
-                    Real max_psi_point_value = -std::numeric_limits<Real>::max();
-                    Point max_psi_point(-std::numeric_limits<Real>::max(),
-                                        -std::numeric_limits<Real>::max(),
-                                        -std::numeric_limits<Real>::max());
+                    builder->set_element_data(elem_ptr);
+                    builder->build_element();
 
-                    const auto update_max_psi = [&](const Point &point)
+                    FEBase *fe = dynamic_cast<FEBase *>(builder->get_elem_data().element_type->fe_array[0].get());
+                    if (fe)
                     {
-                        const Real psi_point_value = support_solution_system.point_value(psi_var_number, point, elem_ptr);
-                        if (psi_point_value > max_psi_point_value)
+                        const std::vector<Point> &xyz = fe->get_xyz();
+                        Real max_psi_point_value = -std::numeric_limits<Real>::max();
+                        Point max_psi_point(-std::numeric_limits<Real>::max(),
+                                            -std::numeric_limits<Real>::max(),
+                                            -std::numeric_limits<Real>::max());
+
+                        const auto update_max_psi = [&](const Point &point)
                         {
-                            max_psi_point_value = psi_point_value;
-                            max_psi_point = point;
-                        }
-                    };
+                            const Real psi_point_value = support_solution_system.point_value(psi_var_number, point, elem_ptr);
+                            if (psi_point_value > max_psi_point_value)
+                            {
+                                max_psi_point_value = psi_point_value;
+                                max_psi_point = point;
+                            }
+                        };
 
-                    update_max_psi(elem_ptr->vertex_average());
-                    for (const auto &qp_point : xyz)
-                        update_max_psi(qp_point);
+                        update_max_psi(elem_ptr->vertex_average());
+                        for (const auto &qp_point : xyz)
+                            update_max_psi(qp_point);
 
-                    magnetic_axis_elem_point_data = std::make_tuple(max_elem_id,
-                                                                    max_psi_point_value,
-                                                                    max_psi_point(0),
-                                                                    max_psi_point(1),
-                                                                    max_psi_point(2));
+                        magnetic_axis_elem_point_data = std::make_tuple(max_elem_id,
+                                                                        max_psi_point_value,
+                                                                        max_psi_point(0),
+                                                                        max_psi_point(1),
+                                                                        max_psi_point(2));
+                    }
                 }
             }
         }
@@ -633,7 +637,6 @@ Real APECMEquilibriumAnalysis::check_X_point()
 
     Real local_min_node_b_norm = std::numeric_limits<Real>::max();
     dof_id_type local_min_node_id = libMesh::invalid_uint;
-    Real local_min_node_psi = std::numeric_limits<Real>::max();
     for (std::size_t i = 0; i < x_point_node_ids.size(); ++i)
     {
         if (node_counts[i] <= 0.0)
@@ -647,34 +650,47 @@ Real APECMEquilibriumAnalysis::check_X_point()
         if (b_norm < local_min_node_b_norm)
         {
             const dof_id_type node_id = x_point_node_ids[i];
-            const Node *node_ptr = mesh.query_node_ptr(node_id);
-            if (!node_ptr)
-                continue;
-
             local_min_node_b_norm = b_norm;
-            dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
             local_min_node_id = node_id;
-            local_min_node_psi = support_solution_system.current_local_solution->el(psi_dof);
         }
     }
 
-    std::set<std::tuple<Real, dof_id_type, Real>> x_point_node_data_all;
-    x_point_node_data_all.emplace(local_min_node_b_norm, local_min_node_id, local_min_node_psi);
+    std::set<std::pair<Real, dof_id_type>> x_point_node_data_all;
+    x_point_node_data_all.emplace(local_min_node_b_norm, local_min_node_id);
     mesh.comm().set_union(x_point_node_data_all);
 
     dof_id_type x_point_node_id = libMesh::invalid_uint;
     Real global_min_node_b_norm = std::numeric_limits<Real>::max();
     for (const auto &data : x_point_node_data_all)
     {
-        const Real b_norm = std::get<0>(data);
-        const dof_id_type node_id = std::get<1>(data);
-        const Real psi_value = std::get<2>(data);
+        const Real b_norm = data.first;
+        const dof_id_type node_id = data.second;
         if (node_id != libMesh::invalid_uint && b_norm < global_min_node_b_norm)
         {
             global_min_node_b_norm = b_norm;
-            psi_X_point = psi_value;
             x_point_node_id = node_id;
         }
+    }
+
+    if (x_point_node_id != libMesh::invalid_uint)
+    {
+        Real x_point_node_psi = std::numeric_limits<Real>::max();
+        const processor_id_type rank = mesh.comm().rank();
+        if (const Node *node_ptr = mesh.query_node_ptr(x_point_node_id))
+        {
+            if (node_ptr->processor_id() == rank)
+            {
+                const dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
+                const auto first_local = support_solution_system.current_local_solution->first_local_index();
+                const auto last_local = support_solution_system.current_local_solution->last_local_index();
+                if (psi_dof >= first_local && psi_dof < last_local)
+                    x_point_node_psi = support_solution_system.current_local_solution->el(psi_dof);
+            }
+        }
+
+        mesh.comm().min(x_point_node_psi);
+        if (x_point_node_psi != std::numeric_limits<Real>::max())
+            psi_X_point = x_point_node_psi;
     }
 
     std::tuple<Real, dof_id_type, Real, Real, Real, Real> x_point_qp_data{
@@ -691,42 +707,46 @@ Real APECMEquilibriumAnalysis::check_X_point()
         {
             if (Elem *x_elem_ptr = mesh.query_elem_ptr(x_point_elem_id))
             {
-                builder->set_element_data(x_elem_ptr);
-                builder->build_element();
-                builder->build_nodal_solution();
-
-                FEBase *fe = dynamic_cast<FEBase *>(builder->get_elem_data().element_type->fe_array[0].get());
-                if (fe)
+                // Point-value queries must run only on the element owner in parallel.
+                if (x_elem_ptr->processor_id() == mesh.comm().rank())
                 {
-                    const std::vector<Point> &xyz = fe->get_xyz();
+                    builder->set_element_data(x_elem_ptr);
+                    builder->build_element();
+                    builder->build_nodal_solution();
 
-                    Real min_b_qp = std::numeric_limits<Real>::max();
-                    Real min_b_qp_psi = std::numeric_limits<Real>::max();
-                    Point min_b_qp_point = x_elem_ptr->vertex_average();
-
-                    const auto update_min_b = [&](const Point &point)
+                    FEBase *fe = dynamic_cast<FEBase *>(builder->get_elem_data().element_type->fe_array[0].get());
+                    if (fe)
                     {
-                        const Real bx_point = nodal_solution_system.point_value(bx_nodal_var_number, point, x_elem_ptr);
-                        const Real by_point = nodal_solution_system.point_value(by_nodal_var_number, point, x_elem_ptr);
-                        const Real b_norm = std::sqrt(bx_point * bx_point + by_point * by_point);
-                        if (b_norm < min_b_qp)
+                        const std::vector<Point> &xyz = fe->get_xyz();
+
+                        Real min_b_qp = std::numeric_limits<Real>::max();
+                        Real min_b_qp_psi = std::numeric_limits<Real>::max();
+                        Point min_b_qp_point = x_elem_ptr->vertex_average();
+
+                        const auto update_min_b = [&](const Point &point)
                         {
-                            min_b_qp = b_norm;
-                            min_b_qp_point = point;
-                            min_b_qp_psi = support_solution_system.point_value(psi_var_number, point, x_elem_ptr);
-                        }
-                    };
+                            const Real bx_point = nodal_solution_system.point_value(bx_nodal_var_number, point, x_elem_ptr);
+                            const Real by_point = nodal_solution_system.point_value(by_nodal_var_number, point, x_elem_ptr);
+                            const Real b_norm = std::sqrt(bx_point * bx_point + by_point * by_point);
+                            if (b_norm < min_b_qp)
+                            {
+                                min_b_qp = b_norm;
+                                min_b_qp_point = point;
+                                min_b_qp_psi = support_solution_system.point_value(psi_var_number, point, x_elem_ptr);
+                            }
+                        };
 
-                    update_min_b(x_elem_ptr->vertex_average());
-                    for (const auto &qp_point : xyz)
-                        update_min_b(qp_point);
+                        update_min_b(x_elem_ptr->vertex_average());
+                        for (const auto &qp_point : xyz)
+                            update_min_b(qp_point);
 
-                    x_point_qp_data = std::make_tuple(min_b_qp,
-                                                      x_elem_ptr->id(),
-                                                      min_b_qp_psi,
-                                                      min_b_qp_point(0),
-                                                      min_b_qp_point(1),
-                                                      min_b_qp_point(2));
+                        x_point_qp_data = std::make_tuple(min_b_qp,
+                                                          x_elem_ptr->id(),
+                                                          min_b_qp_psi,
+                                                          min_b_qp_point(0),
+                                                          min_b_qp_point(1),
+                                                          min_b_qp_point(2));
+                    }
                 }
             }
         }
