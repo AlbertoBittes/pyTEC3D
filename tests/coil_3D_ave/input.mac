@@ -1,4 +1,4 @@
--read_mesh coil_2D_ave.vtu
+-read_mesh coil_3D_ave.vtu
 -load_data model_data.bin
 -print_model_data
 -mode analysis transient

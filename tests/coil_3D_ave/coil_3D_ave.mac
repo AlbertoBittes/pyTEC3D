@@ -31,7 +31,7 @@ mp,murz,24,1
 RECTNG,0,size,-size,size
 
 pi=acos(-1)
-r,1,coil*coil,2000,pi*size*coil*coil/(360/extr_angle),0,1,0
+r,1,coil*coil,2000,pi*size*coil*coil,0,1,0
 rmore,(360/extr_angle),1
 
 alls

@@ -26,7 +26,7 @@ extr_angle = 30
 
 Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
 apec.real_constants = Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
-                                          (coil ** 2, 2000, np.pi*size*coil*coil/(360/extr_angle), 20, (360/extr_angle)))
+                                          (coil ** 2, 2000, np.pi*size*coil*coil/(360/extr_angle), 20, 1.0))
 apec.write_model_data()
 
 Selector.select_all(apec.mesh)

@@ -37,8 +37,8 @@ Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 100000)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
-apec.real_constants = Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
-                                          (coil ** 2, 2000, np.pi*size*coil*coil/(360/extr_angle), 20, (360/extr_angle)))
+apec.real_constants = pd.concat([apec.real_constants, Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
+                                          (coil ** 2, 2000, np.pi*size*coil*coil, 10,(360/extr_angle)))])
 
 Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="a", coordinate_system=CylindricalCoordinateSystem())
@@ -58,7 +58,7 @@ Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_sys
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
 Selector.nsle(apec.mesh, mode="u")
-apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A",))])
+apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A"))])
 
 Selector.select_pos(apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
@@ -76,7 +76,7 @@ Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_sys
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
 Selector.nsle(apec.mesh, mode="r")
-apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A", "VOLT"))])
+apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A", "V"))])
 
 Selector.select_pos(apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
