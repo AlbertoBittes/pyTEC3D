@@ -1,0 +1,5 @@
+-read_mesh coil_3D_avoltemf.vtu
+-load_data model_data.bin
+-print_model_data
+-mode analysis transient
+-solve_transient
