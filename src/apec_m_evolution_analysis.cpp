@@ -865,11 +865,7 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     const std::string &equilibrium_mesh = settings->equilibrium_mesh();
 
     if (first_absolute_iteration)
-    {
         set_toroidal_slices();
-        // program->set_active_mesh(equilibrium_mesh);
-        // check_poloidal_flux_convergence();
-    }
 
     if (!first_absolute_iteration)
     {

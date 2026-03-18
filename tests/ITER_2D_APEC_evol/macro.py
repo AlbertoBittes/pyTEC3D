@@ -55,26 +55,26 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-# 1. Select COILS and VACUUM_CHAMBER in output mesh
-Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="s")
-Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="a")
+# 1. Build source->destination element map in VACUUM_CHAMBER using toroidal slices
+Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.select(apec.get_mesh(apec_equilibrium_output), "COILS", 1, type="elem", mode="a")
+# Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 
-# 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
-output_mesh = apec.get_mesh(apec_equilibrium_output)
-selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
-jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
-libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+elem_id_map = Cyclic.build_toroidal_slices(
+    apec.get_mesh(apec_equilibrium_output),
+    apec.mesh,
+    location="elem",
+    n_slices=1,
+    tolerance=1e-3,
+)
 
-# 3. Get selected libmesh ids and corresponding Jt_z values
-selected = selection_mask == 1
-selected_libmesh_ids = libmesh_elem_id_out[selected]
-selected_jt_z = jt_z_array[selected]
-
-# The libmesh_elem_id from output mesh corresponds directly to VTK cell ids in apec.mesh
+# 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] through map ids
+jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output).GetCellData().GetArray("Jt_z"))
 js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-# Only update valid VTK cell ids (must be within js_array shape)
-valid_mask = (selected_libmesh_ids >= 0) & (selected_libmesh_ids < js_array.shape[0])
-js_array[selected_libmesh_ids[valid_mask], 2] = selected_jt_z[valid_mask]
+
+src_elem_ids = elem_id_map[:, 0]
+dst_elem_ids = elem_id_map[:, 1]
+js_array[dst_elem_ids, 2] = jt_z_array[src_elem_ids]
 apec.mesh.GetCellData().GetArray("Js").Modified()
 
 apec.write_loads_bcs()

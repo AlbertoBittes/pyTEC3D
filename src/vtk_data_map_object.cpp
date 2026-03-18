@@ -96,6 +96,20 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
         {
             if (cached_sys_type == *ctx.system_type)
             {
+                const unsigned int n_dofs = is_element_data ? elem_ptr->n_dofs(cached_sys_number, cached_var_num) : node_ptr->n_dofs(cached_sys_number, cached_var_num);
+                if (n_dofs == 0)
+                {
+                    libMesh::out << "Warning: DoFs are not set for "
+                                 << (is_element_data ? "element " : "node ")
+                                 << entity_number
+                                 << " (system " << cached_sys_number
+                                 << ", variable '" << cached_variable_label
+                                 << "', label " << label_number
+                                 << ", component " << component_number
+                                 << "). Skipping value assignment." << std::endl;
+                    break;
+                }
+
                 dof_id_type dof_id = is_element_data ? elem_ptr->dof_number(cached_sys_number, cached_var_num, 0) : node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
                 ctx.vec->set(dof_id, value);
                 break;

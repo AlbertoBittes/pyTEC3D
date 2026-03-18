@@ -98,11 +98,6 @@ Selector.set_value_on_selection(apec.mesh, "Js", i_PF6 / a_PF6, 2, type="elem")
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 15e6 / a_plasma, 2, type="elem")
 
-Selector.select(apec.mesh, "PASSIVE_STRUCTURES", 1, type="elem")
-Selector.set_value_on_selection(apec.mesh, "ansys_material_type", 23, type="elem")
-Selector.set_value_on_selection(apec.mesh, "ansys_etype", 23, type="elem")
-
-
 apec.write_load_step(1)
 
 apec.save_mesh()
