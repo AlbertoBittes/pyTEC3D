@@ -82,7 +82,8 @@ protected:
     Real last_plasma_current_scaling_lambda = 0.0;
     unsigned int last_plasma_element_count = 0;
 
-    Real prev_norm = std::numeric_limits<Real>::max();
+    std::unique_ptr<NumericVector<Number>> old_coils_current_vector = nullptr;
+    // Real prev_norm = std::numeric_limits<Real>::max();
 };
 
 #endif // APECM_EQUILIBRIUM_ANALYSIS_H

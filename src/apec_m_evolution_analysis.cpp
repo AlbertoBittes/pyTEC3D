@@ -97,6 +97,7 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     ApecMExplicitSystem &evolution_sys_support_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &evolution_sys_element_sol = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_SOLUTION);
     ApecMExplicitSystem &evolution_sys_element_loads = evolution_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
+    ApecMExplicitSystem &static_sys_support_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
     ApecMExplicitSystem &static_sys_element_loads = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::ELEMENT_LOADS);
 
     const processor_id_type proc_id = evolution_mesh->comm().rank();
@@ -152,6 +153,7 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
 
     const unsigned int eq_psi_var = equilibrium_sys_support_sol.variable_number("PSI");
     const unsigned int evol_psi_var = evolution_sys_support_sol.variable_number("PSI");
+    const unsigned int static_psi_var = static_sys_support_sol.variable_number("PSI");
     const unsigned int eq_b_rad_var = equilibrium_sys_element_sol.variable_number("Be" + j_b_labels_equilibrium[1]);
     const unsigned int eq_b_ver_var = equilibrium_sys_element_sol.variable_number("Be" + j_b_labels_equilibrium[2]);
     const unsigned int eq_psie_var = equilibrium_sys_element_sol.variable_number("PSIe");
@@ -200,11 +202,14 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
     eq_psie_dofs.assign(n_elem_rows, libMesh::invalid_uint);
 
     auto &evol_psi_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_PSI_DOF_GROUPS];
+    auto &static_psi_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_STATIC_PSI_DOF_GROUPS];
     auto &evol_b_rad_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_B_RAD_DOF_GROUPS];
     auto &evol_b_ver_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_B_VER_DOF_GROUPS];
     auto &evol_psie_groups = dofs_cache_.vector_groups[DofCacheKey::TAVG_EVOL_PSIE_DOF_GROUPS];
     evol_psi_groups.assign(toroidal_slices_nodes_.size() > 0 ? toroidal_slices_nodes_.size() - 1 : 0,
                            std::vector<dof_id_type>(n_node_rows, libMesh::invalid_uint));
+    static_psi_groups.assign(toroidal_slices_nodes_.size() > 0 ? toroidal_slices_nodes_.size() - 1 : 0,
+                             std::vector<dof_id_type>(n_node_rows, libMesh::invalid_uint));
     evol_b_rad_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
                              std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     evol_b_ver_groups.assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
@@ -251,15 +256,16 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
         const auto &slice_node_ids = toroidal_slices_nodes_[slice_idx];
         const std::size_t n_rows = std::min(n_node_rows, slice_node_ids.size());
         auto &slice_dofs = evol_psi_groups[slice_idx - 1];
+        auto &slice_static_dofs = static_psi_groups[slice_idx - 1];
         for (std::size_t row = 0; row < n_rows; ++row)
         {
             const Node *node_ptr = evolution_mesh->query_node_ptr(slice_node_ids[row]);
-            if (!node_ptr || node_ptr->processor_id() != proc_id)
-                continue;
+            if (node_ptr && node_ptr->processor_id() == proc_id)
+                slice_dofs[row] = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, evol_psi_var, 0);
 
-            const dof_id_type psi_dof = node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, evol_psi_var, 0);
-
-            slice_dofs[row] = psi_dof;
+            const Node *static_node_ptr = static_mesh->query_node_ptr(slice_node_ids[row]);
+            if (static_node_ptr && static_node_ptr->processor_id() == proc_id)
+                slice_static_dofs[row] = static_node_ptr->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, static_psi_var, 0);
         }
     }
 
@@ -329,10 +335,10 @@ void APECMEvolutionAnalysis::cache_slice_dofs()
 
     if (has_js_static_c1)
         dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C1_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                                                                            std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
+                                                                                     std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
     if (has_js_static_c2)
         dofs_cache_.vector_groups[DofCacheKey::TPROJ_STATIC_JS_C2_DOF_GROUPS].assign(toroidal_slices_elems_.size() > 0 ? toroidal_slices_elems_.size() - 1 : 0,
-                                                                            std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
+                                                                                     std::vector<dof_id_type>(n_elem_rows, libMesh::invalid_uint));
 
     if (!toroidal_slices_elems_.empty())
     {
@@ -575,6 +581,68 @@ void APECMEvolutionAnalysis::toroidal_average()
         equilibrium_sys_element_loads.local_to_global_coordinate_system_solution(cylindrical_coordinate_system, "Js", eq_coils_local_elem_ids);
 }
 
+void APECMEvolutionAnalysis::toroidal_average_psi()
+{
+    libMesh::out << "Toroidal average PSI from static mesh to equilibrium mesh..." << std::endl;
+    auto settings = this->context<ApecMSettingsObject>();
+
+    APEC_M *program = this->get_parent_object();
+
+    const std::string &equilibrium_mesh_name = settings->equilibrium_mesh();
+    const std::string &static_mesh_name = settings->static_mesh();
+
+    auto equilibrium_eq_sys = program->get_equation_system(equilibrium_mesh_name);
+    auto static_eq_sys = program->get_equation_system(static_mesh_name);
+
+    auto static_mesh = program->get_mesh(static_mesh_name);
+
+    ApecMExplicitSystem &equilibrium_sys_support_sol = equilibrium_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
+    ApecMExplicitSystem &static_sys_support_sol = static_eq_sys->get_system<ApecMExplicitSystem>(ApecMSystemBase::SUPPORT_SOLUTION);
+
+    this->cache_slice_dofs();
+
+    auto &comm = static_mesh->comm();
+    const auto &eq_psi_dofs = this->cached_dofs(DofCacheKey::TAVG_EQ_PSI_DOFS);
+    const auto &static_psi_groups = this->cached_dof_groups(DofCacheKey::TAVG_STATIC_PSI_DOF_GROUPS);
+
+    const std::size_t n_node_rows = eq_psi_dofs.size();
+    std::vector<Real> psi_sums(n_node_rows, 0.0);
+    std::vector<Real> psi_counts(n_node_rows, 0.0);
+
+    for (unsigned int slice_idx = 1; slice_idx < toroidal_slices_nodes_.size(); ++slice_idx)
+    {
+        const auto &slice_psi_dofs = static_psi_groups[slice_idx - 1];
+        const std::size_t n_rows = std::min(n_node_rows, slice_psi_dofs.size());
+        for (std::size_t row = 0; row < n_rows; ++row)
+        {
+            const dof_id_type psi_dof = slice_psi_dofs[row];
+            if (psi_dof == libMesh::invalid_uint)
+                continue;
+
+            psi_sums[row] += static_sys_support_sol.current_local_solution->el(psi_dof);
+            psi_counts[row] += 1.0;
+        }
+    }
+
+    comm.sum(psi_sums);
+    comm.sum(psi_counts);
+
+    for (std::size_t row = 0; row < n_node_rows; ++row)
+    {
+        if (psi_counts[row] <= 0.0)
+            continue;
+
+        const dof_id_type psi_dof = eq_psi_dofs[row];
+        if (psi_dof == libMesh::invalid_uint)
+            continue;
+
+        equilibrium_sys_support_sol.solution->set(psi_dof, psi_sums[row] / psi_counts[row]);
+    }
+
+    equilibrium_sys_support_sol.solution->close();
+    equilibrium_sys_support_sol.update();
+}
+
 void APECMEvolutionAnalysis::impressed_eddy_currents_coils_currents()
 {
     libMesh::out << "Projection from main mesh to static mesh..." << std::endl;
@@ -659,7 +727,6 @@ void APECMEvolutionAnalysis::set_plasma_current()
     const auto &dofs_js_z_static = this->cached_dofs(DofCacheKey::SET_PLASMA_STATIC_JS_Z);
 
     static_sys_element_loads.solution->get(dofs_js_z_static, js_z);
-
     evolution_sys_element_loads.solution->insert(js_z, dofs_js_z_evol);
 
     if (dim == 3)
@@ -798,23 +865,45 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
     const std::string &equilibrium_mesh = settings->equilibrium_mesh();
 
     if (first_absolute_iteration)
-        set_toroidal_slices();
-
-    if (substep.get_parent_object()->get_previous_time_step() == nullptr)
     {
-        program->set_active_mesh(equilibrium_mesh);
-        bool conv = APECMEquilibriumAnalysis::picard_loop(substep);
-        program->set_active_mesh(evolution_mesh);
-        // set_plasma_current();
-        // set_poloidal_currents();
+        set_toroidal_slices();
+        // program->set_active_mesh(equilibrium_mesh);
+        // check_poloidal_flux_convergence();
+    }
+
+    if (!first_absolute_iteration)
+    {
+        find_separatrix();
+
+        apply_jplasma_gradshafranov();
+
+        program->set_active_mesh(static_mesh);
+
         toroidal_projection_plasma_current();
-        set_plasma_current();
+
+        impressed_eddy_currents_coils_currents();
+
+        libMesh::out << "Solving equilibrium step..." << std::endl;
         solve_equation_systems(substep, false);
-        return conv;
+
+        if (print_full_output)
+            print_output(substep, true);
+
+        program->set_active_mesh(equilibrium_mesh);
+
+        toroidal_average_psi();
+
+        bool converged = check_poloidal_flux_convergence();
+
+        append_iteration_diagnostics(substep, converged);
+
+        if (converged)
+            return true;
+
+        set_plasma_current();
     }
 
     program->set_active_mesh(evolution_mesh);
-    set_plasma_current();
 
     libMesh::out << "Solving evolution step..." << std::endl;
     solve_equation_systems(substep, false);
@@ -824,30 +913,13 @@ bool APECMEvolutionAnalysis::picard_loop(Substep &substep)
 
     program->set_active_mesh(equilibrium_mesh);
 
-    toroidal_average(); // With this you set the averaged psi, eddy currents, and B fields on the static mesh
+    toroidal_average(); // With this you set the averaged psi, eddy currents, and B fields on the equilibrium mesh
 
-    find_separatrix();
-
-    apply_jplasma_gradshafranov();
-
-    program->set_active_mesh(static_mesh);
-
-    toroidal_projection_plasma_current();
-
-    impressed_eddy_currents_coils_currents();
-
-    libMesh::out << "Solving equilibrium step..." << std::endl;
-    solve_equation_systems(substep, false);
-
-    if (print_full_output)
-        print_output(substep, true);
-
-    bool converged = check_poloidal_flux_convergence();
-
-    append_iteration_diagnostics(substep, converged);
-
-    if (converged)
+    if (first_absolute_iteration)
+    {
+        check_poloidal_flux_convergence();
+        first_absolute_iteration = false;
         return true;
-
+    }
     return false;
 }

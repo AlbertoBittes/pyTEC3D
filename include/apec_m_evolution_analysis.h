@@ -16,6 +16,7 @@ public:
     virtual bool picard_loop(Substep &substep) override;
     void set_toroidal_slices();
     void toroidal_average();
+    void toroidal_average_psi();
     void toroidal_projection_plasma_current();
     void set_poloidal_currents();
     void impressed_eddy_currents_coils_currents();
@@ -32,6 +33,7 @@ private:
         TAVG_EQ_LOCAL_ELEM_IDS,
         TAVG_EQ_COILS_LOCAL_ELEM_IDS,
         TAVG_EVOL_PSI_DOF_GROUPS,
+        TAVG_STATIC_PSI_DOF_GROUPS,
         TAVG_EVOL_B_RAD_DOF_GROUPS,
         TAVG_EVOL_B_VER_DOF_GROUPS,
         TAVG_EVOL_PSIE_DOF_GROUPS,

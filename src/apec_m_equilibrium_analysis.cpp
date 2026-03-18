@@ -896,6 +896,8 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
     auto &element_loads_system = eq_sys->get_system<ExplicitSystem>("ElementLoadsSystem");
     unsigned int vertical_coil_current_var_number = element_loads_system.variable_number("Js_z");
     NumericVector<Number> &coils_current_vector = *element_loads_system.solution;
+    if (!old_coils_current_vector)
+        old_coils_current_vector = element_loads_system.solution->clone();
 
     const auto &mesh = eq_sys->get_mesh();
     dof_id_type vertical_control_coils_component = mesh.get_elem_integer_index("VERTICAL_CONTROL_COILS");
@@ -922,8 +924,8 @@ void APECMEquilibriumAnalysis::apply_control_currents(std::pair<Real, Real> &cor
         Real correction_current_sign = real_constants_map->get_constant(real_constant_elem_id)[19]; // CPSIGN
         dof_id_type elem_current_density_dof = elem->dof_number(ApecMSystemBase::ELEMENT_LOADS, vertical_coil_current_var_number, 0);
 
-        Real base_current = real_constants_map->get_constant(real_constant_elem_id)[20]; // CURR
-        Real new_current_density = base_current / coil_area + correction_current_sign * correction_current_density;
+        Real base_current_density = old_coils_current_vector->el(elem_current_density_dof);
+        Real new_current_density = base_current_density + correction_current_sign * correction_current_density;
         coils_current_vector.set(elem_current_density_dof, new_current_density);
     }
     coils_current_vector.close();
@@ -1047,28 +1049,28 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     libMesh::out << "Checking poloidal flux convergence..." << std::endl;
     auto eq_sys = this->active_equation_system();
 
-    auto &element_solution_system = eq_sys->get_system<ExplicitSystem>("ElementSolutionSystem");
-    unsigned int psi_var_number = element_solution_system.variable_number("PSIe");
+    auto &support_solution_system = eq_sys->get_system<ExplicitSystem>("SolutionSupportSystem");
+    unsigned int psi_var_number = support_solution_system.variable_number("PSI");
 
     const auto &mesh = eq_sys->get_mesh();
     auto &comm = mesh.comm();
-    dof_id_type vacuum_chamber_id = mesh.get_elem_integer_index("VACUUM_CHAMBER");
+    dof_id_type vacuum_chamber_id = mesh.get_node_integer_index("VACUUM_CHAMBER_NODES");
 
     auto settings = this->context<ApecMSettingsObject>();
 
     // if(0 == substep.get_number_picard_iterations())
     if (first_absolute_iteration)
     {
-        for (auto &elem : mesh.active_local_element_ptr_range())
+        for (auto &node : mesh.local_node_ptr_range())
         {
-            if (elem->get_extra_integer(vacuum_chamber_id) == 1)
+            if (node->get_extra_integer(vacuum_chamber_id) == 1)
             {
-                dof_id_type psi_dof = elem->dof_number(ApecMSystemBase::ELEMENT_SOLUTION, psi_var_number, 0);
+                dof_id_type psi_dof = node->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, psi_var_number, 0);
                 vacuum_chamber_psi_dofs.push_back(psi_dof);
             }
         }
         prev_it_vacuum_chamber_psi_vector.resize(vacuum_chamber_psi_dofs.size(), 0.0);
-        element_solution_system.solution->get(vacuum_chamber_psi_dofs, prev_it_vacuum_chamber_psi_vector);
+        support_solution_system.solution->get(vacuum_chamber_psi_dofs, prev_it_vacuum_chamber_psi_vector);
         last_poloidal_flux_convergence_metric = std::numeric_limits<Real>::quiet_NaN();
         last_poloidal_flux_convergence_threshold = settings->tolerance();
         return false;
@@ -1078,26 +1080,25 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     const Real tolerance = settings->tolerance();
     last_poloidal_flux_convergence_threshold = tolerance;
 
-    element_solution_system.solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
+    support_solution_system.solution->get(vacuum_chamber_psi_dofs, curr_it_vacuum_chamber_psi_vector);
     // Removed incorrect vectorized relative difference calculation.
     Real max_norm = 0.0;
 
     for (std::size_t i = 0; i < curr_it_vacuum_chamber_psi_vector.size(); ++i)
     {
-        const Real denom = std::max(std::numeric_limits<Real>::epsilon(),
-                                    std::min(std::abs(curr_it_vacuum_chamber_psi_vector[i]),
-                                             std::abs(prev_it_vacuum_chamber_psi_vector[i])));
+        // const Real denom = std::max(std::numeric_limits<Real>::epsilon(),
+        //                             std::min(std::abs(curr_it_vacuum_chamber_psi_vector[i]),
+        //                                      std::abs(prev_it_vacuum_chamber_psi_vector[i])));
         // Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]) / denom;
-        Real rel_diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]);
-        max_norm = std::max(max_norm, rel_diff);
+        Real diff = std::abs(curr_it_vacuum_chamber_psi_vector[i] - prev_it_vacuum_chamber_psi_vector[i]);
+        max_norm = std::max(max_norm, diff);
     }
     comm.max(max_norm);
     last_poloidal_flux_convergence_metric = max_norm;
 
     if (max_norm > tolerance)
-    {
         converged = false;
-    }
+
     // if (std::abs(max_norm - prev_norm) < 0.1 * tolerance)
     // {
     //     converged = true;
@@ -1106,7 +1107,7 @@ bool APECMEquilibriumAnalysis::check_poloidal_flux_convergence()
     // comm.min(converged);
 
     std::swap(prev_it_vacuum_chamber_psi_vector, curr_it_vacuum_chamber_psi_vector);
-    prev_norm = max_norm;
+    // prev_norm = max_norm;
 
     return converged;
 }

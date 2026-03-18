@@ -242,10 +242,20 @@ public:
         }
     }
 
+    Substep *get_solved_substep() const
+    {
+        return solved_substep;
+    }
+    void set_solved_substep(Substep &substep)
+    {
+        solved_substep = &substep;
+    }
+
 private:
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
     std::shared_ptr<AssemblerLinear> assembler;
     std::unique_ptr<PetscSolverConfiguration> solver_config_copy_;
+    Substep *solved_substep = nullptr;
 };
 
 class ApecMExplicitSystem : public ApecMSystem<ExplicitSystem>

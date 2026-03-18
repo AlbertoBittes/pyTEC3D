@@ -33,7 +33,7 @@ apec_equilibrium_output.read_mesh(output_eq_mesh_filepath, False)
 
 eps = 1e-1
 theta_eps = 1e-3
-max_rad = 86.9598
+max_rad = 100.0
 # Read the static mesh
 apec_equilibrium = APEC_M()
 apec_equilibrium.read_mesh(static_mesh_filepath)
@@ -158,7 +158,8 @@ apec.apec_settings = {
     "plasma_current": 15e6,
     "beta_p": 6.8216e-001,
     "evolution_mesh": "ITER_3D_APEC_evol",
-    "equilibrium_mesh": "ITER_3D_APEC_evol_1",
+    "static_mesh": "ITER_3D_APEC_evol_static",
+    "equilibrium_mesh": "ITER_3D_APEC_evol_equilibrium",
     "print_full_output": 1,
     "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
         apec_equilibrium.mesh, apec.mesh, "node", n_slices=3, tolerance=1e-3

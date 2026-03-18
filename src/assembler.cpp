@@ -33,8 +33,6 @@ namespace
     {
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            if (elem->type() == NODEELEM)
-                continue;
             builder.set_element_data(elem);
             prepare_fn();
             build_fn();
@@ -220,6 +218,9 @@ void AssemblerLinear::assemble()
 
 // in a new time step we could have a different dt, different bcs, different time integration effects
 // Here add the flag for ferromagnetic
+// 1. If nonlinear ferromagnetic, always update
+// 2. If new bcs, update
+// 3. If new time integration scheme wrt last substep, update
 bool AssemblerLinear::check_update_system_matrix()
 {
     auto eq_sys = this->get_parent_object();
@@ -242,30 +243,38 @@ bool AssemblerLinear::check_update_system_matrix()
     bool update_matrix = false;
 
     // Here I will introduce a check on picard loops
-    if (current_time_substep->get_number_picard_iterations() > 0)
+    if (!system.get_solved_substep())
     {
-        update_matrix = false;
+        // No solved substep, we are in the first iteration of the first step, we need to update
+        update_matrix = true;
     }
-    else if (current_time_substep->get_index() == 0)
+    else
     {
-        // If first substep and BCs have changed, we need to update the matrix
-        // This will also include automatically the case of very first substep
-        if (bc_object->check_update_boundary_conditions())
-            update_matrix = true;
-
-        // this should not happen
-        if (!old_time_substep)
-            update_matrix = true;
-        // If first substep but time integration parameters have changed, we need to update the matrix
-        else
+        if (current_time_substep->get_number_picard_iterations() > 0)
         {
-            Real diff_dt = std::abs(current_time_substep->get_dt() - old_time_substep->get_dt());
-            Real max_old_new_dt = std::max(std::abs(current_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
-            if (diff_dt > rel_eps * max_old_new_dt ||
-                current_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
-                current_time_substep->get_theta() != old_time_substep->get_theta())
-            {
+            update_matrix = false;
+        }
+        if (current_time_substep->get_index() == 0)
+        {
+            // If first substep and BCs have changed, we need to update the matrix
+            // This will also include automatically the case of very first substep
+            if (bc_object->check_update_boundary_conditions())
                 update_matrix = true;
+
+            // this should not happen
+            if (!old_time_substep)
+                update_matrix = true;
+            // If first substep but time integration parameters have changed, we need to update the matrix
+            else
+            {
+                Real diff_dt = std::abs(current_time_substep->get_dt() - old_time_substep->get_dt());
+                Real max_old_new_dt = std::max(std::abs(current_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
+                if (diff_dt > rel_eps * max_old_new_dt ||
+                    current_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
+                    current_time_substep->get_theta() != old_time_substep->get_theta())
+                {
+                    update_matrix = true;
+                }
             }
         }
     }
@@ -314,14 +323,18 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     std::vector<dof_id_type> dof_indices;
 
-    if (this->check_update_element_matrices())
+    const std::vector<std::string> filenames = {
+        "mtrx_" + rank_str + ".emat",
+        "nodal_sol_mtrx_" + rank_str + ".emat",
+        "element_sol_mtrx_" + rank_str + ".emat",
+        "base_rhs_" + rank_str + ".emat"};
+
+    const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
+                                              { return std::filesystem::exists(emat_folderpath / filename); });
+
+    if (!emat_files_exist)
     {
-        libMesh::out << "Recomputing element matrices and vectors for current time step" << std::endl;
-        const std::vector<std::string> filenames = {
-            "mtrx_" + rank_str + ".emat",
-            "nodal_sol_mtrx_" + rank_str + ".emat",
-            "element_sol_mtrx_" + rank_str + ".emat",
-            "base_rhs_" + rank_str + ".emat"};
+        libMesh::out << "Recomputing element matrices and vectors because one or more .emat files are missing" << std::endl;
 
         auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Write);
         auto *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
@@ -506,20 +519,30 @@ void AssemblerLinear::write_support_solution()
 
 bool AssemblerLinear::check_update_element_matrices()
 {
-    auto ts = this->context<TimeStep>();
-    if (ts->get_active_substep()->get_index() == 0)
-    {
-        auto old_ts = ts->get_previous_time_step();
-        if (ts->get_active_substep()->get_number_picard_iterations() > 0)
-            return false;
-        if (old_ts == nullptr)
-            return true;
-        else
-        {
-            // DUMMY for NOW: always return true if old context exists
-            // Materials for now cannot change in time, so no need to check that
-            return true;
-        }
-    }
+    // auto ts = this->context<TimeStep>();
+    // // Assuming only linear properties for now
+    // // You must recompute element matrices only if it is the first substep of the time step, first PIecard operation
+    // // No need to recompute if not first Picard iteration or first substep, since for linear problems the element matrices do not change in time
+    // // If first substep of the time step
+    // if (ts->get_active_substep()->get_index() == 0)
+    // {
+    //     auto old_ts = ts->get_previous_time_step();
+    //     // If not first picard iteration, no need to recompute element matrices
+    //     if (ts->get_active_substep()->get_number_picard_iterations() > 0)
+    //         return false;
+    //     // If very first substep, need to recompute element matrices
+    //     if (old_ts == nullptr)
+    //         return true;
+    //     // else
+    //     // {
+    //     //     // DUMMY for NOW: always return true if old context exists
+    //     //     // Materials for now cannot change in time, so no need to check that
+    //     //     return true;
+    //     // }
+    // }
+    // return false;
+
+    // Change: compute matrices if not present as file.
+    // In the future: check for nonlinear elements, dummy for now
     return false;
 }
