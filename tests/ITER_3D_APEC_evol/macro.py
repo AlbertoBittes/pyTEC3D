@@ -34,12 +34,14 @@ output_eq_mesh_filepath = os.path.join(
 eps = 1e-1
 theta_eps = 1e-3
 max_rad = 100.0
-extr_angle = -2.0
+extr_angle = 2.0
 
 # # Read the evolution mesh
 apec.read_mesh(filepath)
 apec.read_mesh(output_eq_mesh_filepath, False)
 apec.set_active_mesh(filename)
+
+apec.read_excel("input_template.xlsx")
 
 # # Set Boundary conditions
 # Axis boundary conditions
@@ -117,70 +119,57 @@ Selector.set_value_on_selection(apec.mesh, "ansys_etype", 33, type="elem")
 apec.write_loads_bcs()
 apec.save_mesh()
 
+apec.read_mesh(eq_filepath)
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.nsle(apec.mesh)
+apec.set_active_mesh(filename)
+Selector.select_all(apec.mesh)
+apec.apec_settings["R0"] = 6.2
+apec.apec_settings["max_picard_iterations"] = 70
+apec.apec_settings["min_distance"] = 0.5
+apec.apec_settings["tolerance_value"] = 1e-3
+apec.apec_settings["alpha_mp"] = 1.0001
+apec.apec_settings["alpha_np"] = 0.83197
+apec.apec_settings["equilibrium_mesh"] = equilibrium_filename
+apec.apec_settings["static_mesh"] = static_filename
+apec.apec_settings["evolution_mesh"] = filename
+apec.apec_settings["AF0"] = 5.3 * 6.2
+# apec.apec_settings["plasma_current"] = 15e6
+# apec.apec_settings["beta_p"] = 6.8216e-001
+apec.apec_settings["print_full_output"] = 0
+apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
+    apec.get_mesh(equilibrium_filename), apec.mesh, "node", n_slices=3, tolerance=1e-3
+)
+apec.apec_settings["toroidal_slices_elems"] = Cyclic.build_toroidal_slices(
+    apec.get_mesh(equilibrium_filename), apec.mesh, "elem", n_slices=2, tolerance=1e-3
+)
 
-# Selector.select_all(apec.mesh)
-# apec_equilibrium.select_all()
-# apec.apec_settings = {
-#     "R0": 6.2,
-#     "max_picard_iterations": 70,
-#     "tolerance_value": 1e-3,
-#     "alpha_value": 8.3197e-01,
-#     "plasma_current": 15e6,
-#     "beta_p": 6.8216e-001,
-#     "evolution_mesh": "ITER_3D_APEC_evol",
-#     "static_mesh": "ITER_3D_APEC_evol_static",
-#     "equilibrium_mesh": "ITER_3D_APEC_evol_equilibrium",
-#     "print_full_output": 1,
-#     "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
-#         apec_equilibrium.mesh, apec.mesh, "node", n_slices=3, tolerance=1e-3
-#     ),
-#     "toroidal_slices_elems": Cyclic.build_toroidal_slices(
-#         apec_equilibrium.mesh, apec.mesh, "elem", n_slices=2, tolerance=1e-3
-#     ),
-# }
+# Save the toroidal projection maps to files
+np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
+np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
 
-# # Save the toroidal projection maps to files
-# np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
-# np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
+# Read the numpy arrays of time, current and beta from file
+time_steps = np.loadtxt("time_steps.txt")
+currents = np.loadtxt("plasma_current.txt")
+betas = np.loadtxt("beta_p.txt")
 
-# # Initial loads: Project the current density from the equilibrium output to the static mesh
-# Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
-# apec_equilibrium_output.select_all()
-# apec_equilibrium_output.select("subdomain_id", 23, type="elem")
-# Cyclic.toroidal_projection(
-#     apec_equilibrium_output.mesh,
-#     "Jt_z",
-#     0,
-#     apec.mesh,
-#     "Js",
-#     1,
-#     location="elem",
-#     n_slices=2,
-#     tolerance=1e-3,
-# )
-# ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js", CylindricalCoordinateSystem(), location="elem")
+# Consider only the time steps every 10 in the list
+time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
+currents = np.concatenate((currents[0:1], currents[1::10]))
+betas = np.concatenate((betas[0:1], betas[1::10]))
+apec.time_parameters["theta"] = 1.0
+for step_idx in range(len(time_steps)):
+    apec.time_parameters["time"] = time_steps[step_idx]
+    if step_idx == 0:
+        apec.time_parameters["transient_effects"] = 0
+        apec.time_parameters["time"] = 1e-10
+    else:
+        apec.time_parameters["transient_effects"] = 1
+    apec.apec_settings["plasma_current"] = currents[step_idx]
+    apec.apec_settings["beta_p"] = betas[step_idx]
+    apec.write_time_step(step_idx + 1)
+    if step_idx == 0:
+        apec.apec_settings.pop("toroidal_slices_nodes", None)
+        apec.apec_settings.pop("toroidal_slices_elems", None)
 
-# apec.write_loads_bcs()
-# apec.save_mesh()
-# apec.read_excel("input_template.xlsx")
-# apec.write_model_data()
-
-
-# # Read the numpy arrays of time, current and beta from file
-# time_steps = np.loadtxt("time_steps.txt")
-# currents = np.loadtxt("plasma_current.txt")
-# betas = np.loadtxt("beta_p.txt")
-
-# # Consider only the time steps every 5 in the list
-# time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
-# currents = np.concatenate((currents[0:1], currents[1::10]))
-# betas = np.concatenate((betas[0:1], betas[1::10]))
-
-# for step_idx in range(len(time_steps)):
-#     apec.time_parameters["time"] = time_steps[step_idx]
-#     apec.apec_settings["plasma_current"] = currents[step_idx]
-#     apec.apec_settings["beta_p"] = betas[step_idx]
-#     apec.write_time_step(step_idx + 1)
-#     if step_idx == 0:
-#         apec.apec_settings.pop("toroidal_slices_nodes", None)
-#         apec.apec_settings.pop("toroidal_slices_elems", None)
+apec.write_model_data()
