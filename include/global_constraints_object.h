@@ -51,7 +51,6 @@ private:
 
   std::map<dof_id_type, ConstraintEntry> build_time_integration_constraints();
   std::map<dof_id_type, ConstraintEntry> build_point_constraints();
-  std::shared_ptr<DofCouplingsObject> resolve_dof_couplings();
   std::map<dof_id_type, ConstraintEntry> build_coupling_constraints();
 };
 

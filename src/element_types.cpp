@@ -8,7 +8,6 @@
 #include <limits> // for std::numeric_limits
 #include "element_types.h"
 #include "element_builder.h"
-#include <libmesh/inf_fe.h>
 
 ElementType::ElementType(const std::vector<unsigned int> &keyopts,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
@@ -35,20 +34,14 @@ void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunct
 
         if (fe_data.is_vector)
         {
-            if (fe_data.is_infinite)
-                fe_vec_obj = FEVectorBase::build_InfFE(fe_data.dimension, fe_type);
-            else
-                fe_vec_obj = FEVectorBase::build(fe_data.dimension, fe_type);
+            fe_vec_obj = FEVectorBase::build(fe_data.dimension, fe_type);
 
             fe_vec_obj->attach_quadrature_rule(qrule);
             fe_array.push_back(std::move(fe_vec_obj));
         }
         else
         {
-            if (fe_data.is_infinite)
-                fe_obj = FEBase::build_InfFE(fe_data.dimension, fe_type);
-            else
-                fe_obj = FEBase::build(fe_data.dimension, fe_type);
+            fe_obj = FEBase::build(fe_data.dimension, fe_type);
 
             fe_obj->attach_quadrature_rule(qrule);
             fe_array.push_back(std::move(fe_obj));

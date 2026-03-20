@@ -172,8 +172,6 @@ DEFAULT_APEC_SETTINGS_TYPES = {
     "toroidal_slices_nodes": np.ndarray,
     "toroidal_slices_elems": np.ndarray,
 }
-# Backwards compatibility with earlier naming
-APEC_SETTINGS_TYPES = DEFAULT_APEC_SETTINGS_TYPES
 
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
