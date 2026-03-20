@@ -39,9 +39,9 @@ void ApecMLinearSystem::release_subset_solve()
     }
 }
 
-void ApecMLinearSystem::compute_solution_time_derivative(const Substep &time_substep)
+void ApecMLinearSystem::compute_solution_time_derivative(const TimeStep &time_step)
 {
-    bool transient_effect = time_substep.get_transient_effect();
+    bool transient_effect = time_step.get_data_map();
     NumericVector<Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
     if (!transient_effect)
     {
@@ -51,8 +51,8 @@ void ApecMLinearSystem::compute_solution_time_derivative(const Substep &time_sub
     }
     else
     {
-        Real theta = time_substep.get_theta();
-        Real dt = time_substep.get_dt();
+        Real theta = time_step.get_theta();
+        Real dt = time_step.get_dt();
         Real theta_x_dt = theta * dt;
         Real theta_minus_1_dt = (theta - 1) * dt;
 

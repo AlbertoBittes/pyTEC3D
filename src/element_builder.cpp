@@ -10,7 +10,6 @@
 #include <libmesh/petsc_linear_solver.h>
 
 // Define Gauss quadrature rules.
-#include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system.h"
 #include "element_types_factory.h"
@@ -28,8 +27,7 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
     : FEParentObjectBase<EquationSystems>(equation_systems),
       FEMService<ElementTypesFactory, Materials, Constants>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
-      vectors(VectorsSet::NUM_VECTORS_SETS),
-      cylindrical_coordinate_system_()
+      vectors(VectorsSet::NUM_VECTORS_SETS)
 {
     equation_systems_ = dynamic_cast<ApecMEquationSystems *>(equation_systems);
     if (!equation_systems_)
@@ -49,7 +47,7 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
     real_constants_object_ = this->context<Constants>();
 
     const auto &mesh = equation_systems_->get_mesh();
-    mat_index = mesh.get_elem_integer_index("ansys_material_type");
+    mat_index = mesh.get_elem_integer_index("MATERIAL");
     real_constant_index = mesh.get_elem_integer_index("CONSTANT");
 }
 

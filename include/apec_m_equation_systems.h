@@ -9,7 +9,6 @@
 
 #include "fem_service.h"
 #include "fem_data_repository.h"
-#include "time_step.h"
 #include "solver_configuration.h"
 
 using namespace libMesh;
@@ -31,11 +30,10 @@ public:
     using AnalysisContextView = TypedContextView<ElementTypesFactory, TimeStep, Materials, Constants>;
     using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
 
-    void apply_ramped_effects(const Substep &time_substep);
     void configure_services(const std::shared_ptr<AnalysisContextView> &analysis_ctx);
-    void prepare_time_substep_solve(Substep &substep);
-    void solve_equation_systems(Substep &substep, bool nodal_solution = true);
-    void print_output(Substep &substep, bool picard_iteration_print = false);
+    void prepare_time_step_solve(TimeStep &time_step);
+    void solve_equation_systems(TimeStep &time_step, bool nodal_solution = true);
+    void print_output(TimeStep &time_step, bool picard_iteration_print = false);
     void update_old_local_solution();
     void configure_systems();
     void initialize_system_contexts();
@@ -55,8 +53,6 @@ public:
 
 private:
     std::shared_ptr<AnalysisContextView> analysis_context_view_;
-    using RampVectorTuple = std::tuple<ApecMSystemBase *, NumericVector<Number> *, NumericVector<Number> *, NumericVector<Number> *>;
-    std::vector<RampVectorTuple> collect_ramp_vectors();
 };
 
 #endif // APEC_M_EQUATION_SYSTEMS_H

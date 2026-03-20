@@ -48,43 +48,34 @@ Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 
 TreeGauge.tree_gauge(apec.mesh)
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 1, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 1e-3
-apec.time_parameters["number_of_substeps"] = 1
 apec.time_parameters["theta"] = 0.75
 apec.time_parameters["transient_effects"] = 0
-apec.time_parameters["ramped_loads"] = 1
-apec.time_parameters["write_substep_results"] = 1
 
 apec.write_load_step(1)
 
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 100, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 2e-3
-apec.time_parameters["number_of_substeps"] = 5
 apec.time_parameters["theta"] = 0.75
 apec.time_parameters["transient_effects"] = 1
-apec.time_parameters["ramped_loads"] = 1
-apec.time_parameters["write_substep_results"] = 1
 
 apec.write_load_step(2)
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 0, 2, type="elem")
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 3e-3
-apec.time_parameters["number_of_substeps"] = 5
 apec.time_parameters["theta"] = 0.65
 apec.time_parameters["transient_effects"] = 1
-apec.time_parameters["ramped_loads"] = 1
-apec.time_parameters["write_substep_results"] = 1
 
 apec.write_load_step(3)
 

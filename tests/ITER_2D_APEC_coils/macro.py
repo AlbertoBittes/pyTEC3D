@@ -63,9 +63,7 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-apec.time_parameters["ramped_loads"] = 0
 apec.time_parameters["theta"] = 0.5
-apec.time_parameters["write_substep_results"] = 1
 apec.time_parameters["transient_effects"] = 0
 apec.time_parameters["time_step_number"] = 1
 

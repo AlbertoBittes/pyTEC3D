@@ -163,6 +163,7 @@ T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) 
     }
 }
 
+typedef BinaryDataFEDataObject TimeStep;
 typedef BinaryDataFEDataObject Materials;
 typedef BinaryDataFEDataObject Constants;
 typedef BinaryDataFEDataObject ConstraintEquations;

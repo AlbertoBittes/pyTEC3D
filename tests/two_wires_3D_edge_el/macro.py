@@ -39,7 +39,7 @@ Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 # Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
 # Selector.set_value_on_selection(apec.mesh, "Az", 0, 0)
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 1, 2, type="elem")
 Selector.select(apec.mesh, "LOWER_FACE_ROD", 1)
 Selector.select(apec.mesh, "MidsideNodes", 0, mode="r")
@@ -54,11 +54,8 @@ TreeGauge.tree_gauge(apec.mesh)
 
 apec.time_parameters["time_step_number"] = 1
 apec.time_parameters["time"] = 1e-3
-apec.time_parameters["number_of_substeps"] = 5
 apec.time_parameters["theta"] = 0.5
 apec.time_parameters["transient_effects"] = 1
-apec.time_parameters["ramped_loads"] = 1
-apec.time_parameters["write_substep_results"] = 1
 
 apec.write_load_step(1)
 

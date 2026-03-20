@@ -93,27 +93,21 @@ DEFAULT_SOLVER_SETTINGS_TYPES = {
 DEFAULT_TIME_PARAMETERS = {
     "time_step_number": 1,
     "time": 0.0,
-    "number_of_substeps": 1,
     "transient_effects": 1,
-    "ramped_loads": 1,
     "theta": 1,
-    "write_substep_results": 0,
 }
 
 # Add a dictionary with the name of the time parameter and its type
 DEFAULT_TIME_PARAMETERS_TYPES = {
     "time_step_number": int,
     "time": float,
-    "number_of_substeps": int,
     "transient_effects": int,
-    "ramped_loads": int,
     "theta": float,
-    "write_substep_results": int,
 }
 
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
-    "ansys_material_type": int,
+    "MATERIAL": int,
     "MURX": float,
     "MURY": float,
     "MURZ": float,

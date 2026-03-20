@@ -17,20 +17,11 @@ AnalysisBase::AnalysisBase(
 bool AnalysisBase::finish()
 {
     auto program = this->get_parent_object();
-    auto equation_systems = program->get_active_equation_system();
 
     equation_systems->zero_all_systems();
     program->model_data_repository->set_object(std::shared_ptr<TimeStep>()); // drop current time step and its history
 
     return true;
-}
-
-void AnalysisBase::configure_services() const
-{
-    auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return;
-    equation_systems->configure_services(this->get_context_view());
 }
 
 bool AnalysisBase::execute_solve()
@@ -41,40 +32,15 @@ bool AnalysisBase::execute_solve()
 
     const auto analysis_ctx = this->get_context_view();
 
-    auto equation_systems = this->get_parent_object()->get_active_equation_system();
-
     auto time_step = this->context<TimeStep>();
 
     equation_systems->configure_services(analysis_ctx);
 
-    for (auto &substep : *time_step)
-    {
-        equation_systems->prepare_time_substep_solve(substep);
-        equation_systems->print_output(substep);
-        equation_systems->update_old_local_solution();
-    }
+    equation_systems->prepare_time_step_solve(*time_step);
+    equation_systems->print_output(*time_step);
+    equation_systems->update_old_local_solution();
 
     return true;
-}
-
-void AnalysisBase::prepare_time_substep_solve(Substep &substep)
-{
-}
-
-void AnalysisBase::solve_equation_systems(Substep &substep, bool nodal_solution)
-{
-    auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return;
-    equation_systems->solve_equation_systems(substep, nodal_solution);
-}
-
-void AnalysisBase::print_output(Substep &substep, bool picard_iteration_print)
-{
-    auto *equation_systems = this->active_equation_system();
-    if (!equation_systems)
-        return;
-    equation_systems->print_output(substep, picard_iteration_print);
 }
 
 bool AnalysisBase::solve()

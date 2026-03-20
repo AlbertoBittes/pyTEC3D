@@ -9,19 +9,6 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
 {
     libMesh::out << "Reading VTK data map from binary file..." << std::endl;
 
-    // Initialize all vectors: copy current to old, set current to NaN
-    for (auto &ctx : systems)
-    {
-        if (ctx.old_vec)
-            ctx.old_vec->close();
-        if (ctx.vec)
-            ctx.vec->close();
-        if (ctx.old_vec && ctx.vec)
-            *ctx.old_vec = *ctx.vec;
-        if (ctx.vec)
-            *ctx.vec = ctx.initial_val; // Set current vector to NaN or initial value
-    }
-
     dof_id_type num_data = 0;
     file.read(reinterpret_cast<char *>(&num_data), sizeof(dof_id_type));
     if (!file)
@@ -77,43 +64,29 @@ void VTKDataMapFEDataObject::read_data(std::ifstream &file)
             auto var_info = VariablesMap::get_info_by_key(global_label);
             cached_sys_type = VariablesMap::get_system_type_for_variable(*data_map, global_label);
             cached_variable_label = var_info.global_label;
-
-            for (auto &ctx : systems)
-            {
-                if (cached_sys_type == *ctx.system_type)
-                {
-                    cached_var_num = data_map->get_system(ctx.sys_number).variable_number(cached_variable_label);
-                    cached_sys_number = ctx.sys_number;
-                    break;
-                }
-            }
+            cached_sys_number = data_map->get_system_number_by_type(cached_sys_type);
+            cached_var_num = data_map->get_variable_number(cached_sys_type, global_label);
 
             prev_label_number = label_number;
             prev_component_number = component_number;
         }
 
-        for (auto &ctx : systems)
+        const unsigned int n_dofs = is_element_data ? elem_ptr->n_dofs(cached_sys_number, cached_var_num) : node_ptr->n_dofs(cached_sys_number, cached_var_num);
+        if (n_dofs == 0)
         {
-            if (cached_sys_type == *ctx.system_type)
-            {
-                const unsigned int n_dofs = is_element_data ? elem_ptr->n_dofs(cached_sys_number, cached_var_num) : node_ptr->n_dofs(cached_sys_number, cached_var_num);
-                if (n_dofs == 0)
-                {
-                    libMesh::out << "Warning: DoFs are not set for "
-                                 << (is_element_data ? "element " : "node ")
-                                 << entity_number
-                                 << " (system " << cached_sys_number
-                                 << ", variable '" << cached_variable_label
-                                 << "', label " << label_number
-                                 << ", component " << component_number
-                                 << "). Skipping value assignment." << std::endl;
-                    break;
-                }
-
-                dof_id_type dof_id = is_element_data ? elem_ptr->dof_number(cached_sys_number, cached_var_num, 0) : node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
-                ctx.vec->set(dof_id, value);
-                break;
-            }
+            libMesh::out << "Warning: DoFs are not set for "
+                         << (is_element_data ? "element " : "node ")
+                         << entity_number
+                         << " (system " << cached_sys_number
+                         << ", variable '" << cached_variable_label
+                         << "', label " << label_number
+                         << ", component " << component_number
+                         << "). Skipping value assignment." << std::endl;
+            break;
         }
+
+        dof_id_type dof_id = is_element_data ? elem_ptr->dof_number(cached_sys_number, cached_var_num, 0) : node_ptr->dof_number(cached_sys_number, cached_var_num, 0);
+        solution.vec->set(dof_id, value);
+        break;
     }
 }

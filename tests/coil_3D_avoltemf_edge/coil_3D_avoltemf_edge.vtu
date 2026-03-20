@@ -45,7 +45,7 @@
         <DataArray type="Int32" Name="CONSTANT" format="binary" RangeMin="1" RangeMax="1">
           AQAAAACAAACAPgAAKAAAAA==eJztwwENAAAMw6DOv+kLOSSsmqqqqqqqqqqqqqqqqqqqqu8fwlgPoQ==
         </DataArray>
-        <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="24">
+        <DataArray type="Int32" Name="MATERIAL" format="binary" RangeMin="21" RangeMax="24">
           AQAAAACAAACAPgAAYAAAAA==eJzt1qENwDAQwMAsEbX7T1oeFFLJ0h84auy91toQ9Rz0ALjxHvQAuFH/+3oPYKr639d7AFPV/77eA5iq/vf1HsBU9b+v9wCmqv99vQcwVf3v6z2Aqep/X+/Bnz7vvknA
         </DataArray>
         <DataArray type="Int32" Name="TYPE" format="binary" RangeMin="21" RangeMax="24">

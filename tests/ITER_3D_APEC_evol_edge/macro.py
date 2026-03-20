@@ -94,7 +94,7 @@ apec.set_active_mesh(apec_evolution_mesh)
 Selector.select_all(apec.mesh)
 Selector.select_all(apec.get_mesh(apec_equilibrium_output))
 Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Cyclic.toroidal_projection(
     apec.get_mesh(apec_equilibrium_output),
     "Jt_z",

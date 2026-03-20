@@ -25,17 +25,14 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
 Selector.select_all(apec.mesh)
-apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.5
-apec.time_parameters["write_substep_results"] = 1
-apec.time_parameters["number_of_substeps"] = 4
 
 for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i

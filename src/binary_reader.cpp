@@ -13,14 +13,7 @@
 #include "element_builder.h"
 #include "element_types_factory.h"
 #include "solver_configuration.h"
-#include "session.h"
-#include "time_step.h"
 #include "vtk_data_map_object.h"
-
-BinaryReader::BinaryReader()
-{
-    set_disallowed_labels_for_analysis_mode(false);
-}
 
 std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::path &filepath,
                                                          FileMode mode)
@@ -70,22 +63,6 @@ void BinaryReader::close_file_streams(std::vector<std::unique_ptr<std::ios>> &st
     streams.clear();
 }
 
-void BinaryReader::set_disallowed_labels(std::unordered_set<BinaryLabelId> labels)
-{
-    disallowed_labels = std::move(labels);
-}
-
-void BinaryReader::set_disallowed_labels_for_analysis_mode(bool analysis_mode)
-{
-    disallowed_labels.clear();
-    if (analysis_mode)
-        return;
-
-    disallowed_labels.insert(BinaryLabelId::TIME_PARAMETERS);
-    disallowed_labels.insert(BinaryLabelId::POINT_DATA);
-    disallowed_labels.insert(BinaryLabelId::CELL_DATA);
-}
-
 void BinaryReader::read_binary_fem_data(const std::string &filepath,
                                         const std::shared_ptr<FEMDataRepository> &repository,
                                         const std::shared_ptr<ApecMEquationSystems> &equation_systems)
@@ -93,13 +70,6 @@ void BinaryReader::read_binary_fem_data(const std::string &filepath,
     const std::filesystem::path path{filepath};
     if (path.empty())
         libmesh_error_msg("BinaryReader: invalid fem data filepath '" + filepath + "'.");
-
-    if (repository)
-    {
-        auto session = repository->get_object<Session>();
-        if (session)
-            set_disallowed_labels_for_analysis_mode(session->get_mode() == Session::Mode::Analysis);
-    }
 
     auto stream = open_file_stream(path, FileMode::Read);
     auto *file_stream = dynamic_cast<std::ifstream *>(stream.get());
@@ -132,9 +102,6 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
                                  const std::shared_ptr<FEMDataRepository> &repository,
                                  const std::shared_ptr<ApecMEquationSystems> &equation_systems)
 {
-    if (disallowed_labels.count(label) != 0)
-        throw BinaryLabelDisallowedError("BinaryReader: section '" + std::string(BinaryLabelTraits::to_string(label)) + "' is not allowed in the current context.");
-
     switch (label)
     {
     case BinaryLabelId::TIME_PARAMETERS:
@@ -183,13 +150,10 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
         if (BinaryLabelTraits::is_cell_data(label))
         {
             vtk_data->set_is_element_data(true);
-            vtk_data->add_element_loads_system();
         }
         else
         {
             vtk_data->set_is_element_data(false);
-            vtk_data->add_dof_system();
-            vtk_data->add_nodal_loads_system();
         }
 
         vtk_data->read_data(file);

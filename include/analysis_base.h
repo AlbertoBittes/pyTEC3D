@@ -11,7 +11,6 @@
 #include "fem_data_repository.h"
 #include "fem_service.h"
 #include "element_types_factory.h"
-#include "time_step.h"
 
 class ApecMEquationSystems;
 class APEC_M;
@@ -29,29 +28,12 @@ public:
     bool has_valid_context() const { return context_initialized; }
 
     virtual bool solve() = 0;
-    virtual void prepare_time_substep_solve(Substep &substep) = 0;
-    virtual void solve_equation_systems(Substep &substep, bool nodal_solution) = 0;
-    virtual bool run_picard_iterations(Substep &substep) = 0;
-    virtual void print_output(Substep &substep, bool picard_iteration_print = false);
-
-    // public:
-    //     using AnalysisBase::AnalysisBase;
-
-    //     virtual bool solve() override;
-    //     virtual bool solve_transient() override;
-    //     virtual void prepare_time_substep_solve(Substep &substep) override;
-    //     virtual void solve_equation_systems(Substep &substep, bool nodal_solution = true) override;
-    //     virtual bool run_picard_iterations(Substep &substep) override;
-    //     virtual void print_output(Substep &substep, bool picard_iteration_print = false) override;
-    //     void configure_services() const;
-
-    // protected:
-    //     bool execute_solve() override;
+    virtual void prepare_time_step_solve(TimeStep &time_step);
+    virtual void solve_equation_systems(TimeStep &time_step, bool nodal_solution);
+    virtual bool run_picard_iterations(TimeStep &time_step);
+    virtual void print_output(TimeStep &time_step, bool picard_iteration_print = false);
 
     virtual bool finish();
-
-    // void update_time_data_context(const std::shared_ptr<TimeStep> &time_step,
-    //                               const std::shared_ptr<ApecMSettingsObject> &settings);
 
     static std::shared_ptr<AnalysisBase> build(APEC_M *program,
                                                std::shared_ptr<ContextView> context_view);

@@ -78,12 +78,8 @@ int main(int argc, char **argv)
     // }
 
     APEC_M program(init.comm());
-    program.set_cli(std::make_unique<BasicCommandLineInterface>());
 
-    if (interactive_mode)
-        program.run_cli();
-    else if (batch_mode)
-        program.run_batch_file(batch_file);
+    program.cli->run_interactive(program);
 
     return 0;
 }

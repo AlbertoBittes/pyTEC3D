@@ -526,7 +526,6 @@ void ElementBuilder::build_solid97_solution_vectors()
 {
     this->build_solid97_nodal_solution();
     this->build_solid97_element_solution();
-    this->build_solid97_support_solution();
 }
 
 void ElementBuilder::build_solid97_nodal_solution()

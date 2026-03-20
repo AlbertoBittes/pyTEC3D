@@ -109,7 +109,7 @@
         <DataArray type="Int32" Name="CONSTANT" format="binary" RangeMin="1" RangeMax="20">
           AgAAAACAAAAoLwAAUQAAACYAAAA=eJzt0sENgCAUBbCvqAfO7D8rQ2AeIemhG7RXVQcAAAAAAAAAAAAAAAAAIGYAAAAAAHCEK+Be0AKegDfgC9j9FQAAAAAAAAAAAACAf0xNK+ZpeJztwwEJAAAMBKEL8f2zrsdQcNVUVVVVVVVVVVVVVfXJA5Q+68k=
         </DataArray>
-        <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="23">
+        <DataArray type="Int32" Name="MATERIAL" format="binary" RangeMin="21" RangeMax="23">
           AgAAAACAAAAoLwAAPQAAACYAAAA=eJztw0EJAAAIBLArIde/qR18ygZrkqqqqqqqqqqqqqqqqqqqqqqqqqqqej6qqqqqqqqqqqqqqr642qTJD3ic7cMBCQAADAShK/H9q67HUHDVVFVVVVVVVVVVVVX1yQOy5PeT
           <InformationKey name="DISCRETE_VALUE_SAMPLE_PARAMETERS" location="vtkAbstractArray" length="2">
             <Value index="0">

@@ -24,7 +24,7 @@ size = 1
 coil = 0.2
 extr_angle = 30
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 apec.real_constants = Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
                                           (coil ** 2, 2000, np.pi*size*coil*coil/(360/extr_angle), 20, 1.0))
 apec.write_model_data()
@@ -33,17 +33,14 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "Az", 0)
 
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
 
 Selector.select_all(apec.mesh)
-apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 0.5
-apec.time_parameters["write_substep_results"] = 1
-apec.time_parameters["number_of_substeps"] = 4
 
 for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i

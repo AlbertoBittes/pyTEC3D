@@ -41,19 +41,15 @@ Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 
 b = 2**0.5 / 2
 
-apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 1.0
-apec.time_parameters["write_substep_results"] = 1
 
 for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i
     apec.time_parameters["time"] = i * 0.0001
     if i == 1:
         apec.time_parameters["transient_effects"] = 0
-        apec.time_parameters["number_of_substeps"] = 1
     else:
         apec.time_parameters["transient_effects"] = 1
-        apec.time_parameters["number_of_substeps"] = 4
 
     Selector.select(apec.mesh, "COIL_NOCOND_1", 1, type="elem")
     Selector.set_value_on_selection(apec.mesh, "Js", 1 / i, 1, type="elem")

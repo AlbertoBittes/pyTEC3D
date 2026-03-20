@@ -32,7 +32,7 @@ ModelEdit.remove_array(apec.mesh, "CP_1")
 ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
 
 # Coupling for stranded coils
-Selector.select(apec.mesh, "ansys_material_type", 23, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 100000)
 # Take the first selected node as master node (lowest ID)
@@ -56,7 +56,7 @@ Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=Cylin
 Selector.select_pos(apec.mesh, 0, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="u")
 apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A"))])
 
@@ -65,7 +65,7 @@ Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=Cylin
 Selector.select_pos(apec.mesh, 0, (1-tol, 1+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="u")
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
@@ -74,7 +74,7 @@ Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=Cylin
 Selector.select_pos(apec.mesh, 0, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="r")
 apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A", "V"))])
 
@@ -83,7 +83,7 @@ Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=Cylin
 Selector.select_pos(apec.mesh, 0, (1-tol, 1+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select(apec.mesh, "ansys_material_type", 24, type="elem")
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="r")
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
@@ -93,10 +93,7 @@ Selector.set_value_on_selection(apec.mesh, "V", 0)
 apec.write_model_data()
 
 Selector.select_all(apec.mesh)
-apec.time_parameters["ramped_loads"] = 1
 apec.time_parameters["theta"] = 1.0
-apec.time_parameters["write_substep_results"] = 1
-apec.time_parameters["number_of_substeps"] = 4
 
 for i in range(1, 3):
     apec.time_parameters["time_step_number"] = i

@@ -22,7 +22,6 @@
 #include "assembler.h"
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
-#include "time_step.h"
 #include "fe_parent_object.h"
 
 using namespace libMesh;
@@ -44,10 +43,6 @@ public:
 
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
-    virtual void ramp_vectors(const Substep &time_substep,
-                              NumericVector<Number> &old_vector,
-                              NumericVector<Number> &current_vector,
-                              NumericVector<Number> &ramped_vector) = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
     static const std::string &system_name_from_type(SystemType system_type);
@@ -98,11 +93,6 @@ public:
         system_name = it->second;
     }
 
-    void ramp_vectors(const Substep &time_substep,
-                      NumericVector<Number> &old_vector,
-                      NumericVector<Number> &current_vector,
-                      NumericVector<Number> &ramped_vector) override;
-
     void init_variables();
 
     virtual void post_init() {};
@@ -118,45 +108,6 @@ public:
     }
 };
 
-template <typename SysLike>
-void ApecMSystem<SysLike>::ramp_vectors(const Substep &time_substep,
-                                        NumericVector<Number> &old_vector,
-                                        NumericVector<Number> &current_vector,
-                                        NumericVector<Number> &ramped_vector)
-{
-    if (time_substep.get_ramped_load())
-    {
-        Real substep_number = static_cast<Real>(time_substep.get_index()) + 1;
-        Real number_of_substeps = static_cast<Real>(time_substep.get_parent_object()->get_n_substeps());
-        for (numeric_index_type k = ramped_vector.first_local_index(); k < ramped_vector.last_local_index(); ++k)
-        {
-            Real old_val = old_vector(k);
-            Real curr_val = current_vector(k);
-
-            if (std::isnan(curr_val))
-            {
-                ramped_vector.set(k, std::numeric_limits<Real>::quiet_NaN());
-            }
-            else
-            {
-                Real start_val = std::isnan(old_val) ? 0.0 : old_val;
-                Real ramped_val = start_val + (curr_val - start_val) / number_of_substeps * substep_number;
-                ramped_vector.set(k, ramped_val);
-            }
-        }
-    }
-    else
-    {
-        for (numeric_index_type k = ramped_vector.first_local_index(); k < ramped_vector.last_local_index(); ++k)
-        {
-            Real curr_val = current_vector(k);
-            ramped_vector.set(k, curr_val);
-        }
-    }
-    ramped_vector.close();
-    this->update();
-}
-
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
 {
 public:
@@ -168,9 +119,6 @@ public:
     {
         global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
         this->attach_constraint_object(*global_constraints_object);
-        this->add_vector("node_dof_constraints");
-        this->add_vector("old_node_dof_constraints");
-        this->add_vector("ramped_node_dof_constraints");
         this->add_vector("solution_time_derivative", true, GHOSTED);
         auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
         assembler = std::make_shared<AssemblerLinear>(equation_systems);
@@ -179,7 +127,7 @@ public:
 
     void release_subset_solve();
 
-    void compute_solution_time_derivative(const Substep &time_substep);
+    void compute_solution_time_derivative(const TimeStep &time_step);
     void delete_rows_cols_constrained_dofs();
     void zero_all() override;
 
