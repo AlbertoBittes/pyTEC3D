@@ -9,9 +9,9 @@
 #include "element_types.h"
 #include "element_builder.h"
 
-ElementType::ElementType(const std::vector<unsigned int> &keyopts,
+ElementType::ElementType(const std::vector<unsigned int> &OPTIONs,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
-    : keyopts(keyopts)
+    : OPTIONs(OPTIONs)
 {
     build_fe_array(fe_collector);
 }

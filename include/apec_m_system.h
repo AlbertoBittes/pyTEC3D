@@ -22,7 +22,6 @@
 #include "assembler.h"
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
-#include "coordinate_system.h"
 #include "time_step.h"
 #include "fe_parent_object.h"
 
@@ -40,25 +39,17 @@ public:
         ELEMENT_LOADS,
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
-        SUPPORT_SOLUTION,
         NUM_SYSTEMS
     };
 
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
-    virtual bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                            const std::string &variable_label,
-                                                            const std::vector<dof_id_type> &selected_dof_ids = {}) = 0;
-    virtual bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                            const std::string &variable_label,
-                                                            const std::vector<dof_id_type> &selected_dof_ids = {}) = 0;
     virtual void ramp_vectors(const Substep &time_substep,
                               NumericVector<Number> &old_vector,
                               NumericVector<Number> &current_vector,
                               NumericVector<Number> &ramped_vector) = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
-    static bool is_nodal_system(SystemType system_type);
     static const std::string &system_name_from_type(SystemType system_type);
 };
 
@@ -125,17 +116,6 @@ public:
         this->solution->zero();
         this->update();
     }
-
-    bool global_to_local_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                    const std::string &variable_label,
-                                                    const std::vector<dof_id_type> &selected_dof_ids = {}) override;
-    bool local_to_global_coordinate_system_solution(const CoordinateSystem &coordinate_system,
-                                                    const std::string &variable_label,
-                                                    const std::vector<dof_id_type> &selected_dof_ids = {}) override;
-    void dof_numbers_vars(const std::string &variable_name,
-                          const std::vector<dof_id_type> &object_ids,
-                          std::vector<dof_id_type> &dof_ids,
-                          bool global);
 };
 
 template <typename SysLike>
@@ -242,20 +222,10 @@ public:
         }
     }
 
-    Substep *get_solved_substep() const
-    {
-        return solved_substep;
-    }
-    void set_solved_substep(Substep &substep)
-    {
-        solved_substep = &substep;
-    }
-
 private:
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
     std::shared_ptr<AssemblerLinear> assembler;
     std::unique_ptr<PetscSolverConfiguration> solver_config_copy_;
-    Substep *solved_substep = nullptr;
 };
 
 class ApecMExplicitSystem : public ApecMSystem<ExplicitSystem>
@@ -272,11 +242,6 @@ public:
             this->add_vector("old_loads");
             this->add_vector("new_loads");
             this->remove_vector("RHS");
-            if (system_type == ApecMSystemBase::ELEMENT_LOADS)
-            {
-                this->add_vector("Jp_rad");
-                this->add_vector("Jp_ver");
-            }
         }
     }
 };

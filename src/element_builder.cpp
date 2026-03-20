@@ -26,7 +26,7 @@
 ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
                                std::shared_ptr<ContextView> ctx_view)
     : FEParentObjectBase<EquationSystems>(equation_systems),
-      FEMService<ElementTypesFactory, MaterialsObject, RealConstantsObject>(ctx_view),
+      FEMService<ElementTypesFactory, Materials, Constants>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS),
       cylindrical_coordinate_system_()
@@ -41,17 +41,16 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
 
     nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
     element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
-    support_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::SUPPORT_SOLUTION);
     nodal_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_LOADS);
     element_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_LOADS);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
-    materials_object_ = this->context<MaterialsObject>();
-    real_constants_object_ = this->context<RealConstantsObject>();
+    materials_object_ = this->context<Materials>();
+    real_constants_object_ = this->context<Constants>();
 
     const auto &mesh = equation_systems_->get_mesh();
     mat_index = mesh.get_elem_integer_index("ansys_material_type");
-    real_constant_index = mesh.get_elem_integer_index("ansys_real_constant");
+    real_constant_index = mesh.get_elem_integer_index("CONSTANT");
 }
 
 std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
@@ -60,7 +59,7 @@ std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquati
 
     auto analysis = program->get_analysis();
     auto analysis_ctx = analysis->get_context_view();
-    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, MaterialsObject, RealConstantsObject>();
+    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, Materials, Constants>();
 
     return std::make_unique<ElementBuilder>(eq_sys, builder_view);
 }
@@ -159,7 +158,7 @@ const ElemData &ElementBuilder::get_elem_data() const
 
 void ElementBuilder::build_element()
 {
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)
     {
@@ -179,7 +178,7 @@ void ElementBuilder::build_element()
 
 void ElementBuilder::build_element_rhs()
 {
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)
     {
@@ -208,7 +207,7 @@ void ElementBuilder::build_nodal_solution()
     if (!this->compute_nodal_solution_vectors)
         return;
 
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)
     {
@@ -228,7 +227,7 @@ void ElementBuilder::build_nodal_solution()
 
 void ElementBuilder::build_element_solution()
 {
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)
     {
@@ -240,26 +239,6 @@ void ElementBuilder::build_element_solution()
         break;
     case ElementTypeEnum::PLANE233:
         this->build_plane233_element_solution();
-        break;
-    default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
-    }
-}
-
-void ElementBuilder::build_support_solution()
-{
-    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_keyopts()[0]);
-
-    switch (etype)
-    {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_support_solution();
-        break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_support_solution();
-        break;
-    case ElementTypeEnum::PLANE233:
-        this->build_plane233_support_solution();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));

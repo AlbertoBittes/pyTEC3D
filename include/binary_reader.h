@@ -9,7 +9,6 @@
 #include <vector>
 #include <unordered_set>
 
-#include "binary_labels.h"
 #include "fem_data_repository.h"
 
 #include <libmesh/libmesh.h>
@@ -23,16 +22,20 @@ enum class FileMode
     Write
 };
 
-class BinaryLabelDisallowedError : public std::runtime_error
-{
-public:
-    explicit BinaryLabelDisallowedError(const std::string &message)
-        : std::runtime_error(message)
-    {
-    }
-};
 class BinaryReader
 {
+    enum class BinaryLabelId : std::uint32_t
+    {
+        ELEMENT_TYPES = 0,
+        TIME_PARAMETERS = 1,
+        SOLVER_SETTINGS = 2,
+        MATERIALS = 3,
+        CONSTANTS = 4,
+        CONSTRAINT_EQUATIONS = 5,
+        LOADS = 6,
+        UNKNOWN = std::numeric_limits<std::uint32_t>::max()
+    };
+
 public:
     BinaryReader();
 

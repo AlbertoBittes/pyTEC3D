@@ -44,14 +44,12 @@ enum class GlobalVariableName
     H_x,
     H_y,
     H_z,
-    PSI,
     Be_x,
     Be_y,
     Be_z,
     He_x,
     He_y,
     He_z,
-    PSIe,
     Jt_x,
     Jt_y,
     Jt_z,
@@ -70,10 +68,8 @@ enum class APIVariableName
     Js,
     B,
     H,
-    PSI,
     Be,
     He,
-    PSIe,
     Jt,
     UNKNOWN // Fallback for invalid strings
 };
@@ -166,7 +162,7 @@ private:
     static std::vector<GlobalVariableName> add_av3d_variables();
     static std::vector<GlobalVariableName> add_solid97_variables(PhysicalRegionEnum physical_region);
     static std::vector<GlobalVariableName> add_solid236_variables(PhysicalRegionEnum physical_region);
-    static std::vector<GlobalVariableName> add_plane233_variables(const std::vector<unsigned int> &keyopts);
+    static std::vector<GlobalVariableName> add_plane233_variables(const std::vector<unsigned int> &OPTIONs);
 };
 
 #endif // VARIABLES_MAP_H

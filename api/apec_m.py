@@ -64,7 +64,7 @@ class APEC_M:
             columns=list(MATERIALS_COLUMNS_TYPES.keys())
         )
         self.real_constants: pd.DataFrame = pd.DataFrame(
-            columns=list(REAL_CONSTANTS_COLUMNS_TYPES.keys())
+            columns=list(CONSTANTS_COLUMNS_TYPES.keys())
         )
         self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.apec_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_APEC_SETTINGS)

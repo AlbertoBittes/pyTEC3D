@@ -30,7 +30,7 @@ public:
 
     // Factory method
     static std::unique_ptr<ElementType> create_element_type(ElementTypeEnum type,
-                                                            const std::vector<unsigned int> &keyopts);
+                                                            const std::vector<unsigned int> &OPTIONs);
 
 private:
     std::shared_ptr<ElementTypesMap> element_types_map;

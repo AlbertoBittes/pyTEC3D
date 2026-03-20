@@ -1,13 +1,8 @@
 #include "analysis_base.h"
-#include "transient_analysis.h"
-
-#include "apec_m_equilibrium_analysis.h"
-#include "apec_m_evolution_analysis.h"
 
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "apec_m.h"
-#include "session.h"
 
 #include <libmesh/libmesh.h>
 
@@ -15,88 +10,77 @@ AnalysisBase::AnalysisBase(
     APEC_M *program,
     std::shared_ptr<ContextView> context_view)
     : FEParentObjectBase<APEC_M>(program),
-      FEMService<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>(std::move(context_view))
+      FEMService<ElementTypesFactory, TimeStep, Materials, Constants>(std::move(context_view))
 {
-}
-
-std::shared_ptr<ApecMEquationSystems> AnalysisBase::active_equation_system_ptr() const
-{
-    auto program = this->get_parent_object();
-    if (!program)
-        return nullptr;
-    return program->get_active_equation_system();
-}
-
-ApecMEquationSystems *AnalysisBase::active_equation_system() const
-{
-    auto ptr = active_equation_system_ptr();
-    return ptr.get();
 }
 
 bool AnalysisBase::finish()
 {
-    if (auto equation_systems = this->active_equation_system_ptr())
-        equation_systems->zero_all_systems();
+    auto program = this->get_parent_object();
+    auto equation_systems = program->get_active_equation_system();
 
-    if (auto program = this->get_parent_object())
-    {
-        auto model_repo = program->model_data();
-        if (model_repo)
-            model_repo->set_object(std::shared_ptr<TimeStep>()); // drop current time step and its history
-    }
+    equation_systems->zero_all_systems();
+    program->model_data_repository->set_object(std::shared_ptr<TimeStep>()); // drop current time step and its history
+
     return true;
 }
 
-void AnalysisBase::apply_to_all_equation_systems(const std::function<void(ApecMEquationSystems &)> &func) const
+void AnalysisBase::configure_services() const
 {
-    auto program = this->get_parent_object();
-    if (!program)
+    auto *equation_systems = this->active_equation_system();
+    if (!equation_systems)
         return;
-
-    const auto all_equation_systems = program->get_all_equation_systems_with_names();
-    const auto model_data = program->model_data();
-    const auto session = model_data ? model_data->get_object<Session>() : nullptr;
-    const auto initial_active_mesh = session ? session->get_active_mesh() : std::string{};
-
-    for (const auto &entry : all_equation_systems)
-    {
-        if (!entry.second)
-            continue;
-        if (!entry.first.empty())
-            program->set_active_mesh(entry.first);
-        func(*entry.second);
-    }
-
-    if (!initial_active_mesh.empty())
-        program->set_active_mesh(initial_active_mesh);
+    equation_systems->configure_services(this->get_context_view());
 }
 
-std::shared_ptr<AnalysisBase> AnalysisBase::build(APEC_M *program,
-                                                  std::shared_ptr<ContextView> context_view,
-                                                  Type requested_type)
+bool AnalysisBase::execute_solve()
 {
-    const auto type = requested_type;
+    auto apec_m = this->get_parent_object();
 
-    std::shared_ptr<AnalysisBase> analysis;
+    this->set_context_view(std::make_shared<ContextView>(ContextView::from(apec_m->model_data_repository)));
 
-    switch (type)
+    const auto analysis_ctx = this->get_context_view();
+
+    auto equation_systems = this->get_parent_object()->get_active_equation_system();
+
+    auto time_step = this->context<TimeStep>();
+
+    equation_systems->configure_services(analysis_ctx);
+
+    for (auto &substep : *time_step)
     {
-    case AnalysisBase::Type::STATIC:
-        analysis = std::make_shared<StaticAnalysis>(program, context_view);
-        break;
-    case AnalysisBase::Type::APECM_EQUILIBRIUM:
-        analysis = std::make_shared<APECMEquilibriumAnalysis>(program, context_view);
-        break;
-    case AnalysisBase::Type::APECM_EVOLUTION:
-        analysis = std::make_shared<APECMEvolutionAnalysis>(program, context_view);
-        break;
-    case AnalysisBase::Type::TRANSIENT:
-        analysis = std::make_shared<TransientAnalysis>(program, context_view);
-        break;
-    case AnalysisBase::Type::DOF_INTERPOLATION:
-        analysis = std::make_shared<DOFInterpolationAnalysis>(program, context_view);
-        break;
+        equation_systems->prepare_time_substep_solve(substep);
+        equation_systems->print_output(substep);
+        equation_systems->update_old_local_solution();
     }
 
-    return analysis;
+    return true;
+}
+
+void AnalysisBase::prepare_time_substep_solve(Substep &substep)
+{
+}
+
+void AnalysisBase::solve_equation_systems(Substep &substep, bool nodal_solution)
+{
+    auto *equation_systems = this->active_equation_system();
+    if (!equation_systems)
+        return;
+    equation_systems->solve_equation_systems(substep, nodal_solution);
+}
+
+void AnalysisBase::print_output(Substep &substep, bool picard_iteration_print)
+{
+    auto *equation_systems = this->active_equation_system();
+    if (!equation_systems)
+        return;
+    equation_systems->print_output(substep, picard_iteration_print);
+}
+
+bool AnalysisBase::solve()
+{
+    if (!execute_solve())
+        return false;
+
+    return true;
 }

@@ -83,13 +83,13 @@
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="672">
           AQAAAACAAACACgAAygMAAA==eJwV1YOyGAYAAMEX27Zt27Zt27Zt22xj2zba2Lbtbmduv+ECBQQEBCYIQQlGcEIQklCEJgxhCUd4IhCRSEQmClGJRnRiEJNYxCYOcYlHfBKQkEQkJglJSUZyUpCSVKQmDWlJR3oykJFMZCYLWclGdnKQk1zkJg95yUd+ClCQQhSmCEUpRnFKUJJSlKYMZSlHeSpQkUpUpgpVqUZ1alCTWtSmDnWpR30a0JBGNKYJTWlGc1rQkla0pg1taUd7OtCRTnSmC13pRnd60JNe9KYPfelHfwYwkEEMZghDGcZwRjCSUYxmDGMZx3gmMJFJTGYKU5nGdGYwk1nMZg5zmcd8FrCQRSxmCUtZxnJWsJK/+JtVrGYNa1nHejawkU1sZgtb2cZ2drCTXexmD3vZx34OcJBDHOYIRznGcU5wklOc5gxnOcd5LnCRf/iXS1zmCle5xnVucJNb3OYOd7nHfR7wkEc85glPecZzXvCSV7zmDW95x3s+8JFPfOYLX/nGd37wk1/85g8BgURgghCUYAQnBCEJRWjCEJZwhCcCEYlEZKIQlWhEJwYxiUVs4hCXeMQnAQlJRGKSkJRkJCcFKUlFatKQlnSkJwMZyURmspCVbGQnBznJRW7ykJd85KcABSlEYYpQlGIUpwQlKUVpylCWcpSnAhWpRGWqUJVqVKcGNalFbepQl3rUpwENaURjmtCUZjSnBS1pRWva0JZ2tKcDHelEZ7rQlW50pwc96UVv+tCXfvRnAAMZxGCGMJRhDGcEIxnFaMYwlnGMZwITmcRkpjCVaUxnBjOZxWzmMJd5zGcBC1nEYpawlGUsZwUr+Yu/WcVq1rCWdaxnAxvZxGa2sJVtbGcHO9nFbvawl33s5wAHOcRhjnCUYxznBCc5xWnOcJZznOcCF/mHf7nEZa5wlWtc5wY3ucVt7nCXe9znAQ95xGOe8JRnPOcFL3nFa97wlne85wMf+cRnvvCVb3znBz/5xW/+8P/4AxGYIAQlGMEJQUhCEZowhCUc4YlARCIRmShEJRrRiUFMYhGbOMQlHvFJQEISkZgkJCUZyUlBSlKRmjSkJR3pyUBGMpGZLGQlG9nJQU5ykZs85CUf+SlAQQpRmCIUpRjFKUFJSlGaMpSlHOWpQEUqUZkqVKUa1alBTWpRmzrUpR71aUBDGtGYJjSlGc1pQUta0Zo2tKUd7elARzrRmS50pRvd6UFPetGbPvSlH/0ZwEAGMZghDGUYwxnBSEYxmjGMZRzjmcBEJjGZKUxlGtOZwUxmMZs5zGUe81nAQv4Dw5Ezog==
         </DataArray>
-        <DataArray type="Int32" Name="ansys_real_constant" format="binary" RangeMin="1" RangeMax="1">
+        <DataArray type="Int32" Name="CONSTANT" format="binary" RangeMin="1" RangeMax="1">
           AQAAAACAAACACgAAHAAAAA==eJztw0ENAAAMA6Grf9NzsRckrJqqqj492IMCoQ==
         </DataArray>
         <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="24">
           AQAAAACAAACACgAAKgAAAA==eJwTZ2BgkABi0VE8JLE4FiyBBQ+0O0fxKB7Fo3gUj+JRPIphGAD+/jc/
         </DataArray>
-        <DataArray type="Int32" Name="ansys_etype" format="binary" RangeMin="21" RangeMax="24">
+        <DataArray type="Int32" Name="TYPE" format="binary" RangeMin="21" RangeMax="24">
           AQAAAACAAACACgAAKgAAAA==eJwTZ2BgkABi0VE8JLE4FiyBBQ+0O0fxKB7Fo3gUj+JRPIphGAD+/jc/
         </DataArray>
         <DataArray type="Int64" IdType="1" Name="vtkOriginalCellIds" format="binary" RangeMin="0" RangeMax="671">

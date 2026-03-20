@@ -18,10 +18,8 @@ class ApecMMesh;
 class ElementTypesFactory;
 class APEC_M;
 class ApecMSystemBase;
-class MaterialsObject;
-class RealConstantsObject;
-class Session;
-class ApecMSettingsObject;
+class Materials;
+class Constants;
 class ApecMEquationSystems
     : public EquationSystems,
       public FEDataObjectAbstract,
@@ -30,7 +28,7 @@ class ApecMEquationSystems
 
 {
 public:
-    using AnalysisContextView = TypedContextView<ElementTypesFactory, TimeStep, MaterialsObject, RealConstantsObject, Session, ApecMSettingsObject>;
+    using AnalysisContextView = TypedContextView<ElementTypesFactory, TimeStep, Materials, Constants>;
     using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
 
     void apply_ramped_effects(const Substep &time_substep);

@@ -489,34 +489,6 @@ void AssemblerLinear::write_element_solution()
     element_system.update();
 }
 
-void AssemblerLinear::write_support_solution()
-{
-    libMesh::out << "Computing derived quantities..." << std::endl;
-
-    auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
-
-    auto builder = make_element_builder();
-    if (!builder)
-    {
-        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
-        return;
-    }
-    builder->set_compute_nodal_solution_vectors(true);
-
-    const MeshBase &mesh = eq_sys->get_mesh();
-
-    run_for_elements(mesh, *builder, [&]() {}, [&]()
-                     { builder->build_support_solution(); });
-
-    const auto &support_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::SUPPORT_SOLUTION);
-    auto &support_system = eq_sys->get_system<System>(support_name);
-
-    support_system.solution->close();
-    support_system.update();
-}
-
 bool AssemblerLinear::check_update_element_matrices()
 {
     // auto ts = this->context<TimeStep>();

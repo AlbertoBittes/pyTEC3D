@@ -1,13 +1,9 @@
 #include "apec_m.h"
 
 #include "augment_sparsity_on_nodes.h"
-#include "apec_m_settings.h"
-#include "dof_couplings_factory.h"
 #include "element_types_factory.h"
 #include "fe_data_object.h"
 #include "binary_reader.h"
-#include "materials_object.h"
-#include "real_constants_object.h"
 #include "solver_configuration.h"
 #include "time_step.h"
 #include "vtk_data_map_object.h"
@@ -23,13 +19,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
-
-APEC_M::APEC_M(libMesh::Parallel::Communicator &comm)
-    : comm(comm),
-      model_data_repository(std::make_shared<FEMDataRepository>())
-{
-    model_data_repository->set_object(std::make_shared<Session>());
-}
 
 FEMDataRepository &APEC_M::ensure_mesh_repository(const std::string &name)
 {
@@ -120,11 +109,6 @@ std::vector<std::pair<std::string, std::shared_ptr<ApecMEquationSystems>>> APEC_
     return systems;
 }
 
-std::shared_ptr<AnalysisBase> APEC_M::get_analysis() const
-{
-    return shared_analysis;
-}
-
 bool APEC_M::has_mesh(const std::string &name) const
 {
     auto repository = find_mesh_repository(name);
@@ -196,11 +180,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
             BinaryReader reader;
             reader.read_binary_fem_data(resolved.string(), model_data_repository, equation_systems);
         }
-        catch (const BinaryLabelDisallowedError &ex)
-        {
-            libMesh::out << "Failed to load data from '" << resolved << "': " << ex.what() << std::endl;
-            throw;
-        }
         catch (const std::exception &ex)
         {
             libMesh::out << "Failed to load data from '" << resolved << "': " << ex.what() << std::endl;
@@ -219,35 +198,6 @@ bool APEC_M::load_data(const std::vector<std::string> &filepaths)
     return any_loaded;
 }
 
-void APEC_M::print_model_data() const
-{
-    const auto &objects = model_data_repository->get_all_objects();
-
-    static const std::unordered_map<std::type_index, std::string> friendly_names = {
-        {typeid(Session), "Session"},
-        {typeid(MaterialsObject), "Materials"},
-        {typeid(RealConstantsObject), "Real Constants"},
-        {typeid(ElementTypesFactory), "Element Types"},
-        {typeid(TimeStep), "Time Parameters"},
-        {typeid(PetscSolverConfiguration), "Solver Settings"},
-        {typeid(DofInterpolationSettingsObject), "DOF Interpolation Settings"}};
-
-    libMesh::out << "Model data contents:" << std::endl;
-    for (const auto &entry : objects)
-    {
-        const auto &type_idx = entry.first;
-        const auto &object = entry.second;
-        const auto it = friendly_names.find(type_idx);
-        const std::string &name = (it != friendly_names.end()) ? it->second : type_idx.name();
-
-        libMesh::out << "- " << name << std::endl;
-        if (object)
-            object->print_data_info();
-        else
-            libMesh::out << "  (object not initialized)" << std::endl;
-    }
-}
-
 bool APEC_M::solve_load_step()
 {
     auto analysis = get_analysis();
@@ -260,20 +210,6 @@ bool APEC_M::solve_load_step()
 
     analysis->set_parent_object(this);
     return analysis->solve();
-}
-
-bool APEC_M::solve_transient_load_steps()
-{
-    auto analysis = std::dynamic_pointer_cast<TransientAnalysis>(get_analysis());
-    auto eq_system = get_active_equation_system();
-    if (!analysis || !eq_system)
-    {
-        libMesh::out << "No load step analysis available for the active mesh." << std::endl;
-        return false;
-    }
-
-    analysis->set_parent_object(this);
-    return analysis->solve_transient();
 }
 
 bool APEC_M::finish_analysis()
@@ -380,171 +316,6 @@ void APEC_M::clear_mesh(const std::string &name)
     }
 }
 
-bool APEC_M::validate_model_for_analysis()
-{
-    bool valid = true;
-
-    auto element_factory = model_data_repository->get_object<ElementTypesFactory>();
-    auto materials_object = model_data_repository->get_object<MaterialsObject>();
-    auto real_constants_object = model_data_repository->get_object<RealConstantsObject>();
-    std::unordered_set<int> available_etypes;
-    std::unordered_set<int> available_materials;
-    std::unordered_set<int> available_real_constants;
-
-    if (!element_factory || !element_factory->get_element_types_map() || element_factory->get_element_types_map()->empty())
-    {
-        libMesh::out << "No element types loaded. Cannot enter analysis mode." << std::endl;
-        valid = false;
-    }
-    else
-    {
-        for (const auto &entry : *element_factory->get_element_types_map())
-            available_etypes.insert(static_cast<int>(entry.first));
-    }
-
-    if (!materials_object || materials_object->get_materials_map().empty())
-    {
-        libMesh::out << "No materials loaded. Cannot enter analysis mode." << std::endl;
-        valid = false;
-    }
-    else
-    {
-        for (const auto &entry : materials_object->get_materials_map())
-            available_materials.insert(static_cast<int>(entry.first));
-    }
-
-    if (!real_constants_object || real_constants_object->get_constants_map().empty())
-    {
-        libMesh::out << "No real constants loaded. Cannot enter analysis mode." << std::endl;
-        valid = false;
-    }
-    else
-    {
-        for (const auto &entry : real_constants_object->get_constants_map())
-            available_real_constants.insert(static_cast<int>(entry.first));
-    }
-
-    for (const auto &entry : mesh_repositories)
-    {
-        const auto &mesh_name = entry.first;
-        auto mesh = entry.second ? entry.second->get_object<ApecMMesh>() : nullptr;
-        if (!mesh)
-            continue;
-
-        const auto etype_index = mesh->get_elem_integer_index("ansys_etype");
-        const auto material_index = mesh->get_elem_integer_index("ansys_material_type");
-        const auto real_constant_index = mesh->get_elem_integer_index("ansys_real_constant");
-
-        auto collect_used_ids = [&](unsigned int index)
-        {
-            std::unordered_set<int> used;
-            if (index == libMesh::invalid_uint)
-                return used;
-            for (const auto elem : mesh->element_ptr_range())
-                used.insert(elem->get_extra_integer(index));
-            return used;
-        };
-
-        if (etype_index == libMesh::invalid_uint)
-        {
-            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_etype'." << std::endl;
-            valid = false;
-        }
-        if (material_index == libMesh::invalid_uint)
-        {
-            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_material_type'." << std::endl;
-            valid = false;
-        }
-        if (real_constant_index == libMesh::invalid_uint)
-        {
-            libMesh::out << "Mesh '" << mesh_name << "' is missing element integer array 'ansys_real_constant'." << std::endl;
-            valid = false;
-        }
-
-        const auto used_etypes = collect_used_ids(etype_index);
-        const auto used_materials = collect_used_ids(material_index);
-        const auto used_real_constants = collect_used_ids(real_constant_index);
-
-        auto report_missing = [&](const std::string &label,
-                                  const std::unordered_set<int> &used,
-                                  const std::unordered_set<int> &available)
-        {
-            std::vector<int> missing;
-            missing.reserve(used.size());
-            for (int value : used)
-                if (!available.count(value))
-                    missing.push_back(value);
-            if (!missing.empty())
-            {
-                std::sort(missing.begin(), missing.end());
-                missing.erase(std::unique(missing.begin(), missing.end()), missing.end());
-                libMesh::out << "Mesh '" << mesh_name << "' references undefined " << label << " IDs: ";
-                for (std::size_t i = 0; i < missing.size(); ++i)
-                {
-                    if (i)
-                        libMesh::out << ", ";
-                    libMesh::out << missing[i];
-                }
-                libMesh::out << std::endl;
-                valid = false;
-            }
-        };
-
-        if (!available_etypes.empty())
-            report_missing("element type", used_etypes, available_etypes);
-        if (!available_materials.empty())
-            report_missing("material", used_materials, available_materials);
-        if (!available_real_constants.empty())
-            report_missing("real constant", used_real_constants, available_real_constants);
-
-        if (element_factory && element_factory->get_element_types_map() && !used_etypes.empty())
-        {
-            auto *etype_map = element_factory->get_element_types_map();
-            std::optional<ElementTypeEnum> mesh_element_enum;
-            int reference_ansys_type = -1;
-
-            for (int etype_id : used_etypes)
-            {
-                auto it = etype_map->find(static_cast<unsigned int>(etype_id));
-                if (it == etype_map->end())
-                    continue; // Missing types were already reported
-
-                const auto &etype_ptr = it->second;
-                if (!etype_ptr)
-                    continue;
-
-                const auto &keyopts = etype_ptr->get_keyopts();
-                if (keyopts.empty())
-                {
-                    libMesh::out << "Element type definition for ANSYS etype " << etype_id
-                                 << " has no keyopts; cannot determine ElementTypeEnum." << std::endl;
-                    valid = false;
-                    continue;
-                }
-
-                ElementTypeEnum current_enum = static_cast<ElementTypeEnum>(keyopts.front());
-                if (!mesh_element_enum)
-                {
-                    mesh_element_enum = current_enum;
-                    reference_ansys_type = etype_id;
-                }
-                else if (*mesh_element_enum != current_enum)
-                {
-                    libMesh::out << "Mesh '" << mesh_name << "' mixes ElementTypeEnum values across element types "
-                                 << "(ANSYS etype " << reference_ansys_type << " -> "
-                                 << static_cast<unsigned int>(*mesh_element_enum) << ", ANSYS etype "
-                                 << etype_id << " -> " << static_cast<unsigned int>(current_enum) << ")."
-                                 << std::endl;
-                    valid = false;
-                    break;
-                }
-            }
-        }
-    }
-
-    return valid;
-}
-
 bool APEC_M::enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type)
 {
     if (mesh_repositories.empty())
@@ -638,9 +409,6 @@ void APEC_M::enter_preprocessing_mode()
     shared_analysis.reset();
     mesh_repositories.clear();
     mesh_repository_lookup.clear();
-    auto session = model_data_repository->get_object<Session>();
-    if (session)
-        session->set_active_mesh("");
 }
 
 void APEC_M::set_cli(std::unique_ptr<CommandLineInterface> cli_instance)
@@ -652,10 +420,4 @@ void APEC_M::run_cli()
 {
     if (cli)
         cli->run_interactive(*this);
-}
-
-void APEC_M::run_batch_file(const std::string &filepath)
-{
-    if (cli)
-        cli->run_batch(*this, filepath);
 }

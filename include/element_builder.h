@@ -20,12 +20,8 @@
 #include "fem_data_repository.h"
 // #include "element_types.h"
 #include "element_types_factory.h"
-#include "materials_object.h"
-#include "real_constants_object.h"
 #include "time_step.h"
-#include "session.h"
 #include "variables_map.h"
-#include "coordinate_system.h"
 
 using namespace libMesh;
 
@@ -47,7 +43,7 @@ struct ElemData
 class BinaryReader;
 
 class ElementBuilder
-    : public FEMService<ElementTypesFactory, MaterialsObject, RealConstantsObject>,
+    : public FEMService<ElementTypesFactory, Materials, Constants>,
       public FEParentObjectBase<EquationSystems>
 {
 public:
@@ -76,7 +72,7 @@ public:
     static constexpr unsigned int kNumNodalSolutionMatrices = 2;
     static constexpr unsigned int kNumElementSolutionMatrices = 3;
 
-    using ContextView = TypedContextView<ElementTypesFactory, MaterialsObject, RealConstantsObject>;
+    using ContextView = TypedContextView<ElementTypesFactory, Materials, Constants>;
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
@@ -117,10 +113,6 @@ public:
     void build_solid236_element_solution();
     void build_plane233_element_solution();
 
-    void build_solid97_support_solution();
-    void build_solid236_support_solution();
-    void build_plane233_support_solution();
-
     std::vector<DenseVector<Number>> get_variables_solution(const NumericVector<Number> *solution, int dof_map_index);
 
     bool get_compute_nodal_solution_vectors() const { return compute_nodal_solution_vectors; }
@@ -151,8 +143,6 @@ private:
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
-    std::unordered_map<dof_id_type, unsigned int> psi_node_counts;
-    CylindricalCoordinateSystem cylindrical_coordinate_system_;
     dof_id_type mat_index;
     dof_id_type real_constant_index;
 
@@ -164,8 +154,8 @@ private:
     System *nodal_loads_system_ = nullptr;
     System *element_loads_system_ = nullptr;
     DofMap *dof_solution_dof_map_ = nullptr;
-    std::shared_ptr<MaterialsObject> materials_object_ = nullptr;
-    std::shared_ptr<RealConstantsObject> real_constants_object_ = nullptr;
+    std::shared_ptr<Materials> materials_object_ = nullptr;
+    std::shared_ptr<Constants> real_constants_object_ = nullptr;
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,

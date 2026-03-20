@@ -226,7 +226,7 @@ void VTKIO_Updated::read(const std::string &name)
         vtkAbstractArray *abstract_subdomain_id =
             _vtk_grid->GetCellData()->GetAbstractArray("subdomain_id");
         vtkAbstractArray *abstract_elemtype_id =
-            _vtk_grid->GetCellData()->GetAbstractArray("ansys_etype");
+            _vtk_grid->GetCellData()->GetAbstractArray("TYPE");
         // Get ids as integers.  This will be null if they are another data
         // type, e.g. if a non-libMesh program used the names we thought
         // were unique for different data.

@@ -61,7 +61,7 @@ for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
     Selector.set_value_on_selection(apec.mesh, "CP_0", 11 + k)
     master_node_cs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
     Selector.select(apec.mesh, "ID", master_node_cs)
-    mask = apec.real_constants["ansys_real_constant"] == 11 + k
+    mask = apec.real_constants["CONSTANT"] == 11 + k
     n_turns = apec.real_constants[mask]["NC"].values[0]
     resistance = apec.real_constants[mask]["R"].values[0]
     Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")
@@ -80,7 +80,7 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
     Selector.set_value_on_selection(apec.mesh, "CP_0", 1 + k)
     master_node_pfcs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
     Selector.select(apec.mesh, "ID", master_node_pfcs)
-    mask = apec.real_constants["ansys_real_constant"] == 1 + k
+    mask = apec.real_constants["CONSTANT"] == 1 + k
     n_turns = apec.real_constants[mask]["NC"].values[0]
     resistance = apec.real_constants[mask]["R"].values[0]
     Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")

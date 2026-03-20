@@ -8,7 +8,6 @@
 #include <libmesh/petsc_linear_solver.h>
 
 // Define Gauss quadrature rules.
-#include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system.h"
 #include "element_types_factory.h"
@@ -158,7 +157,7 @@ void ElementBuilder::build_solid236()
     build_jae();
     build_jve();
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
@@ -436,7 +435,7 @@ void ElementBuilder::build_solid236_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
@@ -490,8 +489,8 @@ void ElementBuilder::build_solid236_rhs()
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
         std::string volt_var_name;
-        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]) ||
-            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]) ||
+            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
             volt_var_name = "V";
         else
             volt_var_name = "VOLT";
@@ -537,7 +536,6 @@ void ElementBuilder::build_solid236_solution_vectors()
 {
     this->build_solid236_nodal_solution();
     this->build_solid236_element_solution();
-    this->build_solid236_support_solution();
 }
 
 void ElementBuilder::build_solid236_nodal_solution()
@@ -628,12 +626,10 @@ void ElementBuilder::build_solid236_element_solution()
     DenseVector<Number> Be;
     DenseVector<Number> He;
     DenseVector<Number> Je;
-    DenseVector<Number> PSIe;
 
     bool have_be = false;
     bool have_he = false;
     bool have_je = false;
-    bool have_psie = false;
 
     auto build_be = [&]()
     {
@@ -662,43 +658,13 @@ void ElementBuilder::build_solid236_element_solution()
         have_he = true;
     };
 
-    auto build_psie = [&]()
-    {
-        PSIe.resize(1);
-        auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
-
-        unsigned int n_qp = JAe.m() / 3;
-
-        const auto &Az = sol_vectors[0];
-
-        DenseVector<Number> Aq;
-        JAe.vector_mult(Aq, Az);
-        const Point centroid = elem_data.elem->vertex_average();
-        const Point local_centroid = cylindrical_coordinate_system_.to_local_coordinates(centroid);
-
-        Real a_theta_avg = 0.0;
-        for (unsigned int qp = 0; qp < n_qp; qp++)
-        {
-            const VectorValue<Real> A_global(Aq(qp), Aq(qp + n_qp), Aq(qp + 2 * n_qp));
-            const VectorValue<Real> A_local = cylindrical_coordinate_system_.global_to_local_rotation(centroid) * A_global;
-            const Real a_theta = A_local(1);
-            a_theta_avg += a_theta;
-        }
-        if (n_qp > 0)
-            a_theta_avg /= static_cast<Real>(n_qp);
-
-        const Real radius = cylindrical_coordinate_system_.to_local_coordinates(centroid)(0);
-        PSIe(0) = radius * a_theta_avg;
-        have_psie = true;
-    };
-
     auto build_je = [&]()
     {
         auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
         unsigned int n_qp = BAe.m() / 3;
         Je.resize(3);
 
-        PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
+        PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
         switch (physical_region)
         {
         case PhysicalRegionEnum::NON_MAGNETIC:
@@ -804,9 +770,6 @@ void ElementBuilder::build_solid236_element_solution()
                                   case APIVariableName::He:
                                       build_he();
                                       return have_he ? &He : nullptr;
-                                  case APIVariableName::PSIe:
-                                      build_psie();
-                                      return have_psie ? &PSIe : nullptr;
                                   case APIVariableName::Jt:
                                       build_je();
                                       return have_je ? &Je : nullptr;
@@ -815,65 +778,4 @@ void ElementBuilder::build_solid236_element_solution()
                                   } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
-}
-
-void ElementBuilder::build_solid236_support_solution()
-{
-    auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::SUPPORT_SOLUTION);
-    if (api_vars.empty())
-        return;
-
-    std::vector<DenseVector<Number>> support_vectors;
-    support_vectors.resize(api_vars.size());
-    DenseVector<Number> psi_values;
-    bool have_psi = false;
-
-    auto build_psi = [&]()
-    {
-        psi_values.resize(0);
-
-        std::vector<dof_id_type> dof_indices;
-        unsigned int psie_var_num = element_solution_system_->variable_number("PSIe");
-        // unsigned int psi_var_num = support_solution_system_->variable_number("PSI");
-        element_solution_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices, psie_var_num);
-        Real psi_val = element_solution_system_->current_local_solution->el(dof_indices[0]);
-
-        for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
-        {
-            dof_id_type dof_index = libMesh::invalid_uint;
-            try
-            {
-                dof_index = elem_data.elem->node_ptr(i)->dof_number(ApecMSystemBase::SUPPORT_SOLUTION, 0, 0);
-            }
-            catch (...)
-            {
-                continue;
-            }
-            if (dof_index < support_solution_system_->solution->first_local_index() || dof_index >= support_solution_system_->solution->last_local_index())
-                continue;
-            const unsigned int previous_count = psi_node_counts[dof_index];
-            const unsigned int next_count = previous_count + 1;
-            const Number previous_avg = support_solution_system_->solution->el(dof_index);
-            const Number next_avg = (previous_avg * previous_count + psi_val) / static_cast<Real>(next_count);
-
-            psi_node_counts[dof_index] = next_count;
-            DenseVector<Number> psi_entry(1);
-            psi_entry(0) = next_avg;
-            psi_values.append(psi_entry);
-        }
-        have_psi = true;
-    };
-
-    this->fill_vectors_by_api(api_vars, support_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
-                              {
-                                  switch (api_var)
-                                  {
-                                  case APIVariableName::PSI:
-                                      build_psi();
-                                      return have_psi ? &psi_values : nullptr;
-                                  default:
-                                      return nullptr;
-                                  } });
-
-    this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

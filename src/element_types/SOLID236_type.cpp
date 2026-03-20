@@ -1,38 +1,38 @@
 #include "element_types.h"
 #include "element_builder.h"
 // Direct constructor
-SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts)
+SOLID236Type::SOLID236Type(const std::vector<unsigned int> &OPTIONs)
     : AV3DElementType(
-          keyopts,
-          [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
+          OPTIONs,
+          [OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
-              add_solid236_fe_structs(fe_structs, keyopts);
+              add_solid236_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Chain-prolonging constructor for derived types
-SOLID236Type::SOLID236Type(const std::vector<unsigned int> &keyopts,
+SOLID236Type::SOLID236Type(const std::vector<unsigned int> &OPTIONs,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
-          keyopts,
-          [fe_collector, keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
+          OPTIONs,
+          [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
-              add_solid236_fe_structs(fe_structs, keyopts);
+              add_solid236_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Helper to add two FEDataShapeFunctions structs
 void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                           const std::vector<unsigned int> &keyopts)
+                                           const std::vector<unsigned int> &OPTIONs)
 {
     fe_structs.push_back({
         FIRST,                                  // order
         NEDELEC_ONE,                            // family
         3,                                      // dimension
-        static_cast<Order>(2 * keyopts[2] + 1), // quadrature_order (use default)
+        static_cast<Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
         3,                                      // quadrature_dim
         false,                                  // is_infinite
         true                                    // is_vector (scalar FE)
@@ -41,13 +41,13 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
         FIRST,                                  // order
         NEDELEC_ONE,                            // family
         3,                                      // dimension
-        static_cast<Order>(2 * keyopts[2] + 1), // quadrature_order (use default)
+        static_cast<Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
         3,                                      // quadrature_dim
         false,                                  // is_infinite
         true                                    // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        static_cast<Order>(keyopts[2]), // order
+        static_cast<Order>(OPTIONs[2]), // order
         LAGRANGE_VEC,                   // family
         3,                              // dimension
         INVALID_ORDER,                  // quadrature_order (use default)

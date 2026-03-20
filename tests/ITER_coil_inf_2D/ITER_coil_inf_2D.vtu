@@ -5,25 +5,25 @@
       <Array type="String" Name="_PYVISTA_BITARRAY_POINT_" NumberOfTuples="1" format="binary">
         AQAAAACAAAAPAAAAFwAAAA==eJxzcgx2jff0c4v383dxDWYAACNIBDA=
       </Array>
-      <DataArray type="Int32" Name="ansys_etype" NumberOfTuples="3" format="binary" RangeMin="21" RangeMax="24">
+      <DataArray type="Int32" Name="TYPE" NumberOfTuples="3" format="binary" RangeMin="21" RangeMax="24">
         AQAAAACAAAAMAAAAEQAAAA==eJwTZWBgEAdiCSAGAAIgAEU=
       </DataArray>
       <Array type="String" Name="element_type" NumberOfTuples="3" format="binary">
         AQAAAACAAAAbAAAAFAAAAA==eJwL8HH0czUyNmYIwGAAAFq0Bhk=
       </Array>
-      <DataArray type="Int32" Name="KEYOPT1" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="4">
+      <DataArray type="Int32" Name="OPTION1" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="4">
         AQAAAACAAAAMAAAAEQAAAA==eJxjYGBgYAZiFiAGAAA0AAg=
       </DataArray>
-      <DataArray type="Int32" Name="KEYOPT2" NumberOfTuples="3" format="binary" RangeMin="1" RangeMax="1">
+      <DataArray type="Int32" Name="OPTION2" NumberOfTuples="3" format="binary" RangeMin="1" RangeMax="1">
         AQAAAACAAAAMAAAADgAAAA==eJxjZGBgYIRiAAAkAAQ=
       </DataArray>
-      <DataArray type="Int32" Name="KEYOPT3" NumberOfTuples="3" format="binary" RangeMin="1" RangeMax="1">
+      <DataArray type="Int32" Name="OPTION3" NumberOfTuples="3" format="binary" RangeMin="1" RangeMax="1">
         AQAAAACAAAAMAAAADgAAAA==eJxjZGBgYIRiAAAkAAQ=
       </DataArray>
-      <DataArray type="Int32" Name="KEYOPT4" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="0">
+      <DataArray type="Int32" Name="OPTION4" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="0">
         AQAAAACAAAAMAAAACwAAAA==eJxjYEAAAAAMAAE=
       </DataArray>
-      <DataArray type="Int32" Name="KEYOPT5" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="0">
+      <DataArray type="Int32" Name="OPTION5" NumberOfTuples="3" format="binary" RangeMin="0" RangeMax="0">
         AQAAAACAAAAMAAAACwAAAA==eJxjYEAAAAAMAAE=
       </DataArray>
     </FieldData>
@@ -118,13 +118,13 @@
         <DataArray type="Int32" Name="ansys_elem_num" format="binary" RangeMin="1" RangeMax="332">
           AQAAAACAAAAwBQAAEAIAAA==eJwNwweYDgQAANAfd+eOG+7cvnNucPvOndsTN9xAaEpLe6mkiVIU7WgYDdntqUKTNGhStNBSaVCUURrqfd97XQKBQFe7GWSwIXY31DB72NNwI4w0yl5GG2NvY40z3gQTTTLZFFPtY5p9TTfDTLPsZ3+zzTHXPPMtsNAiix1giaUOtMxyK6y0ymprrLXOehtsdJCDHWKTzbbY6lDbbLfDToc53BEe4UhHOdojPcqjPcZjPc4xHu9YT/BET/JkT3Gcp3qap3uGZ3qWZ3uO53qe5zveC7zQi5zgxU70Ei/1Mi/3Cq90kpOd4lVe7VSv8VqnOd3rvN4ZzvQGb/Qmb/YWb/U2b3eWs73DO73Lu53jXOc533u81/u83wU+4EIXudglLnWZy33Qh3zYR3zUx3zcJ3zSp3zaZ1zhsz7n8650lat9wRd9yZd9xVdd41pfc52v+4Zv+pbr3eDbvuO7vuf7fuBGN/mhH7nZLX7sJ37qZ37uVre53S/80q/82m/c4bd+5/fu9Ad/9Cd/dpe7/cVf3eNef/N397nfAx70D//0kH/5t//4r4f9z0AX7Go3gww2xO6GGmYPexpuhJFG2ctoY+xtrHHGm2CiSSabYqp9TLOv6WaYaZb97G+2OeaaZ74FFlpksQMssdSBllluhZVWWW2NtdZZb4ONDnKwQ2yy2RZbHWqb7XbY6TCH+z/7t4s8
         </DataArray>
-        <DataArray type="Int32" Name="ansys_real_constant" format="binary" RangeMin="1" RangeMax="1">
+        <DataArray type="Int32" Name="CONSTANT" format="binary" RangeMin="1" RangeMax="1">
           AQAAAACAAAAwBQAAFwAAAA==eJxjZGBgYBzFo3gUj+JRTBADAGUVAU0=
         </DataArray>
         <DataArray type="Int32" Name="ansys_material_type" format="binary" RangeMin="21" RangeMax="24">
           AQAAAACAAAAwBQAAHAAAAA==eJwTZWBgEB3Fo3gUj+JRjBOLA7EEEAMA434bQg==
         </DataArray>
-        <DataArray type="Int32" Name="ansys_etype" format="binary" RangeMin="21" RangeMax="24">
+        <DataArray type="Int32" Name="TYPE" format="binary" RangeMin="21" RangeMax="24">
           AQAAAACAAAAwBQAAHAAAAA==eJwTZWBgEB3Fo3gUj+JRjBOLA7EEEAMA434bQg==
         </DataArray>
         <DataArray type="Int64" IdType="1" Name="vtkOriginalCellIds" format="binary" RangeMin="0" RangeMax="331">

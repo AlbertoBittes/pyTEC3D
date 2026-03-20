@@ -32,27 +32,27 @@ void ElementTypesFactory::populate_element_types_map()
     if (empty())
         return;
 
-    if (!has_column("ansys_etype"))
-        libmesh_error_msg("ElementTypesFactory: missing 'ansys_etype' column.");
+    if (!has_column("TYPE"))
+        libmesh_error_msg("ElementTypesFactory: missing 'TYPE' column.");
     if (!has_column("element_type"))
         libmesh_error_msg("ElementTypesFactory: missing 'element_type' column.");
 
-    const auto &ansys_ids = get_int_column("ansys_etype");
+    const auto &ansys_ids = get_int_column("TYPE");
     const auto &element_labels = get_string_column("element_type");
     const std::size_t count = entry_count();
 
     if (ansys_ids.size() < count || element_labels.size() < count)
         libmesh_error_msg("ElementTypesFactory: inconsistent element type data size.");
 
-    std::vector<std::string> keyopt_columns;
-    keyopt_columns.reserve(this->get_data_map()->columns.size());
+    std::vector<std::string> OPTION_columns;
+    OPTION_columns.reserve(this->get_data_map()->columns.size());
     for (const auto &pair : this->get_data_map()->columns)
     {
-        if (pair.first.rfind("KEYOPT", 0) == 0)
-            keyopt_columns.push_back(pair.first);
+        if (pair.first.rfind("OPTION", 0) == 0)
+            OPTION_columns.push_back(pair.first);
     }
 
-    std::sort(keyopt_columns.begin(), keyopt_columns.end(), [](const std::string &a, const std::string &b)
+    std::sort(OPTION_columns.begin(), OPTION_columns.end(), [](const std::string &a, const std::string &b)
               {
         auto extract_index = [](const std::string &name) {
             auto pos = name.find_first_of("0123456789");
@@ -65,16 +65,16 @@ void ElementTypesFactory::populate_element_types_map()
         int ansys_type = ansys_ids[row];
         unsigned int element_number = parse_element_type_number(element_labels[row]);
 
-        std::vector<unsigned int> keyopts;
-        keyopts.reserve(1 + keyopt_columns.size());
-        keyopts.push_back(element_number);
+        std::vector<unsigned int> OPTIONs;
+        OPTIONs.reserve(1 + OPTION_columns.size());
+        OPTIONs.push_back(element_number);
 
-        for (const auto &column_name : keyopt_columns)
-            keyopts.push_back(static_cast<unsigned int>(get_int(column_name, row)));
+        for (const auto &column_name : OPTION_columns)
+            OPTIONs.push_back(static_cast<unsigned int>(get_int(column_name, row)));
 
         (*element_types_map)[ansys_type] = create_element_type(
             static_cast<ElementTypeEnum>(element_number),
-            keyopts);
+            OPTIONs);
     }
 }
 
@@ -100,16 +100,16 @@ void ElementTypesFactory::add_element_type(subdomain_id_type element_id, std::un
 // --------------------------------------------------------
 // Create element type instance
 // --------------------------------------------------------
-std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &keyopts)
+std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &OPTIONs)
 {
     switch (type)
     {
     case ElementTypeEnum::SOLID97:
-        return std::make_unique<SOLID97Type>(keyopts);
+        return std::make_unique<SOLID97Type>(OPTIONs);
     case ElementTypeEnum::SOLID236:
-        return std::make_unique<SOLID236Type>(keyopts);
+        return std::make_unique<SOLID236Type>(OPTIONs);
     case ElementTypeEnum::PLANE233:
-        return std::make_unique<PLANE233Type>(keyopts);
+        return std::make_unique<PLANE233Type>(OPTIONs);
     default:
         libmesh_error_msg("Unknown element type");
     }
@@ -130,17 +130,17 @@ void ElementTypesFactory::print_data_info() const
         const auto &element_type = entry.second;
         if (element_type)
         {
-            const auto &keyopts = element_type->get_keyopts();
-            if (!keyopts.empty())
-                libMesh::out << " (Element " << keyopts.front() << ")";
-            if (keyopts.size() > 1)
+            const auto &OPTIONs = element_type->get_OPTIONs();
+            if (!OPTIONs.empty())
+                libMesh::out << " (Element " << OPTIONs.front() << ")";
+            if (OPTIONs.size() > 1)
             {
-                libMesh::out << " KEYOPTs=[";
-                for (std::size_t idx = 1; idx < keyopts.size(); ++idx)
+                libMesh::out << " OPTIONs=[";
+                for (std::size_t idx = 1; idx < OPTIONs.size(); ++idx)
                 {
                     if (idx > 1)
                         libMesh::out << ", ";
-                    libMesh::out << keyopts[idx];
+                    libMesh::out << OPTIONs[idx];
                 }
                 libMesh::out << "]";
             }

@@ -80,7 +80,7 @@ void ApecMEquationSystems::print_output(Substep &substep, bool picard_iteration_
         return;
 
     const auto base_substep_index = time_step->count_substeps_before_current();
-    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem", "SolutionSupportSystem"};
+    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
 
     std::optional<unsigned int> picard_iteration;
     if (picard_iteration_print)

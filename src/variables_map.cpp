@@ -65,7 +65,6 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::H_x, {GlobalVariableName::H_x, APIVariableName::H, "H_x", "H", 0}},
     {GlobalVariableName::H_y, {GlobalVariableName::H_y, APIVariableName::H, "H_y", "H", 1}},
     {GlobalVariableName::H_z, {GlobalVariableName::H_z, APIVariableName::H, "H_z", "H", 2}},
-    {GlobalVariableName::PSI, {GlobalVariableName::PSI, APIVariableName::PSI, "PSI", "PSI", 0}},
 
     // Element Solution Variables
     {GlobalVariableName::Be_x, {GlobalVariableName::Be_x, APIVariableName::Be, "Be_x", "Be", 0}},
@@ -74,7 +73,6 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::He_x, {GlobalVariableName::He_x, APIVariableName::He, "He_x", "He", 0}},
     {GlobalVariableName::He_y, {GlobalVariableName::He_y, APIVariableName::He, "He_y", "He", 1}},
     {GlobalVariableName::He_z, {GlobalVariableName::He_z, APIVariableName::He, "He_z", "He", 2}},
-    {GlobalVariableName::PSIe, {GlobalVariableName::PSIe, APIVariableName::PSIe, "PSIe", "PSIe", 0}},
     {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0}},
     {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1}},
     {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2}},
@@ -234,11 +232,11 @@ VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
 std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const ElementType &element)
 {
     std::vector<GlobalVariableName> vars;
-    const auto &keyopts = element.get_keyopts();
+    const auto &OPTIONs = element.get_OPTIONs();
     PhysicalRegionEnum region = UNKNOWN;
-    if (keyopts.size() > 1)
-        region = static_cast<PhysicalRegionEnum>(keyopts[1]);
-    auto type = static_cast<ElementTypeEnum>(keyopts.at(0));
+    if (OPTIONs.size() > 1)
+        region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
+    auto type = static_cast<ElementTypeEnum>(OPTIONs.at(0));
 
     switch (type)
     {
@@ -259,7 +257,7 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
     case ElementTypeEnum::PLANE233:
         vars = add_av_variables();
         {
-            auto extra = add_plane233_variables(keyopts);
+            auto extra = add_plane233_variables(OPTIONs);
             vars.insert(vars.end(), extra.begin(), extra.end());
         }
         break;
@@ -329,15 +327,12 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
     case GlobalVariableName::H_y:
     case GlobalVariableName::H_z:
         return ApecMSystemBase::NODAL_SOLUTION;
-    case GlobalVariableName::PSI:
-        return ApecMSystemBase::SUPPORT_SOLUTION;
     case GlobalVariableName::Be_x:
     case GlobalVariableName::Be_y:
     case GlobalVariableName::Be_z:
     case GlobalVariableName::He_x:
     case GlobalVariableName::He_y:
     case GlobalVariableName::He_z:
-    case GlobalVariableName::PSIe:
     case GlobalVariableName::Jt_x:
     case GlobalVariableName::Jt_y:
     case GlobalVariableName::Jt_z:
@@ -354,12 +349,10 @@ std::vector<GlobalVariableName> VariablesMap::add_av_variables()
             GlobalVariableName::H_x,
             GlobalVariableName::H_y,
             GlobalVariableName::Jt_z,
-            GlobalVariableName::PSI,
             GlobalVariableName::Be_x,
             GlobalVariableName::Be_y,
             GlobalVariableName::He_x,
-            GlobalVariableName::He_y,
-            GlobalVariableName::PSIe};
+            GlobalVariableName::He_y};
 }
 
 std::vector<GlobalVariableName> VariablesMap::add_av3d_variables()
@@ -440,13 +433,13 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
     return vars;
 }
 
-std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::vector<unsigned int> &keyopts)
+std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::vector<unsigned int> &OPTIONs)
 {
     std::vector<GlobalVariableName> vars = {GlobalVariableName::A_z};
 
     PhysicalRegionEnum physical_region = UNKNOWN;
-    if (keyopts.size() > 1)
-        physical_region = static_cast<PhysicalRegionEnum>(keyopts[1]);
+    if (OPTIONs.size() > 1)
+        physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
 
     switch (physical_region)
     {
@@ -470,12 +463,6 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
     default:
         break;
     }
-
-    // if (keyopts.size() > 3 && keyopts[3] == 1)
-    // {
-    //     vars.insert(vars.end(), {GlobalVariableName::PSI,
-    //                              GlobalVariableName::PSIe});
-    // }
     return vars;
 }
 
@@ -558,7 +545,6 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::EMF:
     case GlobalVariableName::E:
     case GlobalVariableName::AMPS:
-    case GlobalVariableName::PSI:
         return LAGRANGE;
     case GlobalVariableName::Az:
         return NEDELEC_ONE;
@@ -574,7 +560,6 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::He_x:
     case GlobalVariableName::He_y:
     case GlobalVariableName::He_z:
-    case GlobalVariableName::PSIe:
         return MONOMIAL;
     case GlobalVariableName::B_x:
     case GlobalVariableName::B_y:
@@ -606,7 +591,6 @@ Order VariablesMap::get_variable_order(const ElementType &element,
     case GlobalVariableName::He_x:
     case GlobalVariableName::He_y:
     case GlobalVariableName::He_z:
-    case GlobalVariableName::PSIe:
         order = CONSTANT;
         break;
     default:
@@ -614,15 +598,15 @@ Order VariablesMap::get_variable_order(const ElementType &element,
         break;
     }
 
-    const auto &keyopts = element.get_keyopts();
+    const auto &OPTIONs = element.get_OPTIONs();
     FEFamily family = get_variable_fe_family(element, variable);
-    if (keyopts.size() > 2)
+    if (OPTIONs.size() > 2)
     {
-        auto keyopt_order = static_cast<Order>(keyopts[2]);
-        if (keyopt_order != FIRST &&
+        auto OPTION_order = static_cast<Order>(OPTIONs[2]);
+        if (OPTION_order != FIRST &&
             (family == LAGRANGE || family == L2_LAGRANGE || family == LAGRANGE_VEC || family == L2_LAGRANGE_VEC))
         {
-            order = keyopt_order;
+            order = OPTION_order;
         }
     }
     return order;

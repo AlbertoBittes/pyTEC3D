@@ -39,7 +39,7 @@ Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_syste
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 apec.dof_couplings = Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), -90.0, variables=("A", "VOLT"))
 
-Selector.select(apec.mesh, "ansys_etype", 24, type="elem")
+Selector.select(apec.mesh, "TYPE", 24, type="elem")
 Selector.nsle(apec.mesh, "r")
 
 Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), coordinate_system=CylindricalCoordinateSystem())

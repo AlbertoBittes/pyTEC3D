@@ -8,7 +8,7 @@ import vtk.util.numpy_support as vtknp
 
 from selector import Selector
 from model_edit import ModelEdit
-from constants import REAL_CONSTANTS_COLUMNS_TYPES
+from constants import CONSTANTS_COLUMNS_TYPES
 
 from coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
 
@@ -298,18 +298,18 @@ class Cyclic:
         selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
         selected_ids = np.flatnonzero(selection_mask)
 
-        dtype_map = dict(REAL_CONSTANTS_COLUMNS_TYPES)
+        dtype_map = dict(CONSTANTS_COLUMNS_TYPES)
         columns = list(dtype_map.keys())
         if selected_ids.size == 0:
             return pd.DataFrame(columns=columns).astype(dtype_map)
 
-        real_constant_np = vtknp.vtk_to_numpy(cell_data.GetArray("ansys_real_constant"))
+        real_constant_np = vtknp.vtk_to_numpy(cell_data.GetArray("CONSTANT"))
         current_max = int(np.max(real_constant_np)) if real_constant_np.size else 0
         new_real_constants = np.arange(
             current_max + 1, current_max + 1 + selected_ids.size, dtype=int
         )
         real_constant_np[selected_ids] = new_real_constants
-        cell_data.GetArray("ansys_real_constant").Modified()
+        cell_data.GetArray("CONSTANT").Modified()
 
         centroids = ModelEdit.compute_cell_centroids(mesh)
         selected_centroids = centroids[selected_ids]
@@ -320,7 +320,7 @@ class Cyclic:
         )
 
         real_constants_df = pd.DataFrame(0.0, index=np.arange(selected_ids.size), columns=columns)
-        real_constants_df["ansys_real_constant"] = new_real_constants
+        real_constants_df["CONSTANT"] = new_real_constants
         real_constants_df["TX"] = coil_directions[:, 0]
         real_constants_df["TY"] = coil_directions[:, 1]
         real_constants_df["TZ"] = coil_directions[:, 2]

@@ -15,9 +15,7 @@ public:
         CLEAR_MESH,
         SET_ACTIVE_MESH,
         LOAD_DATA,
-        PRINT_MODEL_DATA,
         SOLVE,
-        SOLVE_TRANSIENT,
         FINISH,
         SET_MODE,
         HELP,
@@ -34,7 +32,6 @@ private:
     Command parse_command(const std::string &input) const;
     std::string extract_argument(const std::string &input) const;
     bool execute_command(APEC_M &program, const std::string &input, bool interactive);
-    static std::string default_mesh_name();
 };
 
 #endif // CLI_H

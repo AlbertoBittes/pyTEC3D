@@ -25,18 +25,6 @@ namespace
         const auto last = input.find_last_not_of(" \t\r\n");
         return input.substr(first, last - first + 1);
     }
-
-    bool require_mode(const Session &session, Session::Mode expected, const std::string &command_name)
-    {
-        if (session.get_mode() != expected)
-        {
-            libMesh::out << command_name << " is only available in "
-                         << Session::mode_to_string(expected) << " mode (current: "
-                         << Session::mode_to_string(session.get_mode()) << ")." << std::endl;
-            return false;
-        }
-        return true;
-    }
 }
 
 typedef BasicCommandLineInterface::Command Command;
@@ -70,66 +58,6 @@ void BasicCommandLineInterface::run_interactive(APEC_M &program)
     }
 }
 
-void BasicCommandLineInterface::run_batch(APEC_M &program, const std::string &batch_file)
-{
-    auto &comm = program.communicator();
-    const unsigned int root = 0;
-
-    std::ifstream file;
-    bool file_ok = true;
-    if (comm.rank() == static_cast<int>(root))
-    {
-        file.open(batch_file);
-        if (!file)
-        {
-            libMesh::out << "Unable to open batch file: " << batch_file << std::endl;
-            file_ok = false;
-        }
-    }
-
-    comm.broadcast(file_ok, root);
-    if (!file_ok)
-        return;
-
-    unsigned int line_number = 0;
-    bool keep_running = true;
-    while (keep_running)
-    {
-        std::string command;
-
-        if (comm.rank() == static_cast<int>(root))
-        {
-            std::string line;
-            bool found_command = false;
-            while (std::getline(file, line))
-            {
-                ++line_number;
-                auto cleaned = trim(line);
-                if (cleaned.empty() || cleaned[0] == '#')
-                    continue;
-                command = cleaned;
-                found_command = true;
-                break;
-            }
-
-            if (!found_command)
-                command = "-exit";
-        }
-
-        comm.broadcast(command, root);
-
-        if (command.empty())
-            continue;
-
-        bool continue_loop = execute_command(program, command, comm.rank() == static_cast<int>(root));
-        comm.broadcast(continue_loop, root);
-        keep_running = continue_loop;
-
-        if (!keep_running && comm.rank() == static_cast<int>(root) && command != "-exit")
-            libMesh::out << "Batch execution stopped at line " << line_number << std::endl;
-    }
-}
-
 Command BasicCommandLineInterface::parse_command(const std::string &input) const
 {
     if (input.rfind("-read_mesh", 0) == 0)
@@ -140,10 +68,6 @@ Command BasicCommandLineInterface::parse_command(const std::string &input) const
         return Command::SET_ACTIVE_MESH;
     if (input.rfind("-load_data", 0) == 0)
         return Command::LOAD_DATA;
-    if (input == "-print_model_data")
-        return Command::PRINT_MODEL_DATA;
-    if (input.rfind("-solve_transient", 0) == 0)
-        return Command::SOLVE_TRANSIENT;
     if (input.rfind("-solve", 0) == 0)
         return Command::SOLVE;
     if (input == "-finish")
@@ -179,9 +103,9 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
             return true;
         }
 
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-read_mesh"))
-            return true;
+        // const Session &session = *program.model_data()->get_object<Session>();
+        // if (!require_mode(session, Session::Mode::PreProcessing, "-read_mesh"))
+        //     return true;
 
         auto filepath = args;
         std::filesystem::path mesh_path(filepath);
@@ -199,9 +123,9 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
     }
     case Command::CLEAR_MESH:
     {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::PreProcessing, "-clear"))
-            return true;
+        // const Session &session = *program.model_data()->get_object<Session>();
+        // if (!require_mode(session, Session::Mode::PreProcessing, "-clear"))
+        //     return true;
 
         std::string mesh_name = session.has_active_mesh() ? session.get_active_mesh() : default_mesh_name();
         if (mesh_name.empty())
@@ -269,40 +193,21 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
 
         return true;
     }
-    case Command::PRINT_MODEL_DATA:
-    {
-        const Session &session = *program.model_data()->get_object<Session>();
-        // if (!require_mode(session, Session::Mode::PreProcessing, "-print_model_data"))
-        //     return true;
-
-        program.print_model_data();
-        return true;
-    }
     case Command::SOLVE:
     {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-solve"))
-            return true;
+        // const Session &session = *program.model_data()->get_object<Session>();
+        // if (!require_mode(session, Session::Mode::Analysis, "-solve"))
+        //     return true;
 
         if (!program.solve_load_step())
             libMesh::out << "Load step solve failed (ensure data loaded with -load_data)." << std::endl;
         return true;
     }
-    case Command::SOLVE_TRANSIENT:
-    {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-solve_transient"))
-            return true;
-
-        if (!program.solve_transient_load_steps())
-            libMesh::out << "Transient solve failed." << std::endl;
-        return true;
-    }
     case Command::FINISH:
     {
-        const Session &session = *program.model_data()->get_object<Session>();
-        if (!require_mode(session, Session::Mode::Analysis, "-finish"))
-            return true;
+        // const Session &session = *program.model_data()->get_object<Session>();
+        // if (!require_mode(session, Session::Mode::Analysis, "-finish"))
+        //     return true;
 
         if (!program.finish_analysis())
             libMesh::out << "Failed to reset analysis state." << std::endl;
@@ -324,19 +229,6 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         std::string analysis_token;
         arg_stream >> mode_token;
         arg_stream >> analysis_token;
-
-        static const std::unordered_map<std::string, Session::Mode> mode_map = {
-            {"pre", Session::Mode::PreProcessing},
-            {"preprocessing", Session::Mode::PreProcessing},
-            {"analysis", Session::Mode::Analysis},
-            {"other", Session::Mode::Other}};
-
-        static const std::unordered_map<std::string, AnalysisBase::Type> analysis_map = {
-            {"static", AnalysisBase::Type::STATIC},
-            {"transient", AnalysisBase::Type::TRANSIENT},
-            {"apec_equilibrium", AnalysisBase::Type::APECM_EQUILIBRIUM},
-            {"apec_evolution", AnalysisBase::Type::APECM_EVOLUTION},
-            {"dof_interpolation", AnalysisBase::Type::DOF_INTERPOLATION}};
 
         std::string key = mode_token;
         std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c)
@@ -397,9 +289,4 @@ bool BasicCommandLineInterface::execute_command(APEC_M &program, const std::stri
         libMesh::out << "Unknown command. Type -help for a list of commands." << std::endl;
         return true;
     }
-}
-
-std::string BasicCommandLineInterface::default_mesh_name()
-{
-    return "default";
 }

@@ -55,35 +55,35 @@ typedef std::map<GlobalVariableName, std::set<subdomain_id_type>> VariableToElem
 
 // This is probably one of the most important classes of the program (ETYPE in APDL).
 // It holds the ElementTypes ID numbers (formulations) and all the information relevant for the formulation of the problem:
-// The physical region represented by the element (KEYOPT1)
+// The physical region represented by the element (OPTION1)
 //
-// Axisymmetric options (KEYOPT3)
+// Axisymmetric options (OPTION3)
 // Last, it contains an array of libMesh FE objects, which hold all the shape functions, quadrature points, etc.
 // These infomration will be used to build by the ElementBuilder e.g. to build the element matrices
 // Variable ownership and mapping live in VariablesMap; ElementType only stores formulation and FE data.
 class ElementType
 {
 public:
-    ElementType(const std::vector<unsigned int> &keyopts,
+    ElementType(const std::vector<unsigned int> &OPTIONs,
                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     void build_fe_array(std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Getters
-    inline const std::vector<unsigned int> &get_keyopts() const { return keyopts; }
+    inline const std::vector<unsigned int> &get_OPTIONs() const { return OPTIONs; }
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) = 0;
 
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
 protected:
-    const std::vector<unsigned int> keyopts; // Element type keyopts
+    const std::vector<unsigned int> OPTIONs; // Element type OPTIONs
 };
 
 class AVElementType : public ElementType
 {
 public:
     // Constructor
-    AVElementType(const std::vector<unsigned int> &keyopts,
+    AVElementType(const std::vector<unsigned int> &OPTIONs,
                   std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
@@ -91,7 +91,7 @@ class AV3DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV3DElementType(const std::vector<unsigned int> &keyopts,
+    AV3DElementType(const std::vector<unsigned int> &OPTIONs,
                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 };
 
@@ -99,9 +99,9 @@ class AV2DElementType : public AVElementType
 {
 public:
     // Constructor
-    AV2DElementType(const std::vector<unsigned int> &keyopts,
+    AV2DElementType(const std::vector<unsigned int> &OPTIONs,
                     std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
-        : AVElementType(keyopts, fe_collector)
+        : AVElementType(OPTIONs, fe_collector)
     {
         // Optionally call set_fe_array() or other initialization here
     }
@@ -111,14 +111,14 @@ class SOLID97Type : public AV3DElementType
 {
 public:
     // Direct constructor
-    SOLID97Type(const std::vector<unsigned int> &keyopts);
+    SOLID97Type(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    SOLID97Type(const std::vector<unsigned int> &keyopts,
+    SOLID97Type(const std::vector<unsigned int> &OPTIONs,
                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Helper to add two FEDataShapeFunctions structs
     static void add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                       const std::vector<unsigned int> &keyopts);
+                                       const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
@@ -127,15 +127,15 @@ class SOLID236Type : public AV3DElementType
 {
 public:
     // Direct constructor
-    SOLID236Type(const std::vector<unsigned int> &keyopts);
+    SOLID236Type(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    SOLID236Type(const std::vector<unsigned int> &keyopts,
+    SOLID236Type(const std::vector<unsigned int> &OPTIONs,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add two FEDataShapeFunctions structs
     static void add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                        const std::vector<unsigned int> &keyopts);
+                                        const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
@@ -144,15 +144,15 @@ class PLANE233Type : public AV2DElementType
 {
 public:
     // Direct constructor
-    PLANE233Type(const std::vector<unsigned int> &keyopts);
+    PLANE233Type(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    PLANE233Type(const std::vector<unsigned int> &keyopts,
+    PLANE233Type(const std::vector<unsigned int> &OPTIONs,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add two FEDataShapeFunctions structs
     static void add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                        const std::vector<unsigned int> &keyopts);
+                                        const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };

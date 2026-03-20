@@ -30,8 +30,6 @@ public:
     unsigned int get_index() const { return index; }
     Real get_time() const { return time; }
     Real get_dt() const { return dt; }
-    bool get_solved() const { return solved; }
-    unsigned int get_number_picard_iterations() const { return number_picard_iterations; }
 
     bool get_write_results() const;
     bool get_transient_effect() const;
@@ -41,10 +39,6 @@ public:
     void set_index(unsigned int i) { index = i; }
     void set_time(Real t) { time = t; }
     void set_dt(Real d) { dt = d; }
-    void set_solved(bool s) { solved = s; }
-    void set_number_picard_iterations(unsigned int n) { number_picard_iterations = n; }
-    void reset_number_picard_iterations(unsigned int n = 0) { number_picard_iterations = n; }
-    void increment_number_picard_iterations() { ++number_picard_iterations; }
 
     void print_solve_msg() const
     {
@@ -57,8 +51,6 @@ private:
     unsigned int index;
     Real time;
     Real dt;
-    bool solved;
-    unsigned int number_picard_iterations;
 };
 
 class TimeStep : public BinaryDataFEDataObject

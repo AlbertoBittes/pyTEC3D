@@ -1,36 +1,36 @@
 #include "element_types.h"
 #include "element_builder.h"
 // Direct constructor
-PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts)
+PLANE233Type::PLANE233Type(const std::vector<unsigned int> &OPTIONs)
     : AV2DElementType(
-          keyopts,
-          [keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
+          OPTIONs,
+          [OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
-              add_plane233_fe_structs(fe_structs, keyopts);
+              add_plane233_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Chain-prolonging constructor for derived types
-PLANE233Type::PLANE233Type(const std::vector<unsigned int> &keyopts,
+PLANE233Type::PLANE233Type(const std::vector<unsigned int> &OPTIONs,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV2DElementType(
-          keyopts,
-          [fe_collector, keyopts](std::vector<FEDataShapeFunctions> &fe_structs)
+          OPTIONs,
+          [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
-              add_plane233_fe_structs(fe_structs, keyopts);
+              add_plane233_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Helper to add two FEDataShapeFunctions structs
 void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                           const std::vector<unsigned int> &keyopts)
+                                           const std::vector<unsigned int> &OPTIONs)
 {
     // Example: add a scalar and a vector FE struct
     fe_structs.push_back({
-        static_cast<Order>(keyopts[2]), // order
+        static_cast<Order>(OPTIONs[2]), // order
         LAGRANGE,                       // family
         2,                              // dimension (plane element)
         INVALID_ORDER,                  // quadrature_order (use default)
@@ -39,7 +39,7 @@ void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe
         false                           // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        static_cast<Order>(keyopts[2]), // order
+        static_cast<Order>(OPTIONs[2]), // order
         LAGRANGE,                       // family
         2,                              // dimension (plane element)
         INVALID_ORDER,                  // quadrature_order (use default)

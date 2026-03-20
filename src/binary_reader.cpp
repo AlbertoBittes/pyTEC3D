@@ -8,15 +8,10 @@
 #include <libmesh/explicit_system.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/petsc_linear_solver.h>
-
 #include "apec_m_equation_systems.h"
-#include "apec_m_settings.h"
 #include "apec_m_system.h"
 #include "element_builder.h"
 #include "element_types_factory.h"
-#include "dof_couplings_factory.h"
-#include "materials_object.h"
-#include "real_constants_object.h"
 #include "solver_configuration.h"
 #include "session.h"
 #include "time_step.h"
@@ -89,9 +84,6 @@ void BinaryReader::set_disallowed_labels_for_analysis_mode(bool analysis_mode)
     disallowed_labels.insert(BinaryLabelId::TIME_PARAMETERS);
     disallowed_labels.insert(BinaryLabelId::POINT_DATA);
     disallowed_labels.insert(BinaryLabelId::CELL_DATA);
-    disallowed_labels.insert(BinaryLabelId::DOF_COUPLINGS);
-    disallowed_labels.insert(BinaryLabelId::APEC_SETTINGS);
-    disallowed_labels.insert(BinaryLabelId::DOF_INTERPOLATION_SETTINGS);
 }
 
 void BinaryReader::read_binary_fem_data(const std::string &filepath,
@@ -154,13 +146,13 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
     }
     case BinaryLabelId::MATERIALS:
     {
-        auto materials = std::make_shared<MaterialsObject>(file);
+        auto materials = std::make_shared<Materials>(file);
         repository->set_object(materials);
         break;
     }
-    case BinaryLabelId::REAL_CONSTANTS:
+    case BinaryLabelId::CONSTANTS:
     {
-        auto reals = std::make_shared<RealConstantsObject>(file);
+        auto reals = std::make_shared<Constants>(file);
         repository->set_object(reals);
         break;
     }
@@ -201,24 +193,6 @@ void BinaryReader::dispatch_read(BinaryLabelId label,
         }
 
         vtk_data->read_data(file);
-        break;
-    }
-    case BinaryLabelId::DOF_COUPLINGS:
-    {
-        auto couplings = std::make_shared<DofCouplingsObject>(file);
-        repository->set_object(couplings);
-        break;
-    }
-    case BinaryLabelId::APEC_SETTINGS:
-    {
-        auto settings = std::make_shared<ApecMSettingsObject>(file);
-        repository->set_object(settings);
-        break;
-    }
-    case BinaryLabelId::DOF_INTERPOLATION_SETTINGS:
-    {
-        auto interpolation_settings = std::make_shared<DofInterpolationSettingsObject>(file);
-        repository->set_object(interpolation_settings);
         break;
     }
     default:

@@ -14,8 +14,6 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_mesh.h"
 #include "fem_data_repository.h"
-#include "transient_analysis.h"
-#include "session.h"
 
 class CommandLineInterface
 {
@@ -28,10 +26,8 @@ public:
 class APEC_M
 {
 public:
-    explicit APEC_M(libMesh::Parallel::Communicator &comm);
-
-    std::shared_ptr<FEMDataRepository> model_data() const { return model_data_repository; }
-    std::shared_ptr<FEMDataRepository> model_data() { return model_data_repository; }
+    explicit APEC_M(libMesh::Parallel::Communicator &comm) : comm(comm),
+                                                             model_data_repository(std::make_shared<FEMDataRepository>()) {}
 
     std::shared_ptr<ApecMMesh> get_mesh(const std::string &name) const;
     std::shared_ptr<ApecMMesh> get_active_mesh() const;
@@ -39,37 +35,21 @@ public:
     std::shared_ptr<ApecMEquationSystems> get_active_equation_system() const;
     std::vector<std::shared_ptr<ApecMEquationSystems>> get_all_equation_systems() const;
     std::vector<std::pair<std::string, std::shared_ptr<ApecMEquationSystems>>> get_all_equation_systems_with_names() const;
-    std::shared_ptr<AnalysisBase> get_analysis() const;
 
     bool has_mesh(const std::string &name) const;
     bool set_active_mesh(const std::string &name);
     bool load_data(const std::vector<std::string> &filepaths);
-    bool set_mode(Session::Mode mode, std::optional<AnalysisBase::Type> analysis_type = std::nullopt);
-    Session::Mode get_mode() const
-    {
-        auto session = model_data_repository->get_object<Session>();
-        return session ? session->get_mode() : Session::Mode::PreProcessing;
-    }
 
     bool solve_load_step();
-    bool solve_transient_load_steps();
     bool finish_analysis();
-
-    void print_model_data() const;
 
     void read_mesh(const std::string &name, const std::string &filepath);
     void clear_mesh(const std::string &name);
 
     void set_cli(std::unique_ptr<CommandLineInterface> cli_instance);
     void run_cli();
-    void run_batch_file(const std::string &filepath);
 
     libMesh::Parallel::Communicator &communicator() { return comm; }
-
-private:
-    bool validate_model_for_analysis();
-    FEMDataRepository &ensure_mesh_repository(const std::string &name);
-    std::shared_ptr<FEMDataRepository> find_mesh_repository(const std::string &name) const;
 
     libMesh::Parallel::Communicator &comm;
     std::shared_ptr<FEMDataRepository> model_data_repository;
@@ -77,8 +57,13 @@ private:
     std::unordered_map<std::string, std::size_t> mesh_repository_lookup;
     std::unique_ptr<CommandLineInterface> cli;
     std::shared_ptr<AnalysisBase> shared_analysis;
+    std::string active_mesh_name = "";
+    bool analysis_mode = false;
 
-    bool enter_analysis_mode(std::optional<AnalysisBase::Type> analysis_type);
+    FEMDataRepository &ensure_mesh_repository(const std::string &name);
+    std::shared_ptr<FEMDataRepository> find_mesh_repository(const std::string &name) const;
+
+    bool enter_analysis_mode();
     void enter_preprocessing_mode();
 };
 

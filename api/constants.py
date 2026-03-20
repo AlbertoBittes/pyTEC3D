@@ -6,17 +6,13 @@ VARIABLES_GLOBAL_LIST = [
     "A",
     "Az",
     "VOLT",
-    "V",
     "EMF",
-    "E",
     "AMPS",
     "Js",
     "B",
     "H",
-    "PSI",
     "Be",
     "He",
-    "PSIe",
     "Jt",
 ]
 
@@ -115,64 +111,6 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
     "write_substep_results": int,
 }
 
-DEFAULT_APEC_SETTINGS = {
-    "target_central_axis_x": 0.0,
-    "target_central_axis_y": 0.0,
-    "target_central_axis_z": 0.0,
-    "R0": 0.0,
-    "max_picard_iterations": 1,
-    "min_distance": 0.3,
-    "cp_gain": 0.0,
-    "tolerance_value": 1e-6,
-    "bradx_value": 0.0,
-    "brady_value": 0.0,
-    "bverx_value": 0.0,
-    "bvery_value": 0.0,
-    "alpha_mp": 1.0001,
-    "alpha_np": 0.83197,
-    "plasma_current": 0.0,
-    "beta_p": 0.0,
-    "AF0": 5.3*6.2,
-    "print_full_output": 0,
-    "main_mesh": "",
-    "static_mesh": "",
-    "n_slices": 3,
-    "toroidal_slices_nodes": np.zeros((0, 0), dtype=np.int64),
-    "toroidal_slices_elems": np.zeros((0, 0), dtype=np.int64),
-}
-
-REQUIRED_APEC_SETTINGS = [
-    "R0",
-    "max_picard_iterations",
-    "tolerance_value",
-    "alpha_value",
-    "plasma_current",
-    "beta_p",
-]
-
-DEFAULT_APEC_SETTINGS_TYPES = {
-    "target_central_axis_x": float,
-    "target_central_axis_y": float,
-    "target_central_axis_z": float,
-    "R0": float,
-    "max_picard_iterations": int,
-    "min_distance": float,
-    "cp_gain": float,
-    "tolerance_value": float,
-    "bradx_value": float,
-    "brady_value": float,
-    "bverx_value": float,
-    "bvery_value": float,
-    "alpha_value": float,
-    "plasma_current": float,
-    "AF0": float,
-    "beta_p": float,
-    "print_full_output": int,
-    "main_mesh": str,
-    "toroidal_slices_nodes": np.ndarray,
-    "toroidal_slices_elems": np.ndarray,
-}
-
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
     "ansys_material_type": int,
@@ -182,9 +120,6 @@ MATERIALS_COLUMNS_TYPES = {
     "RSVX": float,
     "RSVY": float,
     "RSVZ": float,
-    "PERX": float,
-    "PERY": float,
-    "PERZ": float,
     "MGXX": float,
     "MGYY": float,
     "MGZZ": float,
@@ -197,8 +132,8 @@ DOF_COUPLINGS_COLUMNS_TYPES = {
 }
 
 # Assign types to real constants columns
-REAL_CONSTANTS_COLUMNS_TYPES = {
-    "ansys_real_constant": int,
+CONSTANTS_COLUMNS_TYPES = {
+    "CONSTANT": int,
     "THK": float,
     "SC": float,
     "NC": float,
@@ -223,13 +158,13 @@ REAL_CONSTANTS_COLUMNS_TYPES = {
 
 # Assign types to element types columns
 ELEMENT_TYPES_COLUMNS_TYPES = {
-    "ansys_etype": int,
+    "TYPE": int,
     "element_type": str,
-    "KEYOPT1": int,
-    "KEYOPT2": int,
-    "KEYOPT3": int,
-    "KEYOPT4": int,
-    "KEYOPT5": int,
+    "OPTION1": int,
+    "OPTION2": int,
+    "OPTION3": int,
+    "OPTION4": int,
+    "OPTION5": int,
 }
 
 
@@ -244,12 +179,11 @@ CELL_POINT_DATA_COLUMNS_TYPES = {
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
-    "real_constants": REAL_CONSTANTS_COLUMNS_TYPES,
+    "real_constants": CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
     "node": CELL_POINT_DATA_COLUMNS_TYPES,
     "elem": CELL_POINT_DATA_COLUMNS_TYPES,
-    "apec_settings": DEFAULT_APEC_SETTINGS_TYPES,
     "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
 }
 
@@ -306,19 +240,7 @@ VTK_ARRAYS_TO_INIT = {
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
-    "V": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
     "EMF": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "E": {
         "location": "node",
         "components": 1,
         "fill": np.nan,

@@ -8,7 +8,6 @@
 #include <libmesh/petsc_linear_solver.h>
 
 // Define Gauss quadrature rules.
-#include "session.h"       // Ensure the Session class is included
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system.h"
 #include "element_types_factory.h"
@@ -93,7 +92,7 @@ void ElementBuilder::build_plane233()
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
-    unsigned int axisymm = elem_data.element_type->get_keyopts()[3];
+    unsigned int axisymm = elem_data.element_type->get_OPTIONs()[3];
 
     Real r_sign = pow(-1, axisymm);
 
@@ -208,7 +207,7 @@ void ElementBuilder::build_plane233()
     build_aae();
     build_me();
 
-    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
+    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
 
     switch (physical_region)
     {
@@ -326,7 +325,7 @@ void ElementBuilder::build_plane233()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // Non-time-integrated A-VOLT-EMF formulation (KEYOPT(2)=0/1).
+                        // Non-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
                         Ce(dof_i, dof_j + n_dofs_var) += kav;
                         Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -377,7 +376,7 @@ void ElementBuilder::build_plane233()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // Non-time-integrated A-VOLT-EMF formulation (KEYOPT(2)=0/1).
+                        // Non-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
                         Ke(dof_i, dof_j + n_dofs_var) += kav;
                         Ke(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -428,7 +427,7 @@ void ElementBuilder::build_plane233_rhs()
     std::vector<dof_id_type> dof_indices_loads;
     std::vector<Real> loads_vec;
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
@@ -469,8 +468,8 @@ void ElementBuilder::build_plane233_rhs()
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
         std::string volt_var_name;
-        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]) ||
-            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]))
+        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]) ||
+            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
             volt_var_name = "V";
         else
             volt_var_name = "VOLT";
@@ -514,7 +513,6 @@ void ElementBuilder::build_plane233_solution_vectors()
 {
     this->build_plane233_nodal_solution();
     this->build_plane233_element_solution();
-    this->build_plane233_support_solution();
 }
 
 void ElementBuilder::build_plane233_nodal_solution()
@@ -597,7 +595,7 @@ void ElementBuilder::build_plane233_element_solution()
                                      ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     const auto &An = sol_vectors[0];
 
-    bool axisymm = this->elem_data.element_type->get_keyopts()[3];
+    bool axisymm = this->elem_data.element_type->get_OPTIONs()[3];
     Point centroid = this->elem_data.elem->vertex_average();
 
     auto &element_vectors = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS];
@@ -606,12 +604,10 @@ void ElementBuilder::build_plane233_element_solution()
     DenseVector<Number> Be;
     DenseVector<Number> He;
     DenseVector<Number> Je;
-    DenseVector<Number> PSIe;
 
     bool have_be = false;
     bool have_he = false;
     bool have_je = false;
-    bool have_psie = false;
 
     auto build_be = [&]()
     {
@@ -640,31 +636,13 @@ void ElementBuilder::build_plane233_element_solution()
         have_he = true;
     };
 
-    auto build_psie = [&]()
-    {
-        PSIe.resize(1);
-        if (axisymm)
-        {
-            auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
-            unsigned int n_qp = BAe.m() / 2;
-            auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
-
-            DenseVector<Number> Aq(n_qp);
-            JAe.vector_mult(Aq, An);
-            for (unsigned int qp = 0; qp < n_qp; qp++)
-                PSIe(0) += Aq(qp);
-            PSIe(0) = PSIe(0) / n_qp * centroid(0);
-        }
-        have_psie = true;
-    };
-
     auto build_je = [&]()
     {
         auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
         unsigned int n_qp = BAe.m() / 2;
         Je.resize(1);
 
-        PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_keyopts()[1]);
+        PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
         switch (physical_region)
         {
         case PhysicalRegionEnum::NON_MAGNETIC:
@@ -780,9 +758,6 @@ void ElementBuilder::build_plane233_element_solution()
                                   case APIVariableName::He:
                                       build_he();
                                       return have_he ? &He : nullptr;
-                                  case APIVariableName::PSIe:
-                                      build_psie();
-                                      return have_psie ? &PSIe : nullptr;
                                   case APIVariableName::Jt:
                                       build_je();
                                       return have_je ? &Je : nullptr;
@@ -791,47 +766,4 @@ void ElementBuilder::build_plane233_element_solution()
                                   } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
-}
-
-void ElementBuilder::build_plane233_support_solution()
-{
-    auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::SUPPORT_SOLUTION);
-    if (api_vars.empty())
-        return;
-
-    const auto sol_vectors =
-        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
-                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &An = sol_vectors[0];
-
-    bool axisymm = this->elem_data.element_type->get_keyopts()[3];
-
-    std::vector<DenseVector<Number>> support_vectors;
-    support_vectors.resize(api_vars.size());
-    DenseVector<Number> psi_values;
-    bool have_psi = false;
-
-    auto build_psi = [&]()
-    {
-        psi_values.resize(An.size());
-        for (unsigned int i = 0; i < elem_data.elem->n_nodes(); i++)
-        {
-            auto &node = elem_data.elem->node_ref(i);
-            psi_values(i) = axisymm ? An(i) * node(0) : 0.0;
-        }
-        have_psi = true;
-    };
-
-    this->fill_vectors_by_api(api_vars, support_vectors, [&](APIVariableName api_var) -> const DenseVector<Number> *
-                              {
-                                  switch (api_var)
-                                  {
-                                  case APIVariableName::PSI:
-                                      build_psi();
-                                      return have_psi ? &psi_values : nullptr;
-                                  default:
-                                      return nullptr;
-                                  } });
-
-    this->append_and_write_solution(*support_solution_system_, support_vectors);
 }

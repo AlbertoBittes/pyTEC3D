@@ -3,12 +3,12 @@
 
 #include <memory>
 
+#include <libmesh/system.h>
+
 #include "fem_service.h"
 #include "fem_data_repository.h"
 #include "fe_parent_object.h"
 #include "time_step.h"
-#include "session.h"
-#include <libmesh/system.h>
 
 using namespace libMesh;
 
@@ -22,11 +22,11 @@ class ApecMLinearSystem;
 // Once the system matrix is built, the libMesh solver will take care of solving it
 class AssemblerLinear
     : public System::Assembly,
-      public FEMService<TimeStep, Session>,
+      public FEMService<TimeStep>,
       public FEParentObjectBase<ApecMEquationSystems>
 {
 public:
-    using ContextView = TypedContextView<TimeStep, Session>;
+    using ContextView = TypedContextView<TimeStep>;
     using FEParentObjectBase<ApecMEquationSystems>::FEParentObjectBase;
 
     AssemblerLinear(ApecMEquationSystems *equation_systems = nullptr);
@@ -39,7 +39,6 @@ public:
     void write_element_matrices_and_rhs();
     void write_nodal_solution();
     void write_element_solution();
-    void write_support_solution();
 
 private:
     std::unique_ptr<ElementBuilder> make_element_builder() const;

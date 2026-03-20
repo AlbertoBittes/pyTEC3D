@@ -163,10 +163,9 @@ T BinaryDataFEDataObject::get_scalar(const std::string &key, std::size_t index) 
     }
 }
 
-class DofInterpolationSettingsObject : public BinaryDataFEDataObject
-{
-public:
-    using BinaryDataFEDataObject::BinaryDataFEDataObject;
-};
+typedef BinaryDataFEDataObject Materials;
+typedef BinaryDataFEDataObject Constants;
+typedef BinaryDataFEDataObject ConstraintEquations;
+typedef BinaryDataFEDataObject Loads;
 
 #endif // FE_DATA_OBJECT_H
