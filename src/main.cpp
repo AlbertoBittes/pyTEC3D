@@ -1,85 +1,19 @@
-#include "apec_m.h"
-#include "cli.h"
+#include "apec_m_solver.h"
 
-#include <iostream>
-#include <memory>
-#include <string>
+#include <pybind11/pybind11.h>
 
-#include <libmesh/libmesh.h>
+namespace py = pybind11;
 
-namespace
+PYBIND11_MODULE(apec_m_solver, module)
 {
-    void print_usage()
-    {
-        std::cout << "Usage: apec_m [-i | -b <batch_file>]" << std::endl;
-        std::cout << "  -i                 Run in interactive mode" << std::endl;
-        std::cout << "  -b <batch_file>    Run commands from batch file" << std::endl;
-    }
-}
+    module.doc() = "APEC-M solver module (Python-owned model, C++ execution core).";
 
-int main(int argc, char **argv)
-{
-    libMesh::LibMeshInit init(argc, argv);
-
-    bool interactive_mode = false;
-    bool batch_mode = false;
-    std::string batch_file;
-
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string arg(argv[i]);
-        if (arg == "-i")
-            interactive_mode = true;
-        else if (arg == "-b")
-        {
-            if (i + 1 >= argc)
-            {
-                std::cerr << "Error: -b requires a batch file argument." << std::endl;
-                print_usage();
-                return 1;
-            }
-            batch_mode = true;
-            batch_file = argv[++i];
-        }
-        else if (arg == "-h" || arg == "--help")
-        {
-            print_usage();
-            return 0;
-        }
-        else
-        {
-            std::cerr << "Unknown argument: " << arg << std::endl;
-            print_usage();
-            return 1;
-        }
-    }
-
-    if (interactive_mode && batch_mode)
-    {
-        std::cerr << "Error: interactive and batch modes are mutually exclusive." << std::endl;
-        print_usage();
-        return 1;
-    }
-
-    if (!interactive_mode && !batch_mode)
-    {
-        std::cerr << "Error: no mode selected." << std::endl;
-        print_usage();
-        return 1;
-    }
-
-    // {
-    //     if (init.comm().rank() == 1)
-    //     {
-    //         int i = 0;
-    //         while (0 == i)
-    //             sleep(1);
-    //     }
-    // }
-
-    APEC_M program(init.comm());
-
-    program.cli->run_interactive(program);
-
-    return 0;
+    py::class_<ApecMSolver>(module, "ApecMSolver")
+        .def(py::init<>())
+        .def("load_model",
+             &ApecMSolver::load_model,
+             py::arg("apec_object"),
+             py::arg("mpi_comm") = py::none())
+        .def("solve", &ApecMSolver::solve)
+        .def("is_loaded", &ApecMSolver::is_loaded);
 }

@@ -69,6 +69,7 @@ public:
                                   const std::vector<std::string> &) override;
 
     virtual void read(const std::string &) override;
+    virtual void read(vtkUnstructuredGrid *grid);
 
     virtual void write(const std::string &) override;
 
@@ -83,6 +84,8 @@ public:
     void add_ugrid_data_vtk(MeshBase &mesh);
 
 private:
+    void build_mesh_from_active_vtk_grid();
+
     void nodes_to_vtk();
 
     void cells_to_vtk();

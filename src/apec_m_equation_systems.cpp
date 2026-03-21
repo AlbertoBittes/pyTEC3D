@@ -1,6 +1,5 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
-#include "apec_m_mesh.h"
 #include "element_types_factory.h"
 #include "vtkio_updated.h"
 #include <libmesh/solver_configuration.h>
@@ -9,20 +8,6 @@
 #include <optional>
 #include <set>
 #include <utility>
-
-void ApecMEquationSystems::configure_services(const std::shared_ptr<AnalysisContextView> &analysis_ctx)
-{
-    analysis_context_view_ = analysis_ctx;
-
-    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    auto bc_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
-    auto global_constraints_object = system.get_global_constraints_object();
-    global_constraints_object->set_context_view(bc_view);
-
-    auto assembler_view = analysis_ctx ? analysis_ctx->template project_view<TimeStep>() : nullptr;
-    auto assembler = system.get_assembler();
-    assembler->set_context_view(assembler_view);
-}
 
 void ApecMEquationSystems::prepare_time_step_solve(TimeStep &time_step)
 {
@@ -49,14 +34,9 @@ void ApecMEquationSystems::solve_equation_systems(TimeStep &time_step, bool noda
 
 void ApecMEquationSystems::print_output(TimeStep &time_step, bool picard_iteration_print)
 {
-    libMesh::out << "Writing output for time step " << time_step.get_index() << std::endl;
-
-    std::set<std::string> system_names = {"ApecMLinearSystem", "NodalSolutionSystem"};
-
-    VTKIO_Updated vtk_output(this->get_mesh(), this);
-    vtk_output.write_equation_systems(,
-                                      *this,
-                                      &system_names);
+    (void)picard_iteration_print;
+    libMesh::out << "Writing output for time step " << time_step.get_index()
+                 << " (output wiring pending)." << std::endl;
 }
 
 void ApecMEquationSystems::update_old_local_solution()
@@ -89,34 +69,6 @@ void ApecMEquationSystems::configure_systems()
     }
 }
 
-void ApecMEquationSystems::initialize_system_contexts()
-{
-    auto system_builder_view = this->get_context_view();
-    if (!system_builder_view)
-        return;
-
-    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
-    {
-        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-        auto &base_system = this->get_system<System>(info);
-
-        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-        {
-            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
-            {
-                system->set_context_view(system_builder_view);
-                system->init_variables();
-            }
-        }
-        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
-        {
-            system->set_context_view(system_builder_view);
-            system->init_variables();
-        }
-    }
-}
-
 void ApecMEquationSystems::post_initialize_systems()
 {
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
@@ -137,13 +89,9 @@ void ApecMEquationSystems::post_initialize_systems()
     }
 }
 
-void ApecMEquationSystems::initialize_systems(const std::shared_ptr<FEMDataRepository> &model_data)
+void ApecMEquationSystems::initialize_systems()
 {
-    auto system_view = std::make_shared<ContextView>(ContextView::from(model_data));
-    this->set_context_view(system_view);
-
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
-    initialize_system_contexts();
 }
 
 void ApecMEquationSystems::initialize_physics()
@@ -177,7 +125,7 @@ void ApecMEquationSystems::zero_all_systems()
     }
 }
 
-std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(ApecMMesh &mesh, APEC_M *program)
+std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(MeshBase &mesh, ApecMSolver *program)
 {
     auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
     equation_systems->set_parent_object(program);

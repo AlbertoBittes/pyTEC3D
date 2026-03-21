@@ -185,179 +185,155 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
 
 void VTKIO_Updated::read(const std::string &name)
 {
+    if (MeshOutput<MeshBase>::mesh().processor_id() != 0)
+        return;
 
-    // Keep track of what kinds of elements this file contains
-    if (MeshOutput<MeshBase>::mesh().processor_id() == 0)
+    typedef vtkSmartPointer<vtkXMLUnstructuredGridReader> MyReader;
+    MyReader reader = MyReader::New();
+    reader->SetFileName(name.c_str());
+    reader->Update();
+
+    _vtk_grid = reader->GetOutput();
+    build_mesh_from_active_vtk_grid();
+}
+
+void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
+{
+    if (MeshOutput<MeshBase>::mesh().processor_id() != 0)
+        return;
+
+    libmesh_error_msg_if(!grid, "VTKIO_Updated::read(vtkUnstructuredGrid*): input grid is null.");
+
+    _vtk_grid = grid;
+    build_mesh_from_active_vtk_grid();
+}
+
+void VTKIO_Updated::build_mesh_from_active_vtk_grid()
+{
+    libmesh_error_msg_if(!_vtk_grid, "VTKIO_Updated: active vtk grid is null.");
+
+    elems_of_dimension.clear();
+    elems_of_dimension.resize(4, false);
+
+    MeshBase &mesh = MeshInput<MeshBase>::mesh();
+    mesh.clear();
+
+    vtkAbstractArray *abstract_elem_id =
+        _vtk_grid->GetCellData()->GetAbstractArray("libmesh_elem_id");
+    vtkAbstractArray *abstract_node_id =
+        _vtk_grid->GetPointData()->GetAbstractArray("libmesh_node_id");
+    vtkAbstractArray *abstract_subdomain_id =
+        _vtk_grid->GetCellData()->GetAbstractArray("subdomain_id");
+    vtkAbstractArray *abstract_elemtype_id =
+        _vtk_grid->GetCellData()->GetAbstractArray("TYPE");
+
+    vtkIntArray *elem_id = vtkIntArray::SafeDownCast(abstract_elem_id);
+    vtkIntArray *node_id = vtkIntArray::SafeDownCast(abstract_node_id);
+    vtkIntArray *subdomain_id = vtkIntArray::SafeDownCast(abstract_subdomain_id);
+    vtkIntArray *elemtype_id = vtkIntArray::SafeDownCast(abstract_elemtype_id);
+
+    if (abstract_elem_id && !elem_id)
+        libmesh_warning("Found non-integral libmesh_elem_id array; forced to ignore it.\n"
+                        "This is technically valid but probably broken.");
+
+    if (abstract_node_id && !node_id)
+        libmesh_warning("Found non-integral libmesh_node_id array; forced to ignore it.\n"
+                        "This is technically valid but probably broken.");
+
+    if (abstract_subdomain_id && !subdomain_id)
+        libmesh_warning("Found non-integral subdomain_id array; forced to ignore it.\n"
+                        "This is technically valid but probably broken.");
+
+    if (abstract_elemtype_id && !elemtype_id)
+        libmesh_warning("Found non-integral ansys_elem_type array; forced to ignore it.\n"
+                        "This is technically valid but probably broken.");
+
+    const unsigned int vtk_num_points = static_cast<unsigned int>(_vtk_grid->GetNumberOfPoints());
+
+    std::vector<dof_id_type> vtk_node_to_libmesh;
+    if (node_id)
+        vtk_node_to_libmesh.resize(vtk_num_points);
+
+    for (unsigned int i = 0; i < vtk_num_points; ++i)
     {
-        // This is a serial-only process for now;
-        // the Mesh should be read on processor 0 and
-        // broadcast later
-        // libmesh_assert_equal_to(MeshOutput<MeshBase>::mesh().processor_id(), 0);
+        double pnt[3];
+        _vtk_grid->GetPoint(static_cast<vtkIdType>(i), pnt);
+        Point xyz(pnt[0], pnt[1], pnt[2]);
 
-        // Use a typedef, because these names are just crazy
-        // typedef vtkSmartPointer<vtkXMLPUnstructuredGridReader> MyReader;
-        typedef vtkSmartPointer<vtkXMLUnstructuredGridReader> MyReader;
-        MyReader reader = MyReader::New();
-
-        // Pass the filename along to the reader
-        reader->SetFileName(name.c_str());
-
-        // Force reading
-        reader->Update();
-
-        // read in the grid
-        _vtk_grid = reader->GetOutput();
-        elems_of_dimension.clear();
-        elems_of_dimension.resize(4, false);
-        // Get a reference to the mesh
-        MeshBase &mesh = MeshInput<MeshBase>::mesh();
-
-        // Clear out any pre-existing data from the Mesh
-        mesh.clear();
-
-        // Try to preserve any libMesh ids and subdomain ids we find in the
-        // file.  This will be null if there are none, e.g. if a non-libMesh
-        // program wrote this file.
-
-        vtkAbstractArray *abstract_elem_id =
-            _vtk_grid->GetCellData()->GetAbstractArray("libmesh_elem_id");
-        vtkAbstractArray *abstract_node_id =
-            _vtk_grid->GetPointData()->GetAbstractArray("libmesh_node_id");
-        vtkAbstractArray *abstract_subdomain_id =
-            _vtk_grid->GetCellData()->GetAbstractArray("subdomain_id");
-        vtkAbstractArray *abstract_elemtype_id =
-            _vtk_grid->GetCellData()->GetAbstractArray("TYPE");
-        // Get ids as integers.  This will be null if they are another data
-        // type, e.g. if a non-libMesh program used the names we thought
-        // were unique for different data.
-        vtkIntArray *elem_id = vtkIntArray::SafeDownCast(abstract_elem_id);
-        vtkIntArray *node_id = vtkIntArray::SafeDownCast(abstract_node_id);
-        vtkIntArray *subdomain_id = vtkIntArray::SafeDownCast(abstract_subdomain_id);
-        vtkIntArray *elemtype_id = vtkIntArray::SafeDownCast(abstract_elemtype_id);
-
-        if (abstract_elem_id && !elem_id)
-            libmesh_warning("Found non-integral libmesh_elem_id array; forced to ignore it.\n"
-                            "This is technically valid but probably broken.");
-
-        if (abstract_node_id && !node_id)
-            libmesh_warning("Found non-integral libmesh_node_id array; forced to ignore it.\n"
-                            "This is technically valid but probably broken.");
-
-        if (abstract_subdomain_id && !subdomain_id)
-            libmesh_warning("Found non-integral subdomain_id array; forced to ignore it.\n"
-                            "This is technically valid but probably broken.");
-
-        if (abstract_elemtype_id && !elemtype_id)
-            libmesh_warning("Found non-integral ansys_elem_type array; forced to ignore it.\n"
-                            "This is technically valid but probably broken.");
-        // Get the number of points from the _vtk_grid object
-        const unsigned int vtk_num_points = static_cast<unsigned int>(_vtk_grid->GetNumberOfPoints());
-
-        // Map from VTK indexing to libMesh id if necessary
-        std::vector<dof_id_type> vtk_node_to_libmesh;
         if (node_id)
-            vtk_node_to_libmesh.resize(vtk_num_points);
-
-        // always numbered nicely so we can loop like this
-        for (unsigned int i = 0; i < vtk_num_points; ++i)
         {
-            // add to the id map
-            // and add the actual point
-            double pnt[3];
-            _vtk_grid->GetPoint(static_cast<vtkIdType>(i), pnt);
-            Point xyz(pnt[0], pnt[1], pnt[2]);
+            auto id = node_id->GetValue(i);
+            if (!mesh.query_node_ptr(id))
+                mesh.add_point(xyz, id);
+            vtk_node_to_libmesh[i] = id;
+        }
+        else
+            mesh.add_point(xyz, i);
+    }
 
-            if (node_id)
-            {
-                auto id = node_id->GetValue(i);
+    const unsigned int vtk_num_cells = static_cast<unsigned int>(_vtk_grid->GetNumberOfCells());
+    auto &element_map = libmesh_map_find(_element_maps, mesh.default_mapping_type());
 
-                // It would nice to distinguish between "duplicate nodes
-                // because one was ghosted in a parallel file segment" and
-                // "duplicate nodes because there was a bug", but I'm not
-                // sure how to do that with vtkXMLPUnstructuredGridReader
-                if (!mesh.query_node_ptr(id))
-                    mesh.add_point(xyz, id);
-                vtk_node_to_libmesh[i] = id;
-            }
-            else
-                mesh.add_point(xyz, i);
+    vtkSmartPointer<vtkGenericCell> cell = vtkSmartPointer<vtkGenericCell>::New();
+    for (unsigned int i = 0; i < vtk_num_cells; ++i)
+    {
+        _vtk_grid->GetCell(i, cell);
+
+        ElemType libmesh_elem_type = element_map.find(cell->GetCellType());
+        auto elem = Elem::build(libmesh_elem_type);
+
+        for (auto j : elem->node_index_range())
+        {
+            const auto vtk_point_id = cell->GetPointId(j);
+            const dof_id_type libmesh_node_id = node_id ? vtk_node_to_libmesh[vtk_point_id] : vtk_point_id;
+            elem->set_node(j) = mesh.node_ptr(libmesh_node_id);
         }
 
-        // Get the number of cells from the _vtk_grid object
-        const unsigned int vtk_num_cells = static_cast<unsigned int>(_vtk_grid->GetNumberOfCells());
+        std::vector<dof_id_type> conn;
+        elem->connectivity(0, VTK, conn);
 
-        auto &element_map = libmesh_map_find(_element_maps, mesh.default_mapping_type());
+        for (unsigned int j = 0, n_conn = cast_int<unsigned int>(conn.size());
+             j != n_conn; ++j)
+            elem->set_node(j) = mesh.node_ptr(conn[j]);
 
-        vtkSmartPointer<vtkGenericCell> cell = vtkSmartPointer<vtkGenericCell>::New();
-        for (unsigned int i = 0; i < vtk_num_cells; ++i)
+        if (elem_id)
         {
-            _vtk_grid->GetCell(i, cell);
+            auto id = elem_id->GetValue(i);
+            libmesh_error_msg_if(mesh.query_elem_ptr(id), "Duplicate element id " << id << " found in libmesh_elem_ids");
+            elem->set_id(id);
+        }
+        else
+            elem->set_id(i);
 
-            // Get the libMesh element type corresponding to this VTK element type.
-            ElemType libmesh_elem_type = element_map.find(cell->GetCellType());
-            auto elem = Elem::build(libmesh_elem_type);
+        if (subdomain_id)
+        {
+            auto sbdid = subdomain_id->GetValue(i);
+            elem->subdomain_id() = sbdid;
+        }
+        else if (elemtype_id)
+        {
+            auto elemtype = elemtype_id->GetValue(i);
+            elem->subdomain_id() = elemtype;
+        }
 
-            // get the straightforward numbering from the VTK cells
-            for (auto j : elem->node_index_range())
-            {
-                const auto vtk_point_id = cell->GetPointId(j);
-                const dof_id_type libmesh_node_id = node_id ? vtk_node_to_libmesh[vtk_point_id] : vtk_point_id;
+        elems_of_dimension[elem->dim()] = true;
+        mesh.add_elem(std::move(elem));
+    }
 
-                elem->set_node(j) = mesh.node_ptr(libmesh_node_id);
-            }
+    for (unsigned char i = 0; i != 4; ++i)
+        if (elems_of_dimension[i])
+            mesh.set_mesh_dimension(i);
 
-            // then get the connectivity
-            std::vector<dof_id_type> conn;
-            elem->connectivity(0, VTK, conn);
-
-            // then reshuffle the nodes according to the connectivity, this
-            // two-time-assign would evade the definition of the vtk_mapping
-            for (unsigned int j = 0,
-                              n_conn = cast_int<unsigned int>(conn.size());
-                 j != n_conn; ++j)
-                elem->set_node(j) = mesh.node_ptr(conn[j]);
-
-            if (elem_id)
-            {
-                auto id = elem_id->GetValue(i);
-                libmesh_error_msg_if(mesh.query_elem_ptr(id), "Duplicate element id " << id << " found in libmesh_elem_ids");
-                elem->set_id(id);
-            }
-            else
-                elem->set_id(i);
-
-            if (subdomain_id)
-            {
-                auto sbdid = subdomain_id->GetValue(i);
-                elem->subdomain_id() = sbdid;
-            }
-            else if (elemtype_id)
-            {
-                auto elemtype = elemtype_id->GetValue(i);
-                elem->subdomain_id() = elemtype;
-            }
-
-            elems_of_dimension[elem->dim()] = true;
-
-            mesh.add_elem(std::move(elem));
-        } // end loop over VTK cells
-
-        // Set the mesh dimension to the largest encountered for an element
-        for (unsigned char i = 0; i != 4; ++i)
-            if (elems_of_dimension[i])
-                mesh.set_mesh_dimension(i);
-
-        this->add_ugrid_data_vtk(mesh);
+    this->add_ugrid_data_vtk(mesh);
 
 #if LIBMESH_DIM < 3
-        libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
-                             "Cannot open dimension "
-                                 << mesh.mesh_dimension()
-                                 << " mesh file when configured without "
-                                 << mesh.mesh_dimension()
-                                 << "D support.");
+    libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
+                         "Cannot open dimension "
+                             << mesh.mesh_dimension()
+                             << " mesh file when configured without "
+                             << mesh.mesh_dimension()
+                             << "D support.");
 #endif // LIBMESH_DIM < 3
-    }
 }
 
 // Add the integers from the VTK file to the mesh
@@ -1135,6 +1111,13 @@ void VTKIO_Updated::read(const std::string &name)
 {
     libmesh_error_msg("Cannot read VTK file: " << name
                                                << "\nYou must have VTK installed and correctly configured to read VTK meshes.");
+}
+
+void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
+{
+    (void)grid;
+    libmesh_error_msg("Cannot read VTK grid from memory.\n"
+                      "You must have VTK installed and correctly configured to read VTK meshes.");
 }
 
 void VTKIO_Updated::write_nodal_data(const std::string &fname,

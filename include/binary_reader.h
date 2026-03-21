@@ -9,8 +9,6 @@
 #include <vector>
 #include <unordered_set>
 
-#include "fem_data_repository.h"
-
 #include <libmesh/libmesh.h>
 
 class ElementBuilder;
@@ -24,18 +22,6 @@ enum class FileMode
 
 class BinaryReader
 {
-    enum class BinaryLabelId : std::uint32_t
-    {
-        ELEMENT_TYPES = 0,
-        TIME_PARAMETERS = 1,
-        SOLVER_SETTINGS = 2,
-        MATERIALS = 3,
-        CONSTANTS = 4,
-        CONSTRAINT_EQUATIONS = 5,
-        LOADS = 6,
-        UNKNOWN = std::numeric_limits<std::uint32_t>::max()
-    };
-
 public:
     BinaryReader();
 
@@ -48,28 +34,10 @@ public:
 
     void close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams);
 
-    void read_binary_fem_data(const std::string &filepath,
-                              const std::shared_ptr<FEMDataRepository> &repository = nullptr,
-                              const std::shared_ptr<ApecMEquationSystems> &equation_systems = nullptr);
-    void set_disallowed_labels(std::unordered_set<BinaryLabelId> labels);
-
     static void write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set);
     static void read_element_matrices(ElementBuilder &builder, std::ifstream &inFile, unsigned int matrices_set);
     static void write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set);
     static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
-
-private:
-    void read_binary_fem_data_from_stream(std::ifstream &file,
-                                          const std::shared_ptr<FEMDataRepository> &repository,
-                                          const std::shared_ptr<ApecMEquationSystems> &equation_systems);
-    void dispatch_read(BinaryLabelId label,
-                       std::ifstream &file,
-                       const std::shared_ptr<FEMDataRepository> &repository,
-                       const std::shared_ptr<ApecMEquationSystems> &equation_systems);
-
-    void set_disallowed_labels_for_analysis_mode(bool analysis_mode);
-
-    std::unordered_set<BinaryLabelId> disallowed_labels;
 };
 
 #endif // BINARY_READER_H

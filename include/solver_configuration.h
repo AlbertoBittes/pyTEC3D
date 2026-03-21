@@ -3,19 +3,21 @@
 
 #include <libmesh/petsc_linear_solver.h>
 #include <libmesh/solver_configuration.h>
-#include "fe_data_object.h"
+
+#include <pybind11/pybind11.h>
 
 using namespace libMesh;
 
 // This repository stores all data relate to mathematical solver settings, non-linear options (not iplemented yet),
 // The user can choose the solver type (direct, iterative), the solver tolerances, and other similar parameters.
-class PetscSolverConfiguration : public SolverConfiguration, public BinaryDataFEDataObject
+class PetscSolverConfiguration : public SolverConfiguration
 {
 public:
-  // Default constructor
-  PetscSolverConfiguration(std::ifstream &file, PetscLinearSolver<Number> *petsc_linear_solver = nullptr)
-      : BinaryDataFEDataObject(file),
-        _petsc_linear_solver(petsc_linear_solver)
+  PetscSolverConfiguration(
+      const pybind11::object &solver_settings_attribute = pybind11::none(),
+      PetscLinearSolver<Number> *petsc_linear_solver = nullptr)
+      : _petsc_linear_solver(petsc_linear_solver),
+        _solver_settings_attribute(solver_settings_attribute)
   {
     if (_petsc_linear_solver)
       _petsc_linear_solver->set_solver_configuration(*this);
@@ -32,7 +34,8 @@ public:
   }
 
 private:
-  PetscLinearSolver<Number> *_petsc_linear_solver; // Pointer to the PetscLinearSolver
+  PetscLinearSolver<Number> *_petsc_linear_solver = nullptr; // Pointer to the PetscLinearSolver
+  pybind11::object _solver_settings_attribute;
 };
 
 #endif // SOLVER_CONFIGURATION_H

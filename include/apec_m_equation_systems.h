@@ -7,42 +7,32 @@
 #include <libmesh/equation_systems.h>
 #include <libmesh/numeric_vector.h>
 
-#include "fem_service.h"
-#include "fem_data_repository.h"
+#include "fe_parent_object.h"
 #include "solver_configuration.h"
 
 using namespace libMesh;
 
-class ApecMMesh;
 class ElementTypesFactory;
-class APEC_M;
 class ApecMSystemBase;
-class Materials;
-class Constants;
+class ApecMSolver;
+
 class ApecMEquationSystems
     : public EquationSystems,
-      public FEDataObjectAbstract,
-      public FEMService<ElementTypesFactory, PetscSolverConfiguration>,
-      public FEParentObjectBase<APEC_M>
+      public FEParentObjectBase<ApecMSolver>
 
 {
 public:
-    using AnalysisContextView = TypedContextView<ElementTypesFactory, TimeStep, Materials, Constants>;
-    using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
-
-    void configure_services(const std::shared_ptr<AnalysisContextView> &analysis_ctx);
     void prepare_time_step_solve(TimeStep &time_step);
     void solve_equation_systems(TimeStep &time_step, bool nodal_solution = true);
     void print_output(TimeStep &time_step, bool picard_iteration_print = false);
     void update_old_local_solution();
     void configure_systems();
-    void initialize_system_contexts();
+    void initialize_systems();
     void post_initialize_systems();
-    void initialize_systems(const std::shared_ptr<FEMDataRepository> &model_data);
     void initialize_physics();
     void clear_preserving_solver_settings();
     void zero_all_systems();
-    static std::shared_ptr<ApecMEquationSystems> build(ApecMMesh &mesh, APEC_M *program);
+    static std::shared_ptr<ApecMEquationSystems> build(MeshBase &mesh, ApecMSolver *program = nullptr);
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>
@@ -50,9 +40,6 @@ public:
         : EquationSystems(std::forward<Args>(args)...)
     {
     }
-
-private:
-    std::shared_ptr<AnalysisContextView> analysis_context_view_;
 };
 
 #endif // APEC_M_EQUATION_SYSTEMS_H

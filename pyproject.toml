@@ -32,6 +32,7 @@ py-modules = [
     "constants",
     "convert_mesh",
     "coupling_helper",
+    "dof_couplings",
     "dof_coupling_helper",
     "excel_io_helper",
     "selector",

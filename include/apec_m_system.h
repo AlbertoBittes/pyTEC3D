@@ -18,10 +18,10 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/petsc_matrix.h>
 
-#include "fem_service.h"
 #include "assembler.h"
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
+#include "apec_m_solver.h"
 #include "fe_parent_object.h"
 
 using namespace libMesh;
@@ -34,8 +34,6 @@ public:
     enum SystemType
     {
         DOF_SOLUTION_SYSTEM = 0,
-        NODAL_LOADS,
-        ELEMENT_LOADS,
         NODAL_SOLUTION,
         ELEMENT_SOLUTION,
         NUM_SYSTEMS
@@ -155,18 +153,19 @@ public:
         // this->rhs->zero();
         // this->current_local_solution->zero();
         // this->current_local_solution->close();
-        auto solver_config = this->context<PetscSolverConfiguration>();
-
-        if (solver_config)
+        auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
+        auto *solver_parent = equation_systems ? equation_systems->get_parent_object() : nullptr;
+        auto *petsc_solver = dynamic_cast<PetscLinearSolver<Number> *>(this->linear_solver.get());
+        if (solver_parent && petsc_solver)
         {
-            solver_config_copy_.reset(new PetscSolverConfiguration(*solver_config));
-            solver_config_copy_->set_petsc_linear_solver(
-                dynamic_cast<PetscLinearSolver<Number> *>(this->linear_solver.get()));
+            solver_config_copy_.reset(new PetscSolverConfiguration(
+                solver_parent->get_apec_object().attr("solver_settings"),
+                petsc_solver));
             solver_config_copy_->configure_solver();
         }
         else
         {
-            libmesh_error_msg("ApecMLinearSystem: No PetscSolverConfiguration found in system context.");
+            libmesh_error_msg("ApecMLinearSystem: solver parent or PETSc linear solver not available.");
         }
     }
 
@@ -185,12 +184,7 @@ public:
         : ApecMSystem<ExplicitSystem>(
               std::forward<Args>(args)...)
     {
-        if (system_type == ApecMSystemBase::NODAL_LOADS || system_type == ApecMSystemBase::ELEMENT_LOADS)
-        {
-            this->add_vector("old_loads");
-            this->add_vector("new_loads");
-            this->remove_vector("RHS");
-        }
+        this->remove_vector("RHS");
     }
 };
 

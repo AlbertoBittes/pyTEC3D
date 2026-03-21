@@ -1,145 +1,165 @@
-#include "apec_m.h"
+#include "apec_m_solver.h"
 
+#include "apec_m_equation_systems.h"
+#include "apec_m_system.h"
 #include "augment_sparsity_on_nodes.h"
 #include "element_types_factory.h"
-#include "fe_data_object.h"
-#include "binary_reader.h"
-#include "solver_configuration.h"
-#include "vtk_data_map_object.h"
+#include "vtkio_updated.h"
 
-#include <filesystem>
-#include <optional>
-#include <exception>
+#include <libmesh/distributed_mesh.h>
+#include <libmesh/libmesh.h>
+#include <libmesh/mesh_communication.h>
+#include <libmesh/mesh_tools.h>
+
+#include <mpi.h>
+
+#include <vtkUnstructuredGrid.h>
+
+#include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
 #include <utility>
-#include <system_error>
-#include <set>
-#include <algorithm>
-#include <typeindex>
-#include <unordered_map>
-#include <unordered_set>
-#include <variant>
 
-bool APEC_M::load_data(const std::vector<std::string> &filepaths)
+namespace py = pybind11;
+
+namespace
 {
-    if (filepaths.empty())
+    py::object active_vtk_grid_from_apec(const py::object &apec_object)
     {
-        libMesh::out << "No data files provided." << std::endl;
-        return false;
+        if (!py::hasattr(apec_object, "mesh"))
+            throw std::runtime_error("Expected an APEC-like Python object exposing a 'mesh' property.");
+
+        return apec_object.attr("mesh");
     }
 
-    auto session = model_data_repository->get_object<Session>();
-
-    auto base_dir = session->get_working_directory();
-    std::error_code ec;
-    if (!base_dir.is_absolute())
+    vtkUnstructuredGrid *vtk_grid_from_python(const py::object &vtk_grid)
     {
-        auto absolute_base = std::filesystem::absolute(base_dir, ec);
-        if (!ec)
-            base_dir = absolute_base;
+        if (!py::hasattr(vtk_grid, "GetAddressAsString"))
+            throw std::runtime_error("Expected a vtkUnstructuredGrid Python object with GetAddressAsString().");
+
+        const std::string address = py::cast<std::string>(vtk_grid.attr("GetAddressAsString")("vtkUnstructuredGrid"));
+        const std::size_t prefix_pos = address.find("0x");
+        if (prefix_pos == std::string::npos)
+            throw std::runtime_error("Could not parse VTK pointer address from GetAddressAsString().");
+
+        const char *hex_begin = address.c_str() + prefix_pos + 2;
+        char *hex_end = nullptr;
+        const auto ptr_value = std::strtoull(hex_begin, &hex_end, 16);
+        if (ptr_value == 0)
+            throw std::runtime_error("Parsed null VTK pointer from Python object.");
+
+        return reinterpret_cast<vtkUnstructuredGrid *>(ptr_value);
     }
 
-    auto analysis = get_analysis();
-
-    bool any_loaded = false;
-    for (const auto &raw_path : filepaths)
+    MPI_Comm mpi_comm_from_python(const py::object &mpi_comm)
     {
-        std::filesystem::path input_path(raw_path);
-        std::filesystem::path resolved;
-        if (input_path.is_absolute())
-        {
-            resolved = input_path;
-        }
-        else
-        {
-            std::filesystem::path effective_base = base_dir;
-            if (session && input_path.parent_path().empty() && input_path.filename() == "model_data.bin")
-            {
-                const auto &model_data_folder = session->get_path("model_data_folderpath");
-                if (!model_data_folder.empty())
-                    effective_base = model_data_folder;
-            }
-            resolved = effective_base / input_path;
-        }
-        resolved = resolved.lexically_normal();
+        if (mpi_comm.is_none())
+            return MPI_COMM_WORLD;
 
-        auto equation_systems = get_active_equation_system();
+        if (!py::hasattr(mpi_comm, "py2f"))
+            throw std::runtime_error("Expected an mpi4py communicator with py2f().");
 
-        try
-        {
-            BinaryReader reader;
-            reader.read_binary_fem_data(resolved.string(), model_data_repository, equation_systems);
-        }
-        catch (const std::exception &ex)
-        {
-            libMesh::out << "Failed to load data from '" << resolved << "': " << ex.what() << std::endl;
-            continue;
-        }
-        catch (...)
-        {
-            libMesh::out << "Failed to load data from '" << resolved << "' due to an unknown error." << std::endl;
-            continue;
-        }
-
-        any_loaded = true;
-        libMesh::out << "Loaded data from '" << resolved << "'." << std::endl;
+        const auto f_comm = static_cast<MPI_Fint>(py::cast<int>(mpi_comm.attr("py2f")()));
+        return MPI_Comm_f2c(f_comm);
     }
+} // namespace
 
-    return any_loaded;
+void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
+{
+    if (libmesh_init)
+        return;
+
+    libmesh_init = std::make_unique<libMesh::LibMeshInit>(argc, argv, mpi_comm);
 }
 
-bool APEC_M::solve_load_step()
+ApecMSolver::ApecMSolver()
 {
-    auto analysis = get_analysis();
-    auto eq_system = get_active_equation_system();
-    if (!analysis || !eq_system)
+}
+
+ApecMSolver::~ApecMSolver() = default;
+
+void ApecMSolver::load_model(py::object apec_object,
+                             py::object mpi_comm)
+{
+    mpi_comm_object = mpi_comm;
+    this->apec_object = apec_object;
+    const py::array cp_pairs_array = apec_object.attr("_cp_pairs").cast<py::array>();
+    element_types_factory = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
+    const MPI_Comm active_comm = mpi_comm_from_python(mpi_comm);
+    ensure_libmesh_initialized(active_comm);
+
+    mesh = std::make_unique<libMesh::DistributedMesh>(libmesh_init->comm());
+    VTKIO_Updated vtkio(*mesh);
+    if (libmesh_init->comm().rank() == 0)
     {
-        libMesh::out << "No analysis available for the active mesh." << std::endl;
-        return false;
+        py::object vtk_grid = active_vtk_grid_from_apec(apec_object);
+        vtkUnstructuredGrid *grid_ptr = vtk_grid_from_python(vtk_grid);
+        vtkio.read(grid_ptr);
     }
 
-    analysis->set_parent_object(this);
-    return analysis->solve();
-}
+    libMesh::MeshCommunication().broadcast(*mesh);
+    libMesh::MeshTools::Modification::orient_elements(*mesh);
 
-void APEC_M::read_mesh(const std::string &name)
-{
-    auto mesh = ApecMMesh::read_mesh(comm, repository, filepath);
+    equation_system = std::make_shared<ApecMEquationSystems>(*mesh);
+    equation_system->set_parent_object(this);
+    equation_system->configure_systems();
+    equation_system->initialize_systems();
 
-    mesh->set_parent_object(this);
-    repository.set_object<ApecMMesh>(mesh);
-
-    auto equation_system = ApecMEquationSystems::build(*mesh, this);
-    repository.set_object<ApecMEquationSystems>(equation_system);
-
-    set_active_mesh(name);
-    if (session)
-        session->initialize_folder_paths();
-}
-
-bool APEC_M::enter_analysis_mode()
-{
-    shared_analysis.reset();
-
-    auto analysis_context = std::make_shared<AnalysisBase::ContextView>(AnalysisBase::ContextView::from(model_data_repository));
-
-    shared_analysis = AnalysisBase::build(this, analysis_context);
-
-    libMesh::out << "Preparing mesh '" << name << "' for analysis." << std::endl;
-
-    mesh->generate_nodal_couplings();
-
-    equation_system->initialize_systems(model_data_repository);
-
-    auto &main_system = equation_system->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    AugmentSparsityOnNodes *gf = new AugmentSparsityOnNodes(*mesh);
-    main_system.get_dof_map().add_coupling_functor(*gf);
-    libMesh::out << "Added DOF coupling sparsity functor for mesh '" << name << "'." << std::endl;
+    auto &main_system = equation_system->get_system<ApecMLinearSystem>(
+        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    coupling_functor = std::make_unique<AugmentSparsityOnNodes>(*mesh,
+                                                                 cp_pairs_array);
+    main_system.get_dof_map().add_coupling_functor(*coupling_functor);
+    libMesh::out << "Added DOF coupling sparsity functor for active mesh." << std::endl;
 
     mesh->prepare_for_use(true);
-
     mesh->print_info();
 
     equation_system->initialize_physics();
 
-    return true;
+    loaded = true;
+}
+
+py::dict ApecMSolver::solve()
+{
+    if (!loaded || !mesh)
+        throw std::runtime_error("Solver has no loaded model. Call load_model() first.");
+
+    py::dict result;
+    result["status"] = "model_loaded";
+    result["n_nodes"] = mesh->n_nodes();
+    result["n_elements"] = mesh->n_elem();
+    result["mesh_dimension"] = mesh->mesh_dimension();
+    if (apec_object && !apec_object.is_none())
+    {
+        if (py::hasattr(apec_object, "active_mesh_name"))
+            result["active_mesh_name"] = apec_object.attr("active_mesh_name");
+        if (py::hasattr(apec_object, "element_types"))
+            result["n_element_types"] = py::len(apec_object.attr("element_types"));
+        if (py::hasattr(apec_object, "materials"))
+            result["n_materials"] = py::len(apec_object.attr("materials"));
+        if (py::hasattr(apec_object, "real_constants"))
+            result["n_real_constants"] = py::len(apec_object.attr("real_constants"));
+        if (py::hasattr(apec_object, "dof_couplings"))
+            result["n_dof_couplings"] = py::len(apec_object.attr("dof_couplings"));
+        if (py::hasattr(apec_object, "_cp_pairs"))
+            result["n_cp_groups"] = py::len(apec_object.attr("_cp_pairs"));
+    }
+
+    // Next step: initialize ApecMEquationSystems from apec_object,
+    // then run the real solve loop and write back output arrays.
+    return result;
+}
+
+bool ApecMSolver::is_loaded() const
+{
+    return loaded;
+}
+
+py::object ApecMSolver::get_apec_object() const
+{
+    return apec_object;
 }

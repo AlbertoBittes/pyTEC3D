@@ -6,15 +6,16 @@
 
 #include <libmesh/ghosting_functor.h>
 #include <libmesh/mesh_base.h>
+#include <pybind11/numpy.h>
 
 using namespace libMesh;
-
-class ApecMMesh;
 
 class AugmentSparsityOnNodes : public GhostingFunctor
 {
 public:
-    AugmentSparsityOnNodes(ApecMMesh &mesh);
+    AugmentSparsityOnNodes(
+        MeshBase &mesh,
+        const pybind11::array &master_slave_pairs);
 
     virtual void operator()(const MeshBase::const_element_iterator &range_begin,
                             const MeshBase::const_element_iterator &range_end,
@@ -25,11 +26,10 @@ public:
     virtual void redistribute() override;
 
 private:
-    void build_node_sets();
     void rebuild_elem_neighbors();
 
-    ApecMMesh &_mesh;
-    std::vector<std::pair<unsigned int, unsigned int>> node_pairs;
+    MeshBase &_mesh;
+    pybind11::array cp_pairs;
     std::vector<std::pair<dof_id_type, dof_id_type>> elem_pairs;
     std::unordered_map<dof_id_type, dof_id_type> slave_to_master_elem;
 };

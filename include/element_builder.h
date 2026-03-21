@@ -15,9 +15,6 @@
 #include <libmesh/dof_map.h>
 
 #include "fe_parent_object.h"
-#include "fem_service.h"
-#include "fe_data_object.h"
-#include "fem_data_repository.h"
 // #include "element_types.h"
 #include "element_types_factory.h"
 #include "variables_map.h"

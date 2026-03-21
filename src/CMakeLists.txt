@@ -9,6 +9,12 @@ find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
 find_package(PETSc REQUIRED)
+option(APEC_M_BUILD_PYBIND_MODULE "Build the Python solver extension module (pybind11)." ON)
+
+if(APEC_M_BUILD_PYBIND_MODULE)
+  find_package(pybind11 CONFIG REQUIRED)
+endif()
+
 find_package(VTK REQUIRED
   COMPONENTS
     CommonCore
@@ -41,6 +47,29 @@ find_library(TIMPI_LIB
 
 file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
+set(APEC_M_INCLUDE_DIRS
+  "${LIBMESH_DIR}/include"
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/include/dependencies
+  ${PETSC_INCLUDES}
+)
+
+set(APEC_M_LINK_LIBS
+  ${LIBMESH_LIB}
+  ${TIMPI_LIB}
+  ${PETSC_LIBRARIES}
+  MPI::MPI_CXX
+  Threads::Threads
+  OpenMP::OpenMP_CXX
+  VTK::CommonCore
+  VTK::CommonDataModel
+  VTK::CommonExecutionModel
+  VTK::FiltersCore
+  VTK::IOXML
+  VTK::IOParallelXML
+  VTK::ParallelMPI
+)
+
 add_executable(apec_m ${SOURCES})
 set_target_properties(apec_m PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../bin"
@@ -49,30 +78,13 @@ set_target_properties(apec_m PROPERTIES
 )
 
 target_include_directories(apec_m
-  PRIVATE
-    "${LIBMESH_DIR}/include"
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/include/dependencies
-    ${PETSC_INCLUDES}
+  PRIVATE ${APEC_M_INCLUDE_DIRS}
 )
 
 target_compile_definitions(apec_m PRIVATE ${PETSC_DEFINITIONS})
 
 target_link_libraries(apec_m
-  PRIVATE
-    ${LIBMESH_LIB}
-    ${TIMPI_LIB}
-    ${PETSC_LIBRARIES}
-    MPI::MPI_CXX
-    Threads::Threads
-    OpenMP::OpenMP_CXX
-    VTK::CommonCore
-    VTK::CommonDataModel
-    VTK::CommonExecutionModel
-    VTK::FiltersCore
-    VTK::IOXML
-    VTK::IOParallelXML
-    VTK::ParallelMPI
+  PRIVATE ${APEC_M_LINK_LIBS}
 )
 
 vtk_module_autoinit(
@@ -86,3 +98,42 @@ vtk_module_autoinit(
     VTK::IOParallelXML
     VTK::ParallelMPI
 )
+
+if(APEC_M_BUILD_PYBIND_MODULE)
+  add_library(apec_m_solver MODULE ${SOURCES})
+  set_target_properties(apec_m_solver PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "apec_m_solver"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../api"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "$ORIGIN/../lib"
+  )
+
+  target_include_directories(apec_m_solver
+    PRIVATE ${APEC_M_INCLUDE_DIRS}
+  )
+
+  target_compile_definitions(apec_m_solver
+    PRIVATE
+      APEC_M_ENABLE_PYBIND
+      ${PETSC_DEFINITIONS}
+  )
+
+  target_link_libraries(apec_m_solver
+    PRIVATE
+      pybind11::module
+      ${APEC_M_LINK_LIBS}
+  )
+
+  vtk_module_autoinit(
+    TARGETS apec_m_solver
+    MODULES
+      VTK::CommonCore
+      VTK::CommonDataModel
+      VTK::CommonExecutionModel
+      VTK::FiltersCore
+      VTK::IOXML
+      VTK::IOParallelXML
+      VTK::ParallelMPI
+  )
+endif()

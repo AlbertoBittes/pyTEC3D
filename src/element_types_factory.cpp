@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <regex>
+#include <string>
+#include <vector>
+
+#include <pybind11/stl.h>
+
+namespace py = pybind11;
 
 namespace
 {
@@ -15,62 +21,64 @@ namespace
         libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
     }
 
+    unsigned int parse_option_column_index(const std::string &name)
+    {
+        std::smatch match;
+        if (std::regex_search(name, match, std::regex(R"(\d+)")))
+            return static_cast<unsigned int>(std::stoul(match.str()));
+        return 0;
+    }
 }
 
-void ElementTypesFactory::read_data(std::ifstream &file)
+void ElementTypesFactory::load_from_python(const py::object &element_types_attribute)
 {
-    BinaryDataFEDataObject::read_data(file);
-    populate_element_types_map();
-}
-
-void ElementTypesFactory::populate_element_types_map()
-{
-    if (element_types_map == nullptr)
+    if (!element_types_map)
         element_types_map = std::make_shared<ElementTypesMap>();
     element_types_map->clear();
 
-    if (empty())
+    if (element_types_attribute.is_none())
         return;
 
-    if (!has_column("TYPE"))
-        libmesh_error_msg("ElementTypesFactory: missing 'TYPE' column.");
-    if (!has_column("element_type"))
-        libmesh_error_msg("ElementTypesFactory: missing 'element_type' column.");
-
-    const auto &ansys_ids = get_int_column("TYPE");
-    const auto &element_labels = get_string_column("element_type");
-    const std::size_t count = entry_count();
-
-    if (ansys_ids.size() < count || element_labels.size() < count)
-        libmesh_error_msg("ElementTypesFactory: inconsistent element type data size.");
+    py::object dataframe = element_types_attribute;
+    const auto ansys_ids = py::cast<std::vector<int>>(
+        dataframe.attr("__getitem__")("TYPE").attr("tolist")());
+    const auto element_labels = py::cast<std::vector<std::string>>(
+        dataframe.attr("__getitem__")("element_type").attr("tolist")());
 
     std::vector<std::string> OPTION_columns;
-    OPTION_columns.reserve(this->get_data_map()->columns.size());
-    for (const auto &pair : this->get_data_map()->columns)
+    for (const py::handle &name_obj : dataframe.attr("columns"))
     {
-        if (pair.first.rfind("OPTION", 0) == 0)
-            OPTION_columns.push_back(pair.first);
+        const std::string name = py::cast<std::string>(name_obj);
+        if (name.rfind("OPTION", 0) == 0)
+            OPTION_columns.push_back(name);
     }
 
     std::sort(OPTION_columns.begin(), OPTION_columns.end(), [](const std::string &a, const std::string &b)
               {
-        auto extract_index = [](const std::string &name) {
-            auto pos = name.find_first_of("0123456789");
-            return pos == std::string::npos ? 0 : std::stoul(name.substr(pos));
-        };
-        return extract_index(a) < extract_index(b); });
+                  return parse_option_column_index(a) < parse_option_column_index(b);
+              });
+
+    std::vector<std::vector<int>> option_values;
+    option_values.reserve(OPTION_columns.size());
+    for (const auto &column_name : OPTION_columns)
+    {
+        option_values.push_back(
+            py::cast<std::vector<int>>(dataframe.attr("__getitem__")(column_name).attr("tolist")()));
+    }
+
+    const std::size_t count = ansys_ids.size();
 
     for (std::size_t row = 0; row < count; ++row)
     {
-        int ansys_type = ansys_ids[row];
-        unsigned int element_number = parse_element_type_number(element_labels[row]);
+        const int ansys_type = ansys_ids[row];
+        const unsigned int element_number = parse_element_type_number(element_labels[row]);
 
         std::vector<unsigned int> OPTIONs;
         OPTIONs.reserve(1 + OPTION_columns.size());
         OPTIONs.push_back(element_number);
 
-        for (const auto &column_name : OPTION_columns)
-            OPTIONs.push_back(static_cast<unsigned int>(get_int(column_name, row)));
+        for (const auto &option_column_values : option_values)
+            OPTIONs.push_back(static_cast<unsigned int>(option_column_values[row]));
 
         (*element_types_map)[ansys_type] = create_element_type(
             static_cast<ElementTypeEnum>(element_number),
@@ -112,39 +120,5 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
         return std::make_unique<PLANE233Type>(OPTIONs);
     default:
         libmesh_error_msg("Unknown element type");
-    }
-}
-
-void ElementTypesFactory::print_data_info() const
-{
-    if (!element_types_map || element_types_map->empty())
-    {
-        libMesh::out << "  Element types: none loaded." << std::endl;
-        return;
-    }
-
-    libMesh::out << "  Element type definitions: " << element_types_map->size() << std::endl;
-    for (const auto &entry : *element_types_map)
-    {
-        libMesh::out << "    ANSYS etype " << entry.first;
-        const auto &element_type = entry.second;
-        if (element_type)
-        {
-            const auto &OPTIONs = element_type->get_OPTIONs();
-            if (!OPTIONs.empty())
-                libMesh::out << " (Element " << OPTIONs.front() << ")";
-            if (OPTIONs.size() > 1)
-            {
-                libMesh::out << " OPTIONs=[";
-                for (std::size_t idx = 1; idx < OPTIONs.size(); ++idx)
-                {
-                    if (idx > 1)
-                        libMesh::out << ", ";
-                    libMesh::out << OPTIONs[idx];
-                }
-                libMesh::out << "]";
-            }
-        }
-        libMesh::out << std::endl;
     }
 }

@@ -1,12 +1,12 @@
 #include "augment_sparsity_on_nodes.h"
-#include "apec_m_mesh.h"
 
 #include <algorithm>
-#include <unordered_set>
+#include <utility>
 
 #include <libmesh/elem.h>
 
 using namespace libMesh;
+namespace py = pybind11;
 
 namespace
 {
@@ -23,19 +23,12 @@ namespace
 
 }
 
-AugmentSparsityOnNodes::AugmentSparsityOnNodes(ApecMMesh &mesh)
-    : _mesh(mesh)
+AugmentSparsityOnNodes::AugmentSparsityOnNodes(
+    MeshBase &mesh,
+    const py::array &master_slave_pairs)
+    : _mesh(mesh), cp_pairs(master_slave_pairs)
 {
-    build_node_sets();
     rebuild_elem_neighbors();
-}
-
-void AugmentSparsityOnNodes::build_node_sets()
-{
-    node_pairs.clear();
-    const auto &pairs_by_cp = _mesh.get_cp_pairs();
-    for (const auto &entry : pairs_by_cp)
-        node_pairs.insert(node_pairs.end(), entry.second.begin(), entry.second.end());
 }
 
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()
@@ -52,10 +45,14 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
             node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(i)), elem->id());
     }
 
-    for (const auto &node_pair : node_pairs)
+    auto pairs_u32 =
+        py::array_t<unsigned int, py::array::c_style | py::array::forcecast>(cp_pairs);
+    const auto cp_view = pairs_u32.unchecked<2>();
+
+    for (py::ssize_t i = 0; i < cp_view.shape(0); ++i)
     {
-        const auto master_elem_it = node_to_elem.find(node_pair.first);
-        const auto slave_elem_it = node_to_elem.find(node_pair.second);
+        const auto master_elem_it = node_to_elem.find(cp_view(i, 0));
+        const auto slave_elem_it = node_to_elem.find(cp_view(i, 1));
         if (master_elem_it == node_to_elem.end() || slave_elem_it == node_to_elem.end())
             continue;
 

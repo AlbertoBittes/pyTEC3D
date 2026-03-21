@@ -5,8 +5,6 @@
 
 #include <libmesh/system.h>
 
-#include "fem_service.h"
-#include "fem_data_repository.h"
 #include "fe_parent_object.h"
 
 using namespace libMesh;
@@ -21,11 +19,9 @@ class ApecMLinearSystem;
 // Once the system matrix is built, the libMesh solver will take care of solving it
 class AssemblerLinear
     : public System::Assembly,
-      public FEMService<TimeStep>,
       public FEParentObjectBase<ApecMEquationSystems>
 {
 public:
-    using ContextView = TypedContextView<TimeStep>;
     using FEParentObjectBase<ApecMEquationSystems>::FEParentObjectBase;
 
     AssemblerLinear(ApecMEquationSystems *equation_systems = nullptr);

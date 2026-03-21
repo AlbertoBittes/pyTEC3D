@@ -65,10 +65,6 @@ void AssemblerLinear::assemble()
         return;
     }
 
-    auto session = this->context<Session>();
-    if (!session)
-        return;
-
     auto time_step = this->context<TimeStep>();
     if (!time_step)
         return;
@@ -301,15 +297,6 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     auto eq_sys = this->get_parent_object();
 
     auto builder = make_element_builder();
-    if (!builder)
-    {
-        libMesh::out << "AssemblerLinear: unable to create element builder for writing element matrices." << std::endl;
-        return;
-    }
-
-    auto session = this->context<Session>();
-    if (!session)
-        return;
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto &dof_map = system.get_dof_map();

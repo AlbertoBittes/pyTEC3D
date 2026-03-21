@@ -6,8 +6,6 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/system.h>
 
-#include "fem_service.h"
-
 #include <map>
 #include <string>
 #include <vector>
@@ -21,7 +19,6 @@ class DofCouplingsObject;
 // them in the global system matrix
 class GlobalConstraintsObject
     : public System::Constraint,
-      public FEMService<TimeStep>,
       public FEParentObjectBase<System>
 {
 public:
@@ -29,8 +26,7 @@ public:
   using FEParentObjectBase<System>::FEParentObjectBase;
 
   GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
-      : FEParentObjectBase<System>(sys), // Set the parent System
-        FEMService<TimeStep>(ctx_view)
+      : FEParentObjectBase<System>(sys) // Set the parent System
   {
   }
 

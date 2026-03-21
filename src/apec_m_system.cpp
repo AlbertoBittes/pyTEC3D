@@ -8,7 +8,7 @@
 #include "system_matrix_reduction.h"
 #include "element_types_factory.h"
 #include "global_constraints_object.h"
-#include "apec_m_mesh.h"
+
 #include "libmesh/libmesh.h"
 #include "libmesh/mesh_serializer.h"
 #include "libmesh/numeric_vector.h"
@@ -16,8 +16,6 @@
 
 const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM_INFO_MAP = {
     {ApecMSystemBase::DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"},
-    {ApecMSystemBase::NODAL_LOADS, "NodalLoadsSystem"},
-    {ApecMSystemBase::ELEMENT_LOADS, "ElementLoadsSystem"},
     {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
     {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
 };
@@ -92,7 +90,12 @@ void ApecMSystem<SysType>::init_variables()
 
     std::string vars_set;
 
-    auto element_types_collector = context<ElementTypesFactory>();
+    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
+    auto *solver_parent = equation_systems ? equation_systems->get_parent_object() : nullptr;
+    if (!solver_parent)
+        libmesh_error_msg("ApecMSystem::init_variables: solver parent not available.");
+
+    auto element_types_collector = solver_parent->element_types_factory;
     // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
 
     // Do not do the loop here, attacht the initialization object to the other systems too

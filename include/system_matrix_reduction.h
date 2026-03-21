@@ -8,8 +8,6 @@
 #include <libmesh/numeric_vector.h>
 #include "apec_m_system.h" // <-- Add this line
 
-#include "fem_service.h"
-
 using namespace libMesh;
 // Local Includes
 #include "libmesh/system_subset.h"

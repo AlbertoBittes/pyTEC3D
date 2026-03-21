@@ -5,22 +5,21 @@ import struct
 from os import PathLike
 from typing import (
     Any,
-    BinaryIO,
     Dict,
     Optional,
     Sequence,
     Union,
 )
 
+import numpy as np
 import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
 
 from tree_gauge import TreeGauge
+from dof_couplings import DofCouplings
 from model_edit import ModelEdit
-from binary import Binary
 from excel import Excel
-from solver import Solver
 from constants import *
 
 
@@ -55,8 +54,6 @@ class APEC_M:
         self.mesh_filepaths: Dict[str, str] = {}
         self._active_mesh_name: Optional[str] = None
 
-        self.jobname: Optional[str] = None
-
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
         )
@@ -67,12 +64,12 @@ class APEC_M:
             columns=list(CONSTANTS_COLUMNS_TYPES.keys())
         )
         self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
-        self.apec_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_APEC_SETTINGS)
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
-        self.solver: Solver = Solver(self)
+        self._cp_pairs: np.ndarray = np.empty((0, 2), dtype=np.int64)
+        self._solver_session: Optional[Any] = None
 
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
@@ -105,13 +102,6 @@ class APEC_M:
     def folderpath(self) -> Optional[str]:
         return os.getcwd() if self._active_mesh_name else None
 
-    @property
-    def load_steps_folder(self) -> Optional[str]:
-        if not self._active_mesh_name:
-            return None
-        mesh_token = self._sanitize_path_token(self._active_mesh_name)
-        return os.path.join(os.getcwd(), mesh_token, "input")
-
     @staticmethod
     def _sanitize_path_token(value: str) -> str:
         return "".join(ch if (ch.isalnum() or ch in "_-") else "_" for ch in value)
@@ -127,7 +117,6 @@ class APEC_M:
             return False
 
         self._active_mesh_name = mesh_name
-        self.jobname = mesh_name
         return True
 
     def get_mesh(self, mesh_name: str) -> Optional[vtk.vtkUnstructuredGrid]:
@@ -147,10 +136,8 @@ class APEC_M:
             if self.meshes:
                 next_mesh = next(iter(self.meshes))
                 self._active_mesh_name = next_mesh
-                self.jobname = next_mesh
             else:
                 self._active_mesh_name = None
-                self.jobname = None
 
     #
     #
@@ -202,12 +189,12 @@ class APEC_M:
             None
 
         Raises:
-            ValueError: If output_file is not provided and self.jobname or folderpath is not set.
+            ValueError: If output_file is not provided and no active mesh is set.
         """
         if output_file is None:
-            if not self.jobname:
+            if not self._active_mesh_name:
                 raise ValueError(
-                    "Job name is not set. Please set self.jobname before saving the mesh."
+                    "No active mesh is set. Activate a mesh before saving."
                 )
 
             if not self.folderpath:
@@ -221,7 +208,7 @@ class APEC_M:
 
         # Define the output file name
         if output_file is None:
-            output_file = os.path.join(self.folderpath, f"{self.jobname}.vtu")
+            output_file = os.path.join(self.folderpath, f"{self._active_mesh_name}.vtu")
 
         # Write the unstructured grid to the .vtu file
         ModelEdit.save_mesh(self.mesh, output_file, binary=True)
@@ -303,227 +290,6 @@ class APEC_M:
     #
     #
     #
-    #  Binary Output methods
-    #
-    #
-    #
-    #
-    #
-    def write_to_binary(
-        self,
-        output_file: Union[str, PathLike[str]],
-        labels_to_write: Optional[Sequence[str]] = None,
-    ) -> None:
-        """
-        Writes the current load step data to a single binary file based on the provided labels.
-
-        Args:
-            output_file: Path to the output binary file.
-            labels_to_write: Labels specifying what to write. Defaults to all supported labels.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If an unrecognized label is provided.
-        """
-
-        # Default labels to write if none are provided
-        if labels_to_write is None:
-            labels_to_write = list(WRITING_LABELS)
-
-        # Open the file in write mode to overwrite if it already exists
-        with open(output_file, "wb") as binary_file:
-            binary_file.write(struct.pack("I", len(labels_to_write)))
-
-            for label in labels_to_write:
-                try:
-                    if label not in WRITING_LABEL_TO_ID:
-                        raise ValueError(f"Unrecognized label '{label}'.")
-
-                    label_id = WRITING_LABEL_TO_ID[label]
-                    binary_file.write(struct.pack("I", label_id))
-                    self._write_label_to_binary(binary_file, label)
-                    print(f"{label.replace('_', ' ').capitalize()} written.")
-                except ValueError as e:
-                    print(f"Warning: {e}")
-
-        print(f"Binary written to '{output_file}'.")
-
-    def write_load_step(
-        self,
-        load_step_number: int,
-        filename: Optional[Union[str, PathLike[str]]] = None,
-    ) -> None:
-        """
-        Write both time and grid data for a specific load step.
-
-        Args:
-            load_step_number: Load step index (1-based).
-            filename: Optional custom filename for the grid binary; time binary uses default naming.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If folderpath is unset.
-        """
-
-        if not self.folderpath:
-            raise ValueError("Folder path is not set. Cannot write load step binaries.")
-
-        # Backward compatibility: writing both time and grid data separately.
-        self.write_time_step(load_step_number)
-        self.write_loads_bcs(load_step_number, filename=filename)
-
-    def write_time_step(
-        self,
-        load_step_number: int,
-        filename: Optional[Union[str, PathLike[str]]] = None,
-    ) -> None:
-        """
-        Writes a time step binary containing time parameters and APEC settings
-        in the same folder as the mesh file.
-
-        Args:
-            load_step_number: Load step index (1-based).
-            filename: Optional override for the output filename.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If folderpath or jobname (when filename absent) is unset.
-        """
-        if not self.folderpath:
-            raise ValueError("Folder path is not set. Cannot write time step binary.")
-        time_folder = os.path.join(self.folderpath, "_time_")
-        if filename:
-            timestep_path = os.path.join(time_folder, filename)
-            target_dir = os.path.dirname(timestep_path) or time_folder
-        else:
-            if not self.jobname:
-                raise ValueError("Job name is not set. Cannot write time step binary.")
-            timestep_path = os.path.join(
-                time_folder, f"{self.jobname}_timestep_{load_step_number}.bin"
-            )
-            target_dir = time_folder
-
-        os.makedirs(target_dir, exist_ok=True)
-        self.write_to_binary(
-            timestep_path,
-            labels_to_write=["time_parameters", "apec_settings", "dof_couplings"],
-        )
-
-    def write_loads_bcs(
-        self,
-        load_step_number: int = 1,
-        filename: Optional[Union[str, PathLike[str]]] = None,
-    ) -> None:
-        """
-        Writes a grid binary containing point and cell data in the mesh input folder.
-
-        Args:
-            load_step_number: Load step index (1-based). Default is 1.
-            filename: Optional override for the output filename.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If folderpath or jobname (when filename absent) is unset.
-        """
-        if not self.folderpath:
-            raise ValueError("Folder path is not set. Cannot write grid step binary.")
-
-        if filename:
-            grid_path = os.path.join(self.folderpath, filename)
-            target_dir = os.path.dirname(grid_path) or self.folderpath
-        else:
-            if not self.jobname:
-                raise ValueError("Job name is not set. Cannot write grid step binary.")
-            mesh_token = self._sanitize_path_token(self.jobname)
-            load_steps_folder = os.path.join(self.folderpath, mesh_token, "input")
-            os.makedirs(load_steps_folder, exist_ok=True)
-            grid_path = os.path.join(
-                load_steps_folder, f"{self.jobname}_grid_{load_step_number}.bin"
-            )
-            target_dir = load_steps_folder
-
-        os.makedirs(target_dir, exist_ok=True)
-        self.write_to_binary(
-            grid_path,
-            labels_to_write=["node", "elem"],
-        )
-
-    def write_model_data(
-        self, filename: Optional[Union[str, PathLike[str]]] = None
-    ) -> None:
-        """
-        Write model-wide metadata (element types, materials, etc.) to a binary file.
-
-        Args:
-            filename: Optional custom output filename; defaults to 'model_data.bin' in folderpath.
-
-        Returns:
-            None
-
-        Raises:
-            ValueError: If folderpath or jobname (when filename absent) is unset.
-        """
-
-        if not self.folderpath:
-            raise ValueError("Folder path is not set. Cannot write model data.")
-        model_data_folder = os.path.join(self.folderpath, "_model_data_")
-        if filename:
-            output_path = os.path.join(model_data_folder, filename)
-            target_dir = os.path.dirname(output_path) or model_data_folder
-            os.makedirs(target_dir, exist_ok=True)
-        else:
-            if not self.jobname:
-                raise ValueError("Job name is not set. Cannot write model data.")
-
-            os.makedirs(model_data_folder, exist_ok=True)
-            output_path = os.path.join(model_data_folder, "model_data.bin")
-
-        self.write_to_binary(
-            output_path,
-            labels_to_write=[
-                "element_types",
-                "materials",
-                "real_constants",
-                "solver_settings",
-            ],
-        )
-
-    def _write_label_to_binary(self, binary_file: BinaryIO, label: str) -> None:
-        """
-        Writes a specific label to the binary file using the appropriate function.
-
-        Args:
-            binary_file: An open binary file stream.
-            label: The label to write (e.g., 'time_parameters', 'materials').
-
-        Raises:
-            ValueError: If the label is not recognized or the corresponding data is missing.
-        """
-        if label not in WRITING_FUNCTIONS_MAP:
-            raise ValueError(f"Unrecognized label '{label}'.")
-
-        # Always call the function with (mesh or data, binary_file, label)
-        if label in ["elem", "node"]:
-            Binary.write_numpy_array_to_binary(self.mesh, binary_file, label)
-        else:
-            data = getattr(self, label, None)
-            if data is None:
-                raise ValueError(f"Data for '{label}' is missing.")
-            Binary.write_to_binary(data, binary_file, label)
-
-    #
-    #
-    #
-    #
-    #
     #  Method to plot the model in ParaView
     #
     #
@@ -541,9 +307,171 @@ class APEC_M:
         print("Plotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
-        RenameSource(self.jobname, producer)
+        RenameSource(self.active_mesh_name or "APEC_Mesh", producer)
         Show(producer)
         Render()
+
+    #
+    #
+    #
+    #
+    #
+    #  C++ solver bridge (pybind11 module)
+    #
+    #
+    #
+    #
+    #
+    @staticmethod
+    def _require_solver_module() -> Any:
+        try:
+            import apec_m_solver as solver_module
+        except ImportError as exc:
+            raise ImportError(
+                "Could not import the C++ solver module 'apec_m_solver'. "
+                "Build/install the pybind11 extension before launching the solver."
+            ) from exc
+        return solver_module
+
+    def _build_solver_attribute_payload(self) -> Dict[str, Any]:
+        return {
+            "active_mesh_name": self._active_mesh_name,
+            "element_types": self.element_types,
+            "materials": self.materials,
+            "real_constants": self.real_constants,
+            "dof_couplings": self.dof_couplings,
+            "_cp_pairs": self._cp_pairs,
+            "time_parameters": self.time_parameters,
+            "solver_settings": self.solver_settings,
+        }
+
+    def _apply_solver_attribute_payload(self, payload: Dict[str, Any]) -> None:
+        self._active_mesh_name = payload.get("active_mesh_name")
+        self.element_types = payload.get("element_types", self.element_types)
+        self.materials = payload.get("materials", self.materials)
+        self.real_constants = payload.get("real_constants", self.real_constants)
+        self.dof_couplings = payload.get("dof_couplings", self.dof_couplings)
+        incoming_cp_pairs = payload.get("_cp_pairs", self._cp_pairs)
+        incoming_cp_pairs_array = np.asarray(incoming_cp_pairs, dtype=np.int64)
+        if incoming_cp_pairs_array.size == 0:
+            self._cp_pairs = np.empty((0, 2), dtype=np.int64)
+        else:
+            if incoming_cp_pairs_array.ndim != 2 or incoming_cp_pairs_array.shape[1] != 2:
+                raise ValueError("Expected '_cp_pairs' to be a 2D array with shape (N, 2).")
+            self._cp_pairs = np.ascontiguousarray(incoming_cp_pairs_array, dtype=np.int64)
+        self.time_parameters = payload.get("time_parameters", self.time_parameters)
+        self.solver_settings = payload.get("solver_settings", self.solver_settings)
+
+    def _sync_solver_attributes(self, mpi_comm: Optional[Any]) -> None:
+        if mpi_comm is None:
+            return
+        rank = mpi_comm.Get_rank()
+        payload = self._build_solver_attribute_payload() if rank == 0 else None
+        payload = mpi_comm.bcast(payload, root=0)
+        if rank != 0:
+            self._apply_solver_attribute_payload(payload)
+
+    def load_mesh_into_solver(
+        self,
+        num_processors: int = 1,
+        mesh_name: Optional[str] = None,
+    ) -> Any:
+        """
+        Build a C++ solver session from the active VTK grid and current APEC attributes.
+
+        Args:
+            num_processors:
+                Number of MPI ranks to use for the solver communicator (default: 1).
+            mesh_name:
+                Optional mesh to activate before launching.
+        """
+        solver_module = self._require_solver_module()
+        mpi_comm = self._build_solver_mpi_communicator(num_processors)
+
+        if mesh_name is not None:
+            if mpi_comm is None:
+                if not self.set_active_mesh(mesh_name):
+                    raise ValueError(f"Mesh '{mesh_name}' does not exist.")
+            else:
+                ok = self.set_active_mesh(mesh_name) if mpi_comm.Get_rank() == 0 else True
+                ok = mpi_comm.bcast(ok, root=0)
+                if not ok:
+                    raise ValueError(f"Mesh '{mesh_name}' does not exist.")
+                if mpi_comm.Get_rank() != 0:
+                    self._active_mesh_name = mesh_name
+
+        if mpi_comm is None:
+            self._cp_pairs = DofCouplings.build_cp_pairs(self.mesh)
+        elif mpi_comm.Get_rank() == 0:
+            self._cp_pairs = DofCouplings.build_cp_pairs(self.mesh)
+
+        self._sync_solver_attributes(mpi_comm)
+
+        solver = solver_module.ApecMSolver()
+        solver.load_model(self, mpi_comm)
+
+        self._solver_session = solver
+        return solver
+
+    def run_solver(
+        self,
+        num_processors: int = 1,
+        mesh_name: Optional[str] = None,
+    ) -> Any:
+        """
+        Convenience wrapper: load model into C++ and run one solve sequence.
+        """
+        solver = self.load_mesh_into_solver(
+            num_processors=num_processors, mesh_name=mesh_name
+        )
+        return solver.solve()
+
+    @staticmethod
+    def _build_solver_mpi_communicator(num_processors: int) -> Optional[Any]:
+        """
+        Create an mpi4py communicator for the solver.
+
+        Notes:
+            - If mpi4py is unavailable, only num_processors=1 is supported.
+            - If num_processors > COMM_WORLD size, an error is raised.
+            - When COMM_WORLD has more ranks than requested, only the first
+              num_processors ranks are included (others get COMM_NULL and must
+              not invoke the solver).
+        """
+        if num_processors < 1:
+            raise ValueError("num_processors must be >= 1.")
+
+        try:
+            from mpi4py import MPI
+        except ImportError:
+            if num_processors != 1:
+                raise ImportError(
+                    "mpi4py is required when num_processors > 1."
+                ) from None
+            return None
+
+        world = MPI.COMM_WORLD
+        world_size = world.Get_size()
+        world_rank = world.Get_rank()
+
+        if num_processors > world_size:
+            raise ValueError(
+                f"Requested num_processors={num_processors}, but COMM_WORLD has "
+                f"size={world_size}. Launch Python with at least {num_processors} "
+                "MPI ranks."
+            )
+
+        if world_size == num_processors:
+            return world.Dup()
+
+        color = 0 if world_rank < num_processors else MPI.UNDEFINED
+        comm = world.Split(color, world_rank)
+        if comm == MPI.COMM_NULL:
+            raise RuntimeError(
+                f"Rank {world_rank} is outside the solver communicator (first "
+                f"{num_processors} ranks). Invoke the solver only on participating ranks."
+            )
+        return comm
 
 
 # Only execute this block if the script is run directly

@@ -13,7 +13,6 @@
 #include <libmesh/string_to_enum.h>
 #include <libmesh/fe.h>
 
-#include "fe_data_object.h"
 using namespace libMesh;
 
 class ElementType;
