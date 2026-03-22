@@ -14,6 +14,8 @@ using namespace libMesh;
 class AugmentSparsityOnNodes : public GhostingFunctor
 {
 public:
+    using NodePairsByCp = std::unordered_map<int, std::vector<std::pair<dof_id_type, dof_id_type>>>;
+
     AugmentSparsityOnNodes(
         MeshBase &mesh,
         vtkUnstructuredGrid *vtk_grid);
@@ -25,6 +27,9 @@ public:
 
     virtual void mesh_reinit() override;
     virtual void redistribute() override;
+
+public:
+    NodePairsByCp cp_pairs_by_cp;
 
 private:
     void rebuild_node_pairs();

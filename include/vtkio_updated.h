@@ -54,24 +54,16 @@ public:
 
     explicit VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems);
 
-    // New constructor: calls base constructor and then read_apec_m_model
-    VTKIO_Updated(MeshBase &mesh, const std::string &mesh_filepath)
-        : VTKIO_Updated(mesh)
-    {
-        // read_apec_m_model(mesh_filepath);
-        this->read(mesh_filepath);
-    }
-
     using MeshOutput<MeshBase>::write_nodal_data;
 
     virtual void write_nodal_data(const std::string &,
                                   const std::vector<Number> &,
                                   const std::vector<std::string> &) override;
 
-    virtual void read(const std::string &) override;
     virtual void read(vtkUnstructuredGrid *grid);
 
-    virtual void write(const std::string &) override;
+    void write_system_grid(const std::string &system_name);
+    void set_vtk_grid(vtkUnstructuredGrid *grid);
 
 #ifdef LIBMESH_HAVE_VTK
 
@@ -84,18 +76,6 @@ public:
 private:
     void build_mesh_from_active_vtk_grid();
 
-    void nodes_to_vtk();
-
-    void cells_to_vtk();
-    void add_cell_data_from_system(const System &system);
-
-    void node_values_to_vtk(const std::string &name,
-                            const std::vector<Real> &local_values);
-
-    void get_local_node_values(std::vector<Number> &local_values,
-                               std::size_t variable,
-                               const std::vector<Number> &soln,
-                               const std::vector<std::string> &names);
     // void system_vectors_to_vtk(const EquationSystems & es,
     //                            vtkUnstructuredGrid * & grid);
 

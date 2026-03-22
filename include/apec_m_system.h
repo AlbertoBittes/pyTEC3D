@@ -42,6 +42,7 @@ public:
 
     virtual ~ApecMSystemBase() = default;
     virtual void zero_all() = 0;
+    virtual bool is_nodal() const = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
     static const std::string &system_name_from_type(SystemType system_type);
@@ -55,11 +56,9 @@ public:
 template <typename SysLike>
 class ApecMSystem
     : public SysLike,
-      public ApecMSystemBase,
+      public ApecMSystemBase
 {
 public:
-    using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
-
     static_assert(std::is_base_of<System, SysLike>::value,
                   "SysLike must be System or its subclass");
 
@@ -92,6 +91,10 @@ public:
     }
 
     void init_variables();
+    inline bool is_nodal() const override
+    {
+        return system_type != ApecMSystemBase::ELEMENT_SOLUTION;
+    }
 
     virtual void post_init() {};
 
@@ -134,7 +137,7 @@ public:
     void release_subset_solve();
 
     void prepare_time_step_solve(const pybind11::dict &time_step_dict);
-    void compute_solution_time_derivative(const pybind11::dict &time_step);
+    void compute_solution_time_derivative();
     void delete_rows_cols_constrained_dofs();
     void zero_all() override;
 

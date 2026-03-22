@@ -125,6 +125,22 @@ class CoordinateSystem(ABC):
         local_to_global[2, 2] = c2 * c3
         return local_to_global
 
+    @staticmethod
+    def build_global_to_local_matrix(
+        angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
+    ) -> np.ndarray:
+        return CoordinateSystem.build_local_to_global_matrix(
+            angle_xy_deg, angle_yz_deg, angle_xz_deg
+        ).T
+
+    @staticmethod
+    def build_global_to_local(
+        angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
+    ) -> np.ndarray:
+        return CoordinateSystem.build_global_to_local_matrix(
+            angle_xy_deg, angle_yz_deg, angle_xz_deg
+        )
+
     @classmethod
     def from_angles(
         cls: Type[TCoordinateSystem],

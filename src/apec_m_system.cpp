@@ -93,11 +93,14 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
     libmesh_error_msg("ApecMLinearSystem::prepare_time_step_solve: received time smaller than current time step.");
 }
 
-void ApecMLinearSystem::compute_solution_time_derivative(const pybind11::dict &time_step)
+void ApecMLinearSystem::compute_solution_time_derivative()
 {
-    const bool transient_effect = pybind11::cast<bool>(time_step["transient_effects"]);
-    const Real dt = pybind11::cast<Real>(time_step["dt"]);
-    const Real theta = pybind11::cast<Real>(time_step["theta"]);
+    if (!time_step)
+        libmesh_error_msg("ApecMLinearSystem::compute_solution_time_derivative: time_step is null.");
+
+    const bool transient_effect = pybind11::cast<bool>(time_step->time_step_dict["transient_effects"]);
+    const Real dt = time_step->dt;
+    const Real theta = pybind11::cast<Real>(time_step->time_step_dict["theta"]);
     NumericVector<Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
     if (!transient_effect)
     {

@@ -2,6 +2,7 @@
 #define APEC_M_SOLVER_H
 
 #include <memory>
+#include <string>
 #include <mpi.h>
 #include <pybind11/pybind11.h>
 
@@ -26,6 +27,7 @@ public:
                     pybind11::object mpi_comm = pybind11::none());
 
     pybind11::dict solve();
+    void write_system_to_active_vtk_grid(const std::string &system_name);
     bool is_loaded() const;
     pybind11::object get_apec_object() const;
 

@@ -6,6 +6,8 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/system.h>
 
+#include "fe_parent_object.h"
+
 #include <map>
 #include <string>
 #include <vector>

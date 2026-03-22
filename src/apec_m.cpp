@@ -142,9 +142,26 @@ py::dict ApecMSolver::solve()
             result["n_dof_couplings"] = py::len(apec_object.attr("dof_couplings"));
     }
 
+    write_system_to_active_vtk_grid(
+        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    write_system_to_active_vtk_grid(
+        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
+    write_system_to_active_vtk_grid(
+        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION));
+
     // Next step: initialize ApecMEquationSystems from apec_object,
     // then run the real solve loop and write back output arrays.
     return result;
+}
+
+void ApecMSolver::write_system_to_active_vtk_grid(const std::string &system_name)
+{
+    if (!loaded || !mesh || !equation_system || !active_vtk_grid)
+        throw std::runtime_error("Solver is not fully initialized. Call load_model() first.");
+
+    VTKIO_Updated vtkio(*mesh, equation_system.get());
+    vtkio.set_vtk_grid(active_vtk_grid);
+    vtkio.write_system_grid(system_name);
 }
 
 bool ApecMSolver::is_loaded() const

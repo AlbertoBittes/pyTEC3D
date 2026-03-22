@@ -38,6 +38,7 @@ AugmentSparsityOnNodes::AugmentSparsityOnNodes(
 
 void AugmentSparsityOnNodes::rebuild_node_pairs()
 {
+    cp_pairs_by_cp.clear();
     node_pairs.clear();
 
     if (!_vtk_grid)
@@ -69,8 +70,6 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
     if (cp_arrays.empty())
         return;
 
-    vtkDataArray *node_id_array =
-        vtkDataArray::SafeDownCast(point_data->GetAbstractArray("libmesh_node_id"));
     const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
 
     std::unordered_map<int, std::unordered_set<dof_id_type>> cp_nodes;
@@ -82,24 +81,30 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
             if (cp_value <= 0)
                 continue;
 
-            const dof_id_type node_id =
-                node_id_array
-                    ? static_cast<dof_id_type>(node_id_array->GetComponent(i, 0))
-                    : static_cast<dof_id_type>(i);
-
+            const dof_id_type node_id = static_cast<dof_id_type>(i);
             cp_nodes[cp_value].insert(node_id);
         }
 
     for (const auto &entry : cp_nodes)
     {
+        const int cp_id = entry.first;
         const auto &nodes = entry.second;
         if (nodes.empty())
             continue;
 
         const dof_id_type master_node = *std::min_element(nodes.begin(), nodes.end());
+        auto &cp_pairs = cp_pairs_by_cp[cp_id];
         for (dof_id_type node_id : nodes)
+        {
             if (node_id != master_node)
+            {
+                cp_pairs.emplace_back(master_node, node_id);
                 node_pairs.emplace_back(master_node, node_id);
+            }
+        }
+
+        std::sort(cp_pairs.begin(), cp_pairs.end());
+        cp_pairs.erase(std::unique(cp_pairs.begin(), cp_pairs.end()), cp_pairs.end());
     }
 
     std::sort(node_pairs.begin(), node_pairs.end());
