@@ -9,18 +9,15 @@
 #include <set>
 #include <utility>
 
-void ApecMEquationSystems::prepare_time_step_solve(TimeStep &time_step)
+void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_step, bool nodal_solution)
 {
     auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+
+    system.prepare_time_step_solve(time_step);
     system.get_dof_map().swap_dof_constraints();
     system.reinit_constraints();
-}
 
-void ApecMEquationSystems::solve_equation_systems(TimeStep &time_step, bool nodal_solution)
-{
-    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto assembler = system.get_assembler();
-
     assembler->write_element_matrices_and_rhs();
 
     system.solve();
@@ -32,26 +29,17 @@ void ApecMEquationSystems::solve_equation_systems(TimeStep &time_step, bool noda
     assembler->write_element_solution();
 }
 
-void ApecMEquationSystems::print_output(TimeStep &time_step, bool picard_iteration_print)
+void ApecMEquationSystems::print_output(const pybind11::dict &time_step, bool picard_iteration_print)
 {
     (void)picard_iteration_print;
-    libMesh::out << "Writing output for time step " << time_step.get_index()
+    const int time_step_number = pybind11::cast<int>(time_step["time_step_number"]);
+    libMesh::out << "Writing output for time step " << time_step_number
                  << " (output wiring pending)." << std::endl;
-}
-
-void ApecMEquationSystems::update_old_local_solution()
-{
-    auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-    *system.old_local_solution = *system.current_local_solution;
 }
 
 void ApecMEquationSystems::configure_systems()
 {
     libMesh::out << "Building system of equations..." << std::endl;
-
-    this->clear_preserving_solver_settings();
-
-    libMesh::out << "Checking system options..." << std::endl;
 
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
@@ -92,6 +80,25 @@ void ApecMEquationSystems::post_initialize_systems()
 void ApecMEquationSystems::initialize_systems()
 {
     libMesh::out << "Distributing degrees of freedom..." << std::endl;
+
+    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
+    {
+        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
+        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
+        auto &base_system = this->get_system<System>(info);
+
+        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
+        {
+            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
+            {
+                system->init_variables();
+            }
+        }
+        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
+        {
+            system->init_variables();
+        }
+    }
 }
 
 void ApecMEquationSystems::initialize_physics()
@@ -99,17 +106,6 @@ void ApecMEquationSystems::initialize_physics()
     this->init();
     post_initialize_systems();
     this->print_info();
-}
-
-void ApecMEquationSystems::clear_preserving_solver_settings()
-{
-    Real tol = parameters.get<Real>("linear solver tolerance");
-    unsigned int max_iter = parameters.get<unsigned int>("linear solver maximum iterations");
-
-    this->clear();
-
-    parameters.set<Real>("linear solver tolerance") = tol;
-    parameters.set<unsigned int>("linear solver maximum iterations") = max_iter;
 }
 
 void ApecMEquationSystems::zero_all_systems()

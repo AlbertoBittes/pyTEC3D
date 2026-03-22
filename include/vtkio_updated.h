@@ -81,8 +81,6 @@ public:
 
     // void read_apec_m_model(const std::string &mesh_filepath);
 
-    void add_ugrid_data_vtk(MeshBase &mesh);
-
 private:
     void build_mesh_from_active_vtk_grid();
 
@@ -98,7 +96,6 @@ private:
                                std::size_t variable,
                                const std::vector<Number> &soln,
                                const std::vector<std::string> &names);
-    void merge_vector_components();
     // void system_vectors_to_vtk(const EquationSystems & es,
     //                            vtkUnstructuredGrid * & grid);
 

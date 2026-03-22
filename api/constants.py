@@ -7,13 +7,13 @@ VARIABLES_GLOBAL_LIST = [
     "Az",
     "VOLT",
     "EMF",
-    "AMPS",
-    "Js",
     "B",
     "H",
     "Be",
     "He",
     "Jt",
+    "AMPS",
+    "Js",
 ]
 
 # Default solver settings
@@ -91,17 +91,15 @@ DEFAULT_SOLVER_SETTINGS_TYPES = {
 
 # Default time parameters
 DEFAULT_TIME_PARAMETERS = {
-    "time_step_number": 1,
     "time": 0.0,
-    "transient_effects": 1,
+    "transient_effects": True,
     "theta": 1,
 }
 
 # Add a dictionary with the name of the time parameter and its type
 DEFAULT_TIME_PARAMETERS_TYPES = {
-    "time_step_number": int,
     "time": float,
-    "transient_effects": int,
+    "transient_effects": bool,
     "theta": float,
 }
 
@@ -175,7 +173,7 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "materials": MATERIALS_COLUMNS_TYPES,
     "real_constants": CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
-    "time_parameters": DEFAULT_TIME_PARAMETERS_TYPES,
+    "time_step": DEFAULT_TIME_PARAMETERS_TYPES,
     "node": CELL_POINT_DATA_COLUMNS_TYPES,
     "elem": CELL_POINT_DATA_COLUMNS_TYPES,
     "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
@@ -187,27 +185,12 @@ SHEET_PROCESSING_MAP = {
     "materials": "read_excel_df",
     "real_constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
-    "time_parameters": "read_excel_dict",
+    "time_step": "read_excel_dict",
     "apec_settings": "read_excel_dict",
     "node": ("update_vtk_grid_from_excel", "node"),
     "elem": ("update_vtk_grid_from_excel", "elem"),
     "dof_couplings": "read_excel_df",
 }
-
-WRITING_FUNCTIONS_MAP = {
-    "element_types": "_write_to_binary",
-    "time_parameters": "_write_to_binary",
-    "solver_settings": "_write_to_binary",
-    "materials": "_write_to_binary",
-    "real_constants": "_write_to_binary",
-    "node": "_write_numpy_array_to_binary",
-    "elem": "_write_numpy_array_to_binary",
-    "dof_couplings": "_write_to_binary",
-    "apec_settings": "_write_to_binary",
-}
-
-WRITING_LABELS = list(WRITING_FUNCTIONS_MAP.keys())
-WRITING_LABEL_TO_ID = {label: idx for idx, label in enumerate(WRITING_LABELS)}
 
 VTK_ARRAYS_TO_INIT = {
     "angles": {
@@ -240,6 +223,60 @@ VTK_ARRAYS_TO_INIT = {
         "fill": np.nan,
         "dtype": vtk.VTK_DOUBLE,
     },
+    "_A": {
+        "location": "node",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "_Az": {
+        "location": "node",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "_VOLT": {
+        "location": "node",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "_EMF": {
+        "location": "node",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "B": {
+        "location": "node",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "H": {
+        "location": "node",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "Be": {
+        "location": "elem",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "He": {
+        "location": "elem",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "Jt": {
+        "location": "elem",
+        "components": 3,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
     "AMPS": {
         "location": "node",
         "components": 1,
@@ -266,10 +303,4 @@ ARRAYS_TO_REMOVE = [
     "cell_centroids",
     "cell_volume",
     "MidsideNodes"
-]
-
-# Labels to read for each load step from Excel
-EXCEL_LOAD_STEP_LABELS = [
-    "node",
-    "elem",
 ]

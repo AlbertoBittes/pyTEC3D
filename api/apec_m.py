@@ -11,13 +11,9 @@ from typing import (
     Union,
 )
 
-import numpy as np
 import pandas as pd
 import vtk
-import vtk.util.numpy_support as vtknp
 
-from tree_gauge import TreeGauge
-from dof_couplings import DofCouplings
 from model_edit import ModelEdit
 from excel import Excel
 from constants import *
@@ -63,12 +59,11 @@ class APEC_M:
         self.real_constants: pd.DataFrame = pd.DataFrame(
             columns=list(CONSTANTS_COLUMNS_TYPES.keys())
         )
-        self.time_parameters: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
+        self.time_step: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
-        self._cp_pairs: np.ndarray = np.empty((0, 2), dtype=np.int64)
         self._solver_session: Optional[Any] = None
 
     @property
@@ -171,6 +166,11 @@ class APEC_M:
 
         if first_mesh:
             os.chdir(mesh_folder)
+
+        model_folder = os.path.join(os.getcwd(), resolved_name)
+        os.makedirs(model_folder, exist_ok=True)
+        os.makedirs(os.path.join(model_folder, "emat"), exist_ok=True)
+        os.makedirs(os.path.join(model_folder, "output"), exist_ok=True)
 
         self.meshes[resolved_name] = loaded_mesh
         self.mesh_filepaths[resolved_name] = mesh_path
@@ -333,44 +333,6 @@ class APEC_M:
             ) from exc
         return solver_module
 
-    def _build_solver_attribute_payload(self) -> Dict[str, Any]:
-        return {
-            "active_mesh_name": self._active_mesh_name,
-            "element_types": self.element_types,
-            "materials": self.materials,
-            "real_constants": self.real_constants,
-            "dof_couplings": self.dof_couplings,
-            "_cp_pairs": self._cp_pairs,
-            "time_parameters": self.time_parameters,
-            "solver_settings": self.solver_settings,
-        }
-
-    def _apply_solver_attribute_payload(self, payload: Dict[str, Any]) -> None:
-        self._active_mesh_name = payload.get("active_mesh_name")
-        self.element_types = payload.get("element_types", self.element_types)
-        self.materials = payload.get("materials", self.materials)
-        self.real_constants = payload.get("real_constants", self.real_constants)
-        self.dof_couplings = payload.get("dof_couplings", self.dof_couplings)
-        incoming_cp_pairs = payload.get("_cp_pairs", self._cp_pairs)
-        incoming_cp_pairs_array = np.asarray(incoming_cp_pairs, dtype=np.int64)
-        if incoming_cp_pairs_array.size == 0:
-            self._cp_pairs = np.empty((0, 2), dtype=np.int64)
-        else:
-            if incoming_cp_pairs_array.ndim != 2 or incoming_cp_pairs_array.shape[1] != 2:
-                raise ValueError("Expected '_cp_pairs' to be a 2D array with shape (N, 2).")
-            self._cp_pairs = np.ascontiguousarray(incoming_cp_pairs_array, dtype=np.int64)
-        self.time_parameters = payload.get("time_parameters", self.time_parameters)
-        self.solver_settings = payload.get("solver_settings", self.solver_settings)
-
-    def _sync_solver_attributes(self, mpi_comm: Optional[Any]) -> None:
-        if mpi_comm is None:
-            return
-        rank = mpi_comm.Get_rank()
-        payload = self._build_solver_attribute_payload() if rank == 0 else None
-        payload = mpi_comm.bcast(payload, root=0)
-        if rank != 0:
-            self._apply_solver_attribute_payload(payload)
-
     def load_mesh_into_solver(
         self,
         num_processors: int = 1,
@@ -389,23 +351,8 @@ class APEC_M:
         mpi_comm = self._build_solver_mpi_communicator(num_processors)
 
         if mesh_name is not None:
-            if mpi_comm is None:
-                if not self.set_active_mesh(mesh_name):
-                    raise ValueError(f"Mesh '{mesh_name}' does not exist.")
-            else:
-                ok = self.set_active_mesh(mesh_name) if mpi_comm.Get_rank() == 0 else True
-                ok = mpi_comm.bcast(ok, root=0)
-                if not ok:
-                    raise ValueError(f"Mesh '{mesh_name}' does not exist.")
-                if mpi_comm.Get_rank() != 0:
-                    self._active_mesh_name = mesh_name
-
-        if mpi_comm is None:
-            self._cp_pairs = DofCouplings.build_cp_pairs(self.mesh)
-        elif mpi_comm.Get_rank() == 0:
-            self._cp_pairs = DofCouplings.build_cp_pairs(self.mesh)
-
-        self._sync_solver_attributes(mpi_comm)
+            if not self.set_active_mesh(mesh_name):
+                raise ValueError(f"Mesh '{mesh_name}' does not exist.")
 
         solver = solver_module.ApecMSolver()
         solver.load_model(self, mpi_comm)

@@ -46,17 +46,7 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2}},
     {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0}},
     {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0}},
-    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0}},
     {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0}},
-    {GlobalVariableName::E, {GlobalVariableName::E, APIVariableName::E, "E", "E", 0}},
-
-    // Nodal Loads Variables
-    {GlobalVariableName::AMPS, {GlobalVariableName::AMPS, APIVariableName::AMPS, "AMPS", "AMPS", 0}},
-
-    // Element Loads Variables
-    {GlobalVariableName::Js_x, {GlobalVariableName::Js_x, APIVariableName::Js, "Js_x", "Js", 0}},
-    {GlobalVariableName::Js_y, {GlobalVariableName::Js_y, APIVariableName::Js, "Js_y", "Js", 1}},
-    {GlobalVariableName::Js_z, {GlobalVariableName::Js_z, APIVariableName::Js, "Js_z", "Js", 2}},
 
     // Nodal Solution Variables
     {GlobalVariableName::B_x, {GlobalVariableName::B_x, APIVariableName::B, "B_x", "B", 0}},
@@ -310,16 +300,8 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
     case GlobalVariableName::A_z:
     case GlobalVariableName::Az:
     case GlobalVariableName::VOLT:
-    case GlobalVariableName::V:
     case GlobalVariableName::EMF:
-    case GlobalVariableName::E:
         return ApecMSystemBase::DOF_SOLUTION_SYSTEM;
-    case GlobalVariableName::AMPS:
-        return ApecMSystemBase::NODAL_LOADS;
-    case GlobalVariableName::Js_x:
-    case GlobalVariableName::Js_y:
-    case GlobalVariableName::Js_z:
-        return ApecMSystemBase::ELEMENT_LOADS;
     case GlobalVariableName::B_x:
     case GlobalVariableName::B_y:
     case GlobalVariableName::B_z:
@@ -375,25 +357,12 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
 
     switch (physical_region)
     {
-    case STRANDED_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::Js_x,
-                                 GlobalVariableName::Js_y,
-                                 GlobalVariableName::Js_z});
-        break;
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    case SOLID_CONDUCTOR_SOLENOIDAL:
-    case STRANDED_COIL_SOLENOIDAL:
-        vars.insert(vars.end(), {GlobalVariableName::V,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -407,25 +376,12 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
 
     switch (physical_region)
     {
-    case STRANDED_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::Js_x,
-                                 GlobalVariableName::Js_y,
-                                 GlobalVariableName::Js_z});
-        break;
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    case SOLID_CONDUCTOR_SOLENOIDAL:
-    case STRANDED_COIL_SOLENOIDAL:
-        vars.insert(vars.end(), {GlobalVariableName::V,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -443,22 +399,11 @@ std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::
 
     switch (physical_region)
     {
-    case STRANDED_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::Js_z});
-        break;
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT,
-                                 GlobalVariableName::AMPS});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    case STRANDED_COIL_SOLENOIDAL:
-    case SOLID_CONDUCTOR_SOLENOIDAL:
-        vars.insert(vars.end(), {GlobalVariableName::V,
-                                 GlobalVariableName::AMPS});
-        if (physical_region == STRANDED_COIL_SOLENOIDAL)
-            vars.insert(vars.end(), {GlobalVariableName::E});
         break;
     default:
         break;
@@ -541,16 +486,10 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::A_y:
     case GlobalVariableName::A_z:
     case GlobalVariableName::VOLT:
-    case GlobalVariableName::V:
     case GlobalVariableName::EMF:
-    case GlobalVariableName::E:
-    case GlobalVariableName::AMPS:
         return LAGRANGE;
     case GlobalVariableName::Az:
         return NEDELEC_ONE;
-    case GlobalVariableName::Js_x:
-    case GlobalVariableName::Js_y:
-    case GlobalVariableName::Js_z:
     case GlobalVariableName::Jt_x:
     case GlobalVariableName::Jt_y:
     case GlobalVariableName::Jt_z:
@@ -579,9 +518,6 @@ Order VariablesMap::get_variable_order(const ElementType &element,
     Order order = FIRST;
     switch (variable)
     {
-    case GlobalVariableName::Js_x:
-    case GlobalVariableName::Js_y:
-    case GlobalVariableName::Js_z:
     case GlobalVariableName::Jt_x:
     case GlobalVariableName::Jt_y:
     case GlobalVariableName::Jt_z:

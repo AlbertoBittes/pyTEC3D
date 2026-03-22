@@ -1,11 +1,7 @@
 #include "global_constraints_object.h"
 #include "fe_parent_object.h"
-#include "apec_m.h"
-#include "apec_m_mesh.h"
 #include "apec_m_system.h"
 
-#include "fem_data_repository.h"
-#include "fe_data_object.h"
 #include "variables_map.h"
 #include <libmesh/dof_map.h>
 #include <libmesh/mesh_base.h>

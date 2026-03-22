@@ -6,7 +6,8 @@
 
 #include <libmesh/ghosting_functor.h>
 #include <libmesh/mesh_base.h>
-#include <pybind11/numpy.h>
+
+class vtkUnstructuredGrid;
 
 using namespace libMesh;
 
@@ -15,7 +16,7 @@ class AugmentSparsityOnNodes : public GhostingFunctor
 public:
     AugmentSparsityOnNodes(
         MeshBase &mesh,
-        const pybind11::array &master_slave_pairs);
+        vtkUnstructuredGrid *vtk_grid);
 
     virtual void operator()(const MeshBase::const_element_iterator &range_begin,
                             const MeshBase::const_element_iterator &range_end,
@@ -26,10 +27,12 @@ public:
     virtual void redistribute() override;
 
 private:
+    void rebuild_node_pairs();
     void rebuild_elem_neighbors();
 
     MeshBase &_mesh;
-    pybind11::array cp_pairs;
+    vtkUnstructuredGrid *_vtk_grid = nullptr;
+    std::vector<std::pair<dof_id_type, dof_id_type>> node_pairs;
     std::vector<std::pair<dof_id_type, dof_id_type>> elem_pairs;
     std::unordered_map<dof_id_type, dof_id_type> slave_to_master_elem;
 };

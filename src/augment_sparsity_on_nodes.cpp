@@ -1,12 +1,17 @@
 #include "augment_sparsity_on_nodes.h"
 
 #include <algorithm>
+#include <cstring>
+#include <unordered_set>
 #include <utility>
 
 #include <libmesh/elem.h>
 
+#include <vtkDataArray.h>
+#include <vtkPointData.h>
+#include <vtkUnstructuredGrid.h>
+
 using namespace libMesh;
-namespace py = pybind11;
 
 namespace
 {
@@ -21,38 +26,106 @@ namespace
         return true;
     }
 
-}
+} // namespace
 
 AugmentSparsityOnNodes::AugmentSparsityOnNodes(
     MeshBase &mesh,
-    const py::array &master_slave_pairs)
-    : _mesh(mesh), cp_pairs(master_slave_pairs)
+    vtkUnstructuredGrid *vtk_grid)
+    : _mesh(mesh), _vtk_grid(vtk_grid)
 {
     rebuild_elem_neighbors();
 }
 
+void AugmentSparsityOnNodes::rebuild_node_pairs()
+{
+    node_pairs.clear();
+
+    if (!_vtk_grid)
+        return;
+
+    vtkPointData *point_data = _vtk_grid->GetPointData();
+    if (!point_data)
+        return;
+
+    std::vector<vtkDataArray *> cp_arrays;
+    cp_arrays.reserve(static_cast<std::size_t>(point_data->GetNumberOfArrays()));
+
+    for (int i = 0; i < point_data->GetNumberOfArrays(); ++i)
+    {
+        vtkDataArray *array = vtkDataArray::SafeDownCast(point_data->GetArray(i));
+        if (!array)
+            continue;
+
+        const char *name = array->GetName();
+        if (!name || std::strncmp(name, "CP_", 3) != 0)
+            continue;
+
+        if (array->GetNumberOfComponents() != 1)
+            continue;
+
+        cp_arrays.push_back(array);
+    }
+
+    if (cp_arrays.empty())
+        return;
+
+    vtkDataArray *node_id_array =
+        vtkDataArray::SafeDownCast(point_data->GetAbstractArray("libmesh_node_id"));
+    const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
+
+    std::unordered_map<int, std::unordered_set<dof_id_type>> cp_nodes;
+
+    for (vtkDataArray *cp_array : cp_arrays)
+        for (vtkIdType i = 0; i < n_points; ++i)
+        {
+            const int cp_value = static_cast<int>(cp_array->GetComponent(i, 0));
+            if (cp_value <= 0)
+                continue;
+
+            const dof_id_type node_id =
+                node_id_array
+                    ? static_cast<dof_id_type>(node_id_array->GetComponent(i, 0))
+                    : static_cast<dof_id_type>(i);
+
+            cp_nodes[cp_value].insert(node_id);
+        }
+
+    for (const auto &entry : cp_nodes)
+    {
+        const auto &nodes = entry.second;
+        if (nodes.empty())
+            continue;
+
+        const dof_id_type master_node = *std::min_element(nodes.begin(), nodes.end());
+        for (dof_id_type node_id : nodes)
+            if (node_id != master_node)
+                node_pairs.emplace_back(master_node, node_id);
+    }
+
+    std::sort(node_pairs.begin(), node_pairs.end());
+    node_pairs.erase(std::unique(node_pairs.begin(), node_pairs.end()), node_pairs.end());
+}
+
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()
 {
+    rebuild_node_pairs();
+
     elem_pairs.clear();
     slave_to_master_elem.clear();
 
-    std::unordered_map<unsigned int, dof_id_type> node_to_elem;
+    std::unordered_map<dof_id_type, dof_id_type> node_to_elem;
     for (const auto *elem : _mesh.element_ptr_range())
     {
         if (!elem)
             continue;
         for (unsigned int i = 0; i < elem->n_nodes(); ++i)
-            node_to_elem.emplace(static_cast<unsigned int>(elem->node_id(i)), elem->id());
+            node_to_elem.emplace(static_cast<dof_id_type>(elem->node_id(i)), elem->id());
     }
 
-    auto pairs_u32 =
-        py::array_t<unsigned int, py::array::c_style | py::array::forcecast>(cp_pairs);
-    const auto cp_view = pairs_u32.unchecked<2>();
-
-    for (py::ssize_t i = 0; i < cp_view.shape(0); ++i)
+    for (const auto &pair : node_pairs)
     {
-        const auto master_elem_it = node_to_elem.find(cp_view(i, 0));
-        const auto slave_elem_it = node_to_elem.find(cp_view(i, 1));
+        const auto master_elem_it = node_to_elem.find(pair.first);
+        const auto slave_elem_it = node_to_elem.find(pair.second);
         if (master_elem_it == node_to_elem.end() || slave_elem_it == node_to_elem.end())
             continue;
 

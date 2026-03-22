@@ -15,16 +15,19 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 
 #include "assembler.h"
 #include "apec_m_system.h"
 #include "apec_m_equation_systems.h"
+#include "apec_m_solver.h"
 #include "element_builder.h"
 #include "element_types.h"
 #include "global_constraints_object.h"
 #include "binary_reader.h"
 
 using namespace libMesh;
+namespace py = pybind11;
 
 namespace
 {
@@ -38,18 +41,26 @@ namespace
             build_fn();
         }
     }
+
+    py::dict get_time_step_dict_from_solver(ApecMEquationSystems *eq_sys)
+    {
+        auto *solver_parent = eq_sys->get_parent_object();
+        py::object apec_object = solver_parent->get_apec_object();
+        return apec_object.attr("time_step").cast<py::dict>();
+    }
+
+    std::filesystem::path get_emat_folderpath_from_solver(ApecMEquationSystems *eq_sys)
+    {
+        auto *solver_parent = eq_sys->get_parent_object();
+        py::object apec_object = solver_parent->get_apec_object();
+        const std::string active_mesh_name = py::cast<std::string>(apec_object.attr("active_mesh_name"));
+        return std::filesystem::current_path() / active_mesh_name / "emat";
+    }
 } // namespace
 
 AssemblerLinear::AssemblerLinear(ApecMEquationSystems *eq_systems)
-    : FEParentObjectBase<ApecMEquationSystems>(eq_systems),
-      FEMService<TimeStep, Session>(nullptr)
-
+    : FEParentObjectBase<ApecMEquationSystems>(eq_systems)
 {
-}
-
-std::unique_ptr<ElementBuilder> AssemblerLinear::make_element_builder() const
-{
-    return ElementBuilder::make_element_builder(this->get_parent_object());
 }
 
 void AssemblerLinear::assemble()
@@ -58,20 +69,9 @@ void AssemblerLinear::assemble()
 
     auto eq_sys = this->get_parent_object();
 
-    auto builder = make_element_builder();
-    if (!builder)
-    {
-        libMesh::out << "AssemblerLinear: unable to create element builder for assembly." << std::endl;
-        return;
-    }
+    auto builder = ElementBuilder(this->get_parent_object());
 
-    auto time_step = this->context<TimeStep>();
-    if (!time_step)
-        return;
-
-    auto time_substep = time_step->get_active_substep();
-    if (!time_substep)
-        return;
+    const py::dict time_step = get_time_step_dict_from_solver(eq_sys);
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     SparseMatrix<Number> &matrix = system.get_system_matrix();
@@ -86,9 +86,10 @@ void AssemblerLinear::assemble()
     std::vector<Real> old_solution_values;
     std::vector<Real> old_time_derivative_values;
 
-    const Real dt = time_substep->get_dt();
-    const Real theta = time_substep->get_theta();
-    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+    const Real dt = py::cast<Real>(time_step["dt"]);
+    const Real theta = py::cast<Real>(time_step["theta"]);
+    const bool transient_effect = py::cast<bool>(time_step["transient_effects"]);
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
     const std::string rank_str = std::to_string(comm.rank());
 
     BinaryReader reader;
@@ -119,9 +120,9 @@ void AssemblerLinear::assemble()
         //     dof_id_type dof_id = node_ptr->dof_number(system.number(), 0, 0);
         //     int a = 1;
         // }
-        BinaryReader::read_element_matrices(*builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
-        auto &Ke = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
-        auto &Ce = builder->get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
+        BinaryReader::read_element_matrices(builder, *mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
+        auto &Ke = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
+        auto &Ce = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
 
         // auto check_id = elem->id();
         // auto first_step = (time_step->get_step() == 1 && time_substep->get_index() == 0);
@@ -149,15 +150,16 @@ void AssemblerLinear::assemble()
         //     std::ofstream file_stream(filename);
         //     Ce.print(file_stream);
         // }
-        Ce.scale(1 / (dt * theta));
 
-        if (time_substep->get_transient_effect())
+        if (transient_effect)
+        {
             Ke += Ce;
+            Ce.scale(1 / (dt * theta));
+        }
+        BinaryReader::read_element_vectors(builder, *rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+        auto &rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
 
-        BinaryReader::read_element_vectors(*builder, *rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
-        auto &rhs = builder->get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
-
-        if (time_substep->get_transient_effect())
+        if (transient_effect)
         {
             system.old_local_solution->get(dof_indices, old_solution_values);
             Ce.vector_mult_add(rhs, 1, old_solution_values);
@@ -222,56 +224,45 @@ bool AssemblerLinear::check_update_system_matrix()
     auto eq_sys = this->get_parent_object();
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
-
     GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&system.get_constraint_object());
-
-    auto current_time_step = this->context<TimeStep>();
-
-    auto current_time_substep = current_time_step ? current_time_step->get_active_substep() : nullptr;
-
-    auto old_time_step = current_time_step->get_previous_time_step();
-
-    auto old_time_substep = old_time_step ? old_time_step->get_active_substep() : nullptr;
-
     auto *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
-    const Real rel_eps = 1e-9;
+
+    if (bc_object->check_update_boundary_conditions())
+    {
+        libMesh::out << "Updating system matrix for current time step" << std::endl;
+        system.get_system_matrix().zero();
+        if (solver)
+            solver->reuse_preconditioner(false);
+        return true;
+    }
 
     bool update_matrix = false;
+    const auto *current_step = system.time_step.get();
+    const auto *old_step = system.old_time_step.get();
 
-    // Here I will introduce a check on picard loops
-    if (!system.get_solved_substep())
+    if (!current_step)
     {
-        // No solved substep, we are in the first iteration of the first step, we need to update
         update_matrix = true;
     }
-    else
+    else if (current_step->updated)
     {
-        if (current_time_substep->get_number_picard_iterations() > 0)
+        if (!old_step)
+            update_matrix = true;
+        else
         {
-            update_matrix = false;
-        }
-        if (current_time_substep->get_index() == 0)
-        {
-            // If first substep and BCs have changed, we need to update the matrix
-            // This will also include automatically the case of very first substep
-            if (bc_object->check_update_boundary_conditions())
-                update_matrix = true;
+            const Real current_dt = current_step->dt;
+            const Real old_dt = old_step->dt;
+            const Real current_theta = py::cast<Real>(current_step->time_step_dict["theta"]);
+            const Real old_theta = py::cast<Real>(old_step->time_step_dict["theta"]);
+            const bool current_transient_effect = py::cast<bool>(current_step->time_step_dict["transient_effects"]);
+            const bool old_transient_effect = py::cast<bool>(old_step->time_step_dict["transient_effects"]);
 
-            // this should not happen
-            if (!old_time_substep)
+            const bool dt_differs = std::abs(current_dt - old_dt) > std::numeric_limits<Real>::epsilon();
+            const bool theta_differs = std::abs(current_theta - old_theta) > std::numeric_limits<Real>::epsilon();
+
+            if ((dt_differs || theta_differs) &&
+                current_transient_effect == old_transient_effect)
                 update_matrix = true;
-            // If first substep but time integration parameters have changed, we need to update the matrix
-            else
-            {
-                Real diff_dt = std::abs(current_time_substep->get_dt() - old_time_substep->get_dt());
-                Real max_old_new_dt = std::max(std::abs(current_time_substep->get_dt()), std::abs(old_time_substep->get_dt()));
-                if (diff_dt > rel_eps * max_old_new_dt ||
-                    current_time_substep->get_transient_effect() != old_time_substep->get_transient_effect() ||
-                    current_time_substep->get_theta() != old_time_substep->get_theta())
-                {
-                    update_matrix = true;
-                }
-            }
         }
     }
 
@@ -296,7 +287,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 {
     auto eq_sys = this->get_parent_object();
 
-    auto builder = make_element_builder();
+    auto builder = ElementBuilder(this->get_parent_object());
 
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     auto &dof_map = system.get_dof_map();
@@ -304,7 +295,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     const auto &comm = system.comm();
 
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
 
     BinaryReader reader;
 
@@ -331,14 +322,14 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
-            builder->set_element_data(elem);
+            builder.set_element_data(elem);
 
-            builder->build_element();
+            builder.build_element();
 
-            BinaryReader::write_element_matrices(*builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
-            BinaryReader::write_element_matrices(*builder, *nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-            BinaryReader::write_element_matrices(*builder, *element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
-            BinaryReader::write_element_vectors(*builder, *base_rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+            BinaryReader::write_element_matrices(builder, *mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
+            BinaryReader::write_element_matrices(builder, *nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
+            BinaryReader::write_element_matrices(builder, *element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
+            BinaryReader::write_element_vectors(builder, *base_rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
         }
 
         reader.close_file_streams(streams);
@@ -359,15 +350,15 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     libMesh::out << "Applying loads to RHS" << std::endl;
 
-    builder->clear_nodal_loads_dof_cache();
+    builder.clear_nodal_loads_dof_cache();
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        builder->set_element_data(elem);
+        builder.set_element_data(elem);
 
-        BinaryReader::read_element_vectors(*builder, *base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
-        builder->build_element_rhs();
-        BinaryReader::write_element_vectors(*builder, *rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+        BinaryReader::read_element_vectors(builder, *base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
+        builder.build_element_rhs();
+        BinaryReader::write_element_vectors(builder, *rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS);
     }
 
     reader.close_file_streams(streams_in);
@@ -379,25 +370,15 @@ void AssemblerLinear::write_nodal_solution()
     libMesh::out << "Computing derived quantities..." << std::endl;
 
     auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
 
-    auto builder = make_element_builder();
-    if (!builder)
-    {
-        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
-        return;
-    }
-    builder->set_compute_nodal_solution_vectors(true);
+    auto builder = ElementBuilder(this->get_parent_object());
+
+    builder.set_compute_nodal_solution_vectors(true);
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
-    auto session = this->context<Session>();
-    if (!session)
-        return;
-
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
 
     BinaryReader reader;
     const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat"};
@@ -412,9 +393,9 @@ void AssemblerLinear::write_nodal_solution()
         return;
     }
 
-    run_for_elements(mesh, *builder, [&]()
-                     { BinaryReader::read_element_matrices(*builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); }, [&]()
-                     { builder->build_nodal_solution(); });
+    run_for_elements(mesh, builder, [&]()
+                     { BinaryReader::read_element_matrices(builder, *nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); }, [&]()
+                     { builder.build_nodal_solution(); });
 
     reader.close_file_streams(inp_streams);
 
@@ -430,25 +411,15 @@ void AssemblerLinear::write_element_solution()
     libMesh::out << "Computing derived quantities..." << std::endl;
 
     auto eq_sys = this->get_parent_object();
-    if (!eq_sys)
-        return;
 
-    auto builder = make_element_builder();
-    if (!builder)
-    {
-        libMesh::out << "AssemblerLinear: unable to create element builder for solution vectors." << std::endl;
-        return;
-    }
-    builder->set_compute_nodal_solution_vectors(false);
+    auto builder = ElementBuilder(this->get_parent_object());
+
+    builder.set_compute_nodal_solution_vectors(false);
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
-    auto session = this->context<Session>();
-    if (!session)
-        return;
-
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = session->get_path("emat_folderpath");
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
 
     BinaryReader reader;
     const std::vector<std::string> inp_filenames = {"element_sol_mtrx_" + rank_str + ".emat"};
@@ -463,9 +434,9 @@ void AssemblerLinear::write_element_solution()
         return;
     }
 
-    run_for_elements(mesh, *builder, [&]()
-                     { BinaryReader::read_element_matrices(*builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); }, [&]()
-                     { builder->build_element_solution(); });
+    run_for_elements(mesh, builder, [&]()
+                     { BinaryReader::read_element_matrices(builder, *element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); }, [&]()
+                     { builder.build_element_solution(); });
 
     reader.close_file_streams(inp_streams);
 

@@ -2,6 +2,7 @@
 #define ELEMENT_BUILDER_H
 
 #include <filesystem>
+#include <array>
 #include <memory>
 #include <unordered_map>
 #include <set>
@@ -13,6 +14,7 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
+#include <pybind11/pybind11.h>
 
 #include "fe_parent_object.h"
 // #include "element_types.h"
@@ -23,6 +25,8 @@ using namespace libMesh;
 
 class ApecMLinearSystem;
 class ApecMEquationSystems;
+class vtkUnstructuredGrid;
+class vtkDataArray;
 
 struct ElemData
 {
@@ -39,8 +43,7 @@ struct ElemData
 class BinaryReader;
 
 class ElementBuilder
-    : public FEMService<ElementTypesFactory, Materials, Constants>,
-      public FEParentObjectBase<EquationSystems>
+    : public FEParentObjectBase<EquationSystems>
 {
 public:
     enum MatricesSet
@@ -67,8 +70,6 @@ public:
     };
     static constexpr unsigned int kNumNodalSolutionMatrices = 2;
     static constexpr unsigned int kNumElementSolutionMatrices = 3;
-
-    using ContextView = TypedContextView<ElementTypesFactory, Materials, Constants>;
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
@@ -119,9 +120,7 @@ public:
 
     void clear_nodal_loads_dof_cache() { nodal_loads_dof_cache.clear(); }
 
-    static std::unique_ptr<ElementBuilder> make_element_builder(ApecMEquationSystems *eq_sys);
-
-    ElementBuilder(EquationSystems *equation_systems, std::shared_ptr<ContextView> ctx_view);
+    ElementBuilder(EquationSystems *equation_systems);
 
 private:
     friend class BinaryReader;
@@ -139,19 +138,20 @@ private:
     bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
-    dof_id_type mat_index;
-    dof_id_type real_constant_index;
 
     ApecMEquationSystems *equation_systems_ = nullptr;
     ApecMLinearSystem *dof_solution_system_ = nullptr;
     System *nodal_solution_system_ = nullptr;
     System *element_solution_system_ = nullptr;
     System *support_solution_system_ = nullptr;
-    System *nodal_loads_system_ = nullptr;
-    System *element_loads_system_ = nullptr;
+
     DofMap *dof_solution_dof_map_ = nullptr;
-    std::shared_ptr<Materials> materials_object_ = nullptr;
-    std::shared_ptr<Constants> real_constants_object_ = nullptr;
+    pybind11::object apec_object_;
+    pybind11::object materials_attribute_;
+    pybind11::object real_constants_attribute_;
+    vtkUnstructuredGrid *vtk_grid_ = nullptr;
+    vtkDataArray *material_cell_array_ = nullptr;
+    vtkDataArray *real_constant_cell_array_ = nullptr;
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,
@@ -168,6 +168,10 @@ private:
 
     void append_and_write_solution(System &system,
                                    const std::vector<DenseVector<Number>> &ordered_vectors);
+    ssize_t find_row_index(const pybind11::object &table, const char *id_column, unsigned int id) const;
+    std::array<Real, 3> get_mu_matrix(unsigned int material_num) const;
+    std::array<Real, 3> get_sigma_matrix(unsigned int material_num) const;
+    std::vector<Real> get_real_constants(unsigned int constant_num) const;
 };
 
 #endif // ELEMENT_BUILDER_H

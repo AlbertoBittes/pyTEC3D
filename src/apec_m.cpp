@@ -8,14 +8,13 @@
 
 #include <libmesh/distributed_mesh.h>
 #include <libmesh/libmesh.h>
-#include <libmesh/mesh_communication.h>
 #include <libmesh/mesh_tools.h>
+#include <libmesh/mesh_modification.h>
 
 #include <mpi.h>
 
 #include <vtkUnstructuredGrid.h>
 
-#include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
 #include <cstdlib>
@@ -86,21 +85,17 @@ void ApecMSolver::load_model(py::object apec_object,
 {
     mpi_comm_object = mpi_comm;
     this->apec_object = apec_object;
-    const py::array cp_pairs_array = apec_object.attr("_cp_pairs").cast<py::array>();
     element_types_factory = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
     const MPI_Comm active_comm = mpi_comm_from_python(mpi_comm);
     ensure_libmesh_initialized(active_comm);
 
     mesh = std::make_unique<libMesh::DistributedMesh>(libmesh_init->comm());
     VTKIO_Updated vtkio(*mesh);
-    if (libmesh_init->comm().rank() == 0)
-    {
-        py::object vtk_grid = active_vtk_grid_from_apec(apec_object);
-        vtkUnstructuredGrid *grid_ptr = vtk_grid_from_python(vtk_grid);
-        vtkio.read(grid_ptr);
-    }
+    py::object vtk_grid = active_vtk_grid_from_apec(apec_object);
+    vtkUnstructuredGrid *grid_ptr = vtk_grid_from_python(vtk_grid);
+    active_vtk_grid = grid_ptr;
+    vtkio.read(grid_ptr);
 
-    libMesh::MeshCommunication().broadcast(*mesh);
     libMesh::MeshTools::Modification::orient_elements(*mesh);
 
     equation_system = std::make_shared<ApecMEquationSystems>(*mesh);
@@ -111,7 +106,7 @@ void ApecMSolver::load_model(py::object apec_object,
     auto &main_system = equation_system->get_system<ApecMLinearSystem>(
         ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
     coupling_functor = std::make_unique<AugmentSparsityOnNodes>(*mesh,
-                                                                 cp_pairs_array);
+                                                                grid_ptr);
     main_system.get_dof_map().add_coupling_functor(*coupling_functor);
     libMesh::out << "Added DOF coupling sparsity functor for active mesh." << std::endl;
 
@@ -145,8 +140,6 @@ py::dict ApecMSolver::solve()
             result["n_real_constants"] = py::len(apec_object.attr("real_constants"));
         if (py::hasattr(apec_object, "dof_couplings"))
             result["n_dof_couplings"] = py::len(apec_object.attr("dof_couplings"));
-        if (py::hasattr(apec_object, "_cp_pairs"))
-            result["n_cp_groups"] = py::len(apec_object.attr("_cp_pairs"));
     }
 
     // Next step: initialize ApecMEquationSystems from apec_object,

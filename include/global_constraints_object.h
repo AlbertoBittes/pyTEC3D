@@ -22,10 +22,9 @@ class GlobalConstraintsObject
       public FEParentObjectBase<System>
 {
 public:
-  using ContextView = TypedContextView<TimeStep>;
   using FEParentObjectBase<System>::FEParentObjectBase;
 
-  GlobalConstraintsObject(System *sys, std::shared_ptr<ContextView> ctx_view = nullptr)
+  GlobalConstraintsObject(System *sys)
       : FEParentObjectBase<System>(sys) // Set the parent System
   {
   }

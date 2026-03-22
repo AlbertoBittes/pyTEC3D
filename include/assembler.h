@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <libmesh/system.h>
+#include <pybind11/pybind11.h>
 
 #include "fe_parent_object.h"
 
@@ -34,9 +35,6 @@ public:
     void write_element_matrices_and_rhs();
     void write_nodal_solution();
     void write_element_solution();
-
-private:
-    std::unique_ptr<ElementBuilder> make_element_builder() const;
 };
 
 #endif // ASSEMBLER_H

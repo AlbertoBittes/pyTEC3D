@@ -1,6 +1,5 @@
 #include "element_builder.h"
 #include "binary_reader.h"
-#include "apec_m.h"
 // #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
@@ -8,13 +7,27 @@
 // Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
+#include <string>
+#include <array>
+#include <pybind11/stl.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkUnstructuredGrid.h>
 
 // Define Gauss quadrature rules.
 #include "element_types.h" // Include the header defining ElementType
 #include "apec_m_system.h"
+#include "apec_m_solver.h"
 #include "element_types_factory.h"
 
 #include "variables_map.h"
+
+namespace py = pybind11;
+
+namespace
+{
+    const Real kMu0 = 4.0 * libMesh::pi * 1e-7;
+}
 
 //
 //
@@ -22,44 +35,71 @@
 //
 //
 
-ElementBuilder::ElementBuilder(EquationSystems *equation_systems,
-                               std::shared_ptr<ContextView> ctx_view)
+ElementBuilder::ElementBuilder(EquationSystems *equation_systems)
     : FEParentObjectBase<EquationSystems>(equation_systems),
-      FEMService<ElementTypesFactory, Materials, Constants>(ctx_view),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
     equation_systems_ = dynamic_cast<ApecMEquationSystems *>(equation_systems);
-    if (!equation_systems_)
-        libmesh_error_msg("ElementBuilder: equation systems is not ApecMEquationSystems.");
-
     dof_solution_system_ = dynamic_cast<ApecMLinearSystem *>(&equation_systems_->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    if (!dof_solution_system_)
-        libmesh_error_msg("ElementBuilder: DOF solution system is not ApecMLinearSystem.");
 
     nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
     element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
-    nodal_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_LOADS);
-    element_loads_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_LOADS);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
-    materials_object_ = this->context<Materials>();
-    real_constants_object_ = this->context<Constants>();
-
-    const auto &mesh = equation_systems_->get_mesh();
-    mat_index = mesh.get_elem_integer_index("MATERIAL");
-    real_constant_index = mesh.get_elem_integer_index("CONSTANT");
+    apec_object_ = equation_systems_->get_parent_object()->get_apec_object();
+    vtk_grid_ = equation_systems_->get_parent_object()->active_vtk_grid;
+    materials_attribute_ = apec_object_.attr("materials");
+    real_constants_attribute_ = apec_object_.attr("real_constants");
+    material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
+    real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
 }
 
-std::unique_ptr<ElementBuilder> ElementBuilder::make_element_builder(ApecMEquationSystems *eq_sys)
+ssize_t ElementBuilder::find_row_index(const py::object &table, const char *id_column, unsigned int id) const
 {
-    auto program = eq_sys->get_parent_object();
+    static py::object np = py::module_::import("numpy");
+    const py::object ids = table.attr("__getitem__")(id_column).attr("to_numpy")();
+    const py::tuple where_result = py::cast<py::tuple>(np.attr("where")(ids.attr("__eq__")(id)));
+    const py::object indices = where_result[0];
+    return py::cast<ssize_t>(indices.attr("__getitem__")(0));
+}
 
-    auto analysis = program->get_analysis();
-    auto analysis_ctx = analysis->get_context_view();
-    auto builder_view = analysis_ctx->template project_view<ElementTypesFactory, Materials, Constants>();
+std::array<Real, 3> ElementBuilder::get_mu_matrix(unsigned int material_num) const
+{
+    const ssize_t idx = find_row_index(materials_attribute_, "MATERIAL", material_num);
+    const py::object row = materials_attribute_.attr("iloc").attr("__getitem__")(idx);
+    const Real murx = py::cast<Real>(row.attr("__getitem__")("MURX"));
+    const Real mury = py::cast<Real>(row.attr("__getitem__")("MURY"));
+    const Real murz = py::cast<Real>(row.attr("__getitem__")("MURZ"));
+    return {kMu0 * murx, kMu0 * mury, kMu0 * murz};
+}
 
-    return std::make_unique<ElementBuilder>(eq_sys, builder_view);
+std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) const
+{
+    const ssize_t idx = find_row_index(materials_attribute_, "MATERIAL", material_num);
+    const py::object row = materials_attribute_.attr("iloc").attr("__getitem__")(idx);
+    const Real rsvx = py::cast<Real>(row.attr("__getitem__")("RSVX"));
+    const Real rsvy = py::cast<Real>(row.attr("__getitem__")("RSVY"));
+    const Real rsvz = py::cast<Real>(row.attr("__getitem__")("RSVZ"));
+    return {1.0 / rsvx, 1.0 / rsvy, 1.0 / rsvz};
+}
+
+std::vector<Real> ElementBuilder::get_real_constants(unsigned int constant_num) const
+{
+    const ssize_t idx = find_row_index(real_constants_attribute_, "CONSTANT", constant_num);
+    const py::object row = real_constants_attribute_.attr("iloc").attr("__getitem__")(idx);
+    static const std::array<const char *, 20> columns = {
+        "THK", "SC", "NC", "VC", "RAD",
+        "TX", "TY", "TZ", "R", "SYM",
+        "VELOX", "VELOY", "VELOZ",
+        "OMEGAX", "OMEGAY", "OMEGAZ",
+        "XLOC", "YLOC", "ZLOC", "CPSIGN"};
+
+    std::vector<Real> values;
+    values.reserve(columns.size());
+    for (const char *col : columns)
+        values.push_back(py::cast<Real>(row.attr("__getitem__")(col)));
+    return values;
 }
 
 //
@@ -122,14 +162,15 @@ void ElementBuilder::prepare_element_matrix_building()
 
 void ElementBuilder::set_element_data(Elem *elem)
 {
-    auto element_types = this->context<ElementTypesFactory>();
+    auto element_types = equation_systems_->get_parent_object()->element_types_factory;
 
     elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
 
     if (!elem->infinite())
     {
-        elem_data.material_num = elem->get_extra_integer(mat_index);
-        elem_data.real_constant_num = elem->get_extra_integer(real_constant_index);
+        const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
+        elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));
+        elem_data.real_constant_num = static_cast<unsigned int>(real_constant_cell_array_->GetComponent(elem_id, 0));
     }
     elem_data.elem = elem;
 

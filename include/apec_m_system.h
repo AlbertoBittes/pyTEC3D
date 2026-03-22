@@ -17,6 +17,7 @@
 #include <libmesh/sparse_matrix.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/petsc_matrix.h>
+#include <pybind11/pybind11.h>
 
 #include "assembler.h"
 #include "global_constraints_object.h"
@@ -55,7 +56,6 @@ template <typename SysLike>
 class ApecMSystem
     : public SysLike,
       public ApecMSystemBase,
-      public FEMService<ElementTypesFactory, PetscSolverConfiguration>
 {
 public:
     using ContextView = TypedContextView<ElementTypesFactory, PetscSolverConfiguration>;
@@ -109,6 +109,14 @@ public:
 class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
 {
 public:
+    struct TimeStep
+    {
+        pybind11::dict time_step_dict;
+        unsigned int time_step_idx = 0;
+        Real dt = 0.0;
+        bool updated = true;
+    };
+
     // Variadic template constructor: forwards all args to TransientSystem<LinearImplicitSystem>
     template <typename... Args>
     ApecMLinearSystem(Args &&...args)
@@ -125,7 +133,8 @@ public:
 
     void release_subset_solve();
 
-    void compute_solution_time_derivative(const TimeStep &time_step);
+    void prepare_time_step_solve(const pybind11::dict &time_step_dict);
+    void compute_solution_time_derivative(const pybind11::dict &time_step);
     void delete_rows_cols_constrained_dofs();
     void zero_all() override;
 
@@ -144,6 +153,9 @@ public:
         ImplicitSystem::add_matrices();
         this->get_system_matrix().use_hash_table(true);
     }
+
+    std::unique_ptr<TimeStep> time_step;
+    std::unique_ptr<TimeStep> old_time_step;
 
     void post_init() override
     {

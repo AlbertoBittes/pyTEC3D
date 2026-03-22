@@ -6,6 +6,7 @@
 #include <vector>
 #include <libmesh/equation_systems.h>
 #include <libmesh/numeric_vector.h>
+#include <pybind11/pybind11.h>
 
 #include "fe_parent_object.h"
 #include "solver_configuration.h"
@@ -22,15 +23,12 @@ class ApecMEquationSystems
 
 {
 public:
-    void prepare_time_step_solve(TimeStep &time_step);
-    void solve_equation_systems(TimeStep &time_step, bool nodal_solution = true);
-    void print_output(TimeStep &time_step, bool picard_iteration_print = false);
-    void update_old_local_solution();
+    void solve_equation_systems(const pybind11::dict &time_step, bool nodal_solution = true);
+    void print_output(const pybind11::dict &time_step, bool picard_iteration_print = false);
     void configure_systems();
     void initialize_systems();
     void post_initialize_systems();
     void initialize_physics();
-    void clear_preserving_solver_settings();
     void zero_all_systems();
     static std::shared_ptr<ApecMEquationSystems> build(MeshBase &mesh, ApecMSolver *program = nullptr);
 

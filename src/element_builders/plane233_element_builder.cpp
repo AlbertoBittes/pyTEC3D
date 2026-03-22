@@ -6,6 +6,10 @@
 // Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkPointData.h>
+#include <vtkUnstructuredGrid.h>
 
 // Define Gauss quadrature rules.
 #include "element_types.h" // Include the header defining ElementType
@@ -77,11 +81,8 @@ void ElementBuilder::build_plane233()
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
-    materials_object_->fill_nu_matrix(this->elem_data.material_num);
-    materials_object_->fill_sigma_matrix(this->elem_data.material_num);
-
-    auto &nu_matrix = materials_object_->get_nu_matrix();
-    auto &sigma_matrix = materials_object_->get_sigma_matrix();
+    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -96,9 +97,7 @@ void ElementBuilder::build_plane233()
 
     Real r_sign = pow(-1, axisymm);
 
-    Real thk = 1.0;
-    if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
-        thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
+    Real thk = this->get_real_constants(this->elem_data.real_constant_num)[0];
     if (thk == 0.0)
         thk = 1.0;
 
@@ -292,7 +291,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
+        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
         const Real nc = rc[2];
@@ -343,7 +342,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
+        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
         const Real nc = rc[2];
@@ -424,9 +423,6 @@ void ElementBuilder::build_plane233_rhs()
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
 
-    std::vector<dof_id_type> dof_indices_loads;
-    std::vector<Real> loads_vec;
-
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
@@ -436,30 +432,16 @@ void ElementBuilder::build_plane233_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        if (element_loads_system_->has_variable("Js_z"))
+        vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+        const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+        const Real js_z = js_array->GetComponent(elem_id, 2);
+
+        auto build_fa = [&]()
         {
-            element_loads_system_->get_dof_map().dof_indices(elem_data.elem, dof_indices_loads);
-            element_loads_system_->solution.get()->get(dof_indices_loads, loads_vec);
-
-            auto build_fa = [&]()
-            {
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    Fe(dof_i) *= loads_vec[0];
-            };
-            build_fa();
-        }
-        // if (nodal_loads_system_->has_variable("CSG_z"))
-        // {
-        //     // Apply nodal CSG loads
-        //     nodal_loads_system_->solution.get()->get(dof_indices_loads, loads_vec);
-
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         if (loads_vec[dof_i] != 0)
-        //             Fe(dof_i) = loads_vec[dof_i];
-
-        //     for (dof_id_type &dof_value : dof_indices_loads)
-        //         nodal_loads_system_->solution->set(dof_value, 0);
-        // }
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                Fe(dof_i) *= js_z;
+        };
+        build_fa();
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
@@ -473,29 +455,22 @@ void ElementBuilder::build_plane233_rhs()
             volt_var_name = "V";
         else
             volt_var_name = "VOLT";
-        if (nodal_loads_system_->has_variable("AMPS") && dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("A_z"))
+        if (dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("A_z"))
         {
             auto build_fv = [&]()
             {
-                unsigned int amp_var_num = nodal_loads_system_->variable_number("AMPS");
-
-                unsigned int proc_id = dof_solution_system_->comm().rank();
-                dof_indices_loads.clear();
-                for (const auto &node : elem_data.elem->node_ref_range())
-                    if (node.processor_id() == proc_id)
-                        if (node.n_dofs(ApecMSystemBase::NODAL_LOADS, amp_var_num))
-                            dof_indices_loads.push_back(node.dof_number(ApecMSystemBase::NODAL_LOADS, amp_var_num, 0));
-
-                nodal_loads_system_->current_local_solution.get()->get(dof_indices_loads, loads_vec);
-
-                unsigned int n_dofs_var = dof_indices_loads.size();
+                const unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
+                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
-                    const dof_id_type dof_id = dof_indices_loads[dof_i];
+                    const Node &node = elem_data.elem->node_ref(dof_i);
+                    const vtkIdType node_id = static_cast<vtkIdType>(node.id());
+                    const Real amps_value = amps_array->GetComponent(node_id, 0);
+                    const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
                     if (!nodal_loads_dof_cache.insert(dof_id).second)
                         continue;
-                    Fe(dof_i + n_dofs_var) = loads_vec[dof_i];
+                    Fe(dof_i + n_dofs_var) = amps_value;
                 }
             };
             build_fv();
@@ -524,8 +499,7 @@ void ElementBuilder::build_plane233_nodal_solution()
     if (api_vars.empty())
         return;
 
-    materials_object_->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object_->get_nu_matrix();
+    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -587,8 +561,7 @@ void ElementBuilder::build_plane233_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    materials_object_->fill_nu_matrix(this->elem_data.material_num);
-    auto &nu_matrix = materials_object_->get_nu_matrix();
+    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -651,9 +624,9 @@ void ElementBuilder::build_plane233_element_solution()
             break;
         case PhysicalRegionEnum::STRANDED_CONDUCTOR:
         {
-            auto element_loads_dof_map = &element_loads_system_->get_dof_map();
-            element_loads_dof_map->dof_indices(elem_data.elem, dof_indices);
-            element_loads_system_->current_local_solution.get()->get(dof_indices, Je.get_values());
+            vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+            const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            Je(0) = js_array->GetComponent(elem_id, 2);
             break;
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
@@ -673,8 +646,7 @@ void ElementBuilder::build_plane233_element_solution()
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
-            materials_object_->fill_sigma_matrix(this->elem_data.material_num);
-            auto &sigma_matrix = materials_object_->get_sigma_matrix();
+            const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
 
             const auto &An_dt = sol_vectors_dt[0];
 
@@ -688,9 +660,7 @@ void ElementBuilder::build_plane233_element_solution()
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
                 break;
 
-            Real thk = 1.0;
-            if (real_constants_object_ && real_constants_object_->has_constant(this->elem_data.real_constant_num))
-                thk = real_constants_object_->get_constant(this->elem_data.real_constant_num)[0];
+            Real thk = this->get_real_constants(this->elem_data.real_constant_num)[0];
             if (thk == 0.0)
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
             Real V_factor = sigma_matrix[0] * Vn / thk;
@@ -730,7 +700,7 @@ void ElementBuilder::build_plane233_element_solution()
                 En = sol_vectors_dt[2][0];
             }
 
-            const auto &rc = real_constants_object_->get_constant(this->elem_data.real_constant_num);
+            const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
             const Real sc = rc[1];
             const Real nc = rc[2];
             const Real tz = rc[7];

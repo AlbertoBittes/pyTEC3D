@@ -10,6 +10,7 @@ namespace libMesh
     class LibMeshInit;
     class DistributedMesh;
 }
+class vtkUnstructuredGrid;
 
 class ApecMEquationSystems;
 class AugmentSparsityOnNodes;
@@ -36,6 +37,7 @@ public:
     std::shared_ptr<ApecMEquationSystems> equation_system;
     std::shared_ptr<ElementTypesFactory> element_types_factory;
     std::unique_ptr<AugmentSparsityOnNodes> coupling_functor;
+    vtkUnstructuredGrid *active_vtk_grid = nullptr;
     pybind11::object apec_object;
     pybind11::object mpi_comm_object;
     bool loaded = false;
