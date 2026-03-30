@@ -1,4 +1,0 @@
-pandas
-vtk
-numpy
-ansys.mapdl.reader

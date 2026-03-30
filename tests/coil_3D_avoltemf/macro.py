@@ -1,8 +1,8 @@
 from apec_m import APEC_M
-from cyclic import Cyclic
-from coordinate_system import CylindricalCoordinateSystem
-from model_edit import ModelEdit
-from selector import Selector
+from apec_m.cyclic import Cyclic
+from apec_m.coordinate_system import CylindricalCoordinateSystem
+from apec_m.model_edit import ModelEdit
+from apec_m.selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
 import vtk

@@ -7,9 +7,9 @@ author = "APEC-M Team"
 release = "0.1.0"
 version = release
 
-# Add project root and api package to path so autodoc can find modules
+# Add project root and python package to path so autodoc can find modules
 sys.path.insert(0, os.path.abspath(".."))
-sys.path.insert(0, os.path.abspath("../api"))
+sys.path.insert(0, os.path.abspath("../python"))
 
 extensions = [
     "sphinx.ext.autodoc",

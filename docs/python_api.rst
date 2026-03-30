@@ -23,15 +23,15 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    :toctree: generated
    :recursive:
 
-   ansys_helper
-   apec_m
-   apec_m_paraview_plugin
-   apec_m_paraview_start
-   binary_helper
-   cli_object
-   constants
-   convert_mesh
-   excel_io_helper
-   selector
-   tree_gauge_helper
-   mesh_edit
+   apec_m.apec_m
+   apec_m.ansys_helper
+   apec_m.apec_m_paraview_plugin
+   apec_m.apec_m_paraview_start
+   apec_m.constants
+   apec_m.convert_mesh
+   apec_m.coordinate_system
+   apec_m.cyclic
+   apec_m.excel
+   apec_m.model_edit
+   apec_m.selector
+   apec_m.tree_gauge

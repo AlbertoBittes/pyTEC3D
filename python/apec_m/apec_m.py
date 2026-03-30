@@ -8,32 +8,32 @@ from typing import (
     Dict,
     Optional,
     Sequence,
+    Tuple,
     Union,
 )
 
 import pandas as pd
 import vtk
 
-from model_edit import ModelEdit
-from excel import Excel
-from constants import *
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_PACKAGES_PATH = os.path.join(CURRENT_DIR, "local_packages")
+
+from .model_edit import ModelEdit
+from .excel import Excel
+from .constants import *
 
 
-# Add the current directory to the Python path to ensure imports work
+# Prefer environment openpyxl; fall back to vendored local_packages when needed.
 try:
     import openpyxl
 except ImportError:
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    local_packages_path = os.path.join(current_dir, "local_packages")
-    sys.path.append(local_packages_path)
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    if os.path.isdir(LOCAL_PACKAGES_PATH) and LOCAL_PACKAGES_PATH not in sys.path:
+        sys.path.insert(0, LOCAL_PACKAGES_PATH)
     try:
         import openpyxl
-
-        # print("openpyxl imported successfully.")
     except ImportError:
         print(
-            "Failed to import openpyxl. Ensure the package is downloaded and the path is correct."
+            "Failed to import openpyxl. Ensure it is installed or vendored under local_packages."
         )
 
 
@@ -46,7 +46,7 @@ class APEC_M:
         """
         Initialize the APEC object without requiring a file path.
         """
-        self.meshes: Dict[str, vtk.vtkUnstructuredGrid] = {}
+        self.meshes: Dict[str, Tuple[vtk.vtkUnstructuredGrid, Optional[Any]]] = {}
         self.mesh_filepaths: Dict[str, str] = {}
         self._active_mesh_name: Optional[str] = None
 
@@ -64,8 +64,6 @@ class APEC_M:
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
-        self._solver_session: Optional[Any] = None
-
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
         """
@@ -77,7 +75,7 @@ class APEC_M:
             raise RuntimeError(
                 f"Active mesh '{self._active_mesh_name}' is not available."
             )
-        return self.meshes[self._active_mesh_name]
+        return self.meshes[self._active_mesh_name][0]
 
     @mesh.setter
     def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
@@ -110,7 +108,18 @@ class APEC_M:
         """
         Fetch a mesh by name.
         """
-        return self.meshes.get(mesh_name)
+        entry = self.meshes.get(mesh_name)
+        return entry[0] if entry is not None else None
+
+    def get_solver_session(self, mesh_name: Optional[str] = None) -> Optional[Any]:
+        """
+        Fetch solver session by mesh name. Defaults to active mesh.
+        """
+        target_name = mesh_name or self._active_mesh_name
+        if target_name is None:
+            return None
+        entry = self.meshes.get(target_name)
+        return entry[1] if entry is not None else None
 
     def clear_mesh(self, mesh_name: str) -> None:
         """
@@ -164,7 +173,7 @@ class APEC_M:
         os.makedirs(os.path.join(model_folder, "emat"), exist_ok=True)
         os.makedirs(os.path.join(model_folder, "output"), exist_ok=True)
 
-        self.meshes[resolved_name] = loaded_mesh
+        self.meshes[resolved_name] = (loaded_mesh, None)
         self.mesh_filepaths[resolved_name] = mesh_path
         self.set_active_mesh(resolved_name)
 
@@ -342,10 +351,10 @@ class APEC_M:
     @staticmethod
     def _require_solver_module() -> Any:
         try:
-            import apec_m_solver as solver_module
+            from . import apec_m_solver as solver_module
         except ImportError as exc:
             raise ImportError(
-                "Could not import the C++ solver module 'apec_m_solver'. "
+                "Could not import the C++ solver module 'apec_m.apec_m_solver'. "
                 "Build/install the pybind11 extension before launching the solver."
             ) from exc
         return solver_module
@@ -371,11 +380,36 @@ class APEC_M:
             if not self.set_active_mesh(mesh_name):
                 raise ValueError(f"Mesh '{mesh_name}' does not exist.")
 
-        solver = solver_module.ApecMSolver()
-        solver.load_model(self, mpi_comm)
-
-        self._solver_session = solver
+        solver = solver_module.ApecMSolver(mpi_comm)
+        solver.load_model(self)
+        self.meshes[self._active_mesh_name] = (self.mesh, solver)
         return solver
+
+    def solve(self, nodal_solution: bool = True) -> None:
+        """
+        Solve using the active mesh solver session.
+
+        Args:
+            nodal_solution:
+                Whether nodal solution output should be computed.
+        """
+        if self._active_mesh_name is None:
+            raise RuntimeError("No active mesh is set.")
+
+        entry = self.meshes.get(self._active_mesh_name)
+        if entry is None:
+            raise RuntimeError(
+                f"Active mesh '{self._active_mesh_name}' is not available."
+            )
+
+        solver = entry[1]
+        if solver is None:
+            raise RuntimeError(
+                f"No solver session is loaded for mesh '{self._active_mesh_name}'. "
+                "Call load_mesh_into_solver() first."
+            )
+
+        solver.solve(nodal_solution)
 
     @staticmethod
     def _build_solver_mpi_communicator(num_processors: int) -> Optional[Any]:

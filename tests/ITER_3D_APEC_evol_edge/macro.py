@@ -1,11 +1,11 @@
 from apec_m import APEC_M
 import vtk.util.numpy_support as vtknp
 import numpy as np
-from selector import Selector
-from model_edit import ModelEdit
-from cyclic import Cyclic
-from tree_gauge import TreeGauge
-from coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.selector import Selector
+from apec_m.model_edit import ModelEdit
+from apec_m.cyclic import Cyclic
+from apec_m.tree_gauge import TreeGauge
+from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 
 # from convert_mesh import convert_mesh_from_cdb

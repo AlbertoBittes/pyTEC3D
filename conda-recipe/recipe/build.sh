@@ -51,7 +51,7 @@ make install
 popd
 popd
 
-# 2. Build and install apec_m with CMake
+# 2. Build the apec_m_solver pybind module with CMake
 mkdir -p "${SRC_DIR}/build_apec_m"
 pushd "${SRC_DIR}/build_apec_m"
 cmake "${SRC_DIR}/src" \
@@ -64,12 +64,27 @@ cmake "${SRC_DIR}/src" \
     -DVTK_DIR="${VTK_DIR}" \
     -DBOOST_ROOT="${BOOST_DIR}" \
     -DBOOST_INCLUDEDIR="${BOOST_DIR}/include" \
-    -DBOOST_LIBRARYDIR="${BOOST_DIR}/lib"
+    -DBOOST_LIBRARYDIR="${BOOST_DIR}/lib" \
+    -DAPEC_M_BUILD_PYBIND_MODULE=ON
 ninja -j"${CPU_COUNT}"
-install -Dm755 "${SRC_DIR}/bin/apec_m" "${PREFIX}/bin/apec_m"
+
+shopt -s nullglob
+solver_modules=(
+  "${SRC_DIR}/python/apec_m/apec_m_solver"*.so
+  "${SRC_DIR}/python/apec_m/apec_m_solver"*.pyd
+  "${SRC_DIR}/python/apec_m/apec_m_solver"*.dylib
+)
+if [ "${#solver_modules[@]}" -eq 0 ]; then
+  echo "ERROR: Expected a compiled apec_m_solver extension under ${SRC_DIR}/python/apec_m but none was produced."
+  exit 1
+fi
+shopt -u nullglob
 popd
 
-# 3. Install the Python module (and its pip-managed dependencies)
+# 3. Install the Python module into the conda prefix
 pushd "${SRC_DIR}"
-"${PYTHON}" -m pip install --no-build-isolation --prefix "${PREFIX}" .
+"${PYTHON}" -m pip install --no-build-isolation --no-deps --prefix "${PREFIX}" .
 popd
+
+# 4. Vendor openpyxl into repository-local python/apec_m/local_packages for ParaView usage.
+"${PYTHON}" -m pip install --upgrade openpyxl et_xmlfile --target "${SRC_DIR}/python/apec_m/local_packages"

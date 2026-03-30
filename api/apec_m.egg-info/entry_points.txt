@@ -1,3 +1,0 @@
-[console_scripts]
-apec = apec_m:main
-convert_mesh = convert_mesh:main

@@ -74,20 +74,19 @@ void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
     libmesh_init = std::make_unique<libMesh::LibMeshInit>(argc, argv, mpi_comm);
 }
 
-ApecMSolver::ApecMSolver()
+ApecMSolver::ApecMSolver(py::object mpi_comm)
 {
+    mpi_comm_object = std::move(mpi_comm);
+    const MPI_Comm active_comm = mpi_comm_from_python(mpi_comm_object);
+    ensure_libmesh_initialized(active_comm);
 }
 
 ApecMSolver::~ApecMSolver() = default;
 
-void ApecMSolver::load_model(py::object apec_object,
-                             py::object mpi_comm)
+void ApecMSolver::load_model(py::object apec_object)
 {
-    mpi_comm_object = mpi_comm;
     this->apec_object = apec_object;
     element_types_factory = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
-    const MPI_Comm active_comm = mpi_comm_from_python(mpi_comm);
-    ensure_libmesh_initialized(active_comm);
 
     mesh = std::make_unique<libMesh::DistributedMesh>(libmesh_init->comm());
     py::object vtk_grid = active_vtk_grid_from_apec(apec_object);

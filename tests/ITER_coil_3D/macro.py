@@ -1,7 +1,7 @@
 from apec_m import APEC_M
-from coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
-from selector import Selector
-from model_edit import ModelEdit
+from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.selector import Selector
+from apec_m.model_edit import ModelEdit
 import os
 import vtk
 import vtk.util.numpy_support as vtknp

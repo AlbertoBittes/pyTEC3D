@@ -1,6 +1,6 @@
 from apec_m import APEC_M
-from tree_gauge import TreeGauge
-from selector import Selector
+from apec_m.tree_gauge import TreeGauge
+from apec_m.selector import Selector
 import os
 # from convert_mesh import convert_mesh_from_cdb
 

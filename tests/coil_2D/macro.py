@@ -1,8 +1,7 @@
 from apec_m import APEC_M
-from selector import Selector
+from apec_m.selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
-import numpy as np
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -20,7 +19,7 @@ apec.read_excel("input_template.xlsx")
 
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.nsle(apec.mesh)
@@ -42,6 +41,7 @@ for i in range(1, 3):
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
         Selector.set_value_on_selection(apec.mesh, "VOLT", 10000)
-    apec.s
+    apec.solve()
+    apec.write_output()
 
 apec.save_mesh()

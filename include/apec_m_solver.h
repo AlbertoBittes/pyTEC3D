@@ -20,11 +20,10 @@ class ElementTypesFactory;
 class ApecMSolver
 {
 public:
-    ApecMSolver();
+    explicit ApecMSolver(pybind11::object mpi_comm = pybind11::none());
     ~ApecMSolver();
 
-    void load_model(pybind11::object apec_object,
-                    pybind11::object mpi_comm = pybind11::none());
+    void load_model(pybind11::object apec_object);
 
     void solve(bool nodal_solution = true);
     void write_system_to_vtk_grid(const std::string &system_name);

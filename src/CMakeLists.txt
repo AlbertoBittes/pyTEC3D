@@ -70,43 +70,14 @@ set(APEC_M_LINK_LIBS
   VTK::ParallelMPI
 )
 
-add_executable(apec_m ${SOURCES})
-set_target_properties(apec_m PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../bin"
-  BUILD_WITH_INSTALL_RPATH TRUE
-  INSTALL_RPATH "$ORIGIN/../lib"
-)
-
-target_include_directories(apec_m
-  PRIVATE ${APEC_M_INCLUDE_DIRS}
-)
-
-target_compile_definitions(apec_m PRIVATE ${PETSC_DEFINITIONS})
-
-target_link_libraries(apec_m
-  PRIVATE ${APEC_M_LINK_LIBS}
-)
-
-vtk_module_autoinit(
-  TARGETS apec_m
-  MODULES
-    VTK::CommonCore
-    VTK::CommonDataModel
-    VTK::CommonExecutionModel
-    VTK::FiltersCore
-    VTK::IOXML
-    VTK::IOParallelXML
-    VTK::ParallelMPI
-)
-
 if(APEC_M_BUILD_PYBIND_MODULE)
   add_library(apec_m_solver MODULE ${SOURCES})
   set_target_properties(apec_m_solver PROPERTIES
     PREFIX ""
     OUTPUT_NAME "apec_m_solver"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../api"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m"
     BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN/../lib"
+    INSTALL_RPATH "$ORIGIN/../../../;$ORIGIN/../lib"
   )
 
   target_include_directories(apec_m_solver

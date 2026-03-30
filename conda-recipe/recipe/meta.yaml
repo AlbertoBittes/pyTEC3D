@@ -31,6 +31,7 @@ requirements:
     - pip
     - setuptools
     - wheel
+    - pybind11
     - git
     - petsc >=3.19
     - vtk >=9.1
@@ -42,6 +43,16 @@ requirements:
     - vtk >=9.1
     - boost
     - openmpi
+    - numpy
+    - pandas
+    - ansys-mapdl-reader
+    - mpi4py
+    - openpyxl
+
+test:
+  commands:
+    - python -c "import apec_m.apec_m_solver"
+    - python -c "import apec_m; import openpyxl; from apec_m import APEC_M; APEC_M()"
 
 about:
   home: https://github.com/Plasma-Arc-Project/apec_m

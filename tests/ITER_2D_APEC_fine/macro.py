@@ -1,6 +1,6 @@
 from apec_m import APEC_M
-from model_edit import ModelEdit
-from selector import Selector
+from apec_m.model_edit import ModelEdit
+from apec_m.selector import Selector
 import os
 import vtk
 

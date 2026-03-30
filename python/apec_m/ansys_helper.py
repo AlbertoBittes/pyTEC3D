@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import vtk.util.numpy_support as vtknp
 
-from model_edit import ModelEdit
-from excel import Excel
+from .model_edit import ModelEdit
+from .excel import Excel
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtk

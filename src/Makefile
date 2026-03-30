@@ -33,7 +33,7 @@ CXXFLAGS=-std=c++17 -Wall $(INCLUDES) $(LIBMESH_CXXFLAGS) -fPIC -pthread -MMD -M
 LDFLAGS=$(LIBMESH_LIBS) $(VTK_LIBS) $(PYTHON_LDFLAGS)
 
 # Python module output
-API_DIR=../api
+API_DIR=../python/apec_m
 MODULE_NAME=apec_m_solver
 TARGET=$(API_DIR)/$(MODULE_NAME)$(PYTHON_EXT_SUFFIX)
 

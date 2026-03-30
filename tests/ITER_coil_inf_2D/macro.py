@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from selector import Selector
+from apec_m.selector import Selector
 import os
 
 # from convert_mesh import convert_mesh_from_cdb

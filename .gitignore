@@ -56,19 +56,18 @@ dkms.conf
 .vscode
 
 # Compiled binaries
-bin/apec_m
 .vscode
 .vscode/c_cpp_properties.json
 simulations
 utils/__pycache__
 debug
-api/__pycache__/
+python/apec_m/__pycache__/
 tests/__pycache__/
 .pytest_cache/
 docs/_build/
 
-api/local_packages/*
-bin/plasma_arc
+python/apec_m/local_packages/*
+*.egg-info/
 **/emat_files/
 **/emat_files/*
 **/output/

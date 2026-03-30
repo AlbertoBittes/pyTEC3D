@@ -7,11 +7,11 @@ import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp
 
-from constants import VTK_ARRAYS_TO_INIT
+from .constants import VTK_ARRAYS_TO_INIT
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
-    from coordinate_system import CoordinateSystem
+    from .coordinate_system import CoordinateSystem
 
 
 class ModelEdit:
@@ -46,7 +46,7 @@ class ModelEdit:
         Returns:
             Tuple[np.ndarray, np.ndarray]: (local_coordinates, ids)
         """
-        from selector import Selector
+        from .selector import Selector
 
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
@@ -113,7 +113,7 @@ class ModelEdit:
         Returns:
             Tuple[np.ndarray, np.ndarray]: (global_coordinates, ids)
         """
-        from selector import Selector
+        from .selector import Selector
 
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
@@ -172,7 +172,7 @@ class ModelEdit:
         orientation; cylindrical/spherical components are computed in that
         local Cartesian frame.
         """
-        from selector import Selector
+        from .selector import Selector
 
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
@@ -243,7 +243,7 @@ class ModelEdit:
         Returns:
             np.ndarray: The rotated array (NumPy view).
         """
-        from selector import Selector
+        from .selector import Selector
 
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
@@ -324,8 +324,8 @@ class ModelEdit:
 
         if reset_arrays:
             # Avoid circular import at module load time
-            from selector import Selector
-            from tree_gauge import TreeGauge
+            from .selector import Selector
+            from .tree_gauge import TreeGauge
 
             ModelEdit.initialize_vtk_arrays(mesh)
             Selector.ensure_selection_arrays(mesh)
@@ -482,7 +482,7 @@ class ModelEdit:
             arrays_to_init: Dictionary specifying arrays to reset; defaults to VTK_ARRAYS_TO_INIT.
         """
         if arrays_to_init is None:
-            from constants import VTK_ARRAYS_TO_INIT
+            from .constants import VTK_ARRAYS_TO_INIT
 
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
@@ -732,7 +732,7 @@ class ModelEdit:
             raise ValueError("type must be 'elem' or 'node'.")
 
         # Avoid circular import at module load time
-        from selector import Selector
+        from .selector import Selector
 
         Selector.ensure_selection_arrays(mesh)
         data_obj = mesh.GetCellData() if type == "elem" else mesh.GetPointData()

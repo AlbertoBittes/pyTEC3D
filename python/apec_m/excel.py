@@ -4,9 +4,8 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 import pandas as pd
 
-from binary import Binary
-from constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
-from model_edit import ModelEdit
+from .constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
+from .model_edit import ModelEdit
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     import vtk

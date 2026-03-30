@@ -6,11 +6,11 @@ import vtk
 import vtk.util.numpy_support as vtknp
 
 
-from selector import Selector
-from model_edit import ModelEdit
-from constants import CONSTANTS_COLUMNS_TYPES
+from .selector import Selector
+from .model_edit import ModelEdit
+from .constants import CONSTANTS_COLUMNS_TYPES
 
-from coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
+from .coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
 
 
 class Cyclic:
@@ -66,7 +66,7 @@ class Cyclic:
             raise ValueError("Input mesh must be 2D.")
 
         if coordinate_system is None:
-            from coordinate_system import CylindricalCoordinateSystem
+            from .coordinate_system import CylindricalCoordinateSystem
 
             coordinate_system = CylindricalCoordinateSystem()
         if coordinate_system.type != "cylindrical":
@@ -74,7 +74,7 @@ class Cyclic:
                 "coordinate_system must be cylindrical for toroidal projection."
             )
 
-        from selector import Selector
+        from .selector import Selector
 
         Selector.ensure_selection_arrays(input_mesh)
         input_local, input_ids = ModelEdit.to_local_coordinates(

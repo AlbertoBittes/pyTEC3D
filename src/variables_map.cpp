@@ -322,8 +322,7 @@ std::vector<GlobalVariableName> VariablesMap::add_av3dnodal_variables(const std:
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
-            vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
@@ -343,8 +342,7 @@ std::vector<GlobalVariableName> VariablesMap::add_av3dedge_variables(const std::
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
-            vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
@@ -363,8 +361,7 @@ std::vector<GlobalVariableName> VariablesMap::add_av2dnodal_variables(const std:
     {
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
-            vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;

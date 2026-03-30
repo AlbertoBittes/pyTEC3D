@@ -1,7 +1,7 @@
 from apec_m import APEC_M
-from selector import Selector
-from cyclic import Cyclic
-from coordinate_system import CylindricalCoordinateSystem
+from apec_m.selector import Selector
+from apec_m.cyclic import Cyclic
+from apec_m.coordinate_system import CylindricalCoordinateSystem
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np

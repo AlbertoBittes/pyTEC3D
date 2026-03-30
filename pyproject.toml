@@ -9,38 +9,14 @@ description = "A 2.5D FEM code for simulation of plasma equilibria and disruptio
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = ["pandas", "vtk", "numpy", "ansys-mapdl-reader"]
+dependencies = ["pandas", "vtk", "numpy", "ansys-mapdl-reader", "openpyxl"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 
-[project.scripts]
-apec = "apec_m:main"
-convert_mesh = "convert_mesh:main"
-
 [tool.setuptools]
-package-dir = { "" = "api" }
-py-modules = [
-    "ansys_helper",
-    "apec_m",
-    "apec_m_paraview_plugin",
-    "apec_m_paraview_start",
-    "binary_helper",
-    "cli_object",
-    "constants",
-    "convert_mesh",
-    "coupling_helper",
-    "dof_couplings",
-    "dof_coupling_helper",
-    "excel_io_helper",
-    "selector",
-    "tree_gauge_helper",
-    "mesh_edit",
-    "vtk_tables_helper",
-]
+package-dir = { "" = "python" }
+packages = ["apec_m"]
 include-package-data = true
-
-[tool.setuptools.cmdclass]
-build_py = "build_helpers:BuildPyWithVendoredOpenpyxl"

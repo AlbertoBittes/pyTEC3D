@@ -6,7 +6,7 @@ import vtk.util.numpy_support as vtknp
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
-    from coordinate_system import CoordinateSystem
+    from .coordinate_system import CoordinateSystem
 
 
 class Selector:
@@ -132,7 +132,7 @@ class Selector:
         """
         Selector.ensure_selection_arrays(mesh)
         if type == "elem":
-            from model_edit import ModelEdit
+            from .model_edit import ModelEdit
 
             coords = ModelEdit.compute_cell_centroids(mesh)
             data = mesh.GetCellData()

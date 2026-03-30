@@ -1,9 +1,9 @@
 from apec_m import APEC_M
-from model_edit import ModelEdit
-from cyclic import Cyclic
+from apec_m.model_edit import ModelEdit
+from apec_m.cyclic import Cyclic
 import vtk.util.numpy_support as vtknp
 import numpy as np
-from selector import Selector
+from apec_m.selector import Selector
 import os
 
 # from convert_mesh import convert_mesh_from_cdb
