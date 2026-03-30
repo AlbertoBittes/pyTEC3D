@@ -90,10 +90,10 @@ void ApecMSolver::load_model(py::object apec_object,
     ensure_libmesh_initialized(active_comm);
 
     mesh = std::make_unique<libMesh::DistributedMesh>(libmesh_init->comm());
-    VTKIO_Updated vtkio(*mesh);
     py::object vtk_grid = active_vtk_grid_from_apec(apec_object);
     vtkUnstructuredGrid *grid_ptr = vtk_grid_from_python(vtk_grid);
     active_vtk_grid = grid_ptr;
+    VTKIO_Updated vtkio(*mesh, grid_ptr);
     vtkio.read(grid_ptr);
 
     libMesh::MeshTools::Modification::orient_elements(*mesh);
@@ -159,8 +159,7 @@ void ApecMSolver::write_system_to_active_vtk_grid(const std::string &system_name
     if (!loaded || !mesh || !equation_system || !active_vtk_grid)
         throw std::runtime_error("Solver is not fully initialized. Call load_model() first.");
 
-    VTKIO_Updated vtkio(*mesh, equation_system.get());
-    vtkio.set_vtk_grid(active_vtk_grid);
+    VTKIO_Updated vtkio(*mesh, equation_system.get(), active_vtk_grid);
     vtkio.write_system_grid(system_name);
 }
 

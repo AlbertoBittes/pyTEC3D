@@ -50,9 +50,9 @@ class VTKIO_Updated : public MeshInput<MeshBase>,
                       public MeshOutput<MeshBase>
 {
 public:
-    explicit VTKIO_Updated(MeshBase &mesh);
+    explicit VTKIO_Updated(MeshBase &mesh, vtkUnstructuredGrid *vtk_grid);
 
-    explicit VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems);
+    explicit VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid);
 
     using MeshOutput<MeshBase>::write_nodal_data;
 
@@ -60,7 +60,9 @@ public:
                                   const std::vector<Number> &,
                                   const std::vector<std::string> &) override;
 
+    virtual void read(const std::string &) override {}
     virtual void read(vtkUnstructuredGrid *grid);
+    virtual void write(const std::string &) override {}
 
     void write_system_grid(const std::string &system_name);
     void set_vtk_grid(vtkUnstructuredGrid *grid);

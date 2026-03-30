@@ -30,7 +30,6 @@ public:
     void post_initialize_systems();
     void initialize_physics();
     void zero_all_systems();
-    static std::shared_ptr<ApecMEquationSystems> build(MeshBase &mesh, ApecMSolver *program = nullptr);
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>

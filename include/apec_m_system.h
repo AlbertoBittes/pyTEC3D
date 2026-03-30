@@ -91,6 +91,7 @@ public:
     }
 
     void init_variables();
+
     inline bool is_nodal() const override
     {
         return system_type != ApecMSystemBase::ELEMENT_SOLUTION;

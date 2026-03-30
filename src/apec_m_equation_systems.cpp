@@ -121,11 +121,3 @@ void ApecMEquationSystems::zero_all_systems()
             zeroable->zero_all();
     }
 }
-
-std::shared_ptr<ApecMEquationSystems> ApecMEquationSystems::build(MeshBase &mesh, ApecMSolver *program)
-{
-    auto equation_systems = std::make_shared<ApecMEquationSystems>(mesh);
-    equation_systems->set_parent_object(program);
-    equation_systems->configure_systems();
-    return equation_systems;
-}

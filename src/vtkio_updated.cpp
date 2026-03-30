@@ -89,14 +89,6 @@ using namespace libMesh;
 
 namespace
 {
-    const VariableInfo &variable_info_from_global_label(const std::string &global_label)
-    {
-        const auto key = VariablesMap::get_key_by_predicate_one(
-            [&global_label](const VariableInfo &info)
-            { return info.global_label == global_label; });
-        return VariablesMap::get_info_by_key(key);
-    }
-
     void write_solution_to_grid(vtkDataSetAttributes *data_attributes,
                                 const vtkIdType n_tuples,
                                 const std::vector<std::string> &var_names,
@@ -106,7 +98,10 @@ namespace
         const std::size_t n_vars = var_names.size();
         for (std::size_t var = 0; var < n_vars; ++var)
         {
-            const auto &var_info = variable_info_from_global_label(var_names[var]);
+            const auto key = VariablesMap::get_key_by_predicate_one(
+                [&var_names, var](const VariableInfo &info)
+                { return info.global_label == var_names[var]; });
+            const auto &var_info = VariablesMap::get_info_by_key(key);
             vtkDataArray *array =
                 vtkDataArray::SafeDownCast(data_attributes->GetArray(var_info.api_label.c_str()));
 
@@ -124,20 +119,20 @@ namespace
 #endif // LIBMESH_HAVE_VTK
 
 // Constructor for reading
-VTKIO_Updated::VTKIO_Updated(MeshBase &mesh) : MeshInput<MeshBase>(mesh, /*is_parallel_format=*/true),
-                                               MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
+VTKIO_Updated::VTKIO_Updated(MeshBase &mesh, vtkUnstructuredGrid *vtk_grid) : MeshInput<MeshBase>(mesh, /*is_parallel_format=*/true),
+                                                                              MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
-                                               ,
-                                               _compress(false), _eq_sys(nullptr)
+                                                                              ,
+                                                                              _vtk_grid(vtk_grid), _compress(false), _eq_sys(nullptr)
 #endif
 {
 }
 
 // Constructor for writing
-VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
+VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
 #ifdef LIBMESH_HAVE_VTK
-                                                                                  ,
-                                                                                  _compress(false), _eq_sys(eq_systems)
+                                                                                                                   ,
+                                                                                                                   _vtk_grid(vtk_grid), _compress(false), _eq_sys(eq_systems)
 #endif
 {
 }
@@ -372,12 +367,6 @@ void VTKIO_Updated::set_compression(bool b)
 }
 
 #else // !LIBMESH_HAVE_VTK
-
-void VTKIO_Updated::read(const std::string &name)
-{
-    libmesh_error_msg("Cannot read VTK file: " << name
-                                               << "\nYou must have VTK installed and correctly configured to read VTK meshes.");
-}
 
 void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
 {
