@@ -20,9 +20,10 @@ enum class GlobalVariableName;
 
 enum ElementTypeEnum : unsigned int
 {
-    SOLID97 = 97,
-    PLANE233 = 233,
-    SOLID236 = 236
+    AV2DNODAL,
+    AV3DNODAL,
+    AV3DEDGE,
+    UNKNOWN
 };
 
 enum PhysicalRegionEnum : unsigned int
@@ -33,10 +34,8 @@ enum PhysicalRegionEnum : unsigned int
     STRANDED_CONDUCTOR,
     SHORT_CIRCUIT_CONDUCTOR,
     SOLID_CONDUCTOR,
-    SOLID_CONDUCTOR_SOLENOIDAL,
     STRANDED_COIL,
-    STRANDED_COIL_SOLENOIDAL,
-    UNKNOWN
+    UNKNOWN_REGION
 };
 
 struct FEDataShapeFunctions
@@ -106,51 +105,51 @@ public:
     }
 };
 
-class SOLID97Type : public AV3DElementType
+class AV3DNODALType : public AV3DElementType
 {
 public:
     // Direct constructor
-    SOLID97Type(const std::vector<unsigned int> &OPTIONs);
+    AV3DNODALType(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    SOLID97Type(const std::vector<unsigned int> &OPTIONs,
+    AV3DNODALType(const std::vector<unsigned int> &OPTIONs,
                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Helper to add two FEDataShapeFunctions structs
-    static void add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+    static void add_av3dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                        const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
-class SOLID236Type : public AV3DElementType
+class AV3DEDGEType : public AV3DElementType
 {
 public:
     // Direct constructor
-    SOLID236Type(const std::vector<unsigned int> &OPTIONs);
+    AV3DEDGEType(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    SOLID236Type(const std::vector<unsigned int> &OPTIONs,
+    AV3DEDGEType(const std::vector<unsigned int> &OPTIONs,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add two FEDataShapeFunctions structs
-    static void add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+    static void add_av3dedge_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                         const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;
 };
 
-class PLANE233Type : public AV2DElementType
+class AV2DNODALType : public AV2DElementType
 {
 public:
     // Direct constructor
-    PLANE233Type(const std::vector<unsigned int> &OPTIONs);
+    AV2DNODALType(const std::vector<unsigned int> &OPTIONs);
 
     // Chain-prolonging constructor for derived types
-    PLANE233Type(const std::vector<unsigned int> &OPTIONs,
+    AV2DNODALType(const std::vector<unsigned int> &OPTIONs,
                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add two FEDataShapeFunctions structs
-    static void add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+    static void add_av2dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                         const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_solution_matrix_idx_size_map(bool nodal_solution) override;

@@ -1,31 +1,31 @@
 #include "element_types.h"
 #include "element_builder.h"
 // Direct constructor
-SOLID97Type::SOLID97Type(const std::vector<unsigned int> &OPTIONs)
+AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs)
     : AV3DElementType(
           OPTIONs,
           [OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
-              add_solid97_fe_structs(fe_structs, OPTIONs);
+              add_av3dnodal_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Chain-prolonging constructor for derived types
-SOLID97Type::SOLID97Type(const std::vector<unsigned int> &OPTIONs,
+AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
           OPTIONs,
           [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
-              add_solid97_fe_structs(fe_structs, OPTIONs);
+              add_av3dnodal_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Helper to add two FEDataShapeFunctions structs
-void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+void AV3DNODALType::add_av3dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                          const std::vector<unsigned int> &OPTIONs)
 {
     fe_structs.push_back({
@@ -39,7 +39,7 @@ void SOLID97Type::add_solid97_fe_structs(std::vector<FEDataShapeFunctions> &fe_s
     });
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID97Type::get_solution_matrix_idx_size_map(bool nodal_solution)
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DNODALType::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     unsigned int n_sf = fe_array[1]->n_shape_functions();
     unsigned int n_sf_vec = fe_array[0]->n_shape_functions();

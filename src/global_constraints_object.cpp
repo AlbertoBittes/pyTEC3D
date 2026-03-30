@@ -58,6 +58,28 @@ GlobalConstraintsObject::build_time_integration_constraints()
     if (py::cast<bool>(linear_system->time_step->time_step_dict["transient_effects"]))
         return constraints;
 
+    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
+    auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
+    if (!solver)
+        return constraints;
+
+    py::gil_scoped_acquire gil;
+    const py::object element_types = solver->get_apec_object().attr("element_types");
+    const py::object option4 = element_types.attr("__getitem__")("OPTION4");
+    const py::object option4_iloc = option4.attr("iloc");
+
+    bool has_timeintegrated_formulation = false;
+    for (py::ssize_t i = 0; i < py::len(option4); ++i)
+    {
+        if (py::cast<unsigned int>(option4_iloc.attr("__getitem__")(i)) == 1)
+        {
+            has_timeintegrated_formulation = true;
+            break;
+        }
+    }
+    if (!has_timeintegrated_formulation)
+        return constraints;
+
     DofMap &dof_map = system->get_dof_map();
     const MeshBase &mesh = system->get_equation_systems().get_mesh();
 
@@ -178,15 +200,13 @@ GlobalConstraintsObject::build_point_constraints()
                 if (component.component_index >= 3)
                     continue;
 
-                dof_id_type dof = libMesh::invalid_uint;
-                try
-                {
-                    dof = node_ptr->dof_number(system->number(), component.var_number, 0);
-                }
-                catch (...)
-                {
+                const unsigned int sys_num = system->number();
+                if (component.var_number == libMesh::invalid_uint ||
+                    component.var_number >= node_ptr->n_vars(sys_num) ||
+                    node_ptr->n_dofs(sys_num, component.var_number) == 0)
                     continue;
-                }
+
+                dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, 0);
 
                 if (dof < first_local || dof >= last_local)
                     continue;
@@ -398,15 +418,13 @@ GlobalConstraintsObject::build_point_constraints()
 
         for (const auto &scalar_entry : scalar_arrays)
         {
-            dof_id_type dof = libMesh::invalid_uint;
-            try
-            {
-                dof = node_ptr->dof_number(system->number(), scalar_entry.var_number, 0);
-            }
-            catch (...)
-            {
+            const unsigned int sys_num = system->number();
+            if (scalar_entry.var_number == libMesh::invalid_uint ||
+                scalar_entry.var_number >= node_ptr->n_vars(sys_num) ||
+                node_ptr->n_dofs(sys_num, scalar_entry.var_number) == 0)
                 continue;
-            }
+
+            dof_id_type dof = node_ptr->dof_number(sys_num, scalar_entry.var_number, 0);
 
             if (dof < first_local || dof >= last_local)
                 continue;
@@ -540,21 +558,25 @@ GlobalConstraintsObject::build_coupling_constraints()
                     libMesh::invalid_uint};
 
                 bool complete = true;
+                const unsigned int sys_num = system->number();
                 for (const auto &component : components)
                 {
                     if (component.component_index >= 3)
                         continue;
-                    try
-                    {
-                        dofs_first[component.component_index] =
-                            node_first->dof_number(system->number(), component.var_number, 0);
-                        dofs_second[component.component_index] =
-                            node_second->dof_number(system->number(), component.var_number, 0);
-                    }
-                    catch (...)
+                    if (component.var_number == libMesh::invalid_uint ||
+                        component.var_number >= node_first->n_vars(sys_num) ||
+                        component.var_number >= node_second->n_vars(sys_num) ||
+                        node_first->n_dofs(sys_num, component.var_number) == 0 ||
+                        node_second->n_dofs(sys_num, component.var_number) == 0)
                     {
                         complete = false;
+                        break;
                     }
+
+                    dofs_first[component.component_index] =
+                        node_first->dof_number(sys_num, component.var_number, 0);
+                    dofs_second[component.component_index] =
+                        node_second->dof_number(sys_num, component.var_number, 0);
                 }
 
                 for (unsigned int i = 0; i < 3; ++i)
@@ -612,21 +634,16 @@ GlobalConstraintsObject::build_coupling_constraints()
 
             for (const auto &label : coupled_labels)
             {
+                const unsigned int sys_num = system->number();
                 const unsigned int var_num = system->variable_number(label);
-                dof_id_type dof_first = libMesh::invalid_uint;
-                dof_id_type dof_second = libMesh::invalid_uint;
-                try
-                {
-                    dof_first = node_first->dof_number(system->number(), var_num, 0);
-                    dof_second = node_second->dof_number(system->number(), var_num, 0);
-                }
-                catch (...)
-                {
+                if (var_num >= node_first->n_vars(sys_num) ||
+                    var_num >= node_second->n_vars(sys_num) ||
+                    node_first->n_dofs(sys_num, var_num) == 0 ||
+                    node_second->n_dofs(sys_num, var_num) == 0)
                     continue;
-                }
 
-                if (dof_first == libMesh::invalid_uint || dof_second == libMesh::invalid_uint)
-                    continue;
+                const dof_id_type dof_first = node_first->dof_number(sys_num, var_num, 0);
+                const dof_id_type dof_second = node_second->dof_number(sys_num, var_num, 0);
 
                 ConstraintEntry constraint_entry;
                 constraint_entry.row[dof_first] = 1.0;

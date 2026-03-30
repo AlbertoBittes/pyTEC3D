@@ -30,14 +30,6 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
     assembler->write_element_solution();
 }
 
-void ApecMEquationSystems::print_output(const pybind11::dict &time_step, bool picard_iteration_print)
-{
-    (void)picard_iteration_print;
-    const int time_step_number = pybind11::cast<int>(time_step["time_step_number"]);
-    libMesh::out << "Writing output for time step " << time_step_number
-                 << " (output wiring pending)." << std::endl;
-}
-
 void ApecMEquationSystems::configure_systems()
 {
     libMesh::out << "Building system of equations..." << std::endl;

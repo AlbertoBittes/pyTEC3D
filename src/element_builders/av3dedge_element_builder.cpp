@@ -17,17 +17,8 @@
 #include "element_types_factory.h"
 #include "variables_map.h"
 
-namespace
-{
-    constexpr unsigned int kNodalMe = 0;
-    constexpr unsigned int kNodalAAe = 1;
-    constexpr unsigned int kElementJAe = 0;
-    constexpr unsigned int kElementJVe = 1;
-    constexpr unsigned int kElementBAe = 2;
-}
-
-// Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236()
+// Temporary placeholder for build_av3dedge
+void ElementBuilder::build_av3dedge()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -90,7 +81,11 @@ void ElementBuilder::build_solid236()
     unsigned int nq_edge = fe_edge->n_quadrature_points();
     unsigned int nq_lagrange = fe_vec_lagrange->n_quadrature_points();
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu_matrix[3] = {
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -173,7 +168,11 @@ void ElementBuilder::build_solid236()
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
+        const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+        const Real sigma_matrix[3] = {
+            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_X")),
+            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Y")),
+            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Z"))};
         auto build_caa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -210,30 +209,6 @@ void ElementBuilder::build_solid236()
                             Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += JxW[qp] * sigma_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
         };
 
-        build_caa();
-        build_cav();
-        build_cva();
-        build_cvv();
-
-        // Here when you will implement loads with F
-        // for (unsigned int qp = 0; qp < nq; qp++)
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         Fe(dof_i + 3 * n_dofs_var) += JxW[qp] * phi[dof_i][qp]; //* js_loads[elem->id()][k];
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
-    {
-        const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
-
-        auto build_caa = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-                for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-                        for (unsigned int k = 0; k < 3; k++)
-                            Ce(dof_i, dof_j) += JxW[qp] * sigma_matrix[k] * (phi_edge[dof_i][qp](k) * phi_edge[dof_j][qp](k));
-        };
-
         auto build_kav = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -241,15 +216,6 @@ void ElementBuilder::build_solid236()
                     for (unsigned int dof_j = 0; dof_j < n_dofs_V; dof_j++)
                         for (unsigned int k = 0; k < 3; k++)
                             Ke(dof_i, dof_j + n_dofs_A) += JxW[qp] * sigma_matrix[k] * (phi_edge[dof_i][qp](k) * dphi[dof_j][qp](k));
-        };
-
-        auto build_cva = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-                        for (unsigned int k = 0; k < 3; k++)
-                            Ce(dof_i + n_dofs_A, dof_j) += JxW[qp] * sigma_matrix[k] * (dphi[dof_i][qp](k) * phi_edge[dof_j][qp](k));
         };
 
         auto build_kvv = [&]()
@@ -262,23 +228,32 @@ void ElementBuilder::build_solid236()
         };
 
         build_caa();
-        build_kav();
-        build_cva();
-        build_kvv();
-
+        if (elem_data.element_type->get_OPTIONs()[4] == 0 &&
+            static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]) == PhysicalRegionEnum::SOLID_CONDUCTOR)
+        {
+            build_kav();
+            build_cva();
+            build_kvv();
+        }
+        else
+        {
+            build_cav();
+            build_cva();
+            build_cvv();
+        }
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const auto rc = this->get_constants(this->elem_data.real_constant_num);
-        const Real sc = rc[1];
-        const Real nc = rc[2];
-        const Real vc = rc[3];
-        const Real tx = rc[5];
-        const Real ty = rc[6];
-        const Real tz = rc[7];
-        const Real r_coil = rc[8];
-        const Real sym = rc[9];
+        const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+        const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
+        const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
+        const Real vc = pybind11::cast<Real>(constant_row.attr("__getitem__")("VOL"));
+        const Real tx = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_X"));
+        const Real ty = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Y"));
+        const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
+        const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
+        const Real sym = pybind11::cast<Real>(constant_row.attr("__getitem__")("S"));
 
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
@@ -327,26 +302,6 @@ void ElementBuilder::build_solid236()
                     }
         };
 
-        build_cav();
-        build_cva();
-        build_cvv();
-        break;
-    }
-    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
-    {
-        const auto rc = this->get_constants(this->elem_data.real_constant_num);
-        const Real sc = rc[1];
-        const Real nc = rc[2];
-        const Real vc = rc[3];
-        const Real tx = rc[5];
-        const Real ty = rc[6];
-        const Real tz = rc[7];
-        const Real r_coil = rc[8];
-        const Real sym = rc[9];
-
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
-
         auto build_kav = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -363,22 +318,6 @@ void ElementBuilder::build_solid236()
                     }
         };
 
-        auto build_cva = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-                    {
-                        const Real t_dot_w =
-                            tx * phi_edge[dof_j][qp](0) +
-                            ty * phi_edge[dof_j][qp](1) +
-                            tz * phi_edge[dof_j][qp](2);
-                        const Real kav_t = JxW[qp] * (-(nc / (sc * r_coil)) * t_dot_w * phi[dof_i][qp]);
-                        Ce(dof_i + n_dofs_A, dof_j) += sym * kav_t;
-                        Ce(dof_i + n_dofs_A + n_dofs_V, dof_j) -= kav_t;
-                    }
-        };
-
         auto build_kvv = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -391,19 +330,28 @@ void ElementBuilder::build_solid236()
                     }
         };
 
-        build_kav();
-        build_cva();
-        build_kvv();
+        if (elem_data.element_type->get_OPTIONs()[4] == 0)
+        {
+            build_kav();
+            build_cva();
+            build_kvv();
+        }
+        else
+        {
+            build_cav();
+            build_cva();
+            build_cvv();
+        }
+        break;
     }
-    break;
     default:
         libmesh_error_msg("Physical region not implemented");
     }
     // The penalty values, for solution boundary trace and flux.
 }
 
-// Temporary placeholder for build_solid236
-void ElementBuilder::build_solid236_rhs()
+// Temporary placeholder for build_av3dedge
+void ElementBuilder::build_av3dedge_rhs()
 {
     // Now we will build the element matrix.  This involves
     // a double loop to integrate the test functions (i) against
@@ -468,21 +416,13 @@ void ElementBuilder::build_solid236_rhs()
     }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     case PhysicalRegionEnum::STRANDED_COIL:
-    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        std::string volt_var_name;
-        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]) ||
-            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
-            volt_var_name = "V";
-        else
-            volt_var_name = "VOLT";
-        if (dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("Az"))
+        if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("Az"))
         {
             auto build_fv = [&]()
             {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
+                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
                 const unsigned int az_var_num = dof_solution_system_->variable_number("Az");
                 vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
 
@@ -510,13 +450,13 @@ void ElementBuilder::build_solid236_rhs()
     return;
 }
 
-void ElementBuilder::build_solid236_solution_vectors()
+void ElementBuilder::build_av3dedge_solution_vectors()
 {
-    this->build_solid236_nodal_solution();
-    this->build_solid236_element_solution();
+    this->build_av3dedge_nodal_solution();
+    this->build_av3dedge_element_solution();
 }
 
-void ElementBuilder::build_solid236_nodal_solution()
+void ElementBuilder::build_av3dedge_nodal_solution()
 {
     if (!this->compute_nodal_solution_vectors)
         return;
@@ -525,7 +465,11 @@ void ElementBuilder::build_solid236_nodal_solution()
     if (api_vars.empty())
         return;
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu_matrix[3] = {
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -581,7 +525,7 @@ void ElementBuilder::build_solid236_nodal_solution()
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
 
-void ElementBuilder::build_solid236_element_solution()
+void ElementBuilder::build_av3dedge_element_solution()
 {
     auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::ELEMENT_SOLUTION);
     if (api_vars.empty())
@@ -589,7 +533,11 @@ void ElementBuilder::build_solid236_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu_matrix[3] = {
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
+        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -657,23 +605,28 @@ void ElementBuilder::build_solid236_element_solution()
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         case PhysicalRegionEnum::SOLID_CONDUCTOR:
-        case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
         {
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
             auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
 
-            const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
+            const pybind11::object material_row_sigma = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+            const Real sigma_matrix[3] = {
+                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_X")),
+                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Y")),
+                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Z"))};
 
             DenseVector<Number> Vn;
 
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
+                elem_data.element_type->get_OPTIONs()[4] == 0)
                 Vn = sol_vectors[1];
             const auto sol_vectors_dt =
                 get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
 
             const auto &A_dt = sol_vectors_dt[0];
 
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR || physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
+            if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR ||
+                elem_data.element_type->get_OPTIONs()[4] != 0)
                 Vn = sol_vectors_dt[1];
 
             DenseVector<Number> Jq_A;
@@ -693,12 +646,11 @@ void ElementBuilder::build_solid236_element_solution()
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
-        case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
         {
             Real Vn = 0.0;
             Real En = 0.0;
 
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+            if (elem_data.element_type->get_OPTIONs()[4] == 0)
             {
                 Vn = sol_vectors[1][0];
                 En = sol_vectors[2][0];
@@ -708,22 +660,24 @@ void ElementBuilder::build_solid236_element_solution()
                 get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
                                        ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+            if (elem_data.element_type->get_OPTIONs()[4] != 0)
             {
                 Vn = sol_vectors_dt[1][0];
                 En = sol_vectors_dt[2][0];
             }
 
-            const auto rc = this->get_constants(this->elem_data.real_constant_num);
-            const Real sc = rc[1];
-            const Real nc = rc[2];
-
-            const VectorValue t_vec(rc[5], rc[6], rc[7]);
-            const Real r_coil = rc[8];
+            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+            const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
+            const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
+            const VectorValue t_vec(
+                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_X")),
+                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Y")),
+                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z")));
+            const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);
             if (sc == 0.0 || r_coil == 0.0)
-                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL_SOLENOIDAL elements.");
+                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
 
             for (unsigned int k = 0; k < 3; k++)
                 Je(k) = coeff * t_vec(k);

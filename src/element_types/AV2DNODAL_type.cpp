@@ -1,31 +1,31 @@
 #include "element_types.h"
 #include "element_builder.h"
 // Direct constructor
-PLANE233Type::PLANE233Type(const std::vector<unsigned int> &OPTIONs)
+AV2DNODALType::AV2DNODALType(const std::vector<unsigned int> &OPTIONs)
     : AV2DElementType(
           OPTIONs,
           [OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
-              add_plane233_fe_structs(fe_structs, OPTIONs);
+              add_av2dnodal_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Chain-prolonging constructor for derived types
-PLANE233Type::PLANE233Type(const std::vector<unsigned int> &OPTIONs,
+AV2DNODALType::AV2DNODALType(const std::vector<unsigned int> &OPTIONs,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV2DElementType(
           OPTIONs,
           [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
-              add_plane233_fe_structs(fe_structs, OPTIONs);
+              add_av2dnodal_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Helper to add two FEDataShapeFunctions structs
-void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+void AV2DNODALType::add_av2dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                            const std::vector<unsigned int> &OPTIONs)
 {
     // Example: add a scalar and a vector FE struct
@@ -49,7 +49,7 @@ void PLANE233Type::add_plane233_fe_structs(std::vector<FEDataShapeFunctions> &fe
     });
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> PLANE233Type::get_solution_matrix_idx_size_map(bool nodal_solution)
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV2DNODALType::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     unsigned int n_sf = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();

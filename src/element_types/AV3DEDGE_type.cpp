@@ -1,31 +1,31 @@
 #include "element_types.h"
 #include "element_builder.h"
 // Direct constructor
-SOLID236Type::SOLID236Type(const std::vector<unsigned int> &OPTIONs)
+AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs)
     : AV3DElementType(
           OPTIONs,
           [OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
-              add_solid236_fe_structs(fe_structs, OPTIONs);
+              add_av3dedge_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Chain-prolonging constructor for derived types
-SOLID236Type::SOLID236Type(const std::vector<unsigned int> &OPTIONs,
+AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
           OPTIONs,
           [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
           {
               fe_collector(fe_structs);
-              add_solid236_fe_structs(fe_structs, OPTIONs);
+              add_av3dedge_fe_structs(fe_structs, OPTIONs);
           })
 {
 }
 
 // Helper to add two FEDataShapeFunctions structs
-void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
+void AV3DEDGEType::add_av3dedge_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                            const std::vector<unsigned int> &OPTIONs)
 {
     fe_structs.push_back({
@@ -66,7 +66,7 @@ void SOLID236Type::add_solid236_fe_structs(std::vector<FEDataShapeFunctions> &fe
     // });
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> SOLID236Type::get_solution_matrix_idx_size_map(bool nodal_solution)
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DEDGEType::get_solution_matrix_idx_size_map(bool nodal_solution)
 {
     // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
     unsigned int n_sf = fe_array[3]->n_shape_functions();

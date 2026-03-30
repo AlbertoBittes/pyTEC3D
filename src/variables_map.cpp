@@ -2,7 +2,6 @@
 #include "element_types.h"
 #include <libmesh/equation_systems.h>
 #include <libmesh/system.h>
-#include <set>
 
 namespace
 {
@@ -116,32 +115,6 @@ unsigned int VariablesMap::resolve_variable_number(const libMesh::System &system
     return system.variable_number(info.global_label);
 }
 
-std::array<unsigned int, 3> VariablesMap::resolve_vector_variable_numbers(const libMesh::System &system,
-                                                                          const std::string &api_label)
-{
-    std::array<unsigned int, 3> vars{};
-    for (unsigned int component = 0; component < 3; ++component)
-        vars[component] = VariablesMap::resolve_variable_number(system, api_label, component);
-    return vars;
-}
-
-bool VariablesMap::resolve_vector_var_numbers(const libMesh::System &system,
-                                              const std::string &variable_label,
-                                              std::array<unsigned int, 3> &var_numbers)
-{
-    auto vector_vars = VariablesMap::get_vector_variables_for_system(system);
-    auto it = vector_vars.find(variable_label);
-    if (it == vector_vars.end())
-        return false;
-    VariablesMap::sort_vector_components(vector_vars);
-    const auto &components = it->second;
-    if (components.size() < 3)
-        return false;
-    for (unsigned int i = 0; i < 3; ++i)
-        var_numbers[i] = components[i].var_number;
-    return true;
-}
-
 void VariablesMap::sort_vector_components(
     std::map<std::string, std::vector<VectorComponent>> &vector_variables)
 {
@@ -188,15 +161,6 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
     return labels;
 }
 
-std::vector<std::string> VariablesMap::get_all_api_labels()
-{
-    std::set<std::string> labels;
-    for (const auto &entry : GLOBAL_VARIABLE_INFO_MAP)
-        labels.insert(entry.second.api_label);
-
-    return std::vector<std::string>(labels.begin(), labels.end());
-}
-
 VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
     const ElementTypesMap &element_types_map,
     ApecMSystemBase::SystemType system_type)
@@ -223,31 +187,28 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
 {
     std::vector<GlobalVariableName> vars;
     const auto &OPTIONs = element.get_OPTIONs();
-    PhysicalRegionEnum region = UNKNOWN;
-    if (OPTIONs.size() > 1)
-        region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
     auto type = static_cast<ElementTypeEnum>(OPTIONs.at(0));
 
     switch (type)
     {
-    case ElementTypeEnum::SOLID97:
+    case ElementTypeEnum::AV3DNODAL:
         vars = add_av3d_variables();
         {
-            auto extra = add_solid97_variables(region);
+            auto extra = add_av3dnodal_variables(OPTIONs);
             vars.insert(vars.end(), extra.begin(), extra.end());
         }
         break;
-    case ElementTypeEnum::SOLID236:
+    case ElementTypeEnum::AV3DEDGE:
         vars = add_av3d_variables();
         {
-            auto extra = add_solid236_variables(region);
+            auto extra = add_av3dedge_variables(OPTIONs);
             vars.insert(vars.end(), extra.begin(), extra.end());
         }
         break;
-    case ElementTypeEnum::PLANE233:
+    case ElementTypeEnum::AV2DNODAL:
         vars = add_av_variables();
         {
-            auto extra = add_plane233_variables(OPTIONs);
+            auto extra = add_av2dnodal_variables(OPTIONs);
             vars.insert(vars.end(), extra.begin(), extra.end());
         }
         break;
@@ -349,8 +310,9 @@ std::vector<GlobalVariableName> VariablesMap::add_av3d_variables()
     return vars;
 }
 
-std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const PhysicalRegionEnum physical_region)
+std::vector<GlobalVariableName> VariablesMap::add_av3dnodal_variables(const std::vector<unsigned int> &OPTIONs)
 {
+    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
     std::vector<GlobalVariableName> vars = {GlobalVariableName::A_x,
                                             GlobalVariableName::A_y,
                                             GlobalVariableName::A_z};
@@ -360,7 +322,8 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
+            vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
@@ -370,8 +333,9 @@ std::vector<GlobalVariableName> VariablesMap::add_solid97_variables(const Physic
     return vars;
 }
 
-std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const PhysicalRegionEnum physical_region)
+std::vector<GlobalVariableName> VariablesMap::add_av3dedge_variables(const std::vector<unsigned int> &OPTIONs)
 {
+    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
     std::vector<GlobalVariableName> vars = {GlobalVariableName::Az};
 
     switch (physical_region)
@@ -379,7 +343,8 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
+            vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
@@ -389,19 +354,17 @@ std::vector<GlobalVariableName> VariablesMap::add_solid236_variables(const Physi
     return vars;
 }
 
-std::vector<GlobalVariableName> VariablesMap::add_plane233_variables(const std::vector<unsigned int> &OPTIONs)
+std::vector<GlobalVariableName> VariablesMap::add_av2dnodal_variables(const std::vector<unsigned int> &OPTIONs)
 {
     std::vector<GlobalVariableName> vars = {GlobalVariableName::A_z};
-
-    PhysicalRegionEnum physical_region = UNKNOWN;
-    if (OPTIONs.size() > 1)
-        physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
+    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
 
     switch (physical_region)
     {
     case SOLID_CONDUCTOR:
     case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
+        if (OPTIONs[4] == 0 || OPTIONs[4] == 1)
+            vars.insert(vars.end(), {GlobalVariableName::VOLT});
         if (physical_region == STRANDED_COIL)
             vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
@@ -431,50 +394,6 @@ std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System 
         vars.push_back(keys.front());
     }
     return vars;
-}
-
-std::vector<GlobalVariableName> VariablesMap::get_variables_for_equation_systems(
-    const libMesh::EquationSystems &equation_systems)
-{
-    std::vector<GlobalVariableName> vars;
-    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
-    {
-        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &name = ApecMSystemBase::system_name_from_type(type);
-        if (!equation_systems.has_system(name))
-            continue;
-        const auto &system = equation_systems.get_system(name);
-        const auto system_vars = get_system_variables(system);
-        for (const auto &var : system_vars)
-        {
-            if (std::find(vars.begin(), vars.end(), var) == vars.end())
-                vars.push_back(var);
-        }
-    }
-    std::sort(vars.begin(), vars.end(),
-              [](GlobalVariableName lhs, GlobalVariableName rhs)
-              {
-                  return static_cast<unsigned int>(lhs) < static_cast<unsigned int>(rhs);
-              });
-    return vars;
-}
-
-ApecMSystemBase::SystemType VariablesMap::get_system_type_for_variable(
-    const libMesh::EquationSystems &equation_systems,
-    GlobalVariableName variable)
-{
-    const auto &label = get_info_by_key(variable).global_label;
-    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
-    {
-        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &name = ApecMSystemBase::system_name_from_type(type);
-        if (!equation_systems.has_system(name))
-            continue;
-        const auto &system = equation_systems.get_system(name);
-        if (system.has_variable(label))
-            return type;
-    }
-    libmesh_error_msg("VariablesMap: variable not found in equation systems: " + label);
 }
 
 FEFamily VariablesMap::get_variable_fe_family(const ElementType &,

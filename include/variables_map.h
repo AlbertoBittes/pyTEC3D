@@ -108,15 +108,9 @@ public:
     static unsigned int resolve_variable_number(const libMesh::System &system,
                                                 const std::string &api_label,
                                                 unsigned int component);
-    static std::array<unsigned int, 3> resolve_vector_variable_numbers(const libMesh::System &system,
-                                                                       const std::string &api_label);
-    static bool resolve_vector_var_numbers(const libMesh::System &system,
-                                           const std::string &variable_label,
-                                           std::array<unsigned int, 3> &var_numbers);
     static void sort_vector_components(
         std::map<std::string, std::vector<VectorComponent>> &vector_variables);
     static std::vector<std::string> get_global_labels_for_label(const std::string &label);
-    static std::vector<std::string> get_all_api_labels();
 
     static VariableToElementIdsMapType associate_variables_with_element_IDs(
         const ElementTypesMap &element_types_map,
@@ -147,18 +141,13 @@ public:
         const libMesh::System &system);
 
     static std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system);
-    static std::vector<GlobalVariableName> get_variables_for_equation_systems(
-        const libMesh::EquationSystems &equation_systems);
-    static ApecMSystemBase::SystemType get_system_type_for_variable(
-        const libMesh::EquationSystems &equation_systems,
-        GlobalVariableName variable);
 
 private:
     static std::vector<GlobalVariableName> add_av_variables();
     static std::vector<GlobalVariableName> add_av3d_variables();
-    static std::vector<GlobalVariableName> add_solid97_variables(PhysicalRegionEnum physical_region);
-    static std::vector<GlobalVariableName> add_solid236_variables(PhysicalRegionEnum physical_region);
-    static std::vector<GlobalVariableName> add_plane233_variables(const std::vector<unsigned int> &OPTIONs);
+    static std::vector<GlobalVariableName> add_av3dnodal_variables(const std::vector<unsigned int> &OPTIONs);
+    static std::vector<GlobalVariableName> add_av3dedge_variables(const std::vector<unsigned int> &OPTIONs);
+    static std::vector<GlobalVariableName> add_av2dnodal_variables(const std::vector<unsigned int> &OPTIONs);
 };
 
 #endif // VARIABLES_MAP_H

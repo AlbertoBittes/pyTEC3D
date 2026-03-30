@@ -377,19 +377,6 @@ class APEC_M:
         self._solver_session = solver
         return solver
 
-    def run_solver(
-        self,
-        num_processors: int = 1,
-        mesh_name: Optional[str] = None,
-    ) -> Any:
-        """
-        Convenience wrapper: load model into C++ and run one solve sequence.
-        """
-        solver = self.load_mesh_into_solver(
-            num_processors=num_processors, mesh_name=mesh_name
-        )
-        return solver.solve()
-
     @staticmethod
     def _build_solver_mpi_communicator(num_processors: int) -> Optional[Any]:
         """

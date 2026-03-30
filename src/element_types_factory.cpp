@@ -12,15 +12,6 @@ namespace py = pybind11;
 
 namespace
 {
-    unsigned int parse_element_type_number(const std::string &label)
-    {
-        std::smatch match;
-        if (std::regex_search(label, match, std::regex(R"(\d+)")))
-            return static_cast<unsigned int>(std::stoul(match.str()));
-
-        libmesh_error_msg("ElementTypesFactory: unable to parse element type from label '" << label << "'.");
-    }
-
     unsigned int parse_option_column_index(const std::string &name)
     {
         std::smatch match;
@@ -40,10 +31,6 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
         return;
 
     py::object dataframe = element_types_attribute;
-    const auto ansys_ids = py::cast<std::vector<int>>(
-        dataframe.attr("__getitem__")("TYPE_ID").attr("tolist")());
-    const auto element_labels = py::cast<std::vector<std::string>>(
-        dataframe.attr("__getitem__")("element_type").attr("tolist")());
 
     std::vector<std::string> OPTION_columns;
     for (const py::handle &name_obj : dataframe.attr("columns"))
@@ -56,27 +43,25 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
     std::sort(OPTION_columns.begin(), OPTION_columns.end(), [](const std::string &a, const std::string &b)
               { return parse_option_column_index(a) < parse_option_column_index(b); });
 
-    std::vector<std::vector<int>> option_values;
-    option_values.reserve(OPTION_columns.size());
-    for (const auto &column_name : OPTION_columns)
-    {
-        option_values.push_back(
-            py::cast<std::vector<int>>(dataframe.attr("__getitem__")(column_name).attr("tolist")()));
-    }
-
-    const std::size_t count = ansys_ids.size();
+    const py::object dataframe_iloc = dataframe.attr("iloc");
+    const std::size_t count = py::len(dataframe);
 
     for (std::size_t row = 0; row < count; ++row)
     {
-        const int ansys_type = ansys_ids[row];
-        const unsigned int element_number = parse_element_type_number(element_labels[row]);
+        const py::object row_data = dataframe_iloc.attr("__getitem__")(py::int_(row));
+        const int ansys_type = py::cast<int>(row_data.attr("__getitem__")("TYPE_ID"));
+        const unsigned int element_number =
+            static_cast<unsigned int>(py::cast<int>(row_data.attr("__getitem__")("ELEMENT_TYPE")));
 
         std::vector<unsigned int> OPTIONs;
         OPTIONs.reserve(1 + OPTION_columns.size());
         OPTIONs.push_back(element_number);
 
-        for (const auto &option_column_values : option_values)
-            OPTIONs.push_back(static_cast<unsigned int>(option_column_values[row]));
+        for (const auto &column_name : OPTION_columns)
+        {
+            OPTIONs.push_back(
+                static_cast<unsigned int>(py::cast<int>(row_data.attr("__getitem__")(column_name))));
+        }
 
         (*element_types_map)[ansys_type] = create_element_type(
             static_cast<ElementTypeEnum>(element_number),
@@ -110,12 +95,12 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
 {
     switch (type)
     {
-    case ElementTypeEnum::SOLID97:
-        return std::make_unique<SOLID97Type>(OPTIONs);
-    case ElementTypeEnum::SOLID236:
-        return std::make_unique<SOLID236Type>(OPTIONs);
-    case ElementTypeEnum::PLANE233:
-        return std::make_unique<PLANE233Type>(OPTIONs);
+    case ElementTypeEnum::AV3DNODAL:
+        return std::make_unique<AV3DNODALType>(OPTIONs);
+    case ElementTypeEnum::AV3DEDGE:
+        return std::make_unique<AV3DEDGEType>(OPTIONs);
+    case ElementTypeEnum::AV2DNODAL:
+        return std::make_unique<AV2DNODALType>(OPTIONs);
     default:
         libmesh_error_msg("Unknown element type");
     }

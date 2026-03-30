@@ -118,46 +118,28 @@ void ApecMSolver::load_model(py::object apec_object,
     loaded = true;
 }
 
-py::dict ApecMSolver::solve()
+void ApecMSolver::solve(bool nodal_solution)
 {
     if (!loaded || !mesh)
-        throw std::runtime_error("Solver has no loaded model. Call load_model() first.");
+        libmesh_error_msg("Solver has no loaded model. Call load_model() first.");
 
-    py::dict result;
-    result["status"] = "model_loaded";
-    result["n_nodes"] = mesh->n_nodes();
-    result["n_elements"] = mesh->n_elem();
-    result["mesh_dimension"] = mesh->mesh_dimension();
-    if (apec_object && !apec_object.is_none())
-    {
-        if (py::hasattr(apec_object, "active_mesh_name"))
-            result["active_mesh_name"] = apec_object.attr("active_mesh_name");
-        if (py::hasattr(apec_object, "element_types"))
-            result["n_element_types"] = py::len(apec_object.attr("element_types"));
-        if (py::hasattr(apec_object, "materials"))
-            result["n_materials"] = py::len(apec_object.attr("materials"));
-        if (py::hasattr(apec_object, "constants"))
-            result["n_constants"] = py::len(apec_object.attr("constants"));
-        if (py::hasattr(apec_object, "dof_couplings"))
-            result["n_dof_couplings"] = py::len(apec_object.attr("dof_couplings"));
-    }
+    equation_system->solve_equation_systems(
+        py::cast<py::dict>(apec_object.attr("time_step")),
+        nodal_solution);
 
-    write_system_to_active_vtk_grid(
+    write_system_to_vtk_grid(
         ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    write_system_to_active_vtk_grid(
-        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
-    write_system_to_active_vtk_grid(
+    if (nodal_solution)
+        write_system_to_vtk_grid(
+            ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
+    write_system_to_vtk_grid(
         ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION));
-
-    // Next step: initialize ApecMEquationSystems from apec_object,
-    // then run the real solve loop and write back output arrays.
-    return result;
 }
 
-void ApecMSolver::write_system_to_active_vtk_grid(const std::string &system_name)
+void ApecMSolver::write_system_to_vtk_grid(const std::string &system_name)
 {
     if (!loaded || !mesh || !equation_system || !active_vtk_grid)
-        throw std::runtime_error("Solver is not fully initialized. Call load_model() first.");
+        libmesh_error_msg("Solver is not fully initialized. Call load_model() first.");
 
     VTKIO_Updated vtkio(*mesh, equation_system.get(), active_vtk_grid);
     vtkio.write_system_grid(system_name);

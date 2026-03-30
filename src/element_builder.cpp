@@ -8,7 +8,6 @@
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <string>
-#include <array>
 #include <pybind11/stl.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -23,11 +22,6 @@
 #include "variables_map.h"
 
 namespace py = pybind11;
-
-namespace
-{
-    const Real kMu0 = 4.0 * libMesh::pi * 1e-7;
-}
 
 //
 //
@@ -59,41 +53,6 @@ py::object ElementBuilder::get_row_by_id(const py::object &table, const char *id
 {
     const py::object mask = table.attr("__getitem__")(id_column).attr("__eq__")(id);
     return table.attr("loc").attr("__getitem__")(mask).attr("iloc").attr("__getitem__")(0);
-}
-
-std::array<Real, 3> ElementBuilder::get_mu_matrix(unsigned int material_num) const
-{
-    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL_ID", material_num);
-    const Real murx = py::cast<Real>(row.attr("__getitem__")("MUR_X"));
-    const Real mury = py::cast<Real>(row.attr("__getitem__")("MUR_Y"));
-    const Real murz = py::cast<Real>(row.attr("__getitem__")("MUR_Z"));
-    return {kMu0 * murx, kMu0 * mury, kMu0 * murz};
-}
-
-std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) const
-{
-    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL_ID", material_num);
-    const Real rsvx = py::cast<Real>(row.attr("__getitem__")("RHO_X"));
-    const Real rsvy = py::cast<Real>(row.attr("__getitem__")("RHO_Y"));
-    const Real rsvz = py::cast<Real>(row.attr("__getitem__")("RHO_Z"));
-    return {1.0 / rsvx, 1.0 / rsvy, 1.0 / rsvz};
-}
-
-std::vector<Real> ElementBuilder::get_constants(unsigned int constant_num) const
-{
-    const py::object row = get_row_by_id(constants_attribute_, "CONSTANTS_ID", constant_num);
-    static const std::array<const char *, 19> columns = {
-        "THK", "CS", "TURNS", "VOL", "RAD",
-        "T_X", "T_Y", "T_Z", "R", "S",
-        "V_X", "V_Y", "V_Z",
-        "OMEGA_X", "OMEGA_Y", "OMEGA_Z",
-        "LOC_X", "LOC_Y", "LOC_Z"};
-
-    std::vector<Real> values;
-    values.reserve(columns.size());
-    for (const char *col : columns)
-        values.push_back(py::cast<Real>(row.attr("__getitem__")(col)));
-    return values;
 }
 
 //
@@ -195,14 +154,14 @@ void ElementBuilder::build_element()
 
     switch (etype)
     {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97();
+    case ElementTypeEnum::AV3DNODAL:
+        this->build_av3dnodal();
         break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236();
+    case ElementTypeEnum::AV3DEDGE:
+        this->build_av3dedge();
         break;
-    case ElementTypeEnum::PLANE233:
-        this->build_plane233();
+    case ElementTypeEnum::AV2DNODAL:
+        this->build_av2dnodal();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -215,14 +174,14 @@ void ElementBuilder::build_element_rhs()
 
     switch (etype)
     {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_rhs();
+    case ElementTypeEnum::AV3DNODAL:
+        this->build_av3dnodal_rhs();
         break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_rhs();
+    case ElementTypeEnum::AV3DEDGE:
+        this->build_av3dedge_rhs();
         break;
-    case ElementTypeEnum::PLANE233:
-        this->build_plane233_rhs();
+    case ElementTypeEnum::AV2DNODAL:
+        this->build_av2dnodal_rhs();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -244,14 +203,14 @@ void ElementBuilder::build_nodal_solution()
 
     switch (etype)
     {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_nodal_solution();
+    case ElementTypeEnum::AV3DNODAL:
+        this->build_av3dnodal_nodal_solution();
         break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_nodal_solution();
+    case ElementTypeEnum::AV3DEDGE:
+        this->build_av3dedge_nodal_solution();
         break;
-    case ElementTypeEnum::PLANE233:
-        this->build_plane233_nodal_solution();
+    case ElementTypeEnum::AV2DNODAL:
+        this->build_av2dnodal_nodal_solution();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
@@ -264,14 +223,14 @@ void ElementBuilder::build_element_solution()
 
     switch (etype)
     {
-    case ElementTypeEnum::SOLID97:
-        this->build_solid97_element_solution();
+    case ElementTypeEnum::AV3DNODAL:
+        this->build_av3dnodal_element_solution();
         break;
-    case ElementTypeEnum::SOLID236:
-        this->build_solid236_element_solution();
+    case ElementTypeEnum::AV3DEDGE:
+        this->build_av3dedge_element_solution();
         break;
-    case ElementTypeEnum::PLANE233:
-        this->build_plane233_element_solution();
+    case ElementTypeEnum::AV2DNODAL:
+        this->build_av2dnodal_element_solution();
         break;
     default:
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));

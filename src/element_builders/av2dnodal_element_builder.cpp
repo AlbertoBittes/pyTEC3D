@@ -17,16 +17,8 @@
 #include "element_types_factory.h"
 #include "variables_map.h"
 
-namespace
-{
-    constexpr unsigned int kNodalMe = 0;
-    constexpr unsigned int kNodalAAe = 1;
-    constexpr unsigned int kElementJAe = 0;
-    constexpr unsigned int kElementJVe = 1;
-    constexpr unsigned int kElementBAe = 2;
-}
-// Temporary placeholder for build_plane233
-void ElementBuilder::build_plane233()
+// Temporary placeholder for build_av2dnodal
+void ElementBuilder::build_av2dnodal()
 {
     // Stop logging the shape function initialization.
     // If you forget to stop logging an event the PerfLog
@@ -81,8 +73,9 @@ void ElementBuilder::build_plane233()
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
-    const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
+    const Real sigma = 1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_X"));
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -97,7 +90,8 @@ void ElementBuilder::build_plane233()
 
     Real r_sign = pow(-1, axisymm);
 
-    Real thk = this->get_constants(this->elem_data.real_constant_num)[0];
+    const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+    Real thk = pybind11::cast<Real>(constant_row.attr("__getitem__")("THK"));
     if (thk == 0.0)
         thk = 1.0;
 
@@ -114,7 +108,7 @@ void ElementBuilder::build_plane233()
                     Ke(dof_i, dof_j) +=
                         JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r_sq) * r_mult * thk;
         }
-        Ke.scale(nu_matrix[0]);
+        Ke.scale(nu);
     };
 
     auto build_bae = [&]()
@@ -197,7 +191,7 @@ void ElementBuilder::build_plane233()
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * thk;
         }
-        Ce.scale(sigma_matrix[0]);
+        Ce.scale(sigma);
     };
 
     build_ke();
@@ -241,7 +235,7 @@ void ElementBuilder::build_plane233()
     {
         build_caa();
 
-        auto build_coupling = [&]()
+        auto build_coupling_timeintegrated = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
             {
@@ -252,22 +246,15 @@ void ElementBuilder::build_plane233()
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         Ce(dof_i, dof_j + n_dofs_var) -=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
                         Ce(dof_i + n_dofs_var, dof_j) -=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
                         Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
                     }
             }
         };
-        build_coupling();
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
-    {
-        build_caa();
-
-        auto build_coupling = [&]()
+        auto build_coupling_notimeintegrated = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
             {
@@ -278,39 +265,41 @@ void ElementBuilder::build_plane233()
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         Ke(dof_i, dof_j + n_dofs_var) -=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
                         Ce(dof_i + n_dofs_var, dof_j) -=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
                         Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                            JxW[qp] * sigma_matrix[0] * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
+                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
                     }
             }
         };
-        build_coupling();
+        if (elem_data.element_type->get_OPTIONs()[4] == 0)
+            build_coupling_notimeintegrated();
+        else
+            build_coupling_timeintegrated();
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const auto rc = this->get_constants(this->elem_data.real_constant_num);
-
-        const Real sc = rc[1];
-        const Real nc = rc[2];
-        const Real rad = rc[4];
+        const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+        const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
+        const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
+        const Real rad = pybind11::cast<Real>(constant_row.attr("__getitem__")("RAD"));
         Real rad_factor = 1.0;
         if (axisymm)
             rad_factor = 2 * libMesh::pi * rad;
         const Real vc = rad_factor * sc * thk;
-        const Real tz = rc[7];
-        const Real r_coil = rc[8];
-        const Real sym = rc[9];
+        const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
+        const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
+        const Real sym = pybind11::cast<Real>(constant_row.attr("__getitem__")("S"));
 
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
+            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
 
         const Real kav_scale = -(nc / (sc * r_coil)) * tz;
         const Real kvv_scale = 1.0 / (r_coil * vc);
 
-        auto build_coil_coupling = [&]()
+        auto build_coil_coupling_timeintegrated = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
             {
@@ -324,7 +313,7 @@ void ElementBuilder::build_plane233()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // Non-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
+                        // Time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
                         Ce(dof_i, dof_j + n_dofs_var) += kav;
                         Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -337,31 +326,7 @@ void ElementBuilder::build_plane233()
                     }
             }
         };
-        build_coil_coupling();
-        break;
-    }
-    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
-    {
-        const auto rc = this->get_constants(this->elem_data.real_constant_num);
-
-        const Real sc = rc[1];
-        const Real nc = rc[2];
-        const Real rad = rc[4];
-        Real rad_factor = 1.0;
-        if (axisymm)
-            rad_factor = 2 * libMesh::pi * rad;
-        const Real vc = rad_factor * sc * thk;
-        const Real tz = rc[7];
-        const Real r_coil = rc[8];
-        const Real sym = rc[9];
-
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL_SOLENOIDAL elements.");
-
-        const Real kav_scale = -(nc / (sc * r_coil)) * tz;
-        const Real kvv_scale = 1.0 / (r_coil * vc);
-
-        auto build_coil_coupling = [&]()
+        auto build_coil_coupling_notimeintegrated = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
             {
@@ -375,7 +340,7 @@ void ElementBuilder::build_plane233()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // Non-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
+                        // No-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
                         Ke(dof_i, dof_j + n_dofs_var) += kav;
                         Ke(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -388,7 +353,10 @@ void ElementBuilder::build_plane233()
                     }
             }
         };
-        build_coil_coupling();
+        if (elem_data.element_type->get_OPTIONs()[4] == 0)
+            build_coil_coupling_notimeintegrated();
+        else
+            build_coil_coupling_timeintegrated();
         break;
     }
     default:
@@ -396,8 +364,8 @@ void ElementBuilder::build_plane233()
     }
 }
 
-// Temporary placeholder for build_plane233
-void ElementBuilder::build_plane233_rhs()
+// Temporary placeholder for build_av2dnodal
+void ElementBuilder::build_av2dnodal_rhs()
 {
 
     // Now we will build the element matrix.  This involves
@@ -445,21 +413,13 @@ void ElementBuilder::build_plane233_rhs()
         break;
     }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
     case PhysicalRegionEnum::STRANDED_COIL:
-    case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        std::string volt_var_name;
-        if (PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]) ||
-            PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL == static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
-            volt_var_name = "V";
-        else
-            volt_var_name = "VOLT";
-        if (dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("A_z"))
+        if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("A_z"))
         {
             auto build_fv = [&]()
             {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
+                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
                 vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
@@ -484,13 +444,13 @@ void ElementBuilder::build_plane233_rhs()
     return;
 }
 
-void ElementBuilder::build_plane233_solution_vectors()
+void ElementBuilder::build_av2dnodal_solution_vectors()
 {
-    this->build_plane233_nodal_solution();
-    this->build_plane233_element_solution();
+    this->build_av2dnodal_nodal_solution();
+    this->build_av2dnodal_element_solution();
 }
 
-void ElementBuilder::build_plane233_nodal_solution()
+void ElementBuilder::build_av2dnodal_nodal_solution()
 {
     if (!this->compute_nodal_solution_vectors)
         return;
@@ -499,7 +459,8 @@ void ElementBuilder::build_plane233_nodal_solution()
     if (api_vars.empty())
         return;
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -532,7 +493,7 @@ void ElementBuilder::build_plane233_nodal_solution()
             build_b();
         Hn.resize(Bn.size());
         for (unsigned int dof_i = 0; dof_i < Bn.size(); dof_i++)
-            Hn(dof_i) += Bn(dof_i) * nu_matrix[0];
+            Hn(dof_i) += Bn(dof_i) * nu;
         have_h = true;
     };
 
@@ -553,7 +514,7 @@ void ElementBuilder::build_plane233_nodal_solution()
     this->append_and_write_solution(*nodal_solution_system_, nodal_vectors);
 }
 
-void ElementBuilder::build_plane233_element_solution()
+void ElementBuilder::build_av2dnodal_element_solution()
 {
     auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::ELEMENT_SOLUTION);
     if (api_vars.empty())
@@ -561,7 +522,8 @@ void ElementBuilder::build_plane233_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    const auto nu_matrix = this->get_mu_matrix(this->elem_data.material_num);
+    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -605,7 +567,7 @@ void ElementBuilder::build_plane233_element_solution()
             build_be();
         He.resize(2);
         for (unsigned int k = 0; k < 2; k++)
-            He(k) = Be(k) * nu_matrix[0];
+            He(k) = Be(k) * nu;
         have_he = true;
     };
 
@@ -631,22 +593,23 @@ void ElementBuilder::build_plane233_element_solution()
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         case PhysicalRegionEnum::SOLID_CONDUCTOR:
-        case PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL:
         {
             Real Vn = 0.0;
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR_SOLENOIDAL)
+            if (elem_data.element_type->get_OPTIONs()[4] == 0)
                 Vn = sol_vectors[1][0];
 
             const auto sol_vectors_dt =
                 get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
                                        ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
-            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
+            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
+                elem_data.element_type->get_OPTIONs()[4] != 0)
                 Vn = sol_vectors_dt[1][0];
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
-            const auto sigma_matrix = this->get_sigma_matrix(this->elem_data.material_num);
+            const pybind11::object material_row_sigma = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+            const Real sigma = 1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_X"));
 
             const auto &An_dt = sol_vectors_dt[0];
 
@@ -655,15 +618,16 @@ void ElementBuilder::build_plane233_element_solution()
 
             for (unsigned int qp = 0; qp < n_qp; qp++)
                 Je(0) -= Jq_A(qp);
-            Je(0) = Je(0) * sigma_matrix[0] / n_qp;
+            Je(0) = Je(0) * sigma / n_qp;
 
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
                 break;
 
-            Real thk = this->get_constants(this->elem_data.real_constant_num)[0];
+            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+            Real thk = pybind11::cast<Real>(constant_row.attr("__getitem__")("THK"));
             if (thk == 0.0)
-                libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
-            Real V_factor = sigma_matrix[0] * Vn / thk;
+                libmesh_error_msg("THK is zero for SOLID_CONDUCTOR elements.");
+            Real V_factor = sigma * Vn / thk;
             if (axisymm)
             {
                 FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
@@ -679,12 +643,11 @@ void ElementBuilder::build_plane233_element_solution()
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
-        case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
         {
             Real Vn = 0.0;
             Real En = 0.0;
 
-            if (physical_region == PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL)
+            if (elem_data.element_type->get_OPTIONs()[4] == 0)
             {
                 Vn = sol_vectors[1][0];
                 En = sol_vectors[2][0];
@@ -694,20 +657,20 @@ void ElementBuilder::build_plane233_element_solution()
                 get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
                                        ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
-            if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
+            if (elem_data.element_type->get_OPTIONs()[4] != 0)
             {
                 Vn = sol_vectors_dt[1][0];
                 En = sol_vectors_dt[2][0];
             }
 
-            const auto rc = this->get_constants(this->elem_data.real_constant_num);
-            const Real sc = rc[1];
-            const Real nc = rc[2];
-            const Real tz = rc[7];
-            const Real r_coil = rc[8];
+            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
+            const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
+            const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
+            const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
+            const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
 
             if (sc == 0.0 || r_coil == 0.0)
-                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL_SOLENOIDAL elements.");
+                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
             Je(0) = (nc / (sc * r_coil)) * tz * (Vn - En);
             break;
         }

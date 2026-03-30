@@ -2,7 +2,6 @@
 #define ELEMENT_BUILDER_H
 
 #include <filesystem>
-#include <array>
 #include <memory>
 #include <unordered_map>
 #include <set>
@@ -70,6 +69,12 @@ public:
     };
     static constexpr unsigned int kNumNodalSolutionMatrices = 2;
     static constexpr unsigned int kNumElementSolutionMatrices = 3;
+    static constexpr unsigned int kNodalMe = 0;
+    static constexpr unsigned int kNodalAAe = 1;
+    static constexpr unsigned int kElementJAe = 0;
+    static constexpr unsigned int kElementJVe = 1;
+    static constexpr unsigned int kElementBAe = 2;
+    inline static const Real kMu0 = 4.0 * libMesh::pi * 1e-7;
 
     void build_vectors(std::vector<std::vector<unsigned int>> *, unsigned int vectors_set);
     void build_matrices(std::vector<std::vector<unsigned int>> *, unsigned int matrices_set);
@@ -84,31 +89,31 @@ public:
 
     // Methods to build elements
     void build_element();
-    void build_solid97();
-    void build_solid236();
-    void build_plane233();
+    void build_av3dnodal();
+    void build_av3dedge();
+    void build_av2dnodal();
 
     // Methods to build elements
     void build_element_rhs();
-    void build_solid97_rhs();
-    void build_solid236_rhs();
-    void build_plane233_rhs();
+    void build_av3dnodal_rhs();
+    void build_av3dedge_rhs();
+    void build_av2dnodal_rhs();
 
     void build_nodal_solution();
     void build_element_solution();
     void build_support_solution();
 
-    void build_solid97_solution_vectors();
-    void build_solid236_solution_vectors();
-    void build_plane233_solution_vectors();
+    void build_av3dnodal_solution_vectors();
+    void build_av3dedge_solution_vectors();
+    void build_av2dnodal_solution_vectors();
 
-    void build_solid97_nodal_solution();
-    void build_solid236_nodal_solution();
-    void build_plane233_nodal_solution();
+    void build_av3dnodal_nodal_solution();
+    void build_av3dedge_nodal_solution();
+    void build_av2dnodal_nodal_solution();
 
-    void build_solid97_element_solution();
-    void build_solid236_element_solution();
-    void build_plane233_element_solution();
+    void build_av3dnodal_element_solution();
+    void build_av3dedge_element_solution();
+    void build_av2dnodal_element_solution();
 
     std::vector<DenseVector<Number>> get_variables_solution(const NumericVector<Number> *solution, int dof_map_index);
 
@@ -169,9 +174,6 @@ private:
     void append_and_write_solution(System &system,
                                    const std::vector<DenseVector<Number>> &ordered_vectors);
     pybind11::object get_row_by_id(const pybind11::object &table, const char *id_column, unsigned int id) const;
-    std::array<Real, 3> get_mu_matrix(unsigned int material_num) const;
-    std::array<Real, 3> get_sigma_matrix(unsigned int material_num) const;
-    std::vector<Real> get_constants(unsigned int constant_num) const;
 };
 
 #endif // ELEMENT_BUILDER_H
