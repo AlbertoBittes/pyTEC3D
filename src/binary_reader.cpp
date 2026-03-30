@@ -14,6 +14,8 @@
 #include "element_types_factory.h"
 #include "solver_configuration.h"
 
+BinaryReader::BinaryReader() = default;
+
 std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::path &filepath,
                                                          FileMode mode)
 {

@@ -1,7 +1,7 @@
 import os
 import sys
+import re
 import copy
-import struct
 from os import PathLike
 from typing import (
     Any,
@@ -92,14 +92,6 @@ class APEC_M:
         Name of the active mesh.
         """
         return self._active_mesh_name
-
-    @property
-    def folderpath(self) -> Optional[str]:
-        return os.getcwd() if self._active_mesh_name else None
-
-    @staticmethod
-    def _sanitize_path_token(value: str) -> str:
-        return "".join(ch if (ch.isalnum() or ch in "_-") else "_" for ch in value)
 
     def set_active_mesh(self, mesh_name: str) -> bool:
         """
@@ -197,23 +189,46 @@ class APEC_M:
                     "No active mesh is set. Activate a mesh before saving."
                 )
 
-            if not self.folderpath:
-                raise ValueError(
-                    "Folder path is not set. Please set self.folderpath before saving the mesh."
-                )
-
-        # Remove arrays listed in ARRAYS_TO_REMOVE using safe_remove_array
-        for arr in ARRAYS_TO_REMOVE:
-            ModelEdit.remove_array(self.mesh, arr)
-
         # Define the output file name
         if output_file is None:
-            output_file = os.path.join(self.folderpath, f"{self._active_mesh_name}.vtu")
+            output_file = os.path.join(os.getcwd(), f"{self._active_mesh_name}.vtu")
 
         # Write the unstructured grid to the .vtu file
         ModelEdit.save_mesh(self.mesh, output_file, binary=True)
 
         print(f"Mesh saved to '{output_file}'.")
+
+    def write_output(self) -> None:
+        """
+        Save the active mesh into its output folder using the next timestep index.
+
+        The target filename is:
+            <mesh_name>/output/<mesh_name>_out_<time_step>.vtu
+
+        The time step is computed at runtime by scanning existing files in the
+        output directory and taking max(existing_step) + 1. If no output files
+        are present, the first generated time step is 1.
+        """
+        if not self._active_mesh_name:
+            raise ValueError("No active mesh is set. Activate a mesh before writing output.")
+
+        mesh_name = self._active_mesh_name
+        output_dir = os.path.join(os.getcwd(), mesh_name, "output")
+        os.makedirs(output_dir, exist_ok=True)
+
+        pattern = re.compile(rf"^{re.escape(mesh_name)}_out_(\d+)\.vtu$")
+        last_time_step = max(
+            (
+                int(match.group(1))
+                for filename in os.listdir(output_dir)
+                if (match := pattern.match(filename))
+            ),
+            default=0,
+        )
+
+        next_time_step = last_time_step + 1
+        output_file = os.path.join(output_dir, f"{mesh_name}_out_{next_time_step}.vtu")
+        self.save_mesh(output_file=output_file)
 
     #
     #

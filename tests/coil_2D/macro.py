@@ -1,8 +1,6 @@
 from apec_m import APEC_M
-from model_edit import ModelEdit
 from selector import Selector
 import os
-import vtk
 import vtk.util.numpy_support as vtknp
 import numpy as np
 # from convert_mesh import convert_mesh_from_cdb

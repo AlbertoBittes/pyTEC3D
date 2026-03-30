@@ -296,11 +296,3 @@ VTK_ARRAYS_TO_INIT = {
         "dtype": vtk.VTK_INT,
     },
 }
-
-ARRAYS_TO_REMOVE = [
-    "selection_point",
-    "selection_cell",
-    "cell_centroids",
-    "cell_volume",
-    "MidsideNodes"
-]

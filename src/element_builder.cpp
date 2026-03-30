@@ -55,19 +55,15 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems)
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
 }
 
-ssize_t ElementBuilder::find_row_index(const py::object &table, const char *id_column, unsigned int id) const
+py::object ElementBuilder::get_row_by_id(const py::object &table, const char *id_column, unsigned int id) const
 {
-    static py::object np = py::module_::import("numpy");
-    const py::object ids = table.attr("__getitem__")(id_column).attr("to_numpy")();
-    const py::tuple where_result = py::cast<py::tuple>(np.attr("where")(ids.attr("__eq__")(id)));
-    const py::object indices = where_result[0];
-    return py::cast<ssize_t>(indices.attr("__getitem__")(0));
+    const py::object mask = table.attr("__getitem__")(id_column).attr("__eq__")(id);
+    return table.attr("loc").attr("__getitem__")(mask).attr("iloc").attr("__getitem__")(0);
 }
 
 std::array<Real, 3> ElementBuilder::get_mu_matrix(unsigned int material_num) const
 {
-    const ssize_t idx = find_row_index(materials_attribute_, "MATERIAL", material_num);
-    const py::object row = materials_attribute_.attr("iloc").attr("__getitem__")(idx);
+    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL", material_num);
     const Real murx = py::cast<Real>(row.attr("__getitem__")("MURX"));
     const Real mury = py::cast<Real>(row.attr("__getitem__")("MURY"));
     const Real murz = py::cast<Real>(row.attr("__getitem__")("MURZ"));
@@ -76,8 +72,7 @@ std::array<Real, 3> ElementBuilder::get_mu_matrix(unsigned int material_num) con
 
 std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) const
 {
-    const ssize_t idx = find_row_index(materials_attribute_, "MATERIAL", material_num);
-    const py::object row = materials_attribute_.attr("iloc").attr("__getitem__")(idx);
+    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL", material_num);
     const Real rsvx = py::cast<Real>(row.attr("__getitem__")("RSVX"));
     const Real rsvy = py::cast<Real>(row.attr("__getitem__")("RSVY"));
     const Real rsvz = py::cast<Real>(row.attr("__getitem__")("RSVZ"));
@@ -86,8 +81,7 @@ std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) 
 
 std::vector<Real> ElementBuilder::get_real_constants(unsigned int constant_num) const
 {
-    const ssize_t idx = find_row_index(real_constants_attribute_, "CONSTANT", constant_num);
-    const py::object row = real_constants_attribute_.attr("iloc").attr("__getitem__")(idx);
+    const py::object row = get_row_by_id(real_constants_attribute_, "CONSTANT", constant_num);
     static const std::array<const char *, 20> columns = {
         "THK", "SC", "NC", "VC", "RAD",
         "TX", "TY", "TZ", "R", "SYM",

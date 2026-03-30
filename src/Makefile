@@ -1,4 +1,6 @@
 # Default to local libMesh install; environment overrides still work
+.PHONY: all module clean
+
 LIBMESH_DIR ?= /home/bitteal/libmesh_inst
 LIBMESH_CONFIG ?= $(LIBMESH_DIR)/bin/libmesh-config
 METHOD ?= dbg
@@ -42,7 +44,8 @@ ELEMENT_TYPES_SOURCES := $(wildcard element_types/*.cpp)
 OBJECTS=$(SOURCES:.cpp=.o) $(ELEMENT_BUILDERS_SOURCES:.cpp=.o) $(ELEMENT_TYPES_SOURCES:.cpp=.o)
 DEPS=$(SOURCES:.cpp=.d) $(ELEMENT_BUILDERS_SOURCES:.cpp=.d) $(ELEMENT_TYPES_SOURCES:.cpp=.d)
 
-all: $(TARGET)
+all: module
+module: $(TARGET)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

@@ -366,6 +366,12 @@ void VTKIO_Updated::set_compression(bool b)
     this->_compress = b;
 }
 
+void VTKIO_Updated::write_nodal_data(const std::string &,
+                                     const std::vector<Number> &,
+                                     const std::vector<std::string> &)
+{
+}
+
 #else // !LIBMESH_HAVE_VTK
 
 void VTKIO_Updated::read(vtkUnstructuredGrid *grid)

@@ -168,7 +168,7 @@ private:
 
     void append_and_write_solution(System &system,
                                    const std::vector<DenseVector<Number>> &ordered_vectors);
-    ssize_t find_row_index(const pybind11::object &table, const char *id_column, unsigned int id) const;
+    pybind11::object get_row_by_id(const pybind11::object &table, const char *id_column, unsigned int id) const;
     std::array<Real, 3> get_mu_matrix(unsigned int material_num) const;
     std::array<Real, 3> get_sigma_matrix(unsigned int material_num) const;
     std::vector<Real> get_real_constants(unsigned int constant_num) const;
