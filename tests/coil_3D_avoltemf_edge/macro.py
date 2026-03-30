@@ -5,6 +5,7 @@ from coordinate_system import CylindricalCoordinateSystem
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
+
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -25,8 +26,11 @@ coil = 0.2
 extr_angle = 30
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.real_constants = Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
-                                          (coil ** 2, 2000, np.pi*size*coil*coil/(360/extr_angle), 20, 1.0))
+apec.constants = Cyclic.coil_winding(
+    apec.mesh,
+    CylindricalCoordinateSystem(),
+    (coil**2, 2000, np.pi * size * coil * coil / (360 / extr_angle), 20, 1.0),
+)
 apec.write_model_data()
 
 Selector.select_all(apec.mesh)
@@ -36,7 +40,9 @@ Selector.set_value_on_selection(apec.mesh, "Az", 0)
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
-master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+master_node = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")
+).nonzero()[0][0]
 
 
 Selector.select_all(apec.mesh)

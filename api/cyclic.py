@@ -140,7 +140,9 @@ class Cyclic:
                 continue
             candidate_ids = target_ids[candidate_idx]
             if axis_mask[row_idx]:
-                trimmed = np.full((n_slices,), candidate_ids[0], dtype=candidate_ids.dtype)
+                trimmed = np.full(
+                    (n_slices,), candidate_ids[0], dtype=candidate_ids.dtype
+                )
             else:
                 poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
                 if candidate_idx.size > n_slices:
@@ -150,7 +152,9 @@ class Cyclic:
                 else:
                     order = np.argsort(poloidal_dist)
                     trimmed = candidate_ids[order]
-            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:n_slices].astype(np.int64, copy=False)
+            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:n_slices].astype(
+                np.int64, copy=False
+            )
 
         return mapping
 
@@ -180,7 +184,7 @@ class Cyclic:
             variables: Optional sequence of DOF variable names to couple.
 
         Returns:
-            Optional[pd.DataFrame]: DataFrame with columns ["cp_id", "variable"] when
+            Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "variable"] when
                 variables are provided, otherwise None.
         """
         if coordinate_system.type != "cylindrical":
@@ -204,8 +208,8 @@ class Cyclic:
         if not np.any(selection_mask):
             if variables_list is None:
                 return None
-            return pd.DataFrame(columns=["cp_id", "variable"]).astype(
-                {"cp_id": int, "variable": str}
+            return pd.DataFrame(columns=["CP_ID", "variable"]).astype(
+                {"CP_ID": int, "variable": str}
             )
 
         points = mesh.GetPoints()
@@ -214,9 +218,7 @@ class Cyclic:
         selected_coords = coords[selected_ids]
         local_coords = coordinate_system.to_local(selected_coords)
         if not np.all(np.abs(local_coords[:, 1]) <= tolerance):
-            raise ValueError(
-                "Selected points must have theta == 0 within tolerance."
-            )
+            raise ValueError("Selected points must have theta == 0 within tolerance.")
         local_coords[:, 1] += theta_rotation
         rotated_coords = coordinate_system.to_global(local_coords)
 
@@ -260,8 +262,8 @@ class Cyclic:
             return None
 
         rows = [(cp_id, var) for cp_id in new_cp_ids for var in variables_list]
-        return pd.DataFrame(rows, columns=["cp_id", "variable"]).astype(
-            {"cp_id": int, "variable": str}
+        return pd.DataFrame(rows, columns=["CP_ID", "variable"]).astype(
+            {"CP_ID": int, "variable": str}
         )
 
     @staticmethod
@@ -274,7 +276,7 @@ class Cyclic:
         Assign per-cell real constants for selected coil elements in a cylindrical frame.
 
         For each selected cell, a new increasing real-constant ID is written to the mesh
-        cell-data array, and a matching row is returned in a real_constants DataFrame with
+        cell-data array, and a matching row is returned in a constants DataFrame with
         directional cosines TX/TY/TZ aligned with the local theta axis.
 
         Args:
@@ -283,13 +285,15 @@ class Cyclic:
             winding_parameters: Optional tuple (SC, NC, VC, R, SYM).
 
         Returns:
-            pd.DataFrame: Rows ready to assign into apec.real_constants.
+            pd.DataFrame: Rows ready to assign into apec.constants.
         """
         if coordinate_system.type != "cylindrical":
             raise ValueError("coordinate_system must be cylindrical.")
 
         if winding_parameters is not None and len(winding_parameters) != 5:
-            raise ValueError("winding_values must be a tuple of 5 values: (SC, NC, VC, R, SYM).")
+            raise ValueError(
+                "winding_values must be a tuple of 5 values: (SC, NC, VC, R, SYM)."
+            )
 
         Selector.ensure_selection_arrays(mesh)
 
@@ -305,10 +309,10 @@ class Cyclic:
 
         real_constant_np = vtknp.vtk_to_numpy(cell_data.GetArray("CONSTANT"))
         current_max = int(np.max(real_constant_np)) if real_constant_np.size else 0
-        new_real_constants = np.arange(
+        new_constants = np.arange(
             current_max + 1, current_max + 1 + selected_ids.size, dtype=int
         )
-        real_constant_np[selected_ids] = new_real_constants
+        real_constant_np[selected_ids] = new_constants
         cell_data.GetArray("CONSTANT").Modified()
 
         centroids = ModelEdit.compute_cell_centroids(mesh)
@@ -319,18 +323,20 @@ class Cyclic:
             local_components, selected_centroids
         )
 
-        real_constants_df = pd.DataFrame(0.0, index=np.arange(selected_ids.size), columns=columns)
-        real_constants_df["CONSTANT"] = new_real_constants
-        real_constants_df["TX"] = coil_directions[:, 0]
-        real_constants_df["TY"] = coil_directions[:, 1]
-        real_constants_df["TZ"] = coil_directions[:, 2]
+        constants_df = pd.DataFrame(
+            0.0, index=np.arange(selected_ids.size), columns=columns
+        )
+        constants_df["CONSTANT"] = new_constants
+        constants_df["TX"] = coil_directions[:, 0]
+        constants_df["TY"] = coil_directions[:, 1]
+        constants_df["TZ"] = coil_directions[:, 2]
 
         if winding_parameters is not None:
             sc, nc, vc, r_value, sym = winding_parameters
-            real_constants_df["SC"] = sc
-            real_constants_df["NC"] = nc
-            real_constants_df["VC"] = vc
-            real_constants_df["R"] = r_value
-            real_constants_df["SYM"] = sym
+            constants_df["SC"] = sc
+            constants_df["NC"] = nc
+            constants_df["VC"] = vc
+            constants_df["R"] = r_value
+            constants_df["SYM"] = sym
 
-        return real_constants_df.astype(dtype_map)
+        return constants_df.astype(dtype_map)

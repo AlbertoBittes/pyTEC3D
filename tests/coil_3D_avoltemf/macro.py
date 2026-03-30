@@ -8,6 +8,7 @@ import vtk.util.numpy_support as vtknp
 import vtk
 import numpy as np
 import pandas as pd
+
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -36,53 +37,198 @@ Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 100000)
 # Take the first selected node as master node (lowest ID)
-master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
-apec.real_constants = pd.concat([apec.real_constants, Cyclic.coil_winding(apec.mesh, CylindricalCoordinateSystem(),
-                                          (coil ** 2, 2000, np.pi*size*coil*coil, 10,(360/extr_angle)))])
+master_node = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")
+).nonzero()[0][0]
+apec.constants = pd.concat(
+    [
+        apec.constants,
+        Cyclic.coil_winding(
+            apec.mesh,
+            CylindricalCoordinateSystem(),
+            (coil**2, 2000, np.pi * size * coil * coil, 10, (360 / extr_angle)),
+        ),
+    ]
+)
 
-Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="a", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (size-tol, size+tol), mode="a", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size - tol, size + tol),
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size - tol, -size + tol),
+    mode="a",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (size - tol, size + tol),
+    mode="a",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh, 0, (-tol, tol), mode="s", coordinate_system=CylindricalCoordinateSystem()
+)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
 
-Selector.select_pos(apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size - tol, -size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="u")
-apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A"))])
+apec.dof_couplings = pd.concat(
+    [
+        apec.dof_couplings,
+        Cyclic.cpcyc(
+            apec.mesh,
+            CylindricalCoordinateSystem(),
+            extr_angle,
+            array_name="CP_1",
+            variables=("A"),
+        ),
+    ]
+)
 
-Selector.select_pos(apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (1-tol, 1+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh,
+    1,
+    (extr_angle - tol, extr_angle + tol),
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (1 - tol, 1 + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size - tol, -size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="u")
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
-Selector.select_pos(apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size - tol, -size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="r")
-apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_1", variables=("A", "VOLT"))])
+apec.dof_couplings = pd.concat(
+    [
+        apec.dof_couplings,
+        Cyclic.cpcyc(
+            apec.mesh,
+            CylindricalCoordinateSystem(),
+            extr_angle,
+            array_name="CP_1",
+            variables=("A", "VOLT"),
+        ),
+    ]
+)
 
-Selector.select_pos(apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (1-tol, 1+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (size-tol, size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 2, (-size-tol, -size+tol), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(
+    apec.mesh,
+    1,
+    (extr_angle - tol, extr_angle + tol),
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
+)
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (1 - tol, 1 + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size - tol, size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size - tol, -size + tol),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh, mode="r")
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)

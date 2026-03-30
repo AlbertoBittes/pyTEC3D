@@ -97,7 +97,7 @@ void ElementBuilder::build_plane233()
 
     Real r_sign = pow(-1, axisymm);
 
-    Real thk = this->get_real_constants(this->elem_data.real_constant_num)[0];
+    Real thk = this->get_constants(this->elem_data.real_constant_num)[0];
     if (thk == 0.0)
         thk = 1.0;
 
@@ -291,7 +291,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+        const auto rc = this->get_constants(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
         const Real nc = rc[2];
@@ -342,7 +342,7 @@ void ElementBuilder::build_plane233()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+        const auto rc = this->get_constants(this->elem_data.real_constant_num);
 
         const Real sc = rc[1];
         const Real nc = rc[2];
@@ -660,7 +660,7 @@ void ElementBuilder::build_plane233_element_solution()
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
                 break;
 
-            Real thk = this->get_real_constants(this->elem_data.real_constant_num)[0];
+            Real thk = this->get_constants(this->elem_data.real_constant_num)[0];
             if (thk == 0.0)
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR_SOLENOIDAL elements.");
             Real V_factor = sigma_matrix[0] * Vn / thk;
@@ -700,7 +700,7 @@ void ElementBuilder::build_plane233_element_solution()
                 En = sol_vectors_dt[2][0];
             }
 
-            const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+            const auto rc = this->get_constants(this->elem_data.real_constant_num);
             const Real sc = rc[1];
             const Real nc = rc[2];
             const Real tz = rc[7];

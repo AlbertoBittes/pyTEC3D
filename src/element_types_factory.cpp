@@ -41,7 +41,7 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
 
     py::object dataframe = element_types_attribute;
     const auto ansys_ids = py::cast<std::vector<int>>(
-        dataframe.attr("__getitem__")("TYPE").attr("tolist")());
+        dataframe.attr("__getitem__")("TYPE_ID").attr("tolist")());
     const auto element_labels = py::cast<std::vector<std::string>>(
         dataframe.attr("__getitem__")("element_type").attr("tolist")());
 
@@ -54,9 +54,7 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
     }
 
     std::sort(OPTION_columns.begin(), OPTION_columns.end(), [](const std::string &a, const std::string &b)
-              {
-                  return parse_option_column_index(a) < parse_option_column_index(b);
-              });
+              { return parse_option_column_index(a) < parse_option_column_index(b); });
 
     std::vector<std::vector<int>> option_values;
     option_values.reserve(OPTION_columns.size());

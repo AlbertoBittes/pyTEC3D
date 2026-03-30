@@ -1,5 +1,0 @@
--read_mesh ITER_coil_3D_test_1.vtu
--load_data model_data.bin
--mode analysis transient
--print_model_data
--solve_transient

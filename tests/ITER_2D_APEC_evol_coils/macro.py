@@ -15,8 +15,12 @@ apec_evolution_mesh_notrans = "ITER_2D_APEC_evol_coils_equilibrium"
 apec_equilibrium_output = "ITER_2D_APEC_coils_out_0"
 
 
-evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
-static_mesh_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu")
+evol_filepath = os.path.join(
+    os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu"
+)
+static_mesh_filepath = os.path.join(
+    os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu"
+)
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
@@ -59,48 +63,66 @@ for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
     Selector.select(apec.mesh, comp, 1, type="elem", mode="s")
     Selector.nsle(apec.mesh)
     Selector.set_value_on_selection(apec.mesh, "CP_0", 11 + k)
-    master_node_cs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+    master_node_cs = vtknp.vtk_to_numpy(
+        apec.mesh.GetPointData().GetArray("selection_point")
+    ).nonzero()[0][0]
     Selector.select(apec.mesh, "ID", master_node_cs)
-    mask = apec.real_constants["CONSTANT"] == 11 + k
-    n_turns = apec.real_constants[mask]["NC"].values[0]
-    resistance = apec.real_constants[mask]["R"].values[0]
-    Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")
+    mask = apec.constants["CONSTANT"] == 11 + k
+    n_turns = apec.constants[mask]["NC"].values[0]
+    resistance = apec.constants[mask]["R"].values[0]
+    Selector.select(
+        apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s"
+    )
     output_mesh = apec.get_mesh(apec_equilibrium_output)
-    selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+    selection_mask = vtknp.vtk_to_numpy(
+        output_mesh.GetCellData().GetArray("selection_cell")
+    )
     jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
     jt_z = jt_z_array[selection_mask == 1][0]
-    sc = apec.real_constants[mask]["SC"].values[0]
+    sc = apec.constants[mask]["SC"].values[0]
     current = sc * jt_z
-    voltage = - resistance * current / n_turns
+    voltage = -resistance * current / n_turns
     Selector.set_value_on_selection(apec.mesh, "V", voltage)
 
 for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"]):
     Selector.select(apec.mesh, comp, 1, type="elem", mode="s")
     Selector.nsle(apec.mesh)
     Selector.set_value_on_selection(apec.mesh, "CP_0", 1 + k)
-    master_node_pfcs = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+    master_node_pfcs = vtknp.vtk_to_numpy(
+        apec.mesh.GetPointData().GetArray("selection_point")
+    ).nonzero()[0][0]
     Selector.select(apec.mesh, "ID", master_node_pfcs)
-    mask = apec.real_constants["CONSTANT"] == 1 + k
-    n_turns = apec.real_constants[mask]["NC"].values[0]
-    resistance = apec.real_constants[mask]["R"].values[0]
-    Selector.select(apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s")
+    mask = apec.constants["CONSTANT"] == 1 + k
+    n_turns = apec.constants[mask]["NC"].values[0]
+    resistance = apec.constants[mask]["R"].values[0]
+    Selector.select(
+        apec.get_mesh(apec_equilibrium_output), comp, 1, type="elem", mode="s"
+    )
     output_mesh = apec.get_mesh(apec_equilibrium_output)
-    selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+    selection_mask = vtknp.vtk_to_numpy(
+        output_mesh.GetCellData().GetArray("selection_cell")
+    )
     jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
     jt_z = jt_z_array[selection_mask == 1][0]
-    sc = apec.real_constants[mask]["SC"].values[0]
+    sc = apec.constants[mask]["SC"].values[0]
     current = sc * jt_z
-    voltage = - resistance * current / n_turns
+    voltage = -resistance * current / n_turns
     Selector.set_value_on_selection(apec.mesh, "V", voltage)
 
 # 1. Select COILS and VACUUM_CHAMBER in output mesh
-Selector.select(apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.select(
+    apec.get_mesh(apec_equilibrium_output), "VACUUM_CHAMBER", 1, type="elem", mode="s"
+)
 
 # 2. Extract selection mask, Jt_z, and libmesh_elem_id arrays from output mesh
 output_mesh = apec.get_mesh(apec_equilibrium_output)
-selection_mask = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("selection_cell"))
+selection_mask = vtknp.vtk_to_numpy(
+    output_mesh.GetCellData().GetArray("selection_cell")
+)
 jt_z_array = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("Jt_z"))
-libmesh_elem_id_out = vtknp.vtk_to_numpy(output_mesh.GetCellData().GetArray("libmesh_elem_id"))
+libmesh_elem_id_out = vtknp.vtk_to_numpy(
+    output_mesh.GetCellData().GetArray("libmesh_elem_id")
+)
 
 # 3. Get selected libmesh ids and corresponding Jt_z values
 selected = selection_mask == 1
@@ -147,8 +169,16 @@ apec.apec_settings["toroidal_slices_elems"] = Cyclic.build_toroidal_slices(
 )
 
 # Save the toroidal projection maps to files
-np.savetxt("toroidal_slices_nodes.txt", apec.apec_settings["toroidal_slices_nodes"].astype(int), fmt="%d")
-np.savetxt("toroidal_slices_elems.txt", apec.apec_settings["toroidal_slices_elems"].astype(int), fmt="%d")
+np.savetxt(
+    "toroidal_slices_nodes.txt",
+    apec.apec_settings["toroidal_slices_nodes"].astype(int),
+    fmt="%d",
+)
+np.savetxt(
+    "toroidal_slices_elems.txt",
+    apec.apec_settings["toroidal_slices_elems"].astype(int),
+    fmt="%d",
+)
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt("time_steps.txt")

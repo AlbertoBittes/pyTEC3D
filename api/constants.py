@@ -105,53 +105,52 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
 
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
-    "MATERIAL": int,
-    "MURX": float,
-    "MURY": float,
-    "MURZ": float,
-    "RSVX": float,
-    "RSVY": float,
-    "RSVZ": float,
-    "MGXX": float,
-    "MGYY": float,
-    "MGZZ": float,
+    "MATERIAL_ID": int,
+    "MUR_X": float,
+    "MUR_Y": float,
+    "MUR_Z": float,
+    "RHO_X": float,
+    "RHO_Y": float,
+    "RHO_Z": float,
+    "M_X": float,
+    "M_Y": float,
+    "M_Z": float,
 }
 
 # Assign types to DOF coupling columns
 DOF_COUPLINGS_COLUMNS_TYPES = {
-    "cp_id": int,
-    "variable": str,
+    "CP_ID": int,
+    "VARIABLE": str,
 }
 
 # Assign types to real constants columns
 CONSTANTS_COLUMNS_TYPES = {
-    "CONSTANT": int,
+    "CONSTANT_ID": int,
     "THK": float,
-    "SC": float,
-    "NC": float,
-    "VC": float,
+    "CS": float,
+    "TURNS": float,
+    "VOL": float,
     "RAD": float,
-    "TX": float,
-    "TY": float,
-    "TZ": float,
+    "T_X": float,
+    "T_Y": float,
+    "T_Z": float,
     "R": float,
-    "SYM": float,
-    "VELOX": float,
-    "VELOY": float,
-    "VELOZ": float,
-    "OMEGAX": float,
-    "OMEGAY": float,
-    "OMEGAZ": float,
-    "XLOC": float,
-    "YLOC": float,
-    "ZLOC": float,
-    "CPSIGN": float,
+    "S": float,
+    "V_X": float,
+    "V_Y": float,
+    "V_Z": float,
+    "OMEGA_X": float,
+    "OMEGA_Y": float,
+    "OMEGA_Z": float,
+    "LOC_X": float,
+    "LOC_Y": float,
+    "LOC_Z": float,
 }
 
 # Assign types to element types columns
 ELEMENT_TYPES_COLUMNS_TYPES = {
-    "TYPE": int,
-    "element_type": str,
+    "TYPE_ID": int,
+    "ELEMENT_TYPE": str,
     "OPTION1": int,
     "OPTION2": int,
     "OPTION3": int,
@@ -171,7 +170,7 @@ CELL_POINT_DATA_COLUMNS_TYPES = {
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
     "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
     "materials": MATERIALS_COLUMNS_TYPES,
-    "real_constants": CONSTANTS_COLUMNS_TYPES,
+    "constants": CONSTANTS_COLUMNS_TYPES,
     "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
     "time_step": DEFAULT_TIME_PARAMETERS_TYPES,
     "node": CELL_POINT_DATA_COLUMNS_TYPES,
@@ -183,7 +182,7 @@ DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
 SHEET_PROCESSING_MAP = {
     "element_types": "read_excel_df",
     "materials": "read_excel_df",
-    "real_constants": "read_excel_df",
+    "constants": "read_excel_df",
     "solver_settings": "read_excel_dict",
     "time_step": "read_excel_dict",
     "apec_settings": "read_excel_dict",

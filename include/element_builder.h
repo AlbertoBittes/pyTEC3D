@@ -148,7 +148,7 @@ private:
     DofMap *dof_solution_dof_map_ = nullptr;
     pybind11::object apec_object_;
     pybind11::object materials_attribute_;
-    pybind11::object real_constants_attribute_;
+    pybind11::object constants_attribute_;
     vtkUnstructuredGrid *vtk_grid_ = nullptr;
     vtkDataArray *material_cell_array_ = nullptr;
     vtkDataArray *real_constant_cell_array_ = nullptr;
@@ -171,7 +171,7 @@ private:
     pybind11::object get_row_by_id(const pybind11::object &table, const char *id_column, unsigned int id) const;
     std::array<Real, 3> get_mu_matrix(unsigned int material_num) const;
     std::array<Real, 3> get_sigma_matrix(unsigned int material_num) const;
-    std::vector<Real> get_real_constants(unsigned int constant_num) const;
+    std::vector<Real> get_constants(unsigned int constant_num) const;
 };
 
 #endif // ELEMENT_BUILDER_H

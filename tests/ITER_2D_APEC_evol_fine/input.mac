@@ -1,6 +1,0 @@
--read_mesh ITER_2D_APEC_evol_fine_equilibrium.vtu
--read_mesh ITER_2D_APEC_evol_fine.vtu
--active_mesh ITER_2D_APEC_evol_fine
--load_data model_data.bin
--mode analysis apec_evolution
--solve_transient

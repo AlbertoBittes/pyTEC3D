@@ -50,7 +50,7 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems)
     apec_object_ = equation_systems_->get_parent_object()->get_apec_object();
     vtk_grid_ = equation_systems_->get_parent_object()->active_vtk_grid;
     materials_attribute_ = apec_object_.attr("materials");
-    real_constants_attribute_ = apec_object_.attr("real_constants");
+    constants_attribute_ = apec_object_.attr("constants");
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
 }
@@ -63,31 +63,31 @@ py::object ElementBuilder::get_row_by_id(const py::object &table, const char *id
 
 std::array<Real, 3> ElementBuilder::get_mu_matrix(unsigned int material_num) const
 {
-    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL", material_num);
-    const Real murx = py::cast<Real>(row.attr("__getitem__")("MURX"));
-    const Real mury = py::cast<Real>(row.attr("__getitem__")("MURY"));
-    const Real murz = py::cast<Real>(row.attr("__getitem__")("MURZ"));
+    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL_ID", material_num);
+    const Real murx = py::cast<Real>(row.attr("__getitem__")("MUR_X"));
+    const Real mury = py::cast<Real>(row.attr("__getitem__")("MUR_Y"));
+    const Real murz = py::cast<Real>(row.attr("__getitem__")("MUR_Z"));
     return {kMu0 * murx, kMu0 * mury, kMu0 * murz};
 }
 
 std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) const
 {
-    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL", material_num);
-    const Real rsvx = py::cast<Real>(row.attr("__getitem__")("RSVX"));
-    const Real rsvy = py::cast<Real>(row.attr("__getitem__")("RSVY"));
-    const Real rsvz = py::cast<Real>(row.attr("__getitem__")("RSVZ"));
+    const py::object row = get_row_by_id(materials_attribute_, "MATERIAL_ID", material_num);
+    const Real rsvx = py::cast<Real>(row.attr("__getitem__")("RHO_X"));
+    const Real rsvy = py::cast<Real>(row.attr("__getitem__")("RHO_Y"));
+    const Real rsvz = py::cast<Real>(row.attr("__getitem__")("RHO_Z"));
     return {1.0 / rsvx, 1.0 / rsvy, 1.0 / rsvz};
 }
 
-std::vector<Real> ElementBuilder::get_real_constants(unsigned int constant_num) const
+std::vector<Real> ElementBuilder::get_constants(unsigned int constant_num) const
 {
-    const py::object row = get_row_by_id(real_constants_attribute_, "CONSTANT", constant_num);
-    static const std::array<const char *, 20> columns = {
-        "THK", "SC", "NC", "VC", "RAD",
-        "TX", "TY", "TZ", "R", "SYM",
-        "VELOX", "VELOY", "VELOZ",
-        "OMEGAX", "OMEGAY", "OMEGAZ",
-        "XLOC", "YLOC", "ZLOC", "CPSIGN"};
+    const py::object row = get_row_by_id(constants_attribute_, "CONSTANT_ID", constant_num);
+    static const std::array<const char *, 2019> columns = {
+        "THK", "CS", "TURNS", "VOL", "RAD",
+        "T_X", "T_Y", "T_Z", "R", "S",
+        "V_X", "V_Y", "V_Z",
+        "OMEGA_X", "OMEGA_Y", "OMEGA_Z",
+        "LOC_X", "LOC_Y", "LOC_Z"};
 
     std::vector<Real> values;
     values.reserve(columns.size());

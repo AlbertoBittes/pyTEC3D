@@ -449,7 +449,7 @@ GlobalConstraintsObject::build_coupling_constraints()
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
     py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
     py::object cp_id_values =
-        dof_couplings_df.attr("__getitem__")("cp_id").attr("to_numpy")();
+        dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")();
     py::object variable_values =
         dof_couplings_df.attr("__getitem__")("variable").attr("to_numpy")();
     const py::ssize_t n_entries = py::len(cp_id_values);

@@ -270,7 +270,7 @@ void ElementBuilder::build_solid236()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+        const auto rc = this->get_constants(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -334,7 +334,7 @@ void ElementBuilder::build_solid236()
     }
     case PhysicalRegionEnum::STRANDED_COIL_SOLENOIDAL:
     {
-        const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+        const auto rc = this->get_constants(this->elem_data.real_constant_num);
         const Real sc = rc[1];
         const Real nc = rc[2];
         const Real vc = rc[3];
@@ -714,7 +714,7 @@ void ElementBuilder::build_solid236_element_solution()
                 En = sol_vectors_dt[2][0];
             }
 
-            const auto rc = this->get_real_constants(this->elem_data.real_constant_num);
+            const auto rc = this->get_constants(this->elem_data.real_constant_num);
             const Real sc = rc[1];
             const Real nc = rc[2];
 

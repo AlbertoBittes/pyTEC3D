@@ -136,8 +136,8 @@ py::dict ApecMSolver::solve()
             result["n_element_types"] = py::len(apec_object.attr("element_types"));
         if (py::hasattr(apec_object, "materials"))
             result["n_materials"] = py::len(apec_object.attr("materials"));
-        if (py::hasattr(apec_object, "real_constants"))
-            result["n_real_constants"] = py::len(apec_object.attr("real_constants"));
+        if (py::hasattr(apec_object, "constants"))
+            result["n_constants"] = py::len(apec_object.attr("constants"));
         if (py::hasattr(apec_object, "dof_couplings"))
             result["n_dof_couplings"] = py::len(apec_object.attr("dof_couplings"));
     }

@@ -56,7 +56,7 @@ class APEC_M:
         self.materials: pd.DataFrame = pd.DataFrame(
             columns=list(MATERIALS_COLUMNS_TYPES.keys())
         )
-        self.real_constants: pd.DataFrame = pd.DataFrame(
+        self.constants: pd.DataFrame = pd.DataFrame(
             columns=list(CONSTANTS_COLUMNS_TYPES.keys())
         )
         self.time_step: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
@@ -210,7 +210,9 @@ class APEC_M:
         are present, the first generated time step is 1.
         """
         if not self._active_mesh_name:
-            raise ValueError("No active mesh is set. Activate a mesh before writing output.")
+            raise ValueError(
+                "No active mesh is set. Activate a mesh before writing output."
+            )
 
         mesh_name = self._active_mesh_name
         output_dir = os.path.join(os.getcwd(), mesh_name, "output")
