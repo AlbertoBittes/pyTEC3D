@@ -4,8 +4,8 @@ A new code for electromagnetic simulation of plasma equilibria and disruptions
 ## Local conda recipe install (from source)
 
 ```bash
-conda create -n apec-m-build python=3.12 conda-build -y
-conda activate apec-m-build
+conda create -n apec-m python=3.12 conda-build -y
+conda activate apec-m
 git clone https://github.com/AlbertoBittes/PlasmaArc.git
 cd PlasmaArc
 conda build conda-recipe/recipe && conda install --use-local -y apec_m
@@ -25,6 +25,6 @@ After install, `apec_m` and `apec_m.apec_m_solver` are immediately importable in
 ## Notes
 
 ```bash
-conda activate apec-m-build
+conda activate apec-m
 ```
-Use your installed environment (for example `apec-m-build`) to run scripts/tests.
+Use your installed environment (for example `apec-m`) to run scripts/tests.

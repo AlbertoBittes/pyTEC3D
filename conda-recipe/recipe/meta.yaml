@@ -34,25 +34,24 @@ requirements:
     - pybind11
     - git
     - petsc >=3.19
-    - vtk >=9.1
+    - vtk 9.3.*
     - boost
     - openmpi
   run:
     - python >=3.12
     - petsc >=3.19
-    - vtk >=9.1
+    - vtk 9.3.*
     - boost
     - openmpi
     - numpy
     - pandas
-    - ansys-mapdl-reader
     - mpi4py
     - openpyxl
 
 test:
   commands:
     - python -c "import apec_m.apec_m_solver"
-    - python -c "import apec_m; import openpyxl; from apec_m import APEC_M; APEC_M()"
+    - python -c "import apec_m; import openpyxl; import ansys.mapdl.reader; from apec_m import APEC_M; APEC_M()"
 
 about:
   home: https://github.com/Plasma-Arc-Project/apec_m

@@ -16,7 +16,9 @@ export PETSC_DIR=${PETSC_DIR:-${PREFIX}}
 export METIS_DIR=${METIS_DIR:-${PREFIX}}
 export PARMETIS_DIR=${PARMETIS_DIR:-${PREFIX}}
 export MPI_DIR=${MPI_DIR:-${PREFIX}}
-export VTK_DIR=${VTK_DIR:-${PREFIX}/lib/cmake/vtk}
+export VTK_PREFIX=${VTK_PREFIX:-${PREFIX}}
+export VTK_CMAKE_DIR=${VTK_CMAKE_DIR:-${PREFIX}/lib/cmake/vtk-9.3}
+export VTK_INCLUDE_DIR=${VTK_INCLUDE_DIR:-${PREFIX}/include/vtk-9.3}
 export BOOST_DIR=${BOOST_DIR:-${PREFIX}}
 export LIBMESH_DIR=${LIBMESH_PREFIX}
 export CPPFLAGS="${CPPFLAGS:-} -I${PREFIX}/include"
@@ -24,6 +26,9 @@ export CXXFLAGS="${CXXFLAGS:-} -I${PREFIX}/include"
 export LDFLAGS="${LDFLAGS:-} -L${PREFIX}/lib"
 export LD_LIBRARY_PATH="${PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
+export CPPFLAGS="${CPPFLAGS} -I${VTK_INCLUDE_DIR}"
+export CXXFLAGS="${CXXFLAGS} -I${VTK_INCLUDE_DIR}"
 
 # 1. Clone and build libMesh with the requested options
 rm -rf "${LIBMESH_SRC_DIR}"
@@ -38,7 +43,7 @@ pushd build
     --with-metis="${METIS_DIR}" \
     --with-parmetis="${PARMETIS_DIR}" \
     --with-mpi="${MPI_DIR}" \
-    --with-vtk="${VTK_DIR}" \
+    --with-vtk="${VTK_PREFIX}" \
     --with-boost="${BOOST_DIR}" \
     --disable-strict-lgpl \
     --enable-distmesh \
@@ -61,7 +66,7 @@ cmake "${SRC_DIR}/src" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
     -DPETSC_DIR="${PETSC_DIR}" \
-    -DVTK_DIR="${VTK_DIR}" \
+    -DVTK_DIR="${VTK_CMAKE_DIR}" \
     -DBOOST_ROOT="${BOOST_DIR}" \
     -DBOOST_INCLUDEDIR="${BOOST_DIR}/include" \
     -DBOOST_LIBRARYDIR="${BOOST_DIR}/lib" \
@@ -86,5 +91,8 @@ pushd "${SRC_DIR}"
 "${PYTHON}" -m pip install --no-build-isolation --no-deps --prefix "${PREFIX}" .
 popd
 
-# 4. Vendor openpyxl into repository-local python/apec_m/local_packages for ParaView usage.
+# 4. Install ansys-mapdl-reader from PyPI (py312-compatible release).
+"${PYTHON}" -m pip install --prefix "${PREFIX}" "ansys-mapdl-reader==0.55.2"
+
+# 5. Vendor openpyxl into repository-local python/apec_m/local_packages for ParaView usage.
 "${PYTHON}" -m pip install --upgrade openpyxl et_xmlfile --target "${SRC_DIR}/python/apec_m/local_packages"

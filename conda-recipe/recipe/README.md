@@ -11,7 +11,7 @@ This recipe builds `apec_m` locally from source. It is designed for the case whe
 3. install `libmesh` into the conda build prefix
 4. configure and compile `apec_m_solver` (pybind module) with CMake/Ninja
 5. install Python API modules into the conda package prefix with pip (`--no-deps`)
-6. ensure `openpyxl` is available in the conda environment
+6. install `ansys-mapdl-reader==0.55.2` via pip (PyPI)
 7. vendor `openpyxl` into `python/apec_m/local_packages` during recipe build for ParaView-side script usage
 
 ## Local usage
@@ -19,8 +19,8 @@ This recipe builds `apec_m` locally from source. It is designed for the case whe
 From the repository root:
 
 ```bash
-conda create -n apec-m-build python=3.12 conda-build -y
-conda activate apec-m-build
+conda create -n apec-m python=3.12 conda-build -y
+conda activate apec-m
 conda build conda-recipe/recipe && conda install --use-local -y apec_m
 ```
 
