@@ -150,7 +150,7 @@ CONSTANTS_COLUMNS_TYPES = {
 # Assign types to element types columns
 ELEMENT_TYPES_COLUMNS_TYPES = {
     "TYPE_ID": int,
-    "ELEMENT_TYPE": str,
+    "ELEMENT_TYPE": int,
     "OPTION1": int,
     "OPTION2": int,
     "OPTION3": int,
@@ -161,10 +161,10 @@ ELEMENT_TYPES_COLUMNS_TYPES = {
 
 # Assign types to loads and boundary conditions columns
 CELL_POINT_DATA_COLUMNS_TYPES = {
-    "vtk_id": int,
-    "label": str,
-    "component": int,
-    "value": float,
+    "VTK_ID": int,
+    "LABEL": str,
+    "COMPONENT": int,
+    "VALUE": float,
 }
 
 DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {

@@ -81,8 +81,8 @@ std::array<Real, 3> ElementBuilder::get_sigma_matrix(unsigned int material_num) 
 
 std::vector<Real> ElementBuilder::get_constants(unsigned int constant_num) const
 {
-    const py::object row = get_row_by_id(constants_attribute_, "CONSTANT_ID", constant_num);
-    static const std::array<const char *, 2019> columns = {
+    const py::object row = get_row_by_id(constants_attribute_, "CONSTANTS_ID", constant_num);
+    static const std::array<const char *, 19> columns = {
         "THK", "CS", "TURNS", "VOL", "RAD",
         "T_X", "T_Y", "T_Z", "R", "S",
         "V_X", "V_Y", "V_Z",
