@@ -38,8 +38,18 @@ namespace
 
     const py::object &coordinate_system_class()
     {
-        static py::object cls =
-            py::module_::import("coordinate_system").attr("CoordinateSystem");
+        static py::object cls = []() -> py::object
+        {
+            try
+            {
+                return py::module_::import("apec_m.coordinate_system").attr("CoordinateSystem");
+            }
+            catch (const py::error_already_set &)
+            {
+                // Backward-compat fallback for legacy path setups.
+                return py::module_::import("coordinate_system").attr("CoordinateSystem");
+            }
+        }();
         return cls;
     }
 
@@ -138,6 +148,7 @@ GlobalConstraintsObject::build_point_constraints()
     {
         unsigned int var_number = libMesh::invalid_uint;
         vtkDataArray *array = nullptr;
+        unsigned int component_index = 0;
     };
 
     std::vector<ScalarArrayEntry> scalar_arrays;
@@ -148,10 +159,32 @@ GlobalConstraintsObject::build_point_constraints()
         if (vector_var_numbers.count(var_num))
             continue;
 
-        const std::string array_name = "_" + system->variable_name(var_num);
-        vtkDataArray *array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
-        if (array)
-            scalar_arrays.push_back({var_num, array});
+        const std::string &var_name = system->variable_name(var_num);
+        const GlobalVariableName global_var = VariablesMap::get_key_by_predicate_one(
+            [&var_name](const VariableInfo &info)
+            {
+                return info.global_label == var_name;
+            });
+        const auto &var_info = VariablesMap::get_info_by_key(global_var);
+
+        vtkDataArray *array = nullptr;
+        std::string array_name = "_" + var_info.api_label;
+        array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
+
+        if (!array)
+        {
+            array_name = "_" + var_info.global_label;
+            array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
+        }
+
+        if (!array || array->GetNumberOfComponents() <= 0)
+            continue;
+
+        const unsigned int component_index =
+            (var_info.component_index < static_cast<unsigned int>(array->GetNumberOfComponents()))
+                ? var_info.component_index
+                : 0u;
+        scalar_arrays.push_back({var_num, array, component_index});
     }
 
     const Real tol = std::numeric_limits<Real>::epsilon();
@@ -431,7 +464,8 @@ GlobalConstraintsObject::build_point_constraints()
             if (constrained_dofs.count(dof) != 0)
                 continue;
 
-            const Real value = static_cast<Real>(scalar_entry.array->GetComponent(point_id, 0));
+            const Real value = static_cast<Real>(
+                scalar_entry.array->GetComponent(point_id, scalar_entry.component_index));
             if (!is_valid_constraint_value(value))
                 continue;
 
@@ -469,7 +503,7 @@ GlobalConstraintsObject::build_coupling_constraints()
     py::object cp_id_values =
         dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")();
     py::object variable_values =
-        dof_couplings_df.attr("__getitem__")("variable").attr("to_numpy")();
+        dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")();
     const py::ssize_t n_entries = py::len(cp_id_values);
     if (n_entries == 0)
         return constraints;
@@ -657,6 +691,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
 void GlobalConstraintsObject::constrain()
 {
+    if (!this->get_parent_object()->is_initialized())
+        return;
     DofMap &dof_map = this->parent_object->get_dof_map();
     libMesh::out << "Applying constraints to the system." << std::endl;
 

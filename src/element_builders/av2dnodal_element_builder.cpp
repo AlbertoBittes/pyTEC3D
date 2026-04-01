@@ -595,7 +595,8 @@ void ElementBuilder::build_av2dnodal_element_solution()
         case PhysicalRegionEnum::SOLID_CONDUCTOR:
         {
             Real Vn = 0.0;
-            if (elem_data.element_type->get_OPTIONs()[4] == 0)
+            if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
+                elem_data.element_type->get_OPTIONs()[4] == 0)
                 Vn = sol_vectors[1][0];
 
             const auto sol_vectors_dt =

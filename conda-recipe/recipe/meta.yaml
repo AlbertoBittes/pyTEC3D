@@ -11,6 +11,9 @@ source:
 build:
   number: 0
   skip: false
+  script_env:
+    - APEC_M_LIBMESH_METHOD
+    - APEC_M_INSTALL_MODE
 
 requirements:
   build:
@@ -31,17 +34,21 @@ requirements:
     - pip
     - setuptools
     - wheel
+    - numpy
+    - pandas
+    - openpyxl
+    - mpi4py
     - pybind11
     - git
     - petsc >=3.19
-    - vtk 9.3.*
-    - boost
+    - vtk >=9.5
+    - libboost-devel
     - openmpi
   run:
     - python >=3.12
     - petsc >=3.19
-    - vtk 9.3.*
-    - boost
+    - vtk >=9.5
+    - libboost-devel
     - openmpi
     - numpy
     - pandas

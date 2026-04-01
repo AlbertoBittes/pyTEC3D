@@ -71,8 +71,6 @@ void AssemblerLinear::assemble()
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    const py::dict time_step = get_time_step_dict_from_solver(eq_sys);
-
     auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     system.rhs->zero();
@@ -86,9 +84,10 @@ void AssemblerLinear::assemble()
     std::vector<Real> old_solution_values;
     std::vector<Real> old_time_derivative_values;
 
-    const Real dt = py::cast<Real>(time_step["dt"]);
-    const Real theta = py::cast<Real>(time_step["theta"]);
-    const bool transient_effect = py::cast<bool>(time_step["transient_effects"]);
+    const auto time_step = system.time_step.get();
+    const Real dt = time_step->dt;
+    const Real theta = py::cast<Real>(time_step->time_step_dict["theta"]);
+    const bool transient_effect = py::cast<bool>(time_step->time_step_dict["transient_effects"]);
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
     const std::string rank_str = std::to_string(comm.rank());
 

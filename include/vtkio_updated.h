@@ -25,13 +25,11 @@
 #include "libmesh/utility.h"
 #include "libmesh/equation_systems.h"
 
-#ifdef LIBMESH_HAVE_VTK
 // Ignore "deprecated...header" warning from strstream
 #include "libmesh/ignore_warnings.h"
 #include "vtkType.h"
 #include "vtkSmartPointer.h"
 #include "libmesh/restore_warnings.h"
-#endif
 
 // C++ includes
 #include <cstddef>
@@ -66,8 +64,6 @@ public:
 
     void write_system_grid(const std::string &system_name);
     void set_vtk_grid(vtkUnstructuredGrid *grid);
-
-#ifdef LIBMESH_HAVE_VTK
 
     void set_compression(bool b);
 
@@ -118,7 +114,6 @@ private:
 
     // void broadcast_all_fe_data_objects();
 
-#endif
 };
 
 #endif // VTKIO_UPDATED_H

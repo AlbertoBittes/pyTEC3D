@@ -125,7 +125,7 @@ DOF_COUPLINGS_COLUMNS_TYPES = {
 
 # Assign types to real constants columns
 CONSTANTS_COLUMNS_TYPES = {
-    "CONSTANT_ID": int,
+    "CONSTANTS_ID": int,
     "THK": float,
     "CS": float,
     "TURNS": float,
@@ -201,25 +201,25 @@ VTK_ARRAYS_TO_INIT = {
     "A": {
         "location": "node",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Az": {
         "location": "node",
         "components": 1,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "VOLT": {
         "location": "node",
         "components": 1,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "EMF": {
         "location": "node",
         "components": 1,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "_A": {
@@ -249,43 +249,43 @@ VTK_ARRAYS_TO_INIT = {
     "B": {
         "location": "node",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "H": {
         "location": "node",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Be": {
         "location": "elem",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "He": {
         "location": "elem",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Jt": {
         "location": "elem",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "AMPS": {
         "location": "node",
         "components": 1,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "Js": {
         "location": "elem",
         "components": 3,
-        "fill": np.nan,
+        "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
     "CP_0": {

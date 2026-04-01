@@ -8,10 +8,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
-find_package(PETSc REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PETSC QUIET IMPORTED_TARGET PETSc)
+if(NOT PETSC_FOUND)
+  pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET petsc)
+endif()
 option(APEC_M_BUILD_PYBIND_MODULE "Build the Python solver extension module (pybind11)." ON)
 
 if(APEC_M_BUILD_PYBIND_MODULE)
+  set(PYBIND11_FINDPYTHON ON)
   find_package(pybind11 CONFIG REQUIRED)
 endif()
 
@@ -22,8 +27,6 @@ find_package(VTK REQUIRED
     CommonExecutionModel
     FiltersCore
     IOXML
-    IOParallelXML
-    ParallelMPI
 )
 
 set(LIBMESH_DIR "${LIBMESH_DIR}" CACHE PATH "Path to the libMesh installation.")
@@ -34,30 +37,48 @@ if(NOT LIBMESH_DIR)
   message(FATAL_ERROR "LIBMESH_DIR must be provided (e.g., -DLIBMESH_DIR=/path/to/libmesh).")
 endif()
 
+set(LIBMESH_METHOD "$ENV{APEC_M_LIBMESH_METHOD}" CACHE STRING "libMesh method to link against: opt, dbg, devel")
+if(NOT LIBMESH_METHOD)
+  set(LIBMESH_METHOD "opt")
+endif()
+string(TOLOWER "${LIBMESH_METHOD}" LIBMESH_METHOD)
+if(NOT LIBMESH_METHOD STREQUAL "opt" AND
+   NOT LIBMESH_METHOD STREQUAL "dbg" AND
+   NOT LIBMESH_METHOD STREQUAL "devel")
+  message(FATAL_ERROR "Invalid LIBMESH_METHOD='${LIBMESH_METHOD}'. Allowed: opt, dbg, devel.")
+endif()
+message(STATUS "Using libMesh method: ${LIBMESH_METHOD}")
+
 find_library(LIBMESH_LIB
-  NAMES mesh_opt mesh_dbg
+  NAMES mesh_${LIBMESH_METHOD}
   HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
   REQUIRED
 )
 find_library(TIMPI_LIB
-  NAMES timpi_opt timpi_dbg
+  NAMES timpi_${LIBMESH_METHOD}
   HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
   REQUIRED
 )
 
-file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+)
+get_filename_component(APEC_M_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 set(APEC_M_INCLUDE_DIRS
   "${LIBMESH_DIR}/include"
-  ${CMAKE_SOURCE_DIR}/include
-  ${CMAKE_SOURCE_DIR}/include/dependencies
-  ${PETSC_INCLUDES}
+  "${APEC_M_REPO_ROOT}/include"
+  ${PETSC_INCLUDE_DIRS}
 )
+
+if(EXISTS "${APEC_M_REPO_ROOT}/include/dependencies")
+  list(APPEND APEC_M_INCLUDE_DIRS "${APEC_M_REPO_ROOT}/include/dependencies")
+endif()
 
 set(APEC_M_LINK_LIBS
   ${LIBMESH_LIB}
   ${TIMPI_LIB}
-  ${PETSC_LIBRARIES}
+  PkgConfig::PETSC
   MPI::MPI_CXX
   Threads::Threads
   OpenMP::OpenMP_CXX
@@ -66,8 +87,6 @@ set(APEC_M_LINK_LIBS
   VTK::CommonExecutionModel
   VTK::FiltersCore
   VTK::IOXML
-  VTK::IOParallelXML
-  VTK::ParallelMPI
 )
 
 if(APEC_M_BUILD_PYBIND_MODULE)
@@ -84,11 +103,11 @@ if(APEC_M_BUILD_PYBIND_MODULE)
     PRIVATE ${APEC_M_INCLUDE_DIRS}
   )
 
-  target_compile_definitions(apec_m_solver
-    PRIVATE
-      APEC_M_ENABLE_PYBIND
-      ${PETSC_DEFINITIONS}
-  )
+  target_compile_definitions(apec_m_solver PRIVATE APEC_M_ENABLE_PYBIND)
+
+  if(PETSC_CFLAGS_OTHER)
+    target_compile_options(apec_m_solver PRIVATE ${PETSC_CFLAGS_OTHER})
+  endif()
 
   target_link_libraries(apec_m_solver
     PRIVATE
@@ -104,7 +123,5 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       VTK::CommonExecutionModel
       VTK::FiltersCore
       VTK::IOXML
-      VTK::IOParallelXML
-      VTK::ParallelMPI
   )
 endif()

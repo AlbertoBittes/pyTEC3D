@@ -71,7 +71,15 @@ void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
     if (libmesh_init)
         return;
 
-    libmesh_init = std::make_unique<libMesh::LibMeshInit>(argc, argv, mpi_comm);
+    // libMesh expects a valid argv array. Passing nullptr may segfault in some builds.
+    static const char *default_argv[] = {"apec_m_solver"};
+    const bool has_user_args = (argc > 0 && argv != nullptr);
+    const int init_argc = has_user_args ? argc : 1;
+    const char *const *init_argv = has_user_args
+                                       ? const_cast<const char *const *>(argv)
+                                       : default_argv;
+
+    libmesh_init = std::make_unique<libMesh::LibMeshInit>(init_argc, init_argv, mpi_comm);
 }
 
 ApecMSolver::ApecMSolver(py::object mpi_comm)

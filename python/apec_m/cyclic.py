@@ -184,7 +184,7 @@ class Cyclic:
             variables: Optional sequence of DOF variable names to couple.
 
         Returns:
-            Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "variable"] when
+            Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "VARIABLE"] when
                 variables are provided, otherwise None.
         """
         if coordinate_system.type != "cylindrical":
@@ -208,8 +208,8 @@ class Cyclic:
         if not np.any(selection_mask):
             if variables_list is None:
                 return None
-            return pd.DataFrame(columns=["CP_ID", "variable"]).astype(
-                {"CP_ID": int, "variable": str}
+            return pd.DataFrame(columns=["CP_ID", "VARIABLE"]).astype(
+                {"CP_ID": int, "VARIABLE": str}
             )
 
         points = mesh.GetPoints()
@@ -262,8 +262,8 @@ class Cyclic:
             return None
 
         rows = [(cp_id, var) for cp_id in new_cp_ids for var in variables_list]
-        return pd.DataFrame(rows, columns=["CP_ID", "variable"]).astype(
-            {"CP_ID": int, "variable": str}
+        return pd.DataFrame(rows, columns=["CP_ID", "VARIABLE"]).astype(
+            {"CP_ID": int, "VARIABLE": str}
         )
 
     @staticmethod

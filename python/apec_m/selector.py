@@ -5,7 +5,6 @@ import vtk
 import vtk.util.numpy_support as vtknp
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
-    import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
     from .coordinate_system import CoordinateSystem
 
 
@@ -432,7 +431,7 @@ class Selector:
 
         point_ids = None
         if cell_dimension <= 2:
-            id_filter = vtk.vtkIdFilter()
+            id_filter = vtk.vtkGenerateIds()
             id_filter.SetInputData(selected_mesh)
             id_filter.SetPointIds(True)
             id_filter.SetCellIds(False)

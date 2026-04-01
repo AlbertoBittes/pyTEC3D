@@ -2,6 +2,8 @@ import os
 import sys
 import re
 import copy
+import importlib
+import shutil
 from os import PathLike
 from typing import (
     Any,
@@ -42,13 +44,17 @@ class APEC_M:
     APEC class to manage VTK unstructured grids, metadata, and IO utilities.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, python_output_root_only: bool = False) -> None:
         """
         Initialize the APEC object without requiring a file path.
         """
         self.meshes: Dict[str, Tuple[vtk.vtkUnstructuredGrid, Optional[Any]]] = {}
         self.mesh_filepaths: Dict[str, str] = {}
         self._active_mesh_name: Optional[str] = None
+        self._python_output_root_only: bool = False
+        self._saved_stdout = None
+        self._saved_stderr = None
+        self._null_output_stream = None
 
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
@@ -64,6 +70,54 @@ class APEC_M:
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
+        self.set_python_output_root_only(python_output_root_only)
+
+    @staticmethod
+    def _world_rank() -> int:
+        try:
+            from mpi4py import MPI
+        except ImportError:
+            return 0
+        return MPI.COMM_WORLD.Get_rank()
+
+    def set_python_output_root_only(self, enabled: bool = True) -> None:
+        """
+        Enable/disable Python output only on MPI rank 0.
+
+        When enabled, non-root ranks redirect both stdout and stderr to os.devnull.
+        """
+        enabled = bool(enabled)
+        if enabled == self._python_output_root_only:
+            return
+
+        rank = self._world_rank()
+        if enabled and rank != 0:
+            if self._saved_stdout is None:
+                self._saved_stdout = sys.stdout
+            if self._saved_stderr is None:
+                self._saved_stderr = sys.stderr
+            if self._null_output_stream is None or self._null_output_stream.closed:
+                self._null_output_stream = open(os.devnull, "w")
+            sys.stdout = self._null_output_stream
+            sys.stderr = self._null_output_stream
+        else:
+            if self._saved_stdout is not None:
+                sys.stdout = self._saved_stdout
+            if self._saved_stderr is not None:
+                sys.stderr = self._saved_stderr
+
+        self._python_output_root_only = enabled
+
+    def __del__(self) -> None:
+        try:
+            self.set_python_output_root_only(False)
+        except Exception:
+            pass
+        try:
+            if self._null_output_stream is not None and not self._null_output_stream.closed:
+                self._null_output_stream.close()
+        except Exception:
+            pass
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
         """
@@ -170,8 +224,24 @@ class APEC_M:
 
         model_folder = os.path.join(os.getcwd(), resolved_name)
         os.makedirs(model_folder, exist_ok=True)
-        os.makedirs(os.path.join(model_folder, "emat"), exist_ok=True)
-        os.makedirs(os.path.join(model_folder, "output"), exist_ok=True)
+        emat_dir = os.path.join(model_folder, "emat")
+        os.makedirs(emat_dir, exist_ok=True)
+        output_dir = os.path.join(model_folder, "output")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Always start from a clean emat folder for this mesh.
+        for entry_name in os.listdir(emat_dir):
+            entry_path = os.path.join(emat_dir, entry_name)
+            if os.path.isdir(entry_path):
+                shutil.rmtree(entry_path)
+            else:
+                os.unlink(entry_path)
+
+        # Always start from a clean output folder for this mesh (files only).
+        for entry_name in os.listdir(output_dir):
+            entry_path = os.path.join(output_dir, entry_name)
+            if os.path.isfile(entry_path):
+                os.unlink(entry_path)
 
         self.meshes[resolved_name] = (loaded_mesh, None)
         self.mesh_filepaths[resolved_name] = mesh_path
@@ -350,8 +420,9 @@ class APEC_M:
     #
     @staticmethod
     def _require_solver_module() -> Any:
+        package_name = __package__ or "apec_m"
         try:
-            from . import apec_m_solver as solver_module
+            solver_module = importlib.import_module(f"{package_name}.apec_m_solver")
         except ImportError as exc:
             raise ImportError(
                 "Could not import the C++ solver module 'apec_m.apec_m_solver'. "
@@ -361,18 +432,26 @@ class APEC_M:
 
     def load_mesh_into_solver(
         self,
-        num_processors: int = 1,
+        num_processors: Optional[int] = None,
         mesh_name: Optional[str] = None,
+        python_output_root_only: Optional[bool] = None,
     ) -> Any:
         """
         Build a C++ solver session from the active VTK grid and current APEC attributes.
 
         Args:
             num_processors:
-                Number of MPI ranks to use for the solver communicator (default: 1).
+                Number of MPI ranks to use for the solver communicator.
+                If None (default), use all ranks in COMM_WORLD.
             mesh_name:
                 Optional mesh to activate before launching.
+            python_output_root_only:
+                If set, enable/disable rank-0-only Python output before creating
+                the solver session.
         """
+        if python_output_root_only is not None:
+            self.set_python_output_root_only(python_output_root_only)
+
         solver_module = self._require_solver_module()
         mpi_comm = self._build_solver_mpi_communicator(num_processors)
 
@@ -412,24 +491,21 @@ class APEC_M:
         solver.solve(nodal_solution)
 
     @staticmethod
-    def _build_solver_mpi_communicator(num_processors: int) -> Optional[Any]:
+    def _build_solver_mpi_communicator(num_processors: Optional[int]) -> Optional[Any]:
         """
         Create an mpi4py communicator for the solver.
 
         Notes:
-            - If mpi4py is unavailable, only num_processors=1 is supported.
+            - If mpi4py is unavailable, only num_processors=None or 1 is supported.
             - If num_processors > COMM_WORLD size, an error is raised.
             - When COMM_WORLD has more ranks than requested, only the first
               num_processors ranks are included (others get COMM_NULL and must
               not invoke the solver).
         """
-        if num_processors < 1:
-            raise ValueError("num_processors must be >= 1.")
-
         try:
             from mpi4py import MPI
         except ImportError:
-            if num_processors != 1:
+            if num_processors not in (None, 1):
                 raise ImportError(
                     "mpi4py is required when num_processors > 1."
                 ) from None
@@ -438,6 +514,11 @@ class APEC_M:
         world = MPI.COMM_WORLD
         world_size = world.Get_size()
         world_rank = world.Get_rank()
+
+        if num_processors is None:
+            num_processors = world_size
+        elif num_processors < 1:
+            raise ValueError("num_processors must be >= 1.")
 
         if num_processors > world_size:
             raise ValueError(

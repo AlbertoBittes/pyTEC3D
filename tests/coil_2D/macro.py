@@ -40,7 +40,7 @@ for i in range(1, 3):
     else:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
-        Selector.set_value_on_selection(apec.mesh, "VOLT", 10000)
+        Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()
 

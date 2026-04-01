@@ -18,7 +18,6 @@
 // Local includes
 #include "libmesh/libmesh_config.h"
 #include "libmesh/libmesh_common.h"
-#include "libmesh/vtk_io.h"
 #include "libmesh/mesh_base.h"
 #include "libmesh/equation_systems.h"
 #include "libmesh/numeric_vector.h"
@@ -32,16 +31,10 @@
 
 #include "vtkio_updated.h"
 
-#ifdef LIBMESH_HAVE_VTK
-
 // I get a lot of "warning: extra ';' inside a class [-Wextra-semi]" from clang
 // on VTK header files.
 #include "libmesh/ignore_warnings.h"
 #include "libmesh/fe_interface.h"
-#include "vtkXMLUnstructuredGridReader.h"
-#include "vtkXMLPUnstructuredGridReader.h"
-#include "vtkXMLUnstructuredGridWriter.h"
-#include "vtkXMLPUnstructuredGridWriter.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkDataArray.h"
 #include "vtkIntArray.h"
@@ -54,12 +47,8 @@
 #include "vtkPoints.h"
 #include "vtkSmartPointer.h"
 #include "vtkStringArray.h"
-
-#ifdef LIBMESH_HAVE_MPI
-#include "vtkMPI.h"
-#include "vtkMPICommunicator.h"
-#include "vtkMPIController.h"
-#endif
+#include "vtkVersion.h"
+#include "vtkVersionMacros.h"
 
 #include "libmesh/restore_warnings.h"
 #include "variables_map.h"
@@ -74,18 +63,9 @@
 
 using namespace libMesh;
 // A convenient macro for comparing VTK versions.  Returns 1 if the
-// current VTK version is < major.minor.subminor and zero otherwise.
-//
-// It relies on the VTK version numbers detected during configure.  Note that if
-// LIBMESH_HAVE_VTK is not defined, none of the LIBMESH_DETECTED_VTK_VERSION_* variables will
-// be defined either.
-#define VTK_VERSION_LESS_THAN(major, minor, subminor)                                                            \
-    ((LIBMESH_DETECTED_VTK_VERSION_MAJOR < (major) ||                                                            \
-      (LIBMESH_DETECTED_VTK_VERSION_MAJOR == (major) && (LIBMESH_DETECTED_VTK_VERSION_MINOR < (minor) ||         \
-                                                         (LIBMESH_DETECTED_VTK_VERSION_MINOR == (minor) &&       \
-                                                          LIBMESH_DETECTED_VTK_VERSION_SUBMINOR < (subminor))))) \
-         ? 1                                                                                                     \
-         : 0)
+// // current VTK version is < major.minor.subminor and zero otherwise.
+// #define VTK_VERSION_LESS_THAN(major, minor, subminor)                                                            \
+//     (VTK_VERSION_NUMBER < VTK_VERSION_CHECK((major), (minor), (subminor)))
 
 namespace
 {
@@ -116,30 +96,18 @@ namespace
     }
 } // namespace
 
-#endif // LIBMESH_HAVE_VTK
-
 // Constructor for reading
 VTKIO_Updated::VTKIO_Updated(MeshBase &mesh, vtkUnstructuredGrid *vtk_grid) : MeshInput<MeshBase>(mesh, /*is_parallel_format=*/true),
-                                                                              MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
-#ifdef LIBMESH_HAVE_VTK
-                                                                              ,
+                                                                              MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true),
                                                                               _vtk_grid(vtk_grid), _compress(false), _eq_sys(nullptr)
-#endif
 {
 }
 
 // Constructor for writing
-VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true)
-#ifdef LIBMESH_HAVE_VTK
-                                                                                                                   ,
-                                                                                                                   _vtk_grid(vtk_grid), _compress(false), _eq_sys(eq_systems)
-#endif
+VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true),
+                                                                                                                 _vtk_grid(vtk_grid), _compress(false), _eq_sys(eq_systems)
 {
 }
-
-// The rest of the file is wrapped in ifdef LIBMESH_HAVE_VTK except for
-// a couple of "stub" functions at the bottom.
-#ifdef LIBMESH_HAVE_VTK
 
 // Initialize the static _element_maps map.
 std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::_element_maps = VTKIO_Updated::build_element_maps();
@@ -168,19 +136,19 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
     em.associate(PYRAMID5, VTK_PYRAMID);
 
     // VTK_BIQUADRATIC_QUAD has been around since VTK 5.0
-#if VTK_MAJOR_VERSION > 5 || (VTK_MAJOR_VERSION == 5 && VTK_MINOR_VERSION > 0)
+    // #if VTK_MAJOR_VERSION > 5 || (VTK_MAJOR_VERSION == 5 && VTK_MINOR_VERSION > 0)
     em.associate(QUAD9, VTK_BIQUADRATIC_QUAD);
-#endif
+    // #endif
 
     // TRI3SUBDIVISION is for writing only
     em.writing_map[TRI3SUBDIVISION] = VTK_TRIANGLE;
     all_maps[ElemMappingType::LAGRANGE_MAP] = em;
 
     // VTK_BEZIER_* types were introduced in VTK 9.0
-#if VTK_VERSION_LESS_THAN(9, 0, 0)
+
     // Revert back to previous behavior when using an older version of VTK
     all_maps[ElemMappingType::RATIONAL_BERNSTEIN_MAP] = em;
-#else
+
     ElementMaps bem; // Rational Bernstein element maps
     bem.associate(EDGE2, VTK_LINE);
     bem.associate(EDGE3, VTK_BEZIER_CURVE);
@@ -200,7 +168,6 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
     bem.associate(PYRAMID5, VTK_PYRAMID);
     bem.writing_map[TRI3SUBDIVISION] = VTK_TRIANGLE;
     all_maps[ElemMappingType::RATIONAL_BERNSTEIN_MAP] = bem;
-#endif
 
     return all_maps;
 }
@@ -371,22 +338,3 @@ void VTKIO_Updated::write_nodal_data(const std::string &,
                                      const std::vector<std::string> &)
 {
 }
-
-#else // !LIBMESH_HAVE_VTK
-
-void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
-{
-    (void)grid;
-    libmesh_error_msg("Cannot read VTK grid from memory.\n"
-                      "You must have VTK installed and correctly configured to read VTK meshes.");
-}
-
-void VTKIO_Updated::write_nodal_data(const std::string &fname,
-                                     const std::vector<Number> &,
-                                     const std::vector<std::string> &)
-{
-    libmesh_error_msg("Cannot write VTK file: " << fname
-                                                << "\nYou must have VTK installed and correctly configured to read VTK meshes.");
-}
-
-#endif // LIBMESH_HAVE_VTK
