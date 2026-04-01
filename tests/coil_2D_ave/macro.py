@@ -1,10 +1,7 @@
 from apec_m import APEC_M
-from apec_m.model_edit import ModelEdit
 from apec_m.selector import Selector
 import os
-import vtk
 import vtk.util.numpy_support as vtknp
-import numpy as np
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -19,11 +16,10 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
-apec.write_model_data()
 
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 Selector.nsle(apec.mesh)
@@ -36,21 +32,21 @@ Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 2)
 master_node_ground = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 Selector.select(apec.mesh, "ID", master_node_ground)
-Selector.set_value_on_selection(apec.mesh, "V", 0)
+Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+
+apec.load_mesh_into_solver()
 
 Selector.select_all(apec.mesh)
-apec.time_parameters["theta"] = 1.0
-
 for i in range(1, 3):
-    apec.time_parameters["time_step_number"] = i
-    apec.time_parameters["time"] = i * 0.00001
+    apec.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
     else:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
-        Selector.set_value_on_selection(apec.mesh, "V", 10000)
-    apec.write_load_step(i)
+        Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
+    apec.solve()
+    apec.write_output()
 
 apec.save_mesh()
