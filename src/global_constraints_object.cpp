@@ -31,11 +31,6 @@ namespace py = pybind11;
 
 namespace
 {
-    bool is_valid_constraint_value(Real value)
-    {
-        return !std::isnan(value);
-    }
-
     const py::object &coordinate_system_class()
     {
         static py::object cls = []() -> py::object
@@ -62,16 +57,12 @@ GlobalConstraintsObject::build_time_integration_constraints()
 
     System *system = this->get_parent_object();
     auto *linear_system = dynamic_cast<ApecMLinearSystem *>(system);
-    if (!linear_system || !linear_system->time_step)
-        return constraints;
 
     if (py::cast<bool>(linear_system->time_step->time_step_dict["transient_effects"]))
         return constraints;
 
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
-    if (!solver)
-        return constraints;
 
     py::gil_scoped_acquire gil;
     const py::object element_types = solver->get_apec_object().attr("element_types");
@@ -120,13 +111,10 @@ GlobalConstraintsObject::build_point_constraints()
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
     vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
-    if (!vtk_grid)
-        return constraints;
+
     const py::object &coord_system = coordinate_system_class();
 
     vtkPointData *point_data = vtk_grid->GetPointData();
-    if (!point_data)
-        return constraints;
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
 
@@ -171,20 +159,7 @@ GlobalConstraintsObject::build_point_constraints()
         std::string array_name = "_" + var_info.api_label;
         array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
 
-        if (!array)
-        {
-            array_name = "_" + var_info.global_label;
-            array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
-        }
-
-        if (!array || array->GetNumberOfComponents() <= 0)
-            continue;
-
-        const unsigned int component_index =
-            (var_info.component_index < static_cast<unsigned int>(array->GetNumberOfComponents()))
-                ? var_info.component_index
-                : 0u;
-        scalar_arrays.push_back({var_num, array, component_index});
+        scalar_arrays.push_back({var_num, array, var_info.component_index});
     }
 
     const Real tol = std::numeric_limits<Real>::epsilon();
@@ -192,12 +167,7 @@ GlobalConstraintsObject::build_point_constraints()
 
     for (const auto &node_ptr : equation_systems->get_mesh().local_node_ptr_range())
     {
-        if (!node_ptr)
-            continue;
-
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
-        if (point_id < 0 || point_id >= vtk_grid->GetNumberOfPoints())
-            continue;
 
         bool rotation_ready = false;
         py::object rotation = np.attr("eye")(3);
@@ -207,17 +177,17 @@ GlobalConstraintsObject::build_point_constraints()
                 rotation.attr("__getitem__")(i).attr("__getitem__")(j));
         };
 
+        // Constraints for vector variables
         for (const auto &var_entry : vector_variables)
         {
             auto array_it = vector_arrays.find(var_entry.first);
-            vtkDataArray *constraint_array =
-                (array_it != vector_arrays.end()) ? array_it->second : nullptr;
-            if (!constraint_array)
-                continue;
+            vtkDataArray *constraint_array = array_it->second;
 
+            // Get the number of components for this variable
             const auto &components = var_entry.second;
             const unsigned int max_components = std::min<unsigned int>(3, components.size());
 
+            // Initialize dof numbers and the values of the candidate constraint dofs
             std::array<dof_id_type, 3> dofs = {
                 libMesh::invalid_uint,
                 libMesh::invalid_uint,
@@ -227,11 +197,10 @@ GlobalConstraintsObject::build_point_constraints()
                 std::numeric_limits<Real>::quiet_NaN(),
                 std::numeric_limits<Real>::quiet_NaN()};
 
+            // Retrieve the value of the constraints
             for (unsigned int i = 0; i < max_components; ++i)
             {
                 const auto &component = components[i];
-                if (component.component_index >= 3)
-                    continue;
 
                 const unsigned int sys_num = system->number();
                 if (component.var_number == libMesh::invalid_uint ||
@@ -241,18 +210,16 @@ GlobalConstraintsObject::build_point_constraints()
 
                 dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, 0);
 
-                if (dof < first_local || dof >= last_local)
-                    continue;
-
                 dofs[component.component_index] = dof;
                 values[component.component_index] =
                     static_cast<Real>(constraint_array->GetComponent(point_id, component.component_index));
             }
 
+            // Check if there is at least one component constrained.
             bool any_constraint = false;
             for (unsigned int i = 0; i < max_components; ++i)
             {
-                if (is_valid_constraint_value(values[i]))
+                if (!std::isnan(values[i]))
                 {
                     any_constraint = true;
                     break;
@@ -261,32 +228,31 @@ GlobalConstraintsObject::build_point_constraints()
             if (!any_constraint)
                 continue;
 
+            // If all 3 components are constrained, we can directly apply the constraint without worrying about linear dependence.
             bool full_vector_constraint = (max_components == 3);
             for (unsigned int i = 0; i < max_components && full_vector_constraint; ++i)
             {
-                if (dofs[i] == libMesh::invalid_uint || !is_valid_constraint_value(values[i]))
+                if (dofs[i] == libMesh::invalid_uint || std::isnan(values[i]))
                     full_vector_constraint = false;
             }
 
+            // Apply rotation to constraint values
             if (!rotation_ready)
             {
-                if (!angles_array || point_id < 0 || point_id >= angles_array->GetNumberOfTuples())
-                    rotation = np.attr("eye")(3);
-                else
-                {
-                    const Real angle_xy_deg = static_cast<Real>(angles_array->GetComponent(point_id, 0));
-                    const Real angle_yz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 1));
-                    const Real angle_xz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 2));
+                const Real angle_xy_deg = static_cast<Real>(angles_array->GetComponent(point_id, 0));
+                const Real angle_yz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 1));
+                const Real angle_xz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 2));
 
-                    rotation =
-                        coord_system.attr("build_global_to_local")(
-                            angle_xy_deg,
-                            angle_yz_deg,
-                            angle_xz_deg);
-                }
+                rotation =
+                    coord_system.attr("build_global_to_local")(
+                        angle_xy_deg,
+                        angle_yz_deg,
+                        angle_xz_deg);
                 rotation_ready = true;
             }
 
+            // If all components are constrained, we can directly apply the rotated constraints
+            // resulting from the explicit rotation of the original constraints, without worrying about linear dependence.
             if (full_vector_constraint)
             {
                 std::array<Real, 3> global_values = {0.0, 0.0, 0.0};
@@ -304,10 +270,12 @@ GlobalConstraintsObject::build_point_constraints()
                 continue;
             }
 
+            // If not all components of the vector variable are constrained
+            // we need to check for linear dependence and possibly reduce the constraints to a subset of independent ones.
             std::vector<unsigned int> constrained_components;
             constrained_components.reserve(max_components);
             for (unsigned int i = 0; i < max_components; ++i)
-                if (is_valid_constraint_value(values[i]))
+                if (!std::isnan(values[i]))
                     constrained_components.push_back(i);
 
             if (constrained_components.size() == 2)
@@ -406,7 +374,7 @@ GlobalConstraintsObject::build_point_constraints()
             for (unsigned int i = 0; i < max_components; ++i)
             {
                 const Real constraint_value = values[i];
-                if (!is_valid_constraint_value(constraint_value))
+                if (std::isnan(constraint_value))
                     continue;
 
                 unsigned int pivot_index = i;
@@ -449,6 +417,7 @@ GlobalConstraintsObject::build_point_constraints()
             }
         }
 
+        // Handle scalar variable constraints
         for (const auto &scalar_entry : scalar_arrays)
         {
             const unsigned int sys_num = system->number();
@@ -459,14 +428,12 @@ GlobalConstraintsObject::build_point_constraints()
 
             dof_id_type dof = node_ptr->dof_number(sys_num, scalar_entry.var_number, 0);
 
-            if (dof < first_local || dof >= last_local)
-                continue;
             if (constrained_dofs.count(dof) != 0)
                 continue;
 
             const Real value = static_cast<Real>(
                 scalar_entry.array->GetComponent(point_id, scalar_entry.component_index));
-            if (!is_valid_constraint_value(value))
+            if (std::isnan(value))
                 continue;
 
             ConstraintEntry entry;
@@ -490,13 +457,10 @@ GlobalConstraintsObject::build_coupling_constraints()
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
     vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
-    if (!equation_systems || !solver || !vtk_grid)
-        return constraints;
+
     const py::object &coord_system = coordinate_system_class();
 
     vtkPointData *point_data = vtk_grid->GetPointData();
-    if (!point_data)
-        return constraints;
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
     py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
@@ -506,9 +470,6 @@ GlobalConstraintsObject::build_coupling_constraints()
         dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")();
     const py::ssize_t n_entries = py::len(cp_id_values);
     if (n_entries == 0)
-        return constraints;
-
-    if (!solver->coupling_functor)
         return constraints;
 
     const auto &pairs_by_cp = solver->coupling_functor->cp_pairs_by_cp;
@@ -576,8 +537,6 @@ GlobalConstraintsObject::build_coupling_constraints()
 
             const vtkIdType point_id_first = static_cast<vtkIdType>(node_first->id());
             const vtkIdType point_id_second = static_cast<vtkIdType>(node_second->id());
-            if (point_id_first < 0 || point_id_second < 0)
-                continue;
 
             for (const auto &vec_entry : coupled_vectors)
             {
@@ -595,8 +554,6 @@ GlobalConstraintsObject::build_coupling_constraints()
                 const unsigned int sys_num = system->number();
                 for (const auto &component : components)
                 {
-                    if (component.component_index >= 3)
-                        continue;
                     if (component.var_number == libMesh::invalid_uint ||
                         component.var_number >= node_first->n_vars(sys_num) ||
                         component.var_number >= node_second->n_vars(sys_num) ||

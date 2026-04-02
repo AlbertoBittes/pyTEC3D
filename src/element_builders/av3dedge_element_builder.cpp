@@ -56,9 +56,7 @@ void ElementBuilder::build_av3dedge()
     // The velocity shape function gradients at interior
     // quadrature points.
     const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
-    const std::vector<std::vector<RealVectorValue>> &dphi_dxi_edge = fe_edge->get_dphidxi();
-    const std::vector<std::vector<RealVectorValue>> &dphi_deta_edge = fe_edge->get_dphideta();
-    const std::vector<std::vector<RealVectorValue>> &dphi_dzeta_edge = fe_edge->get_dphidzeta();
+
     const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
 
     const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
