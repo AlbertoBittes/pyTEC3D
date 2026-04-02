@@ -152,8 +152,8 @@ void AssemblerLinear::assemble()
 
         if (transient_effect)
         {
-            Ke += Ce;
             Ce.scale(1 / (dt * theta));
+            Ke += Ce;
         }
         BinaryReader::read_element_vectors(builder, *rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS);
         auto &rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];

@@ -59,7 +59,7 @@ void ElementBuilder::build_av3dnodal()
 
     // const std::vector<std::vector<Real>> &div_phi_vec = fe_vec->get_div_phi();
 
-    const std::vector<std::vector<RealTensor>> &dphi_vec = fe_vec->get_dphi();
+    // const std::vector<std::vector<RealTensor>> &dphi_vec = fe_vec->get_dphi();
     fe->reinit(elem_data.elem);
     fe_vec->reinit(elem_data.elem);
 
@@ -71,10 +71,7 @@ void ElementBuilder::build_av3dnodal()
     unsigned int nq = fe->n_quadrature_points();
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu_matrix[3] = {
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
+    const Real nu = 1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")));
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -93,7 +90,7 @@ void ElementBuilder::build_av3dnodal()
                     for (unsigned int l = 0; l < 3; l++)
                         for (unsigned int k = 0; k < 3; k++)
                             Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                                JxW[qp] * nu_matrix[k] * (dphi[dof_i][qp](k) * dphi[dof_j][qp](k));
+                                JxW[qp] * nu * (dphi[dof_i][qp] * dphi[dof_j][qp]);
     };
 
     auto build_bae = [&]()
@@ -460,12 +457,6 @@ void ElementBuilder::build_av3dnodal_rhs()
     return;
 }
 
-void ElementBuilder::build_av3dnodal_solution_vectors()
-{
-    this->build_av3dnodal_nodal_solution();
-    this->build_av3dnodal_element_solution();
-}
-
 void ElementBuilder::build_av3dnodal_nodal_solution()
 {
     if (!this->compute_nodal_solution_vectors)
@@ -476,10 +467,10 @@ void ElementBuilder::build_av3dnodal_nodal_solution()
         return;
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu_matrix[3] = {
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
+    const Real nu[3] = {
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y"))),
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z")))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -517,7 +508,7 @@ void ElementBuilder::build_av3dnodal_nodal_solution()
         Hn.resize(Bn.size());
         for (unsigned int k = 0; k < 3; k++)
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * nu_matrix[k];
+                Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * nu[k];
         have_h = true;
     };
 
@@ -547,10 +538,10 @@ void ElementBuilder::build_av3dnodal_element_solution()
     std::vector<dof_id_type> dof_indices;
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu_matrix[3] = {
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")),
-        kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z"))};
+    const Real nu[3] = {
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y"))),
+        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z")))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -594,7 +585,7 @@ void ElementBuilder::build_av3dnodal_element_solution()
             build_be();
         He.resize(3);
         for (unsigned int k = 0; k < 3; k++)
-            He(k) = Be(k) * nu_matrix[k];
+            He(k) = Be(k) * nu[k];
         have_he = true;
     };
 

@@ -101,11 +101,6 @@ public:
 
     void build_nodal_solution();
     void build_element_solution();
-    void build_support_solution();
-
-    void build_av3dnodal_solution_vectors();
-    void build_av3dedge_solution_vectors();
-    void build_av2dnodal_solution_vectors();
 
     void build_av3dnodal_nodal_solution();
     void build_av3dedge_nodal_solution();

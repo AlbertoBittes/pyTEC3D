@@ -74,8 +74,8 @@ void ElementBuilder::build_av2dnodal()
     unsigned int nq = fe->n_quadrature_points();
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
-    const Real sigma = 1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_X"));
+    const Real nu[2] = {1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
+                        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")))};
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -106,9 +106,8 @@ void ElementBuilder::build_av2dnodal()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     Ke(dof_i, dof_j) +=
-                        JxW[qp] * (dphi[dof_i][qp] * dphi[dof_j][qp] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] / r_sq) * r_mult * thk;
+                        JxW[qp] * (dphi[dof_i][qp](0) * dphi[dof_j][qp](0) * nu[0] + dphi[dof_i][qp](1) * dphi[dof_j][qp](1) * nu[1] + axisymm * phi[dof_i][qp] * phi[dof_j][qp] * nu[1] / r_sq) * r_mult * thk;
         }
-        Ke.scale(nu);
     };
 
     auto build_bae = [&]()
@@ -180,20 +179,6 @@ void ElementBuilder::build_av2dnodal()
         }
     };
 
-    auto build_caa = [&]()
-    {
-        for (unsigned int qp = 0; qp < nq; qp++)
-        {
-            Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-            Real r_mult = pow(2 * libMesh::pi * r, axisymm);
-
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * thk;
-        }
-        Ce.scale(sigma);
-    };
-
     build_ke();
     build_bae();
     build_jae();
@@ -223,60 +208,71 @@ void ElementBuilder::build_av2dnodal()
         break;
     }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
-    {
-        build_caa();
-        break;
-        // Here when you will implement loads with F
-        // for (unsigned int qp = 0; qp < nq; qp++)
-        //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-        //         Fe(dof_i) += JxW[qp] * phi[dof_i][qp]; // * js_loads[elem->id()][2];
-    }
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
+        const Real sigma = 1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Z"));
+
+        auto build_caa = [&]()
+        {
+            for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                        Ce(dof_i, dof_j) += JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]) * r_mult * thk;
+            }
+            Ce.scale(sigma);
+        };
+
         build_caa();
 
-        auto build_coupling_timeintegrated = [&]()
+        if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR)
         {
-            for (unsigned int qp = 0; qp < nq; qp++)
+            auto build_coupling_timeintegrated = [&]()
             {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                for (unsigned int qp = 0; qp < nq; qp++)
+                {
+                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    {
-                        Ce(dof_i, dof_j + n_dofs_var) -=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        Ce(dof_i + n_dofs_var, dof_j) -=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
-                    }
-            }
-        };
-        auto build_coupling_notimeintegrated = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
+                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                        {
+                            Ce(dof_i, dof_j + n_dofs_var) -=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            Ce(dof_i + n_dofs_var, dof_j) -=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
+                        }
+                }
+            };
+            auto build_coupling_notimeintegrated = [&]()
             {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+                for (unsigned int qp = 0; qp < nq; qp++)
+                {
+                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    {
-                        Ke(dof_i, dof_j + n_dofs_var) -=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        Ce(dof_i + n_dofs_var, dof_j) -=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
-                            JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
-                    }
-            }
-        };
-        if (elem_data.element_type->get_OPTIONs()[4] == 0)
-            build_coupling_notimeintegrated();
-        else
-            build_coupling_timeintegrated();
+                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                        for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
+                        {
+                            Ke(dof_i, dof_j + n_dofs_var) -=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            Ce(dof_i + n_dofs_var, dof_j) -=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]);
+                            Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) +=
+                                JxW[qp] * sigma * (phi[dof_i][qp] * phi[dof_j][qp]) / r_mult / thk;
+                        }
+                }
+            };
+            if (elem_data.element_type->get_OPTIONs()[4] == 0)
+                build_coupling_notimeintegrated();
+            else
+                build_coupling_timeintegrated();
+        }
         break;
     }
     case PhysicalRegionEnum::STRANDED_COIL:
@@ -444,12 +440,6 @@ void ElementBuilder::build_av2dnodal_rhs()
     return;
 }
 
-void ElementBuilder::build_av2dnodal_solution_vectors()
-{
-    this->build_av2dnodal_nodal_solution();
-    this->build_av2dnodal_element_solution();
-}
-
 void ElementBuilder::build_av2dnodal_nodal_solution()
 {
     if (!this->compute_nodal_solution_vectors)
@@ -460,7 +450,7 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
         return;
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
+    const Real nu = 1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -523,7 +513,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
     std::vector<dof_id_type> dof_indices;
 
     const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu = kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"));
+    const Real nu = 1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -610,7 +600,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
             const pybind11::object material_row_sigma = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-            const Real sigma = 1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_X"));
+            const Real sigma = 1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Z"));
 
             const auto &An_dt = sol_vectors_dt[0];
 

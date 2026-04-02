@@ -2,14 +2,10 @@ from apec_m import APEC_M
 from apec_m.selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
-# from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
 
-# convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
-# )
-filename = "coil_2D"
+filename = "coil_2D_av"
 
 filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 

@@ -36,6 +36,7 @@ Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 apec.load_mesh_into_solver()
 
+apec.time_step["theta"] = 0.5
 Selector.select_all(apec.mesh)
 for i in range(1, 3):
     apec.time_step["time"] = i * 0.00001
