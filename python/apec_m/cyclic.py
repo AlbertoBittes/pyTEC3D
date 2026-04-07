@@ -15,6 +15,109 @@ from .coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
 
 class Cyclic:
     @staticmethod
+    def poloidal_flux(
+        mesh: "vtk.vtkUnstructuredGrid",
+        coordinate_system: "CylindricalCoordinateSystem",
+    ):
+        """
+        Compute poloidal flux from available vector-potential arrays.
+
+        - If PointData `A` exists, write `PSI`.
+        - If CellData `Ae` exists, write `PSIe`.
+
+        Args:
+            mesh: Target mesh.
+            coordinate_system: Cylindrical coordinate system.
+
+        Returns:
+            dict: Contains `"node"` and/or `"elem"` keys for computed flux arrays.
+        """
+        if coordinate_system.type != "cylindrical":
+            raise ValueError("coordinate_system must be cylindrical.")
+        spatial_dim = mesh.GetMaxSpatialDimension()
+
+        def _compute_and_store(
+            data: "vtk.vtkDataSetAttributes",
+            positions: np.ndarray,
+            source_name: str,
+            target_name: str,
+            target_location: str,
+        ) -> np.ndarray:
+            source_vtk = data.GetArray(source_name)
+            if source_vtk.GetNumberOfComponents() != 3:
+                raise ValueError(
+                    f"Array '{source_name}' must have 3 components."
+                )
+
+            source_np = np.asarray(vtknp.vtk_to_numpy(source_vtk), dtype=float)
+            if source_np.ndim != 2 or source_np.shape[1] != 3:
+                raise ValueError(
+                    f"Array '{source_name}' has invalid shape {source_np.shape}; expected (N, 3)."
+                )
+
+            if spatial_dim != 3:
+                radial = np.asarray(positions[:, 0], dtype=float)
+                flux_values = radial * source_np[:, 2]
+            else:
+                local_positions = coordinate_system.to_local(positions)
+                local_vectors = coordinate_system.vector_components_to_local(
+                    source_np, positions
+                )
+                radial = local_positions[:, 0]
+                a_theta = local_vectors[:, 1]
+                flux_values = radial * a_theta
+
+            target_vtk = data.GetArray(target_name)
+            if target_vtk is None or target_vtk.GetNumberOfComponents() != 1:
+                ModelEdit.add_array(
+                    mesh,
+                    name=target_name,
+                    location=target_location,
+                    components=1,
+                    dtype=vtk.VTK_DOUBLE,
+                    replace=True,
+                )
+                target_vtk = data.GetArray(target_name)
+
+            target_np = vtknp.vtk_to_numpy(target_vtk)
+            target_np[:] = flux_values
+            target_vtk.Modified()
+            return target_np
+
+        results = {}
+
+        point_data = mesh.GetPointData()
+        if point_data.GetArray("A") is not None:
+            node_positions = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+            results["node"] = _compute_and_store(
+                data=point_data,
+                positions=node_positions,
+                source_name="A",
+                target_name="PSI",
+                target_location="node",
+            )
+
+        cell_data = mesh.GetCellData()
+        if cell_data.GetArray("Ae") is not None:
+            centroids_array = cell_data.GetArray("cell_centroids")
+            cell_positions = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
+            results["elem"] = _compute_and_store(
+                data=cell_data,
+                positions=cell_positions,
+                source_name="Ae",
+                target_name="PSIe",
+                target_location="elem",
+            )
+
+        if not results:
+            raise ValueError(
+                "No source arrays found for poloidal flux. "
+                "Expected PointData 'A' and/or CellData 'Ae'."
+            )
+
+        return results
+
+    @staticmethod
     def build_toroidal_slices(
         input_mesh: "vtk.vtkUnstructuredGrid",
         target_mesh: "vtk.vtkUnstructuredGrid",
@@ -315,7 +418,8 @@ class Cyclic:
         real_constant_np[selected_ids] = new_constants
         cell_data.GetArray("CONSTANT").Modified()
 
-        centroids = ModelEdit.compute_cell_centroids(mesh)
+        centroids_array = cell_data.GetArray("cell_centroids")
+        centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
         selected_centroids = centroids[selected_ids]
         local_components = np.zeros((selected_ids.size, 3), dtype=float)
         local_components[:, 1] = 1.0  # theta axis

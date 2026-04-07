@@ -77,6 +77,8 @@ python/apec_m/local_packages/*
 **/temp/*
 **/_apec_/
 **/_apec_/*
+**/__apec__/
+**/__apec__/*
 
 # Ignore emat, input, output, temp subfolders anywhere under tests/
 tests/**/emat/

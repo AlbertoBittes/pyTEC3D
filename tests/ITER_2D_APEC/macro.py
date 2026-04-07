@@ -15,23 +15,23 @@ filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
 
 apec.read_mesh(filepath)
 
-apec.apec_settings["target_central_axis_x"] = 6.52136102486433
-apec.apec_settings["target_central_axis_y"] = 0.536537145137914
-apec.apec_settings["target_central_axis_z"] = 0.0
-apec.apec_settings["R0"] = 6.2
-apec.apec_settings["max_picard_iterations"] = 70
-apec.apec_settings["min_distance"] = 0.6
-apec.apec_settings["cp_gain"] = 0.250
-apec.apec_settings["tolerance_value"] = 1e-6
-apec.apec_settings["bradx_value"] = -3.873415861e-08
-apec.apec_settings["brady_value"] = 5.313857037e-09
-apec.apec_settings["bverx_value"] = 1.822467692e-10
-apec.apec_settings["bvery_value"] = 1.133287835e-07
-apec.apec_settings["alpha_mp"] = 1.0001
-apec.apec_settings["alpha_np"] = 0.83197
-apec.apec_settings["plasma_current"] = 15e6
-apec.apec_settings["beta_p"] = 6.8216e-001
-apec.apec_settings["print_full_output"] = 0
+apec.algorithm.input_parameters["target_central_axis_x"] = 6.52136102486433
+apec.algorithm.input_parameters["target_central_axis_y"] = 0.536537145137914
+apec.algorithm.input_parameters["target_central_axis_z"] = 0.0
+apec.algorithm.input_parameters["R0"] = 6.2
+apec.algorithm.input_parameters["max_picard_iterations"] = 70
+apec.algorithm.input_parameters["min_distance"] = 0.6
+apec.algorithm.input_parameters["cp_gain"] = 0.250
+apec.algorithm.input_parameters["tolerance_value"] = 1e-6
+apec.algorithm.input_parameters["bradx_value"] = -3.873415861e-08
+apec.algorithm.input_parameters["brady_value"] = 5.313857037e-09
+apec.algorithm.input_parameters["bverx_value"] = 1.822467692e-10
+apec.algorithm.input_parameters["bvery_value"] = 1.133287835e-07
+apec.algorithm.input_parameters["alpha_mp"] = 1.0001
+apec.algorithm.input_parameters["alpha_np"] = 0.83197
+apec.algorithm.input_parameters["plasma_current"] = 15e6
+apec.algorithm.input_parameters["beta_p"] = 6.8216e-001
+apec.algorithm.input_parameters["print_full_output"] = 0
 
 i_CS3U = -4.8204e06
 i_CS2U = -4.0480e06
@@ -58,15 +58,13 @@ a_plasma = 28.6027095
 
 apec.read_excel("input_template.xlsx")
 
-apec.write_model_data()
-
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-apec.time_parameters["theta"] = 0.5
-apec.time_parameters["transient_effects"] = 0
-apec.time_parameters["time_step_number"] = 1
+apec.time_step["theta"] = 0.5
+apec.time_step["transient_effects"] = 0
+apec.time_step["time_step_number"] = 1
 
 Selector.select(apec.mesh, "CS3L", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", i_CS3L / a_CS, 2, type="elem")
@@ -97,6 +95,10 @@ Selector.set_value_on_selection(apec.mesh, "Js", i_PF6 / a_PF6, 2, type="elem")
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "Js", 15e6 / a_plasma, 2, type="elem")
 
-apec.write_load_step(1)
+apec.load_mesh_into_solver()
+
+apec.algorithm.equilibrium_solve()
+
+apec.write_output()
 
 apec.save_mesh()

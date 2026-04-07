@@ -23,6 +23,7 @@ LOCAL_PACKAGES_PATH = os.path.join(CURRENT_DIR, "local_packages")
 from .model_edit import ModelEdit
 from .excel import Excel
 from .constants import *
+from .apec_algorithm import ApecAlgorithm
 
 
 # Prefer environment openpyxl; fall back to vendored local_packages when needed.
@@ -70,6 +71,7 @@ class APEC_M:
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
+        self.algorithm = ApecAlgorithm(self)
         self.set_python_output_root_only(python_output_root_only)
 
     @staticmethod

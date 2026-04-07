@@ -322,6 +322,9 @@ class ModelEdit:
         reader.Update()
         mesh = reader.GetOutput()
 
+        ModelEdit.store_cell_centroids(mesh)
+        ModelEdit.store_cell_volumes(mesh)
+
         if reset_arrays:
             # Avoid circular import at module load time
             from .selector import Selector
@@ -329,7 +332,6 @@ class ModelEdit:
 
             ModelEdit.initialize_vtk_arrays(mesh)
             Selector.ensure_selection_arrays(mesh)
-            ModelEdit.store_cell_centroids(mesh)
             TreeGauge.add_midside_nodes_mask_array(mesh)
             ModelEdit.reset_vtk_arrays_to_default(mesh)
 
@@ -392,7 +394,7 @@ class ModelEdit:
             vtk_array = None
 
         values_np = None
-        if not replace and values is not None:
+        if values is not None:
             values_np = np.asarray(values)
             if values_np.shape == (num_entries, 1) and num_components == 1:
                 values_np = values_np.reshape(num_entries)
@@ -401,10 +403,9 @@ class ModelEdit:
                     f"Values for array '{name}' must have shape {expected_shape}, got {values_np.shape}."
                 )
 
-        arr_to_store = values_np
-        if replace:
-            arr_to_store = np.full(expected_shape, fill)
-        elif arr_to_store is None:
+        if values_np is not None:
+            arr_to_store = values_np
+        else:
             arr_to_store = np.full(expected_shape, fill)
 
         vtk_array = vtknp.numpy_to_vtk(arr_to_store, deep=True, array_type=dtype)
@@ -570,6 +571,90 @@ class ModelEdit:
             data.RemoveArray(array_name)
 
     @staticmethod
+    def element_solution(
+        mesh: "vtk.vtkUnstructuredGrid",
+        point_array_name: str,
+    ) -> "vtk.vtkDataArray":
+        """
+        Project a point-data array to cells and store it as `<name>e` in CellData.
+
+        Args:
+            mesh: Input mesh.
+            point_array_name: Name of the point-data array to transfer.
+
+        Returns:
+            vtkDataArray: The created/updated cell-data array.
+
+        Raises:
+            ValueError: If the source point-data array does not exist.
+        """
+        point_data = mesh.GetPointData()
+        source_array = point_data.GetArray(point_array_name)
+        if source_array is None:
+            raise ValueError(
+                f"PointData array '{point_array_name}' not found on the mesh."
+            )
+
+        p2c = vtk.vtkPointDataToCellData()
+        p2c.SetInputData(mesh)
+        p2c.SetProcessAllArrays(False)
+        p2c.AddPointDataArray(point_array_name)
+        p2c.PassPointDataOff()
+        p2c.Update()
+
+        output = p2c.GetOutput()
+        projected_array = output.GetCellData().GetArray(point_array_name)
+        if projected_array is None:
+            raise ValueError(
+                f"Could not project PointData array '{point_array_name}' to CellData."
+            )
+
+        target_name = f"{point_array_name}e"
+        projected_np = vtknp.vtk_to_numpy(projected_array)
+        n_components = projected_array.GetNumberOfComponents()
+        dtype = projected_array.GetDataType()
+        cell_data = mesh.GetCellData()
+        target_array = cell_data.GetArray(target_name)
+
+        if target_array is None:
+            ModelEdit.add_array(
+                mesh,
+                name=target_name,
+                location="elem",
+                components=n_components,
+                dtype=dtype,
+                values=projected_np,
+                replace=False,
+            )
+            target_array = cell_data.GetArray(target_name)
+            target_array.Modified()
+            return target_array
+
+        # If shape/components match, update in-place.
+        if target_array.GetNumberOfComponents() == n_components:
+            target_np = vtknp.vtk_to_numpy(target_array)
+            if target_np.shape == projected_np.shape:
+                target_np[:] = projected_np
+                target_array.Modified()
+                return target_array
+
+        # Recreate target array with projected values when layout changed.
+        cell_data.RemoveArray(target_name)
+        ModelEdit.add_array(
+            mesh,
+            name=target_name,
+            location="elem",
+            components=n_components,
+            dtype=dtype,
+            values=projected_np,
+            replace=False,
+        )
+
+        target_array = cell_data.GetArray(target_name)
+        target_array.Modified()
+        return target_array
+
+    @staticmethod
     def update_vtk_grid(data: "vtk.vtkDataSetAttributes", df) -> None:
         """
         Updates the VTK grid's cell/point data arrays using the DataFrame resulting from `replace_ansys_with_vtk_ids`.
@@ -668,26 +753,70 @@ class ModelEdit:
             np.ndarray: Array of shape (num_cells,) containing the volume (or area) for each cell.
 
         Notes:
-            Uses ComputeVolume or ComputeArea if available on the cell object. If not available, sets value to 0.0.
-            The output array is ordered by cell index.
+            Uses vtkCellSizeFilter so all supported cell types are handled
+            consistently (including non-triangular 2D cells).
         """
-        num_cells = mesh.GetNumberOfCells()
-        volumes = np.zeros(num_cells)
-        for i in range(num_cells):
-            cell = mesh.GetCell(i)
-            if hasattr(cell, "ComputeVolume"):
-                try:
-                    volumes[i] = cell.ComputeVolume()
-                except Exception:
-                    volumes[i] = 0.0
-            elif hasattr(cell, "ComputeArea"):
-                try:
-                    volumes[i] = cell.ComputeArea()
-                except Exception:
-                    volumes[i] = 0.0
-            else:
-                volumes[i] = 0.0
-        return volumes
+        n_cells = mesh.GetNumberOfCells()
+        if n_cells == 0:
+            return np.zeros((0,), dtype=float)
+
+        size_filter = vtk.vtkCellSizeFilter()
+        size_filter.SetInputData(mesh)
+        size_filter.SetComputeVertexCount(False)
+        size_filter.SetComputeLength(True)
+        size_filter.SetComputeArea(True)
+        size_filter.SetComputeVolume(True)
+        size_filter.SetComputeSum(False)
+
+        length_name = "__cell_length_tmp__"
+        area_name = "__cell_area_tmp__"
+        volume_name = "__cell_volume_tmp__"
+        size_filter.SetLengthArrayName(length_name)
+        size_filter.SetAreaArrayName(area_name)
+        size_filter.SetVolumeArrayName(volume_name)
+        size_filter.Update()
+
+        out_mesh = size_filter.GetOutput()
+        out_cell_data = out_mesh.GetCellData()
+
+        length_array = out_cell_data.GetArray(length_name)
+        area_array = out_cell_data.GetArray(area_name)
+        volume_array = out_cell_data.GetArray(volume_name)
+
+        lengths = (
+            np.asarray(vtknp.vtk_to_numpy(length_array), dtype=float).reshape(-1)
+            if length_array is not None
+            else np.zeros((n_cells,), dtype=float)
+        )
+        areas = (
+            np.asarray(vtknp.vtk_to_numpy(area_array), dtype=float).reshape(-1)
+            if area_array is not None
+            else np.zeros((n_cells,), dtype=float)
+        )
+        volumes = (
+            np.asarray(vtknp.vtk_to_numpy(volume_array), dtype=float).reshape(-1)
+            if volume_array is not None
+            else np.zeros((n_cells,), dtype=float)
+        )
+
+        if (
+            lengths.shape[0] != n_cells
+            or areas.shape[0] != n_cells
+            or volumes.shape[0] != n_cells
+        ):
+            raise ValueError("vtkCellSizeFilter produced arrays with unexpected length.")
+
+        # Select area for 2D cells and volume for 3D cells.
+        cell_dims = np.fromiter(
+            (mesh.GetCell(i).GetCellDimension() for i in range(n_cells)),
+            dtype=np.int8,
+            count=n_cells,
+        )
+
+        values = np.zeros((n_cells,), dtype=float)
+        values[cell_dims >= 3] = volumes[cell_dims >= 3]
+        values[cell_dims == 2] = areas[cell_dims == 2]
+        return values
 
     @staticmethod
     def store_cell_volumes(
@@ -711,6 +840,7 @@ class ModelEdit:
             components=1,
             dtype=vtk.VTK_DOUBLE,
             values=volumes,
+            replace=True,
         )
 
     @staticmethod
