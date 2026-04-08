@@ -1235,13 +1235,14 @@ class ApecAlgorithm:
             self.apec.set_active_mesh(mesh_name)
             self.apec.solve(nodal_solution=nodal_solution)
             self.calculate_poloidal_flux(mesh_name=mesh_name)
+            # self.apec.write_output()
 
             converged = self.check_convergence(mesh_name=mesh_name)
+            # self.apec.write_output()
             self.append_iteration_diagnostics(converged, mesh_name=mesh_name)
             if converged:
                 self.status["converged"] = True
                 return True
-            # self.apec.write_output()
             self._first_absolute_iteration = False
 
         self.status["converged"] = False
