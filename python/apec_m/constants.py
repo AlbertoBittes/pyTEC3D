@@ -103,6 +103,56 @@ DEFAULT_TIME_PARAMETERS_TYPES = {
     "theta": float,
 }
 
+# Default APEC algorithm parameters/status
+DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
+    "target_central_axis_x": 0.0,
+    "target_central_axis_y": 0.0,
+    "target_central_axis_z": 0.0,
+    "R0": 0.0,
+    "max_picard_iterations": 1,
+    "min_distance": 0.3,
+    "cp_gain": 0.0,
+    "tolerance_value": 1e-6,
+    "bradx_value": 0.0,
+    "brady_value": 0.0,
+    "bverx_value": 0.0,
+    "bvery_value": 0.0,
+    "alpha_mp": 1.0001,
+    "alpha_np": 0.83197,
+    "plasma_current": 0.0,
+    "beta_p": 0.0,
+    "AF0": 5.3 * 6.2,
+    "print_full_output": 0,
+    "equilibrium_mesh": "",
+    "static_mesh": "",
+    "evolution_mesh": "",
+    "n_slices": 1,
+    "toroidal_slices_nodes": np.zeros((0, 0), dtype=np.int64),
+    "toroidal_slices_elems": np.zeros((0, 0), dtype=np.int64),
+}
+
+DEFAULT_APEC_ALGORITHM_STATUS = {
+    "psi_magnetic_axis": 0.0,
+    "psi_max": 0.0,
+    "psi_min": 0.0,
+    "magnetic_axis": (0.0, 0.0, 0.0),
+    "b_target_axis": (0.0, 0.0),
+    "last_psi_limiter": 0.0,
+    "last_psi_x_point": 0.0,
+    "separatrix_configuration": "uninitialized",
+    "limiter_point": (np.nan, np.nan, np.nan),
+    "x_point": (np.nan, np.nan, np.nan),
+    "flux_norm": np.nan,
+    "flux_tolerance": np.nan,
+    "radial_correction_current": 0.0,
+    "vertical_correction_current": 0.0,
+    "total_plasma_current_before_scaling": 0.0,
+    "plasma_current_scaling_lambda": 0.0,
+    "plasma_element_count": 0,
+    "picard_iteration": 0,
+    "converged": False,
+}
+
 # Assign types to materials columns
 MATERIALS_COLUMNS_TYPES = {
     "MATERIAL_ID": int,

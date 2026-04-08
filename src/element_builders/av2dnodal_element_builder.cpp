@@ -73,9 +73,11 @@ void ElementBuilder::build_av2dnodal()
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu[2] = {1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
-                        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y")))};
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
+    const Real nu[2] = {
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y))};
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -90,8 +92,7 @@ void ElementBuilder::build_av2dnodal()
 
     Real r_sign = pow(-1, axisymm);
 
-    const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-    Real thk = pybind11::cast<Real>(constant_row.attr("__getitem__")("THK"));
+    Real thk = this->constant_value(constant_id, CONST_THK);
     if (thk == 0.0)
         thk = 1.0;
 
@@ -210,7 +211,7 @@ void ElementBuilder::build_av2dnodal()
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        const Real sigma = 1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Z"));
+        const Real sigma = 1.0 / this->material_value(material_id, MAT_RHO_Z);
 
         auto build_caa = [&]()
         {
@@ -277,17 +278,16 @@ void ElementBuilder::build_av2dnodal()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-        const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
-        const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
-        const Real rad = pybind11::cast<Real>(constant_row.attr("__getitem__")("RAD"));
+        const Real sc = this->constant_value(constant_id, CONST_CS);
+        const Real nc = this->constant_value(constant_id, CONST_TURNS);
+        const Real rad = this->constant_value(constant_id, CONST_RAD);
         Real rad_factor = 1.0;
         if (axisymm)
             rad_factor = 2 * libMesh::pi * rad;
         const Real vc = rad_factor * sc * thk;
-        const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
-        const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
-        const Real sym = pybind11::cast<Real>(constant_row.attr("__getitem__")("S"));
+        const Real tz = this->constant_value(constant_id, CONST_T_Z);
+        const Real r_coil = this->constant_value(constant_id, CONST_R);
+        const Real sym = this->constant_value(constant_id, CONST_S);
 
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
@@ -449,8 +449,8 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
     if (api_vars.empty())
         return;
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu = 1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")));
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const Real nu = 1 / (kMu0 * this->material_value(material_id, MAT_MUR_X));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -512,8 +512,9 @@ void ElementBuilder::build_av2dnodal_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-    const Real nu = 1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X")));
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
+    const Real nu = 1 / (kMu0 * this->material_value(material_id, MAT_MUR_X));
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -599,8 +600,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
-            const pybind11::object material_row_sigma = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
-            const Real sigma = 1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Z"));
+            const Real sigma = 1.0 / this->material_value(material_id, MAT_RHO_Z);
 
             const auto &An_dt = sol_vectors_dt[0];
 
@@ -614,8 +614,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR)
                 break;
 
-            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-            Real thk = pybind11::cast<Real>(constant_row.attr("__getitem__")("THK"));
+            Real thk = this->constant_value(constant_id, CONST_THK);
             if (thk == 0.0)
                 libmesh_error_msg("THK is zero for SOLID_CONDUCTOR elements.");
             Real V_factor = sigma * Vn / thk;
@@ -654,11 +653,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 En = sol_vectors_dt[2][0];
             }
 
-            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-            const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
-            const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
-            const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
-            const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
+            const Real sc = this->constant_value(constant_id, CONST_CS);
+            const Real nc = this->constant_value(constant_id, CONST_TURNS);
+            const Real tz = this->constant_value(constant_id, CONST_T_Z);
+            const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             if (sc == 0.0 || r_coil == 0.0)
                 libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");

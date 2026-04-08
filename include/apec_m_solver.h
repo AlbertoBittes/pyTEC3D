@@ -33,7 +33,7 @@ public:
 public:
     int argc = 0;
     char **argv = nullptr;
-    std::unique_ptr<libMesh::LibMeshInit> libmesh_init;
+    std::shared_ptr<libMesh::LibMeshInit> libmesh_init;
     std::unique_ptr<libMesh::DistributedMesh> mesh;
     std::shared_ptr<ApecMEquationSystems> equation_system;
     std::shared_ptr<ElementTypesFactory> element_types_factory;

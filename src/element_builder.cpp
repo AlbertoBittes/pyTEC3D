@@ -41,18 +41,77 @@ ElementBuilder::ElementBuilder(EquationSystems *equation_systems)
     element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
-    apec_object_ = equation_systems_->get_parent_object()->get_apec_object();
     vtk_grid_ = equation_systems_->get_parent_object()->active_vtk_grid;
-    materials_attribute_ = apec_object_.attr("materials");
-    constants_attribute_ = apec_object_.attr("constants");
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
+
+    py::object apec_object = equation_systems_->get_parent_object()->get_apec_object();
+    py::object materials_attribute = apec_object.attr("materials");
+    py::object constants_attribute = apec_object.attr("constants");
+
+    for (const py::handle row_obj : materials_attribute.attr("to_dict")("records"))
+    {
+        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
+        const dof_id_type id = py::cast<dof_id_type>(row["MATERIAL_ID"]);
+        auto &values = materials_rows_[id];
+        values.resize(MAT_NUM_COLS);
+        values[MAT_MUR_X] = py::cast<Real>(row["MUR_X"]);
+        values[MAT_MUR_Y] = py::cast<Real>(row["MUR_Y"]);
+        values[MAT_MUR_Z] = py::cast<Real>(row["MUR_Z"]);
+        values[MAT_RHO_X] = py::cast<Real>(row["RHO_X"]);
+        values[MAT_RHO_Y] = py::cast<Real>(row["RHO_Y"]);
+        values[MAT_RHO_Z] = py::cast<Real>(row["RHO_Z"]);
+    }
+
+    for (const py::handle row_obj : constants_attribute.attr("to_dict")("records"))
+    {
+        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
+        const dof_id_type id = py::cast<dof_id_type>(row["CONSTANTS_ID"]);
+        auto &values = constants_rows_[id];
+        values.resize(CONST_NUM_COLS);
+        values[CONST_THK] = py::cast<Real>(row["THK"]);
+        values[CONST_CS] = py::cast<Real>(row["CS"]);
+        values[CONST_TURNS] = py::cast<Real>(row["TURNS"]);
+        values[CONST_VOL] = py::cast<Real>(row["VOL"]);
+        values[CONST_RAD] = py::cast<Real>(row["RAD"]);
+        values[CONST_T_X] = py::cast<Real>(row["T_X"]);
+        values[CONST_T_Y] = py::cast<Real>(row["T_Y"]);
+        values[CONST_T_Z] = py::cast<Real>(row["T_Z"]);
+        values[CONST_R] = py::cast<Real>(row["R"]);
+        values[CONST_S] = py::cast<Real>(row["S"]);
+    }
 }
 
-py::object ElementBuilder::get_row_by_id(const py::object &table, const char *id_column, unsigned int id) const
+const std::vector<Real> &ElementBuilder::material_row(dof_id_type id) const
 {
-    const py::object mask = table.attr("__getitem__")(id_column).attr("__eq__")(id);
-    return table.attr("loc").attr("__getitem__")(mask).attr("iloc").attr("__getitem__")(0);
+    const auto it = materials_rows_.find(id);
+    if (it == materials_rows_.end())
+        libmesh_error_msg("Material ID not found in cached materials map: " + std::to_string(id));
+    return it->second;
+}
+
+const std::vector<Real> &ElementBuilder::constant_row(dof_id_type id) const
+{
+    const auto it = constants_rows_.find(id);
+    if (it == constants_rows_.end())
+        libmesh_error_msg("Constant ID not found in cached constants map: " + std::to_string(id));
+    return it->second;
+}
+
+Real ElementBuilder::material_value(dof_id_type id, unsigned int col_idx) const
+{
+    const auto &row = material_row(id);
+    if (col_idx >= row.size())
+        libmesh_error_msg("Material cache column index out of range: " + std::to_string(col_idx));
+    return row[col_idx];
+}
+
+Real ElementBuilder::constant_value(dof_id_type id, unsigned int col_idx) const
+{
+    const auto &row = constant_row(id);
+    if (col_idx >= row.size())
+        libmesh_error_msg("Constants cache column index out of range: " + std::to_string(col_idx));
+    return row[col_idx];
 }
 
 //

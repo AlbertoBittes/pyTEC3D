@@ -9,63 +9,15 @@ import pandas as pd
 import vtk
 from .selector import Selector
 from .model_edit import ModelEdit
+from .constants import (
+    DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS,
+    DEFAULT_APEC_ALGORITHM_STATUS,
+)
 
 import vtk.util.numpy_support as vtknp
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from .apec_m import APEC_M
-
-
-DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS: Dict[str, Any] = {
-    "target_central_axis_x": 0.0,
-    "target_central_axis_y": 0.0,
-    "target_central_axis_z": 0.0,
-    "R0": 0.0,
-    "max_picard_iterations": 1,
-    "min_distance": 0.3,
-    "cp_gain": 0.0,
-    "tolerance_value": 1e-6,
-    "bradx_value": 0.0,
-    "brady_value": 0.0,
-    "bverx_value": 0.0,
-    "bvery_value": 0.0,
-    "alpha_mp": 1.0001,
-    "alpha_np": 0.83197,
-    "plasma_current": 0.0,
-    "beta_p": 0.0,
-    "AF0": 5.3 * 6.2,
-    "print_full_output": 0,
-    "equilibrium_mesh": "",
-    "static_mesh": "",
-    "evolution_mesh": "",
-    "n_slices": 1,
-    "toroidal_slices_nodes": np.zeros((0, 0), dtype=np.int64),
-    "toroidal_slices_elems": np.zeros((0, 0), dtype=np.int64),
-}
-
-
-DEFAULT_APEC_ALGORITHM_STATUS: Dict[str, Any] = {
-    "psi_magnetic_axis": 0.0,
-    "psi_max": 0.0,
-    "psi_min": 0.0,
-    "magnetic_axis": (0.0, 0.0, 0.0),
-    "b_target_axis": (0.0, 0.0),
-    "last_psi_limiter": 0.0,
-    "last_psi_x_point": 0.0,
-    "separatrix_configuration": "uninitialized",
-    "limiter_point": (np.nan, np.nan, np.nan),
-    "x_point": (np.nan, np.nan, np.nan),
-    "flux_norm": np.nan,
-    "flux_tolerance": np.nan,
-    "radial_correction_current": 0.0,
-    "vertical_correction_current": 0.0,
-    "total_plasma_current_before_scaling": 0.0,
-    "plasma_current_scaling_lambda": 0.0,
-    "plasma_element_count": 0,
-    "picard_iteration": 0,
-    "converged": False,
-}
-
 
 class ApecAlgorithm:
     """
@@ -99,9 +51,11 @@ class ApecAlgorithm:
 
         self._first_absolute_iteration: bool = True
         self._previous_flux_vector: Optional[np.ndarray] = None
-        self._old_control_current_density_base: Dict[str, np.ndarray] = {}
+        self._old_control_current_density_base: Optional[np.ndarray] = None
         self._diagnostics_frames: Dict[str, pd.DataFrame] = {}
         self._step_overrides: Dict[str, Callable[..., Any]] = {}
+        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
+        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
         self._supported_step_overrides = {
             self.STEP_FIND_SEPARATRIX,
             self.STEP_COMPUTE_JPLASMA,
@@ -113,8 +67,105 @@ class ApecAlgorithm:
         self.status = copy.deepcopy(DEFAULT_APEC_ALGORITHM_STATUS)
         self._first_absolute_iteration = True
         self._previous_flux_vector = None
-        self._old_control_current_density_base.clear()
+        self._old_control_current_density_base = None
         self._diagnostics_frames.clear()
+        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
+        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
+
+    @staticmethod
+    def _vector_component_indices(mesh_dimension: int) -> Tuple[int, int, int]:
+        if mesh_dimension == 2:
+            # Legacy C++ labels for 2D: ["_z", "_x", "_y"]
+            return 2, 0, 1
+        # Legacy C++ labels for 3D: ["_y", "_x", "_z"]
+        return 1, 0, 2
+
+    def set_toroidal_slices(self) -> None:
+        nodes = np.asarray(
+            self.input_parameters["toroidal_slices_nodes"], dtype=np.int64
+        )
+        elems = np.asarray(
+            self.input_parameters["toroidal_slices_elems"], dtype=np.int64
+        )
+        if nodes.ndim != 2 or nodes.shape[1] < 2:
+            raise ValueError(
+                "input_parameters['toroidal_slices_nodes'] must be a 2D array "
+                "with at least 2 columns (source ids + >=1 slice)."
+            )
+        if elems.ndim != 2 or elems.shape[1] < 2:
+            raise ValueError(
+                "input_parameters['toroidal_slices_elems'] must be a 2D array "
+                "with at least 2 columns (source ids + >=1 slice)."
+            )
+        self._toroidal_slices_nodes = nodes
+        self._toroidal_slices_elems = elems
+
+    def _require_toroidal_slices(self) -> Tuple[np.ndarray, np.ndarray]:
+        if (
+            self._toroidal_slices_nodes.size == 0
+            or self._toroidal_slices_elems.size == 0
+        ):
+            self.set_toroidal_slices()
+        return self._toroidal_slices_nodes, self._toroidal_slices_elems
+
+    @staticmethod
+    def _average_from_slice_targets(
+        source_values: np.ndarray,
+        source_ids: np.ndarray,
+        target_ids_matrix: np.ndarray,
+        source_size: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        valid_source = (source_ids >= 0) & (source_ids < source_size)
+        if not np.any(valid_source):
+            return (
+                np.empty((0,), dtype=np.int64),
+                np.empty((0,), dtype=float),
+            )
+
+        src = source_ids[valid_source]
+        dst = target_ids_matrix[valid_source]
+        valid_dst = (dst >= 0) & (dst < source_values.shape[0])
+
+        clipped_dst = np.where(valid_dst, dst, 0)
+        gathered = source_values[clipped_dst]
+        gathered = np.where(valid_dst, gathered, 0.0)
+
+        counts = np.sum(valid_dst, axis=1)
+        rows = counts > 0
+        if not np.any(rows):
+            return (
+                np.empty((0,), dtype=np.int64),
+                np.empty((0,), dtype=float),
+            )
+
+        means = np.sum(gathered, axis=1)[rows] / counts[rows]
+        return src[rows], np.asarray(means, dtype=float)
+
+    @staticmethod
+    def _broadcast_rows_to_slice_targets(
+        source_values: np.ndarray,
+        source_ids: np.ndarray,
+        target_ids_matrix: np.ndarray,
+        target_size: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        valid_source = (source_ids >= 0) & (source_ids < source_values.shape[0])
+        if not np.any(valid_source):
+            return (
+                np.empty((0,), dtype=np.int64),
+                np.empty((0,), dtype=float),
+            )
+
+        src = source_ids[valid_source]
+        dst = target_ids_matrix[valid_source]
+
+        repeated_src_values = np.repeat(source_values[src], dst.shape[1])
+        dst_flat = dst.reshape(-1)
+
+        valid_dst = (dst_flat >= 0) & (dst_flat < target_size)
+        return (
+            dst_flat[valid_dst].astype(np.int64, copy=False),
+            repeated_src_values[valid_dst].astype(float, copy=False),
+        )
 
     def _get_mesh(self, mesh_name: Optional[str] = None) -> "vtk.vtkUnstructuredGrid":
         if mesh_name is None:
@@ -208,17 +259,11 @@ class ApecAlgorithm:
         mesh = self._get_mesh(mesh_name)
 
         psi_array = mesh.GetPointData().GetArray("PSI")
-        if psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on the active mesh.")
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsle(mesh)
         selection_array = mesh.GetPointData().GetArray("selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            raise ValueError(
-                "No nodes selected with VACUUM_CHAMBER == 1; cannot find magnetic axis."
-            )
 
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
         psi_selected = psi[selected_ids]
@@ -238,22 +283,13 @@ class ApecAlgorithm:
         mesh = self._get_mesh(mesh_name)
         cell_data = mesh.GetCellData()
 
-        if cell_data.GetArray("VACUUM_CHAMBER") is None:
-            raise ValueError("CellData array 'VACUUM_CHAMBER' not found on the mesh.")
-        if cell_data.GetArray("PLASMA") is None:
-            raise ValueError("CellData array 'PLASMA' not found on the mesh.")
-
         js_array = cell_data.GetArray("Js")
-        if js_array is None:
-            raise ValueError("CellData array 'Js' not found on the mesh.")
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
 
         selection_array = cell_data.GetArray("selection_cell")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            return
 
         js_np = vtknp.vtk_to_numpy(js_array)
         if js_np.ndim == 1:
@@ -264,10 +300,6 @@ class ApecAlgorithm:
 
     def identify_plasma_region(self, mesh_name: Optional[str] = None) -> None:
         mesh = self._get_mesh(mesh_name)
-
-        psi_array = mesh.GetPointData().GetArray("PSI")
-        if psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on the active mesh.")
 
         psi_min = float(self.status["psi_min"])
         if not np.isfinite(psi_min):
@@ -292,30 +324,14 @@ class ApecAlgorithm:
         mesh = self._get_mesh(mesh_name)
         cell_data = mesh.GetCellData()
 
-        vacuum_array = cell_data.GetArray("VACUUM_CHAMBER")
-        if vacuum_array is None:
-            raise ValueError("CellData array 'VACUUM_CHAMBER' not found on the mesh.")
-        if cell_data.GetArray("PLASMA") is None:
-            raise ValueError("CellData array 'PLASMA' not found on the mesh.")
-
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsel_ext(mesh)
         selection_array = cell_data.GetArray("selection_cell")
         vacuum_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
-        if not np.any(vacuum_mask):
-            return
         vacuum_ids = np.flatnonzero(vacuum_mask)
 
         centroids_array = cell_data.GetArray("cell_centroids")
-        if centroids_array is None:
-            raise ValueError(
-                "CellData array 'cell_centroids' not found on the mesh."
-            )
         centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
-        if centroids.ndim != 2 or centroids.shape[1] < 2:
-            raise ValueError(
-                "CellData array 'cell_centroids' must have at least 2 components."
-            )
         x_centroid = np.asarray(centroids[:, 0], dtype=float)
         y_centroid = np.asarray(centroids[:, 1], dtype=float)
 
@@ -327,11 +343,7 @@ class ApecAlgorithm:
         current_sign = 1.0 if plasma_current >= 0.0 else -1.0
 
         b_cell_array = cell_data.GetArray("Be")
-        if b_cell_array is None:
-            raise ValueError("CellData array 'Be' not found on the mesh.")
         b_cell = np.asarray(vtknp.vtk_to_numpy(b_cell_array), dtype=float)
-        if b_cell.ndim != 2 or b_cell.shape[1] < 2:
-            raise ValueError("CellData array 'Be' must have at least 2 components.")
         bx = b_cell[:, 0]
         by = b_cell[:, 1]
 
@@ -340,8 +352,6 @@ class ApecAlgorithm:
             - bx[vacuum_ids] * (y_centroid[vacuum_ids] - axis_y)
         )
         excluded_local_mask = b_rot >= 0.0
-        if not np.any(excluded_local_mask):
-            return
 
         excluded_cell_ids = vacuum_ids[excluded_local_mask].astype(np.int64)
         Selector.select(
@@ -358,17 +368,9 @@ class ApecAlgorithm:
         mesh = self._get_mesh(mesh_name)
 
         psi_array = mesh.GetPointData().GetArray("PSI")
-        if psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on the active mesh.")
-
-        # Assume here to have calle before remove_plasma_out_of_X_point, so the limiter is the node with max PSI among those connected to the vacuum chamber.
 
         selection_array = mesh.GetPointData().GetArray("selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            raise ValueError(
-                "No nodes selected with NEW_VACUUM_CHAMBER_BOUNDARY == 1; cannot find limiter."
-            )
 
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
         psi_selected = psi[selected_ids]
@@ -388,15 +390,9 @@ class ApecAlgorithm:
         point_data = mesh.GetPointData()
 
         psi_array = point_data.GetArray("PSI")
-        if psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on the active mesh.")
 
         b_array = point_data.GetArray("B")
-        if b_array is None:
-            raise ValueError("PointData array 'B' not found on the active mesh.")
         b = np.asarray(vtknp.vtk_to_numpy(b_array), dtype=float)
-        if b.ndim != 2 or b.shape[1] < 2:
-            raise ValueError("PointData array 'B' must have at least 2 components.")
         bx = b[:, 0]
         by = b[:, 1]
 
@@ -409,10 +405,6 @@ class ApecAlgorithm:
         Selector.nsle(mesh)
         selection_array = point_data.GetArray("selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            raise ValueError(
-                "No nodes selected with VACUUM_CHAMBER == 1; cannot evaluate X-point."
-            )
 
         points = mesh.GetPoints()
         xyz = vtknp.vtk_to_numpy(points.GetData())
@@ -420,10 +412,6 @@ class ApecAlgorithm:
         dy = xyz[selected_ids, 1] - axis_y
         dist = np.sqrt(dx * dx + dy * dy)
         candidate_ids = selected_ids[dist > min_distance]
-        if candidate_ids.size == 0:
-            raise ValueError(
-                "No VACUUM_CHAMBER nodes found outside min_distance from magnetic axis."
-            )
 
         b_norm = np.sqrt(np.square(bx[candidate_ids]) + np.square(by[candidate_ids]))
         min_local_idx = int(np.argmin(b_norm))
@@ -440,12 +428,7 @@ class ApecAlgorithm:
 
         point_data = mesh.GetPointData()
         b_array = point_data.GetArray("B")
-        if b_array is None:
-            raise ValueError("PointData array 'B' not found on the active mesh.")
-
         b = np.asarray(vtknp.vtk_to_numpy(b_array), dtype=float)
-        if b.ndim != 2 or b.shape[1] < 2:
-            raise ValueError("PointData array 'B' must have at least 2 components.")
 
         target_point = (
             float(self.input_parameters["target_central_axis_x"]),
@@ -523,36 +506,16 @@ class ApecAlgorithm:
         self,
         mesh_name: Optional[str] = None,
     ) -> None:
-        if mesh_name is None:
-            mesh = self.apec.mesh
-            mesh_key = str(self.apec.active_mesh_name or "__active__")
-        else:
-            mesh = self.apec.get_mesh(mesh_name)
-            if mesh is None:
-                raise ValueError(f"Mesh '{mesh_name}' does not exist.")
-            mesh_key = str(mesh_name)
+        mesh = self._get_mesh(mesh_name)
 
         cell_data = mesh.GetCellData()
         js_array = cell_data.GetArray("Js")
-        if js_array is None:
-            raise ValueError("CellData array 'Js' not found on the mesh.")
         js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
-        if js_np.ndim != 2 or js_np.shape[1] < 3:
-            raise ValueError("CellData array 'Js' must have at least 3 components.")
 
         pfc2_array = cell_data.GetArray("PFC_2")
         pfc3_array = cell_data.GetArray("PFC_3")
         pfc4_array = cell_data.GetArray("PFC_4")
         pfc5_array = cell_data.GetArray("PFC_5")
-        if (
-            pfc2_array is None
-            or pfc3_array is None
-            or pfc4_array is None
-            or pfc5_array is None
-        ):
-            raise ValueError(
-                "CellData arrays 'PFC_2', 'PFC_3', 'PFC_4', and 'PFC_5' are required."
-            )
 
         pfc2_mask = np.asarray(vtknp.vtk_to_numpy(pfc2_array) == 1, dtype=bool)
         pfc3_mask = np.asarray(vtknp.vtk_to_numpy(pfc3_array) == 1, dtype=bool)
@@ -563,73 +526,55 @@ class ApecAlgorithm:
         selected_ids = np.flatnonzero(selected_mask)
         radial_current = float(self.status["radial_correction_current"])
         vertical_current = float(self.status["vertical_correction_current"])
-        if selected_ids.size == 0:
-            return
 
         real_constant_array = cell_data.GetArray("CONSTANT")
-        if real_constant_array is None:
-            raise ValueError(
-                "CellData array 'CONSTANT' not found on the mesh."
-            )
         real_constant_ids = np.asarray(vtknp.vtk_to_numpy(real_constant_array), dtype=int)
-
         constants_df = self.apec.constants
-        if constants_df is None or constants_df.empty:
-            raise ValueError("APEC constants table is empty; cannot apply control currents.")
-
         id_col = "CONSTANTS_ID"
         area_col = "CS"
-        if id_col not in constants_df.columns or area_col not in constants_df.columns:
+
+        # Keep old semantics for duplicate IDs: the last occurrence wins.
+        area_by_constant = constants_df.groupby(id_col, sort=False)[area_col].last()
+        selected_rc_ids = pd.Series(real_constant_ids[selected_ids], index=selected_ids)
+        selected_areas = selected_rc_ids.map(area_by_constant)
+        if selected_areas.isna().any():
+            missing_ids = np.unique(
+                selected_rc_ids[selected_areas.isna()].to_numpy(dtype=int)
+            )
             raise ValueError(
-                "Constants table must contain ID column "
-                "'CONSTANTS_ID' and area column 'CS'."
+                f"Real constant IDs not found in constants table: {missing_ids.tolist()}."
+            )
+        selected_areas_np = selected_areas.to_numpy(dtype=float)
+        if np.any(np.abs(selected_areas_np) <= np.finfo(float).eps):
+            bad_ids = np.unique(
+                selected_rc_ids[np.abs(selected_areas_np) <= np.finfo(float).eps]
+                .to_numpy(dtype=int)
+            )
+            raise ValueError(
+                f"Real constant IDs with invalid area (CS=0): {bad_ids.tolist()}."
             )
 
-        constant_lookup: Dict[int, float] = {}
-        for _, row in constants_df.iterrows():
-            cid = int(row[id_col])
-            area = float(row[area_col])
-            constant_lookup[cid] = area
-
-        base_js_z = (
-            self._old_control_current_density_base[mesh_key]
-            if mesh_key in self._old_control_current_density_base
-            else None
-        )
+        base_js_z = self._old_control_current_density_base
         if base_js_z is None or base_js_z.shape[0] != js_np.shape[0]:
             base_js_z = np.asarray(js_np[:, 2], dtype=float).copy()
-            self._old_control_current_density_base[mesh_key] = base_js_z
+            self._old_control_current_density_base = base_js_z
 
-        for cell_id in selected_ids:
-            if pfc2_mask[cell_id]:
-                # JPF2=(xirad+IPF2)/APF2
-                correction_current = radial_current
-            elif pfc3_mask[cell_id]:
-                # JPF3=(xiver+IPF3)/APF3
-                correction_current = vertical_current
-            elif pfc4_mask[cell_id]:
-                # JPF4=(xiver+IPF4)/APF4
-                correction_current = vertical_current
-            elif pfc5_mask[cell_id]:
-                # JPF5=(-xirad+IPF5)/APF5
-                correction_current = -radial_current
-            else:
-                continue
+        corr_current = np.zeros(selected_ids.shape[0], dtype=float)
+        sel_pfc2 = pfc2_mask[selected_ids]
+        sel_pfc3 = pfc3_mask[selected_ids]
+        sel_pfc4 = pfc4_mask[selected_ids]
+        sel_pfc5 = pfc5_mask[selected_ids]
+        # JPF2=(xirad+IPF2)/APF2
+        corr_current[sel_pfc2] = radial_current
+        # JPF3=(xiver+IPF3)/APF3
+        corr_current[sel_pfc3] = vertical_current
+        # JPF4=(xiver+IPF4)/APF4
+        corr_current[sel_pfc4] = vertical_current
+        # JPF5=(-xirad+IPF5)/APF5
+        corr_current[sel_pfc5] = -radial_current
 
-            rc_id = int(real_constant_ids[cell_id])
-            if rc_id not in constant_lookup:
-                raise ValueError(
-                    f"Real constant ID {rc_id} not found in constants table."
-                )
-
-            coil_area = constant_lookup[rc_id]
-            if abs(coil_area) <= np.finfo(float).eps:
-                raise ValueError(
-                    f"Real constant ID {rc_id} has invalid coil area ({coil_area})."
-                )
-
-            correction_current_density = correction_current / coil_area
-            js_np[cell_id, 2] = base_js_z[cell_id] + correction_current_density
+        correction_current_density = corr_current / selected_areas_np
+        js_np[selected_ids, 2] = base_js_z[selected_ids] + correction_current_density
 
         js_array.Modified()
 
@@ -668,32 +613,18 @@ class ApecAlgorithm:
     def _compute_jplasma_gradshafranov_default(
         self, mesh_name: Optional[str] = None
     ) -> None:
-        from .coordinate_system import CylindricalCoordinateSystem
-
         mesh = self._get_mesh(mesh_name)
 
         cell_data = mesh.GetCellData()
 
-        plasma_array = cell_data.GetArray("PLASMA")
-        if plasma_array is None:
-            raise ValueError("CellData array 'PLASMA' not found on the mesh.")
-
         js_array = cell_data.GetArray("Js")
-        if js_array is None:
-            raise ValueError("CellData array 'Js' not found on the mesh.")
         js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
-        if js_np.ndim != 2 or js_np.shape[1] < 3:
-            raise ValueError("CellData array 'Js' must have at least 3 components.")
 
         psie_array = cell_data.GetArray("PSIe")
         psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
 
         be_array = cell_data.GetArray("Be")
-        if be_array is None:
-            raise ValueError("CellData array 'Be' not found on the mesh.")
         be_np = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
-        if be_np.ndim != 2 or be_np.shape[1] < 2:
-            raise ValueError("CellData array 'Be' must have at least 2 components.")
         bx = np.asarray(be_np[:, 0], dtype=float)
         by = np.asarray(be_np[:, 1], dtype=float)
 
@@ -702,10 +633,6 @@ class ApecAlgorithm:
 
         centroids_array = cell_data.GetArray("cell_centroids")
         centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
-        if centroids.ndim != 2 or centroids.shape[1] < 1:
-            raise ValueError(
-                "CellData array 'cell_centroids' must have at least 1 component."
-            )
         elem_centroid_rad = np.asarray(centroids[:, 0], dtype=float)
 
         psi_magnetic_axis = float(self.status["psi_magnetic_axis"])
@@ -727,11 +654,6 @@ class ApecAlgorithm:
         Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
         selection_array = cell_data.GetArray("selection_cell")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            self.status["total_plasma_current_before_scaling"] = 0.0
-            self.status["plasma_current_scaling_lambda"] = 0.0
-            self.status["plasma_element_count"] = 0
-            return
 
         psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
         one_minus = 1.0 - np.power(psi_segn, alpha_mp)
@@ -773,15 +695,6 @@ class ApecAlgorithm:
         js_np[selected_ids, 2] = js_toroidal
         js_array.Modified()
 
-        # cylindrical_coordinate_system = CylindricalCoordinateSystem()
-        # ModelEdit.map_vector_field_to_global_components(
-        #     mesh,
-        #     array_name="Js",
-        #     coordinate_system=cylindrical_coordinate_system,
-        #     location="elem",
-        #     selected_only=True,
-        # )
-
         self.status["total_plasma_current_before_scaling"] = total_plasma_current
         self.status["plasma_current_scaling_lambda"] = float(lambda_scale)
         self.status["plasma_element_count"] = int(selected_ids.size)
@@ -813,22 +726,11 @@ class ApecAlgorithm:
 
         point_data = mesh.GetPointData()
         psi_array = point_data.GetArray("PSI")
-        if psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on the mesh.")
 
-        if point_data.GetArray("VACUUM_CHAMBER_NODES") is None:
-            raise ValueError(
-                "PointData array 'VACUUM_CHAMBER_NODES' not found on the mesh."
-            )
-
-        Selector.select(mesh, "VACUUM_CHAMBER_NODES", 1, type="node", mode="s")
+        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        Selector.nsle(mesh)
         selection_array = point_data.GetArray("selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            raise ValueError(
-                "No nodes selected with VACUUM_CHAMBER_NODES == 1; "
-                "cannot check poloidal flux convergence."
-            )
 
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
         current_flux_vector = psi[selected_ids].copy()
@@ -867,45 +769,400 @@ class ApecAlgorithm:
         equilibrium_mesh_name: Optional[str] = None,
         evolution_mesh_name: Optional[str] = None,
     ) -> None:
-        # Placeholder for old evolution->equilibrium averaging.
-        _ = equilibrium_mesh_name
-        _ = evolution_mesh_name
+        from .coordinate_system import CylindricalCoordinateSystem
+
+        equilibrium_name = str(
+            equilibrium_mesh_name
+            or self.input_parameters["equilibrium_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        evolution_name = str(
+            evolution_mesh_name
+            or self.input_parameters["evolution_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        if not equilibrium_name or not evolution_name:
+            raise ValueError(
+                "toroidal_average requires equilibrium and evolution mesh names."
+            )
+
+        equilibrium_mesh = self._get_mesh(equilibrium_name)
+        evolution_mesh = self._get_mesh(evolution_name)
+        node_slices, elem_slices = self._require_toroidal_slices()
+
+        eq_point_data = equilibrium_mesh.GetPointData()
+        evol_point_data = evolution_mesh.GetPointData()
+        eq_cell_data = equilibrium_mesh.GetCellData()
+        evol_cell_data = evolution_mesh.GetCellData()
+
+        eq_psi_array = eq_point_data.GetArray("PSI")
+        evol_psi_array = evol_point_data.GetArray("PSI")
+        eq_be_array = eq_cell_data.GetArray("Be")
+        evol_be_array = evol_cell_data.GetArray("Be")
+        eq_psie_array = eq_cell_data.GetArray("PSIe")
+        evol_psie_array = evol_cell_data.GetArray("PSIe")
+        eq_js_array = eq_cell_data.GetArray("Js")
+        evol_jt_array = evol_cell_data.GetArray("Jt")
+        if (
+            eq_psi_array is None
+            or evol_psi_array is None
+            or eq_be_array is None
+            or evol_be_array is None
+            or eq_psie_array is None
+            or evol_psie_array is None
+            or eq_js_array is None
+            or evol_jt_array is None
+        ):
+            raise ValueError(
+                "Required arrays for toroidal_average are missing "
+                "(PSI, Be, PSIe, Js, Jt)."
+            )
+
+        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
+        evol_psi = np.asarray(vtknp.vtk_to_numpy(evol_psi_array), dtype=float).reshape(-1)
+
+        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
+        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
+        node_ids, node_values = self._average_from_slice_targets(
+            source_values=evol_psi,
+            source_ids=src_nodes,
+            target_ids_matrix=dst_nodes,
+            source_size=eq_psi.shape[0],
+        )
+        eq_psi[node_ids] = node_values
+        eq_psi_array.Modified()
+
+        cylindrical = CylindricalCoordinateSystem()
+        ModelEdit.map_vector_field_to_local_components(
+            evolution_mesh,
+            "Jt",
+            cylindrical,
+            location="elem",
+        )
+        ModelEdit.map_vector_field_to_local_components(
+            equilibrium_mesh,
+            "Be",
+            cylindrical,
+            location="elem",
+        )
+        ModelEdit.map_vector_field_to_local_components(
+            equilibrium_mesh,
+            "Js",
+            cylindrical,
+            location="elem",
+        )
+
+        eq_be = np.asarray(vtknp.vtk_to_numpy(eq_be_array), dtype=float)
+        evol_be = np.asarray(vtknp.vtk_to_numpy(evol_be_array), dtype=float)
+        eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
+        evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
+        eq_js = np.asarray(vtknp.vtk_to_numpy(eq_js_array), dtype=float)
+        evol_jt = np.asarray(vtknp.vtk_to_numpy(evol_jt_array), dtype=float)
+
+        eq_dim = int(equilibrium_mesh.GetMaxSpatialDimension())
+        evol_dim = int(evolution_mesh.GetMaxSpatialDimension())
+        eq_main, eq_rad, eq_ver = self._vector_component_indices(eq_dim)
+        evol_main, evol_rad, evol_ver = self._vector_component_indices(evol_dim)
+
+        src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
+        dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
+
+        src_ids, rad_values = self._average_from_slice_targets(
+            source_values=evol_be[:, evol_rad],
+            source_ids=src_elems,
+            target_ids_matrix=dst_elems,
+            source_size=eq_be.shape[0],
+        )
+        eq_be[src_ids, eq_rad] = rad_values
+
+        src_ids, ver_values = self._average_from_slice_targets(
+            source_values=evol_be[:, evol_ver],
+            source_ids=src_elems,
+            target_ids_matrix=dst_elems,
+            source_size=eq_be.shape[0],
+        )
+        eq_be[src_ids, eq_ver] = ver_values
+
+        src_ids, psie_values = self._average_from_slice_targets(
+            source_values=evol_psie,
+            source_ids=src_elems,
+            target_ids_matrix=dst_elems,
+            source_size=eq_psie.shape[0],
+        )
+        eq_psie[src_ids] = psie_values
+
+        coils_array = eq_cell_data.GetArray("COILS")
+        if coils_array is not None:
+            coils_mask = np.asarray(vtknp.vtk_to_numpy(coils_array) == 1, dtype=bool)
+            src_ids, js_main_values = self._average_from_slice_targets(
+                source_values=evol_jt[:, evol_main],
+                source_ids=src_elems,
+                target_ids_matrix=dst_elems,
+                source_size=eq_js.shape[0],
+            )
+            if src_ids.size > 0:
+                valid_coils = coils_mask[src_ids]
+                eq_js[src_ids[valid_coils], eq_main] = js_main_values[valid_coils]
+
+        eq_be_array.Modified()
+        eq_psie_array.Modified()
+        eq_js_array.Modified()
+
+        ModelEdit.map_vector_field_to_global_components(
+            evolution_mesh,
+            "Jt",
+            cylindrical,
+            location="elem",
+        )
+        ModelEdit.map_vector_field_to_global_components(
+            equilibrium_mesh,
+            "Be",
+            cylindrical,
+            location="elem",
+        )
+        ModelEdit.map_vector_field_to_global_components(
+            equilibrium_mesh,
+            "Js",
+            cylindrical,
+            location="elem",
+        )
 
     def toroidal_average_psi(
         self,
         equilibrium_mesh_name: Optional[str] = None,
         static_mesh_name: Optional[str] = None,
     ) -> None:
-        # Placeholder for static->equilibrium PSI averaging.
-        _ = equilibrium_mesh_name
-        _ = static_mesh_name
+        equilibrium_name = str(
+            equilibrium_mesh_name
+            or self.input_parameters["equilibrium_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        static_name = str(
+            static_mesh_name
+            or self.input_parameters["static_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        if not equilibrium_name or not static_name:
+            raise ValueError(
+                "toroidal_average_psi requires equilibrium and static mesh names."
+            )
+
+        equilibrium_mesh = self._get_mesh(equilibrium_name)
+        static_mesh = self._get_mesh(static_name)
+        node_slices, _ = self._require_toroidal_slices()
+
+        eq_psi_array = equilibrium_mesh.GetPointData().GetArray("PSI")
+        static_psi_array = static_mesh.GetPointData().GetArray("PSI")
+        if eq_psi_array is None or static_psi_array is None:
+            raise ValueError("PointData array 'PSI' not found on equilibrium/static mesh.")
+
+        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
+        static_psi = np.asarray(vtknp.vtk_to_numpy(static_psi_array), dtype=float).reshape(-1)
+
+        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
+        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
+        node_ids, node_values = self._average_from_slice_targets(
+            source_values=static_psi,
+            source_ids=src_nodes,
+            target_ids_matrix=dst_nodes,
+            source_size=eq_psi.shape[0],
+        )
+        eq_psi[node_ids] = node_values
+        eq_psi_array.Modified()
 
     def toroidal_projection_plasma_current(
         self,
         static_mesh_name: Optional[str] = None,
         equilibrium_mesh_name: Optional[str] = None,
     ) -> None:
-        # Placeholder for equilibrium->static current projection.
-        _ = static_mesh_name
-        _ = equilibrium_mesh_name
+        from .coordinate_system import CylindricalCoordinateSystem
+
+        static_name = str(
+            static_mesh_name
+            or self.input_parameters["static_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        equilibrium_name = str(
+            equilibrium_mesh_name
+            or self.input_parameters["equilibrium_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        if not static_name or not equilibrium_name:
+            raise ValueError(
+                "toroidal_projection_plasma_current requires static and equilibrium mesh names."
+            )
+
+        static_mesh = self._get_mesh(static_name)
+        equilibrium_mesh = self._get_mesh(equilibrium_name)
+        _, elem_slices = self._require_toroidal_slices()
+
+        static_js_array = static_mesh.GetCellData().GetArray("Js")
+        equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
+        if static_js_array is None or equilibrium_js_array is None:
+            raise ValueError("CellData array 'Js' not found on static/equilibrium mesh.")
+
+        cylindrical = CylindricalCoordinateSystem()
+        ModelEdit.map_vector_field_to_local_components(
+            static_mesh,
+            "Js",
+            cylindrical,
+            location="elem",
+        )
+
+        static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
+        equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
+
+        static_dim = int(static_mesh.GetMaxSpatialDimension())
+        equilibrium_dim = int(equilibrium_mesh.GetMaxSpatialDimension())
+        static_main, static_c1, static_c2 = self._vector_component_indices(static_dim)
+        equilibrium_main, equilibrium_c1, equilibrium_c2 = self._vector_component_indices(
+            equilibrium_dim
+        )
+
+        src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
+        dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
+
+        dst_ids, main_values = self._broadcast_rows_to_slice_targets(
+            source_values=equilibrium_js[:, equilibrium_main],
+            source_ids=src_elems,
+            target_ids_matrix=dst_elems,
+            target_size=static_js.shape[0],
+        )
+        static_js[dst_ids, static_main] = main_values
+
+        if static_dim == 3:
+            dst_ids, c1_values = self._broadcast_rows_to_slice_targets(
+                source_values=equilibrium_js[:, equilibrium_c1],
+                source_ids=src_elems,
+                target_ids_matrix=dst_elems,
+                target_size=static_js.shape[0],
+            )
+            static_js[dst_ids, static_c1] = c1_values
+
+            dst_ids, c2_values = self._broadcast_rows_to_slice_targets(
+                source_values=equilibrium_js[:, equilibrium_c2],
+                source_ids=src_elems,
+                target_ids_matrix=dst_elems,
+                target_size=static_js.shape[0],
+            )
+            static_js[dst_ids, static_c2] = c2_values
+
+        static_js_array.Modified()
+        ModelEdit.map_vector_field_to_global_components(
+            static_mesh,
+            "Js",
+            cylindrical,
+            location="elem",
+        )
 
     def impressed_eddy_currents_coils_currents(
         self,
         evolution_mesh_name: Optional[str] = None,
         static_mesh_name: Optional[str] = None,
     ) -> None:
-        # Placeholder for evolution->static current copy.
-        _ = evolution_mesh_name
-        _ = static_mesh_name
+        evolution_name = str(
+            evolution_mesh_name
+            or self.input_parameters["evolution_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        static_name = str(
+            static_mesh_name
+            or self.input_parameters["static_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        if not evolution_name or not static_name:
+            raise ValueError(
+                "impressed_eddy_currents_coils_currents requires evolution and static mesh names."
+            )
+
+        evolution_mesh = self._get_mesh(evolution_name)
+        static_mesh = self._get_mesh(static_name)
+
+        evol_cell_data = evolution_mesh.GetCellData()
+        static_cell_data = static_mesh.GetCellData()
+        evol_jt_array = evol_cell_data.GetArray("Jt")
+        static_js_array = static_cell_data.GetArray("Js")
+        if evol_jt_array is None or static_js_array is None:
+            raise ValueError("CellData array 'Jt'/'Js' not found on evolution/static mesh.")
+
+        evol_jt = np.asarray(vtknp.vtk_to_numpy(evol_jt_array), dtype=float)
+        static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
+
+        evol_passive = evol_cell_data.GetArray("PASSIVE_STRUCTURES")
+        evol_coils = evol_cell_data.GetArray("COILS")
+        static_passive = static_cell_data.GetArray("PASSIVE_STRUCTURES")
+        static_coils = static_cell_data.GetArray("COILS")
+
+        evol_mask = np.asarray(vtknp.vtk_to_numpy(evol_passive) == 1, dtype=bool) | np.asarray(
+            vtknp.vtk_to_numpy(evol_coils) == 1, dtype=bool
+        )
+        static_mask = np.asarray(vtknp.vtk_to_numpy(static_passive) == 1, dtype=bool) | np.asarray(
+            vtknp.vtk_to_numpy(static_coils) == 1, dtype=bool
+        )
+        shared_ids = np.flatnonzero(evol_mask & static_mask)
+
+        static_js[shared_ids, 2] = evol_jt[shared_ids, 2]
+
+        if int(evolution_mesh.GetMaxSpatialDimension()) == 3:
+            static_js[shared_ids, 0] = evol_jt[shared_ids, 0]
+            static_js[shared_ids, 1] = evol_jt[shared_ids, 1]
+
+        static_js_array.Modified()
 
     def set_plasma_current(
         self,
         static_mesh_name: Optional[str] = None,
         evolution_mesh_name: Optional[str] = None,
     ) -> None:
-        # Placeholder for static->evolution plasma current transfer.
-        _ = static_mesh_name
-        _ = evolution_mesh_name
+        static_name = str(
+            static_mesh_name
+            or self.input_parameters["static_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        evolution_name = str(
+            evolution_mesh_name
+            or self.input_parameters["evolution_mesh"]
+            or self.apec.active_mesh_name
+            or ""
+        )
+        if not static_name or not evolution_name:
+            raise ValueError(
+                "set_plasma_current requires static and evolution mesh names."
+            )
+
+        static_mesh = self._get_mesh(static_name)
+        evolution_mesh = self._get_mesh(evolution_name)
+
+        static_cell_data = static_mesh.GetCellData()
+        evolution_cell_data = evolution_mesh.GetCellData()
+        static_js_array = static_cell_data.GetArray("Js")
+        evolution_js_array = evolution_cell_data.GetArray("Js")
+        vacuum_static = static_cell_data.GetArray("VACUUM_CHAMBER")
+        vacuum_evolution = evolution_cell_data.GetArray("VACUUM_CHAMBER")
+
+        static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
+        evolution_js = np.asarray(vtknp.vtk_to_numpy(evolution_js_array), dtype=float)
+
+        static_mask = np.asarray(vtknp.vtk_to_numpy(vacuum_static) == 1, dtype=bool)
+        evolution_mask = np.asarray(vtknp.vtk_to_numpy(vacuum_evolution) == 1, dtype=bool)
+        shared_ids = np.flatnonzero(static_mask & evolution_mask)
+
+        evolution_js[shared_ids, 2] = static_js[shared_ids, 2]
+
+        if int(evolution_mesh.GetMaxSpatialDimension()) == 3:
+            evolution_js[shared_ids, 0] = static_js[shared_ids, 0]
+            evolution_js[shared_ids, 1] = static_js[shared_ids, 1]
+
+        evolution_js_array.Modified()
 
     def set_poloidal_currents(
         self,
@@ -984,7 +1241,7 @@ class ApecAlgorithm:
             if converged:
                 self.status["converged"] = True
                 return True
-            self.apec.write_output()
+            # self.apec.write_output()
             self._first_absolute_iteration = False
 
         self.status["converged"] = False
@@ -1007,6 +1264,9 @@ class ApecAlgorithm:
                 "evolution_solve requires an active mesh or input_parameters['evolution_mesh']."
             )
 
+        if self._first_absolute_iteration:
+            self.set_toroidal_slices()
+
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
         )
@@ -1018,6 +1278,7 @@ class ApecAlgorithm:
                 self.find_separatrix(mesh_name=equilibrium_mesh)
                 self.compute_jplasma_gradshafranov(mesh_name=equilibrium_mesh)
 
+                self.apec.set_active_mesh(static_mesh)
                 self.toroidal_projection_plasma_current(
                     static_mesh_name=static_mesh,
                     equilibrium_mesh_name=equilibrium_mesh,
@@ -1028,6 +1289,7 @@ class ApecAlgorithm:
                 )
 
                 self.apec.set_active_mesh(static_mesh)
+                self.apec.time_step["transient_effects"] = False
                 self.apec.solve(nodal_solution=nodal_solution)
                 self.calculate_poloidal_flux(mesh_name=static_mesh)
 
@@ -1036,7 +1298,12 @@ class ApecAlgorithm:
                     static_mesh_name=static_mesh,
                 )
 
-                if self.check_convergence(mesh_name=equilibrium_mesh):
+                converged = self.check_convergence(mesh_name=equilibrium_mesh)
+                self.append_iteration_diagnostics(
+                    converged,
+                    mesh_name=equilibrium_mesh,
+                )
+                if converged:
                     self.status["converged"] = True
                     return True
 
@@ -1044,6 +1311,8 @@ class ApecAlgorithm:
                     static_mesh_name=static_mesh,
                     evolution_mesh_name=evolution_mesh,
                 )
+                self.apec.time_step["transient_effects"] = True
+
 
             self.apec.set_active_mesh(evolution_mesh)
             self.apec.solve(nodal_solution=nodal_solution)

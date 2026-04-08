@@ -13,8 +13,6 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
-#include <pybind11/pybind11.h>
-
 #include "fe_parent_object.h"
 // #include "element_types.h"
 #include "element_types_factory.h"
@@ -33,6 +31,32 @@ struct ElemData
     ElementType *element_type = nullptr; // Pointer to the element type
     unsigned int material_num = 0;       // Material number
     unsigned int real_constant_num = 0;  // Real constant number
+};
+
+enum MaterialColumnIndex : unsigned int
+{
+    MAT_MUR_X = 0,
+    MAT_MUR_Y = 1,
+    MAT_MUR_Z = 2,
+    MAT_RHO_X = 3,
+    MAT_RHO_Y = 4,
+    MAT_RHO_Z = 5,
+    MAT_NUM_COLS = 6
+};
+
+enum ConstantColumnIndex : unsigned int
+{
+    CONST_THK = 0,
+    CONST_CS = 1,
+    CONST_TURNS = 2,
+    CONST_VOL = 3,
+    CONST_RAD = 4,
+    CONST_T_X = 5,
+    CONST_T_Y = 6,
+    CONST_T_Z = 7,
+    CONST_R = 8,
+    CONST_S = 9,
+    CONST_NUM_COLS = 10
 };
 
 // This is probably the most important class of the program. Given the MAterials, the Loads, etc. it builds the
@@ -146,9 +170,8 @@ private:
     System *support_solution_system_ = nullptr;
 
     DofMap *dof_solution_dof_map_ = nullptr;
-    pybind11::object apec_object_;
-    pybind11::object materials_attribute_;
-    pybind11::object constants_attribute_;
+    std::unordered_map<dof_id_type, std::vector<Real>> materials_rows_;
+    std::unordered_map<dof_id_type, std::vector<Real>> constants_rows_;
     vtkUnstructuredGrid *vtk_grid_ = nullptr;
     vtkDataArray *material_cell_array_ = nullptr;
     vtkDataArray *real_constant_cell_array_ = nullptr;
@@ -168,7 +191,10 @@ private:
 
     void append_and_write_solution(System &system,
                                    const std::vector<DenseVector<Number>> &ordered_vectors);
-    pybind11::object get_row_by_id(const pybind11::object &table, const char *id_column, unsigned int id) const;
+    const std::vector<Real> &material_row(dof_id_type id) const;
+    const std::vector<Real> &constant_row(dof_id_type id) const;
+    Real material_value(dof_id_type id, unsigned int col_idx) const;
+    Real constant_value(dof_id_type id, unsigned int col_idx) const;
 };
 
 #endif // ELEMENT_BUILDER_H

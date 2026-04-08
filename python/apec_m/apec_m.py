@@ -264,6 +264,9 @@ class APEC_M:
         Raises:
             ValueError: If output_file is not provided and no active mesh is set.
         """
+        if self._world_rank() != 0:
+            return
+
         if output_file is None:
             if not self._active_mesh_name:
                 raise ValueError(
@@ -294,6 +297,9 @@ class APEC_M:
             raise ValueError(
                 "No active mesh is set. Activate a mesh before writing output."
             )
+
+        if self._world_rank() != 0:
+            return
 
         mesh_name = self._active_mesh_name
         output_dir = os.path.join(os.getcwd(), mesh_name, "output")

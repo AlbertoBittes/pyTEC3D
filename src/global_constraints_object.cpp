@@ -11,6 +11,9 @@
 #include <libmesh/mesh_base.h>
 #include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
+#include <libmesh/tensor_value.h>
+#include <libmesh/vector_value.h>
+#include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 #include <algorithm>
 #include <array>
@@ -18,7 +21,6 @@
 #include <cstring>
 #include <limits>
 #include <map>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,6 +33,8 @@ namespace py = pybind11;
 
 namespace
 {
+    using RotationCache = std::unordered_map<vtkIdType, TensorValue<Real>>;
+
     const py::object &coordinate_system_class()
     {
         static py::object cls = []() -> py::object
@@ -46,6 +50,47 @@ namespace
             }
         }();
         return cls;
+    }
+
+    void build_rotation_cache_from_point_ids(
+        vtkDataArray *angles_array,
+        const std::vector<vtkIdType> &point_ids_for_rotation,
+        RotationCache &local_to_global_cache)
+    {
+        if (!angles_array || point_ids_for_rotation.empty())
+            return;
+
+        py::gil_scoped_acquire gil;
+        const py::object &coord_system = coordinate_system_class();
+        const std::vector<py::ssize_t> angles_shape = {
+            static_cast<py::ssize_t>(point_ids_for_rotation.size()),
+            static_cast<py::ssize_t>(3)};
+        py::array_t<Real> angles_np(angles_shape);
+        auto angles_view = angles_np.mutable_unchecked<2>();
+        for (py::ssize_t idx = 0; idx < static_cast<py::ssize_t>(point_ids_for_rotation.size()); ++idx)
+        {
+            const vtkIdType point_id = point_ids_for_rotation[static_cast<std::size_t>(idx)];
+            angles_view(idx, 0) = static_cast<Real>(angles_array->GetComponent(point_id, 0));
+            angles_view(idx, 1) = static_cast<Real>(angles_array->GetComponent(point_id, 1));
+            angles_view(idx, 2) = static_cast<Real>(angles_array->GetComponent(point_id, 2));
+        }
+
+        const py::object coeffs_obj =
+            coord_system.attr("build_local_to_global_coefficients")(angles_np);
+        const py::array_t<Real, py::array::c_style | py::array::forcecast> coeffs_np =
+            py::cast<py::array_t<Real, py::array::c_style | py::array::forcecast>>(coeffs_obj);
+        const auto coeffs = coeffs_np.unchecked<2>();
+
+        for (py::ssize_t idx = 0; idx < static_cast<py::ssize_t>(point_ids_for_rotation.size()); ++idx)
+        {
+            const vtkIdType point_id = point_ids_for_rotation[static_cast<std::size_t>(idx)];
+            local_to_global_cache.emplace(
+                point_id,
+                TensorValue<Real>(
+                    coeffs(idx, 0), coeffs(idx, 1), coeffs(idx, 2),
+                    coeffs(idx, 3), coeffs(idx, 4), coeffs(idx, 5),
+                    coeffs(idx, 6), coeffs(idx, 7), coeffs(idx, 8)));
+        }
     }
 
 } // namespace
@@ -64,15 +109,18 @@ GlobalConstraintsObject::build_time_integration_constraints()
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
 
-    py::gil_scoped_acquire gil;
-    const py::object element_types = solver->get_apec_object().attr("element_types");
-    const py::object option4 = element_types.attr("__getitem__")("OPTION4");
-    const py::object option4_iloc = option4.attr("iloc");
+    std::vector<unsigned int> option4_values;
+    {
+        py::gil_scoped_acquire gil;
+        const py::object element_types = solver->get_apec_object().attr("element_types");
+        option4_values = py::cast<std::vector<unsigned int>>(
+            element_types.attr("__getitem__")("OPTION4").attr("to_numpy")());
+    }
 
     bool has_timeintegrated_formulation = false;
-    for (py::ssize_t i = 0; i < py::len(option4); ++i)
+    for (const unsigned int opt4 : option4_values)
     {
-        if (py::cast<unsigned int>(option4_iloc.attr("__getitem__")(i)) == 1)
+        if (opt4 == 1)
         {
             has_timeintegrated_formulation = true;
             break;
@@ -104,26 +152,19 @@ std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
 GlobalConstraintsObject::build_point_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
-    py::gil_scoped_acquire gil;
-    static py::object np = py::module_::import("numpy");
 
     System *system = this->get_parent_object();
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
     vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
 
-    const py::object &coord_system = coordinate_system_class();
-
     vtkPointData *point_data = vtk_grid->GetPointData();
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
 
-    const dof_id_type first_local = system->solution->first_local_index();
-    const dof_id_type last_local = system->solution->last_local_index();
-
     auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
     std::unordered_map<std::string, vtkDataArray *> vector_arrays;
-    std::set<unsigned int> vector_var_numbers;
+    std::unordered_set<unsigned int> vector_var_numbers;
     for (const auto &entry : vector_variables)
     {
         const std::string array_name = "_" + entry.first;
@@ -163,24 +204,75 @@ GlobalConstraintsObject::build_point_constraints()
     }
 
     const Real tol = std::numeric_limits<Real>::epsilon();
-    std::set<dof_id_type> constrained_dofs;
+    std::unordered_set<dof_id_type> constrained_dofs;
+    RotationCache local_to_global_cache;
+
+    std::vector<vtkIdType> point_ids_for_rotation;
+    std::unordered_set<vtkIdType> seen_point_ids;
+    const vtkIdType n_angle_tuples = angles_array->GetNumberOfTuples();
+
+    for (const auto &node_ptr : equation_systems->get_mesh().local_node_ptr_range())
+    {
+        const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
+        // if (point_id < 0 || point_id >= n_angle_tuples)
+        //     continue;
+
+        bool needs_rotation = false;
+        for (const auto &var_entry : vector_variables)
+        {
+            auto array_it = vector_arrays.find(var_entry.first);
+            if (array_it == vector_arrays.end() || array_it->second == nullptr)
+                continue;
+
+            vtkDataArray *constraint_array = array_it->second;
+            const auto &components = var_entry.second;
+            const unsigned int max_components = std::min<unsigned int>(3, components.size());
+            for (unsigned int i = 0; i < max_components; ++i)
+            {
+                const unsigned int comp_idx = components[i].component_index;
+                const Real value = static_cast<Real>(constraint_array->GetComponent(point_id, comp_idx));
+                if (!std::isnan(value))
+                {
+                    needs_rotation = true;
+                    break;
+                }
+            }
+
+            if (needs_rotation)
+                break;
+        }
+
+        if (needs_rotation)
+        {
+            if (point_id < 0 || point_id >= n_angle_tuples)
+                continue;
+            if (seen_point_ids.insert(point_id).second)
+                point_ids_for_rotation.push_back(point_id);
+        }
+    }
+
+    build_rotation_cache_from_point_ids(angles_array, point_ids_for_rotation, local_to_global_cache);
 
     for (const auto &node_ptr : equation_systems->get_mesh().local_node_ptr_range())
     {
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
 
         bool rotation_ready = false;
-        py::object rotation = np.attr("eye")(3);
-        auto rotation_at = [&rotation](unsigned int i, unsigned int j) -> Real
-        {
-            return py::cast<Real>(
-                rotation.attr("__getitem__")(i).attr("__getitem__")(j));
-        };
+        TensorValue<Real> global_to_local(
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0);
+        TensorValue<Real> local_to_global(
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0);
 
         // Constraints for vector variables
         for (const auto &var_entry : vector_variables)
         {
             auto array_it = vector_arrays.find(var_entry.first);
+            if (array_it == vector_arrays.end() || array_it->second == nullptr)
+                continue;
             vtkDataArray *constraint_array = array_it->second;
 
             // Get the number of components for this variable
@@ -239,15 +331,11 @@ GlobalConstraintsObject::build_point_constraints()
             // Apply rotation to constraint values
             if (!rotation_ready)
             {
-                const Real angle_xy_deg = static_cast<Real>(angles_array->GetComponent(point_id, 0));
-                const Real angle_yz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 1));
-                const Real angle_xz_deg = static_cast<Real>(angles_array->GetComponent(point_id, 2));
-
-                rotation =
-                    coord_system.attr("build_global_to_local")(
-                        angle_xy_deg,
-                        angle_yz_deg,
-                        angle_xz_deg);
+                auto cache_it = local_to_global_cache.find(point_id);
+                if (cache_it == local_to_global_cache.end())
+                    libmesh_error_msg("Point constraint rotation matrix cache miss for node id " << point_id << ".");
+                local_to_global = cache_it->second;
+                global_to_local = TensorValue<Real>(local_to_global.transpose());
                 rotation_ready = true;
             }
 
@@ -255,15 +343,13 @@ GlobalConstraintsObject::build_point_constraints()
             // resulting from the explicit rotation of the original constraints, without worrying about linear dependence.
             if (full_vector_constraint)
             {
-                std::array<Real, 3> global_values = {0.0, 0.0, 0.0};
-                for (unsigned int i = 0; i < 3; ++i)
-                    for (unsigned int j = 0; j < 3; ++j)
-                        global_values[i] += rotation_at(j, i) * values[j];
+                VectorValue<Real> local_values(values[0], values[1], values[2]);
+                const VectorValue<Real> global_values(local_to_global * local_values);
 
                 for (unsigned int i = 0; i < 3; ++i)
                 {
                     ConstraintEntry entry;
-                    entry.value = global_values[i];
+                    entry.value = global_values(i);
                     if (constraints.emplace(dofs[i], entry).second)
                         constrained_dofs.insert(dofs[i]);
                 }
@@ -272,46 +358,46 @@ GlobalConstraintsObject::build_point_constraints()
 
             // If not all components of the vector variable are constrained
             // we need to check for linear dependence and possibly reduce the constraints to a subset of independent ones.
-            std::vector<unsigned int> constrained_components;
-            constrained_components.reserve(max_components);
+            std::array<unsigned int, 3> constrained_components = {0, 0, 0};
+            unsigned int n_constrained_components = 0;
             for (unsigned int i = 0; i < max_components; ++i)
                 if (!std::isnan(values[i]))
-                    constrained_components.push_back(i);
+                    constrained_components[n_constrained_components++] = i;
 
-            if (constrained_components.size() == 2)
+            if (n_constrained_components == 2)
             {
                 const unsigned int eq0 = constrained_components[0];
                 const unsigned int eq1 = constrained_components[1];
                 const Real rhs0 = values[eq0];
                 const Real rhs1 = values[eq1];
 
-                std::vector<unsigned int> candidate_dofs;
-                candidate_dofs.reserve(max_components);
+                std::array<unsigned int, 3> candidate_dofs = {0, 0, 0};
+                unsigned int n_candidate_dofs = 0;
                 for (unsigned int j = 0; j < max_components; ++j)
                 {
                     if (dofs[j] == libMesh::invalid_uint)
                         continue;
                     if (constrained_dofs.count(dofs[j]) != 0)
                         continue;
-                    candidate_dofs.push_back(j);
+                    candidate_dofs[n_candidate_dofs++] = j;
                 }
 
                 bool handled = false;
-                if (candidate_dofs.size() >= 2)
+                if (n_candidate_dofs >= 2)
                 {
                     Real best_det = 0.0;
                     unsigned int s0 = 0;
                     unsigned int s1 = 0;
-                    for (size_t a = 0; a < candidate_dofs.size(); ++a)
+                    for (unsigned int a = 0; a < n_candidate_dofs; ++a)
                     {
-                        for (size_t b = a + 1; b < candidate_dofs.size(); ++b)
+                        for (unsigned int b = a + 1; b < n_candidate_dofs; ++b)
                         {
                             const unsigned int j0 = candidate_dofs[a];
                             const unsigned int j1 = candidate_dofs[b];
-                            const Real a00 = rotation_at(eq0, j0);
-                            const Real a01 = rotation_at(eq0, j1);
-                            const Real a10 = rotation_at(eq1, j0);
-                            const Real a11 = rotation_at(eq1, j1);
+                            const Real a00 = global_to_local(eq0, j0);
+                            const Real a01 = global_to_local(eq0, j1);
+                            const Real a10 = global_to_local(eq1, j0);
+                            const Real a11 = global_to_local(eq1, j1);
                             const Real det = a00 * a11 - a01 * a10;
                             const Real abs_det = std::abs(det);
                             if (abs_det > best_det)
@@ -325,10 +411,10 @@ GlobalConstraintsObject::build_point_constraints()
 
                     if (best_det >= tol)
                     {
-                        const Real a00 = rotation_at(eq0, s0);
-                        const Real a01 = rotation_at(eq0, s1);
-                        const Real a10 = rotation_at(eq1, s0);
-                        const Real a11 = rotation_at(eq1, s1);
+                        const Real a00 = global_to_local(eq0, s0);
+                        const Real a01 = global_to_local(eq0, s1);
+                        const Real a10 = global_to_local(eq1, s0);
+                        const Real a11 = global_to_local(eq1, s1);
                         const Real det = a00 * a11 - a01 * a10;
                         if (std::abs(det) < tol)
                             continue;
@@ -353,7 +439,7 @@ GlobalConstraintsObject::build_point_constraints()
                                 if (dofs[j] == libMesh::invalid_uint)
                                     continue;
                                 const Real coeff =
-                                    -(inv0 * rotation_at(eq0, j) + inv1 * rotation_at(eq1, j));
+                                    -(inv0 * global_to_local(eq0, j) + inv1 * global_to_local(eq1, j));
                                 entry.row[dofs[j]] = coeff;
                             }
 
@@ -378,7 +464,7 @@ GlobalConstraintsObject::build_point_constraints()
                     continue;
 
                 unsigned int pivot_index = i;
-                Real pivot_coeff = rotation_at(i, pivot_index);
+                Real pivot_coeff = global_to_local(i, pivot_index);
 
                 if (dofs[pivot_index] == libMesh::invalid_uint || std::abs(pivot_coeff) < tol)
                 {
@@ -387,11 +473,11 @@ GlobalConstraintsObject::build_point_constraints()
                     {
                         if (dofs[j] == libMesh::invalid_uint)
                             continue;
-                        const Real abs_coeff = std::abs(rotation_at(i, j));
+                        const Real abs_coeff = std::abs(global_to_local(i, j));
                         if (abs_coeff > best)
                         {
                             best = abs_coeff;
-                            pivot_coeff = rotation_at(i, j);
+                            pivot_coeff = global_to_local(i, j);
                             pivot_index = j;
                         }
                     }
@@ -407,7 +493,7 @@ GlobalConstraintsObject::build_point_constraints()
                         continue;
                     if (dofs[j] == libMesh::invalid_uint)
                         continue;
-                    entry.row[dofs[j]] = -rotation_at(i, j) / pivot_coeff;
+                    entry.row[dofs[j]] = -global_to_local(i, j) / pivot_coeff;
                 }
 
                 entry.value = constraint_value / pivot_coeff;
@@ -450,25 +536,26 @@ std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
 GlobalConstraintsObject::build_coupling_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
-    py::gil_scoped_acquire gil;
-    static py::object np = py::module_::import("numpy");
 
     System *system = this->get_parent_object();
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
     auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
     vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
 
-    const py::object &coord_system = coordinate_system_class();
-
     vtkPointData *point_data = vtk_grid->GetPointData();
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
-    py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
-    py::object cp_id_values =
-        dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")();
-    py::object variable_values =
-        dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")();
-    const py::ssize_t n_entries = py::len(cp_id_values);
+    std::vector<int> cp_id_values;
+    std::vector<std::string> variable_values;
+    {
+        py::gil_scoped_acquire gil;
+        py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
+        cp_id_values = py::cast<std::vector<int>>(
+            dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")());
+        variable_values = py::cast<std::vector<std::string>>(
+            dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")());
+    }
+    const std::size_t n_entries = cp_id_values.size();
     if (n_entries == 0)
         return constraints;
 
@@ -479,26 +566,22 @@ GlobalConstraintsObject::build_coupling_constraints()
     auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
     const MeshBase &mesh = equation_systems->get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
+    RotationCache local_to_global_cache;
 
-    for (py::ssize_t entry_idx = 0; entry_idx < n_entries; ++entry_idx)
+    const auto build_coupled_groups =
+        [&vector_variables](
+            const std::string &variable,
+            std::map<std::string, std::vector<VariablesMap::VectorComponent>> &coupled_vectors,
+            std::unordered_set<std::string> &coupled_labels)
     {
-        const int cp_id = py::cast<int>(cp_id_values.attr("__getitem__")(entry_idx));
-        const std::string variable = py::cast<std::string>(variable_values.attr("__getitem__")(entry_idx));
-
-        if (variable.empty())
-            continue;
-
-        auto pairs_it = pairs_by_cp.find(cp_id);
-        if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
-            continue;
-
-        std::set<std::string> coupled_labels;
+        coupled_labels.clear();
         for (const auto &label : VariablesMap::get_global_labels_for_label(variable))
             coupled_labels.insert(label);
-        if (coupled_labels.empty())
-            continue;
 
-        std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
+        coupled_vectors.clear();
+        if (coupled_labels.empty())
+            return;
+
         for (const auto &vec_entry : vector_variables)
         {
             const auto &components = vec_entry.second;
@@ -521,6 +604,47 @@ GlobalConstraintsObject::build_coupling_constraints()
             for (const auto &component : components)
                 coupled_labels.erase(component.global_label);
         }
+    };
+
+    struct LocalPair
+    {
+        const Node *node_first = nullptr;
+        const Node *node_second = nullptr;
+        vtkIdType point_id_first = -1;
+        vtkIdType point_id_second = -1;
+    };
+
+    struct CouplingEntryPlan
+    {
+        std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
+        std::unordered_set<std::string> coupled_labels;
+        std::vector<LocalPair> local_pairs;
+    };
+
+    std::vector<CouplingEntryPlan> entry_plans;
+    entry_plans.reserve(n_entries);
+    std::vector<vtkIdType> point_ids_for_rotation;
+    std::unordered_set<vtkIdType> seen_point_ids;
+    const vtkIdType n_angle_tuples = angles_array ? angles_array->GetNumberOfTuples() : 0;
+
+    for (std::size_t entry_idx = 0; entry_idx < n_entries; ++entry_idx)
+    {
+        const int cp_id = cp_id_values[entry_idx];
+        const std::string &variable = variable_values[entry_idx];
+        if (variable.empty())
+            continue;
+
+        auto pairs_it = pairs_by_cp.find(cp_id);
+        if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
+            continue;
+
+        CouplingEntryPlan plan;
+        build_coupled_groups(variable, plan.coupled_vectors, plan.coupled_labels);
+        if (plan.coupled_vectors.empty() && plan.coupled_labels.empty())
+            continue;
+
+        plan.local_pairs.reserve(pairs_it->second.size());
+        const bool needs_rotation = !plan.coupled_vectors.empty();
 
         for (const auto &pair : pairs_it->second)
         {
@@ -537,8 +661,33 @@ GlobalConstraintsObject::build_coupling_constraints()
 
             const vtkIdType point_id_first = static_cast<vtkIdType>(node_first->id());
             const vtkIdType point_id_second = static_cast<vtkIdType>(node_second->id());
+            plan.local_pairs.push_back({node_first, node_second, point_id_first, point_id_second});
 
-            for (const auto &vec_entry : coupled_vectors)
+            if (needs_rotation && angles_array)
+            {
+                if (point_id_first >= 0 && point_id_first < n_angle_tuples && seen_point_ids.insert(point_id_first).second)
+                    point_ids_for_rotation.push_back(point_id_first);
+                if (point_id_second >= 0 && point_id_second < n_angle_tuples && seen_point_ids.insert(point_id_second).second)
+                    point_ids_for_rotation.push_back(point_id_second);
+            }
+        }
+
+        if (!plan.local_pairs.empty())
+            entry_plans.emplace_back(std::move(plan));
+    }
+
+    build_rotation_cache_from_point_ids(angles_array, point_ids_for_rotation, local_to_global_cache);
+
+    for (const auto &plan : entry_plans)
+    {
+        for (const auto &pair : plan.local_pairs)
+        {
+            const Node *node_first = pair.node_first;
+            const Node *node_second = pair.node_second;
+            const vtkIdType point_id_first = pair.point_id_first;
+            const vtkIdType point_id_second = pair.point_id_second;
+
+            for (const auto &vec_entry : plan.coupled_vectors)
             {
                 const auto &components = vec_entry.second;
                 std::array<dof_id_type, 3> dofs_first = {
@@ -581,49 +730,40 @@ GlobalConstraintsObject::build_coupling_constraints()
                 if (!complete)
                     continue;
 
-                py::object first_global_to_local = np.attr("eye")(3);
-                if (angles_array && point_id_first >= 0 && point_id_first < angles_array->GetNumberOfTuples())
-                {
-                    const Real angle_xy_deg = static_cast<Real>(angles_array->GetComponent(point_id_first, 0));
-                    const Real angle_yz_deg = static_cast<Real>(angles_array->GetComponent(point_id_first, 1));
-                    const Real angle_xz_deg = static_cast<Real>(angles_array->GetComponent(point_id_first, 2));
+                TensorValue<Real> first_local_to_global(
+                    1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0);
+                auto first_cache_it = local_to_global_cache.find(point_id_first);
+                if (first_cache_it == local_to_global_cache.end())
+                    libmesh_error_msg("Coupling constraint master rotation matrix cache miss for node id " << point_id_first << ".");
+                first_local_to_global = first_cache_it->second;
+                const TensorValue<Real> first_global_to_local =
+                    TensorValue<Real>(first_local_to_global.transpose());
 
-                    first_global_to_local =
-                        coord_system.attr("build_global_to_local")(
-                            angle_xy_deg,
-                            angle_yz_deg,
-                            angle_xz_deg);
-                }
+                TensorValue<Real> second_local_to_global(
+                    1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0);
+                auto second_cache_it = local_to_global_cache.find(point_id_second);
+                if (second_cache_it == local_to_global_cache.end())
+                    libmesh_error_msg("Coupling constraint slave rotation matrix cache miss for node id " << point_id_second << ".");
+                second_local_to_global = second_cache_it->second;
 
-                py::object second_global_to_local = np.attr("eye")(3);
-                if (angles_array && point_id_second >= 0 && point_id_second < angles_array->GetNumberOfTuples())
-                {
-                    const Real angle_xy_deg = static_cast<Real>(angles_array->GetComponent(point_id_second, 0));
-                    const Real angle_yz_deg = static_cast<Real>(angles_array->GetComponent(point_id_second, 1));
-                    const Real angle_xz_deg = static_cast<Real>(angles_array->GetComponent(point_id_second, 2));
-
-                    second_global_to_local =
-                        coord_system.attr("build_global_to_local")(
-                            angle_xy_deg,
-                            angle_yz_deg,
-                            angle_xz_deg);
-                }
-
-                py::object second_local_to_global = second_global_to_local.attr("transpose")();
-                py::object transform =
-                    np.attr("matmul")(second_local_to_global, first_global_to_local);
+                const TensorValue<Real> transform =
+                    TensorValue<Real>(second_local_to_global * first_global_to_local);
 
                 for (unsigned int i = 0; i < 3; ++i)
                 {
                     ConstraintEntry constraint_entry;
                     for (unsigned int j = 0; j < 3; ++j)
                         constraint_entry.row[dofs_first[j]] =
-                            py::cast<Real>(transform.attr("__getitem__")(i).attr("__getitem__")(j));
+                            transform(i, j);
                     constraints.emplace(dofs_second[i], constraint_entry);
                 }
             }
 
-            for (const auto &label : coupled_labels)
+            for (const auto &label : plan.coupled_labels)
             {
                 const unsigned int sys_num = system->number();
                 const unsigned int var_num = system->variable_number(label);
@@ -655,9 +795,10 @@ void GlobalConstraintsObject::constrain()
 
     libMesh::out << "Setting transient effects constraints..." << std::endl;
 
-    std::map<dof_id_type, ConstraintEntry> constraints;
+    std::unordered_map<dof_id_type, ConstraintEntry> constraints;
     auto time_integration_constraints = build_time_integration_constraints();
-    constraints.insert(time_integration_constraints.begin(), time_integration_constraints.end());
+    for (const auto &entry : time_integration_constraints)
+        constraints.emplace(entry.first, entry.second);
 
     libMesh::out << "Setting point constraints..." << std::endl;
     auto point_constraints = build_point_constraints();

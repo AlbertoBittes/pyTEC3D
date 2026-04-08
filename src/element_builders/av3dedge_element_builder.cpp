@@ -79,11 +79,12 @@ void ElementBuilder::build_av3dedge()
     unsigned int nq_edge = fe_edge->n_quadrature_points();
     unsigned int nq_lagrange = fe_vec_lagrange->n_quadrature_points();
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
     const Real nu[3] = {
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z")))};
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -163,11 +164,10 @@ void ElementBuilder::build_av3dedge()
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
         const Real sigma_matrix[3] = {
-            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_X")),
-            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Y")),
-            1.0 / pybind11::cast<Real>(material_row.attr("__getitem__")("RHO_Z"))};
+            1.0 / this->material_value(material_id, MAT_RHO_X),
+            1.0 / this->material_value(material_id, MAT_RHO_Y),
+            1.0 / this->material_value(material_id, MAT_RHO_Z)};
         auto build_caa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -240,15 +240,14 @@ void ElementBuilder::build_av3dedge()
     }
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-        const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
-        const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
-        const Real vc = pybind11::cast<Real>(constant_row.attr("__getitem__")("VOL"));
-        const Real tx = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_X"));
-        const Real ty = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Y"));
-        const Real tz = pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z"));
-        const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
-        const Real sym = pybind11::cast<Real>(constant_row.attr("__getitem__")("S"));
+        const Real sc = this->constant_value(constant_id, CONST_CS);
+        const Real nc = this->constant_value(constant_id, CONST_TURNS);
+        const Real vc = this->constant_value(constant_id, CONST_VOL);
+        const Real tx = this->constant_value(constant_id, CONST_T_X);
+        const Real ty = this->constant_value(constant_id, CONST_T_Y);
+        const Real tz = this->constant_value(constant_id, CONST_T_Z);
+        const Real r_coil = this->constant_value(constant_id, CONST_R);
+        const Real sym = this->constant_value(constant_id, CONST_S);
 
         if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
             libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
@@ -454,11 +453,11 @@ void ElementBuilder::build_av3dedge_nodal_solution()
     if (api_vars.empty())
         return;
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
     const Real nu[3] = {
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z")))};
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -522,11 +521,12 @@ void ElementBuilder::build_av3dedge_element_solution()
 
     std::vector<dof_id_type> dof_indices;
 
-    const pybind11::object material_row = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
     const Real nu[3] = {
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_X"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Y"))),
-        1 / (kMu0 * pybind11::cast<Real>(material_row.attr("__getitem__")("MUR_Z")))};
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -598,11 +598,10 @@ void ElementBuilder::build_av3dedge_element_solution()
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
             auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
 
-            const pybind11::object material_row_sigma = this->get_row_by_id(this->materials_attribute_, "MATERIAL_ID", this->elem_data.material_num);
             const Real sigma_matrix[3] = {
-                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_X")),
-                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Y")),
-                1.0 / pybind11::cast<Real>(material_row_sigma.attr("__getitem__")("RHO_Z"))};
+                1.0 / this->material_value(material_id, MAT_RHO_X),
+                1.0 / this->material_value(material_id, MAT_RHO_Y),
+                1.0 / this->material_value(material_id, MAT_RHO_Z)};
 
             DenseVector<Number> Vn;
 
@@ -655,14 +654,13 @@ void ElementBuilder::build_av3dedge_element_solution()
                 En = sol_vectors_dt[2][0];
             }
 
-            const pybind11::object constant_row = this->get_row_by_id(this->constants_attribute_, "CONSTANTS_ID", this->elem_data.real_constant_num);
-            const Real sc = pybind11::cast<Real>(constant_row.attr("__getitem__")("CS"));
-            const Real nc = pybind11::cast<Real>(constant_row.attr("__getitem__")("TURNS"));
+            const Real sc = this->constant_value(constant_id, CONST_CS);
+            const Real nc = this->constant_value(constant_id, CONST_TURNS);
             const VectorValue t_vec(
-                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_X")),
-                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Y")),
-                pybind11::cast<Real>(constant_row.attr("__getitem__")("T_Z")));
-            const Real r_coil = pybind11::cast<Real>(constant_row.attr("__getitem__")("R"));
+                this->constant_value(constant_id, CONST_T_X),
+                this->constant_value(constant_id, CONST_T_Y),
+                this->constant_value(constant_id, CONST_T_Z));
+            const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);
             if (sc == 0.0 || r_coil == 0.0)

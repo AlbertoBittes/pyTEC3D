@@ -1,4 +1,3 @@
-import math
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Sequence, Type, TypeVar, cast
 
@@ -92,38 +91,49 @@ class CoordinateSystem(ABC):
     def build_local_to_global_matrix(
         angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
     ) -> np.ndarray:
-        def snap_trig_value(value: float) -> float:
-            eps = 1e-12
-            if abs(value) < eps:
-                return 0.0
-            if abs(value - 1.0) < eps:
-                return 1.0
-            if abs(value + 1.0) < eps:
-                return -1.0
-            return value
+        angles = np.array([[angle_xy_deg, angle_yz_deg, angle_xz_deg]], dtype=float)
+        coeffs = CoordinateSystem.build_local_to_global_coefficients(angles)
+        return coeffs[0].reshape(3, 3)
 
-        angle_xy, angle_yz, angle_xz = CoordinateSystem._deg_to_rad(
-            np.array([angle_xy_deg, angle_yz_deg, angle_xz_deg], dtype=float)
-        )
+    @staticmethod
+    def build_local_to_global_coefficients(angles_deg: np.ndarray) -> np.ndarray:
+        angles = np.asarray(angles_deg, dtype=float)
+        if angles.ndim != 2 or angles.shape[1] != 3:
+            raise ValueError("angles_deg must have shape (N, 3).")
 
-        c1 = snap_trig_value(math.cos(angle_xy))
-        s1 = snap_trig_value(math.sin(angle_xy))
-        c2 = snap_trig_value(math.cos(angle_yz))
-        s2 = snap_trig_value(math.sin(angle_yz))
-        c3 = snap_trig_value(math.cos(angle_xz))
-        s3 = snap_trig_value(math.sin(angle_xz))
+        eps = 1e-12
 
-        local_to_global = np.zeros((3, 3), dtype=float)
-        local_to_global[0, 0] = c1 * c3 - s1 * s2 * s3
-        local_to_global[0, 1] = -s1 * c2
-        local_to_global[0, 2] = c1 * s3 + s1 * s2 * c3
-        local_to_global[1, 0] = s1 * c3 + c1 * s2 * s3
-        local_to_global[1, 1] = c1 * c2
-        local_to_global[1, 2] = s1 * s3 - c1 * s2 * c3
-        local_to_global[2, 0] = -c2 * s3
-        local_to_global[2, 1] = s2
-        local_to_global[2, 2] = c2 * c3
-        return local_to_global
+        def snap_trig_values(values: np.ndarray) -> np.ndarray:
+            out = values.copy()
+            out[np.abs(out) < eps] = 0.0
+            out[np.abs(out - 1.0) < eps] = 1.0
+            out[np.abs(out + 1.0) < eps] = -1.0
+            return out
+
+        angles_rad = CoordinateSystem._deg_to_rad(angles)
+        angle_xy = angles_rad[:, 0]
+        angle_yz = angles_rad[:, 1]
+        angle_xz = angles_rad[:, 2]
+
+        c1 = snap_trig_values(np.cos(angle_xy))
+        s1 = snap_trig_values(np.sin(angle_xy))
+        c2 = snap_trig_values(np.cos(angle_yz))
+        s2 = snap_trig_values(np.sin(angle_yz))
+        c3 = snap_trig_values(np.cos(angle_xz))
+        s3 = snap_trig_values(np.sin(angle_xz))
+
+        n_rows = angles.shape[0]
+        coeffs = np.empty((n_rows, 9), dtype=float)
+        coeffs[:, 0] = c1 * c3 - s1 * s2 * s3
+        coeffs[:, 1] = -s1 * c2
+        coeffs[:, 2] = c1 * s3 + s1 * s2 * c3
+        coeffs[:, 3] = s1 * c3 + c1 * s2 * s3
+        coeffs[:, 4] = c1 * c2
+        coeffs[:, 5] = s1 * s3 - c1 * s2 * c3
+        coeffs[:, 6] = -c2 * s3
+        coeffs[:, 7] = s2
+        coeffs[:, 8] = c2 * c3
+        return coeffs
 
     @staticmethod
     def build_global_to_local_matrix(

@@ -26,6 +26,8 @@ namespace py = pybind11;
 
 namespace
 {
+    std::shared_ptr<libMesh::LibMeshInit> process_libmesh_init;
+
     py::object active_vtk_grid_from_apec(const py::object &apec_object)
     {
         if (!py::hasattr(apec_object, "mesh"))
@@ -71,6 +73,12 @@ void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
     if (libmesh_init)
         return;
 
+    if (process_libmesh_init)
+    {
+        libmesh_init = process_libmesh_init;
+        return;
+    }
+
     // libMesh expects a valid argv array. Passing nullptr may segfault in some builds.
     static const char *default_argv[] = {"apec_m_solver"};
     const bool has_user_args = (argc > 0 && argv != nullptr);
@@ -79,7 +87,8 @@ void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
                                        ? const_cast<const char *const *>(argv)
                                        : default_argv;
 
-    libmesh_init = std::make_unique<libMesh::LibMeshInit>(init_argc, init_argv, mpi_comm);
+    process_libmesh_init = std::make_shared<libMesh::LibMeshInit>(init_argc, init_argv, mpi_comm);
+    libmesh_init = process_libmesh_init;
 }
 
 ApecMSolver::ApecMSolver(py::object mpi_comm)
