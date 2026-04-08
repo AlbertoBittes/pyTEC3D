@@ -115,7 +115,9 @@ class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSyste
 public:
     struct TimeStep
     {
-        pybind11::dict time_step_dict;
+        Real time = 0.0;
+        Real theta = 1.0;
+        bool transient_effects = false;
         unsigned int time_step_idx = 0;
         Real dt = 0.0;
         bool updated = true;

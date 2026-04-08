@@ -103,7 +103,7 @@ GlobalConstraintsObject::build_time_integration_constraints()
     System *system = this->get_parent_object();
     auto *linear_system = dynamic_cast<ApecMLinearSystem *>(system);
 
-    if (py::cast<bool>(linear_system->time_step->time_step_dict["transient_effects"]))
+    if (linear_system->time_step->transient_effects)
         return constraints;
 
     auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());

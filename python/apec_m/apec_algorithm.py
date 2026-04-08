@@ -1292,6 +1292,7 @@ class ApecAlgorithm:
                 self.apec.time_step["transient_effects"] = False
                 self.apec.solve(nodal_solution=nodal_solution)
                 self.calculate_poloidal_flux(mesh_name=static_mesh)
+                # self.apec.write_output()
 
                 self.toroidal_average_psi(
                     equilibrium_mesh_name=equilibrium_mesh,
@@ -1317,6 +1318,7 @@ class ApecAlgorithm:
             self.apec.set_active_mesh(evolution_mesh)
             self.apec.solve(nodal_solution=nodal_solution)
             self.calculate_poloidal_flux(mesh_name=evolution_mesh)
+            # self.apec.write_output()
             self.toroidal_average(
                 equilibrium_mesh_name=equilibrium_mesh,
                 evolution_mesh_name=evolution_mesh,

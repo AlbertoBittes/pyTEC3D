@@ -42,13 +42,6 @@ namespace
         }
     }
 
-    py::dict get_time_step_dict_from_solver(ApecMEquationSystems *eq_sys)
-    {
-        auto *solver_parent = eq_sys->get_parent_object();
-        py::object apec_object = solver_parent->get_apec_object();
-        return apec_object.attr("time_step").cast<py::dict>();
-    }
-
     std::filesystem::path get_emat_folderpath_from_solver(ApecMEquationSystems *eq_sys)
     {
         auto *solver_parent = eq_sys->get_parent_object();
@@ -86,8 +79,8 @@ void AssemblerLinear::assemble()
 
     const auto time_step = system.time_step.get();
     const Real dt = time_step->dt;
-    const Real theta = py::cast<Real>(time_step->time_step_dict["theta"]);
-    const bool transient_effect = py::cast<bool>(time_step->time_step_dict["transient_effects"]);
+    const Real theta = time_step->theta;
+    const bool transient_effect = time_step->transient_effects;
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
     const std::string rank_str = std::to_string(comm.rank());
 
@@ -251,16 +244,16 @@ bool AssemblerLinear::check_update_system_matrix()
         {
             const Real current_dt = current_step->dt;
             const Real old_dt = old_step->dt;
-            const Real current_theta = py::cast<Real>(current_step->time_step_dict["theta"]);
-            const Real old_theta = py::cast<Real>(old_step->time_step_dict["theta"]);
-            const bool current_transient_effect = py::cast<bool>(current_step->time_step_dict["transient_effects"]);
-            const bool old_transient_effect = py::cast<bool>(old_step->time_step_dict["transient_effects"]);
+            const Real current_theta = current_step->theta;
+            const Real old_theta = old_step->theta;
+            const bool current_transient_effect = current_step->transient_effects;
+            const bool old_transient_effect = old_step->transient_effects;
 
             const bool dt_differs = std::abs(current_dt - old_dt) > std::numeric_limits<Real>::epsilon();
             const bool theta_differs = std::abs(current_theta - old_theta) > std::numeric_limits<Real>::epsilon();
+            const bool transient_effect_differs = current_transient_effect != old_transient_effect;
 
-            if ((dt_differs || theta_differs) &&
-                current_transient_effect == old_transient_effect)
+            if (dt_differs || theta_differs || transient_effect_differs)
                 update_matrix = true;
         }
     }

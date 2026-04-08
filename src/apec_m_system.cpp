@@ -46,7 +46,9 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
     if (!time_step)
     {
         time_step = std::make_unique<TimeStep>();
-        time_step->time_step_dict = pybind11::dict(time_step_dict);
+        time_step->time = requested_time;
+        time_step->theta = requested_theta;
+        time_step->transient_effects = requested_transient_effect;
         time_step->time_step_idx = 0;
         time_step->dt = requested_time;
         time_step->updated = true;
@@ -55,7 +57,7 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
         return;
     }
 
-    const Real current_time = pybind11::cast<Real>(time_step->time_step_dict["time"]);
+    const Real current_time = time_step->time;
     const Real time_scale = std::max(std::abs(requested_time), std::abs(current_time));
     const Real time_tol = std::numeric_limits<Real>::epsilon() * time_scale;
     const Real time_delta = requested_time - current_time;
@@ -64,7 +66,9 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
     {
         old_time_step = std::move(time_step);
         time_step = std::make_unique<TimeStep>();
-        time_step->time_step_dict = pybind11::dict(time_step_dict);
+        time_step->time = requested_time;
+        time_step->theta = requested_theta;
+        time_step->transient_effects = requested_transient_effect;
         time_step->time_step_idx = old_time_step->time_step_idx + 1;
         time_step->dt = requested_time - current_time;
         time_step->updated = true;
@@ -75,8 +79,8 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
 
     if (std::abs(time_delta) <= time_tol)
     {
-        const Real current_theta = pybind11::cast<Real>(time_step->time_step_dict["theta"]);
-        const bool current_transient_effect = pybind11::cast<bool>(time_step->time_step_dict["transient_effects"]);
+        const Real current_theta = time_step->theta;
+        const bool current_transient_effect = time_step->transient_effects;
         const Real theta_tol = std::numeric_limits<Real>::epsilon() * std::abs(current_theta);
 
         if (std::abs(requested_theta - current_theta) > theta_tol ||
@@ -85,7 +89,9 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
             libmesh_error_msg("ApecMLinearSystem::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
         }
 
-        time_step->time_step_dict = pybind11::dict(time_step_dict);
+        time_step->time = requested_time;
+        time_step->theta = requested_theta;
+        time_step->transient_effects = requested_transient_effect;
         time_step->updated = false;
         return;
     }
@@ -98,9 +104,9 @@ void ApecMLinearSystem::compute_solution_time_derivative()
     if (!time_step)
         libmesh_error_msg("ApecMLinearSystem::compute_solution_time_derivative: time_step is null.");
 
-    const bool transient_effect = pybind11::cast<bool>(time_step->time_step_dict["transient_effects"]);
+    const bool transient_effect = time_step->transient_effects;
     const Real dt = time_step->dt;
-    const Real theta = pybind11::cast<Real>(time_step->time_step_dict["theta"]);
+    const Real theta = time_step->theta;
     NumericVector<Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
     if (!transient_effect)
     {
