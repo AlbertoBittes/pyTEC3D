@@ -452,12 +452,27 @@ class Selector:
 
         point_ids = None
         if cell_dimension <= 2:
-            id_filter = vtk.vtkGenerateIds()
-            id_filter.SetInputData(selected_mesh)
-            id_filter.SetPointIds(True)
-            id_filter.SetCellIds(False)
-            id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
-            id_filter.Update()
+            if hasattr(vtk, "vtkGenerateIds"):
+                id_filter = vtk.vtkGenerateIds()
+                id_filter.SetInputData(selected_mesh)
+                id_filter.SetPointIds(True)
+                id_filter.SetCellIds(False)
+                if hasattr(id_filter, "SetPointIdsArrayName"):
+                    id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
+                id_filter.Update()
+            else:
+                id_filter = vtk.vtkIdFilter()
+                id_filter.SetInputData(selected_mesh)
+                id_filter.SetPointIds(True)
+                id_filter.SetCellIds(False)
+                if hasattr(id_filter, "SetFieldData"):
+                    id_filter.SetFieldData(False)
+                if hasattr(id_filter, "SetPointIdsArrayName"):
+                    id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
+                elif hasattr(id_filter, "SetIdsArrayName"):
+                    id_filter.SetIdsArrayName("vtkOriginalPointIds")
+                id_filter.Update()
+
             to_poly = vtk.vtkGeometryFilter()
             to_poly.SetInputData(id_filter.GetOutput())
             to_poly.Update()
@@ -469,7 +484,10 @@ class Selector:
             feature_edges.NonManifoldEdgesOff()
             feature_edges.Update()
             edges = feature_edges.GetOutput()
-            vtk_ids_array = edges.GetPointData().GetArray("vtkOriginalPointIds")
+            point_data = edges.GetPointData()
+            vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
+            if vtk_ids_array is None and point_data.GetNumberOfArrays() > 0:
+                vtk_ids_array = point_data.GetArray(0)
             if vtk_ids_array is None:
                 print("No external nodes found (vtkOriginalPointIds missing).")
                 return
