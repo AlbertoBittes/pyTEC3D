@@ -70,20 +70,30 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
     if (cp_arrays.empty())
         return;
 
+    std::unordered_map<int, std::unordered_set<dof_id_type>> cp_nodes;
     const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
 
-    std::unordered_map<int, std::unordered_set<dof_id_type>> cp_nodes;
+    // Match legacy behavior: only build CP pairs from nodes known on this mesh
+    // partition (local + currently ghosted), not from all global VTK points.
+    for (const auto *node_ptr : _mesh.node_ptr_range())
+    {
+        if (!node_ptr)
+            continue;
 
-    for (vtkDataArray *cp_array : cp_arrays)
-        for (vtkIdType i = 0; i < n_points; ++i)
+        const dof_id_type node_id = static_cast<dof_id_type>(node_ptr->id());
+        const vtkIdType vtk_node_id = static_cast<vtkIdType>(node_id);
+        if (vtk_node_id < 0 || vtk_node_id >= n_points)
+            continue;
+
+        for (vtkDataArray *cp_array : cp_arrays)
         {
-            const int cp_value = static_cast<int>(cp_array->GetComponent(i, 0));
+            const int cp_value = static_cast<int>(cp_array->GetComponent(vtk_node_id, 0));
             if (cp_value <= 0)
                 continue;
 
-            const dof_id_type node_id = static_cast<dof_id_type>(i);
             cp_nodes[cp_value].insert(node_id);
         }
+    }
 
     for (const auto &entry : cp_nodes)
     {
@@ -118,26 +128,46 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
     elem_pairs.clear();
     slave_to_master_elem.clear();
 
-    std::unordered_map<dof_id_type, dof_id_type> node_to_elem;
+    std::unordered_map<dof_id_type, std::vector<dof_id_type>> node_to_elems;
     for (const auto *elem : _mesh.element_ptr_range())
     {
         if (!elem)
             continue;
         for (unsigned int i = 0; i < elem->n_nodes(); ++i)
-            node_to_elem.emplace(static_cast<dof_id_type>(elem->node_id(i)), elem->id());
+            node_to_elems[static_cast<dof_id_type>(elem->node_id(i))].push_back(elem->id());
+    }
+
+    for (auto &entry : node_to_elems)
+    {
+        auto &elem_ids = entry.second;
+        std::sort(elem_ids.begin(), elem_ids.end());
+        elem_ids.erase(std::unique(elem_ids.begin(), elem_ids.end()), elem_ids.end());
     }
 
     for (const auto &pair : node_pairs)
     {
-        const auto master_elem_it = node_to_elem.find(pair.first);
-        const auto slave_elem_it = node_to_elem.find(pair.second);
-        if (master_elem_it == node_to_elem.end() || slave_elem_it == node_to_elem.end())
+        const auto master_elem_it = node_to_elems.find(pair.first);
+        const auto slave_elem_it = node_to_elems.find(pair.second);
+        if (master_elem_it == node_to_elems.end() || slave_elem_it == node_to_elems.end())
             continue;
 
-        if (!add_pair(elem_pairs, master_elem_it->second, slave_elem_it->second))
+        const auto &master_elem_ids = master_elem_it->second;
+        const auto &slave_elem_ids = slave_elem_it->second;
+        if (master_elem_ids.empty() || slave_elem_ids.empty())
             continue;
 
-        slave_to_master_elem.emplace(slave_elem_it->second, master_elem_it->second);
+        // Deterministic representative master element for this CP pair.
+        const dof_id_type master_elem_id = master_elem_ids.front();
+
+        for (const dof_id_type slave_elem_id : slave_elem_ids)
+        {
+            if (!add_pair(elem_pairs, master_elem_id, slave_elem_id))
+                continue;
+
+            auto it = slave_to_master_elem.find(slave_elem_id);
+            if (it == slave_to_master_elem.end() || master_elem_id < it->second)
+                slave_to_master_elem[slave_elem_id] = master_elem_id;
+        }
     }
 }
 
