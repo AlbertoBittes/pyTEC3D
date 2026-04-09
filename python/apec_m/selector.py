@@ -445,74 +445,73 @@ class Selector:
         extract_selection = vtk.vtkExtractSelection()
         extract_selection.SetInputData(0, mesh)
         extract_selection.SetInputData(1, selection)
-        extract_selection.Update()
-        selected_mesh = extract_selection.GetOutput()
+        temp_id_name = "__apec_original_point_ids__"
+        mesh_point_data = mesh.GetPointData()
+        created_temp_ids = False
 
-        cell_dimension = mesh.GetMaxSpatialDimension()
+        if mesh_point_data.GetArray(temp_id_name) is None:
+            tmp_ids = np.arange(mesh.GetNumberOfPoints(), dtype=np.int64)
+            vtk_tmp_ids = vtknp.numpy_to_vtkIdTypeArray(tmp_ids, deep=True)
+            vtk_tmp_ids.SetName(temp_id_name)
+            mesh_point_data.AddArray(vtk_tmp_ids)
+            mesh_point_data.Modified()
+            created_temp_ids = True
 
-        point_ids = None
-        if cell_dimension <= 2:
-            if hasattr(vtk, "vtkGenerateIds"):
-                id_filter = vtk.vtkGenerateIds()
-                id_filter.SetInputData(selected_mesh)
-                id_filter.SetPointIds(True)
-                id_filter.SetCellIds(False)
-                if hasattr(id_filter, "SetPointIdsArrayName"):
-                    id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
-                id_filter.Update()
+        try:
+            extract_selection.Update()
+            selected_mesh = extract_selection.GetOutput()
+
+            cell_dimension = mesh.GetMaxSpatialDimension()
+
+            point_ids = None
+            if cell_dimension <= 2:
+                to_poly = vtk.vtkGeometryFilter()
+                to_poly.SetInputData(selected_mesh)
+                to_poly.Update()
+                feature_edges = vtk.vtkFeatureEdges()
+                feature_edges.SetInputData(to_poly.GetOutput())
+                feature_edges.BoundaryEdgesOn()
+                feature_edges.FeatureEdgesOff()
+                feature_edges.ManifoldEdgesOff()
+                feature_edges.NonManifoldEdgesOff()
+                feature_edges.Update()
+                edges = feature_edges.GetOutput()
+                point_data = edges.GetPointData()
+                vtk_ids_array = point_data.GetArray(temp_id_name)
+                if vtk_ids_array is None:
+                    vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
+                if vtk_ids_array is None:
+                    print(f"No external nodes found ({temp_id_name} missing).")
+                    return
+                point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+                if point_ids.size == 0:
+                    print("No external nodes found (feature edges returned empty).")
+                    return
             else:
-                id_filter = vtk.vtkIdFilter()
-                id_filter.SetInputData(selected_mesh)
-                id_filter.SetPointIds(True)
-                id_filter.SetCellIds(False)
-                if hasattr(id_filter, "SetFieldData"):
-                    id_filter.SetFieldData(False)
-                if hasattr(id_filter, "SetPointIdsArrayName"):
-                    id_filter.SetPointIdsArrayName("vtkOriginalPointIds")
-                elif hasattr(id_filter, "SetIdsArrayName"):
-                    id_filter.SetIdsArrayName("vtkOriginalPointIds")
-                id_filter.Update()
+                extract_surface = vtk.vtkGeometryFilter()
+                extract_surface.SetInputData(selected_mesh)
+                extract_surface.Update()
+                surface = extract_surface.GetOutput()
+                point_data = surface.GetPointData()
+                vtk_ids_array = point_data.GetArray(temp_id_name)
+                if vtk_ids_array is None:
+                    vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
+                if vtk_ids_array is None:
+                    print(f"No external nodes found ({temp_id_name} missing).")
+                    return
+                point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
 
-            to_poly = vtk.vtkGeometryFilter()
-            to_poly.SetInputData(id_filter.GetOutput())
-            to_poly.Update()
-            feature_edges = vtk.vtkFeatureEdges()
-            feature_edges.SetInputData(to_poly.GetOutput())
-            feature_edges.BoundaryEdgesOn()
-            feature_edges.FeatureEdgesOff()
-            feature_edges.ManifoldEdgesOff()
-            feature_edges.NonManifoldEdgesOff()
-            feature_edges.Update()
-            edges = feature_edges.GetOutput()
-            point_data = edges.GetPointData()
-            vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
-            if vtk_ids_array is None and point_data.GetNumberOfArrays() > 0:
-                vtk_ids_array = point_data.GetArray(0)
-            if vtk_ids_array is None:
-                print("No external nodes found (vtkOriginalPointIds missing).")
-                return
-            point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
-            if point_ids.size == 0:
-                print("No external nodes found (feature edges returned empty).")
-                return
-        else:
-            extract_surface = vtk.vtkGeometryFilter()
-            extract_surface.SetInputData(selected_mesh)
-            extract_surface.Update()
-            surface = extract_surface.GetOutput()
-            vtk_ids_array = surface.GetPointData().GetArray("vtkOriginalPointIds")
-            if vtk_ids_array is None:
-                print("No external nodes found (vtkOriginalPointIds missing).")
-                return
-            point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
-
-        Selector.select(
-            mesh,
-            "ID",
-            set(point_ids.tolist()),
-            type="node",
-            mode=mode,
-        )
+            Selector.select(
+                mesh,
+                "ID",
+                set(point_ids.tolist()),
+                type="node",
+                mode=mode,
+            )
+        finally:
+            if created_temp_ids:
+                mesh_point_data.RemoveArray(temp_id_name)
+                mesh_point_data.Modified()
 
     @staticmethod
     def set_value_on_selection(
