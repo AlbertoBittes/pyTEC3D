@@ -367,15 +367,45 @@ void ElementBuilder::build_av3dedge_rhs()
     //
     // Now start logging the element matrix computation
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
+    PhysicalRegionEnum region_type = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
+    switch (region_type)
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    case PhysicalRegionEnum::STRANDED_COIL:
     {
+        if (region_type != PhysicalRegionEnum::STRANDED_CONDUCTOR)
+            if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("Az"))
+            {
+                auto build_fv = [&]()
+                {
+                    const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+                    const unsigned int az_var_num = dof_solution_system_->variable_number("Az");
+                    vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+
+                    unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
+                    unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num);
+
+                    for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
+                    {
+                        const Node &node = elem_data.elem->node_ref(dof_i);
+                        const vtkIdType node_id = static_cast<vtkIdType>(node.id());
+                        const Real amps_value = amps_array->GetComponent(node_id, 0);
+                        const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
+                        if (!nodal_loads_dof_cache.insert(dof_id).second)
+                            continue;
+                        Fe(dof_i + n_dofs_A) = amps_value;
+                    }
+                };
+                build_fv();
+            }
+
         FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
 
         // The velocity shape function gradients at interior
@@ -406,36 +436,6 @@ void ElementBuilder::build_av3dedge_rhs()
         };
         build_fa();
 
-        break;
-    }
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    case PhysicalRegionEnum::STRANDED_COIL:
-    {
-        if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("Az"))
-        {
-            auto build_fv = [&]()
-            {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
-                const unsigned int az_var_num = dof_solution_system_->variable_number("Az");
-                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
-
-                unsigned int n_dofs_A = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, az_var_num);
-                unsigned int n_dofs_V = elem_data.elem->n_dofs(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num);
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
-                {
-                    const Node &node = elem_data.elem->node_ref(dof_i);
-                    const vtkIdType node_id = static_cast<vtkIdType>(node.id());
-                    const Real amps_value = amps_array->GetComponent(node_id, 0);
-                    const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
-                    if (!nodal_loads_dof_cache.insert(dof_id).second)
-                        continue;
-                    Fe(dof_i + n_dofs_A) = amps_value;
-                }
-            };
-            build_fv();
-        }
         break;
     }
     default:
@@ -631,6 +631,11 @@ void ElementBuilder::build_av3dedge_element_solution()
                     Je(k) -= Jq_A(qp + k * n_qp);
                 Je(k) = Je(k) * sigma_matrix[k] / n_qp;
             }
+
+            vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+            const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            for (unsigned int k = 0; k < 3; k++)
+                Je(k) += js_array->GetComponent(elem_id, k);
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
@@ -668,6 +673,11 @@ void ElementBuilder::build_av3dedge_element_solution()
 
             for (unsigned int k = 0; k < 3; k++)
                 Je(k) = coeff * t_vec(k);
+
+            vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+            const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            for (unsigned int k = 0; k < 3; k++)
+                Je(k) += js_array->GetComponent(elem_id, k);
             break;
         }
         default:

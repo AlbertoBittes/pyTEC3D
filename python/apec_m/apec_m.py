@@ -10,7 +10,6 @@ from typing import (
     Dict,
     Optional,
     Sequence,
-    Tuple,
     Union,
 )
 
@@ -45,13 +44,34 @@ class APEC_M:
     APEC class to manage VTK unstructured grids, metadata, and IO utilities.
     """
 
-    def __init__(self, python_output_root_only: bool = False) -> None:
+    def __init__(
+        self,
+        mpi_communicator: Optional[Any] = None,
+        num_processors: Optional[int] = None,
+    ) -> None:
         """
         Initialize the APEC object without requiring a file path.
+
+        Args:
+            mpi_communicator:
+                Optional mpi4py communicator to use in solver sessions.
+                If None, a communicator is built from COMM_WORLD according to
+                num_processors.
+            num_processors:
+                Number of ranks to include in the internally-built solver
+                communicator when mpi_communicator is None. If None, use all
+                ranks in COMM_WORLD.
         """
-        self.meshes: Dict[str, Tuple[vtk.vtkUnstructuredGrid, Optional[Any]]] = {}
-        self.mesh_filepaths: Dict[str, str] = {}
-        self._active_mesh_name: Optional[str] = None
+        self._mesh: Optional[vtk.vtkUnstructuredGrid] = None
+        self._mesh_name: Optional[str] = None
+        self.mesh_filepath: Optional[str] = None
+        self._solver_session: Optional[Any] = None
+        if mpi_communicator is not None:
+            self._solver_mpi_communicator: Optional[Any] = mpi_communicator
+        else:
+            self._solver_mpi_communicator = self._build_solver_mpi_communicator(
+                num_processors=num_processors
+            )
         self._python_output_root_only: bool = False
         self._saved_stdout = None
         self._saved_stderr = None
@@ -72,7 +92,7 @@ class APEC_M:
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
         self.algorithm = ApecAlgorithm(self)
-        self.set_python_output_root_only(python_output_root_only)
+        self.set_python_output_root_only(True)
 
     @staticmethod
     def _world_rank() -> int:
@@ -110,6 +130,13 @@ class APEC_M:
 
         self._python_output_root_only = enabled
 
+    @property
+    def solver_mpi_communicator(self) -> Optional[Any]:
+        """
+        Solver communicator used when creating C++ solver sessions.
+        """
+        return self._solver_mpi_communicator
+
     def __del__(self) -> None:
         try:
             self.set_python_output_root_only(False)
@@ -123,15 +150,11 @@ class APEC_M:
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
         """
-        Active mesh accessor.
+        Mesh accessor.
         """
-        if not self._active_mesh_name:
-            raise RuntimeError("No active mesh is set.")
-        if self._active_mesh_name not in self.meshes:
-            raise RuntimeError(
-                f"Active mesh '{self._active_mesh_name}' is not available."
-            )
-        return self.meshes[self._active_mesh_name][0]
+        if self._mesh is None:
+            raise RuntimeError("No mesh is loaded.")
+        return self._mesh
 
     @mesh.setter
     def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
@@ -141,55 +164,11 @@ class APEC_M:
         raise AttributeError("Direct mesh assignment is not allowed. Use read_mesh().")
 
     @property
-    def active_mesh_name(self) -> Optional[str]:
+    def solver(self) -> Optional[Any]:
         """
-        Name of the active mesh.
+        Solver session accessor.
         """
-        return self._active_mesh_name
-
-    def set_active_mesh(self, mesh_name: str) -> bool:
-        """
-        Set the active mesh by name.
-
-        Returns:
-            True when the mesh exists and is activated, otherwise False.
-        """
-        if mesh_name not in self.meshes:
-            return False
-
-        self._active_mesh_name = mesh_name
-        return True
-
-    def get_mesh(self, mesh_name: str) -> Optional[vtk.vtkUnstructuredGrid]:
-        """
-        Fetch a mesh by name.
-        """
-        entry = self.meshes.get(mesh_name)
-        return entry[0] if entry is not None else None
-
-    def get_solver_session(self, mesh_name: Optional[str] = None) -> Optional[Any]:
-        """
-        Fetch solver session by mesh name. Defaults to active mesh.
-        """
-        target_name = mesh_name or self._active_mesh_name
-        if target_name is None:
-            return None
-        entry = self.meshes.get(target_name)
-        return entry[1] if entry is not None else None
-
-    def clear_mesh(self, mesh_name: str) -> None:
-        """
-        Remove a mesh by name and update the active mesh if needed.
-        """
-        self.meshes.pop(mesh_name, None)
-        self.mesh_filepaths.pop(mesh_name, None)
-
-        if self._active_mesh_name == mesh_name:
-            if self.meshes:
-                next_mesh = next(iter(self.meshes))
-                self._active_mesh_name = next_mesh
-            else:
-                self._active_mesh_name = None
+        return self._solver_session
 
     #
     #
@@ -214,24 +193,19 @@ class APEC_M:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
         """
-        first_mesh = len(self.meshes) == 0
         loaded_mesh = ModelEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
         mesh_path = os.path.abspath(os.fspath(vtk_file_path))
         resolved_name = os.path.splitext(os.path.basename(mesh_path))[0]
         mesh_folder = os.path.dirname(mesh_path) or os.getcwd()
+        os.chdir(mesh_folder)
 
-        if first_mesh:
-            os.chdir(mesh_folder)
-
-        model_folder = os.path.join(os.getcwd(), resolved_name)
-        os.makedirs(model_folder, exist_ok=True)
-        emat_dir = os.path.join(model_folder, "emat")
+        emat_dir = os.path.join(os.getcwd(), "emat")
+        output_dir = os.path.join(os.getcwd(), "output")
         os.makedirs(emat_dir, exist_ok=True)
-        output_dir = os.path.join(model_folder, "output")
         os.makedirs(output_dir, exist_ok=True)
 
-        # Always start from a clean emat folder for this mesh.
+        # Always start from a clean emat folder.
         for entry_name in os.listdir(emat_dir):
             entry_path = os.path.join(emat_dir, entry_name)
             if os.path.isdir(entry_path):
@@ -239,15 +213,16 @@ class APEC_M:
             else:
                 os.unlink(entry_path)
 
-        # Always start from a clean output folder for this mesh (files only).
+        # Always start from a clean output folder (files only).
         for entry_name in os.listdir(output_dir):
             entry_path = os.path.join(output_dir, entry_name)
             if os.path.isfile(entry_path):
                 os.unlink(entry_path)
 
-        self.meshes[resolved_name] = (loaded_mesh, None)
-        self.mesh_filepaths[resolved_name] = mesh_path
-        self.set_active_mesh(resolved_name)
+        self._mesh = loaded_mesh
+        self._mesh_name = resolved_name
+        self.mesh_filepath = mesh_path
+        self._solver_session = None
 
     def save_mesh(
         self, output_file: Optional[Union[str, PathLike[str]]] = None
@@ -262,20 +237,18 @@ class APEC_M:
             None
 
         Raises:
-            ValueError: If output_file is not provided and no active mesh is set.
+            ValueError: If output_file is not provided and no mesh is loaded.
         """
         if self._world_rank() != 0:
             return
 
         if output_file is None:
-            if not self._active_mesh_name:
-                raise ValueError(
-                    "No active mesh is set. Activate a mesh before saving."
-                )
+            if self._mesh_name is None:
+                raise ValueError("No mesh is loaded. Load a mesh before saving.")
 
         # Define the output file name
         if output_file is None:
-            output_file = os.path.join(os.getcwd(), f"{self._active_mesh_name}.vtu")
+            output_file = os.path.join(os.getcwd(), f"{self._mesh_name}.vtu")
 
         # Write the unstructured grid to the .vtu file
         ModelEdit.save_mesh(self.mesh, output_file, binary=True)
@@ -284,25 +257,23 @@ class APEC_M:
 
     def write_output(self) -> None:
         """
-        Save the active mesh into its output folder using the next timestep index.
+        Save the mesh into the output folder using the next timestep index.
 
         The target filename is:
-            <mesh_name>/output/<mesh_name>_out_<time_step>.vtu
+            output/<mesh_name>_out_<time_step>.vtu
 
         The time step is computed at runtime by scanning existing files in the
         output directory and taking max(existing_step) + 1. If no output files
         are present, the first generated time step is 1.
         """
-        if not self._active_mesh_name:
-            raise ValueError(
-                "No active mesh is set. Activate a mesh before writing output."
-            )
+        if self._mesh_name is None:
+            raise ValueError("No mesh is loaded. Load a mesh before writing output.")
 
         if self._world_rank() != 0:
             return
 
-        mesh_name = self._active_mesh_name
-        output_dir = os.path.join(os.getcwd(), mesh_name, "output")
+        mesh_name = self._mesh_name
+        output_dir = os.path.join(os.getcwd(), "output")
         os.makedirs(output_dir, exist_ok=True)
 
         pattern = re.compile(rf"^{re.escape(mesh_name)}_out_(\d+)\.vtu$")
@@ -411,7 +382,7 @@ class APEC_M:
         print("Plotting the mesh...")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
-        RenameSource(self.active_mesh_name or "APEC_Mesh", producer)
+        RenameSource(self._mesh_name or "APEC_Mesh", producer)
         Show(producer)
         Render()
 
@@ -438,65 +409,45 @@ class APEC_M:
             ) from exc
         return solver_module
 
-    def load_mesh_into_solver(
-        self,
-        num_processors: Optional[int] = None,
-        mesh_name: Optional[str] = None,
-        python_output_root_only: Optional[bool] = None,
-    ) -> Any:
+    def load_mesh_into_solver(self) -> Any:
         """
-        Build a C++ solver session from the active VTK grid and current APEC attributes.
+        Build a C++ solver session from the loaded VTK grid and current APEC attributes.
 
-        Args:
-            num_processors:
-                Number of MPI ranks to use for the solver communicator.
-                If None (default), use all ranks in COMM_WORLD.
-            mesh_name:
-                Optional mesh to activate before launching.
-            python_output_root_only:
-                If set, enable/disable rank-0-only Python output before creating
-                the solver session.
         """
-        if python_output_root_only is not None:
-            self.set_python_output_root_only(python_output_root_only)
+        self._solver_session = self._load_mesh_into_solver()
 
+    def _load_mesh_into_solver(self) -> Any:
+        """
+        Build a C++ solver session from the loaded VTK grid and current APEC attributes.
+        """
         solver_module = self._require_solver_module()
-        mpi_comm = self._build_solver_mpi_communicator(num_processors)
+        mpi_comm = self._solver_mpi_communicator
 
-        if mesh_name is not None:
-            if not self.set_active_mesh(mesh_name):
-                raise ValueError(f"Mesh '{mesh_name}' does not exist.")
+        if self._mesh is None:
+            raise RuntimeError("No mesh is loaded.")
 
         solver = solver_module.ApecMSolver(mpi_comm)
         solver.load_model(self)
-        self.meshes[self._active_mesh_name] = (self.mesh, solver)
         return solver
 
     def solve(self, nodal_solution: bool = True) -> None:
         """
-        Solve using the active mesh solver session.
+        Solve using the loaded mesh solver session.
 
         Args:
             nodal_solution:
                 Whether nodal solution output should be computed.
         """
-        if self._active_mesh_name is None:
-            raise RuntimeError("No active mesh is set.")
+        if self._mesh is None:
+            raise RuntimeError("No mesh is loaded.")
 
-        entry = self.meshes.get(self._active_mesh_name)
-        if entry is None:
+        if self._solver_session is None:
             raise RuntimeError(
-                f"Active mesh '{self._active_mesh_name}' is not available."
-            )
-
-        solver = entry[1]
-        if solver is None:
-            raise RuntimeError(
-                f"No solver session is loaded for mesh '{self._active_mesh_name}'. "
+                "No solver session is loaded for the current mesh. "
                 "Call load_mesh_into_solver() first."
             )
 
-        solver.solve(nodal_solution)
+        self._solver_session.solve(nodal_solution)
 
     @staticmethod
     def _build_solver_mpi_communicator(num_processors: Optional[int]) -> Optional[Any]:

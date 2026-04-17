@@ -27,8 +27,6 @@
 #include "binary_reader.h"
 
 using namespace libMesh;
-namespace py = pybind11;
-
 namespace
 {
     template <typename PrepareFn, typename BuildFn>
@@ -42,12 +40,9 @@ namespace
         }
     }
 
-    std::filesystem::path get_emat_folderpath_from_solver(ApecMEquationSystems *eq_sys)
+    std::filesystem::path get_emat_folderpath_from_solver()
     {
-        auto *solver_parent = eq_sys->get_parent_object();
-        py::object apec_object = solver_parent->get_apec_object();
-        const std::string active_mesh_name = py::cast<std::string>(apec_object.attr("active_mesh_name"));
-        return std::filesystem::current_path() / active_mesh_name / "emat";
+        return std::filesystem::current_path() / "emat";
     }
 } // namespace
 
@@ -81,7 +76,7 @@ void AssemblerLinear::assemble()
     const Real dt = time_step->dt;
     const Real theta = time_step->theta;
     const bool transient_effect = time_step->transient_effects;
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
     const std::string rank_str = std::to_string(comm.rank());
 
     BinaryReader reader;
@@ -287,7 +282,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     const auto &comm = system.comm();
 
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
 
     BinaryReader reader;
 
@@ -370,7 +365,7 @@ void AssemblerLinear::write_nodal_solution()
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
 
     BinaryReader reader;
     const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat"};
@@ -411,7 +406,7 @@ void AssemblerLinear::write_element_solution()
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
     const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver(eq_sys);
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
 
     BinaryReader reader;
     const std::vector<std::string> inp_filenames = {"element_sol_mtrx_" + rank_str + ".emat"};

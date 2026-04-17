@@ -386,16 +386,41 @@ void ElementBuilder::build_av2dnodal_rhs()
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
+    switch (physical_region)
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
     case PhysicalRegionEnum::HARD_MAGNETIC:
-    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    case PhysicalRegionEnum::STRANDED_COIL:
     {
+        if (physical_region != PhysicalRegionEnum::STRANDED_CONDUCTOR)
+            if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("A_z"))
+            {
+                auto build_fv = [&]()
+                {
+                    const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+                    vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+
+                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    {
+                        const Node &node = elem_data.elem->node_ref(dof_i);
+                        const vtkIdType node_id = static_cast<vtkIdType>(node.id());
+                        const Real amps_value = amps_array->GetComponent(node_id, 0);
+                        const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
+                        if (!nodal_loads_dof_cache.insert(dof_id).second)
+                            continue;
+                        Fe(dof_i + n_dofs_var) = amps_value;
+                    }
+                };
+                build_fv();
+            }
+
         vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
         const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
         const Real js_z = js_array->GetComponent(elem_id, 2);
@@ -406,31 +431,6 @@ void ElementBuilder::build_av2dnodal_rhs()
                 Fe(dof_i) *= js_z;
         };
         build_fa();
-        break;
-    }
-    case PhysicalRegionEnum::SOLID_CONDUCTOR:
-    case PhysicalRegionEnum::STRANDED_COIL:
-    {
-        if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("A_z"))
-        {
-            auto build_fv = [&]()
-            {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
-                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                {
-                    const Node &node = elem_data.elem->node_ref(dof_i);
-                    const vtkIdType node_id = static_cast<vtkIdType>(node.id());
-                    const Real amps_value = amps_array->GetComponent(node_id, 0);
-                    const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
-                    if (!nodal_loads_dof_cache.insert(dof_id).second)
-                        continue;
-                    Fe(dof_i + n_dofs_var) = amps_value;
-                }
-            };
-            build_fv();
-        }
         break;
     }
     default:
@@ -630,6 +630,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 V_factor *= Jv / n_qp;
             }
             Je(0) += V_factor;
+
+            vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+            const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            Je(0) += js_array->GetComponent(elem_id, 2);
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
@@ -661,6 +665,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
             if (sc == 0.0 || r_coil == 0.0)
                 libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
             Je(0) = (nc / (sc * r_coil)) * tz * (Vn - En);
+
+            vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
+            const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            Je(0) += js_array->GetComponent(elem_id, 2);
             break;
         }
         default:
