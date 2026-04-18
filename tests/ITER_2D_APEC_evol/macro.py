@@ -97,6 +97,6 @@ for step_idx in range(len(time_steps)):
     apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()
-    # apec.write_output()
+    apec.write_output()
 
 apec.save_mesh()

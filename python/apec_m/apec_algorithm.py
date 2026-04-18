@@ -1049,6 +1049,8 @@ class ApecAlgorithm:
         converged: bool,
     ) -> None:
         self.status["converged"] = bool(converged)
+        if self.apec._world_rank() != 0:
+            return
 
         row = self._build_diagnostics_row(converged)
         row_df = pd.DataFrame([row])
@@ -1132,7 +1134,7 @@ class ApecAlgorithm:
                     self._static_solver = self.apec._load_mesh_into_solver()
                 self._static_solver.solve(nodal_solution)
                 self.calculate_poloidal_flux()
-                self.apec.write_output()
+                # self.apec.write_output()
 
                 self.toroidal_average_psi()
 
@@ -1150,7 +1152,7 @@ class ApecAlgorithm:
             self.toroidal_projection_plasma_current()
             self.apec.solve(nodal_solution=nodal_solution)
             self.calculate_poloidal_flux()
-            self.apec.write_output()
+            # self.apec.write_output()
 
             if self._first_absolute_iteration:
                 self.check_convergence()

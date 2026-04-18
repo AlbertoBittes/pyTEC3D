@@ -202,22 +202,23 @@ class APEC_M:
 
         emat_dir = os.path.join(os.getcwd(), "emat")
         output_dir = os.path.join(os.getcwd(), "output")
-        os.makedirs(emat_dir, exist_ok=True)
-        os.makedirs(output_dir, exist_ok=True)
+        if self._world_rank() == 0:
+            os.makedirs(emat_dir, exist_ok=True)
+            os.makedirs(output_dir, exist_ok=True)
 
-        # Always start from a clean emat folder.
-        for entry_name in os.listdir(emat_dir):
-            entry_path = os.path.join(emat_dir, entry_name)
-            if os.path.isdir(entry_path):
-                shutil.rmtree(entry_path)
-            else:
-                os.unlink(entry_path)
+            # Always start from a clean emat folder.
+            for entry_name in os.listdir(emat_dir):
+                entry_path = os.path.join(emat_dir, entry_name)
+                if os.path.isdir(entry_path):
+                    shutil.rmtree(entry_path)
+                elif os.path.exists(entry_path):
+                    os.unlink(entry_path)
 
-        # Always start from a clean output folder (files only).
-        for entry_name in os.listdir(output_dir):
-            entry_path = os.path.join(output_dir, entry_name)
-            if os.path.isfile(entry_path):
-                os.unlink(entry_path)
+            # Always start from a clean output folder (files only).
+            for entry_name in os.listdir(output_dir):
+                entry_path = os.path.join(output_dir, entry_name)
+                if os.path.isfile(entry_path):
+                    os.unlink(entry_path)
 
         self._mesh = loaded_mesh
         self._mesh_name = resolved_name
