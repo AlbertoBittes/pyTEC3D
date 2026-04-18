@@ -50,7 +50,6 @@ js_array[:] = jt_z_array
 apec.mesh.GetCellData().GetArray("Js").Modified()
 
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-Selector.select(apec.mesh, "COILS", 1, type="elem", mode="s")
 Selector.nsle(apec.mesh)
 apec.algorithm.input_parameters["target_central_axis_x"] = 6.52136102486433
 apec.algorithm.input_parameters["target_central_axis_y"] = 0.536537145137914

@@ -1120,6 +1120,7 @@ class ApecAlgorithm:
             self.status["picard_iteration"] = iteration + 1
 
             if not self._first_absolute_iteration:
+                self.toroidal_average()
                 self.find_separatrix()
                 self.compute_jplasma_gradshafranov()
 
@@ -1150,7 +1151,6 @@ class ApecAlgorithm:
             self.apec.solve(nodal_solution=nodal_solution)
             self.calculate_poloidal_flux()
             self.apec.write_output()
-            self.toroidal_average()
 
             if self._first_absolute_iteration:
                 self.check_convergence()
