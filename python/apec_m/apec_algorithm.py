@@ -1110,7 +1110,7 @@ class ApecAlgorithm:
 
         if self._first_absolute_iteration:
             self.set_toroidal_slices()
-            self.cache_initial_loads()
+        self.cache_initial_loads()
 
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
