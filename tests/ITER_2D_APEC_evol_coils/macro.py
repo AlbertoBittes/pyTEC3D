@@ -28,9 +28,6 @@ apec.algorithm._equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, res
 
 apec.read_excel("input_template.xlsx")
 
-# Write loads and BCs and save the static mesh
-apec.load_mesh_into_solver()
-
 # Now start the evolution analysis
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
@@ -138,6 +135,8 @@ time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
 currents = np.concatenate((currents[0:1], currents[1::10]))
 betas = np.concatenate((betas[0:1], betas[1::10]))
 apec.time_step["theta"] = 1.0
+
+apec.load_mesh_into_solver()
 for step_idx in range(len(time_steps)):
     apec.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
