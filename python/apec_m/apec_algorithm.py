@@ -951,92 +951,6 @@ class ApecAlgorithm:
                 location="elem",
             )
 
-    def impressed_eddy_currents_coils_currents(self) -> None:
-        mesh = self.apec.mesh
-
-        cell_data = mesh.GetCellData()
-        evol_jt_array = cell_data.GetArray("Jt")
-        static_js_array = cell_data.GetArray("Js")
-        if evol_jt_array is None or static_js_array is None:
-            raise ValueError("CellData array 'Jt'/'Js' not found on evolution/static mesh.")
-
-        evol_jt = np.asarray(vtknp.vtk_to_numpy(evol_jt_array), dtype=float)
-        static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
-
-        static_js[:, 2] = evol_jt[:, 2]
-
-        if int(mesh.GetMaxSpatialDimension()) == 3:
-            static_js[:, 0] = evol_jt[:, 0]
-            static_js[:, 1] = evol_jt[:, 1]
-
-        static_js_array.Modified()
-
-        point_data = mesh.GetPointData()
-        amps_array = point_data.GetArray("AMPS")
-        amps_np = np.asarray(vtknp.vtk_to_numpy(amps_array), dtype=float)
-        amps_np[...] = 0.0
-        amps_array.Modified()
-
-        volt_array = point_data.GetArray("_VOLT")
-        volt_np = np.asarray(vtknp.vtk_to_numpy(volt_array), dtype=float)
-        valid_mask = np.isfinite(volt_np)
-        point_ids = np.flatnonzero(valid_mask).astype(np.int64, copy=False)
-        volt_np[point_ids] = 0.0
-
-        volt_array.Modified()
-
-    def cache_initial_loads(self) -> None:
-        mesh = self.apec.mesh
-        cell_data = mesh.GetCellData()
-        point_data = mesh.GetPointData()
-
-        js_array = cell_data.GetArray("Js")
-        volt_array = point_data.GetArray("_VOLT")
-        amps_array = point_data.GetArray("AMPS")
-
-        self._initial_js_cache = np.asarray(
-            vtknp.vtk_to_numpy(js_array), dtype=float
-        ).copy()
-        self._initial_volt_cache = np.asarray(
-            vtknp.vtk_to_numpy(volt_array), dtype=float
-        ).copy()
-        self._initial_amps_cache = np.asarray(
-            vtknp.vtk_to_numpy(amps_array), dtype=float
-        ).copy()
-
-    def apply_initial_loads(self) -> None:
-        if (
-            self._initial_js_cache is None
-            or self._initial_volt_cache is None
-            or self._initial_amps_cache is None
-        ):
-            return
-
-        mesh = self.apec.mesh
-        cell_data = mesh.GetCellData()
-        point_data = mesh.GetPointData()
-
-        js_array = cell_data.GetArray("Js")
-        volt_array = point_data.GetArray("_VOLT")
-        amps_array = point_data.GetArray("AMPS")
-        if js_array is None or volt_array is None or amps_array is None:
-            raise ValueError(
-                "Required arrays for initial load restore are missing "
-                "('Js', '_VOLT', 'AMPS')."
-            )
-
-        js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
-        volt_np = np.asarray(vtknp.vtk_to_numpy(volt_array), dtype=float)
-        amps_np = np.asarray(vtknp.vtk_to_numpy(amps_array), dtype=float)
-
-        js_np[...] = self._initial_js_cache
-        volt_np[...] = self._initial_volt_cache
-        amps_np[...] = self._initial_amps_cache
-
-        js_array.Modified()
-        volt_array.Modified()
-        amps_array.Modified()
-
     def set_poloidal_currents(
         self,
         static_mesh_name: Optional[str] = None,
@@ -1112,7 +1026,6 @@ class ApecAlgorithm:
 
         if self._first_absolute_iteration:
             self.set_toroidal_slices()
-        self.cache_initial_loads()
 
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
@@ -1126,13 +1039,8 @@ class ApecAlgorithm:
                 self.find_separatrix()
                 self.compute_jplasma_gradshafranov()
 
-                self.impressed_eddy_currents_coils_currents()
                 self.toroidal_projection_plasma_current()
-
-                self.apec.time_step["transient_effects"] = False
-                if self._static_solver is None:
-                    self._static_solver = self.apec._load_mesh_into_solver()
-                self._static_solver.solve(nodal_solution)
+                self.apec.solve(nodal_solution=nodal_solution)
                 self.calculate_poloidal_flux()
                 # self.apec.write_output()
 
@@ -1147,14 +1055,10 @@ class ApecAlgorithm:
                     return True
 
                 self.apec.time_step["transient_effects"] = True
-
-            self.apply_initial_loads()
-            self.toroidal_projection_plasma_current()
-            self.apec.solve(nodal_solution=nodal_solution)
-            self.calculate_poloidal_flux()
-            # self.apec.write_output()
-
-            if self._first_absolute_iteration:
+            else:
+                self.apec.solve(nodal_solution=nodal_solution)
+                self.calculate_poloidal_flux()
+                # self.apec.write_output()
                 self.check_convergence()
                 self._first_absolute_iteration = False
                 self.status["converged"] = True
