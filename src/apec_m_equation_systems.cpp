@@ -9,7 +9,7 @@
 #include <set>
 #include <utility>
 
-void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_step, bool nodal_solution)
+void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_step)
 {
     auto &system = this->get_system<ApecMLinearSystem>("ApecMLinearSystem");
 
@@ -25,8 +25,7 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
     system.get_dof_map().enforce_constraints_exactly(system);
     system.update();
     system.compute_solution_time_derivative();
-    if (nodal_solution)
-        assembler->write_nodal_solution();
+    assembler->write_nodal_solution();
     assembler->write_element_solution();
 }
 

@@ -23,7 +23,7 @@ class ApecMEquationSystems
 
 {
 public:
-    void solve_equation_systems(const pybind11::dict &time_step, bool nodal_solution = true);
+    void solve_equation_systems(const pybind11::dict &time_step);
     void configure_systems();
     void initialize_systems();
     void post_initialize_systems();

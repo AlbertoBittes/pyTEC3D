@@ -25,7 +25,11 @@ class ModelEdit:
             if points is None:
                 return np.empty((0, 3))
             return vtknp.vtk_to_numpy(points.GetData())
-        return ModelEdit.compute_cell_centroids(mesh)
+        cell_data = mesh.GetCellData()
+        centroids_array = cell_data.GetArray("cell_centroids") if cell_data is not None else None
+        if centroids_array is None:
+            raise ValueError("CellData array 'cell_centroids' not found.")
+        return vtknp.vtk_to_numpy(centroids_array)
 
     @staticmethod
     def to_local_coordinates(
@@ -172,6 +176,43 @@ class ModelEdit:
         orientation; cylindrical/spherical components are computed in that
         local Cartesian frame.
         """
+        data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
+        vtk_array = data.GetArray(array_name) if data is not None else None
+        if vtk_array is None:
+            raise ValueError(f"Array '{array_name}' not found in {location} data.")
+
+        mapped = ModelEdit._map_vector_field_to_local_components(
+            mesh,
+            array_name,
+            coordinate_system,
+            location=location,
+            selected_only=selected_only,
+        )
+        vecs = vtknp.vtk_to_numpy(vtk_array)
+        if selected_only:
+            from .selector import Selector
+
+            Selector.ensure_selection_arrays(mesh)
+            selection_name = "selection_point" if location == "node" else "selection_cell"
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                return vecs
+            selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+            if np.any(selection_mask):
+                vecs[selection_mask] = mapped
+        else:
+            vecs[:] = mapped
+        vtk_array.Modified()
+        return vecs
+
+    @staticmethod
+    def _map_vector_field_to_local_components(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        coordinate_system: "CoordinateSystem",
+        location: str = "node",
+        selected_only: bool = False,
+    ) -> np.ndarray:
         from .selector import Selector
 
         if location not in ["node", "elem"]:
@@ -184,10 +225,10 @@ class ModelEdit:
         if vtk_array.GetNumberOfComponents() != 3:
             raise ValueError("Array must have exactly 3 components.")
 
-        vecs = vtknp.vtk_to_numpy(vtk_array)
+        vecs = np.asarray(vtknp.vtk_to_numpy(vtk_array), dtype=float)
         positions = ModelEdit._get_positions(mesh, location)
         if positions.size == 0:
-            return vecs
+            return np.empty((0, 3), dtype=float) if selected_only else vecs.copy()
 
         selection_mask = np.ones((vecs.shape[0],), dtype=bool)
         if selected_only:
@@ -200,27 +241,26 @@ class ModelEdit:
                 selection_name = "selection_cell"
             selection_array = data.GetArray(selection_name) if data is not None else None
             if selection_array is None:
-                return vecs
+                return np.empty((0, 3), dtype=float)
             selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
             if selection_mask.size != vecs.shape[0]:
                 raise ValueError(
                     f"Selection array '{selection_name}' has unexpected length."
                 )
             if not np.any(selection_mask):
-                return vecs
+                return np.empty((0, 3), dtype=float)
 
         valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        mapped = vecs.copy()
         if not np.any(valid_mask):
-            return vecs
+            return mapped[selection_mask] if selected_only else mapped
 
-        cleaned = vecs.copy()
-        cleaned[valid_mask] = np.nan_to_num(cleaned[valid_mask], nan=0.0)
+        mapped[valid_mask] = np.nan_to_num(mapped[valid_mask], nan=0.0)
         local_components = coordinate_system.vector_components_to_local(
-            cleaned[valid_mask], positions[valid_mask]
+            mapped[valid_mask], positions[valid_mask]
         )
-        vecs[valid_mask] = local_components
-        vtk_array.Modified()
-        return vecs
+        mapped[valid_mask] = local_components
+        return mapped[selection_mask] if selected_only else mapped
 
     @staticmethod
     def map_vector_field_to_global_components(
@@ -243,6 +283,43 @@ class ModelEdit:
         Returns:
             np.ndarray: The rotated array (NumPy view).
         """
+        data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
+        vtk_array = data.GetArray(array_name) if data is not None else None
+        if vtk_array is None:
+            raise ValueError(f"Array '{array_name}' not found in {location} data.")
+
+        mapped = ModelEdit._map_vector_field_to_global_components(
+            mesh,
+            array_name,
+            coordinate_system,
+            location=location,
+            selected_only=selected_only,
+        )
+        vecs = vtknp.vtk_to_numpy(vtk_array)
+        if selected_only:
+            from .selector import Selector
+
+            Selector.ensure_selection_arrays(mesh)
+            selection_name = "selection_point" if location == "node" else "selection_cell"
+            selection_array = data.GetArray(selection_name) if data is not None else None
+            if selection_array is None:
+                return vecs
+            selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
+            if np.any(selection_mask):
+                vecs[selection_mask] = mapped
+        else:
+            vecs[:] = mapped
+        vtk_array.Modified()
+        return vecs
+
+    @staticmethod
+    def _map_vector_field_to_global_components(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        coordinate_system: "CoordinateSystem",
+        location: str = "node",
+        selected_only: bool = False,
+    ) -> np.ndarray:
         from .selector import Selector
 
         if location not in ["node", "elem"]:
@@ -255,10 +332,10 @@ class ModelEdit:
         if vtk_array.GetNumberOfComponents() != 3:
             raise ValueError("Array must have exactly 3 components.")
 
-        vecs = vtknp.vtk_to_numpy(vtk_array)
+        vecs = np.asarray(vtknp.vtk_to_numpy(vtk_array), dtype=float)
         positions = ModelEdit._get_positions(mesh, location)
         if positions.size == 0:
-            return vecs
+            return np.empty((0, 3), dtype=float) if selected_only else vecs.copy()
 
         selection_mask = np.ones((vecs.shape[0],), dtype=bool)
         if selected_only:
@@ -271,27 +348,26 @@ class ModelEdit:
                 selection_name = "selection_cell"
             selection_array = data.GetArray(selection_name) if data is not None else None
             if selection_array is None:
-                return vecs
+                return np.empty((0, 3), dtype=float)
             selection_mask = vtknp.vtk_to_numpy(selection_array).astype(bool)
             if selection_mask.size != vecs.shape[0]:
                 raise ValueError(
                     f"Selection array '{selection_name}' has unexpected length."
                 )
             if not np.any(selection_mask):
-                return vecs
+                return np.empty((0, 3), dtype=float)
 
         valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        mapped = vecs.copy()
         if not np.any(valid_mask):
-            return vecs
+            return mapped[selection_mask] if selected_only else mapped
 
-        cleaned = vecs.copy()
-        cleaned[valid_mask] = np.nan_to_num(cleaned[valid_mask], nan=0.0)
+        mapped[valid_mask] = np.nan_to_num(mapped[valid_mask], nan=0.0)
         global_components = coordinate_system.vector_components_to_global(
-            cleaned[valid_mask], positions[valid_mask]
+            mapped[valid_mask], positions[valid_mask]
         )
-        vecs[valid_mask] = global_components
-        vtk_array.Modified()
-        return vecs
+        mapped[valid_mask] = global_components
+        return mapped[selection_mask] if selected_only else mapped
 
     @staticmethod
     def read_mesh(

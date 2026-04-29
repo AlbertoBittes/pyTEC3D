@@ -56,7 +56,7 @@ class Selector:
         Supports:
             - Single value (equality)
             - Range (tuple of two values, inclusive)
-            - Set of values (membership)
+            - List/set/1D NumPy array of values (membership)
             - Magnitude (for multi-component arrays, use component='magnitude')
 
         Selection is stored as a mask array (0/1) in the VTK grid.
@@ -64,7 +64,8 @@ class Selector:
         Args:
             mesh: The mesh to operate on.
             array_name: Name of the array to use for selection.
-            value: Value(s) to match for selection (scalar, tuple, or set).
+            value: Value(s) to match for selection
+                (scalar, tuple range, or list/set/1D NumPy array membership).
             component: Component index or 'magnitude' for vector arrays (default 0).
             type: 'elem' or 'node' to specify selection type (default 'node').
             mode: Selection mode:
@@ -155,7 +156,7 @@ class Selector:
 
         Args:
             arr: Array of values to compare.
-            value: Value(s) to match (scalar, tuple, or set).
+            value: Value(s) to match (scalar, tuple range, or membership container).
             data: VTK data object (CellData or PointData).
             type: 'elem' or 'node'.
             mode: Selection mode ('s', 'a', 'r', 'u').
@@ -175,8 +176,12 @@ class Selector:
                     "Tuple for range selection must have exactly two elements."
                 )
             mask = (arr >= value[0]) & (arr <= value[1])
-        elif isinstance(value, set):
+        elif isinstance(value, (list, set)):
             mask = np.isin(arr, list(value))
+        elif isinstance(value, np.ndarray):
+            if value.ndim != 1:
+                raise ValueError("NumPy array membership selection must be 1D.")
+            mask = np.isin(arr, value)
         else:
             mask = arr == value
         mask = mask.astype(np.uint8)

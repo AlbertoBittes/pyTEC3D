@@ -134,20 +134,18 @@ void ApecMSolver::load_model(py::object apec_object)
     loaded = true;
 }
 
-void ApecMSolver::solve(bool nodal_solution)
+void ApecMSolver::solve()
 {
     if (!loaded || !mesh)
         libmesh_error_msg("Solver has no loaded model. Call load_model() first.");
 
     equation_system->solve_equation_systems(
-        py::cast<py::dict>(apec_object.attr("time_step")),
-        nodal_solution);
+        py::cast<py::dict>(apec_object.attr("time_step")));
 
     write_system_to_vtk_grid(
         ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
-    if (nodal_solution)
-        write_system_to_vtk_grid(
-            ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
+    write_system_to_vtk_grid(
+        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
     write_system_to_vtk_grid(
         ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION));
 }

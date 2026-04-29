@@ -66,34 +66,36 @@ void AV3DEDGEType::add_av3dedge_fe_structs(std::vector<FEDataShapeFunctions> &fe
     // });
 }
 
-std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DEDGEType::get_solution_matrix_idx_size_map(bool nodal_solution)
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DEDGEType::get_nodal_solution_matrix_idx_size_map()
 {
     // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
+    unsigned int n_sf_vec = 3 * fe_array[3]->n_shape_functions();
+    unsigned int n_sf_edge = fe_array[0]->n_shape_functions();
+
+    std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
+        std::make_unique<std::vector<std::vector<unsigned int>>>(ElementBuilder::kNumNodalSolutionMatrices, std::vector<unsigned int>(2, 0));
+
+    // Me
+    (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
+    // AAe
+    (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_edge};
+    return solution_matrix_idx_size_map;
+}
+
+std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DEDGEType::get_element_solution_matrix_idx_size_map()
+{
     unsigned int n_sf = fe_array[3]->n_shape_functions();
-    unsigned int n_sf_vec = 3 * n_sf;
     unsigned int n_sf_edge = fe_array[0]->n_shape_functions();
     unsigned int n_qp = fe_array[0]->n_quadrature_points();
 
-    unsigned int num_matrices = nodal_solution ? ElementBuilder::kNumNodalSolutionMatrices
-                                               : ElementBuilder::kNumElementSolutionMatrices;
     std::unique_ptr<std::vector<std::vector<unsigned int>>> solution_matrix_idx_size_map =
-        std::make_unique<std::vector<std::vector<unsigned int>>>(num_matrices, std::vector<unsigned int>(2, 0));
+        std::make_unique<std::vector<std::vector<unsigned int>>>(ElementBuilder::kNumElementSolutionMatrices, std::vector<unsigned int>(2, 0));
 
-    if (nodal_solution)
-    {
-        // Me
-        (*solution_matrix_idx_size_map)[0] = {n_sf_vec, n_sf_vec};
-        // AAe
-        (*solution_matrix_idx_size_map)[1] = {n_sf_vec, n_sf_edge};
-    }
-    else
-    {
-        // JAe
-        (*solution_matrix_idx_size_map)[0] = {3 * n_qp, n_sf_edge};
-        // JVe
-        (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf};
-        // BAe
-        (*solution_matrix_idx_size_map)[2] = {3 * n_qp, n_sf_edge};
-    }
+    // JAe
+    (*solution_matrix_idx_size_map)[0] = {3 * n_qp, n_sf_edge};
+    // JVe
+    (*solution_matrix_idx_size_map)[1] = {3 * n_qp, n_sf};
+    // BAe
+    (*solution_matrix_idx_size_map)[2] = {3 * n_qp, n_sf_edge};
     return solution_matrix_idx_size_map;
 }

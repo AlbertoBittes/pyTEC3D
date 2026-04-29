@@ -360,8 +360,6 @@ void AssemblerLinear::write_nodal_solution()
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    builder.set_compute_nodal_solution_vectors(true);
-
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();
     const std::string rank_str = std::to_string(comm.rank());
@@ -400,8 +398,6 @@ void AssemblerLinear::write_element_solution()
     auto eq_sys = this->get_parent_object();
 
     auto builder = ElementBuilder(this->get_parent_object());
-
-    builder.set_compute_nodal_solution_vectors(false);
 
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = mesh.comm();

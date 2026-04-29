@@ -136,9 +136,6 @@ public:
 
     std::vector<DenseVector<Number>> get_variables_solution(const NumericVector<Number> *solution, int dof_map_index);
 
-    bool get_compute_nodal_solution_vectors() const { return compute_nodal_solution_vectors; }
-    void set_compute_nodal_solution_vectors(bool compute) { compute_nodal_solution_vectors = compute; }
-
     void set_n_dofs(unsigned int n) { n_dofs = n; }
     unsigned int get_n_dofs() const { return n_dofs; }
 
@@ -159,7 +156,6 @@ private:
     std::vector<std::vector<DenseVector<Number>>> vectors; // Element vectors
 
     ElemData elem_data; // Element data structure
-    bool compute_nodal_solution_vectors = true;
     unsigned int n_dofs = 0;
     std::set<dof_id_type> nodal_loads_dof_cache;
 

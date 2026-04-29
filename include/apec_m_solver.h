@@ -25,7 +25,7 @@ public:
 
     void load_model(pybind11::object apec_object);
 
-    void solve(bool nodal_solution = true);
+    void solve();
     void write_system_to_vtk_grid(const std::string &system_name);
     bool is_loaded() const;
     pybind11::object get_apec_object() const;

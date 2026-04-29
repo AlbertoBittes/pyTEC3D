@@ -431,13 +431,9 @@ class APEC_M:
         solver.load_model(self)
         return solver
 
-    def solve(self, nodal_solution: bool = True) -> None:
+    def solve(self) -> None:
         """
         Solve using the loaded mesh solver session.
-
-        Args:
-            nodal_solution:
-                Whether nodal solution output should be computed.
         """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
@@ -448,7 +444,7 @@ class APEC_M:
                 "Call load_mesh_into_solver() first."
             )
 
-        self._solver_session.solve(nodal_solution)
+        self._solver_session.solve()
 
     @staticmethod
     def _build_solver_mpi_communicator(num_processors: Optional[int]) -> Optional[Any]:

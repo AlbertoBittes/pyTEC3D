@@ -161,8 +161,8 @@ void ElementBuilder::prepare_element_matrix_building()
     // Usage:
     this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
     this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
-    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map(true).get(), MatricesSet::NODAL_SOLUTION_MATRICES);
-    this->build_matrices(elem_data.element_type->get_solution_matrix_idx_size_map(false).get(), MatricesSet::ELEMENT_SOLUTION_MATRICES);
+    this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), MatricesSet::NODAL_SOLUTION_MATRICES);
+    this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), MatricesSet::ELEMENT_SOLUTION_MATRICES);
     // this->build_vectors(vector_idx_size_map, 1);
 }
 
@@ -255,9 +255,6 @@ void ElementBuilder::build_element_rhs()
 
 void ElementBuilder::build_nodal_solution()
 {
-    if (!this->compute_nodal_solution_vectors)
-        return;
-
     auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)

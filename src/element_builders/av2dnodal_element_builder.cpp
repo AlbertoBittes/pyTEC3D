@@ -442,9 +442,6 @@ void ElementBuilder::build_av2dnodal_rhs()
 
 void ElementBuilder::build_av2dnodal_nodal_solution()
 {
-    if (!this->compute_nodal_solution_vectors)
-        return;
-
     auto api_vars = VariablesMap::get_api_variables_for_element(*elem_data.element_type, ApecMSystemBase::NODAL_SOLUTION);
     if (api_vars.empty())
         return;
