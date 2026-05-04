@@ -113,6 +113,7 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "min_distance": 0.3,
     "cp_gain": 0.0,
     "tolerance_value": 1e-6,
+    "tolerance": 1e-6,
     "bradx_value": 0.0,
     "brady_value": 0.0,
     "bverx_value": 0.0,
@@ -126,9 +127,7 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "equilibrium_mesh": "",
     "static_mesh": "",
     "evolution_mesh": "",
-    "n_slices": 1,
-    "toroidal_slices_nodes": np.zeros((0, 0), dtype=np.int64),
-    "toroidal_slices_elems": np.zeros((0, 0), dtype=np.int64),
+    "n_slices": -1,
 }
 
 DEFAULT_APEC_ALGORITHM_STATUS = {

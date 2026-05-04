@@ -63,11 +63,6 @@ class ApecAlgorithm:
         }
         self._static_solver: Optional[Any] = None
         self._equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
-        self._initial_js_cache: Optional[np.ndarray] = None
-        self._initial_volt_cache: Optional[np.ndarray] = None
-        self._initial_amps_cache: Optional[np.ndarray] = None
-        self._coils_voltage_point_ids = np.empty((0,), dtype=np.int64)
-        self._coils_voltage_values = np.empty((0,), dtype=float)
 
     def reset(self) -> None:
         self.status = copy.deepcopy(DEFAULT_APEC_ALGORITHM_STATUS)
@@ -76,47 +71,42 @@ class ApecAlgorithm:
         self._old_control_current_density_base = None
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
-        self._initial_js_cache = None
-        self._initial_volt_cache = None
-        self._initial_amps_cache = None
-        self._coils_voltage_point_ids = np.empty((0,), dtype=np.int64)
-        self._coils_voltage_values = np.empty((0,), dtype=float)
-
-    @staticmethod
-    def _vector_component_indices(mesh_dimension: int) -> Tuple[int, int, int]:
-        if mesh_dimension == 2:
-            # Legacy C++ labels for 2D: ["_z", "_x", "_y"]
-            return 2, 0, 1
-        # Legacy C++ labels for 3D: ["_y", "_x", "_z"]
-        return 1, 0, 2
 
     def set_toroidal_slices(self) -> None:
-        nodes = np.asarray(
-            self.input_parameters["toroidal_slices_nodes"], dtype=np.int64
-        )
-        elems = np.asarray(
-            self.input_parameters["toroidal_slices_elems"], dtype=np.int64
-        )
-        if nodes.ndim != 2 or nodes.shape[1] < 2:
-            raise ValueError(
-                "input_parameters['toroidal_slices_nodes'] must be a 2D array "
-                "with at least 2 columns (source ids + >=1 slice)."
-            )
-        if elems.ndim != 2 or elems.shape[1] < 2:
-            raise ValueError(
-                "input_parameters['toroidal_slices_elems'] must be a 2D array "
-                "with at least 2 columns (source ids + >=1 slice)."
-            )
-        self._toroidal_slices_nodes = nodes
-        self._toroidal_slices_elems = elems
-
-    def _require_toroidal_slices(self) -> Tuple[np.ndarray, np.ndarray]:
         if (
-            self._toroidal_slices_nodes.size == 0
-            or self._toroidal_slices_elems.size == 0
+            self._toroidal_slices_nodes.size != 0
+            and self._toroidal_slices_elems.size != 0
         ):
-            self.set_toroidal_slices()
-        return self._toroidal_slices_nodes, self._toroidal_slices_elems
+            return
+
+        n_slices = int(self.input_parameters["n_slices"])
+
+        if self._equilibrium_mesh is None:
+            raise ValueError(
+                "Equilibrium mesh is not set; cannot build toroidal slices."
+            )
+
+        from .coordinate_system import CylindricalCoordinateSystem
+        from .cyclic import Cyclic
+
+        tolerance = float(self.input_parameters["tolerance"])
+        coordinate_system = CylindricalCoordinateSystem()
+        self._toroidal_slices_nodes = Cyclic.build_toroidal_slices(
+            self._equilibrium_mesh,
+            self.apec.mesh,
+            location="node",
+            tolerance=tolerance,
+            n_slices=n_slices,
+            coordinate_system=coordinate_system,
+        )
+        self._toroidal_slices_elems = Cyclic.build_toroidal_slices(
+            self._equilibrium_mesh,
+            self.apec.mesh,
+            location="elem",
+            tolerance=tolerance,
+            n_slices=n_slices,
+            coordinate_system=coordinate_system,
+        )
 
     def _diagnostics_csv_path(self) -> str:
         diagnostics_dir = os.path.join(os.getcwd(), "__apec__")
@@ -686,20 +676,39 @@ class ApecAlgorithm:
     def check_poloidal_flux_convergence(self) -> bool:
         return self.check_convergence()
 
-    def toroidal_average(self) -> None:
-        from .coordinate_system import CylindricalCoordinateSystem
-
+    def toroidal_average(self, psi_only: bool = False) -> None:
         equilibrium_mesh = self._equilibrium_mesh
         evolution_mesh = self.apec.mesh
-        node_slices, elem_slices = self._require_toroidal_slices()
+        self.set_toroidal_slices()
+        node_slices = self._toroidal_slices_nodes
+        elem_slices = self._toroidal_slices_elems
 
         eq_point_data = equilibrium_mesh.GetPointData()
         evol_point_data = evolution_mesh.GetPointData()
-        eq_cell_data = equilibrium_mesh.GetCellData()
-        evol_cell_data = evolution_mesh.GetCellData()
 
         eq_psi_array = eq_point_data.GetArray("PSI")
         evol_psi_array = evol_point_data.GetArray("PSI")
+        if eq_psi_array is None or evol_psi_array is None:
+            raise ValueError(
+                "Required arrays for toroidal_average are missing (PSI)."
+            )
+
+        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
+        evol_psi = np.asarray(vtknp.vtk_to_numpy(evol_psi_array), dtype=float).reshape(-1)
+
+        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
+        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
+
+        psi_values = np.mean(evol_psi[dst_nodes], axis=1)
+        eq_psi[src_nodes] = psi_values
+        eq_psi_array.Modified()
+
+        if psi_only:
+            return
+
+        eq_cell_data = equilibrium_mesh.GetCellData()
+        evol_cell_data = evolution_mesh.GetCellData()
+
         eq_b_array = eq_point_data.GetArray("B")
         evol_b_array = evol_point_data.GetArray("B")
         eq_be_array = eq_cell_data.GetArray("Be")
@@ -707,9 +716,7 @@ class ApecAlgorithm:
         eq_psie_array = eq_cell_data.GetArray("PSIe")
         evol_psie_array = evol_cell_data.GetArray("PSIe")
         if (
-            eq_psi_array is None
-            or evol_psi_array is None
-            or eq_b_array is None
+            eq_b_array is None
             or evol_b_array is None
             or eq_be_array is None
             or evol_be_array is None
@@ -721,47 +728,35 @@ class ApecAlgorithm:
                 "(PSI, B, Be, PSIe)."
             )
 
-        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
-        evol_psi = np.asarray(vtknp.vtk_to_numpy(evol_psi_array), dtype=float).reshape(-1)
         eq_b = np.asarray(vtknp.vtk_to_numpy(eq_b_array), dtype=float)
         eq_be = np.asarray(vtknp.vtk_to_numpy(eq_be_array), dtype=float)
         eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
         evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
 
-        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
-        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)  
+        from .coordinate_system import CylindricalCoordinateSystem
 
         cylindrical = CylindricalCoordinateSystem()
 
-        evol_b = ModelEdit._map_vector_field_to_local_components(
-            evolution_mesh,
-            "B",
-            cylindrical,
-            location="node"
-        )
-        evol_be = ModelEdit._map_vector_field_to_local_components(
-            evolution_mesh,
-            "Be",
-            cylindrical,
-            location="elem"
-        )
-
-        psi_values = np.mean(evol_psi[dst_nodes], axis=1)
-        eq_psi[src_nodes] = psi_values
-        eq_psi_array.Modified()
+        if(evolution_mesh.GetMaxSpatialDimension() > 2):
+            evol_b = ModelEdit._map_vector_field_to_local_components(
+                evolution_mesh,
+                "B",
+                cylindrical,
+                location="node"
+            )
+            evol_be = ModelEdit._map_vector_field_to_local_components(
+                evolution_mesh,
+                "Be",
+                cylindrical,
+                location="elem"
+            )
+        else:
+            evol_b = np.asarray(vtknp.vtk_to_numpy(evol_b_array), dtype=float)
+            evol_be = np.asarray(vtknp.vtk_to_numpy(evol_be_array), dtype=float)
 
         for comp_idx in range(3):
             comp_values = np.mean(evol_b[dst_nodes, comp_idx], axis=1)
             eq_b[src_nodes, comp_idx] = comp_values
-        Selector.ensure_selection_arrays(equilibrium_mesh)
-        Selector.select(equilibrium_mesh, "ID", src_nodes, type="node", mode="s")
-        ModelEdit.map_vector_field_to_global_components(
-            equilibrium_mesh,
-            "B",
-            cylindrical,
-            location="node",
-            selected_only=True,
-        )
 
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
@@ -769,82 +764,44 @@ class ApecAlgorithm:
         for comp_idx in range(3):
             comp_values = np.mean(evol_be[dst_elems, comp_idx], axis=1)
             eq_be[src_elems, comp_idx] = comp_values
-        Selector.select(equilibrium_mesh, "ID", src_elems, type="elem", mode="s")
-        ModelEdit.map_vector_field_to_global_components(
-            equilibrium_mesh,
-            "Be",
-            cylindrical,
-            location="elem",
-            selected_only=True,
-        )
 
         psie_values = np.mean(evol_psie[dst_elems], axis=1)
         eq_psie[src_elems] = psie_values
         eq_psie_array.Modified()
 
-
-    def toroidal_average_psi(self) -> None:
-        equilibrium_mesh = self._equilibrium_mesh
-        static_mesh = self.apec.mesh
-        node_slices, _ = self._require_toroidal_slices()
-
-        eq_psi_array = equilibrium_mesh.GetPointData().GetArray("PSI")
-        static_psi_array = static_mesh.GetPointData().GetArray("PSI")
-        if eq_psi_array is None or static_psi_array is None:
-            raise ValueError("PointData array 'PSI' not found on equilibrium/static mesh.")
-
-        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
-        static_psi = np.asarray(vtknp.vtk_to_numpy(static_psi_array), dtype=float).reshape(-1)
-
-        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
-        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
-
-        psi_values = np.mean(static_psi[dst_nodes], axis=1)
-        eq_psi[src_nodes] = psi_values
-        eq_psi_array.Modified()
-
-    def toroidal_projection_plasma_current(self) -> None:
+    def toroidal_projection_current(self) -> None:
         from .coordinate_system import CylindricalCoordinateSystem
 
         static_mesh = self.apec.mesh
         equilibrium_mesh = self._equilibrium_mesh
-        _, elem_slices = self._require_toroidal_slices()
+        self.set_toroidal_slices()
+        elem_slices = self._toroidal_slices_elems
 
         static_js_array = static_mesh.GetCellData().GetArray("Js")
+        equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
 
         cylindrical = CylindricalCoordinateSystem()
         static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
-        equilibrium_js_local = ModelEdit._map_vector_field_to_local_components(
-            equilibrium_mesh,
-            "Js",
-            cylindrical,
-            location="elem",
-        )
+        equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
 
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
 
         for comp_idx in range(3):
-            comp_values = equilibrium_js_local[src_elems, comp_idx]
+            comp_values = equilibrium_js[src_elems, comp_idx]
             static_js[dst_elems, comp_idx] = comp_values[:, np.newaxis]
 
-        Selector.select(static_mesh, "ID", dst_elems.reshape(-1), type="elem", mode="s")
-        ModelEdit.map_vector_field_to_global_components(
-            static_mesh,
-            "Js",
-            cylindrical,
-            location="elem",
-            selected_only=True,
-        )
+        if(static_mesh.GetMaxSpatialDimension() > 3):
+            Selector.select(static_mesh, "ID", dst_elems.reshape(-1), type="elem", mode="s")
+            ModelEdit.map_vector_field_to_global_components(
+                static_mesh,
+                "Js",
+                cylindrical,
+                location="elem",
+                selected_only=True,
+            )
 
         static_js_array.Modified()
-
-    def set_poloidal_currents(
-        self,
-        static_mesh_name: Optional[str] = None,
-    ) -> None:
-        # Placeholder for old static-mesh poloidal current setup.
-        _ = static_mesh_name
 
     def append_iteration_diagnostics(
         self,
@@ -905,8 +862,8 @@ class ApecAlgorithm:
     def evolution_solve(self) -> bool:
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-
-        if self._first_absolute_iteration:
+            Selector.select(self.apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+            Selector.nsle(self.apec.mesh, mode="s")
             self.set_toroidal_slices()
 
         max_picard_iterations = max(
@@ -921,12 +878,12 @@ class ApecAlgorithm:
                 self.find_separatrix()
                 self.compute_jplasma_gradshafranov()
 
-                self.toroidal_projection_plasma_current()
+                self.toroidal_projection_current()
                 self.apec.solve()
                 self.calculate_poloidal_flux()
                 # self.apec.write_output()
 
-                self.toroidal_average_psi()
+                self.toroidal_average(psi_only=True)
 
                 converged = self.check_convergence()
                 self.append_iteration_diagnostics(
@@ -935,8 +892,6 @@ class ApecAlgorithm:
                 if converged:
                     self.status["converged"] = True
                     return True
-
-                self.apec.time_step["transient_effects"] = True
             else:
                 self.apec.solve()
                 self.calculate_poloidal_flux()

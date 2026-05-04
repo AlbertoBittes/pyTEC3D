@@ -13,22 +13,16 @@ import pandas as pd
 apec = APEC_M()
 
 filename = "ITER_3D_APEC_evol"
-equilibrium_filename = "ITER_3D_APEC_evol_equilibrium"
-static_filename = "ITER_3D_APEC_evol_static"
-apec_equilibrium_output_filename = "ITER_2D_APEC_out_0"
+apec_equilibrium_output_filename = "ITER_2D_APEC_out_1"
 
 filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
-eq_filepath = os.path.join(os.getcwd(), "tests", filename, equilibrium_filename + ".vtu")
-static_mesh_filepath = os.path.join(os.getcwd(), "tests", filename, static_filename + ".vtu")
-
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
     "tests",
     "ITER_2D_APEC",
-    "ITER_2D_APEC",
     "output",
-    apec_equilibrium_output_filename + ".pvtu",
+    apec_equilibrium_output_filename + ".vtu",
 )
 
 eps = 1e-1
@@ -38,8 +32,7 @@ extr_angle = 2.0
 
 # # Read the evolution mesh
 apec.read_mesh(filepath)
-apec.read_mesh(output_eq_mesh_filepath, False)
-apec.set_active_mesh(filename)
+apec.algorithm._equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
 apec.read_excel("input_template.xlsx")
 
@@ -83,31 +76,11 @@ Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
 
 # 1. Build source->destination element map using toroidal slices
-Selector.select(apec.get_mesh(apec_equilibrium_output_filename), "VACUUM_CHAMBER", 1, type="elem", mode="s")
-Selector.select(apec.get_mesh(apec_equilibrium_output_filename), "COILS", 1, type="elem", mode="a")
+Selector.select(apec.algorithm._equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 Selector.select_all(apec.mesh, type="elem")
 
-elem_id_map = Cyclic.build_toroidal_slices(
-    apec.get_mesh(apec_equilibrium_output_filename),
-    apec.mesh,
-    location="elem",
-    n_slices=2,
-    tolerance=1e-3,
-)
+apec.algorithm.toroidal_projection_current()
 
-# 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] for all slices
-jt_z_array = vtknp.vtk_to_numpy(apec.get_mesh(apec_equilibrium_output_filename).GetCellData().GetArray("Jt_z"))
-js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
-
-src_elem_ids = elem_id_map[:, 0]
-for slice_idx in range(1, elem_id_map.shape[1]):
-    dst_elem_ids = elem_id_map[:, slice_idx]
-    js_array[dst_elem_ids, 1] = jt_z_array[src_elem_ids]
-apec.mesh.GetCellData().GetArray("Js").Modified()
-
-ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js", CylindricalCoordinateSystem(), location="elem")
-
-apec.write_loads_bcs()
 apec.save_mesh()
 
 
@@ -124,23 +97,19 @@ Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 Selector.nsle(apec.mesh)
 apec.set_active_mesh(filename)
 Selector.select_all(apec.mesh)
-apec.apec_settings["R0"] = 6.2
-apec.apec_settings["max_picard_iterations"] = 70
-apec.apec_settings["min_distance"] = 0.5
-apec.apec_settings["tolerance_value"] = 1e-3
-apec.apec_settings["alpha_mp"] = 1.0001
-apec.apec_settings["alpha_np"] = 0.83197
-apec.apec_settings["equilibrium_mesh"] = equilibrium_filename
-apec.apec_settings["static_mesh"] = static_filename
-apec.apec_settings["evolution_mesh"] = filename
-apec.apec_settings["AF0"] = 5.3 * 6.2
+apec.algorithm.input_parameters["R0"] = 6.2
+apec.algorithm.input_parameters["max_picard_iterations"] = 70
+apec.algorithm.input_parameters["min_distance"] = 0.5
+apec.algorithm.input_parameters["tolerance_value"] = 1e-3
+apec.algorithm.input_parameters["alpha_mp"] = 1.0001
+apec.algorithm.input_parameters["alpha_np"] = 0.83197
+apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 # apec.apec_settings["plasma_current"] = 15e6
 # apec.apec_settings["beta_p"] = 6.8216e-001
-apec.apec_settings["print_full_output"] = 0
-apec.apec_settings["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
+apec.algorithm.input_parameters["toroidal_slices_nodes"] = Cyclic.build_toroidal_slices(
     apec.get_mesh(equilibrium_filename), apec.mesh, "node", n_slices=3, tolerance=1e-3
 )
-apec.apec_settings["toroidal_slices_elems"] = Cyclic.build_toroidal_slices(
+apec.algorithm.input_parameters["toroidal_slices_elems"] = Cyclic.build_toroidal_slices(
     apec.get_mesh(equilibrium_filename), apec.mesh, "elem", n_slices=2, tolerance=1e-3
 )
 
@@ -157,19 +126,14 @@ betas = np.loadtxt("beta_p.txt")
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
 currents = np.concatenate((currents[0:1], currents[1::10]))
 betas = np.concatenate((betas[0:1], betas[1::10]))
-apec.time_parameters["theta"] = 1.0
-for step_idx in range(len(time_steps)):
-    apec.time_parameters["time"] = time_steps[step_idx]
-    if step_idx == 0:
-        apec.time_parameters["transient_effects"] = 0
-        apec.time_parameters["time"] = 1e-10
-    else:
-        apec.time_parameters["transient_effects"] = 1
-    apec.apec_settings["plasma_current"] = currents[step_idx]
-    apec.apec_settings["beta_p"] = betas[step_idx]
-    apec.write_time_step(step_idx + 1)
-    if step_idx == 0:
-        apec.apec_settings.pop("toroidal_slices_nodes", None)
-        apec.apec_settings.pop("toroidal_slices_elems", None)
 
-apec.write_model_data()
+for step_idx in range(len(time_steps)):
+    apec.time_step["time"] = time_steps[step_idx]
+    if step_idx == 0:
+        apec.time_step["transient_effects"] = 0
+        apec.time_step["time"] = 1e-10
+    else:
+        apec.time_step["transient_effects"] = 1
+    apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
+    apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
+

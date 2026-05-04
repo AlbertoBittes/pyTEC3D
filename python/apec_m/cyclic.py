@@ -123,7 +123,7 @@ class Cyclic:
         target_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "node",
         tolerance: float = 1e-6,
-        n_slices: int = 1,
+        n_slices: int = -1,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
         """
