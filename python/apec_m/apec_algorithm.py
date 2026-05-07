@@ -730,6 +730,8 @@ class ApecAlgorithm:
 
         eq_b = np.asarray(vtknp.vtk_to_numpy(eq_b_array), dtype=float)
         eq_be = np.asarray(vtknp.vtk_to_numpy(eq_be_array), dtype=float)
+        evol_b = np.asarray(vtknp.vtk_to_numpy(evol_b_array), dtype=float)
+        evol_be = np.asarray(vtknp.vtk_to_numpy(evol_be_array), dtype=float)
         eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
         evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
 
@@ -737,40 +739,56 @@ class ApecAlgorithm:
 
         cylindrical = CylindricalCoordinateSystem()
 
-        if(evolution_mesh.GetMaxSpatialDimension() > 2):
-            evol_b = ModelEdit._map_vector_field_to_local_components(
-                evolution_mesh,
-                "B",
-                cylindrical,
-                location="node"
-            )
-            evol_be = ModelEdit._map_vector_field_to_local_components(
-                evolution_mesh,
-                "Be",
-                cylindrical,
-                location="elem"
-            )
-        else:
-            evol_b = np.asarray(vtknp.vtk_to_numpy(evol_b_array), dtype=float)
-            evol_be = np.asarray(vtknp.vtk_to_numpy(evol_be_array), dtype=float)
-
-        for comp_idx in range(3):
-            comp_values = np.mean(evol_b[dst_nodes, comp_idx], axis=1)
-            eq_b[src_nodes, comp_idx] = comp_values
-
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
 
+        converted_vectors_to_cylindrical = evolution_mesh.GetMaxSpatialDimension() > 2
+        if converted_vectors_to_cylindrical:
+            flat_dst_nodes = dst_nodes.reshape(-1)
+            flat_dst_elems = dst_elems.reshape(-1)
+            evol_node_positions = ModelEdit._get_positions(evolution_mesh, "node")
+            evol_elem_positions = ModelEdit._get_positions(evolution_mesh, "elem")
+            evol_b_values = cylindrical.vector_components_to_local(
+                evol_b[flat_dst_nodes],
+                evol_node_positions[flat_dst_nodes],
+            ).reshape((*dst_nodes.shape, 3))
+            evol_be_values = cylindrical.vector_components_to_local(
+                evol_be[flat_dst_elems],
+                evol_elem_positions[flat_dst_elems],
+            ).reshape((*dst_elems.shape, 3))
+        else:
+            evol_b_values = evol_b[dst_nodes]
+            evol_be_values = evol_be[dst_elems]
+
         for comp_idx in range(3):
-            comp_values = np.mean(evol_be[dst_elems, comp_idx], axis=1)
+            comp_values = np.mean(evol_b_values[:, :, comp_idx], axis=1)
+            eq_b[src_nodes, comp_idx] = comp_values
+
+        for comp_idx in range(3):
+            comp_values = np.mean(evol_be_values[:, :, comp_idx], axis=1)
             eq_be[src_elems, comp_idx] = comp_values
+
+        if converted_vectors_to_cylindrical:
+            eq_node_positions = ModelEdit._get_positions(equilibrium_mesh, "node")
+            eq_elem_positions = ModelEdit._get_positions(equilibrium_mesh, "elem")
+            eq_b[src_nodes] = cylindrical.vector_components_to_global(
+                eq_b[src_nodes],
+                eq_node_positions[src_nodes],
+            )
+            eq_be[src_elems] = cylindrical.vector_components_to_global(
+                eq_be[src_elems],
+                eq_elem_positions[src_elems],
+            )
+
+        eq_b_array.Modified()
+        eq_be_array.Modified()
 
         psie_values = np.mean(evol_psie[dst_elems], axis=1)
         eq_psie[src_elems] = psie_values
         eq_psie_array.Modified()
 
     def toroidal_projection_current(self) -> None:
-        from .coordinate_system import CylindricalCoordinateSystem
+        from .coordinate_system import CartesianCoordinateSystem, CylindricalCoordinateSystem
 
         static_mesh = self.apec.mesh
         equilibrium_mesh = self._equilibrium_mesh
@@ -781,17 +799,30 @@ class ApecAlgorithm:
         equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
 
         cylindrical = CylindricalCoordinateSystem()
+        js_r_z_negtheta_to_cylindrical = CartesianCoordinateSystem(
+            nxax=(1.0, 0.0, 0.0),
+            nxypl=(0.0, 0.0, 1.0),
+        )
         static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
         equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
 
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
+        projected_js = equilibrium_js[src_elems].copy()
+        static_mesh_is_3d = static_mesh.GetMaxSpatialDimension() > 2
+        if static_mesh_is_3d:
+            # Equilibrium Js is stored as (r, z, -theta); cylindrical mapping expects
+            # (r, theta, z) before converting to global components.
+            projected_js = js_r_z_negtheta_to_cylindrical.vector_components_to_global(
+                projected_js,
+                np.zeros((src_elems.size, 3), dtype=float),
+            )
 
         for comp_idx in range(3):
-            comp_values = equilibrium_js[src_elems, comp_idx]
+            comp_values = projected_js[:, comp_idx]
             static_js[dst_elems, comp_idx] = comp_values[:, np.newaxis]
 
-        if(static_mesh.GetMaxSpatialDimension() > 3):
+        if static_mesh_is_3d:
             Selector.select(static_mesh, "ID", dst_elems.reshape(-1), type="elem", mode="s")
             ModelEdit.map_vector_field_to_global_components(
                 static_mesh,
