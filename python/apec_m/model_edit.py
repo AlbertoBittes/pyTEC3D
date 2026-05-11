@@ -230,7 +230,6 @@ class ModelEdit:
         if positions.size == 0:
             return np.empty((0, 3), dtype=float) if selected_only else vecs.copy()
 
-        selection_mask = np.ones((vecs.shape[0],), dtype=bool)
         if selected_only:
             Selector.ensure_selection_arrays(mesh)
             if location == "node":
@@ -247,20 +246,36 @@ class ModelEdit:
                 raise ValueError(
                     f"Selection array '{selection_name}' has unexpected length."
                 )
-            if not np.any(selection_mask):
+            selected_indices = np.flatnonzero(selection_mask)
+            if selected_indices.size == 0:
                 return np.empty((0, 3), dtype=float)
+            selected_vecs = vecs[selected_indices].copy()
+            selected_positions = positions[selected_indices]
+            valid_mask = np.any(~np.isnan(selected_vecs), axis=1)
+            if not np.any(valid_mask):
+                return selected_vecs
+            selected_vecs[valid_mask] = np.nan_to_num(
+                selected_vecs[valid_mask],
+                nan=0.0,
+            )
+            local_components = coordinate_system.vector_components_to_local(
+                selected_vecs[valid_mask],
+                selected_positions[valid_mask],
+            )
+            selected_vecs[valid_mask] = local_components
+            return selected_vecs
 
-        valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        valid_mask = np.any(~np.isnan(vecs), axis=1)
         mapped = vecs.copy()
         if not np.any(valid_mask):
-            return mapped[selection_mask] if selected_only else mapped
+            return mapped
 
         mapped[valid_mask] = np.nan_to_num(mapped[valid_mask], nan=0.0)
         local_components = coordinate_system.vector_components_to_local(
             mapped[valid_mask], positions[valid_mask]
         )
         mapped[valid_mask] = local_components
-        return mapped[selection_mask] if selected_only else mapped
+        return mapped
 
     @staticmethod
     def map_vector_field_to_global_components(
@@ -337,7 +352,6 @@ class ModelEdit:
         if positions.size == 0:
             return np.empty((0, 3), dtype=float) if selected_only else vecs.copy()
 
-        selection_mask = np.ones((vecs.shape[0],), dtype=bool)
         if selected_only:
             Selector.ensure_selection_arrays(mesh)
             if location == "node":
@@ -354,20 +368,36 @@ class ModelEdit:
                 raise ValueError(
                     f"Selection array '{selection_name}' has unexpected length."
                 )
-            if not np.any(selection_mask):
+            selected_indices = np.flatnonzero(selection_mask)
+            if selected_indices.size == 0:
                 return np.empty((0, 3), dtype=float)
+            selected_vecs = vecs[selected_indices].copy()
+            selected_positions = positions[selected_indices]
+            valid_mask = np.any(~np.isnan(selected_vecs), axis=1)
+            if not np.any(valid_mask):
+                return selected_vecs
+            selected_vecs[valid_mask] = np.nan_to_num(
+                selected_vecs[valid_mask],
+                nan=0.0,
+            )
+            global_components = coordinate_system.vector_components_to_global(
+                selected_vecs[valid_mask],
+                selected_positions[valid_mask],
+            )
+            selected_vecs[valid_mask] = global_components
+            return selected_vecs
 
-        valid_mask = selection_mask & np.any(~np.isnan(vecs), axis=1)
+        valid_mask = np.any(~np.isnan(vecs), axis=1)
         mapped = vecs.copy()
         if not np.any(valid_mask):
-            return mapped[selection_mask] if selected_only else mapped
+            return mapped
 
         mapped[valid_mask] = np.nan_to_num(mapped[valid_mask], nan=0.0)
         global_components = coordinate_system.vector_components_to_global(
             mapped[valid_mask], positions[valid_mask]
         )
         mapped[valid_mask] = global_components
-        return mapped[selection_mask] if selected_only else mapped
+        return mapped
 
     @staticmethod
     def read_mesh(

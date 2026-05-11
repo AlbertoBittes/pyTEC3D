@@ -240,25 +240,18 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         y = local_positions[:, 1]
         r = np.sqrt(x * x + y * y)
 
-        e_r = np.zeros_like(local_positions)
-        e_theta = np.zeros_like(local_positions)
-        e_z = np.zeros_like(local_positions)
-        e_r[:, 0] = 1.0
-        e_theta[:, 1] = 1.0
-        e_z[:, 2] = 1.0
-
+        local_components = np.empty_like(local_vectors)
+        local_components[:, 0] = local_vectors[:, 0]
+        local_components[:, 1] = local_vectors[:, 1]
+        local_components[:, 2] = local_vectors[:, 2]
         nonzero = r > 0.0
         if np.any(nonzero):
             inv_r = 1.0 / r[nonzero]
-            e_r[nonzero, 0] = x[nonzero] * inv_r
-            e_r[nonzero, 1] = y[nonzero] * inv_r
-            e_theta[nonzero, 0] = -y[nonzero] * inv_r
-            e_theta[nonzero, 1] = x[nonzero] * inv_r
-
-        comp_r = np.einsum("ij,ij->i", e_r, local_vectors)
-        comp_theta = np.einsum("ij,ij->i", e_theta, local_vectors)
-        comp_z = local_vectors[:, 2]
-        return np.stack((comp_r, comp_theta, comp_z), axis=1)
+            vx = local_vectors[nonzero, 0]
+            vy = local_vectors[nonzero, 1]
+            local_components[nonzero, 0] = (x[nonzero] * vx + y[nonzero] * vy) * inv_r
+            local_components[nonzero, 1] = (-y[nonzero] * vx + x[nonzero] * vy) * inv_r
+        return local_components
 
     def vector_components_to_global(
         self, local_components: np.ndarray, global_positions: np.ndarray
@@ -268,30 +261,21 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         y = local_positions[:, 1]
         r = np.sqrt(x * x + y * y)
 
-        e_r = np.zeros_like(local_positions)
-        e_theta = np.zeros_like(local_positions)
-        e_z = np.zeros_like(local_positions)
-        e_r[:, 0] = 1.0
-        e_theta[:, 1] = 1.0
-        e_z[:, 2] = 1.0
-
-        nonzero = r > 0.0
-        if np.any(nonzero):
-            inv_r = 1.0 / r[nonzero]
-            e_r[nonzero, 0] = x[nonzero] * inv_r
-            e_r[nonzero, 1] = y[nonzero] * inv_r
-            e_theta[nonzero, 0] = -y[nonzero] * inv_r
-            e_theta[nonzero, 1] = x[nonzero] * inv_r
-
         local_components = np.asarray(local_components, dtype=float)
         comp_r = local_components[:, 0]
         comp_theta = local_components[:, 1]
         comp_z = local_components[:, 2]
-        local_vectors = (
-            e_r * comp_r[:, np.newaxis]
-            + e_theta * comp_theta[:, np.newaxis]
-            + e_z * comp_z[:, np.newaxis]
-        )
+        local_vectors = np.empty_like(local_components)
+        local_vectors[:, 0] = comp_r
+        local_vectors[:, 1] = comp_theta
+        local_vectors[:, 2] = comp_z
+        nonzero = r > 0.0
+        if np.any(nonzero):
+            inv_r = 1.0 / r[nonzero]
+            xr = x[nonzero] * inv_r
+            yr = y[nonzero] * inv_r
+            local_vectors[nonzero, 0] = xr * comp_r[nonzero] - yr * comp_theta[nonzero]
+            local_vectors[nonzero, 1] = yr * comp_r[nonzero] + xr * comp_theta[nonzero]
         return local_vectors @ self._local_to_global_cart.T
 
     def to_local(self, global_points: np.ndarray) -> np.ndarray:

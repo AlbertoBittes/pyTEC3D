@@ -52,6 +52,9 @@ class ApecAlgorithm:
         self._first_absolute_iteration: bool = True
         self._previous_flux_vector: Optional[np.ndarray] = None
         self._old_control_current_density_base: Optional[np.ndarray] = None
+        self._b_target_axis_cache: Optional[
+            Tuple[Tuple[Any, ...], np.ndarray, np.ndarray]
+        ] = None
         self._step_overrides: Dict[str, Callable[..., Any]] = {}
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
@@ -69,6 +72,7 @@ class ApecAlgorithm:
         self._first_absolute_iteration = True
         self._previous_flux_vector = None
         self._old_control_current_density_base = None
+        self._b_target_axis_cache = None
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
 
@@ -80,12 +84,20 @@ class ApecAlgorithm:
             return
 
         n_slices = int(self.input_parameters["n_slices"])
+        elem_n_slices = n_slices
 
         if self._equilibrium_mesh is None:
             raise ValueError(
                 "Equilibrium mesh is not set; cannot build toroidal slices."
             )
 
+        if self.apec.mesh.GetMaxSpatialDimension() == 3:
+            elem_n_slices = n_slices - 1
+        if self.apec.mesh.GetMaxSpatialDimension() == 2 and (elem_n_slices != 1 or n_slices != 1):
+            raise ValueError(
+                "For 2D meshes, n_slices and elem_n_slices must both be 1."
+            )
+            
         from .coordinate_system import CylindricalCoordinateSystem
         from .cyclic import Cyclic
 
@@ -104,7 +116,7 @@ class ApecAlgorithm:
             self.apec.mesh,
             location="elem",
             tolerance=tolerance,
-            n_slices=n_slices,
+            n_slices=elem_n_slices,
             coordinate_system=coordinate_system,
         )
 
@@ -363,51 +375,65 @@ class ApecAlgorithm:
             float(self.input_parameters["target_central_axis_z"]),
         )
 
-        locator = vtk.vtkCellLocator()
-        locator.SetDataSet(mesh)
-        locator.BuildLocator()
-        cell_id = int(locator.FindCell(target_point))
-        if cell_id < 0:
-            raise ValueError(
-                "Target magnetic axis point is not inside the mesh: "
-                f"{target_point}."
-            )
-
-        cell = mesh.GetCell(cell_id)
-        n_points = int(cell.GetNumberOfPoints())
-        if n_points <= 0:
-            raise ValueError(f"Cell {cell_id} has no points; cannot interpolate B.")
-
-        closest_point = [0.0, 0.0, 0.0]
-        pcoords = [0.0, 0.0, 0.0]
-        sub_id = vtk.reference(0)
-        dist2 = vtk.reference(0.0)
-        weights = [0.0] * n_points
-        inside = int(
-            cell.EvaluatePosition(
-                target_point,
-                closest_point,
-                sub_id,
-                pcoords,
-                dist2,
-                weights,
-            )
+        cache_key = (
+            id(mesh),
+            mesh.GetNumberOfPoints(),
+            mesh.GetNumberOfCells(),
+            target_point,
         )
-        if inside < 0:
-            raise ValueError(
-                "Could not evaluate interpolation weights for target magnetic axis "
-                f"point {target_point} in cell {cell_id}."
+        if (
+            self._b_target_axis_cache is None
+            or self._b_target_axis_cache[0] != cache_key
+        ):
+            locator = vtk.vtkCellLocator()
+            locator.SetDataSet(mesh)
+            locator.BuildLocator()
+            cell_id = int(locator.FindCell(target_point))
+            if cell_id < 0:
+                raise ValueError(
+                    "Target magnetic axis point is not inside the mesh: "
+                    f"{target_point}."
+                )
+
+            cell = mesh.GetCell(cell_id)
+            n_points = int(cell.GetNumberOfPoints())
+            if n_points <= 0:
+                raise ValueError(f"Cell {cell_id} has no points; cannot interpolate B.")
+
+            closest_point = [0.0, 0.0, 0.0]
+            pcoords = [0.0, 0.0, 0.0]
+            sub_id = vtk.reference(0)
+            dist2 = vtk.reference(0.0)
+            weights = [0.0] * n_points
+            inside = int(
+                cell.EvaluatePosition(
+                    target_point,
+                    closest_point,
+                    sub_id,
+                    pcoords,
+                    dist2,
+                    weights,
+                )
             )
+            if inside < 0:
+                raise ValueError(
+                    "Could not evaluate interpolation weights for target magnetic axis "
+                    f"point {target_point} in cell {cell_id}."
+                )
 
-        point_ids = cell.GetPointIds()
-        b_target_x = 0.0
-        b_target_y = 0.0
-        for local_idx, weight in enumerate(weights):
-            pid = int(point_ids.GetId(local_idx))
-            b_target_x += float(weight) * float(b[pid, 0])
-            b_target_y += float(weight) * float(b[pid, 1])
+            point_ids = cell.GetPointIds()
+            point_ids_np = np.fromiter(
+                (int(point_ids.GetId(local_idx)) for local_idx in range(n_points)),
+                dtype=np.int64,
+                count=n_points,
+            )
+            weights_np = np.asarray(weights, dtype=float)
+            self._b_target_axis_cache = (cache_key, point_ids_np, weights_np)
+        else:
+            _, point_ids_np, weights_np = self._b_target_axis_cache
 
-        target = (float(b_target_x), float(b_target_y))
+        b_target = weights_np @ b[point_ids_np, :2]
+        target = (float(b_target[0]), float(b_target[1]))
         self.status["b_target_axis"] = target
 
     def compute_correction_currents(self) -> None:
@@ -760,13 +786,8 @@ class ApecAlgorithm:
             evol_b_values = evol_b[dst_nodes]
             evol_be_values = evol_be[dst_elems]
 
-        for comp_idx in range(3):
-            comp_values = np.mean(evol_b_values[:, :, comp_idx], axis=1)
-            eq_b[src_nodes, comp_idx] = comp_values
-
-        for comp_idx in range(3):
-            comp_values = np.mean(evol_be_values[:, :, comp_idx], axis=1)
-            eq_be[src_elems, comp_idx] = comp_values
+        eq_b[src_nodes] = np.mean(evol_b_values, axis=1)
+        eq_be[src_elems] = np.mean(evol_be_values, axis=1)
 
         if converted_vectors_to_cylindrical:
             eq_node_positions = ModelEdit._get_positions(equilibrium_mesh, "node")
@@ -788,7 +809,7 @@ class ApecAlgorithm:
         eq_psie_array.Modified()
 
     def toroidal_projection_current(self) -> None:
-        from .coordinate_system import CartesianCoordinateSystem, CylindricalCoordinateSystem
+        from .coordinate_system import CylindricalCoordinateSystem
 
         static_mesh = self.apec.mesh
         equilibrium_mesh = self._equilibrium_mesh
@@ -799,38 +820,37 @@ class ApecAlgorithm:
         equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
 
         cylindrical = CylindricalCoordinateSystem()
-        js_r_z_negtheta_to_cylindrical = CartesianCoordinateSystem(
-            nxax=(1.0, 0.0, 0.0),
-            nxypl=(0.0, 0.0, 1.0),
-        )
         static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
         equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
 
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
-        projected_js = equilibrium_js[src_elems].copy()
+        projected_js = equilibrium_js[src_elems]
         static_mesh_is_3d = static_mesh.GetMaxSpatialDimension() > 2
         if static_mesh_is_3d:
-            # Equilibrium Js is stored as (r, z, -theta); cylindrical mapping expects
-            # (r, theta, z) before converting to global components.
-            projected_js = js_r_z_negtheta_to_cylindrical.vector_components_to_global(
-                projected_js,
-                np.zeros((src_elems.size, 3), dtype=float),
-            )
-
-        for comp_idx in range(3):
-            comp_values = projected_js[:, comp_idx]
-            static_js[dst_elems, comp_idx] = comp_values[:, np.newaxis]
+            projected_js = projected_js[:, [0, 2, 1]]
 
         if static_mesh_is_3d:
-            Selector.select(static_mesh, "ID", dst_elems.reshape(-1), type="elem", mode="s")
-            ModelEdit.map_vector_field_to_global_components(
-                static_mesh,
-                "Js",
-                cylindrical,
-                location="elem",
-                selected_only=True,
+            flat_dst_elems = dst_elems.reshape(-1)
+            local_js = np.broadcast_to(
+                projected_js[:, np.newaxis, :],
+                (*dst_elems.shape, 3),
+            ).reshape(-1, 3)
+            elem_positions = ModelEdit._get_positions(static_mesh, "elem")
+            static_js[flat_dst_elems] = cylindrical.vector_components_to_global(
+                local_js,
+                elem_positions[flat_dst_elems],
             )
+            selection_mask = np.zeros(static_mesh.GetNumberOfCells(), dtype=bool)
+            selection_mask[flat_dst_elems] = True
+            Selector.apply_boolean_selection_mask(
+                selection_mask,
+                static_mesh.GetCellData(),
+                "elem",
+                "s",
+            )
+        else:
+            static_js[dst_elems] = projected_js[:, np.newaxis, :]
 
         static_js_array.Modified()
 
@@ -893,8 +913,9 @@ class ApecAlgorithm:
     def evolution_solve(self) -> bool:
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-            Selector.select(self.apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-            Selector.nsle(self.apec.mesh, mode="s")
+            Selector.select(self._equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+            Selector.nsle(self._equilibrium_mesh, mode="s")
+            Selector.select_all(self.apec.mesh)
             self.set_toroidal_slices()
 
         max_picard_iterations = max(

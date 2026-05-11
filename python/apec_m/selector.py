@@ -202,6 +202,38 @@ class Selector:
         sel_array.Modified()
 
     @staticmethod
+    def apply_boolean_selection_mask(
+        mask: np.ndarray,
+        data: "vtk.vtkDataSetAttributes",
+        type: str,
+        mode: str,
+    ) -> None:
+        mask = np.asarray(mask, dtype=bool)
+        sel_array = data.GetArray(
+            "selection_cell" if type == "elem" else "selection_point"
+        )
+        sel_np = vtknp.vtk_to_numpy(sel_array)
+        if mask.shape[0] != sel_np.shape[0]:
+            raise ValueError("Selection mask has unexpected length.")
+        if mode == "s":
+            sel_np[:] = mask
+        elif mode == "a":
+            current = sel_np.astype(bool)
+            np.logical_or(current, mask, out=mask)
+            sel_np[:] = mask
+        elif mode == "r":
+            current = sel_np.astype(bool)
+            np.logical_and(current, mask, out=mask)
+            sel_np[:] = mask
+        elif mode == "u":
+            current = sel_np.astype(bool)
+            np.logical_and(current, np.logical_not(mask), out=mask)
+            sel_np[:] = mask
+        else:
+            raise ValueError(f"Unknown selection mode '{mode}'.")
+        sel_array.Modified()
+
+    @staticmethod
     def nsle(mesh: "vtk.vtkUnstructuredGrid", mode: str = "s") -> None:
         """
         Select nodes attached to the currently selected cells.
@@ -225,39 +257,34 @@ class Selector:
         if not cell_sel.any():
             return
 
-        selected_ids = np.flatnonzero(cell_sel)
-        if selected_ids.size == 0:
+        cells = mesh.GetCells()
+        offsets_array = cells.GetOffsetsArray()
+        connectivity_array = cells.GetConnectivityArray()
+        if offsets_array is None or connectivity_array is None:
+            raise ValueError(
+                "VTK connectivity arrays are required for nsle() "
+                "(GetOffsetsArray/GetConnectivityArray)."
+            )
+
+        offsets = np.asarray(vtknp.vtk_to_numpy(offsets_array), dtype=np.int64)
+        connectivity = np.asarray(vtknp.vtk_to_numpy(connectivity_array), dtype=np.int64)
+        if offsets.size < 2 or connectivity.size == 0:
             return
 
-        id_array = vtknp.numpy_to_vtkIdTypeArray(selected_ids, deep=True)
-        selection_node = vtk.vtkSelectionNode()
-        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
-        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
-        selection_node.SetSelectionList(id_array)
-        selection = vtk.vtkSelection()
-        selection.AddNode(selection_node)
+        cell_lengths = np.diff(offsets)
+        if np.any(cell_lengths < 0):
+            raise ValueError("Invalid VTK cell connectivity offsets.")
 
-        extract_selection = vtk.vtkExtractSelection()
-        extract_selection.SetInputData(0, mesh)
-        extract_selection.SetInputData(1, selection)
-        extract_selection.Update()
-        selected_mesh = extract_selection.GetOutput()
-
-        original_ids_array = selected_mesh.GetPointData().GetArray(
-            "vtkOriginalPointIds"
-        )
-        if original_ids_array is None:
+        selected_conn = np.repeat(cell_sel, cell_lengths)
+        point_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
+        point_mask[connectivity[selected_conn]] = True
+        if not np.any(point_mask):
             return
-        original_point_ids = vtknp.vtk_to_numpy(original_ids_array)
-        if original_point_ids.size == 0:
-            return
-
-        Selector.select(
-            mesh,
-            "ID",
-            set(np.unique(original_point_ids)),
-            type="node",
-            mode=mode,
+        Selector.apply_boolean_selection_mask(
+            point_mask,
+            mesh.GetPointData(),
+            "node",
+            mode,
         )
 
     @staticmethod
@@ -307,32 +334,22 @@ class Selector:
         if np.any(cell_lengths < 0):
             raise ValueError("Invalid VTK cell connectivity offsets.")
 
-        # Map each connectivity entry to its cell id.
-        cell_ids_for_conn = np.repeat(
-            np.arange(n_cells, dtype=np.int64),
-            cell_lengths,
-        )
-        if cell_ids_for_conn.size == 0:
-            return
-
         node_selected = point_sel[connectivity].astype(np.int8, copy=False)
-        selected_counts = np.bincount(
-            cell_ids_for_conn,
-            weights=node_selected,
-            minlength=n_cells,
-        )
+        selected_counts = np.add.reduceat(node_selected, offsets[:-1])
 
         if all_nodes:
             cell_mask = (cell_lengths > 0) & (selected_counts == cell_lengths)
         else:
             cell_mask = selected_counts > 0
 
-        selected_cells = np.flatnonzero(cell_mask)
-
-        if selected_cells.size == 0:
+        if not np.any(cell_mask):
             return
-
-        Selector.select(mesh, "ID", set(selected_cells.tolist()), type="elem", mode=mode)
+        Selector.apply_boolean_selection_mask(
+            cell_mask,
+            mesh.GetCellData(),
+            "elem",
+            mode,
+        )
 
     @staticmethod
     def select_all(mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None) -> None:

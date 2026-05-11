@@ -89,9 +89,8 @@ void ElementBuilder::build_av3dnodal()
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int l = 0; l < 3; l++)
-                        for (unsigned int k = 0; k < 3; k++)
-                            Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                                JxW[qp] * nu * (dphi[dof_i][qp] * dphi[dof_j][qp]);
+                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
+                            JxW[qp] * nu * (dphi[dof_i][qp] * dphi[dof_j][qp]);
     };
 
     auto build_bae = [&]()
