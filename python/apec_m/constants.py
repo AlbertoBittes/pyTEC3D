@@ -127,13 +127,18 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "equilibrium_mesh": "",
     "static_mesh": "",
     "evolution_mesh": "",
-    "n_slices": -1,
+    "extrusion_angle": 360.0,
+    "n_toroidal_divisions": -1,
+    "halo_delta1": 0.0,
+    "halo_delta2": 0.0,
+    "t0_halo": 0.0,
 }
 
 DEFAULT_APEC_ALGORITHM_STATUS = {
     "psi_magnetic_axis": 0.0,
     "psi_max": 0.0,
     "psi_min": 0.0,
+    "psi_2_min": 0.0,
     "magnetic_axis": (0.0, 0.0, 0.0),
     "b_target_axis": (0.0, 0.0),
     "last_psi_limiter": 0.0,

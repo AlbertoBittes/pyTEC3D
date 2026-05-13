@@ -83,21 +83,23 @@ class ApecAlgorithm:
         ):
             return
 
-        n_slices = int(self.input_parameters["n_slices"])
-        elem_n_slices = n_slices
-
         if self._equilibrium_mesh is None:
             raise ValueError(
                 "Equilibrium mesh is not set; cannot build toroidal slices."
             )
 
-        if self.apec.mesh.GetMaxSpatialDimension() == 3:
-            elem_n_slices = n_slices - 1
-        if self.apec.mesh.GetMaxSpatialDimension() == 2 and (elem_n_slices != 1 or n_slices != 1):
+        target_dimension = self.apec.mesh.GetMaxSpatialDimension()
+        extrusion_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
+        n_toroidal_divisions = int(
+            self.input_parameters.get("n_toroidal_divisions", -1)
+        )
+        if target_dimension > 2 and n_toroidal_divisions <= 0:
             raise ValueError(
-                "For 2D meshes, n_slices and elem_n_slices must both be 1."
+                "n_toroidal_divisions must be a positive integer for 3D meshes."
             )
-            
+        if target_dimension <= 2 and n_toroidal_divisions <= 0:
+            n_toroidal_divisions = 1
+
         from .coordinate_system import CylindricalCoordinateSystem
         from .cyclic import Cyclic
 
@@ -108,7 +110,8 @@ class ApecAlgorithm:
             self.apec.mesh,
             location="node",
             tolerance=tolerance,
-            n_slices=n_slices,
+            extrusion_angle=extrusion_angle,
+            n_divisions=n_toroidal_divisions,
             coordinate_system=coordinate_system,
         )
         self._toroidal_slices_elems = Cyclic.build_toroidal_slices(
@@ -116,7 +119,8 @@ class ApecAlgorithm:
             self.apec.mesh,
             location="elem",
             tolerance=tolerance,
-            n_slices=elem_n_slices,
+            extrusion_angle=extrusion_angle,
+            n_divisions=n_toroidal_divisions,
             coordinate_system=coordinate_system,
         )
 
@@ -228,6 +232,8 @@ class ApecAlgorithm:
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
+        Selector.nsle(mesh)
+        Selector.set_value_on_selection(mesh, "AMPS", 0.0, type="node")
 
         selection_array = cell_data.GetArray("selection_cell")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
@@ -240,14 +246,59 @@ class ApecAlgorithm:
     def identify_plasma_region(self) -> None:
         mesh = self._equilibrium_mesh
 
+        psi_2_min = float(self.status["psi_2_min"])
         psi_min = float(self.status["psi_min"])
-        if not np.isfinite(psi_min):
-            raise ValueError("status['psi_min'] is not set; cannot identify plasma region.")
+        is_limiter = self.status["separatrix_configuration"] == "limiter"
+        halo_delta1 = float(self.input_parameters.get("halo_delta1", 0.0))
+        t0_halo = float(self.input_parameters.get("t0_halo", 0.0))
+        halo_requested = (
+            is_limiter
+            and halo_delta1 > 0.0
+            and self.apec.time_step["time"] >= t0_halo
+        )
 
+        point_data = mesh.GetPointData()
+
+        if halo_requested and psi_2_min >= psi_min:
+            raise ValueError(
+                "psi_2_min must be lower than psi_min when identifying plasma region with halo."
+            )
+        has_halo = halo_requested and psi_2_min < psi_min
+
+        for component_name in ("HALO", "HALO_LEFT", "HALO_RIGHT"):
+            component_array = point_data.GetArray(component_name)
+            if component_array is None:
+                ModelEdit.add_component(mesh, component_name, type="node")
+            component_array = point_data.GetArray(component_name)
+            component_np = vtknp.vtk_to_numpy(component_array)
+            component_np[:] = 0
+            component_array.Modified()
+
+        if has_halo:
+            lower_strict = np.nextafter(psi_2_min, np.inf)
+            upper_strict = np.nextafter(psi_min, -np.inf)
+            Selector.select(
+                mesh,
+                "PSI",
+                (lower_strict, upper_strict),
+                type="node",
+                mode="r",
+            )
+            Selector.set_value_on_selection(mesh, "HALO", 1, type="node")
+
+            x_limiter = float(self.status["limiter_point"][0])
+
+            Selector.select_pos(mesh, 0, (-np.inf, x_limiter), mode="r", type="node")
+            Selector.set_value_on_selection(mesh, "HALO_LEFT", 1, type="node")
+
+            Selector.select(mesh, "HALO", 1, type="node", mode="s")
+            Selector.select_pos(mesh, 0, (x_limiter, np.inf), mode="r", type="node")
+            Selector.set_value_on_selection(mesh, "HALO_RIGHT", 1, type="node")
+
+        # Strict PSI < psi_2_min using an upper bound just below psi_2_min.
+        upper_strict = np.nextafter(psi_2_min, -np.inf)
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-
-        # Strict PSI < psi_min using an upper bound just below psi_min.
-        upper_strict = np.nextafter(psi_min, -np.inf)
+        Selector.nsle(mesh, "s")
         Selector.select(
             mesh,
             "PSI",
@@ -256,8 +307,12 @@ class ApecAlgorithm:
             mode="r",
         )
 
-        Selector.esln(mesh, all_nodes=False, mode="r")
-        Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+        selection_array = mesh.GetPointData().GetArray("selection_point")
+        selected_node_count = int(np.count_nonzero(vtknp.vtk_to_numpy(selection_array)))
+
+        if selected_node_count > 0:
+            Selector.esln(mesh, all_nodes=False, mode="r")
+            Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
     def remove_plasma_out_of_X_point(self) -> None:
         mesh = self._equilibrium_mesh
@@ -537,9 +592,9 @@ class ApecAlgorithm:
     def _find_separatrix_default(self) -> None:
         self.reset_plasma_components()
         self.set_psi_magnetic_axis()
+        self.check_X_point()
         self.remove_plasma_out_of_X_point()
         self.check_limiter()
-        self.check_X_point()
         psi_limiter = float(self.status["last_psi_limiter"])
         psi_x_point = float(self.status["last_psi_x_point"])
         if psi_limiter > psi_x_point:
@@ -548,7 +603,27 @@ class ApecAlgorithm:
         else:
             self.status["psi_min"] = psi_x_point
             self.status["separatrix_configuration"] = "X-point"
+        halo_delta1 = float(self.input_parameters.get("halo_delta1", 0.0))
+        halo_delta2 = float(self.input_parameters.get("halo_delta2", 0.0))
+        t0_halo = float(self.input_parameters.get("t0_halo", 0.0))
+        if halo_delta1 < 0.0:
+            raise ValueError("halo_delta1 must be non-negative.")
+        if (
+            halo_delta1 > 0.0
+            and self.apec.time_step["time"] >= t0_halo
+            and self.status["separatrix_configuration"] == "limiter"
+        ):
+            halo_scale = halo_delta1 * (
+                1.0 + (self.apec.time_step["time"] - t0_halo) * halo_delta2
+            )
+            self.status["psi_2_min"] = (
+                self.status["psi_min"]
+                - halo_scale * (self.status["psi_max"] - self.status["psi_min"])
+            )
+        else:
+            self.status["psi_2_min"] = self.status["psi_min"]
         self.identify_plasma_region()
+
     def compute_jplasma_gradshafranov(self) -> None:
         self._dispatch_step(
             self.STEP_COMPUTE_JPLASMA,
@@ -558,10 +633,14 @@ class ApecAlgorithm:
     def _compute_jplasma_gradshafranov_default(self) -> None:
         mesh = self._equilibrium_mesh
 
+        point_data = mesh.GetPointData()
         cell_data = mesh.GetCellData()
 
         js_array = cell_data.GetArray("Js")
         js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
+
+        psi_point_array = point_data.GetArray("PSI")
+        psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
 
         psie_array = cell_data.GetArray("PSIe")
         psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
@@ -579,7 +658,7 @@ class ApecAlgorithm:
         elem_centroid_rad = np.asarray(centroids[:, 0], dtype=float)
 
         psi_magnetic_axis = float(self.status["psi_magnetic_axis"])
-        psi_min = float(self.status["psi_min"])
+        psi_min = float(self.status["psi_2_min"])
         psi_den = psi_min - psi_magnetic_axis
         if abs(psi_den) <= np.finfo(float).eps:
             self.status["total_plasma_current_before_scaling"] = 0.0
@@ -638,6 +717,64 @@ class ApecAlgorithm:
         js_np[selected_ids, 1] = js_vertical
         js_np[selected_ids, 2] = js_toroidal
         js_array.Modified()
+
+        amps_array = point_data.GetArray("AMPS")
+        halo_left_array = point_data.GetArray("HALO_LEFT")
+        halo_right_array = point_data.GetArray("HALO_RIGHT")
+        halo_currents_enabled = (
+            self.status["separatrix_configuration"] == "limiter"
+            and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
+            and self.apec.time_step["time"]
+            >= float(self.input_parameters.get("t0_halo", 0.0))
+            and float(self.status["psi_2_min"]) < float(self.status["psi_min"])
+        )
+        if (
+            halo_currents_enabled
+            and amps_array is not None
+            and (halo_left_array is not None or halo_right_array is not None)
+        ):
+            amps_np = vtknp.vtk_to_numpy(amps_array)
+            points = np.asarray(vtknp.vtk_to_numpy(mesh.GetPoints().GetData()), dtype=float)
+            vertical_coord = points[:, 1]
+            halo_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
+            halo_angle_factor = halo_angle / 360.0
+            halo_flux_den = psi_min - psi_magnetic_axis
+
+            def apply_halo_currents(component_array: Optional[vtk.vtkDataArray]) -> None:
+                if component_array is None:
+                    return
+                node_ids = np.flatnonzero(vtknp.vtk_to_numpy(component_array) == 1)
+                if node_ids.size <= 1:
+                    return
+
+                order = np.argsort(vertical_coord[node_ids], kind="stable")
+                sorted_ids = node_ids[order]
+                psi_seg = (psi_point[sorted_ids] - psi_magnetic_axis) / halo_flux_den
+                psi_seg = np.clip(psi_seg, 0.0, 1.0)
+
+                integrand = np.power(
+                    np.maximum(1.0 - np.power(psi_seg, alpha_mp), 0.0),
+                    alpha_np,
+                )
+                dpsi_seg = np.diff(psi_seg)
+                integral = np.empty_like(psi_seg)
+                integral[0] = 0.0
+                integral[1:] = np.cumsum(
+                    0.5 * (integrand[:-1] + integrand[1:]) * dpsi_seg
+                )
+
+                f_const = 2.0 * mu_0 * r0 * (1.0 - beta_profile) * halo_flux_den * lambda_scale
+                f_profile = np.sqrt(np.maximum(f_const * integral + af0 * af0, 0.0))
+                segment_currents = (
+                    (2.0 * np.pi / mu_0)
+                    * (f_profile[:-1] - f_profile[1:])
+                    * halo_angle_factor
+                )
+                amps_np[sorted_ids[:-1]] += segment_currents
+
+            apply_halo_currents(halo_left_array)
+            apply_halo_currents(halo_right_array)
+            amps_array.Modified()
 
         self.status["total_plasma_current_before_scaling"] = total_plasma_current
         self.status["plasma_current_scaling_lambda"] = float(lambda_scale)
@@ -814,17 +951,49 @@ class ApecAlgorithm:
         static_mesh = self.apec.mesh
         equilibrium_mesh = self._equilibrium_mesh
         self.set_toroidal_slices()
+        node_slices = self._toroidal_slices_nodes
         elem_slices = self._toroidal_slices_elems
 
+        static_amps_array = static_mesh.GetPointData().GetArray("AMPS")
+        equilibrium_amps_array = equilibrium_mesh.GetPointData().GetArray("AMPS")
         static_js_array = static_mesh.GetCellData().GetArray("Js")
         equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
 
         cylindrical = CylindricalCoordinateSystem()
+        static_amps = (
+            np.asarray(vtknp.vtk_to_numpy(static_amps_array), dtype=float).reshape(-1)
+            if static_amps_array is not None and equilibrium_amps_array is not None
+            else None
+        )
+        equilibrium_amps = (
+            np.asarray(vtknp.vtk_to_numpy(equilibrium_amps_array), dtype=float).reshape(-1)
+            if static_amps_array is not None and equilibrium_amps_array is not None
+            else None
+        )
         static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
         equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
 
+        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
+        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
+        if static_amps is not None and equilibrium_amps is not None:
+            toroidal_node_count = dst_nodes.shape[1]
+            if toroidal_node_count <= 0:
+                raise ValueError("Toroidal node map has no target node columns.")
+
+            flat_dst_nodes = dst_nodes.reshape(-1)
+            valid_node_mask = flat_dst_nodes >= 0
+            flat_dst_nodes = flat_dst_nodes[valid_node_mask]
+            projected_amps = np.broadcast_to(
+                equilibrium_amps[src_nodes, np.newaxis] / float(toroidal_node_count),
+                dst_nodes.shape,
+            ).reshape(-1)[valid_node_mask]
+
+            static_amps[np.unique(flat_dst_nodes)] = 0.0
+            np.add.at(static_amps, flat_dst_nodes, projected_amps)
+            static_amps_array.Modified()
+
         projected_js = equilibrium_js[src_elems]
         static_mesh_is_3d = static_mesh.GetMaxSpatialDimension() > 2
         if static_mesh_is_3d:

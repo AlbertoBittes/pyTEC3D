@@ -81,7 +81,8 @@ Selector.select(apec.algorithm._equilibrium_mesh, "VACUUM_CHAMBER", 1, type="ele
 Selector.select(apec.algorithm._equilibrium_mesh, "COILS", 1, type="elem", mode="a")
 Selector.nsle(apec.algorithm._equilibrium_mesh)
 Selector.select_all(apec.mesh)
-apec.algorithm.input_parameters["n_slices"] = 3
+apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
+apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 apec.algorithm.toroidal_projection_current()
 
 apec.save_mesh()
@@ -93,6 +94,9 @@ apec.algorithm.input_parameters["tolerance_value"] = 1e-3
 apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
+apec.algorithm.input_parameters["halo_delta1"] = 0.04
+apec.algorithm.input_parameters["halo_delta2"] = 0
+apec.algorithm.input_parameters["t0_halo"] = 0.3762
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))

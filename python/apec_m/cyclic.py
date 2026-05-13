@@ -123,19 +123,24 @@ class Cyclic:
         target_mesh: "vtk.vtkUnstructuredGrid",
         location: str = "node",
         tolerance: float = 1e-6,
-        n_slices: int = -1,
+        extrusion_angle: float = 360.0,
+        n_divisions: Optional[int] = None,
         coordinate_system: Optional["CoordinateSystem"] = None,
     ) -> np.ndarray:
         """
-        Build a toroidal projection map from a 2D input mesh to a 3D target mesh.
+        Build a toroidal projection map from a 2D input mesh to a target mesh.
 
-        Each input point/cell centroid is associated with target points/cell centroids that share
-        the same radial distance from the rotation axis and the same axial coordinate within
-        the given tolerance. For points on the rotation axis (r=0), the map assumes a single
-        match. The tolerance is increased until each input ID has at least n_slices corresponding
-        target IDs, then matches are sorted by poloidal distance and trimmed to n_slices.
-        The resulting map is returned as a 2D NumPy array where the first column holds input IDs and
-        the remaining columns hold the corresponding target IDs.
+        Each input point/cell centroid is associated with target points/cell centroids that
+        share the same radial distance from the rotation axis and the same axial coordinate.
+        For 3D target meshes, the target is assumed to be a toroidal extrusion of the input
+        mesh over ``extrusion_angle`` degrees with ``n_divisions`` elements in the toroidal
+        direction. Node maps therefore contain ``n_divisions + 1`` matches per source node,
+        while element maps contain ``n_divisions`` matches per source element. For 2D target
+        meshes there is exactly one match per source ID.
+
+        The resulting map is returned as a 2D NumPy array where the first column holds input IDs
+        and the remaining columns hold corresponding target IDs. For 3D targets, each target
+        column corresponds to one toroidal coordinate station.
         If selection arrays exist on the input/target mesh for the chosen location, only selected
         IDs are used.
 
@@ -144,13 +149,13 @@ class Cyclic:
             target_mesh: Target unstructured grid (typically 3D).
             location: "node" to map point IDs or "elem" to map cell IDs.
             tolerance: Absolute tolerance for matching radii and axial coordinates.
-            n_slices: Minimum number of corresponding target IDs per input ID.
+            extrusion_angle: Total toroidal extrusion angle in degrees.
+            n_divisions: Number of toroidal element divisions in the extrusion.
             coordinate_system: Cylindrical coordinate system used for local coordinates.
 
         Returns:
-            np.ndarray: Integer array with shape (num_input, 1 + n_slices), where
-                column 0 stores 2D entity IDs and columns 1..n_slices store the
-                corresponding toroidal slice IDs in the 3D mesh.
+            np.ndarray: Integer array with shape (num_input, 1 + num_matches), where
+                column 0 stores source entity IDs and the remaining columns store target IDs.
 
         Raises:
             ValueError: If inputs are invalid or the input mesh is not 2D.
@@ -159,8 +164,8 @@ class Cyclic:
             raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
             raise ValueError("tolerance must be positive.")
-        if not isinstance(n_slices, int) or n_slices <= 0:
-            raise ValueError("n_slices must be a positive integer.")
+        if extrusion_angle <= 0:
+            raise ValueError("extrusion_angle must be positive.")
 
         if (
             input_mesh.GetNumberOfCells() > 0
@@ -176,6 +181,36 @@ class Cyclic:
             raise ValueError(
                 "coordinate_system must be cylindrical for toroidal projection."
             )
+
+        target_is_3d = target_mesh.GetMaxSpatialDimension() > 2
+        if target_is_3d:
+            if n_divisions is None:
+                raise ValueError("n_divisions must be provided for 3D target meshes.")
+            try:
+                n_divisions = int(n_divisions)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("n_divisions must be a positive integer.") from exc
+            if n_divisions <= 0:
+                raise ValueError("n_divisions must be a positive integer.")
+            num_matches = n_divisions + 1 if location == "node" else n_divisions
+            if location == "node":
+                expected_theta = np.linspace(
+                    0.0,
+                    float(extrusion_angle),
+                    n_divisions + 1,
+                    dtype=float,
+                )
+            else:
+                step = float(extrusion_angle) / float(n_divisions)
+                expected_theta = (np.arange(n_divisions, dtype=float) + 0.5) * step
+        else:
+            if input_mesh.GetMaxSpatialDimension() > 2:
+                raise ValueError("2D target meshes can only be mapped from 2D input meshes.")
+            num_matches = 1
+            expected_theta = np.zeros((1,), dtype=float)
+
+        def angular_distance(theta: np.ndarray, expected: float) -> np.ndarray:
+            return np.abs((theta - expected + 180.0) % 360.0 - 180.0)
 
         from .selector import Selector
 
@@ -194,19 +229,21 @@ class Cyclic:
         )
 
         if input_local.size == 0:
-            return np.empty((0, 1 + n_slices), dtype=np.int64)
+            return np.empty((0, 1 + num_matches), dtype=np.int64)
 
         input_radius = input_local[:, 0]
         input_axial = input_local[:, 2]
         target_radius = target_local[:, 0]
+        target_theta = target_local[:, 1]
         target_axial = target_local[:, 2]
 
         target_count = target_radius.shape[0]
         if target_count == 0:
             raise ValueError("Target mesh has no points/cells to map.")
-        if n_slices > target_count:
+        if num_matches > target_count:
             raise ValueError(
-                "n_slices cannot exceed the number of available target points/cells."
+                "Number of requested toroidal matches cannot exceed the number of "
+                "available target points/cells."
             )
 
         num_input = input_radius.shape[0]
@@ -214,7 +251,7 @@ class Cyclic:
         counts = np.empty(num_input, dtype=int)
 
         axis_mask = input_radius <= tolerance
-        required_counts = np.where(axis_mask, 1, n_slices)
+        required_counts = np.where(axis_mask, 1, num_matches)
 
         max_iterations = 50
         for _ in range(max_iterations):
@@ -232,7 +269,7 @@ class Cyclic:
                 "tolerance expansion limit."
             )
 
-        mapping = np.full((num_input, 1 + n_slices), -1, dtype=np.int64)
+        mapping = np.full((num_input, 1 + num_matches), -1, dtype=np.int64)
         mapping[:, 0] = input_ids.astype(np.int64, copy=False)
         for row_idx in range(num_input):
             dr = np.abs(target_radius - input_radius[row_idx])
@@ -244,18 +281,21 @@ class Cyclic:
             candidate_ids = target_ids[candidate_idx]
             if axis_mask[row_idx]:
                 trimmed = np.full(
-                    (n_slices,), candidate_ids[0], dtype=candidate_ids.dtype
+                    (num_matches,), candidate_ids[0], dtype=candidate_ids.dtype
                 )
             else:
+                trimmed = np.empty((num_matches,), dtype=candidate_ids.dtype)
+                used = np.zeros(candidate_idx.size, dtype=bool)
                 poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
-                if candidate_idx.size > n_slices:
-                    pick = np.argpartition(poloidal_dist, n_slices - 1)[:n_slices]
-                    pick = pick[np.argsort(poloidal_dist[pick])]
-                    trimmed = candidate_ids[pick]
-                else:
-                    order = np.argsort(poloidal_dist)
-                    trimmed = candidate_ids[order]
-            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:n_slices].astype(
+                for theta_idx, theta_value in enumerate(expected_theta):
+                    theta_dist = angular_distance(target_theta[candidate_idx], theta_value)
+                    score = theta_dist + poloidal_dist / max(tolerance_current, np.finfo(float).eps)
+                    if np.any(~used):
+                        score = np.where(used, np.inf, score)
+                    pick = int(np.argmin(score))
+                    trimmed[theta_idx] = candidate_ids[pick]
+                    used[pick] = True
+            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:num_matches].astype(
                 np.int64, copy=False
             )
 
