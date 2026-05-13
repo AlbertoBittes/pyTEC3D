@@ -58,6 +58,10 @@ class ApecAlgorithm:
         self._step_overrides: Dict[str, Callable[..., Any]] = {}
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
+        self._halo_node_groups: Tuple[np.ndarray, ...] = ()
+        self._halo_boundary_graph_cache: Optional[
+            Tuple[np.ndarray, Dict[int, np.ndarray]]
+        ] = None
         self._supported_step_overrides = {
             self.STEP_FIND_SEPARATRIX,
             self.STEP_COMPUTE_JPLASMA,
@@ -75,6 +79,8 @@ class ApecAlgorithm:
         self._b_target_axis_cache = None
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
+        self._halo_node_groups = ()
+        self._halo_boundary_graph_cache = None
 
     def set_toroidal_slices(self) -> None:
         if (
@@ -190,6 +196,106 @@ class ApecAlgorithm:
     def clear_step_overrides(self) -> None:
         self._step_overrides.clear()
 
+    def cache_halo_boundary_graph(self) -> None:
+        if self._halo_boundary_graph_cache is not None:
+            return
+        if self._equilibrium_mesh is None:
+            raise ValueError(
+                "Equilibrium mesh is not set; cannot cache halo boundary graph."
+            )
+
+        mesh = self._equilibrium_mesh
+        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        boundary_node_ids, boundary_adjacency = (
+            Selector.get_selected_external_node_adjacency(mesh)
+        )
+        self._halo_boundary_graph_cache = (boundary_node_ids, boundary_adjacency)
+
+    def _get_halo_boundary_graph(self) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
+        if self._halo_boundary_graph_cache is None:
+            self.cache_halo_boundary_graph()
+        return self._halo_boundary_graph_cache
+
+    @staticmethod
+    def _connected_node_groups(
+        node_ids: np.ndarray,
+        boundary_adjacency: Dict[int, np.ndarray],
+    ) -> Tuple[np.ndarray, ...]:
+        node_ids = np.unique(np.asarray(node_ids, dtype=np.int64).reshape(-1))
+        if node_ids.size == 0:
+            return ()
+        if node_ids.size == 1:
+            return (node_ids,)
+
+        selected = set(int(node_id) for node_id in node_ids)
+        visited: set[int] = set()
+        groups: list[np.ndarray] = []
+
+        for start_node in node_ids:
+            start = int(start_node)
+            if start in visited:
+                continue
+
+            stack = [start]
+            component: list[int] = []
+            visited.add(start)
+            while stack:
+                node = stack.pop()
+                component.append(node)
+                for neighbor in boundary_adjacency.get(node, ()):
+                    neighbor = int(neighbor)
+                    if neighbor in selected and neighbor not in visited:
+                        visited.add(neighbor)
+                        stack.append(neighbor)
+
+            component_set = set(component)
+            if len(component) <= 2:
+                groups.append(np.asarray(component, dtype=np.int64))
+                continue
+
+            degrees = {
+                node: sum(
+                    int(neighbor) in component_set
+                    for neighbor in boundary_adjacency.get(node, ())
+                )
+                for node in component
+            }
+            if any(degree > 2 for degree in degrees.values()):
+                raise ValueError(
+                    "Halo node group has branching edge connectivity; "
+                    "cannot order it as a single boundary path."
+                )
+
+            endpoints = [node for node, degree in degrees.items() if degree == 1]
+            if len(endpoints) != 2:
+                raise ValueError("Halo node group is not an open edge-connected path.")
+
+            ordered: list[int] = []
+            previous = -1
+            current = min(endpoints)
+            ordered_set: set[int] = set()
+            while current not in ordered_set:
+                ordered.append(current)
+                ordered_set.add(current)
+                next_candidates = [
+                    int(neighbor)
+                    for neighbor in boundary_adjacency.get(current, ())
+                    if (
+                        int(neighbor) in component_set
+                        and int(neighbor) != previous
+                        and int(neighbor) not in ordered_set
+                    )
+                ]
+                if not next_candidates:
+                    break
+                previous, current = current, next_candidates[0]
+
+            if len(ordered) != len(component):
+                raise ValueError("Halo node group is not a simple edge-connected path.")
+            groups.append(np.asarray(ordered, dtype=np.int64))
+
+        return tuple(sorted(groups, key=lambda group: int(group[0])))
+
     def _dispatch_step(
         self,
         step: str,
@@ -258,21 +364,13 @@ class ApecAlgorithm:
         )
 
         point_data = mesh.GetPointData()
+        self._halo_node_groups = ()
 
         if halo_requested and psi_2_min >= psi_min:
             raise ValueError(
                 "psi_2_min must be lower than psi_min when identifying plasma region with halo."
             )
         has_halo = halo_requested and psi_2_min < psi_min
-
-        for component_name in ("HALO", "HALO_LEFT", "HALO_RIGHT"):
-            component_array = point_data.GetArray(component_name)
-            if component_array is None:
-                ModelEdit.add_component(mesh, component_name, type="node")
-            component_array = point_data.GetArray(component_name)
-            component_np = vtknp.vtk_to_numpy(component_array)
-            component_np[:] = 0
-            component_array.Modified()
 
         if has_halo:
             lower_strict = np.nextafter(psi_2_min, np.inf)
@@ -284,16 +382,18 @@ class ApecAlgorithm:
                 type="node",
                 mode="r",
             )
-            Selector.set_value_on_selection(mesh, "HALO", 1, type="node")
-
-            x_limiter = float(self.status["limiter_point"][0])
-
-            Selector.select_pos(mesh, 0, (-np.inf, x_limiter), mode="r", type="node")
-            Selector.set_value_on_selection(mesh, "HALO_LEFT", 1, type="node")
-
-            Selector.select(mesh, "HALO", 1, type="node", mode="s")
-            Selector.select_pos(mesh, 0, (x_limiter, np.inf), mode="r", type="node")
-            Selector.set_value_on_selection(mesh, "HALO_RIGHT", 1, type="node")
+            selection_array = point_data.GetArray("selection_point")
+            halo_node_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
+            boundary_node_ids, boundary_adjacency = self._get_halo_boundary_graph()
+            halo_node_ids = np.intersect1d(
+                halo_node_ids,
+                boundary_node_ids,
+                assume_unique=True,
+            )
+            self._halo_node_groups = self._connected_node_groups(
+                halo_node_ids,
+                boundary_adjacency,
+            )
 
         # Strict PSI < psi_2_min using an upper bound just below psi_2_min.
         upper_strict = np.nextafter(psi_2_min, -np.inf)
@@ -719,8 +819,6 @@ class ApecAlgorithm:
         js_array.Modified()
 
         amps_array = point_data.GetArray("AMPS")
-        halo_left_array = point_data.GetArray("HALO_LEFT")
-        halo_right_array = point_data.GetArray("HALO_RIGHT")
         halo_currents_enabled = (
             self.status["separatrix_configuration"] == "limiter"
             and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
@@ -731,25 +829,18 @@ class ApecAlgorithm:
         if (
             halo_currents_enabled
             and amps_array is not None
-            and (halo_left_array is not None or halo_right_array is not None)
+            and self._halo_node_groups
         ):
             amps_np = vtknp.vtk_to_numpy(amps_array)
-            points = np.asarray(vtknp.vtk_to_numpy(mesh.GetPoints().GetData()), dtype=float)
-            vertical_coord = points[:, 1]
             halo_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
             halo_angle_factor = halo_angle / 360.0
             halo_flux_den = psi_min - psi_magnetic_axis
 
-            def apply_halo_currents(component_array: Optional[vtk.vtkDataArray]) -> None:
-                if component_array is None:
-                    return
-                node_ids = np.flatnonzero(vtknp.vtk_to_numpy(component_array) == 1)
+            def apply_halo_currents(node_ids: np.ndarray) -> None:
                 if node_ids.size <= 1:
                     return
 
-                order = np.argsort(vertical_coord[node_ids], kind="stable")
-                sorted_ids = node_ids[order]
-                psi_seg = (psi_point[sorted_ids] - psi_magnetic_axis) / halo_flux_den
+                psi_seg = (psi_point[node_ids] - psi_magnetic_axis) / halo_flux_den
                 psi_seg = np.clip(psi_seg, 0.0, 1.0)
 
                 integrand = np.power(
@@ -770,10 +861,10 @@ class ApecAlgorithm:
                     * (f_profile[:-1] - f_profile[1:])
                     * halo_angle_factor
                 )
-                amps_np[sorted_ids[:-1]] += segment_currents
+                amps_np[node_ids[:-1]] += segment_currents
 
-            apply_halo_currents(halo_left_array)
-            apply_halo_currents(halo_right_array)
+            for halo_node_group in self._halo_node_groups:
+                apply_halo_currents(halo_node_group)
             amps_array.Modified()
 
         self.status["total_plasma_current_before_scaling"] = total_plasma_current
@@ -1052,6 +1143,8 @@ class ApecAlgorithm:
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
         self._equilibrium_mesh = self.apec.mesh
+        if self._first_absolute_iteration:
+            self.cache_halo_boundary_graph()
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
         )
@@ -1086,6 +1179,7 @@ class ApecAlgorithm:
             Selector.nsle(self._equilibrium_mesh, mode="s")
             Selector.select_all(self.apec.mesh)
             self.set_toroidal_slices()
+            self.cache_halo_boundary_graph()
 
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])

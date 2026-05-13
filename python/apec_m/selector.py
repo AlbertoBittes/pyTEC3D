@@ -426,6 +426,56 @@ class Selector:
             mesh.GetPointData().GetArray("selection_point").Modified()
 
     @staticmethod
+    def _extract_selected_external_edges_2d(
+        mesh: "vtk.vtkUnstructuredGrid",
+        selected_cell_ids: np.ndarray,
+        temp_id_name: str = "__apec_original_point_ids__",
+    ) -> "vtk.vtkPolyData":
+        mesh_point_data = mesh.GetPointData()
+        created_temp_ids = False
+        if mesh_point_data.GetArray(temp_id_name) is None:
+            tmp_ids = np.arange(mesh.GetNumberOfPoints(), dtype=np.int64)
+            vtk_tmp_ids = vtknp.numpy_to_vtkIdTypeArray(tmp_ids, deep=True)
+            vtk_tmp_ids.SetName(temp_id_name)
+            mesh_point_data.AddArray(vtk_tmp_ids)
+            mesh_point_data.Modified()
+            created_temp_ids = True
+
+        try:
+            id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
+            selection_node = vtk.vtkSelectionNode()
+            selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+            selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+            selection_node.SetSelectionList(id_array)
+            selection = vtk.vtkSelection()
+            selection.AddNode(selection_node)
+
+            extract_selection = vtk.vtkExtractSelection()
+            extract_selection.SetInputData(0, mesh)
+            extract_selection.SetInputData(1, selection)
+            extract_selection.Update()
+
+            to_poly = vtk.vtkGeometryFilter()
+            to_poly.SetInputData(extract_selection.GetOutput())
+            to_poly.Update()
+
+            feature_edges = vtk.vtkFeatureEdges()
+            feature_edges.SetInputData(to_poly.GetOutput())
+            feature_edges.BoundaryEdgesOn()
+            feature_edges.FeatureEdgesOff()
+            feature_edges.ManifoldEdgesOff()
+            feature_edges.NonManifoldEdgesOff()
+            feature_edges.Update()
+
+            edges = vtk.vtkPolyData()
+            edges.DeepCopy(feature_edges.GetOutput())
+            return edges
+        finally:
+            if created_temp_ids:
+                mesh_point_data.RemoveArray(temp_id_name)
+                mesh_point_data.Modified()
+
+    @staticmethod
     def nsel_ext(mesh: "vtk.vtkUnstructuredGrid", mode: str = "s") -> None:
         """
         Selects all external nodes (points) of the currently selected cells.
@@ -452,64 +502,53 @@ class Selector:
                 "Cell selection array 'selection_cell' not found. Run ensure_selection_arrays first."
             )
         cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
-        selected_cell_ids = np.where(cell_sel == 1)[0]
+        selected_cell_ids = np.flatnonzero(cell_sel == 1).astype(np.int64)
         if selected_cell_ids.size == 0:
             print("No cells are selected.")
             return
 
-        id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
-        selection_node = vtk.vtkSelectionNode()
-        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
-        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
-        selection_node.SetSelectionList(id_array)
-        selection = vtk.vtkSelection()
-        selection.AddNode(selection_node)
-        extract_selection = vtk.vtkExtractSelection()
-        extract_selection.SetInputData(0, mesh)
-        extract_selection.SetInputData(1, selection)
         temp_id_name = "__apec_original_point_ids__"
-        mesh_point_data = mesh.GetPointData()
-        created_temp_ids = False
 
-        if mesh_point_data.GetArray(temp_id_name) is None:
-            tmp_ids = np.arange(mesh.GetNumberOfPoints(), dtype=np.int64)
-            vtk_tmp_ids = vtknp.numpy_to_vtkIdTypeArray(tmp_ids, deep=True)
-            vtk_tmp_ids.SetName(temp_id_name)
-            mesh_point_data.AddArray(vtk_tmp_ids)
-            mesh_point_data.Modified()
-            created_temp_ids = True
-
-        try:
-            extract_selection.Update()
-            selected_mesh = extract_selection.GetOutput()
-
-            cell_dimension = mesh.GetMaxSpatialDimension()
-
-            point_ids = None
-            if cell_dimension <= 2:
-                to_poly = vtk.vtkGeometryFilter()
-                to_poly.SetInputData(selected_mesh)
-                to_poly.Update()
-                feature_edges = vtk.vtkFeatureEdges()
-                feature_edges.SetInputData(to_poly.GetOutput())
-                feature_edges.BoundaryEdgesOn()
-                feature_edges.FeatureEdgesOff()
-                feature_edges.ManifoldEdgesOff()
-                feature_edges.NonManifoldEdgesOff()
-                feature_edges.Update()
-                edges = feature_edges.GetOutput()
-                point_data = edges.GetPointData()
-                vtk_ids_array = point_data.GetArray(temp_id_name)
-                if vtk_ids_array is None:
-                    vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
-                if vtk_ids_array is None:
-                    print(f"No external nodes found ({temp_id_name} missing).")
-                    return
-                point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
-                if point_ids.size == 0:
-                    print("No external nodes found (feature edges returned empty).")
-                    return
-            else:
+        if mesh.GetMaxSpatialDimension() <= 2:
+            edges = Selector._extract_selected_external_edges_2d(
+                mesh,
+                selected_cell_ids,
+                temp_id_name=temp_id_name,
+            )
+            point_data = edges.GetPointData()
+            vtk_ids_array = point_data.GetArray(temp_id_name)
+            if vtk_ids_array is None:
+                vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
+            if vtk_ids_array is None:
+                print(f"No external nodes found ({temp_id_name} missing).")
+                return
+            point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+            if point_ids.size == 0:
+                print("No external nodes found (feature edges returned empty).")
+                return
+        else:
+            id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
+            selection_node = vtk.vtkSelectionNode()
+            selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+            selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+            selection_node.SetSelectionList(id_array)
+            selection = vtk.vtkSelection()
+            selection.AddNode(selection_node)
+            extract_selection = vtk.vtkExtractSelection()
+            extract_selection.SetInputData(0, mesh)
+            extract_selection.SetInputData(1, selection)
+            mesh_point_data = mesh.GetPointData()
+            created_temp_ids = False
+            if mesh_point_data.GetArray(temp_id_name) is None:
+                tmp_ids = np.arange(mesh.GetNumberOfPoints(), dtype=np.int64)
+                vtk_tmp_ids = vtknp.numpy_to_vtkIdTypeArray(tmp_ids, deep=True)
+                vtk_tmp_ids.SetName(temp_id_name)
+                mesh_point_data.AddArray(vtk_tmp_ids)
+                mesh_point_data.Modified()
+                created_temp_ids = True
+            try:
+                extract_selection.Update()
+                selected_mesh = extract_selection.GetOutput()
                 extract_surface = vtk.vtkGeometryFilter()
                 extract_surface.SetInputData(selected_mesh)
                 extract_surface.Update()
@@ -522,18 +561,90 @@ class Selector:
                     print(f"No external nodes found ({temp_id_name} missing).")
                     return
                 point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
+            finally:
+                if created_temp_ids:
+                    mesh_point_data.RemoveArray(temp_id_name)
+                    mesh_point_data.Modified()
 
-            Selector.select(
-                mesh,
-                "ID",
-                set(point_ids.tolist()),
-                type="node",
-                mode=mode,
+        Selector.select(
+            mesh,
+            "ID",
+            set(point_ids.tolist()),
+            type="node",
+            mode=mode,
+        )
+
+    @staticmethod
+    def get_selected_external_node_adjacency(
+        mesh: "vtk.vtkUnstructuredGrid",
+    ) -> tuple[np.ndarray, dict[int, np.ndarray]]:
+        """
+        Return external node ids and edge adjacency for selected 2D cells.
+
+        The boundary is the 1D polydata produced by the same GeometryFilter +
+        FeatureEdges pipeline used by nsel_ext().
+        """
+        Selector.ensure_selection_arrays(mesh)
+        if mesh.GetMaxSpatialDimension() > 2:
+            raise ValueError(
+                "get_selected_external_node_adjacency() is intended for 2D meshes only."
             )
-        finally:
-            if created_temp_ids:
-                mesh_point_data.RemoveArray(temp_id_name)
-                mesh_point_data.Modified()
+
+        cell_sel_array = mesh.GetCellData().GetArray("selection_cell")
+        selected_cell_ids = np.flatnonzero(vtknp.vtk_to_numpy(cell_sel_array) == 1)
+        if selected_cell_ids.size == 0:
+            return np.empty((0,), dtype=np.int64), {}
+
+        temp_id_name = "__apec_original_point_ids__"
+        edges = Selector._extract_selected_external_edges_2d(
+            mesh,
+            selected_cell_ids,
+            temp_id_name=temp_id_name,
+        )
+        point_data = edges.GetPointData()
+        vtk_ids_array = point_data.GetArray(temp_id_name)
+        if vtk_ids_array is None:
+            vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
+        if vtk_ids_array is None:
+            print(f"No external nodes found ({temp_id_name} missing).")
+            boundary_node_ids = np.empty((0,), dtype=np.int64)
+            edge_connectivity = None
+            edge_offsets = None
+        else:
+            original_point_ids = np.asarray(
+                vtknp.vtk_to_numpy(vtk_ids_array),
+                dtype=np.int64,
+            )
+            boundary_node_ids = np.unique(original_point_ids)
+            lines = edges.GetLines()
+            edge_connectivity = (
+                lines.GetConnectivityArray() if lines is not None else None
+            )
+            edge_offsets = lines.GetOffsetsArray() if lines is not None else None
+
+        if boundary_node_ids.size == 0 or edge_connectivity is None or edge_offsets is None:
+            return boundary_node_ids, {}
+
+        adjacency_sets: dict[int, set[int]] = {
+            int(node_id): set() for node_id in boundary_node_ids
+        }
+        offsets = np.asarray(vtknp.vtk_to_numpy(edge_offsets), dtype=np.int64)
+        connectivity = np.asarray(vtknp.vtk_to_numpy(edge_connectivity), dtype=np.int64)
+        for start, stop in zip(offsets[:-1], offsets[1:]):
+            path = original_point_ids[connectivity[int(start) : int(stop)]]
+            for left, right in zip(path[:-1], path[1:]):
+                if left == right:
+                    continue
+                left = int(left)
+                right = int(right)
+                adjacency_sets.setdefault(left, set()).add(right)
+                adjacency_sets.setdefault(right, set()).add(left)
+
+        adjacency = {
+            node_id: np.fromiter(sorted(neighbors), dtype=np.int64, count=len(neighbors))
+            for node_id, neighbors in adjacency_sets.items()
+        }
+        return boundary_node_ids, adjacency
 
     @staticmethod
     def set_value_on_selection(

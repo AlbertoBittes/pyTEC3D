@@ -31,6 +31,7 @@ if ! [[ "${CPU_COUNT}" =~ ^[0-9]+$ ]] || [ "${CPU_COUNT}" -le 0 ]; then
   CPU_COUNT=1
 fi
 APEC_M_LIBMESH_METHOD=${APEC_M_LIBMESH_METHOD:-opt}
+APEC_M_LIBMESH_METHOD="$(printf '%s' "${APEC_M_LIBMESH_METHOD}" | tr '[:upper:]' '[:lower:]')"
 APEC_M_INSTALL_MODE=${APEC_M_INSTALL_MODE:-copy}
 
 case "${APEC_M_LIBMESH_METHOD}" in
@@ -40,6 +41,7 @@ case "${APEC_M_LIBMESH_METHOD}" in
     exit 1
     ;;
 esac
+export APEC_M_LIBMESH_METHOD
 
 case "${APEC_M_INSTALL_MODE}" in
   copy|editable) ;;
@@ -124,6 +126,8 @@ export CXXFLAGS="${CXXFLAGS:-} -I${PREFIX}/include ${APEC_M_METHOD_CXXFLAGS} ${A
 export LDFLAGS="${LDFLAGS:-} -L${PREFIX}/lib ${APEC_M_EXTRA_LDFLAGS}"
 export LD_LIBRARY_PATH="${PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export LIBMESH_LIB="${LIBMESH_PREFIX}/lib/libmesh_${APEC_M_LIBMESH_METHOD}.so"
+export TIMPI_LIB="${LIBMESH_PREFIX}/lib/libtimpi_${APEC_M_LIBMESH_METHOD}.so"
 
 if [ "${APEC_M_LIBMESH_METHOD}" = "dbg" ]; then
   # Conda toolchain activation may inject -DNDEBUG/-D_FORTIFY_SOURCE; sanitize for dbg builds.
@@ -189,6 +193,8 @@ cmake "${SRC_DIR}/src" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
     -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD}" \
+    -DLIBMESH_LIB:FILEPATH="${LIBMESH_LIB}" \
+    -DTIMPI_LIB:FILEPATH="${TIMPI_LIB}" \
     -DVTK_DIR="${VTK_CMAKE_DIR}" \
     -DAPEC_M_BUILD_PYBIND_MODULE=ON
 ninja -j"${CPU_COUNT}"
