@@ -29,6 +29,16 @@ def convert_mesh_from_cdb(file_path):
     if archive is None:
         raise ValueError("Failed to read the mesh file.")
 
+    # Normalize selected ANSYS cell-data names to the names used elsewhere by APEC-M.
+    for old_name, new_name in {
+        "ansys_etype": "TYPE",
+        "ansys_material_type": "MATERIAL",
+        "ansys_real_constant": "CONSTANT",
+    }.items():
+        if old_name in archive.grid.cell_data:
+            archive.grid.cell_data[new_name] = archive.grid.cell_data[old_name]
+            del archive.grid.cell_data[old_name]
+
     # Remove specified arrays if they exist in the grid
     # Check and remove from cell data
     for array_name in ["ansys_elem_type_num"]:

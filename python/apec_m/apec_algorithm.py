@@ -296,6 +296,40 @@ class ApecAlgorithm:
 
         return tuple(sorted(groups, key=lambda group: int(group[0])))
 
+    @staticmethod
+    def _orient_halo_node_groups(
+        groups: Tuple[np.ndarray, ...],
+        points: np.ndarray,
+        reference_point: Tuple[float, float, float],
+        plasma_current: float,
+    ) -> Tuple[np.ndarray, ...]:
+        if not groups or plasma_current == 0.0:
+            return groups
+
+        reference_xy = np.asarray(reference_point[:2], dtype=float)
+        target_clockwise = plasma_current < 0.0
+        oriented_groups: list[np.ndarray] = []
+
+        for group in groups:
+            if group.size <= 1:
+                oriented_groups.append(group)
+                continue
+
+            xy = np.asarray(points[group, :2], dtype=float) - reference_xy
+            cross = xy[:-1, 0] * xy[1:, 1] - xy[:-1, 1] * xy[1:, 0]
+            dot = np.einsum("ij,ij->i", xy[:-1], xy[1:])
+            signed_angle = float(np.sum(np.arctan2(cross, dot)))
+            if abs(signed_angle) <= np.finfo(float).eps:
+                oriented_groups.append(group)
+                continue
+
+            is_clockwise = signed_angle < 0.0
+            if is_clockwise != target_clockwise:
+                group = group[::-1].copy()
+            oriented_groups.append(group)
+
+        return tuple(oriented_groups)
+
     def _dispatch_step(
         self,
         step: str,
@@ -390,9 +424,16 @@ class ApecAlgorithm:
                 boundary_node_ids,
                 assume_unique=True,
             )
-            self._halo_node_groups = self._connected_node_groups(
+            halo_node_groups = self._connected_node_groups(
                 halo_node_ids,
                 boundary_adjacency,
+            )
+            points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+            self._halo_node_groups = self._orient_halo_node_groups(
+                halo_node_groups,
+                points,
+                self.status["magnetic_axis"],
+                float(self.input_parameters["plasma_current"]),
             )
 
         # Strict PSI < psi_2_min using an upper bound just below psi_2_min.
@@ -861,7 +902,9 @@ class ApecAlgorithm:
                     * (f_profile[:-1] - f_profile[1:])
                     * halo_angle_factor
                 )
-                amps_np[node_ids[:-1]] += segment_currents
+                nodal_segment_currents = 0.5 * segment_currents
+                np.add.at(amps_np, node_ids[:-1], nodal_segment_currents)
+                np.add.at(amps_np, node_ids[1:], nodal_segment_currents)
 
             for halo_node_group in self._halo_node_groups:
                 apply_halo_currents(halo_node_group)
