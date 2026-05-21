@@ -25,7 +25,7 @@ static_mesh_filepath = os.path.join(
 
 
 apec.read_mesh(evol_filepath)
-apec.algorithm._equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, reset_arrays=False)
+apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, reset_arrays=False)
 
 apec.read_excel("input_template.xlsx")
 
@@ -43,7 +43,7 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 # Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 
 # 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] through map ids
-jt_z_array = vtknp.vtk_to_numpy(apec.algorithm._equilibrium_mesh.GetCellData().GetArray("Jt"))
+jt_z_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Jt"))
 js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
 
 js_array[:] = jt_z_array
@@ -51,18 +51,9 @@ apec.mesh.GetCellData().GetArray("Js").Modified()
 
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 Selector.nsle(apec.mesh)
-apec.algorithm.input_parameters["target_central_axis_x"] = 6.52136102486433
-apec.algorithm.input_parameters["target_central_axis_y"] = 0.536537145137914
-apec.algorithm.input_parameters["target_central_axis_z"] = 0.0
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
-apec.algorithm.input_parameters["min_distance"] = 0.1
-apec.algorithm.input_parameters["cp_gain"] = 0.250
 apec.algorithm.input_parameters["tolerance_value"] = 1e-4
-apec.algorithm.input_parameters["bradx_value"] = -3.873415861e-08
-apec.algorithm.input_parameters["brady_value"] = 5.313857037e-09
-apec.algorithm.input_parameters["bverx_value"] = 1.822467692e-10
-apec.algorithm.input_parameters["bvery_value"] = 1.133287835e-07
 apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2

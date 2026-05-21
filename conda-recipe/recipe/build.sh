@@ -129,6 +129,29 @@ export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export LIBMESH_LIB="${LIBMESH_PREFIX}/lib/libmesh_${APEC_M_LIBMESH_METHOD}.so"
 export TIMPI_LIB="${LIBMESH_PREFIX}/lib/libtimpi_${APEC_M_LIBMESH_METHOD}.so"
 
+echo "Cleaning previous local libMesh/APEC-M build artifacts"
+rm -rf \
+  "${LIBMESH_PREFIX}/include/libmesh" \
+  "${LIBMESH_PREFIX}/share/libmesh" \
+  "${LIBMESH_PREFIX}/lib/cmake/libmesh" \
+  "${SRC_DIR}/libmesh" \
+  "${SRC_DIR}/build/apec_m"
+rm -f \
+  "${LIBMESH_PREFIX}/bin/libmesh-config" \
+  "${LIBMESH_PREFIX}/lib"/libmesh_*.a \
+  "${LIBMESH_PREFIX}/lib"/libmesh_*.la \
+  "${LIBMESH_PREFIX}/lib"/libmesh_*.so \
+  "${LIBMESH_PREFIX}/lib"/libmesh_*.so.* \
+  "${LIBMESH_PREFIX}/lib"/libtimpi_*.a \
+  "${LIBMESH_PREFIX}/lib"/libtimpi_*.la \
+  "${LIBMESH_PREFIX}/lib"/libtimpi_*.so \
+  "${LIBMESH_PREFIX}/lib"/libtimpi_*.so.* \
+  "${LIBMESH_PREFIX}/lib/pkgconfig"/libmesh*.pc \
+  "${LIBMESH_PREFIX}/lib/pkgconfig"/timpi*.pc \
+  "${SRC_DIR}/python/apec_m"/apec_m_solver*.so \
+  "${SRC_DIR}/python/apec_m"/apec_m_solver*.pyd \
+  "${SRC_DIR}/python/apec_m"/apec_m_solver*.dylib
+
 if [ "${APEC_M_LIBMESH_METHOD}" = "dbg" ]; then
   # Conda toolchain activation may inject -DNDEBUG/-D_FORTIFY_SOURCE; sanitize for dbg builds.
   for flag_var in CFLAGS CPPFLAGS CXXFLAGS; do
@@ -142,8 +165,7 @@ if [ "${APEC_M_LIBMESH_METHOD}" = "dbg" ]; then
 fi
 
 # # # 1. Clone and build libMesh with the requested options
-rm -rf "${LIBMESH_SRC_DIR}"
-git clone --depth 1 https://github.com/libMesh/libmesh.git "${LIBMESH_SRC_DIR}"
+git clone --depth 1 --branch master https://github.com/libMesh/libmesh.git "${LIBMESH_SRC_DIR}"
 pushd "${LIBMESH_SRC_DIR}"
 git submodule update --init --recursive
 mkdir build

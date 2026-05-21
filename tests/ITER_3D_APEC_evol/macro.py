@@ -7,11 +7,11 @@ from apec_m.cyclic import Cyclic
 from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
-
+import time
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
-
+t0 = time.perf_counter()
 filename = "ITER_3D_APEC_evol"
 apec_equilibrium_output_filename = "ITER_2D_APEC_out_1"
 
@@ -32,7 +32,7 @@ extr_angle = 2.0
 
 # # Read the evolution mesh
 apec.read_mesh(filepath)
-apec.algorithm._equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
+apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
 apec.read_excel("input_template.xlsx")
 
@@ -77,9 +77,9 @@ Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 # 1. Build source->destination element map using toroidal slices
-Selector.select(apec.algorithm._equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-Selector.select(apec.algorithm._equilibrium_mesh, "COILS", 1, type="elem", mode="a")
-Selector.nsle(apec.algorithm._equilibrium_mesh)
+Selector.select(apec.algorithm.equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.select(apec.algorithm.equilibrium_mesh, "COILS", 1, type="elem", mode="a")
+Selector.nsle(apec.algorithm.equilibrium_mesh)
 Selector.select_all(apec.mesh)
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
@@ -89,8 +89,7 @@ apec.save_mesh()
 
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
-apec.algorithm.input_parameters["min_distance"] = 0.5
-apec.algorithm.input_parameters["tolerance_value"] = 1e-3
+apec.algorithm.input_parameters["tolerance_value"] = 1e-4
 apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
@@ -104,9 +103,9 @@ currents = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "plasma_current.t
 betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 
 # Consider only the time steps every 5 in the list
-time_steps = np.concatenate((time_steps[0:1], time_steps[1::10]))
-currents = np.concatenate((currents[0:1], currents[1::10]))
-betas = np.concatenate((betas[0:1], betas[1::10]))
+time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
+currents = np.concatenate((currents[0:1], currents[1::5]))
+betas = np.concatenate((betas[0:1], betas[1::5]))
 apec.time_step["theta"] = 1.0
 
 apec.load_mesh_into_solver()
@@ -122,3 +121,5 @@ for step_idx in range(len(time_steps)):
     apec.algorithm.evolution_solve()
     apec.write_output()
 
+dt = time.perf_counter() - t0
+print(f"Elapsed time: {dt:.6f} s")

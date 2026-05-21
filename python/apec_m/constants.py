@@ -110,7 +110,6 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "target_central_axis_z": 0.0,
     "R0": 0.0,
     "max_picard_iterations": 1,
-    "min_distance": 0.3,
     "cp_gain": 0.0,
     "tolerance_value": 1e-6,
     "tolerance": 1e-6,

@@ -1,5 +1,4 @@
 from apec_m import APEC_M
-from apec_m.model_edit import ModelEdit
 from apec_m.selector import Selector
 import os
 
@@ -20,7 +19,6 @@ apec.algorithm.input_parameters["target_central_axis_y"] = 0.536537145137914
 apec.algorithm.input_parameters["target_central_axis_z"] = 0.0
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
-apec.algorithm.input_parameters["min_distance"] = 0.6
 apec.algorithm.input_parameters["cp_gain"] = 0.250
 apec.algorithm.input_parameters["tolerance_value"] = 1e-4
 apec.algorithm.input_parameters["bradx_value"] = -3.873415861e-08
