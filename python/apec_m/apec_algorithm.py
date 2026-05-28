@@ -398,6 +398,7 @@ class ApecAlgorithm:
         )
 
         point_data = mesh.GetPointData()
+        cell_data = mesh.GetCellData()
         self._halo_node_groups = ()
 
         if halo_requested and psi_2_min >= psi_min:
@@ -436,38 +437,36 @@ class ApecAlgorithm:
                 float(self.input_parameters["plasma_current"]),
             )
 
-        # Strict PSI < psi_2_min using an upper bound just below psi_2_min.
+        # Strict PSIe < psi_2_min using an upper bound just below psi_2_min.
         upper_strict = np.nextafter(psi_2_min, -np.inf)
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh, "s")
         Selector.select(
             mesh,
-            "PSI",
+            "PSIe",
             (-np.inf, upper_strict),
-            type="node",
+            type="elem",
             mode="r",
         )
 
-        selection_array = mesh.GetPointData().GetArray("selection_point")
-        selected_node_count = int(np.count_nonzero(vtknp.vtk_to_numpy(selection_array)))
+        selection_array = cell_data.GetArray("selection_cell")
+        selected_elem_count = int(np.count_nonzero(vtknp.vtk_to_numpy(selection_array)))
 
-        if selected_node_count > 0:
-            Selector.esln(mesh, all_nodes=False, mode="r")
+        if selected_elem_count > 0:
             Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
     def remove_plasma_out_of_X_point(self) -> None:
         mesh = self.equilibrium_mesh
-        point_data = mesh.GetPointData()
+        cell_data = mesh.GetCellData()
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh, mode="s")
-        point_selection_array = point_data.GetArray("selection_point")
-        vacuum_node_mask = vtknp.vtk_to_numpy(point_selection_array).astype(bool)
-        vacuum_node_ids = np.flatnonzero(vacuum_node_mask)
+        cell_selection_array = cell_data.GetArray("selection_cell")
+        vacuum_cell_mask = vtknp.vtk_to_numpy(cell_selection_array).astype(bool)
+        vacuum_cell_ids = np.flatnonzero(vacuum_cell_mask)
 
-        points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
-        x_node = np.asarray(points[:, 0], dtype=float)
-        y_node = np.asarray(points[:, 1], dtype=float)
+        centroids_array = cell_data.GetArray("cell_centroids")
+        centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
+        x_elem = np.asarray(centroids[:, 0], dtype=float)
+        y_elem = np.asarray(centroids[:, 1], dtype=float)
 
         magnetic_axis = self.status["magnetic_axis"]
         axis_x = float(magnetic_axis[0])
@@ -476,26 +475,24 @@ class ApecAlgorithm:
         plasma_current = float(self.input_parameters["plasma_current"])
         current_sign = 1.0 if plasma_current >= 0.0 else -1.0
 
-        b_point_array = point_data.GetArray("B")
-        b_point = np.asarray(vtknp.vtk_to_numpy(b_point_array), dtype=float)
-        bx = b_point[:, 0]
-        by = b_point[:, 1]
+        be_array = cell_data.GetArray("Be")
+        be = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
+        bx = be[:, 0]
+        by = be[:, 1]
 
         b_rot = current_sign * (
-            by[vacuum_node_ids] * (x_node[vacuum_node_ids] - axis_x)
-            - bx[vacuum_node_ids] * (y_node[vacuum_node_ids] - axis_y)
+            by[vacuum_cell_ids] * (x_elem[vacuum_cell_ids] - axis_x)
+            - bx[vacuum_cell_ids] * (y_elem[vacuum_cell_ids] - axis_y)
         )
-        excluded_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
-        excluded_node_mask[vacuum_node_ids] = b_rot >= 0.0
+        excluded_cell_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
+        excluded_cell_mask[vacuum_cell_ids] = b_rot >= 0.0
 
         Selector.apply_boolean_selection_mask(
-            excluded_node_mask,
-            point_data,
-            "node",
+            excluded_cell_mask,
+            cell_data,
+            "elem",
             "s",
         )
-        Selector.esln(mesh, all_nodes=True, mode="s")
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="r")
         Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
     def check_limiter(self) -> None:

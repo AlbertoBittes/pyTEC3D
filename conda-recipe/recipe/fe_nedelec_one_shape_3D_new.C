@@ -1,5 +1,5 @@
 // The libMesh Finite Element Library.
-// Copyright (C) 2002-2025 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
+// Copyright (C) 2002-2026 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -113,119 +113,131 @@ namespace libMesh
           libmesh_error_msg("Invalid i = " << i);
         }
       }
+
       case PRISM15:
       case PRISM18:
       {
-        // Reference prism: triangle in (xi,eta) and zeta in [-1,1]
+        // Reference prism: triangle in (xi,eta), zeta in [-1,1].
         libmesh_assert_greater_equal(xi, -10. * TOLERANCE);
         libmesh_assert_greater_equal(eta, -10. * TOLERANCE);
-        libmesh_assert_less_equal(xi + eta, 1.0 + 10. * TOLERANCE);
-        libmesh_assert_less_equal(std::fabs(zeta), 1.0 + 10. * TOLERANCE);
-
-        const Real f0 = 0.5 * (1.0 - zeta); // bottom blend
-        const Real f1 = 0.5 * (1.0 + zeta); // top blend
+        libmesh_assert_less_equal(xi + eta, 1. + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(zeta), 1. + 10. * TOLERANCE);
 
         switch (i)
         {
-        // Bottom face edges: (0,1), (1,2), (0,2)
         case 0:
-          return sign * RealGradient(f0 * (1.0 - eta), f0 * xi, 0.0);
+          return sign * RealGradient(-0.5 * (1. - eta) * (1. - zeta), -0.5 * xi * (1. - zeta), 0.0);
         case 1:
-          return sign * RealGradient(f0 * (-eta), f0 * xi, 0.0);
+          return sign * RealGradient(0.5 * eta * (1. - zeta), -0.5 * xi * (1. - zeta), 0.0);
         case 2:
-          return sign * RealGradient(f0 * (eta), f0 * (1.0 - xi), 0.0);
-
-        // Vertical edges: (0,3), (1,4), (2,5)
-        // 0.5 factor ensures unit tangential integral on zeta in [-1,1]
+          return sign * RealGradient(-0.5 * eta * (1. - zeta), -0.5 * (1. - xi) * (1. - zeta), 0.0);
         case 3:
-          return sign * RealGradient(0.0, 0.0, 0.5 * (1.0 - xi - eta));
+          return sign * RealGradient(0.0, 0.0, -0.5 * (1. - xi - eta));
         case 4:
-          return sign * RealGradient(0.0, 0.0, 0.5 * xi);
+          return sign * RealGradient(0.0, 0.0, -0.5 * xi);
         case 5:
-          return sign * RealGradient(0.0, 0.0, 0.5 * eta);
-
-        // Top face edges: (3,4), (4,5), (3,5)
+          return sign * RealGradient(0.0, 0.0, -0.5 * eta);
         case 6:
-          return sign * RealGradient(f1 * (1.0 - eta), f1 * xi, 0.0);
+          return sign * RealGradient(-0.5 * (1. - eta) * (1. + zeta), -0.5 * xi * (1. + zeta), 0.0);
         case 7:
-          return sign * RealGradient(f1 * (-eta), f1 * xi, 0.0);
+          return sign * RealGradient(0.5 * eta * (1. + zeta), -0.5 * xi * (1. + zeta), 0.0);
         case 8:
-          return sign * RealGradient(f1 * (eta), f1 * (1.0 - xi), 0.0);
+          return sign * RealGradient(-0.5 * eta * (1. + zeta), -0.5 * (1. - xi) * (1. + zeta), 0.0);
 
         default:
           libmesh_error_msg("Invalid i = " << i);
         }
       }
+
       case PYRAMID13:
       case PYRAMID14:
       {
-        libmesh_assert_less(i, 8);
-
-        const Real xi = p(0);
-        const Real eta = p(1);
-        const Real zeta = p(2);
-
-        // Reference pyramid: base zeta=0, apex zeta=1
-        libmesh_assert_less_equal(std::fabs(xi), 1.0 + 10. * TOLERANCE);
-        libmesh_assert_less_equal(std::fabs(eta), 1.0 + 10. * TOLERANCE);
+        // Reference pyramid: |xi|, |eta| <= 1-zeta, zeta in [0,1].
         libmesh_assert_greater_equal(zeta, -10. * TOLERANCE);
-        libmesh_assert_less_equal(zeta, 1.0 + 10. * TOLERANCE);
+        libmesh_assert_less_equal(zeta, 1. + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(xi), 1. - zeta + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(eta), 1. - zeta + 10. * TOLERANCE);
 
-        Real a = 1.0 - zeta;
-        if (std::fabs(a) < 1e-14)
-          a = (a >= 0.0) ? 1e-14 : -1e-14;
+        const Real oz = 1. - zeta;
 
-        const Real inva = 1.0 / a;
-        const Real inva2 = inva * inva;
+        // Along the apex the rational basis has direction-dependent
+        // limits.  Use the same centerline limit as MFEM, transformed
+        // to libMesh coordinates and sign convention.
+        if (oz <= 1.e-6)
+        {
+          switch (i)
+          {
+          case 0:
+          case 1:
+          case 2:
+          case 3:
+            return RealGradient();
+          case 4:
+            return sign * RealGradient(-0.25, -0.25, -0.25);
+          case 5:
+            return sign * RealGradient(0.25, -0.25, -0.25);
+          case 6:
+            return sign * RealGradient(0.25, 0.25, -0.25);
+          case 7:
+            return sign * RealGradient(-0.25, 0.25, -0.25);
 
-        const Real l0 = 0.25 * (a - xi - eta + xi * eta * inva);
-        const Real l1 = 0.25 * (a + xi - eta - xi * eta * inva);
-        const Real l2 = 0.25 * (a + xi + eta + xi * eta * inva);
-        const Real l3 = 0.25 * (a - xi + eta - xi * eta * inva);
-        const Real l4 = zeta;
+          default:
+            libmesh_error_msg("Invalid i = " << i);
+          }
+        }
 
-        const RealGradient g0(0.25 * (-1.0 + eta * inva), 0.25 * (-1.0 + xi * inva), 0.25 * (-1.0 + xi * eta * inva2));
-        const RealGradient g1(0.25 * (1.0 - eta * inva), 0.25 * (-1.0 - xi * inva), 0.25 * (-1.0 - xi * eta * inva2));
-        const RealGradient g2(0.25 * (1.0 + eta * inva), 0.25 * (1.0 + xi * inva), 0.25 * (-1.0 + xi * eta * inva2));
-        const RealGradient g3(0.25 * (-1.0 - eta * inva), 0.25 * (1.0 - xi * inva), 0.25 * (-1.0 - xi * eta * inva2));
-        const RealGradient g4(0.0, 0.0, 1.0);
+        const Real x = 0.5 * (1. + xi - zeta);
+        const Real y = 0.5 * (1. + eta - zeta);
+        const Real ox = 0.5 * (1. - xi - zeta);
+        const Real oy = 0.5 * (1. - eta - zeta);
+        const Real ozi = 1. / oz;
+        const Real q = 1. - 2. * zeta;
 
-        RealGradient v;
         switch (i)
         {
-        // Base edges
         case 0:
-          v = l0 * g1 - l1 * g0;
-          break; // (0,1)
+          return sign * RealGradient(-0.5 * oy, 0.0, -x * oy * ozi + 0.5 * oy);
         case 1:
-          v = l1 * g2 - l2 * g1;
-          break; // (1,2)
+          return sign * RealGradient(0.0, -0.5 * x, -x * y * ozi + 0.5 * x);
         case 2:
-          v = l2 * g3 - l3 * g2;
-          break; // (2,3)
+          // MFEM's third base edge is oriented 3->2, while libMesh's
+          // edge 2 is 2->3.  This is therefore the only base edge
+          // which is not negated relative to the MFEM basis.
+          return sign * RealGradient(0.5 * y, 0.0, x * y * ozi - 0.5 * y);
         case 3:
-          v = l3 * g0 - l0 * g3;
-          break; // (3,0)
-        // Side edges to apex
+          return sign * RealGradient(0.0, -0.5 * ox, -ox * y * ozi + 0.5 * ox);
         case 4:
-          v = l0 * g4 - l4 * g0;
-          break; // (0,4)
+        {
+          const Real vx = oy * zeta * ozi;
+          const Real vy = ox * zeta * ozi;
+          const Real vz = 1. - x - y + x * y * q * ozi * ozi;
+          return sign * RealGradient(-0.5 * vx, -0.5 * vy, -vz + 0.5 * (vx + vy));
+        }
         case 5:
-          v = l1 * g4 - l4 * g1;
-          break; // (1,4)
+        {
+          const Real vx = -oy * zeta * ozi;
+          const Real vy = x * zeta * ozi;
+          const Real vz = x * (1. - y * q * ozi * ozi);
+          return sign * RealGradient(-0.5 * vx, -0.5 * vy, -vz + 0.5 * (vx + vy));
+        }
         case 6:
-          v = l2 * g4 - l4 * g2;
-          break; // (2,4)
+        {
+          const Real vx = -y * zeta * ozi;
+          const Real vy = -x * zeta * ozi;
+          const Real vz = x * y * q * ozi * ozi;
+          return sign * RealGradient(-0.5 * vx, -0.5 * vy, -vz + 0.5 * (vx + vy));
+        }
         case 7:
-          v = l3 * g4 - l4 * g3;
-          break; // (3,4)
+        {
+          const Real vx = y * zeta * ozi;
+          const Real vy = -ox * zeta * ozi;
+          const Real vz = y * (1. - x * q * ozi * ozi);
+          return sign * RealGradient(-0.5 * vx, -0.5 * vy, -vz + 0.5 * (vx + vy));
+        }
+
         default:
           libmesh_error_msg("Invalid i = " << i);
         }
-
-        if (!elem->positive_edge_orientation(i))
-          v = -v;
-        return v;
       }
 
       default:
@@ -487,109 +499,93 @@ namespace libMesh
           libmesh_error_msg("Invalid j = " << j);
         }
       }
+
       case PRISM15:
       case PRISM18:
       {
-        // Reference prism: triangle in (xi,eta) and zeta in [-1,1]
+        // Reference prism: triangle in (xi,eta), zeta in [-1,1].
         libmesh_assert_greater_equal(xi, -10. * TOLERANCE);
         libmesh_assert_greater_equal(eta, -10. * TOLERANCE);
-        libmesh_assert_less_equal(xi + eta, 1.0 + 10. * TOLERANCE);
-        libmesh_assert_less_equal(std::fabs(zeta), 1.0 + 10. * TOLERANCE);
-
-        const Real f0 = 0.5 * (1.0 - zeta);
-        const Real f1 = 0.5 * (1.0 + zeta);
-        const Real df0 = -0.5;
-        const Real df1 = 0.5;
+        libmesh_assert_less_equal(xi + eta, 1. + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(zeta), 1. + 10. * TOLERANCE);
 
         switch (j)
         {
-        // d/dxi
+          // d()/dxi
         case 0:
         {
           switch (i)
           {
           case 0:
-            return sign * RealGradient(0.0, f0, 0.0);
           case 1:
-            return sign * RealGradient(0.0, f0, 0.0);
+            return sign * RealGradient(0.0, -0.5 * (1. - zeta), 0.0);
           case 2:
-            return sign * RealGradient(0.0, -f0, 0.0);
-
+            return sign * RealGradient(0.0, 0.5 * (1. - zeta), 0.0);
           case 3:
-            return sign * RealGradient(0.0, 0.0, -0.5);
-          case 4:
             return sign * RealGradient(0.0, 0.0, 0.5);
+          case 4:
+            return sign * RealGradient(0.0, 0.0, -0.5);
           case 5:
-            return sign * RealGradient(0.0, 0.0, 0.0);
-
+            return RealGradient();
           case 6:
-            return sign * RealGradient(0.0, f1, 0.0);
           case 7:
-            return sign * RealGradient(0.0, f1, 0.0);
+            return sign * RealGradient(0.0, -0.5 * (1. + zeta), 0.0);
           case 8:
-            return sign * RealGradient(0.0, -f1, 0.0);
+            return sign * RealGradient(0.0, 0.5 * (1. + zeta), 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
           }
         }
 
-        // d/deta
+          // d()/deta
         case 1:
         {
           switch (i)
           {
           case 0:
-            return sign * RealGradient(-f0, 0.0, 0.0);
           case 1:
-            return sign * RealGradient(-f0, 0.0, 0.0);
+            return sign * RealGradient(0.5 * (1. - zeta), 0.0, 0.0);
           case 2:
-            return sign * RealGradient(f0, 0.0, 0.0);
-
+            return sign * RealGradient(-0.5 * (1. - zeta), 0.0, 0.0);
           case 3:
-            return sign * RealGradient(0.0, 0.0, -0.5);
-          case 4:
-            return sign * RealGradient(0.0, 0.0, 0.0);
-          case 5:
             return sign * RealGradient(0.0, 0.0, 0.5);
-
+          case 4:
+            return RealGradient();
+          case 5:
+            return sign * RealGradient(0.0, 0.0, -0.5);
           case 6:
-            return sign * RealGradient(-f1, 0.0, 0.0);
           case 7:
-            return sign * RealGradient(-f1, 0.0, 0.0);
+            return sign * RealGradient(0.5 * (1. + zeta), 0.0, 0.0);
           case 8:
-            return sign * RealGradient(f1, 0.0, 0.0);
+            return sign * RealGradient(-0.5 * (1. + zeta), 0.0, 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
           }
         }
 
-        // d/dzeta
+          // d()/dzeta
         case 2:
         {
           switch (i)
           {
           case 0:
-            return sign * RealGradient(df0 * (1.0 - eta), df0 * xi, 0.0);
+            return sign * RealGradient(0.5 * (1. - eta), 0.5 * xi, 0.0);
           case 1:
-            return sign * RealGradient(df0 * (-eta), df0 * xi, 0.0);
+            return sign * RealGradient(-0.5 * eta, 0.5 * xi, 0.0);
           case 2:
-            return sign * RealGradient(df0 * (eta), df0 * (1.0 - xi), 0.0);
-
+            return sign * RealGradient(0.5 * eta, 0.5 * (1. - xi), 0.0);
           case 3:
-            return sign * RealGradient(0.0, 0.0, 0.0);
           case 4:
-            return sign * RealGradient(0.0, 0.0, 0.0);
           case 5:
-            return sign * RealGradient(0.0, 0.0, 0.0);
-
+            return RealGradient();
           case 6:
-            return sign * RealGradient(df1 * (1.0 - eta), df1 * xi, 0.0);
+            return sign * RealGradient(-0.5 * (1. - eta), -0.5 * xi, 0.0);
           case 7:
-            return sign * RealGradient(df1 * (-eta), df1 * xi, 0.0);
+            return sign * RealGradient(0.5 * eta, -0.5 * xi, 0.0);
           case 8:
-            return sign * RealGradient(df1 * (eta), df1 * (1.0 - xi), 0.0);
+            return sign * RealGradient(-0.5 * eta, -0.5 * (1. - xi), 0.0);
 
           default:
             libmesh_error_msg("Invalid i = " << i);
@@ -604,107 +600,103 @@ namespace libMesh
       case PYRAMID13:
       case PYRAMID14:
       {
-        libmesh_assert_less(i, 8);
-
-        const Real xi = p(0);
-        const Real eta = p(1);
-        const Real zeta = p(2);
-
-        libmesh_assert_less_equal(std::fabs(xi), 1.0 + 10. * TOLERANCE);
-        libmesh_assert_less_equal(std::fabs(eta), 1.0 + 10. * TOLERANCE);
+        // Reference pyramid: |xi|, |eta| <= 1-zeta, zeta in [0,1].
         libmesh_assert_greater_equal(zeta, -10. * TOLERANCE);
-        libmesh_assert_less_equal(zeta, 1.0 + 10. * TOLERANCE);
+        libmesh_assert_less_equal(zeta, 1. + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(xi), 1. - zeta + 10. * TOLERANCE);
+        libmesh_assert_less_equal(std::fabs(eta), 1. - zeta + 10. * TOLERANCE);
 
-        Real a = 1.0 - zeta;
-        if (std::fabs(a) < 1e-14)
-          a = (a >= 0.0) ? 1e-14 : -1e-14;
+        const Real oz = 1. - zeta;
+        libmesh_assert_greater(oz, 10. * TOLERANCE);
 
-        const Real inva = 1.0 / a;
-        const Real inva2 = inva * inva;
-        const Real inva3 = inva2 * inva;
+        const Real x = 0.5 * (1. + xi - zeta);
+        const Real y = 0.5 * (1. + eta - zeta);
+        const Real ox = 0.5 * (1. - xi - zeta);
+        const Real oy = 0.5 * (1. - eta - zeta);
+        const Real ozi = 1. / oz;
+        const Real q = 1. - 2. * zeta;
 
-        const Real l0 = 0.25 * (a - xi - eta + xi * eta * inva);
-        const Real l1 = 0.25 * (a + xi - eta - xi * eta * inva);
-        const Real l2 = 0.25 * (a + xi + eta + xi * eta * inva);
-        const Real l3 = 0.25 * (a - xi + eta - xi * eta * inva);
-        const Real l4 = zeta;
+        const Real dx = (j == 0) ? 0.5 : ((j == 2) ? -0.5 : 0.0);
+        const Real dy = (j == 1) ? 0.5 : ((j == 2) ? -0.5 : 0.0);
+        const Real dox = (j == 0) ? -0.5 : ((j == 2) ? -0.5 : 0.0);
+        const Real doy = (j == 1) ? -0.5 : ((j == 2) ? -0.5 : 0.0);
+        const Real dz = (j == 2) ? 1.0 : 0.0;
+        const Real dq = (j == 2) ? -2.0 : 0.0;
+        const Real dozi = (j == 2) ? ozi * ozi : 0.0;
 
-        const RealGradient g0(0.25 * (-1.0 + eta * inva), 0.25 * (-1.0 + xi * inva), 0.25 * (-1.0 + xi * eta * inva2));
-        const RealGradient g1(0.25 * (1.0 - eta * inva), 0.25 * (-1.0 - xi * inva), 0.25 * (-1.0 - xi * eta * inva2));
-        const RealGradient g2(0.25 * (1.0 + eta * inva), 0.25 * (1.0 + xi * inva), 0.25 * (-1.0 + xi * eta * inva2));
-        const RealGradient g3(0.25 * (-1.0 - eta * inva), 0.25 * (1.0 - xi * inva), 0.25 * (-1.0 - xi * eta * inva2));
-        const RealGradient g4(0.0, 0.0, 1.0);
-
-        RealGradient dg0, dg1, dg2, dg3, dg4;
-        dg4 = RealGradient();
-        if (j == 0)
-        {
-          dg0 = RealGradient(0.0, 0.25 * inva, 0.25 * eta * inva2);
-          dg1 = RealGradient(0.0, -0.25 * inva, -0.25 * eta * inva2);
-          dg2 = RealGradient(0.0, 0.25 * inva, 0.25 * eta * inva2);
-          dg3 = RealGradient(0.0, -0.25 * inva, -0.25 * eta * inva2);
-        }
-        else if (j == 1)
-        {
-          dg0 = RealGradient(0.25 * inva, 0.0, 0.25 * xi * inva2);
-          dg1 = RealGradient(-0.25 * inva, 0.0, -0.25 * xi * inva2);
-          dg2 = RealGradient(0.25 * inva, 0.0, 0.25 * xi * inva2);
-          dg3 = RealGradient(-0.25 * inva, 0.0, -0.25 * xi * inva2);
-        }
-        else
-        {
-          dg0 = RealGradient(0.25 * eta * inva2, 0.25 * xi * inva2, 0.5 * xi * eta * inva3);
-          dg1 = RealGradient(-0.25 * eta * inva2, -0.25 * xi * inva2, -0.5 * xi * eta * inva3);
-          dg2 = RealGradient(0.25 * eta * inva2, 0.25 * xi * inva2, 0.5 * xi * eta * inva3);
-          dg3 = RealGradient(-0.25 * eta * inva2, -0.25 * xi * inva2, -0.5 * xi * eta * inva3);
-        }
-
-        auto deriv_whitney = [&](const Real la, const Real lb,
-                                 const RealGradient &ga, const RealGradient &gb,
-                                 const RealGradient &dga, const RealGradient &dgb) -> RealGradient
-        {
-          const Real dla = ga(j);
-          const Real dlb = gb(j);
-          return dla * gb + la * dgb - dlb * ga - lb * dga;
-        };
-
-        RealGradient dv;
         switch (i)
         {
         case 0:
-          dv = deriv_whitney(l0, l1, g0, g1, dg0, dg1);
-          break; // (0,1)
+        {
+          const Real dvx = doy;
+          const Real dvy = 0.0;
+          const Real dvz = (dx * oy + x * doy) * ozi + x * oy * dozi;
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 1:
-          dv = deriv_whitney(l1, l2, g1, g2, dg1, dg2);
-          break; // (1,2)
+        {
+          const Real dvx = 0.0;
+          const Real dvy = dx;
+          const Real dvz = (dx * y + x * dy) * ozi + x * y * dozi;
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 2:
-          dv = deriv_whitney(l2, l3, g2, g3, dg2, dg3);
-          break; // (2,3)
+        {
+          const Real dvx = dy;
+          const Real dvy = 0.0;
+          const Real dvz = (dx * y + x * dy) * ozi + x * y * dozi;
+          return sign * RealGradient(0.5 * dvx, 0.5 * dvy, dvz - 0.5 * (dvx + dvy));
+        }
         case 3:
-          dv = -(deriv_whitney(l0, l3, g0, g3, dg0, dg3));
-          break; // N = l3*g0 - l0*g3
+        {
+          const Real dvx = 0.0;
+          const Real dvy = dox;
+          const Real dvz = (dox * y + ox * dy) * ozi + ox * y * dozi;
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 4:
-          dv = deriv_whitney(l0, l4, g0, g4, dg0, dg4);
-          break; // (0,4)
+        {
+          const Real dvx = (doy * zeta + oy * dz) * ozi + oy * zeta * dozi;
+          const Real dvy = (dox * zeta + ox * dz) * ozi + ox * zeta * dozi;
+          const Real dvz = -dx - dy +
+                           (dx * y + x * dy) * q * ozi * ozi +
+                           x * y * dq * ozi * ozi +
+                           2. * x * y * q * ozi * dozi;
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 5:
-          dv = deriv_whitney(l1, l4, g1, g4, dg1, dg4);
-          break; // (1,4)
+        {
+          const Real dvx = -((doy * zeta + oy * dz) * ozi + oy * zeta * dozi);
+          const Real dvy = (dx * zeta + x * dz) * ozi + x * zeta * dozi;
+          const Real dvz = dx * (1. - y * q * ozi * ozi) -
+                           x * (dy * q * ozi * ozi + y * dq * ozi * ozi +
+                                2. * y * q * ozi * dozi);
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 6:
-          dv = deriv_whitney(l2, l4, g2, g4, dg2, dg4);
-          break; // (2,4)
+        {
+          const Real dvx = -((dy * zeta + y * dz) * ozi + y * zeta * dozi);
+          const Real dvy = -((dx * zeta + x * dz) * ozi + x * zeta * dozi);
+          const Real dvz = (dx * y + x * dy) * q * ozi * ozi +
+                           x * y * dq * ozi * ozi +
+                           2. * x * y * q * ozi * dozi;
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
         case 7:
-          dv = deriv_whitney(l3, l4, g3, g4, dg3, dg4);
-          break; // (3,4)
+        {
+          const Real dvx = (dy * zeta + y * dz) * ozi + y * zeta * dozi;
+          const Real dvy = -((dox * zeta + ox * dz) * ozi + ox * zeta * dozi);
+          const Real dvz = dy * (1. - x * q * ozi * ozi) -
+                           y * (dx * q * ozi * ozi + x * dq * ozi * ozi +
+                                2. * x * q * ozi * dozi);
+          return sign * RealGradient(-0.5 * dvx, -0.5 * dvy, -dvz + 0.5 * (dvx + dvy));
+        }
+
         default:
           libmesh_error_msg("Invalid i = " << i);
         }
-
-        libmesh_ignore(l4);
-
-        if (!elem->positive_edge_orientation(i))
-          dv = -dv;
-        return dv;
       }
+
       default:
         libmesh_error_msg("ERROR: Unsupported 3D element type!: " << Utility::enum_to_string(elem->type()));
       }
@@ -872,6 +864,77 @@ namespace libMesh
           libmesh_error_msg("Invalid j = " << j);
         }
       }
+
+      case PRISM15:
+      case PRISM18:
+      {
+        switch (j)
+        {
+          // d^2()/dxi^2, d^2()/dxideta, d^2()/deta^2, d^2()/dzeta^2
+        case 0:
+        case 1:
+        case 2:
+        case 5:
+          return RealGradient();
+
+          // d^2()/dxidzeta
+        case 3:
+        {
+          switch (i)
+          {
+          case 0:
+          case 1:
+            return sign * RealGradient(0.0, 0.5, 0.0);
+          case 2:
+            return sign * RealGradient(0.0, -0.5, 0.0);
+          case 3:
+          case 4:
+          case 5:
+            return RealGradient();
+          case 6:
+          case 7:
+            return sign * RealGradient(0.0, -0.5, 0.0);
+          case 8:
+            return sign * RealGradient(0.0, 0.5, 0.0);
+
+          default:
+            libmesh_error_msg("Invalid i = " << i);
+          }
+        }
+
+          // d^2()/detadzeta
+        case 4:
+        {
+          switch (i)
+          {
+          case 0:
+          case 1:
+            return sign * RealGradient(-0.5, 0.0, 0.0);
+          case 2:
+            return sign * RealGradient(0.5, 0.0, 0.0);
+          case 3:
+          case 4:
+          case 5:
+            return RealGradient();
+          case 6:
+          case 7:
+            return sign * RealGradient(0.5, 0.0, 0.0);
+          case 8:
+            return sign * RealGradient(-0.5, 0.0, 0.0);
+
+          default:
+            libmesh_error_msg("Invalid i = " << i);
+          }
+        }
+
+        default:
+          libmesh_error_msg("Invalid j = " << j);
+        }
+      }
+
+      case PYRAMID13:
+      case PYRAMID14:
+        libmesh_error_msg("ERROR: Second derivatives for NEDELEC_ONE pyramid shapes are not implemented.");
 
         // All second derivatives for linear tets are zero.
       case TET10:

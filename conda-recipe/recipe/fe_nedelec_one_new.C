@@ -1,5 +1,5 @@
 // The libMesh Finite Element Library.
-// Copyright (C) 2002-2025 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
+// Copyright (C) 2002-2026 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
 
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -109,15 +109,13 @@ namespace libMesh
       case HEX27:
         return 3 * o * (o + 1) * (o + 1);
       case PRISM15:
-        libmesh_assert_less(o, 2);
-        libmesh_fallthrough();
       case PRISM18:
-        return 3 * o * (o + 1) * (o + 2) / 2;
-      case PYRAMID13:
         libmesh_assert_less(o, 2);
-        libmesh_fallthrough();
+        return 9;
+      case PYRAMID13:
       case PYRAMID14:
-        return 8 * o;
+        libmesh_assert_less(o, 2);
+        return 8;
       case INVALID_ELEM:
         return 0;
       default:
@@ -254,32 +252,10 @@ namespace libMesh
         }
       }
       case PRISM15:
-      {
-        switch (n)
-        {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-          return 0;
-        case 6:
-        case 7:
-        case 8:
-        case 9:
-        case 10:
-        case 11:
-        case 12:
-        case 13:
-        case 14:
-          return o;
-        default:
-          libmesh_error_msg("ERROR: Invalid node ID " << n);
-        }
-      }
       case PRISM18:
       {
+        libmesh_assert_less(o, 2);
+
         switch (n)
         {
         case 0:
@@ -302,38 +278,17 @@ namespace libMesh
         case 15:
         case 16:
         case 17:
+          libmesh_assert_equal_to(t, PRISM18);
           return 0;
         default:
           libmesh_error_msg("ERROR: Invalid node ID " << n);
         }
       }
-
       case PYRAMID13:
-      {
-        switch (n)
-        {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-          return 0;
-        case 5:
-        case 6:
-        case 7:
-        case 8:
-        case 9:
-        case 10:
-        case 11:
-        case 12:
-          return o;
-        default:
-          libmesh_error_msg("ERROR: Invalid node ID " << n);
-        }
-      }
-
       case PYRAMID14:
       {
+        libmesh_assert_less(o, 2);
+
         switch (n)
         {
         case 0:
@@ -352,12 +307,12 @@ namespace libMesh
         case 12:
           return o;
         case 13:
+          libmesh_assert_equal_to(t, PYRAMID14);
           return 0;
         default:
           libmesh_error_msg("ERROR: Invalid node ID " << n);
         }
       }
-
       case INVALID_ELEM:
         return 0;
       default:
@@ -399,7 +354,7 @@ namespace libMesh
       case PYRAMID13:
       case PYRAMID14:
         libmesh_assert_less(o, 2);
-        libmesh_fallthrough();
+        return 0;
       case INVALID_ELEM:
         return 0;
       default:
