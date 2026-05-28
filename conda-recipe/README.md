@@ -44,27 +44,37 @@ In short:
 
 ## 1) Conda package build (`copy` mode, recommended)
 
-From repository root:
+If you are starting from a clean machine, create/activate an environment with `git` first, then clone APEC-M and build from the repository root:
 
 ```bash
-conda create -n apec-m -c conda-forge python=3.12 conda-build compilers -y
+conda create -n apec-m -c conda-forge python=3.12 conda-build compilers git -y
 conda activate apec-m
+
+git clone https://github.com/AlbertoBittes/APEC-M.git
+cd APEC-M
+
 export APEC_M_LIBMESH_METHOD=opt   # or dbg / devel
+export APEC_M_INSTALL_MODE=copy
 conda build conda-recipe/recipe
 conda install --use-local -y apec_m
 ```
 
 Notes:
+- this recipe currently uses a local source path (`source: path: ../..`), so `conda build` must be run from inside a local APEC-M clone.
 - `APEC_M_INSTALL_MODE` must stay `copy` for `conda build`.
 - `editable` is intentionally blocked during `conda build`.
 
 ## 2) Local non-editable build via `build.sh` (`copy` mode)
 
-Use this if you want to run the same script outside `conda build`:
+Use this if you want to run the same script outside `conda build`.
 
 ```bash
 conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 mpi4py pip -y
 conda activate apec-m-dev
+
+git clone https://github.com/AlbertoBittes/APEC-M.git
+cd APEC-M
+
 export APEC_M_LIBMESH_METHOD=opt   # or dbg / devel
 export APEC_M_INSTALL_MODE=copy
 bash conda-recipe/recipe/build.sh
@@ -75,6 +85,10 @@ bash conda-recipe/recipe/build.sh
 ```bash
 conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 mpi4py pip -y
 conda activate apec-m-dev
+
+git clone https://github.com/AlbertoBittes/APEC-M.git
+cd APEC-M
+
 export APEC_M_LIBMESH_METHOD=dbg   # typical for debugging
 export APEC_M_INSTALL_MODE=editable
 bash conda-recipe/recipe/build.sh
