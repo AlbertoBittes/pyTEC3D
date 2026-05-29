@@ -1,9 +1,11 @@
+/**
+ * @file av2dnodal_element_builder.cpp
+ * @brief ElementBuilder::build_av2dnodal() — element matrices/vectors for the AV2D nodal
+ *        formulation, plus matching nodal-solution and element-solution post-processing methods.
+ */
 #include "element_builder.h"
-// #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
-// #include <libmesh/string_to_enum.h>
-// Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
@@ -11,65 +13,35 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
-// Define Gauss quadrature rules.
-#include "element_types.h" // Include the header defining ElementType
+#include <stdexcept>
+
+#include "element_types.h"
 #include "apec_m_system.h"
 #include "element_types_factory.h"
 #include "variables_map.h"
+#include "apec_m_logging.h"
 
-// Temporary placeholder for build_av2dnodal
+using libMesh::DenseVector;
+using libMesh::dof_id_type;
+using libMesh::Elem;
+using libMesh::FEBase;
+using libMesh::Node;
+using libMesh::Number;
+using libMesh::Point;
+using libMesh::Real;
+using libMesh::RealGradient;
+
 void ElementBuilder::build_av2dnodal()
 {
-    // Stop logging the shape function initialization.
-    // If you forget to stop logging an event the PerfLog
-    // object will probably catch the error and abort.
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[0].get());
-    // The element Jacobian * quadrature weight at each integration point.
+    FEBase *fe = &elem_data.element_type->scalar_fe(0);
     const std::vector<Real> &JxW = fe->get_JxW();
-
-    // The element shape functions evaluated at the quadrature points.
     const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
     const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
     const std::vector<Point> &xyz = fe->get_xyz();
 
     fe->reinit(elem_data.elem);
-
     this->prepare_element_matrix_building();
 
-    // Get the scalar shape functions and vector shape functions
-    //   const unsigned int n_sf =
-    // FEInterface::n_dofs(cfe->get_fe_type(), elem);
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
@@ -351,33 +323,12 @@ void ElementBuilder::build_av2dnodal()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
 }
 
-// Temporary placeholder for build_av2dnodal
 void ElementBuilder::build_av2dnodal_rhs()
 {
-
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
@@ -429,7 +380,7 @@ void ElementBuilder::build_av2dnodal_rhs()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
 
     return;
@@ -611,7 +562,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
             Real V_factor = sigma * Vn / thk;
             if (axisymm)
             {
-                FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
+                FEBase *fe = &elem_data.element_type->scalar_fe(1);
                 const std::vector<Point> &xyz = fe->get_xyz();
                 fe->reinit(elem_data.elem);
                 Real Jv = 0.0;
@@ -653,7 +604,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
             break;
         }
         default:
-            libmesh_error_msg("Physical region not implemented");
+            apec::logging::error_and_abort("Physical region not implemented");
         }
 
         have_je = true;

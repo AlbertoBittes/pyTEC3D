@@ -1,3 +1,12 @@
+/**
+ * @file variables_map.h
+ * @brief Physical variable registry and FE/system-type resolution utilities.
+ *
+ * Defines the compile-time catalogue of all physical quantities used in APEC-M
+ * (DOF unknowns A, Az, VOLT, EMF; nodal fields B, H; element fields Be, He, Jt)
+ * and provides helpers that map between enum keys, string labels, FE families,
+ * integration orders, and solution system types.
+ */
 #ifndef VARIABLES_MAP_H
 #define VARIABLES_MAP_H
 
@@ -124,10 +133,10 @@ public:
     static ApecMSystemBase::SystemType get_variable_system_type(const ElementType &element,
                                                                 GlobalVariableName variable);
 
-    static FEFamily get_variable_fe_family(const ElementType &element,
-                                           GlobalVariableName variable);
-    static Order get_variable_order(const ElementType &element,
-                                    GlobalVariableName variable);
+    static libMesh::FEFamily get_variable_fe_family(const ElementType &element,
+                                                    GlobalVariableName variable);
+    static libMesh::Order get_variable_order(const ElementType &element,
+                                             GlobalVariableName variable);
     static unsigned int get_variable_physical_components(const ElementType &element,
                                                          GlobalVariableName variable);
     static bool is_variable_scalar(const ElementType &element,

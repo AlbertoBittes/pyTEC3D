@@ -1,10 +1,29 @@
+/**
+ * @file solver_configuration.cpp
+ * @brief PetscSolverConfiguration::configure_solver() implementation.
+ *
+ * Call order inside PetscLinearSolver::solve_common():
+ *   1. get_real/int_solver_setting() reads real_valued_data / int_valued_data  →
+ *      KSPSetTolerances() with those values.
+ *   2. KSPSetFromOptions() — command-line overrides.
+ *   3. configure_solver() — runs LAST.
+ *
+ * Therefore configure_solver():
+ *   - Writes real_valued_data["rel_tol"], real_valued_data["abs_tol"],
+ *     int_valued_data["max_its"] so future solve() calls read the correct
+ *     values at step 1.
+ *   - Calls KSPSetTolerances() directly for the current solve (step 1 already
+ *     ran before us).
+ *   - Sets KSP type and PC type from the Python solver_settings dict.
+ *   - Enables MUMPS only for direct factorisations (lu / cholesky).
+ *   - Calls KSPSetFromOptions() at the end so command-line flags can still
+ *     override everything we set above.
+ */
 #include "solver_configuration.h"
 #include "apec_m_logging.h"
 
 #include <sstream>
 #include <string>
-
-using namespace libMesh;
 
 namespace
 {
@@ -14,55 +33,72 @@ namespace
 void PetscSolverConfiguration::configure_solver()
 {
     PetscErrorCode ierr = 0;
-    // ierr = KSPSetType(_petsc_linear_solver->ksp(), const_cast<KSPType>(KSPGMRES));
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
 
-    // ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCILU));
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    // Read settings from the Python solver_settings dict.
+    std::string ksp_type_str = KSPPREONLY;
+    std::string pc_type_str = PCLU;
+    if (!_solver_settings_attribute.is_none())
+    {
+        ksp_type_str = _solver_settings_attribute["ksp_type"].cast<std::string>();
+        pc_type_str = _solver_settings_attribute["pc_type"].cast<std::string>();
 
-    // Initialize PETSc logging
+        const PetscReal rtol = _solver_settings_attribute["initial_linear_tolerance"].cast<PetscReal>();
+        const PetscReal abstol = _solver_settings_attribute["minimum_linear_tolerance"].cast<PetscReal>();
+        const int maxits = _solver_settings_attribute["max_linear_iterations"].cast<int>();
+
+        // Store in the libMesh SolverConfiguration maps so that future
+        // solve() calls read the correct values at step 1 (before configure_solver
+        // is called for that solve).
+        real_valued_data["rel_tol"] = static_cast<double>(rtol);
+        real_valued_data["abs_tol"] = static_cast<double>(abstol);
+        int_valued_data["max_its"] = maxits;
+
+        // Apply to the current solve directly: libMesh's KSPSetTolerances
+        // already ran before this function, so we must call it again here.
+        ierr = KSPSetTolerances(_petsc_linear_solver->ksp(),
+                                rtol, abstol, PETSC_DEFAULT,
+                                static_cast<PetscInt>(maxits));
+        CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    }
+
+    // Enable PETSc performance logging so that -log_view output is available.
     ierr = PetscLogDefaultBegin();
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    // Set the solver type to GMRES
-    ierr = KSPSetType(_petsc_linear_solver->ksp(), const_cast<KSPType>(KSPPREONLY));
+
+    // Set KSP and PC types from settings.
+    ierr = KSPSetType(_petsc_linear_solver->ksp(), ksp_type_str.c_str());
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
     ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver->ksp(), PETSC_FALSE);
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    // Set the preconditioner type to MUMPS
-    ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCLU));
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    // ierr = PCSetType(_petsc_linear_solver->pc(), const_cast<PCType>(PCCHOLESKY));
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
 
-    ierr = PCFactorSetMatSolverType(_petsc_linear_solver->pc(), MATSOLVERMUMPS);
+    ierr = PCSetType(_petsc_linear_solver->pc(), pc_type_str.c_str());
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    // Set the verbosity level
+
+    // For direct factorisations (lu / cholesky) use MUMPS as the parallel backend.
+    if (pc_type_str == PCLU || pc_type_str == PCCHOLESKY)
+    {
+        ierr = PCFactorSetMatSolverType(_petsc_linear_solver->pc(), MATSOLVERMUMPS);
+        CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    }
+
+    // Re-apply command-line -ksp_* options last so they can override everything
+    // set above (libMesh called KSPSetFromOptions before configure_solver()).
     ierr = KSPSetFromOptions(_petsc_linear_solver->ksp());
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    // Set additional options for verbosity
+
+    // Enable convergence and solution monitoring via PETSc options.
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
     ierr = PetscOptionsSetValue(NULL, "-ksp_view", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
     ierr = PetscOptionsSetValue(NULL, "-ksp_converged_reason", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
     ierr = PetscOptionsSetValue(NULL, "-log_view", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
-    // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_singular_value", "");
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_solution", "");
     CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
-    // ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_short", "");
-    // CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
 
     const KSP ksp = _petsc_linear_solver->ksp();
     const PC pc = _petsc_linear_solver->pc();

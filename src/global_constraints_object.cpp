@@ -1,3 +1,12 @@
+/**
+ * @file global_constraints_object.cpp
+ * @brief GlobalConstraintsObject: time-integration pins, Dirichlet BCs, and DOF-coupling constraints.
+ *
+ * Merges three constraint sources each time libMesh calls constrain():
+ *   1. Time-integration homogeneous pins (static formulation, OPTION4==1).
+ *   2. Point/nodal Dirichlet BCs from VTK point-data arrays (with optional local-to-global rotation).
+ *   3. DOF-coupling constraints from CP_* periodic-boundary node pairs.
+ */
 #include "global_constraints_object.h"
 #include "fe_parent_object.h"
 #include "apec_m_system.h"
@@ -23,6 +32,7 @@
 #include <limits>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +43,22 @@
 #include "apec_m_logging.h"
 
 namespace py = pybind11;
+
+using libMesh::dof_id_type;
+using libMesh::DofMap;
+using libMesh::Elem;
+using libMesh::MeshBase;
+using libMesh::Node;
+using libMesh::Number;
+using libMesh::NumericVector;
+using libMesh::Point;
+using libMesh::Real;
+using libMesh::RealGradient;
+using libMesh::RealVectorValue;
+using libMesh::SparseMatrix;
+using libMesh::System;
+using libMesh::TensorValue;
+using libMesh::VectorValue;
 
 namespace
 {
@@ -106,7 +132,7 @@ namespace
         const unsigned int sys_num = system.number();
         const unsigned int n_vars = system.n_vars();
 
-        // Build once: map each local dof to its variable index for O(1) summary lookups.
+        // Map each local DOF to its variable index for O(1) per-constraint variable lookups.
         for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
         {
             std::vector<dof_id_type> dof_indices;
@@ -212,14 +238,14 @@ GlobalConstraintsObject::build_time_integration_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    System *system = this->get_parent_object();
-    auto *linear_system = dynamic_cast<ApecMLinearSystem *>(system);
+    ApecMLinearSystem *linear_system = this->get_parent_object();
+    System *system = linear_system;
 
     if (linear_system->time_step->transient_effects)
         return constraints;
 
-    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
-    auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
+    auto &equation_systems = linear_system->get_apec_equation_systems();
+    auto *solver = equation_systems.get_parent_object();
 
     std::vector<unsigned int> option4_values;
     {
@@ -265,10 +291,11 @@ GlobalConstraintsObject::build_point_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    System *system = this->get_parent_object();
-    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
-    auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
-    vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
+    ApecMLinearSystem *linear_system = this->get_parent_object();
+    System *system = linear_system;
+    auto &equation_systems = linear_system->get_apec_equation_systems();
+    auto *solver = equation_systems.get_parent_object();
+    vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
 
     vtkPointData *point_data = vtk_grid->GetPointData();
 
@@ -323,11 +350,9 @@ GlobalConstraintsObject::build_point_constraints()
     std::unordered_set<vtkIdType> seen_point_ids;
     const vtkIdType n_angle_tuples = angles_array->GetNumberOfTuples();
 
-    for (const auto &node_ptr : equation_systems->get_mesh().local_node_ptr_range())
+    for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
     {
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
-        // if (point_id < 0 || point_id >= n_angle_tuples)
-        //     continue;
 
         bool needs_rotation = false;
         for (const auto &var_entry : vector_variables)
@@ -365,7 +390,7 @@ GlobalConstraintsObject::build_point_constraints()
 
     build_rotation_cache_from_point_ids(angles_array, point_ids_for_rotation, local_to_global_cache);
 
-    for (const auto &node_ptr : equation_systems->get_mesh().local_node_ptr_range())
+    for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
     {
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
 
@@ -379,7 +404,7 @@ GlobalConstraintsObject::build_point_constraints()
             0.0, 1.0, 0.0,
             0.0, 0.0, 1.0);
 
-        // Constraints for vector variables
+        // Apply Dirichlet constraints for vector-valued variables.
         for (const auto &var_entry : vector_variables)
         {
             auto array_it = vector_arrays.find(var_entry.first);
@@ -445,7 +470,11 @@ GlobalConstraintsObject::build_point_constraints()
             {
                 auto cache_it = local_to_global_cache.find(point_id);
                 if (cache_it == local_to_global_cache.end())
-                    libmesh_error_msg("Point constraint rotation matrix cache miss for node id " << point_id << ".");
+                {
+                    std::ostringstream msg;
+                    msg << "Point constraint rotation matrix cache miss for node id " << point_id << ".";
+                    apec::logging::error_and_abort(msg.str());
+                }
                 local_to_global = cache_it->second;
                 global_to_local = TensorValue<Real>(local_to_global.transpose());
                 rotation_ready = true;
@@ -649,10 +678,11 @@ GlobalConstraintsObject::build_coupling_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    System *system = this->get_parent_object();
-    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&system->get_equation_systems());
-    auto *solver = equation_systems ? equation_systems->get_parent_object() : nullptr;
-    vtkUnstructuredGrid *vtk_grid = solver ? solver->active_vtk_grid : nullptr;
+    ApecMLinearSystem *linear_system = this->get_parent_object();
+    System *system = linear_system;
+    auto &equation_systems = linear_system->get_apec_equation_systems();
+    auto *solver = equation_systems.get_parent_object();
+    vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
 
     vtkPointData *point_data = vtk_grid->GetPointData();
 
@@ -671,12 +701,13 @@ GlobalConstraintsObject::build_coupling_constraints()
     if (n_entries == 0)
         return constraints;
 
-    const auto &pairs_by_cp = solver->coupling_functor->cp_pairs_by_cp;
+    const auto *coupling_functor = solver->get_coupling_functor();
+    const auto &pairs_by_cp = coupling_functor->cp_pairs_by_cp;
     if (pairs_by_cp.empty())
         return constraints;
 
     auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
-    const MeshBase &mesh = equation_systems->get_mesh();
+    const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
     RotationCache local_to_global_cache;
 
@@ -767,9 +798,13 @@ GlobalConstraintsObject::build_coupling_constraints()
             if (node_second->processor_id() != proc_id)
                 continue;
             if (!node_first)
-                libmesh_error_msg("Coupling constraint: slave node " << pair.second
-                                                                     << " found without master node " << pair.first
-                                                                     << ".");
+            {
+                std::ostringstream msg;
+                msg << "Coupling constraint: slave node " << pair.second
+                    << " found without master node " << pair.first
+                    << ".";
+                apec::logging::error_and_abort(msg.str());
+            }
 
             const vtkIdType point_id_first = static_cast<vtkIdType>(node_first->id());
             const vtkIdType point_id_second = static_cast<vtkIdType>(node_second->id());
@@ -848,7 +883,11 @@ GlobalConstraintsObject::build_coupling_constraints()
                     0.0, 0.0, 1.0);
                 auto first_cache_it = local_to_global_cache.find(point_id_first);
                 if (first_cache_it == local_to_global_cache.end())
-                    libmesh_error_msg("Coupling constraint master rotation matrix cache miss for node id " << point_id_first << ".");
+                {
+                    std::ostringstream msg;
+                    msg << "Coupling constraint master rotation matrix cache miss for node id " << point_id_first << ".";
+                    apec::logging::error_and_abort(msg.str());
+                }
                 first_local_to_global = first_cache_it->second;
                 const TensorValue<Real> first_global_to_local =
                     TensorValue<Real>(first_local_to_global.transpose());
@@ -859,7 +898,11 @@ GlobalConstraintsObject::build_coupling_constraints()
                     0.0, 0.0, 1.0);
                 auto second_cache_it = local_to_global_cache.find(point_id_second);
                 if (second_cache_it == local_to_global_cache.end())
-                    libmesh_error_msg("Coupling constraint slave rotation matrix cache miss for node id " << point_id_second << ".");
+                {
+                    std::ostringstream msg;
+                    msg << "Coupling constraint slave rotation matrix cache miss for node id " << point_id_second << ".";
+                    apec::logging::error_and_abort(msg.str());
+                }
                 second_local_to_global = second_cache_it->second;
 
                 const TensorValue<Real> transform =

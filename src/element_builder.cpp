@@ -1,10 +1,12 @@
+/**
+ * @file element_builder.cpp
+ * @brief ElementBuilder implementation: construction, element-data setup, matrix/vector sizing,
+ *        dispatch to formulation-specific builders, and solution post-processing.
+ */
 #include "element_builder.h"
 #include "binary_reader.h"
-// #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
-// #include <libmesh/string_to_enum.h>
-// Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <string>
@@ -13,8 +15,7 @@
 #include <vtkDataArray.h>
 #include <vtkUnstructuredGrid.h>
 
-// Define Gauss quadrature rules.
-#include "element_types.h" // Include the header defining ElementType
+#include "element_types.h"
 #include "apec_m_system.h"
 #include "apec_m_solver.h"
 #include "element_types_factory.h"
@@ -22,27 +23,37 @@
 #include "variables_map.h"
 #include "apec_m_logging.h"
 
+#include <stdexcept>
+
 namespace py = pybind11;
 
-//
-//
-// constructor and init
-//
-//
+using libMesh::DenseVector;
+using libMesh::dof_id_type;
+using libMesh::DofMap;
+using libMesh::Elem;
+using libMesh::Number;
+using libMesh::NumericVector;
+using libMesh::Real;
+using libMesh::System;
 
-ElementBuilder::ElementBuilder(EquationSystems *equation_systems)
-    : FEParentObjectBase<EquationSystems>(equation_systems),
+// ---------------------------------------------------------------------------
+// Construction and initialisation
+// ---------------------------------------------------------------------------
+
+ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
+    : FEParentObjectBase<ApecMEquationSystems>(equation_systems),
       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
-    equation_systems_ = dynamic_cast<ApecMEquationSystems *>(equation_systems);
-    dof_solution_system_ = dynamic_cast<ApecMLinearSystem *>(&equation_systems_->get_system(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    equation_systems_ = equation_systems;
+    dof_solution_system_ = &equation_systems_->get_system<ApecMLinearSystem>(
+        ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
 
     nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
     element_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::ELEMENT_SOLUTION);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
-    vtk_grid_ = equation_systems_->get_parent_object()->active_vtk_grid;
+    vtk_grid_ = equation_systems_->get_parent_object()->get_active_vtk_grid();
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
 
@@ -87,7 +98,7 @@ const std::vector<Real> &ElementBuilder::material_row(dof_id_type id) const
 {
     const auto it = materials_rows_.find(id);
     if (it == materials_rows_.end())
-        libmesh_error_msg("Material ID not found in cached materials map: " + std::to_string(id));
+        apec::logging::error_and_abort("Material ID not found in cached materials map: " + std::to_string(id));
     return it->second;
 }
 
@@ -95,7 +106,7 @@ const std::vector<Real> &ElementBuilder::constant_row(dof_id_type id) const
 {
     const auto it = constants_rows_.find(id);
     if (it == constants_rows_.end())
-        libmesh_error_msg("Constant ID not found in cached constants map: " + std::to_string(id));
+        apec::logging::error_and_abort("Constant ID not found in cached constants map: " + std::to_string(id));
     return it->second;
 }
 
@@ -103,7 +114,7 @@ Real ElementBuilder::material_value(dof_id_type id, unsigned int col_idx) const
 {
     const auto &row = material_row(id);
     if (col_idx >= row.size())
-        libmesh_error_msg("Material cache column index out of range: " + std::to_string(col_idx));
+        apec::logging::error_and_abort("Material cache column index out of range: " + std::to_string(col_idx));
     return row[col_idx];
 }
 
@@ -111,7 +122,7 @@ Real ElementBuilder::constant_value(dof_id_type id, unsigned int col_idx) const
 {
     const auto &row = constant_row(id);
     if (col_idx >= row.size())
-        libmesh_error_msg("Constants cache column index out of range: " + std::to_string(col_idx));
+        apec::logging::error_and_abort("Constants cache column index out of range: " + std::to_string(col_idx));
     return row[col_idx];
 }
 
@@ -148,34 +159,27 @@ void ElementBuilder::build_matrices(std::vector<std::vector<unsigned int>> *size
 
 void ElementBuilder::prepare_element_matrix_building()
 {
-    // reinit to be done inside each element
-    // as well as the reception of shape functions
-    // this->elem_data.element_type->reinit_fe(this->elem);
+    // Two square DOF matrices (Ke stiffness, Ce capacitance) and one RHS vector.
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs},
         {n_dofs, n_dofs}};
 
-    // One vector of size n_dofs
     std::vector<std::vector<unsigned int>> vector_sizes = {
         {n_dofs}};
 
-    // Usage:
     this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
     this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
     this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), MatricesSet::NODAL_SOLUTION_MATRICES);
     this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), MatricesSet::ELEMENT_SOLUTION_MATRICES);
-    // this->build_vectors(vector_idx_size_map, 1);
 }
 
-//
-//
-// Setters
-//
-//
+// ---------------------------------------------------------------------------
+// Element-data setup
+// ---------------------------------------------------------------------------
 
 void ElementBuilder::set_element_data(Elem *elem)
 {
-    auto element_types = equation_systems_->get_parent_object()->element_types_factory;
+    auto element_types = equation_systems_->get_parent_object()->get_element_types_factory();
 
     elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
 
@@ -202,11 +206,9 @@ const ElemData &ElementBuilder::get_elem_data() const
     return elem_data;
 }
 
-//
-//
-// Methods to build element matrices and rhs
-//
-//
+// ---------------------------------------------------------------------------
+// Element matrix and RHS build dispatch
+// ---------------------------------------------------------------------------
 
 void ElementBuilder::build_element()
 {
@@ -225,7 +227,7 @@ void ElementBuilder::build_element()
         break;
     default:
         apec::logging::error("Unsupported element type enum={} while building element", static_cast<unsigned int>(etype));
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+        apec::logging::error_and_abort("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
@@ -246,15 +248,13 @@ void ElementBuilder::build_element_rhs()
         break;
     default:
         apec::logging::error("Unsupported element type enum={} while building element RHS", static_cast<unsigned int>(etype));
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+        apec::logging::error_and_abort("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
-//
-//
-// solution calculation methods
-//
-//
+// ---------------------------------------------------------------------------
+// Post-processing: nodal and element solution fields
+// ---------------------------------------------------------------------------
 
 void ElementBuilder::build_nodal_solution()
 {
@@ -272,7 +272,7 @@ void ElementBuilder::build_nodal_solution()
         this->build_av2dnodal_nodal_solution();
         break;
     default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+        apec::logging::error_and_abort("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
@@ -292,7 +292,7 @@ void ElementBuilder::build_element_solution()
         this->build_av2dnodal_element_solution();
         break;
     default:
-        libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+        apec::logging::error_and_abort("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
 
@@ -308,8 +308,6 @@ std::vector<DenseVector<Number>> ElementBuilder::get_variables_solution(const Nu
     if (!solution || !dof_map)
         return sol_vectors;
 
-    // This is now maybe too slow, but it works for now
-    // TODO: Check if there is room for optimization later
     const auto vars = VariablesMap::get_active_variables_for_element(*elem_data.element_type, sys_type);
     sol_vectors.reserve(vars.size());
 

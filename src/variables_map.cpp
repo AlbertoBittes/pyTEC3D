@@ -1,7 +1,29 @@
+/**
+ * @file variables_map.cpp
+ * @brief VariablesMap static data, lookup helpers, and per-element variable set builders.
+ *
+ * The static GLOBAL_VARIABLE_INFO_MAP table is the authoritative registry of all
+ * physical quantities.  Per-formulation helpers (add_av3dnodal_variables, etc.)
+ * return the variable sets required by each element type and physical-region option.
+ */
 #include "variables_map.h"
 #include "element_types.h"
+#include "apec_m_logging.h"
 #include <libmesh/equation_systems.h>
 #include <libmesh/system.h>
+
+using libMesh::CONSTANT;
+using libMesh::FEFamily;
+using libMesh::FIRST;
+using libMesh::L2_LAGRANGE;
+using libMesh::L2_LAGRANGE_VEC;
+using libMesh::LAGRANGE;
+using libMesh::LAGRANGE_VEC;
+using libMesh::MONOMIAL;
+using libMesh::NEDELEC_ONE;
+using libMesh::Order;
+using libMesh::subdomain_id_type;
+using libMesh::System;
 
 namespace
 {
@@ -71,7 +93,7 @@ const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
 {
     auto it = GLOBAL_VARIABLE_INFO_MAP.find(key);
     if (it == GLOBAL_VARIABLE_INFO_MAP.end())
-        libmesh_error_msg("Key not found in info map");
+        apec::logging::error_and_abort("Key not found in info map");
     return it->second;
 }
 
@@ -91,7 +113,7 @@ GlobalVariableName VariablesMap::get_key_by_predicate_one(
     auto keys = get_keys_by_predicate(pred);
     if (keys.size() == 1)
         return keys[0];
-    libmesh_error_msg("get_key_by_predicate_one: mapping is not one-to-one or key not found");
+    apec::logging::error_and_abort("get_key_by_predicate_one: mapping is not one-to-one or key not found");
 }
 
 const VariableInfo &VariablesMap::resolve_variable_info(const std::string &api_label,
@@ -111,7 +133,7 @@ unsigned int VariablesMap::resolve_variable_number(const libMesh::System &system
 {
     const auto &info = VariablesMap::resolve_variable_info(api_label, component);
     if (!system.has_variable(info.global_label))
-        libmesh_error_msg("System does not contain variable: " + info.global_label);
+        apec::logging::error_and_abort("System does not contain variable: " + info.global_label);
     return system.variable_number(info.global_label);
 }
 
@@ -145,7 +167,7 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
         });
 
     if (matches_api.empty())
-        libmesh_error_msg("Dof couplings: unknown variable label '" + label + "'.");
+        apec::logging::error_and_abort("Dof couplings: unknown variable label '" + label + "'.");
 
     std::sort(matches_api.begin(), matches_api.end(),
               [](GlobalVariableName lhs, GlobalVariableName rhs)
@@ -213,7 +235,7 @@ std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const El
         }
         break;
     default:
-        libmesh_error_msg("VariablesMap: unsupported element type.");
+        apec::logging::error_and_abort("VariablesMap: unsupported element type.");
     }
     return vars;
 }
@@ -281,7 +303,7 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
     case GlobalVariableName::Jt_z:
         return ApecMSystemBase::ELEMENT_SOLUTION;
     default:
-        libmesh_error_msg("VariablesMap: missing system type for variable.");
+        apec::logging::error_and_abort("VariablesMap: missing system type for variable.");
     }
 }
 
@@ -387,7 +409,7 @@ std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System 
         if (keys.empty())
             continue;
         if (keys.size() > 1)
-            libmesh_error_msg("Variable name maps to multiple global variables: " + name);
+            apec::logging::error_and_abort("Variable name maps to multiple global variables: " + name);
         vars.push_back(keys.front());
     }
     return vars;
@@ -424,7 +446,7 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::H_z:
         return L2_LAGRANGE;
     default:
-        libmesh_error_msg("VariablesMap: missing FE family for variable.");
+        apec::logging::error_and_abort("VariablesMap: missing FE family for variable.");
     }
 }
 

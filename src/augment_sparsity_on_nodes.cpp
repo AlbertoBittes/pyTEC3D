@@ -1,3 +1,7 @@
+/**
+ * @file augment_sparsity_on_nodes.cpp
+ * @brief AugmentSparsityOnNodes: CP-node pair detection and ghosting-functor implementation.
+ */
 #include "augment_sparsity_on_nodes.h"
 
 #include <algorithm>
@@ -11,13 +15,11 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
-using namespace libMesh;
-
 namespace
 {
-    bool add_pair(std::vector<std::pair<dof_id_type, dof_id_type>> &pairs,
-                  dof_id_type first,
-                  dof_id_type second)
+    bool add_pair(std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> &pairs,
+                  libMesh::dof_id_type first,
+                  libMesh::dof_id_type second)
     {
         const auto candidate = std::make_pair(first, second);
         if (std::find(pairs.begin(), pairs.end(), candidate) != pairs.end())
@@ -29,7 +31,7 @@ namespace
 } // namespace
 
 AugmentSparsityOnNodes::AugmentSparsityOnNodes(
-    MeshBase &mesh,
+    libMesh::MeshBase &mesh,
     vtkUnstructuredGrid *vtk_grid)
     : _mesh(mesh), _vtk_grid(vtk_grid)
 {
@@ -70,7 +72,7 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
     if (cp_arrays.empty())
         return;
 
-    std::unordered_map<int, std::unordered_set<dof_id_type>> cp_nodes;
+    std::unordered_map<int, std::unordered_set<libMesh::dof_id_type>> cp_nodes;
     const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
 
     // Match legacy behavior: only build CP pairs from nodes known on this mesh
@@ -80,7 +82,7 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
         if (!node_ptr)
             continue;
 
-        const dof_id_type node_id = static_cast<dof_id_type>(node_ptr->id());
+        const libMesh::dof_id_type node_id = static_cast<libMesh::dof_id_type>(node_ptr->id());
         const vtkIdType vtk_node_id = static_cast<vtkIdType>(node_id);
         if (vtk_node_id < 0 || vtk_node_id >= n_points)
             continue;
@@ -102,9 +104,9 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
         if (nodes.empty())
             continue;
 
-        const dof_id_type master_node = *std::min_element(nodes.begin(), nodes.end());
+        const libMesh::dof_id_type master_node = *std::min_element(nodes.begin(), nodes.end());
         auto &cp_pairs = cp_pairs_by_cp[cp_id];
-        for (dof_id_type node_id : nodes)
+        for (libMesh::dof_id_type node_id : nodes)
         {
             if (node_id != master_node)
             {
@@ -128,13 +130,13 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
     elem_pairs.clear();
     slave_to_master_elem.clear();
 
-    std::unordered_map<dof_id_type, std::vector<dof_id_type>> node_to_elems;
+    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> node_to_elems;
     for (const auto *elem : _mesh.element_ptr_range())
     {
         if (!elem)
             continue;
         for (unsigned int i = 0; i < elem->n_nodes(); ++i)
-            node_to_elems[static_cast<dof_id_type>(elem->node_id(i))].push_back(elem->id());
+            node_to_elems[static_cast<libMesh::dof_id_type>(elem->node_id(i))].push_back(elem->id());
     }
 
     for (auto &entry : node_to_elems)
@@ -157,9 +159,9 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
             continue;
 
         // Deterministic representative master element for this CP pair.
-        const dof_id_type master_elem_id = master_elem_ids.front();
+        const libMesh::dof_id_type master_elem_id = master_elem_ids.front();
 
-        for (const dof_id_type slave_elem_id : slave_elem_ids)
+        for (const libMesh::dof_id_type slave_elem_id : slave_elem_ids)
         {
             if (!add_pair(elem_pairs, master_elem_id, slave_elem_id))
                 continue;
@@ -171,14 +173,14 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
     }
 }
 
-void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &range_begin,
-                                        const MeshBase::const_element_iterator &range_end,
-                                        processor_id_type p,
-                                        map_type &coupled_elements)
+void AugmentSparsityOnNodes::operator()(const libMesh::MeshBase::const_element_iterator &range_begin,
+                                        const libMesh::MeshBase::const_element_iterator &range_end,
+                                        libMesh::processor_id_type p,
+                                        libMesh::GhostingFunctor::map_type &coupled_elements)
 {
-    const CouplingMatrix *const null_mat = nullptr;
+    const libMesh::CouplingMatrix *const null_mat = nullptr;
 
-    for (const auto &elem : as_range(range_begin, range_end))
+    for (const auto &elem : libMesh::as_range(range_begin, range_end))
     {
         if (!elem)
             continue;
@@ -190,7 +192,7 @@ void AugmentSparsityOnNodes::operator()(const MeshBase::const_element_iterator &
         if (master_it == slave_to_master_elem.end())
             continue;
 
-        const Elem *master_elem = _mesh.elem_ptr(master_it->second);
+        const libMesh::Elem *master_elem = _mesh.elem_ptr(master_it->second);
         if (master_elem && master_elem->processor_id() != p)
             coupled_elements.emplace(master_elem, null_mat);
     }

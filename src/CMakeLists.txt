@@ -15,6 +15,9 @@ if(NOT PETSC_FOUND)
   pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET petsc)
 endif()
 option(APEC_M_BUILD_PYBIND_MODULE "Build the Python solver extension module (pybind11)." ON)
+option(APEC_M_ENABLE_SANITIZERS "Enable AddressSanitizer+UBSan for debug checks." OFF)
+option(APEC_M_ENABLE_IMPORT_TEST "Enable Python import smoke test for the solver module." ON)
+option(APEC_M_ENABLE_VALGRIND_SMOKE "Add a valgrind smoke target for module import." OFF)
 
 if(APEC_M_BUILD_PYBIND_MODULE)
   set(PYBIND11_FINDPYTHON ON)
@@ -28,6 +31,7 @@ find_package(VTK REQUIRED
     CommonExecutionModel
     FiltersCore
     IOXML
+    WrappingPythonCore
 )
 
 set(LIBMESH_DIR "${LIBMESH_DIR}" CACHE PATH "Path to the libMesh installation.")
@@ -89,6 +93,7 @@ set(APEC_M_LINK_LIBS
   VTK::CommonExecutionModel
   VTK::FiltersCore
   VTK::IOXML
+  VTK::WrappingPythonCore
 )
 
 if(APEC_M_BUILD_PYBIND_MODULE)
@@ -117,6 +122,34 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       ${APEC_M_LINK_LIBS}
   )
 
+  if(APEC_M_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(apec_m_solver PRIVATE -fno-omit-frame-pointer -fsanitize=address,undefined)
+    target_link_options(apec_m_solver PRIVATE -fsanitize=address,undefined)
+  endif()
+
+  if(APEC_M_ENABLE_IMPORT_TEST)
+    enable_testing()
+    add_test(
+      NAME apec_m_solver_import_smoke
+      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m.apec_m_solver as mod; print(mod.__doc__)"
+    )
+  endif()
+
+  if(APEC_M_ENABLE_VALGRIND_SMOKE)
+    find_program(VALGRIND_EXECUTABLE valgrind)
+    if(VALGRIND_EXECUTABLE)
+      add_custom_target(valgrind_solver_smoke
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_SOURCE_DIR}/../python
+          ${VALGRIND_EXECUTABLE} --error-exitcode=1 --leak-check=full
+          ${Python3_EXECUTABLE} -c "import apec_m.apec_m_solver"
+        DEPENDS apec_m_solver
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running valgrind smoke check for apec_m_solver import")
+    else()
+      message(WARNING "APEC_M_ENABLE_VALGRIND_SMOKE is ON but valgrind was not found.")
+    endif()
+  endif()
+
   vtk_module_autoinit(
     TARGETS apec_m_solver
     MODULES
@@ -125,5 +158,6 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       VTK::CommonExecutionModel
       VTK::FiltersCore
       VTK::IOXML
+      VTK::WrappingPythonCore
   )
 endif()

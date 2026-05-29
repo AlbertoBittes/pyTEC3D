@@ -1,6 +1,10 @@
+/**
+ * @file AV3DNODAL_type.cpp
+ * @brief AV3DNODALType: FE descriptor set for the AV3D nodal (vector A + V) formulation.
+ */
 #include "element_types.h"
 #include "element_builder.h"
-// Direct constructor
+
 AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs)
     : AV3DElementType(
           OPTIONs,
@@ -11,9 +15,8 @@ AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs)
 {
 }
 
-// Chain-prolonging constructor for derived types
 AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs,
-                         std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
+                             std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
           OPTIONs,
           [fe_collector, OPTIONs](std::vector<FEDataShapeFunctions> &fe_structs)
@@ -24,18 +27,17 @@ AV3DNODALType::AV3DNODALType(const std::vector<unsigned int> &OPTIONs,
 {
 }
 
-// Helper to add two FEDataShapeFunctions structs
 void AV3DNODALType::add_av3dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                         const std::vector<unsigned int> &OPTIONs)
+                                             const std::vector<unsigned int> &OPTIONs)
 {
     fe_structs.push_back({
-        static_cast<Order>(OPTIONs[2]), // order
-        LAGRANGE_VEC,                   // family
-        3,                              // dimension
-        INVALID_ORDER,                  // quadrature_order (use default)
-        3,                              // quadrature_dim
-        false,                          // is_infinite
-        true                            // is_vector (vector FE)
+        static_cast<libMesh::Order>(OPTIONs[2]), // order
+        libMesh::LAGRANGE_VEC,                   // family
+        3,                                       // dimension
+        libMesh::INVALID_ORDER,                  // quadrature_order (use default)
+        3,                                       // quadrature_dim
+        false,                                   // is_infinite
+        true                                     // is_vector (vector FE)
     });
 }
 

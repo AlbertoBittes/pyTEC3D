@@ -1,31 +1,43 @@
+/**
+ * @file fe_parent_object.h
+ * @brief Non-owning parent-pointer mixin used throughout the solver hierarchy.
+ *
+ * Provides a lightweight link from a child object (assembler, builder, constraint
+ * handler, etc.) back to its owning parent without creating hard include-cycle
+ * dependencies.  The pointer is non-owning; lifetime management remains the
+ * responsibility of the caller.
+ */
 #ifndef FEM_PARENT_OBJECT_H
 #define FEM_PARENT_OBJECT_H
 
-// This basic class simply identifies the parent object of a class. it is meant to be specialized and is
-// used to connect classesby adding dependencies, with a father-daughter relationship.
+/**
+ * @brief Mixin that stores a raw, non-owning pointer to a parent object.
+ *
+ * @tparam T1  Type of the parent (e.g. ApecMEquationSystems, ApecMLinearSystem).
+ */
 template <typename T1>
 class FEParentObjectBase
 {
 public:
-    FEParentObjectBase(T1 *parent = nullptr)
+    explicit FEParentObjectBase(T1 *parent = nullptr)
         : parent_object(parent) {}
-    // Virtual destructor for proper cleanup of derived classes
+
     virtual ~FEParentObjectBase() = default;
 
-    // Getter for the parent object
+    /** @brief Returns the non-owning pointer to the parent object. */
     T1 *get_parent_object() const
     {
         return parent_object;
     }
-    // Setter for the parent object
+
+    /** @brief Sets the non-owning pointer to the parent object. */
     void set_parent_object(T1 *parent)
     {
         parent_object = parent;
     }
 
 protected:
-    // Attributes
-    T1 *parent_object; // Stores the parent
+    T1 *parent_object; ///< Raw non-owning pointer to the owning parent.
 };
 
 #endif // FEM_PARENT_OBJECT_H

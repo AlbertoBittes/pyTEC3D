@@ -1,3 +1,14 @@
+/**
+ * @file global_constraints_object.h
+ * @brief libMesh constraint handler for Dirichlet BCs, DOF couplings, and time-integration pins.
+ *
+ * GlobalConstraintsObject derives from libMesh::System::Constraint and is invoked
+ * automatically each time libMesh needs to rebuild the constraint map.  It merges
+ * three constraint sources:
+ *   -# Time-integration homogeneous constraints (static formulation, OPTION4==1).
+ *   -# Point/nodal Dirichlet constraints read from VTK point-data arrays.
+ *   -# DOF-coupling (periodic boundary) constraints derived from CP_* arrays.
+ */
 #ifndef BOUNDARY_CONDITIONS_OBJECT_H
 #define BOUNDARY_CONDITIONS_OBJECT_H
 
@@ -12,42 +23,55 @@
 #include <string>
 #include <vector>
 
-using namespace libMesh;
-
 class DofCouplingsObject;
-// The boundary conditions object:
-// Checks if it is necessary to update the nodal degrees of freedom imposed by the user
-// updates the constraints if necessary. The assembler will then constrain element matrices before putting
-// them in the global system matrix
+class ApecMLinearSystem;
+/**
+ * @brief Applies all boundary and coupling constraints to the DOF system.
+ *
+ * Registered with libMesh via System::attach_constraint_object().  On each
+ * call to constrain(), the three constraint categories are collected and
+ * inserted into the DofMap, then the assembler constrains element matrices
+ * before scatter-adding them into the global system.
+ */
 class GlobalConstraintsObject
-    : public System::Constraint,
-      public FEParentObjectBase<System>
+    : public libMesh::System::Constraint,
+      public FEParentObjectBase<ApecMLinearSystem>
 {
 public:
-  using FEParentObjectBase<System>::FEParentObjectBase;
+  using FEParentObjectBase<ApecMLinearSystem>::FEParentObjectBase;
 
-  GlobalConstraintsObject(System *sys)
-      : FEParentObjectBase<System>(sys) // Set the parent System
+  GlobalConstraintsObject(ApecMLinearSystem *sys)
+      : FEParentObjectBase<ApecMLinearSystem>(sys) // Set the parent System
   {
   }
 
   virtual ~GlobalConstraintsObject() = default;
 
+  /** @brief Called by libMesh to rebuild the active constraint map. */
   void constrain() override;
 
-  // Now uses old context view for comparison
+  /**
+   * @brief Returns true if the constraint set has changed since the last time step.
+   *
+   * When true the system matrix must be refactored; when false it can be reused.
+   */
   bool check_update_boundary_conditions();
 
 private:
   struct ConstraintEntry
   {
-    DofConstraintRow row;
-    Real value = 0.0;
+    libMesh::DofConstraintRow row;
+    libMesh::Real value = 0.0;
   };
 
-  std::map<dof_id_type, ConstraintEntry> build_time_integration_constraints();
-  std::map<dof_id_type, ConstraintEntry> build_point_constraints();
-  std::map<dof_id_type, ConstraintEntry> build_coupling_constraints();
+  /** @brief Homogeneous pin constraints imposed when time-integrated formulation is inactive. */
+  std::map<libMesh::dof_id_type, ConstraintEntry> build_time_integration_constraints();
+
+  /** @brief Dirichlet constraints from VTK point-data arrays (nodal BCs). */
+  std::map<libMesh::dof_id_type, ConstraintEntry> build_point_constraints();
+
+  /** @brief DOF-coupling constraints derived from CP_* periodic-boundary node pairs. */
+  std::map<libMesh::dof_id_type, ConstraintEntry> build_coupling_constraints();
 };
 
 #endif // BOUNDARY_CONDITIONS_OBJECT_H

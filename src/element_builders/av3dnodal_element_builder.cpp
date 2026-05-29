@@ -1,9 +1,11 @@
+/**
+ * @file av3dnodal_element_builder.cpp
+ * @brief ElementBuilder::build_av3dnodal() — element matrices/vectors for the AV3D nodal formulation,
+ *        plus matching nodal-solution and element-solution post-processing methods.
+ */
 #include "element_builder.h"
-// #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
-// #include <libmesh/string_to_enum.h>
-// Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
@@ -11,61 +13,42 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
-// Define Gauss quadrature rules.
-#include "element_types.h" // Include the header defining ElementType
+#include <stdexcept>
+
+#include "element_types.h"
 #include "apec_m_system.h"
 #include "element_types_factory.h"
 #include "variables_map.h"
+#include "apec_m_logging.h"
 
-// {0: "Ke", 1: "Ce", 2: "Me", 3: "AAe", 4: "JAe", 5: "JVe"}
+using libMesh::DenseVector;
+using libMesh::dof_id_type;
+using libMesh::FEBase;
+using libMesh::FEVectorBase;
+using libMesh::Node;
+using libMesh::Number;
+using libMesh::Point;
+using libMesh::Real;
+using libMesh::RealGradient;
+using libMesh::RealVectorValue;
+using libMesh::VectorValue;
+
+// Matrix/vector index legend: {0: Ke, 1: Ce, 2: Me, 3: AAe, 4: JAe, 5: JVe}
 void ElementBuilder::build_av3dnodal()
 {
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[1].get());
-    FEVectorBase *fe_vec = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[0].get());
-    // The element Jacobian * quadrature weight at each integration point.
+    FEBase *fe = &elem_data.element_type->scalar_fe(1);
+    FEVectorBase *fe_vec = &elem_data.element_type->vector_fe(0);
     const std::vector<Real> &JxW = fe->get_JxW();
-
-    // The element shape functions evaluated at the quadrature points.
     const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
     const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-    // The velocity shape function gradients at interior
-    // quadrature points.
     const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
-
     const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
 
-    // const std::vector<std::vector<Real>> &div_phi_vec = fe_vec->get_div_phi();
-
-    // const std::vector<std::vector<RealTensor>> &dphi_vec = fe_vec->get_dphi();
     fe->reinit(elem_data.elem);
     fe_vec->reinit(elem_data.elem);
 
     this->prepare_element_matrix_building();
 
-    // Get the scalar shape functions and vector shape functions
     unsigned int n_dofs_var = fe->n_shape_functions();
     unsigned int n_dofs_A = n_dofs_var * 3;
     unsigned int nq = fe->n_quadrature_points();
@@ -146,40 +129,6 @@ void ElementBuilder::build_av3dnodal()
     build_me();
     build_jae();
     build_jve();
-
-    // for (unsigned int qp = 0; qp < nq; qp++)
-    //     for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
-    //         for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-    //             for (unsigned int k = 0; k < 3; k++)
-    //                 Ke(dof_i, dof_j) += JxW[qp] * nu_matrix[k] * (curl_phi_vec[dof_i / 3 + (dof_i % 3) * n_dofs_var][qp](k) * curl_phi_vec[dof_j / 3 + (dof_j % 3) * n_dofs_var][qp](k));
-
-    // Real avg_nu = (nu_matrix[0] + nu_matrix[1] + nu_matrix[2]) / 3.0;
-    // for (unsigned int qp = 0; qp < nq; qp++)
-    //     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-    //         for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-    //             for (unsigned int k = 0; k < 3; k++)
-    //                 for (unsigned int l = 0; l < 3; l++)
-    //                 {
-    //                     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * nu_matrix[k] * (curl_phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
-    //                     // for (unsigned int m = 0; m < 3; m++)
-    //                     //     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * nu_matrix[m] * dphi_vec[dof_i * 3 + k][qp](m, m) * dphi_vec[dof_j * 3 + l][qp](m, m);
-    //                     Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) += JxW[qp] * avg_nu * (div_phi_vec[dof_i * 3 + k][qp] * div_phi_vec[dof_j * 3 + l][qp]);
-    //                 }
-
-    // switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
-    // {
-    // case PhysicalRegionEnum::NON_MAGNETIC:
-    // case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    // {
-    //     Real avg_nu = (nu_matrix[0] + nu_matrix[1] + nu_matrix[2]) / 3.0;
-    //     for (unsigned int qp = 0; qp < nq; qp++)
-    //         for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
-    //             for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
-    //                 Ke(dof_i, dof_j) += JxW[qp] * avg_nu * (div_phi_vec[dof_i / 3 + (dof_i % 3) * n_dofs_var][qp] * div_phi_vec[dof_j / 3 + (dof_j % 3) * n_dofs_var][qp]);
-
-    //     break;
-    // }
-    // }
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
@@ -365,31 +314,12 @@ void ElementBuilder::build_av3dnodal()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
 }
 
 void ElementBuilder::build_av3dnodal_rhs()
 {
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int n_dofs_var = elem_data.elem->n_nodes();
@@ -446,7 +376,7 @@ void ElementBuilder::build_av3dnodal_rhs()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
 
     return;
@@ -683,7 +613,7 @@ void ElementBuilder::build_av3dnodal_element_solution()
             break;
         }
         default:
-            libmesh_error_msg("Physical region not implemented");
+            apec::logging::error_and_abort("Physical region not implemented");
         }
 
         have_je = true;

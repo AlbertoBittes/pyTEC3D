@@ -1,3 +1,12 @@
+/**
+ * @file apec_m_solver.cpp
+ * @brief ApecMSolver implementation: runtime lifecycle, model loading, and solve dispatch.
+ *
+ * The file-local RuntimeManager singleton ensures that libMesh and the spdlog
+ * logger are initialised exactly once per process, reference-counted across
+ * multiple ApecMSolver instances, and finalised cleanly when shutdown_runtime()
+ * is called after all instances have been closed.
+ */
 #include "apec_m_solver.h"
 
 #include "apec_m_equation_systems.h"
@@ -16,11 +25,14 @@
 #include <mpi.h>
 
 #include <vtkUnstructuredGrid.h>
+#include <vtkObjectBase.h>
+#include <vtkPythonUtil.h>
 
 #include <pybind11/stl.h>
 
 #include <cstdlib>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <set>
 #include <stdexcept>
@@ -31,8 +43,94 @@ namespace py = pybind11;
 
 namespace
 {
-    std::shared_ptr<libMesh::LibMeshInit> process_libmesh_init;
-    bool g_solver_banner_printed = false;
+    enum class RuntimeState
+    {
+        Uninitialized,
+        Initialized,
+        Closed
+    };
+
+    class RuntimeManager
+    {
+    public:
+        static RuntimeManager &instance()
+        {
+            static RuntimeManager manager;
+            return manager;
+        }
+
+        std::shared_ptr<libMesh::LibMeshInit> acquire(MPI_Comm mpi_comm, int argc, char **argv)
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+
+            if (state_ == RuntimeState::Closed)
+                apec::logging::error_and_abort("ApecMSolver runtime is permanently closed in this process.");
+
+            if (state_ == RuntimeState::Uninitialized)
+            {
+                static const char *default_argv[] = {"apec_m_solver"};
+                const bool has_user_args = (argc > 0 && argv != nullptr);
+                const int init_argc = has_user_args ? argc : 1;
+                const char *const *init_argv = has_user_args
+                                                   ? const_cast<const char *const *>(argv)
+                                                   : default_argv;
+
+                process_libmesh_init_ = std::make_shared<libMesh::LibMeshInit>(init_argc, init_argv, mpi_comm);
+                apec::logging::initialize(mpi_comm, "apec_m");
+                logging_initialized_ = true;
+                state_ = RuntimeState::Initialized;
+            }
+
+            ++active_instances_;
+            return process_libmesh_init_;
+        }
+
+        void release_instance()
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (active_instances_ > 0)
+                --active_instances_;
+        }
+
+        void shutdown_runtime()
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+
+            if (state_ == RuntimeState::Closed)
+                return;
+
+            if (active_instances_ != 0)
+                apec::logging::error_and_abort("Cannot shutdown ApecMSolver runtime while solver instances are still active.");
+
+            if (logging_initialized_)
+            {
+                apec::logging::shutdown();
+                logging_initialized_ = false;
+            }
+
+            process_libmesh_init_.reset();
+            state_ = RuntimeState::Closed;
+        }
+
+        bool consume_banner_needed()
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (banner_printed_)
+                return false;
+            banner_printed_ = true;
+            return true;
+        }
+
+    private:
+        RuntimeManager() = default;
+
+        std::mutex mutex_;
+        RuntimeState state_ = RuntimeState::Uninitialized;
+        std::shared_ptr<libMesh::LibMeshInit> process_libmesh_init_;
+        int active_instances_ = 0;
+        bool logging_initialized_ = false;
+        bool banner_printed_ = false;
+    };
 
 #define APEC_M_STR_IMPL(x) #x
 #define APEC_M_STR(x) APEC_M_STR_IMPL(x)
@@ -57,10 +155,8 @@ namespace
 
     void print_solver_banner_once()
     {
-        if (g_solver_banner_printed)
+        if (!RuntimeManager::instance().consume_banner_needed())
             return;
-
-        g_solver_banner_printed = true;
 
         constexpr int inner_width = 76;
         const std::string horizontal_rule = "+" + std::string(inner_width, '-') + "+";
@@ -114,7 +210,7 @@ namespace
         return out.str();
     }
 
-    std::string join_elem_orders(const std::set<Order> &orders)
+    std::string join_elem_orders(const std::set<libMesh::Order> &orders)
     {
         std::ostringstream out;
         bool first = true;
@@ -122,13 +218,13 @@ namespace
         {
             if (!first)
                 out << ",";
-            out << Utility::enum_to_string<Order>(order);
+            out << libMesh::Utility::enum_to_string<libMesh::Order>(order);
             first = false;
         }
         return out.str();
     }
 
-    std::string join_counts_by_rank(const std::vector<dof_id_type> &counts)
+    std::string join_counts_by_rank(const std::vector<libMesh::dof_id_type> &counts)
     {
         std::ostringstream out;
         for (std::size_t rank = 0; rank < counts.size(); ++rank)
@@ -159,8 +255,8 @@ namespace
             return row;
         };
 
-        std::vector<dof_id_type> local_nodes_by_rank;
-        std::vector<dof_id_type> local_elems_by_rank;
+        std::vector<libMesh::dof_id_type> local_nodes_by_rank;
+        std::vector<libMesh::dof_id_type> local_elems_by_rank;
         mesh.comm().allgather(mesh.n_local_nodes(), local_nodes_by_rank);
         mesh.comm().allgather(mesh.n_local_elem(), local_elems_by_rank);
 
@@ -170,7 +266,7 @@ namespace
         out << horizontal_rule << "\n";
         out << kv("elem dimensions", "{" + join_elem_dimensions(mesh.elem_dimensions()) + "}") << "\n";
         out << kv("elem default orders", "{" + join_elem_orders(mesh.elem_default_orders()) + "}") << "\n";
-        out << kv("supported nodal order", Utility::enum_to_string<Order>(mesh.supported_nodal_order())) << "\n";
+        out << kv("supported nodal order", libMesh::Utility::enum_to_string<libMesh::Order>(mesh.supported_nodal_order())) << "\n";
         out << kv("spatial dimension", std::to_string(mesh.spatial_dimension())) << "\n";
         out << kv("total nodes", std::to_string(mesh.n_nodes())) << "\n";
         out << kv("total elements", std::to_string(mesh.n_elem())) << "\n";
@@ -183,28 +279,25 @@ namespace
     py::object active_vtk_grid_from_apec(const py::object &apec_object)
     {
         if (!py::hasattr(apec_object, "mesh"))
-            throw std::runtime_error("Expected an APEC-like Python object exposing a 'mesh' property.");
+            apec::logging::error_and_abort("Expected an APEC-like Python object exposing a 'mesh' property.");
 
         return apec_object.attr("mesh");
     }
 
     vtkUnstructuredGrid *vtk_grid_from_python(const py::object &vtk_grid)
     {
-        if (!py::hasattr(vtk_grid, "GetAddressAsString"))
-            throw std::runtime_error("Expected a vtkUnstructuredGrid Python object with GetAddressAsString().");
+        if (vtk_grid.is_none())
+            apec::logging::error_and_abort("Expected a vtkUnstructuredGrid Python object, received None.");
 
-        const std::string address = py::cast<std::string>(vtk_grid.attr("GetAddressAsString")("vtkUnstructuredGrid"));
-        const std::size_t prefix_pos = address.find("0x");
-        if (prefix_pos == std::string::npos)
-            throw std::runtime_error("Could not parse VTK pointer address from GetAddressAsString().");
+        vtkObjectBase *vtk_base = vtkPythonUtil::GetPointerFromObject(vtk_grid.ptr(), "vtkUnstructuredGrid");
+        if (!vtk_base)
+            apec::logging::error_and_abort("Expected a vtkUnstructuredGrid Python object compatible with vtkPythonUtil.");
 
-        const char *hex_begin = address.c_str() + prefix_pos + 2;
-        char *hex_end = nullptr;
-        const auto ptr_value = std::strtoull(hex_begin, &hex_end, 16);
-        if (ptr_value == 0)
-            throw std::runtime_error("Parsed null VTK pointer from Python object.");
+        auto *grid = vtkUnstructuredGrid::SafeDownCast(vtk_base);
+        if (!grid)
+            apec::logging::error_and_abort("Python object is not a valid vtkUnstructuredGrid instance.");
 
-        return reinterpret_cast<vtkUnstructuredGrid *>(ptr_value);
+        return grid;
     }
 
     MPI_Comm mpi_comm_from_python(const py::object &mpi_comm)
@@ -213,7 +306,7 @@ namespace
             return MPI_COMM_WORLD;
 
         if (!py::hasattr(mpi_comm, "py2f"))
-            throw std::runtime_error("Expected an mpi4py communicator with py2f().");
+            apec::logging::error_and_abort("Expected an mpi4py communicator with py2f().");
 
         const auto f_comm = static_cast<MPI_Fint>(py::cast<int>(mpi_comm.attr("py2f")()));
         return MPI_Comm_f2c(f_comm);
@@ -222,31 +315,7 @@ namespace
 
 void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
 {
-    if (libmesh_init)
-    {
-        print_solver_banner_once();
-        return;
-    }
-
-    if (process_libmesh_init)
-    {
-        libmesh_init = process_libmesh_init;
-        apec::logging::initialize(mpi_comm, "apec_m");
-        print_solver_banner_once();
-        return;
-    }
-
-    // libMesh expects a valid argv array. Passing nullptr may segfault in some builds.
-    static const char *default_argv[] = {"apec_m_solver"};
-    const bool has_user_args = (argc > 0 && argv != nullptr);
-    const int init_argc = has_user_args ? argc : 1;
-    const char *const *init_argv = has_user_args
-                                       ? const_cast<const char *const *>(argv)
-                                       : default_argv;
-
-    process_libmesh_init = std::make_shared<libMesh::LibMeshInit>(init_argc, init_argv, mpi_comm);
-    libmesh_init = process_libmesh_init;
-    apec::logging::initialize(mpi_comm, "apec_m");
+    libmesh_init = RuntimeManager::instance().acquire(mpi_comm, argc, argv);
     print_solver_banner_once();
 }
 
@@ -255,6 +324,7 @@ ApecMSolver::ApecMSolver(py::object mpi_comm)
     mpi_comm_object = std::move(mpi_comm);
     const MPI_Comm active_comm = mpi_comm_from_python(mpi_comm_object);
     ensure_libmesh_initialized(active_comm);
+    closed_ = false;
     apec::logging::info("Solver created successfully");
 }
 
@@ -265,7 +335,11 @@ ApecMSolver::~ApecMSolver()
 
 void ApecMSolver::close()
 {
-    // Ensure libMesh/PETSc objects are destroyed before MPI finalization.
+    if (closed_)
+        return;
+
+    // Destroy all libMesh and PETSc objects before MPI finalisation.
+    // Order matters: equation systems must be cleared before the mesh is reset.
     if (equation_system)
         equation_system->clear();
 
@@ -282,23 +356,22 @@ void ApecMSolver::close()
     apec_object = py::none();
     mpi_comm_object = py::none();
     loaded = false;
+    closed_ = true;
 
     libmesh_init.reset();
-    apec::logging::shutdown();
-
-    if (process_libmesh_init && process_libmesh_init.use_count() == 1)
-        process_libmesh_init.reset();
+    RuntimeManager::instance().release_instance();
 }
 
 void ApecMSolver::shutdown_runtime()
 {
-    apec::logging::shutdown();
-    if (process_libmesh_init && process_libmesh_init.use_count() == 1)
-        process_libmesh_init.reset();
+    RuntimeManager::instance().shutdown_runtime();
 }
 
 void ApecMSolver::load_model(py::object apec_object)
 {
+    if (closed_)
+        apec::logging::error_and_abort("Solver instance has been closed and cannot be reused.");
+
     apec::logging::info("Loading model into solver");
     this->apec_object = apec_object;
     element_types_factory = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
@@ -323,7 +396,7 @@ void ApecMSolver::load_model(py::object apec_object)
     apec::logging::info("Preparing to distribute Mesh and Degrees-Of-Freedom across processors");
     apec::logging::info("Identifying coupled nodes for mesh distribution");
     auto &main_system = equation_system->get_system<ApecMLinearSystem>(
-        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+        ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
     coupling_functor = std::make_unique<AugmentSparsityOnNodes>(*mesh,
                                                                 grid_ptr);
     main_system.get_dof_map().add_coupling_functor(*coupling_functor);
@@ -341,7 +414,7 @@ void ApecMSolver::load_model(py::object apec_object)
 void ApecMSolver::solve()
 {
     if (!loaded || !mesh)
-        libmesh_error_msg("Solver has no loaded model. Call load_model() first.");
+        apec::logging::error_and_abort("Solver has no loaded model. Call load_model() first.");
 
     apec::logging::info("Starting system solve");
 
@@ -349,11 +422,11 @@ void ApecMSolver::solve()
         py::cast<py::dict>(apec_object.attr("time_step")));
 
     write_system_to_vtk_grid(
-        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+        ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
     write_system_to_vtk_grid(
-        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::NODAL_SOLUTION));
+        ApecMSystemBase::system_name_from_type(ApecMSystemBase::NODAL_SOLUTION));
     write_system_to_vtk_grid(
-        ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::ELEMENT_SOLUTION));
+        ApecMSystemBase::system_name_from_type(ApecMSystemBase::ELEMENT_SOLUTION));
 
     apec::logging::info("Solve complete and solution fields written back to VTK grid");
 }
@@ -361,7 +434,7 @@ void ApecMSolver::solve()
 void ApecMSolver::write_system_to_vtk_grid(const std::string &system_name)
 {
     if (!loaded || !mesh || !equation_system || !active_vtk_grid)
-        libmesh_error_msg("Solver is not fully initialized. Call load_model() first.");
+        apec::logging::error_and_abort("Solver is not fully initialized. Call load_model() first.");
 
     VTKIO_Updated vtkio(*mesh, equation_system.get(), active_vtk_grid);
     vtkio.write_system_grid(system_name);
@@ -375,4 +448,21 @@ bool ApecMSolver::is_loaded() const
 py::object ApecMSolver::get_apec_object() const
 {
     return apec_object;
+}
+
+vtkUnstructuredGrid *ApecMSolver::get_active_vtk_grid() const
+{
+    return active_vtk_grid;
+}
+
+std::shared_ptr<ElementTypesFactory> ApecMSolver::get_element_types_factory() const
+{
+    return element_types_factory;
+}
+
+const AugmentSparsityOnNodes *ApecMSolver::get_coupling_functor() const
+{
+    if (!coupling_functor)
+        apec::logging::error_and_abort("Solver coupling functor is not initialized.");
+    return coupling_functor.get();
 }

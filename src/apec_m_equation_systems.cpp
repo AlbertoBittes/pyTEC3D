@@ -1,3 +1,7 @@
+/**
+ * @file apec_m_equation_systems.cpp
+ * @brief ApecMEquationSystems: system registration, variable initialisation, and solve orchestration.
+ */
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
 #include "element_types_factory.h"
@@ -68,9 +72,9 @@ namespace
         {
             const auto type = static_cast<ApecMSystemBase::SystemType>(i);
             const auto &system_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-            auto &system = equation_systems.get_system<System>(system_name);
+            auto &system = equation_systems.get_system<libMesh::System>(system_name);
 
-            std::vector<dof_id_type> local_dofs_by_rank;
+            std::vector<libMesh::dof_id_type> local_dofs_by_rank;
             system.comm().allgather(system.n_local_dofs(), local_dofs_by_rank);
 
             std::ostringstream local_dofs_stream;
@@ -97,9 +101,9 @@ namespace
 
             for (unsigned int var = 0; var < system.n_vars(); ++var)
             {
-                const FEType fe_type = system.variable_type(var);
-                const std::string fe_name = Utility::enum_to_string<FEFamily>(fe_type.family);
-                const std::string var_order_name = Utility::enum_to_string<Order>(static_cast<Order>(fe_type.order));
+                const libMesh::FEType fe_type = system.variable_type(var);
+                const std::string fe_name = libMesh::Utility::enum_to_string<libMesh::FEFamily>(fe_type.family);
+                const std::string var_order_name = libMesh::Utility::enum_to_string<libMesh::Order>(static_cast<libMesh::Order>(fe_type.order));
 
                 table << make_row(var == 0 ? system_name : "",
                                   system.variable_name(var),
@@ -146,7 +150,7 @@ void ApecMEquationSystems::configure_systems()
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
         ApecMSystemBase::SystemType type = static_cast<ApecMSystemBase::SystemType>(i);
-        const std::string sys_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
+        const std::string &sys_name = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
@@ -164,17 +168,14 @@ void ApecMEquationSystems::post_initialize_systems()
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-        auto &base_system = this->get_system<System>(info);
+        const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
+            this->get_system<ApecMLinearSystem>(info).post_init();
+        else
         {
-            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
-                system->post_init();
-        }
-        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
-        {
-            system->post_init();
+            auto &system = this->get_system<ApecMExplicitSystem>(info);
+            system.post_init();
         }
     }
 }
@@ -186,19 +187,14 @@ void ApecMEquationSystems::initialize_systems()
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-        auto &base_system = this->get_system<System>(info);
+        const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
+            this->get_system<ApecMLinearSystem>(info).init_variables();
+        else
         {
-            if (auto *system = dynamic_cast<ApecMLinearSystem *>(&base_system))
-            {
-                system->init_variables();
-            }
-        }
-        else if (auto *system = dynamic_cast<ApecMExplicitSystem *>(&base_system))
-        {
-            system->init_variables();
+            auto &system = this->get_system<ApecMExplicitSystem>(info);
+            system.init_variables();
         }
     }
 }
@@ -216,10 +212,11 @@ void ApecMEquationSystems::zero_all_systems()
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
         const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &info = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-        auto &base_system = this->get_system<System>(info);
+        const auto &info = ApecMSystemBase::system_name_from_type(type);
 
-        if (auto *zeroable = dynamic_cast<ApecMSystemBase *>(&base_system))
-            zeroable->zero_all();
+        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
+            this->get_system<ApecMLinearSystem>(info).zero_all();
+        else
+            this->get_system<ApecMExplicitSystem>(info).zero_all();
     }
 }

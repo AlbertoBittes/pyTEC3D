@@ -1,19 +1,16 @@
 // The libMesh Finite Element Library.
 // Copyright (C) 2002-2024 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
+// Distributed under the GNU LGPL v2.1 or later.  See COPYING for the full licence.
 
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+/**
+ * @file vtkio_updated.h
+ * @brief Extended libMesh VTK I/O that handles APEC-M-specific data arrays.
+ *
+ * Derives from libMesh::MeshInput and MeshOutput.  The read() path imports a
+ * vtkUnstructuredGrid into a libMesh DistributedMesh, honouring infinite-element
+ * flags and element-type subdomain IDs.  The write_system_grid() path exports a
+ * named solution system's fields back onto the VTK grid so Python can access them.
+ */
 
 #ifndef VTK_IO_UPDATED_H
 #define VTK_IO_UPDATED_H
@@ -37,83 +34,89 @@
 #include <string>
 #include <vector>
 #include "element_types.h"
-
-using namespace libMesh;
 // Forward declarations
 class vtkUnstructuredGrid;
 
-// Extended VTK I/O class from libMesh (see libMesh documentation), it allows to read also
-// other data of the model (ElementTypes, Couplings, infinite boundaries, ...)
-class VTKIO_Updated : public MeshInput<MeshBase>,
-                      public MeshOutput<MeshBase>
+/**
+ * @brief Extended libMesh VTK mesh reader/writer for the APEC-M solver.
+ *
+ * In read mode, the constructor accepts an existing vtkUnstructuredGrid and
+ * translates it into a libMesh::MeshBase.  In write mode (write_system_grid()),
+ * a named equation system's solution is scattered back onto the VTK grid so that
+ * Python can inspect it without extra data copies.
+ */
+class VTKIO_Updated : public libMesh::MeshInput<libMesh::MeshBase>,
+                      public libMesh::MeshOutput<libMesh::MeshBase>
 {
 public:
-    explicit VTKIO_Updated(MeshBase &mesh, vtkUnstructuredGrid *vtk_grid);
+    explicit VTKIO_Updated(libMesh::MeshBase &mesh, vtkUnstructuredGrid *vtk_grid);
 
-    explicit VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid);
+    explicit VTKIO_Updated(const libMesh::MeshBase &mesh, libMesh::EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid);
 
-    using MeshOutput<MeshBase>::write_nodal_data;
+    using libMesh::MeshOutput<libMesh::MeshBase>::write_nodal_data;
 
     virtual void write_nodal_data(const std::string &,
-                                  const std::vector<Number> &,
+                                  const std::vector<libMesh::Number> &,
                                   const std::vector<std::string> &) override;
 
-    virtual void read(const std::string &) override {}
+    /** @brief Reads the given @p grid into the libMesh mesh. */
     virtual void read(vtkUnstructuredGrid *grid);
+    /** @brief No-op override satisfying the libMesh::MeshInput<> pure-virtual requirement. */
+    virtual void read(const std::string &) override {}
     virtual void write(const std::string &) override {}
 
+    /** @brief Exports the named solution system's fields onto the active VTK grid. */
     void write_system_grid(const std::string &system_name);
+
+    /** @brief Replaces the active VTK grid pointer. */
     void set_vtk_grid(vtkUnstructuredGrid *grid);
 
+    /** @brief Toggles zlib compression for any VTK output. */
     void set_compression(bool b);
 
+    /** @brief Returns the active VTK grid pointer. */
     vtkUnstructuredGrid *get_vtk_grid();
 
-    // void read_apec_m_model(const std::string &mesh_filepath);
-
 private:
+    /** @brief Translates the active VTK grid into the libMesh mesh. */
     void build_mesh_from_active_vtk_grid();
 
-    // void system_vectors_to_vtk(const EquationSystems & es,
-    //                            vtkUnstructuredGrid * & grid);
+    vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid; ///< Shared VTK grid (read: allocated internally; write: supplied externally).
 
-    vtkSmartPointer<vtkUnstructuredGrid> _vtk_grid;
-
-    bool _compress;
-    EquationSystems *_eq_sys;
-    std::map<dof_id_type, dof_id_type> _local_node_map;
+    bool _compress; ///< When true, VTK output is zlib-compressed.
+    libMesh::EquationSystems *_eq_sys;
+    std::map<libMesh::dof_id_type, libMesh::dof_id_type> _local_node_map;
 
     struct ElementMaps
     {
         // Associate libmesh_type with vtk_type (searchable in both directions).
-        void associate(ElemType libmesh_type, vtkIdType vtk_type)
+        void associate(libMesh::ElemType libmesh_type, vtkIdType vtk_type)
         {
             writing_map[libmesh_type] = vtk_type;
             reading_map[vtk_type] = libmesh_type;
         }
 
-        // Find an entry in the writing map, or throw an error.
-        vtkIdType find(ElemType libmesh_type)
+        // Find an entry in the writing map, or abort via libMesh diagnostics.
+        vtkIdType find(libMesh::ElemType libmesh_type)
         {
             return libmesh_map_find(writing_map, libmesh_type);
         }
 
-        // Find an entry in the reading map, or throw an error.
-        ElemType find(vtkIdType vtk_type)
+        // Find an entry in the reading map, or abort via libMesh diagnostics.
+        libMesh::ElemType find(vtkIdType vtk_type)
         {
             return libmesh_map_find(reading_map, vtk_type);
         }
 
-        std::map<ElemType, vtkIdType> writing_map;
-        std::map<vtkIdType, ElemType> reading_map;
+        std::map<libMesh::ElemType, vtkIdType> writing_map;
+        std::map<vtkIdType, libMesh::ElemType> reading_map;
     };
 
-    static std::map<ElemMappingType, ElementMaps> _element_maps;
+    static std::map<libMesh::ElemMappingType, ElementMaps> _element_maps;
 
-    static std::map<ElemMappingType, ElementMaps> build_element_maps();
+    static std::map<libMesh::ElemMappingType, ElementMaps> build_element_maps();
 
     // void broadcast_all_fe_data_objects();
-
 };
 
 #endif // VTKIO_UPDATED_H

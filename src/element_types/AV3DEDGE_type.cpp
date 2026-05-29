@@ -1,6 +1,10 @@
+/**
+ * @file AV3DEDGE_type.cpp
+ * @brief AV3DEDGEType: FE descriptor set for the AV formulation using first-order Nédélec edge elements.
+ */
 #include "element_types.h"
 #include "element_builder.h"
-// Direct constructor
+
 AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs)
     : AV3DElementType(
           OPTIONs,
@@ -11,7 +15,6 @@ AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs)
 {
 }
 
-// Chain-prolonging constructor for derived types
 AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs,
                            std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
     : AV3DElementType(
@@ -24,51 +27,40 @@ AV3DEDGEType::AV3DEDGEType(const std::vector<unsigned int> &OPTIONs,
 {
 }
 
-// Helper to add two FEDataShapeFunctions structs
 void AV3DEDGEType::add_av3dedge_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
                                            const std::vector<unsigned int> &OPTIONs)
 {
     fe_structs.push_back({
-        FIRST,                                  // order
-        NEDELEC_ONE,                            // family
-        3,                                      // dimension
-        static_cast<Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
-        3,                                      // quadrature_dim
-        false,                                  // is_infinite
-        true                                    // is_vector (scalar FE)
+        libMesh::FIRST,                                  // order
+        libMesh::NEDELEC_ONE,                            // family
+        3,                                               // dimension
+        static_cast<libMesh::Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
+        3,                                               // quadrature_dim
+        false,                                           // is_infinite
+        true                                             // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        FIRST,                                  // order
-        NEDELEC_ONE,                            // family
-        3,                                      // dimension
-        static_cast<Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
-        3,                                      // quadrature_dim
-        false,                                  // is_infinite
-        true                                    // is_vector (scalar FE)
+        libMesh::FIRST,                                  // order
+        libMesh::NEDELEC_ONE,                            // family
+        3,                                               // dimension
+        static_cast<libMesh::Order>(2 * OPTIONs[2] + 1), // quadrature_order (use default)
+        3,                                               // quadrature_dim
+        false,                                           // is_infinite
+        true                                             // is_vector (scalar FE)
     });
     fe_structs.push_back({
-        static_cast<Order>(OPTIONs[2]), // order
-        LAGRANGE_VEC,                   // family
-        3,                              // dimension
-        INVALID_ORDER,                  // quadrature_order (use default)
-        3,                              // quadrature_dim
-        false,                          // is_infinite
-        true                            // is_vector (vector FE)
+        static_cast<libMesh::Order>(OPTIONs[2]), // order
+        libMesh::LAGRANGE_VEC,                   // family
+        3,                                       // dimension
+        libMesh::INVALID_ORDER,                  // quadrature_order (use default)
+        3,                                       // quadrature_dim
+        false,                                   // is_infinite
+        true                                     // is_vector (vector FE)
     });
-    // fe_structs.push_back({
-    //     SECOND,        // order
-    //     LAGRANGE,      // family
-    //     3,             // dimension
-    //     INVALID_ORDER, // quadrature_order (use default)
-    //     3,             // quadrature_dim
-    //     false,         // is_infinite
-    //     false          // is_vector (vector FE)
-    // });
 }
 
 std::unique_ptr<std::vector<std::vector<unsigned int>>> AV3DEDGEType::get_nodal_solution_matrix_idx_size_map()
 {
-    // TEMPORARY !!!!!!!!!!!!!!!!!!!!!!!!     /////
     unsigned int n_sf_vec = 3 * fe_array[3]->n_shape_functions();
     unsigned int n_sf_edge = fe_array[0]->n_shape_functions();
 

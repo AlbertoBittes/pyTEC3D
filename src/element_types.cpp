@@ -1,3 +1,7 @@
+/**
+ * @file element_types.cpp
+ * @brief ElementType construction: FE array building and safe scalar/vector accessor implementations.
+ */
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -9,6 +13,15 @@
 
 #include "element_types.h"
 #include "element_builder.h"
+#include "apec_m_logging.h"
+
+using libMesh::FEBase;
+using libMesh::FEType;
+using libMesh::FEVectorBase;
+using libMesh::INVALID_ORDER;
+using libMesh::Order;
+using libMesh::QBase;
+using libMesh::QGauss;
 
 ElementType::ElementType(const std::vector<unsigned int> &OPTIONs,
                          std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector)
@@ -21,6 +34,10 @@ void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunct
 {
     std::vector<FEDataShapeFunctions> fe_structs;
     fe_collector(fe_structs);
+
+    fe_kinds.clear();
+    scalar_fe_slots.clear();
+    vector_fe_slots.clear();
 
     for (const auto &fe_data : fe_structs)
     {
@@ -39,14 +56,62 @@ void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunct
             fe_vec_obj = FEVectorBase::build(fe_data.dimension, fe_type);
 
             fe_vec_obj->attach_quadrature_rule(qrule_ptr);
+            FEVectorBase *raw_fe_vec = fe_vec_obj.get();
             fe_array.push_back(std::move(fe_vec_obj));
+            fe_kinds.push_back(ElementType::FEKind::Vector);
+            scalar_fe_slots.push_back(nullptr);
+            vector_fe_slots.push_back(raw_fe_vec);
         }
         else
         {
             fe_obj = FEBase::build(fe_data.dimension, fe_type);
 
             fe_obj->attach_quadrature_rule(qrule_ptr);
+            FEBase *raw_fe = fe_obj.get();
             fe_array.push_back(std::move(fe_obj));
+            fe_kinds.push_back(ElementType::FEKind::Scalar);
+            scalar_fe_slots.push_back(raw_fe);
+            vector_fe_slots.push_back(nullptr);
         }
     }
+}
+
+libMesh::FEBase &ElementType::scalar_fe(std::size_t idx)
+{
+    if (idx >= fe_array.size())
+        apec::logging::error_and_abort("ElementType::scalar_fe: FE index out of range.");
+
+    if (fe_kinds[idx] != ElementType::FEKind::Scalar || !scalar_fe_slots[idx])
+        apec::logging::error_and_abort("ElementType::scalar_fe: requested FE is not scalar.");
+    return *scalar_fe_slots[idx];
+}
+
+const libMesh::FEBase &ElementType::scalar_fe(std::size_t idx) const
+{
+    if (idx >= fe_array.size())
+        apec::logging::error_and_abort("ElementType::scalar_fe: FE index out of range.");
+
+    if (fe_kinds[idx] != ElementType::FEKind::Scalar || !scalar_fe_slots[idx])
+        apec::logging::error_and_abort("ElementType::scalar_fe: requested FE is not scalar.");
+    return *scalar_fe_slots[idx];
+}
+
+libMesh::FEVectorBase &ElementType::vector_fe(std::size_t idx)
+{
+    if (idx >= fe_array.size())
+        apec::logging::error_and_abort("ElementType::vector_fe: FE index out of range.");
+
+    if (fe_kinds[idx] != ElementType::FEKind::Vector || !vector_fe_slots[idx])
+        apec::logging::error_and_abort("ElementType::vector_fe: requested FE is not vector.");
+    return *vector_fe_slots[idx];
+}
+
+const libMesh::FEVectorBase &ElementType::vector_fe(std::size_t idx) const
+{
+    if (idx >= fe_array.size())
+        apec::logging::error_and_abort("ElementType::vector_fe: FE index out of range.");
+
+    if (fe_kinds[idx] != ElementType::FEKind::Vector || !vector_fe_slots[idx])
+        apec::logging::error_and_abort("ElementType::vector_fe: requested FE is not vector.");
+    return *vector_fe_slots[idx];
 }

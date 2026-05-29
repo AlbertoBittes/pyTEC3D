@@ -136,6 +136,144 @@ def ensure_in_options(value: Any, arg_name: str, options: Sequence[Any]) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Solver-settings validation
+# ---------------------------------------------------------------------------
+
+#: KSP types supported by PETSc / APEC-M (direct and iterative).
+_VALID_KSP_TYPES: frozenset[str] = frozenset({
+    "preonly",       # direct solve (pair with lu / cholesky)
+    "gmres",
+    "fgmres",
+    "bcgs",
+    "bcgsl",
+    "cgs",
+    "cg",
+    "minres",
+    "symmlq",
+    "lgmres",
+    "ibcgs",
+    "gcr",
+    "tfqmr",
+    "tcqmr",
+    "cr",
+    "lsqr",
+    "bicg",
+    "richardson",
+    "chebyshev",
+})
+
+#: PC types supported by PETSc / APEC-M.
+_VALID_PC_TYPES: frozenset[str] = frozenset({
+    "lu",            # direct LU  → MUMPS in parallel
+    "cholesky",      # direct Cholesky → MUMPS in parallel
+    "ilu",
+    "icc",
+    "asm",
+    "gasm",
+    "bjacobi",
+    "jacobi",
+    "sor",
+    "eisenstat",
+    "hypre",
+    "ml",
+    "gamg",
+    "mg",
+    "ksp",
+    "none",
+})
+
+
+def validate_solver_settings(settings: dict[str, Any]) -> None:
+    """Validate the solver_settings dict against allowed types and value ranges.
+
+    Checks:
+    - ``ksp_type``: string, one of the recognised PETSc KSP type names.
+    - ``pc_type``: string, one of the recognised PETSc PC type names.
+    - ``initial_linear_tolerance``: positive finite float (relative residual target).
+    - ``minimum_linear_tolerance``: positive finite float, ≤ ``initial_linear_tolerance``.
+    - ``max_linear_iterations``: integer ≥ 1.
+
+    Args:
+        settings: Dictionary of solver settings (typically ``apec.solver_settings``).
+
+    Returns:
+        None
+
+    Raises:
+        TypeError: When a value has the wrong Python type.
+        ValueError: When a value is outside the allowed range or not a recognised option.
+    """
+    errors: list[str] = []
+
+    # --- ksp_type -----------------------------------------------------------
+    ksp = settings.get("ksp_type")
+    if not isinstance(ksp, str):
+        errors.append(
+            f"ksp_type must be a string, got {type(ksp).__name__}."
+        )
+    elif ksp not in _VALID_KSP_TYPES:
+        errors.append(
+            f"ksp_type {ksp!r} is not recognised. "
+            f"Valid options: {sorted(_VALID_KSP_TYPES)}."
+        )
+
+    # --- pc_type ------------------------------------------------------------
+    pc = settings.get("pc_type")
+    if not isinstance(pc, str):
+        errors.append(
+            f"pc_type must be a string, got {type(pc).__name__}."
+        )
+    elif pc not in _VALID_PC_TYPES:
+        errors.append(
+            f"pc_type {pc!r} is not recognised. "
+            f"Valid options: {sorted(_VALID_PC_TYPES)}."
+        )
+
+    # --- initial_linear_tolerance -------------------------------------------
+    rtol = settings.get("initial_linear_tolerance")
+    if not isinstance(rtol, (int, float)):
+        errors.append(
+            f"initial_linear_tolerance must be a real number, got {type(rtol).__name__}."
+        )
+    elif not (np.isfinite(rtol) and rtol > 0.0):
+        errors.append(
+            f"initial_linear_tolerance must be a finite positive number, got {rtol!r}."
+        )
+
+    # --- minimum_linear_tolerance -------------------------------------------
+    abstol = settings.get("minimum_linear_tolerance")
+    if not isinstance(abstol, (int, float)):
+        errors.append(
+            f"minimum_linear_tolerance must be a real number, got {type(abstol).__name__}."
+        )
+    elif not (np.isfinite(abstol) and abstol > 0.0):
+        errors.append(
+            f"minimum_linear_tolerance must be a finite positive number, got {abstol!r}."
+        )
+    elif isinstance(rtol, (int, float)) and np.isfinite(rtol) and abstol > rtol:
+        errors.append(
+            f"minimum_linear_tolerance ({abstol!r}) must be ≤ "
+            f"initial_linear_tolerance ({rtol!r})."
+        )
+
+    # --- max_linear_iterations ----------------------------------------------
+    maxits = settings.get("max_linear_iterations")
+    if not isinstance(maxits, int) or isinstance(maxits, bool):
+        errors.append(
+            f"max_linear_iterations must be an integer, got {type(maxits).__name__}."
+        )
+    elif maxits < 1:
+        errors.append(
+            f"max_linear_iterations must be ≥ 1, got {maxits!r}."
+        )
+
+    if errors:
+        raise ValueError(
+            "Invalid solver_settings:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
+# ---------------------------------------------------------------------------
 # VTK cell-type classification arrays (sorted for np.isin, built at import)
 # ---------------------------------------------------------------------------
 
@@ -199,6 +337,10 @@ def validate_apec_model(apec: Any) -> None:
     mat = apec.materials
     const = apec.constants
     dof = apec.dof_couplings
+
+    # ── solver settings ─────────────────────────────────────────────────────
+    validate_solver_settings(apec.solver_settings)
+
     n_cells: int = mesh.GetNumberOfCells()
     cell_data = mesh.GetCellData()
 

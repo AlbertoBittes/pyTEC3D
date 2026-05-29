@@ -7,8 +7,6 @@
 #include <libmesh/node.h>
 #include <libmesh/numeric_vector.h>
 #include "apec_m_system.h" // <-- Add this line
-
-using namespace libMesh;
 // Local Includes
 #include "libmesh/system_subset.h"
 #include "libmesh/id_types.h"
@@ -19,13 +17,13 @@ using namespace libMesh;
 #include <cstddef>
 #include <set>
 
-class SystemMatrixReduction : public SystemSubset,
-                              public ParallelObject
+class SystemMatrixReduction : public libMesh::SystemSubset,
+                              public libMesh::ParallelObject
 {
 public:
-    SystemMatrixReduction(const System &system) : SystemSubset(system),
-                                                  ParallelObject(system),
-                                                  _dof_ids()
+    SystemMatrixReduction(const libMesh::System &system) : SystemSubset(system),
+                                                           libMesh::ParallelObject(system),
+                                                           _dof_ids()
     {
         this->init();
     };
@@ -41,15 +39,15 @@ public:
     {
         _dof_ids.clear();
 
-        const DofMap &dof_map = _system.get_dof_map();
-        const processor_id_type proc = this->processor_id();
-        const dof_id_type first = dof_map.first_dof(proc);
-        const dof_id_type last = dof_map.end_dof(proc);
+        const libMesh::DofMap &dof_map = _system.get_dof_map();
+        const libMesh::processor_id_type proc = this->processor_id();
+        const libMesh::dof_id_type first = dof_map.first_dof(proc);
+        const libMesh::dof_id_type last = dof_map.end_dof(proc);
 
-        std::vector<dof_id_type> constrained_dofs;
+        std::vector<libMesh::dof_id_type> constrained_dofs;
         for (auto it = dof_map.constraint_rows_begin(); it != dof_map.constraint_rows_end(); ++it)
         {
-            const dof_id_type constrained_dof = it->first;
+            const libMesh::dof_id_type constrained_dof = it->first;
             if (constrained_dof >= first && constrained_dof < last)
                 constrained_dofs.push_back(constrained_dof);
         }
@@ -57,11 +55,11 @@ public:
         constrained_dofs.erase(std::unique(constrained_dofs.begin(), constrained_dofs.end()),
                                constrained_dofs.end());
 
-        std::vector<dof_id_type> all_dofs(last - first);
-        for (dof_id_type dof = first; dof < last; ++dof)
+        std::vector<libMesh::dof_id_type> all_dofs(last - first);
+        for (libMesh::dof_id_type dof = first; dof < last; ++dof)
             all_dofs[dof - first] = dof;
 
-        std::vector<dof_id_type> unconstrained_dofs;
+        std::vector<libMesh::dof_id_type> unconstrained_dofs;
         std::set_difference(
             all_dofs.begin(), all_dofs.end(),
             constrained_dofs.begin(), constrained_dofs.end(),

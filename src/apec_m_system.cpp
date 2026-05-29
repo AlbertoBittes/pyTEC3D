@@ -1,9 +1,18 @@
+/**
+ * @file apec_m_system.cpp
+ * @brief ApecMSystemBase, ApecMLinearSystem, and ApecMSystem<> implementations.
+ *
+ * Covers system-name to type mapping, time-step state advancement,
+ * generalised-theta time-derivative computation, and per-element variable
+ * initialisation from the ElementTypesFactory.
+ */
 #include "apec_m_system.h"
 
 #include <array>
 #include <iomanip>
 #include <sstream>
 #include <set>
+#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
@@ -19,7 +28,7 @@
 
 namespace
 {
-    std::string to_scientific_string(Real value)
+    std::string to_scientific_string(libMesh::Real value)
     {
         std::ostringstream out;
         out << std::scientific << std::setprecision(6) << value;
@@ -58,23 +67,33 @@ const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::Syste
 {
     auto it = ApecMSystemBase::SYSTEM_INFO_MAP.find(system_type);
     if (it == ApecMSystemBase::SYSTEM_INFO_MAP.end())
-        libmesh_error_msg("System type not found.");
+        apec::logging::error_and_abort("System type not found.");
     return it->second;
+}
+
+ApecMSystemBase::SystemType ApecMSystemBase::system_type_from_name(const std::string &system_name)
+{
+    for (const auto &pair : ApecMSystemBase::SYSTEM_INFO_MAP)
+        if (pair.second == system_name)
+            return pair.first;
+
+    apec::logging::error_and_abort("System type not found for system name: " + system_name);
+    return ApecMSystemBase::NUM_SYSTEMS;
 }
 
 void ApecMLinearSystem::release_subset_solve()
 {
     if (this->_subset != nullptr)
     {
-        delete this->_subset;
+        subset_solve_holder_.reset();
         this->_subset = nullptr;
     }
 }
 
 void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_dict)
 {
-    const Real requested_time = pybind11::cast<Real>(time_step_dict["time"]);
-    const Real requested_theta = pybind11::cast<Real>(time_step_dict["theta"]);
+    const libMesh::Real requested_time = pybind11::cast<libMesh::Real>(time_step_dict["time"]);
+    const libMesh::Real requested_theta = pybind11::cast<libMesh::Real>(time_step_dict["theta"]);
     const bool requested_transient_effect = pybind11::cast<bool>(time_step_dict["transient_effects"]);
 
     if (!time_step)
@@ -93,10 +112,10 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
         return;
     }
 
-    const Real current_time = time_step->time;
-    const Real time_scale = std::max(std::abs(requested_time), std::abs(current_time));
-    const Real time_tol = std::numeric_limits<Real>::epsilon() * time_scale;
-    const Real time_delta = requested_time - current_time;
+    const libMesh::Real current_time = time_step->time;
+    const libMesh::Real time_scale = std::max(std::abs(requested_time), std::abs(current_time));
+    const libMesh::Real time_tol = std::numeric_limits<libMesh::Real>::epsilon() * time_scale;
+    const libMesh::Real time_delta = requested_time - current_time;
 
     if (time_delta > time_tol)
     {
@@ -117,14 +136,14 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
 
     if (std::abs(time_delta) <= time_tol)
     {
-        const Real current_theta = time_step->theta;
+        const libMesh::Real current_theta = time_step->theta;
         const bool current_transient_effect = time_step->transient_effects;
-        const Real theta_tol = std::numeric_limits<Real>::epsilon() * std::abs(current_theta);
+        const libMesh::Real theta_tol = std::numeric_limits<libMesh::Real>::epsilon() * std::abs(current_theta);
 
         if (std::abs(requested_theta - current_theta) > theta_tol ||
             requested_transient_effect != current_transient_effect)
         {
-            libmesh_error_msg("ApecMLinearSystem::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
+            apec::logging::error_and_abort("ApecMLinearSystem::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
         }
 
         time_step->time = requested_time;
@@ -134,28 +153,29 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
         return;
     }
 
-    libmesh_error_msg("ApecMLinearSystem::prepare_time_step_solve: received time smaller than current time step.");
+    apec::logging::error_and_abort("ApecMLinearSystem::prepare_time_step_solve: received time smaller than current time step.");
 }
 
 void ApecMLinearSystem::compute_solution_time_derivative()
 {
     if (!time_step)
-        libmesh_error_msg("ApecMLinearSystem::compute_solution_time_derivative: time_step is null.");
+        apec::logging::error_and_abort("ApecMLinearSystem::compute_solution_time_derivative: time_step is null.");
 
     const bool transient_effect = time_step->transient_effects;
-    const Real dt = time_step->dt;
-    const Real theta = time_step->theta;
-    NumericVector<Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
+    const libMesh::Real dt = time_step->dt;
+    const libMesh::Real theta = time_step->theta;
+    libMesh::NumericVector<libMesh::Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
     if (!transient_effect)
     {
-        // If transient effects are not considered, the solution time derivative is zero
+        // When transient effects are disabled, the solution does not vary in time:
+        // zero both the time-derivative storage vectors.
         this->older_local_solution->zero();
         time_derivative_vector->zero();
     }
     else
     {
-        Real theta_x_dt = theta * dt;
-        Real theta_minus_1_dt = (theta - 1) * dt;
+        libMesh::Real theta_x_dt = theta * dt;
+        libMesh::Real theta_minus_1_dt = (theta - 1) * dt;
 
         this->older_local_solution->scale(theta_minus_1_dt);
         *this->older_local_solution += *this->current_local_solution;
@@ -174,9 +194,9 @@ void ApecMLinearSystem::compute_solution_time_derivative()
 void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
     apec::logging::info("Removing constrained DOFs from system matrix and RHS");
-    SystemMatrixReduction *subset_ptr = new SystemMatrixReduction(*this);
     this->release_subset_solve();
-    this->restrict_solve_to(subset_ptr, SUBSET_ZERO);
+    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
 }
 
 void ApecMLinearSystem::zero_all()
@@ -193,38 +213,22 @@ void ApecMSystem<SysType>::init_variables()
 
     std::string vars_set;
 
-    auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
-    auto *solver_parent = equation_systems ? equation_systems->get_parent_object() : nullptr;
+    auto &equation_systems = this->typed_equation_systems();
+    auto *solver_parent = equation_systems.get_parent_object();
     if (!solver_parent)
-        libmesh_error_msg("ApecMSystem::init_variables: solver parent not available.");
+        apec::logging::error_and_abort("ApecMSystem::init_variables: solver parent not available.");
 
-    auto element_types_collector = solver_parent->element_types_factory;
-    // auto vars_to_subdomain_ids = element_types_collector->associateVariablesWithElementIds();
+    auto element_types_collector = solver_parent->get_element_types_factory();
 
-    // Do not do the loop here, attacht the initialization object to the other systems too
-    // for (unsigned int k = 0; k < equation_systems.n_systems(); k++)
-    // {
-    // Use new helper functions to map system name to SystemType
-    ApecMSystemBase::SystemType type = ApecMSystemBase::NUM_SYSTEMS;
-    const std::string sys_name = this->name();
-    for (const auto &pair : ApecMSystemBase::SYSTEM_INFO_MAP)
-    {
-        if (pair.second == sys_name)
-        {
-            type = pair.first;
-            break;
-        }
-    }
-    if (type == ApecMSystemBase::NUM_SYSTEMS)
-        libmesh_error_msg("System type not found for system name: " + sys_name);
+    const auto type = ApecMSystemBase::system_type_from_name(this->name());
 
     if (!element_types_collector || !element_types_collector->get_element_types_map())
-        libmesh_error_msg("Element types map not available for system variables.");
+        apec::logging::error_and_abort("Element types map not available for system variables.");
     auto vars_to_subdomain_ids = VariablesMap::associate_variables_with_element_IDs(
         *element_types_collector->get_element_types_map(),
         type);
 
-    std::set<subdomain_id_type> mesh_subdomain_ids;
+    std::set<libMesh::subdomain_id_type> mesh_subdomain_ids;
     this->get_mesh().subdomain_ids(mesh_subdomain_ids);
 
     for (auto &pair : vars_to_subdomain_ids)

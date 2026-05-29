@@ -1,4 +1,9 @@
+/**
+ * @file element_types_factory.cpp
+ * @brief ElementTypesFactory: Python DataFrame parsing, element-type registry, and factory dispatch.
+ */
 #include "element_types_factory.h"
+#include "apec_m_logging.h"
 
 #include <algorithm>
 #include <cmath>
@@ -69,28 +74,28 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
     }
 }
 
-// --------------------------------------------------------
-// ElementType lookup
-// --------------------------------------------------------
-ElementType *ElementTypesFactory::get_element_type(subdomain_id_type element_id)
+// ---------------------------------------------------------------------------
+// Element-type lookup
+// ---------------------------------------------------------------------------
+ElementType *ElementTypesFactory::get_element_type(libMesh::subdomain_id_type element_id)
 {
     auto it = element_types_map->find(element_id);
     if (it != element_types_map->end())
         return it->second.get();
-    libmesh_error_msg("Element type not found for subdomain ID: " + std::to_string(element_id));
+    apec::logging::error_and_abort("Element type not found for subdomain ID: " + std::to_string(element_id));
 }
 
-// --------------------------------------------------------
-// Add element type
-// --------------------------------------------------------
-void ElementTypesFactory::add_element_type(subdomain_id_type element_id, std::unique_ptr<ElementType> element_type)
+// ---------------------------------------------------------------------------
+// Manual element-type insertion
+// ---------------------------------------------------------------------------
+void ElementTypesFactory::add_element_type(libMesh::subdomain_id_type element_id, std::unique_ptr<ElementType> element_type)
 {
     (*element_types_map)[element_id] = std::move(element_type);
 }
 
-// --------------------------------------------------------
-// Create element type instance
-// --------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Factory: create element-type instance by enum
+// ---------------------------------------------------------------------------
 std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &OPTIONs)
 {
     switch (type)
@@ -102,6 +107,6 @@ std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTyp
     case ElementTypeEnum::AV2DNODAL:
         return std::make_unique<AV2DNODALType>(OPTIONs);
     default:
-        libmesh_error_msg("Unknown element type");
+        apec::logging::error_and_abort("Unknown element type");
     }
 }

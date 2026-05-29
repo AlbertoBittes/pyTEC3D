@@ -1,9 +1,14 @@
+/**
+ * @file binary_reader.cpp
+ * @brief BinaryReader: rank-local .emat file I/O for element matrix and vector caches.
+ */
 #include "binary_reader.h"
 
 #include <fstream>
 #include <memory>
 #include <string>
 #include <filesystem>
+#include <stdexcept>
 
 #include <libmesh/explicit_system.h>
 #include <libmesh/numeric_vector.h>
@@ -17,55 +22,48 @@
 
 BinaryReader::BinaryReader() = default;
 
-std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::path &filepath,
-                                                         FileMode mode)
+BinaryReader::InputStreamPtr BinaryReader::open_input_stream(const std::filesystem::path &filepath)
 {
-    switch (mode)
-    {
-    case FileMode::Read:
-    {
-        apec::logging::trace("Opening binary file for read: {}", filepath.string());
-        auto stream = std::make_unique<std::ifstream>(filepath, std::ios::binary);
-        if (!stream->is_open())
-            libmesh_error_msg("BinaryReader: failed to open file for reading '" + filepath.string() + "'.");
-        return stream;
-    }
-    case FileMode::Write:
-    {
-        const auto folder = filepath.parent_path();
-        if (!folder.empty() && !std::filesystem::exists(folder))
-            std::filesystem::create_directories(folder);
-
-        apec::logging::trace("Opening binary file for write: {}", filepath.string());
-        auto stream = std::make_unique<std::ofstream>(filepath, std::ios::binary | std::ios::trunc);
-        if (!stream->is_open())
-            libmesh_error_msg("BinaryReader: failed to open file for writing '" + filepath.string() + "'.");
-        return stream;
-    }
-    default:
-        libmesh_error_msg("BinaryReader: unsupported file mode.");
-    }
-    return nullptr;
+    apec::logging::trace("Opening binary file for read: {}", filepath.string());
+    auto stream = std::make_unique<std::ifstream>(filepath, std::ios::binary);
+    if (!stream->is_open())
+        apec::logging::error_and_abort("BinaryReader: failed to open file for reading '" + filepath.string() + "'.");
+    return stream;
 }
 
-std::vector<std::unique_ptr<std::ios>> BinaryReader::open_file_streams(
-    const std::filesystem::path &folder,
-    const std::vector<std::string> &filenames,
-    FileMode mode)
+BinaryReader::OutputStreamPtr BinaryReader::open_output_stream(const std::filesystem::path &filepath)
 {
-    std::vector<std::unique_ptr<std::ios>> streams;
+    const auto folder = filepath.parent_path();
+    if (!folder.empty() && !std::filesystem::exists(folder))
+        std::filesystem::create_directories(folder);
+
+    apec::logging::trace("Opening binary file for write: {}", filepath.string());
+    auto stream = std::make_unique<std::ofstream>(filepath, std::ios::binary | std::ios::trunc);
+    if (!stream->is_open())
+        apec::logging::error_and_abort("BinaryReader: failed to open file for writing '" + filepath.string() + "'.");
+    return stream;
+}
+
+std::vector<BinaryReader::InputStreamPtr> BinaryReader::open_input_streams(
+    const std::filesystem::path &folder,
+    const std::vector<std::string> &filenames)
+{
+    std::vector<InputStreamPtr> streams;
     streams.reserve(filenames.size());
     for (const auto &name : filenames)
-        streams.push_back(open_file_stream(folder / name, mode));
+        streams.push_back(open_input_stream(folder / name));
     return streams;
 }
 
-void BinaryReader::close_file_streams(std::vector<std::unique_ptr<std::ios>> &streams)
+std::vector<BinaryReader::OutputStreamPtr> BinaryReader::open_output_streams(
+    const std::filesystem::path &folder,
+    const std::vector<std::string> &filenames)
 {
-    for (auto &stream : streams)
-        stream.reset();
-    streams.clear();
-    apec::logging::trace("Closed binary streams");
+    std::vector<OutputStreamPtr> streams;
+    streams.reserve(filenames.size());
+    for (const auto &name : filenames)
+        streams.push_back(open_output_stream(folder / name));
+    return streams;
 }
 
 void BinaryReader::write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set)
@@ -86,7 +84,7 @@ void BinaryReader::write_element_matrices(ElementBuilder &builder, std::ofstream
         outFile.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
 
         const auto &values = elem_matrix.get_values();
-        outFile.write(reinterpret_cast<const char *>(values.data()), values.size() * sizeof(Number));
+        outFile.write(reinterpret_cast<const char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
 }
 
@@ -109,7 +107,7 @@ void BinaryReader::read_element_matrices(ElementBuilder &builder, std::ifstream 
 
         elem_matrix.resize(rows, cols);
         auto &values = elem_matrix.get_values();
-        inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(Number));
+        inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
 }
 
@@ -129,7 +127,7 @@ void BinaryReader::write_element_vectors(ElementBuilder &builder, std::ofstream 
         outFile.write(reinterpret_cast<const char *>(&values_size), sizeof(values_size));
 
         const auto &values = elem_vector.get_values();
-        outFile.write(reinterpret_cast<const char *>(values.data()), values.size() * sizeof(Number));
+        outFile.write(reinterpret_cast<const char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
 }
 
@@ -151,6 +149,6 @@ void BinaryReader::read_element_vectors(ElementBuilder &builder, std::ifstream &
 
         elem_vector.resize(values_size);
         auto &values = elem_vector.get_values();
-        inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(Number));
+        inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
 }

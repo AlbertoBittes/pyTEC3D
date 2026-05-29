@@ -1,19 +1,12 @@
-// The libMesh Finite Element Library.
-// Copyright (C) 2002-2024 Benjamin S. Kirk, John W. Peterson, Roy H. Stogner
-
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+// The libMesh Finite Element Library. Copyright (C) 2002-2024 Benjamin S. Kirk, John W. Peterson,
+// Roy H. Stogner. Licensed under the GNU LGPL v2.1 or later.
+/**
+ * @file vtkio_updated.cpp
+ * @brief VTKIOUpdated implementation: VTK mesh read/write with APEC-M solution-vector extensions.
+ *
+ * Derived from the libMesh VTKIO class; adds ability to read/write APEC-M solution vectors
+ * stored as VTK point- and cell-data arrays alongside the standard mesh topology.
+ */
 
 // Local includes
 #include "libmesh/libmesh_config.h"
@@ -61,8 +54,45 @@
 #include <map>
 #include <regex>
 #include <set>
+#include <stdexcept>
 
-using namespace libMesh;
+using libMesh::cast_int;
+using libMesh::dof_id_type;
+using libMesh::EDGE2;
+using libMesh::EDGE3;
+using libMesh::Elem;
+using libMesh::ElemMappingType;
+using libMesh::ElemType;
+using libMesh::EquationSystems;
+using libMesh::FEFamily;
+using libMesh::HEX20;
+using libMesh::HEX27;
+using libMesh::HEX8;
+using libMesh::MeshBase;
+using libMesh::MeshInput;
+using libMesh::MeshOutput;
+using libMesh::Node;
+using libMesh::Number;
+using libMesh::Order;
+using libMesh::Point;
+using libMesh::PRISM15;
+using libMesh::PRISM18;
+using libMesh::PRISM6;
+using libMesh::PYRAMID5;
+using libMesh::QUAD4;
+using libMesh::QUAD8;
+using libMesh::QUAD9;
+using libMesh::Real;
+using libMesh::System;
+using libMesh::TET10;
+using libMesh::TET4;
+using libMesh::TRI3;
+using libMesh::TRI3SUBDIVISION;
+using libMesh::TRI6;
+using libMesh::VTK;
+
+namespace Utility = libMesh::Utility;
+
 // A convenient macro for comparing VTK versions.  Returns 1 if the
 // // current VTK version is < major.minor.subminor and zero otherwise.
 // #define VTK_VERSION_LESS_THAN(major, minor, subminor)                                                            \
@@ -97,26 +127,23 @@ namespace
     }
 } // namespace
 
-// Constructor for reading
 VTKIO_Updated::VTKIO_Updated(MeshBase &mesh, vtkUnstructuredGrid *vtk_grid) : MeshInput<MeshBase>(mesh, /*is_parallel_format=*/true),
                                                                               MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true),
                                                                               _vtk_grid(vtk_grid), _compress(false), _eq_sys(nullptr)
 {
 }
 
-// Constructor for writing
 VTKIO_Updated::VTKIO_Updated(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredGrid *vtk_grid) : MeshOutput<MeshBase>(mesh, /*is_parallel_format=*/true),
                                                                                                                  _vtk_grid(vtk_grid), _compress(false), _eq_sys(eq_systems)
 {
 }
 
-// Initialize the static _element_maps map.
+// Static initialisation of the element type maps.
 std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::_element_maps = VTKIO_Updated::build_element_maps();
 
-// Static function which constructs the ElementMaps object.
+/// Constructs the map from libMesh element types to VTK cell types for each mapping strategy.
 std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_element_maps()
 {
-    // Object to be filled up
     std::map<ElemMappingType, VTKIO_Updated::ElementMaps> all_maps;
     ElementMaps em; // Lagrange element maps
 
@@ -135,22 +162,16 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
     em.associate(PRISM15, VTK_QUADRATIC_WEDGE);
     em.associate(PRISM18, VTK_BIQUADRATIC_QUADRATIC_WEDGE);
     em.associate(PYRAMID5, VTK_PYRAMID);
-
-    // VTK_BIQUADRATIC_QUAD has been around since VTK 5.0
-    // #if VTK_MAJOR_VERSION > 5 || (VTK_MAJOR_VERSION == 5 && VTK_MINOR_VERSION > 0)
     em.associate(QUAD9, VTK_BIQUADRATIC_QUAD);
-    // #endif
 
     // TRI3SUBDIVISION is for writing only
     em.writing_map[TRI3SUBDIVISION] = VTK_TRIANGLE;
     all_maps[ElemMappingType::LAGRANGE_MAP] = em;
 
-    // VTK_BEZIER_* types were introduced in VTK 9.0
-
-    // Revert back to previous behavior when using an older version of VTK
+    // VTK_BEZIER_* element types require VTK >= 9.0; fall back to Lagrange maps on older builds.
     all_maps[ElemMappingType::RATIONAL_BERNSTEIN_MAP] = em;
 
-    ElementMaps bem; // Rational Bernstein element maps
+    ElementMaps bem; // Rational Bernstein element maps (VTK 9.0+)
     bem.associate(EDGE2, VTK_LINE);
     bem.associate(EDGE3, VTK_BEZIER_CURVE);
     bem.associate(TRI3, VTK_TRIANGLE);
@@ -175,8 +196,8 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
 
 void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
 {
-
-    libmesh_error_msg_if(!grid, "VTKIO_Updated::read(vtkUnstructuredGrid*): input grid is null.");
+    if (!grid)
+        apec::logging::error_and_abort("VTKIO_Updated::read(vtkUnstructuredGrid*): input grid is null.");
 
     _vtk_grid = grid;
     build_mesh_from_active_vtk_grid();
@@ -184,24 +205,23 @@ void VTKIO_Updated::read(vtkUnstructuredGrid *grid)
 
 void VTKIO_Updated::set_vtk_grid(vtkUnstructuredGrid *grid)
 {
-    libmesh_error_msg_if(!grid, "VTKIO_Updated::set_vtk_grid: input grid is null.");
+    if (!grid)
+        apec::logging::error_and_abort("VTKIO_Updated::set_vtk_grid: input grid is null.");
     _vtk_grid = grid;
 }
 
 void VTKIO_Updated::write_system_grid(const std::string &system_name)
 {
-    libmesh_error_msg_if(!_eq_sys, "VTKIO_Updated::write_system_grid: equation systems pointer is null.");
-    libmesh_error_msg_if(!_vtk_grid, "VTKIO_Updated::write_system_grid: active vtk grid is null.");
-    libmesh_error_msg_if(!_eq_sys->has_system(system_name),
-                         "VTKIO_Updated::write_system_grid: system '" << system_name << "' not found.");
+    if (!_eq_sys)
+        apec::logging::error_and_abort("VTKIO_Updated::write_system_grid: equation systems pointer is null.");
+    if (!_vtk_grid)
+        apec::logging::error_and_abort("VTKIO_Updated::write_system_grid: active vtk grid is null.");
+    if (!_eq_sys->has_system(system_name))
+        apec::logging::error_and_abort("VTKIO_Updated::write_system_grid: system '" + system_name + "' not found.");
 
+    const auto system_type = ApecMSystemBase::system_type_from_name(system_name);
     const System &system = _eq_sys->get_system(system_name);
-    const auto *apec_system = dynamic_cast<const ApecMSystemBase *>(&system);
-    libmesh_error_msg_if(!apec_system,
-                         "VTKIO_Updated::write_system_grid: system '" << system_name
-                                                                      << "' is not an ApecMSystem.");
-
-    if (apec_system->is_nodal())
+    if (system_type != ApecMSystemBase::ELEMENT_SOLUTION)
     {
         const std::set<std::string> system_names = {system_name};
         std::vector<std::string> var_names;
@@ -210,8 +230,8 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
         if ("Nodal Solution" == system_name)
             apec::logging::info("Averaging nodal solution at nodes");
         auto parallel_solution = _eq_sys->build_parallel_solution_vector(&system_names);
-        libmesh_error_msg_if(!parallel_solution,
-                             "VTKIO_Updated::write_system_grid: failed to build parallel nodal solution vector.");
+        if (!parallel_solution)
+            apec::logging::error_and_abort("VTKIO_Updated::write_system_grid: failed to build parallel nodal solution vector.");
 
         std::vector<Number> localized_solution;
         parallel_solution->localize(localized_solution);
@@ -230,7 +250,7 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
 
         auto parallel_solution = _eq_sys->build_parallel_elemental_solution_vector(var_names);
         if (!parallel_solution)
-            return;
+            apec::logging::error_and_abort("VTKIO_Updated::write_system_grid: failed to build parallel elemental solution vector.");
 
         std::vector<Number> localized_solution;
         parallel_solution->localize(localized_solution);
@@ -246,7 +266,8 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
 
 void VTKIO_Updated::build_mesh_from_active_vtk_grid()
 {
-    libmesh_error_msg_if(!_vtk_grid, "VTKIO_Updated: active vtk grid is null.");
+    if (!_vtk_grid)
+        apec::logging::error_and_abort("VTKIO_Updated: active vtk grid is null.");
 
     elems_of_dimension.clear();
     elems_of_dimension.resize(4, false);
@@ -306,7 +327,7 @@ void VTKIO_Updated::build_mesh_from_active_vtk_grid()
             elem->subdomain_id() = elemtype;
         }
         else
-            libmesh_error_msg("No TYPE array found in cell data; all subdomain ids set to zero.");
+            apec::logging::error_and_abort("No TYPE array found in cell data; all subdomain ids set to zero.");
 
         elems_of_dimension[elem->dim()] = true;
         mesh.add_elem(std::move(elem));
@@ -317,12 +338,10 @@ void VTKIO_Updated::build_mesh_from_active_vtk_grid()
             mesh.set_mesh_dimension(i);
 
 #if LIBMESH_DIM < 3
-    libmesh_error_msg_if(mesh.mesh_dimension() > LIBMESH_DIM,
-                         "Cannot open dimension "
-                             << mesh.mesh_dimension()
-                             << " mesh file when configured without "
-                             << mesh.mesh_dimension()
-                             << "D support.");
+    if (mesh.mesh_dimension() > LIBMESH_DIM)
+        apec::logging::error_and_abort("Cannot open dimension " + std::to_string(mesh.mesh_dimension()) +
+                                       " mesh file when configured without " +
+                                       std::to_string(mesh.mesh_dimension()) + "D support.");
 #endif // LIBMESH_DIM < 3
 }
 

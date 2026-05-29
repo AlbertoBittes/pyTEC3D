@@ -1,9 +1,11 @@
+/**
+ * @file av3dedge_element_builder.cpp
+ * @brief ElementBuilder::build_av3dedge() — element matrices/vectors for the AV3D edge-element
+ *        formulation, plus matching nodal-solution and element-solution post-processing methods.
+ */
 #include "element_builder.h"
-// #include <libmesh/equation_systems.h>
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
-// #include <libmesh/string_to_enum.h>
-// Define the Finite Element object.
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
@@ -11,58 +13,37 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
-// Define Gauss quadrature rules.
-#include "element_types.h" // Include the header defining ElementType
+#include <stdexcept>
+
+#include "element_types.h"
 #include "apec_m_system.h"
 #include "element_types_factory.h"
 #include "variables_map.h"
+#include "apec_m_logging.h"
 
-// Temporary placeholder for build_av3dedge
+using libMesh::DenseVector;
+using libMesh::dof_id_type;
+using libMesh::FEBase;
+using libMesh::FEVectorBase;
+using libMesh::Node;
+using libMesh::Number;
+using libMesh::Point;
+using libMesh::Real;
+using libMesh::RealGradient;
+using libMesh::RealVectorValue;
+using libMesh::VectorValue;
+
 void ElementBuilder::build_av3dedge()
 {
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    FEBase *fe = dynamic_cast<FEBase *>(elem_data.element_type->fe_array[3].get());
-    FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[0].get());
-    FEVectorBase *fe_vec_lagrange = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[2].get());
-    // The element Jacobian * quadrature weight at each integration point.
+    FEBase *fe = &elem_data.element_type->scalar_fe(3);
+    FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(0);
+    FEVectorBase *fe_vec_lagrange = &elem_data.element_type->vector_fe(2);
     const std::vector<Real> &JxW = fe->get_JxW();
-    // const std::vector<Real> &JxW_edge = fe_edge->get_JxW();
-    // const std::vector<Real> &JxW_vec_lagrange = fe_vec_lagrange->get_JxW();
-    // The element shape functions evaluated at the quadrature points.
     const std::vector<std::vector<Real>> &phi = fe->get_phi();
-
-    // The element shape function gradients for the velocity
-    // variables evaluated at the quadrature points.
     const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
-
-    // The velocity shape function gradients at interior
-    // quadrature points.
     const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
-
     const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
-
     const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
-    // const std::vector<std::vector<RealTensorValue>> &dphi_vec = fe_vec->get_dphi();
-
-    // const auto &qp_lagr = fe->get_xyz();
     // const auto &qp_edge = fe_edge->get_xyz();
     // const auto &qp_vec_lagrange = fe_vec_lagrange->get_xyz();
 
@@ -72,7 +53,6 @@ void ElementBuilder::build_av3dedge()
 
     this->prepare_element_matrix_building();
 
-    // Get the scalar shape functions and vector shape functions
     unsigned int n_dofs_A = fe_edge->n_shape_functions();
     unsigned int n_dofs_V = fe->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
@@ -93,7 +73,6 @@ void ElementBuilder::build_av3dedge()
     auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
     auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
-    // auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     auto build_ke = [&]()
     {
@@ -336,33 +315,13 @@ void ElementBuilder::build_av3dedge()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
     // The penalty values, for solution boundary trace and flux.
 }
 
-// Temporary placeholder for build_av3dedge
 void ElementBuilder::build_av3dedge_rhs()
 {
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
-    // Numeric ids corresponding to each variable in the system
-    // Now we will build the element matrix.  This involves
-    // a double loop to integrate the test functions (i) against
-    // the trial functions (j).
-    //
-    // We have split the numeric integration into two loops
-    // so that we can log the matrix and right-hand-side
-    // computation separately.
-    //
-    // Now start logging the element matrix computation
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
@@ -373,10 +332,8 @@ void ElementBuilder::build_av3dedge_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        FEVectorBase *fe_edge = dynamic_cast<FEVectorBase *>(elem_data.element_type->fe_array[1].get());
+        FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(1);
 
-        // The velocity shape function gradients at interior
-        // quadrature points.
         const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_edge->get_phi();
 
         const std::vector<Real> &JxW = fe_edge->get_JxW();
@@ -384,7 +341,6 @@ void ElementBuilder::build_av3dedge_rhs()
 
         this->prepare_element_matrix_building();
 
-        // Get the scalar shape functions and vector shape functions
         unsigned int n_dofs_A = fe_edge->n_shape_functions();
         unsigned int nq = fe_edge->n_quadrature_points();
 
@@ -436,7 +392,7 @@ void ElementBuilder::build_av3dedge_rhs()
         break;
     }
     default:
-        libmesh_error_msg("Physical region not implemented");
+        apec::logging::error_and_abort("Physical region not implemented");
     }
     return;
 }
@@ -663,7 +619,7 @@ void ElementBuilder::build_av3dedge_element_solution()
             break;
         }
         default:
-            libmesh_error_msg("Physical region not implemented");
+            apec::logging::error_and_abort("Physical region not implemented");
         }
 
         have_je = true;

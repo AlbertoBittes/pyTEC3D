@@ -1,3 +1,12 @@
+/**
+ * @file apec_m_logging.cpp
+ * @brief Process-global spdlog initialisation, MPI-rank filtering, and structured output helpers.
+ *
+ * The logger is initialised once (lazy singleton pattern protected by a mutex) and
+ * uses a custom spdlog flag (%C) that substitutes elapsed CPU time in seconds.
+ * Rank filtering is applied at the call site so that non-root ranks emit nothing
+ * unless log_all_ranks() returns true.
+ */
 #include "apec_m_logging.h"
 
 #include <spdlog/sinks/stdout_color_sinks.h>
