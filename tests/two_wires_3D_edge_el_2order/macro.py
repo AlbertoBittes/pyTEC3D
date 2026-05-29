@@ -11,7 +11,7 @@ apec = APEC_M()
 # )
 filename = "two_wires_3D_edge_el_2order"
 
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 apec.read_mesh(filepath)
 

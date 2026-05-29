@@ -65,7 +65,13 @@ enum ConstantColumnIndex : unsigned int
 
 class BinaryReader;
 
-class ElementBuilder
+#if defined(__GNUC__) || defined(__clang__)
+#define APEC_M_ELEMENT_BUILDER_CLASS_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define APEC_M_ELEMENT_BUILDER_CLASS_HIDDEN
+#endif
+
+class APEC_M_ELEMENT_BUILDER_CLASS_HIDDEN ElementBuilder
     : public FEParentObjectBase<EquationSystems>
 {
 public:
@@ -192,5 +198,7 @@ private:
     Real material_value(dof_id_type id, unsigned int col_idx) const;
     Real constant_value(dof_id_type id, unsigned int col_idx) const;
 };
+
+#undef APEC_M_ELEMENT_BUILDER_CLASS_HIDDEN
 
 #endif // ELEMENT_BUILDER_H

@@ -40,7 +40,13 @@ from typing import Dict, Iterable, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
 import numpy as np
 import vtk
-import vtk.util.numpy_support as vtknp
+import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
+
+from .logging_utils import get_logger
+from .validation_utils import ensure_vtk_unstructured_grid
+
+
+LOGGER = get_logger("apec_m.tree_gauge")
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
@@ -91,12 +97,26 @@ EDGE_TABLES: Dict[int, Tuple[Sequence[Tuple[int, int]], Sequence[int]]] = {
 }
 
 
-class DSU:
+class _DSU:
+    """Disjoint-set union structure used to build a spanning forest."""
     def __init__(self) -> None:
+        """Initialize empty parent/rank maps.
+
+        Returns:
+            None
+        """
         self.parent: Dict[int, int] = {}
         self.rank: Dict[int, int] = {}
 
     def find(self, x: int) -> int:
+        """Find representative with path compression.
+
+        Args:
+            x: Node id.
+
+        Returns:
+            int: Representative id.
+        """
         if x not in self.parent:
             self.parent[x] = x
             self.rank[x] = 0
@@ -106,6 +126,15 @@ class DSU:
         return self.parent[x]
 
     def union(self, a: int, b: int) -> bool:
+        """Union by rank.
+
+        Args:
+            a: First node id.
+            b: Second node id.
+
+        Returns:
+            bool: True when the sets were merged, False when already connected.
+        """
         ra, rb = self.find(a), self.find(b)
         if ra == rb:
             return False
@@ -144,6 +173,7 @@ class TreeGauge:
             Tuple[vtkIntArray, vtkIntArray, Dict[str, int]]: (tree_arr, cotree_arr, info) where info contains
             diagnostic counts like num_edges, num_tree, num_cotree, skipped_unknown_cells.
         """
+        ensure_vtk_unstructured_grid(ugrid, arg_name="ugrid")
         npts = ugrid.GetNumberOfPoints()
         constrained = set(constrained_point_ids or [])
 
@@ -197,7 +227,7 @@ class TreeGauge:
                     cotree_np[mid] = 1
 
         # Union–Find spanning tree
-        dsu = DSU()
+        dsu = _DSU()
         for mid, (a, b) in edge_map.items():
             if cotree_np[mid] == 1:
                 continue
@@ -291,7 +321,7 @@ class TreeGauge:
             tree_name=tree_name,
             cotree_name=cotree_name,
         )
-        print(f"Tree–cotree gauge built. Info: {info}")
+        LOGGER.info("Tree/cotree gauge built. Info: %s", info)
 
         tree_arr = ugrid.GetPointData().GetArray(tree_name)
         if tree_arr is not None:
@@ -340,6 +370,7 @@ class TreeGauge:
         Returns:
             vtkIntArray: Added mask array.
         """
+        ensure_vtk_unstructured_grid(ugrid, arg_name="ugrid")
         npts = ugrid.GetNumberOfPoints()
         mask = np.zeros(npts, dtype=np.int32)
 
@@ -379,6 +410,7 @@ class TreeGauge:
         Returns:
             Set[int]: Corner point ids connected to constrained midside nodes.
         """
+        ensure_vtk_unstructured_grid(ugrid, arg_name="ugrid")
         arr = ugrid.GetPointData().GetArray(array_name)
         if arr is None:
             raise ValueError(f"Array '{array_name}' not found in PointData.")

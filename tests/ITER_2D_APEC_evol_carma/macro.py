@@ -12,11 +12,11 @@ apec = APEC_M()
 
 apec_evolution_mesh = "ITER_2D_APEC_evol_carma"
 
-evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+evol_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
 # Read the output of the equilibrium analysis
 static_mesh_filepath = os.path.join(
     os.getcwd(),
-    "tests",
+    "..",
     "ITER_2D_APEC_carma",
     "output",
     "ITER_2D_APEC_carma_out_1.vtu",

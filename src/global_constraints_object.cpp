@@ -19,8 +19,10 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <limits>
 #include <map>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -28,12 +30,122 @@
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
+#include "apec_m_logging.h"
 
 namespace py = pybind11;
 
 namespace
 {
     using RotationCache = std::unordered_map<vtkIdType, TensorValue<Real>>;
+
+    struct VariableConstraintStat
+    {
+        std::string variable_name;
+        std::size_t total_count = 0;
+        std::size_t applied_count = 0;
+    };
+
+    std::string format_constraints_summary_table(std::size_t time_integration_count,
+                                                 std::size_t dof_constraint_count,
+                                                 std::size_t coupling_count,
+                                                 std::size_t total_count,
+                                                 std::size_t applied_count,
+                                                 const std::vector<VariableConstraintStat> &variable_stats,
+                                                 std::size_t unknown_total_count,
+                                                 std::size_t unknown_applied_count)
+    {
+        std::ostringstream out;
+        const auto fit_label = [](const std::string &label) -> std::string
+        {
+            if (label.size() <= 29)
+                return label;
+            return label.substr(0, 26) + "...";
+        };
+
+        const auto append_row = [&out](const std::string &label, std::size_t value)
+        {
+            out << "| " << std::left << std::setw(29) << label
+                << " | " << std::left << std::setw(19) << value << " |\n";
+        };
+
+        const auto append_value_row = [&out, &fit_label](const std::string &label, const std::string &value)
+        {
+            out << "| " << std::left << std::setw(29) << fit_label(label)
+                << " | " << std::left << std::setw(19) << value << " |\n";
+        };
+
+        out << "+-----------------------------------------------------+\n";
+        out << "| " << std::left << std::setw(52) << "Constraints Summary" << "|\n";
+        out << "+-------------------------------+---------------------+\n";
+        append_row("time integration constraints", time_integration_count);
+        append_row("dof constraints", dof_constraint_count);
+        append_row("coupling constraints", coupling_count);
+        append_row("total constraints", total_count);
+        append_row("applied constraints", applied_count);
+
+        out << "+-------------------------------+---------------------+\n";
+        append_value_row("per-variable (total/applied)", "");
+        for (const auto &var_stat : variable_stats)
+        {
+            append_value_row("  " + var_stat.variable_name,
+                             std::to_string(var_stat.total_count) + " / " + std::to_string(var_stat.applied_count));
+        }
+        if (unknown_total_count > 0 || unknown_applied_count > 0)
+        {
+            append_value_row("  <unknown>",
+                             std::to_string(unknown_total_count) + " / " + std::to_string(unknown_applied_count));
+        }
+        out << "+-------------------------------+---------------------+";
+        return out.str();
+    }
+
+    std::unordered_map<dof_id_type, unsigned int> build_dof_to_variable_index_map(const System &system)
+    {
+        std::unordered_map<dof_id_type, unsigned int> dof_to_var_idx;
+        const auto &mesh = system.get_equation_systems().get_mesh();
+        const unsigned int sys_num = system.number();
+        const unsigned int n_vars = system.n_vars();
+
+        // Build once: map each local dof to its variable index for O(1) summary lookups.
+        for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
+        {
+            std::vector<dof_id_type> dof_indices;
+            system.get_dof_map().local_variable_indices(dof_indices, mesh, var_num);
+            for (const dof_id_type dof : dof_indices)
+                dof_to_var_idx.emplace(dof, var_num);
+        }
+
+        return dof_to_var_idx;
+    }
+
+    std::string describe_dof_owner(const System &system, const dof_id_type dof)
+    {
+        const auto &mesh = system.get_equation_systems().get_mesh();
+        const unsigned int sys_num = system.number();
+
+        for (const auto &node_ptr : mesh.local_node_ptr_range())
+        {
+            for (unsigned int var_num = 0; var_num < system.n_vars(); ++var_num)
+            {
+                if (var_num >= node_ptr->n_vars(sys_num) ||
+                    node_ptr->n_dofs(sys_num, var_num) == 0)
+                    continue;
+
+                if (node_ptr->dof_number(sys_num, var_num, 0) == dof)
+                {
+                    std::ostringstream out;
+                    out << "node=" << node_ptr->id()
+                        << ", variable=" << system.variable_name(var_num)
+                        << ", dof=" << dof;
+                    return out.str();
+                }
+            }
+        }
+
+        std::ostringstream out;
+        out << "node=<unknown>, variable=<unknown>, dof=" << dof;
+        return out.str();
+    }
 
     const py::object &coordinate_system_class()
     {
@@ -790,38 +902,144 @@ void GlobalConstraintsObject::constrain()
 {
     if (!this->get_parent_object()->is_initialized())
         return;
-    DofMap &dof_map = this->parent_object->get_dof_map();
-    libMesh::out << "Applying constraints to the system." << std::endl;
 
-    libMesh::out << "Setting transient effects constraints..." << std::endl;
+    System &system = *this->get_parent_object();
+    DofMap &dof_map = this->parent_object->get_dof_map();
+    apec::logging::info("Computing nodal DOF constraints");
+
+    const unsigned int n_vars = system.n_vars();
+    const auto dof_to_var_idx = build_dof_to_variable_index_map(system);
+    std::vector<std::size_t> total_constraints_per_variable(n_vars, 0);
+    std::vector<std::size_t> applied_constraints_per_variable(n_vars, 0);
+    std::size_t unknown_total_constraints = 0;
+    std::size_t unknown_applied_constraints = 0;
+
+    const auto count_total_for_dof = [&dof_to_var_idx,
+                                      &total_constraints_per_variable,
+                                      &unknown_total_constraints](const dof_id_type dof)
+    {
+        const auto it = dof_to_var_idx.find(dof);
+        if (it == dof_to_var_idx.end())
+        {
+            ++unknown_total_constraints;
+            return;
+        }
+        ++total_constraints_per_variable[it->second];
+    };
+
+    const auto count_applied_for_dof = [&dof_to_var_idx,
+                                        &applied_constraints_per_variable,
+                                        &unknown_applied_constraints](const dof_id_type dof)
+    {
+        const auto it = dof_to_var_idx.find(dof);
+        if (it == dof_to_var_idx.end())
+        {
+            ++unknown_applied_constraints;
+            return;
+        }
+        ++applied_constraints_per_variable[it->second];
+    };
 
     std::unordered_map<dof_id_type, ConstraintEntry> constraints;
-    auto time_integration_constraints = build_time_integration_constraints();
-    for (const auto &entry : time_integration_constraints)
-        constraints.emplace(entry.first, entry.second);
+    const auto add_or_update_constraint = [&constraints,
+                                           &count_total_for_dof](const dof_id_type dof,
+                                                                 const ConstraintEntry &entry)
+    {
+        const auto insert_result = constraints.emplace(dof, entry);
+        if (!insert_result.second)
+        {
+            insert_result.first->second = entry;
+            return;
+        }
+        count_total_for_dof(dof);
+    };
 
-    libMesh::out << "Setting point constraints..." << std::endl;
-    auto point_constraints = build_point_constraints();
-    for (const auto &entry : point_constraints)
-        constraints.emplace(entry.first, entry.second);
-
-    libMesh::out << "Setting coupling constraints..." << std::endl;
     auto coupling_constraints = build_coupling_constraints();
     for (const auto &entry : coupling_constraints)
-        constraints.emplace(entry.first, entry.second);
+        add_or_update_constraint(entry.first, entry.second);
 
+    auto point_constraints = build_point_constraints();
+    std::size_t overridden_couplings = 0;
+    for (const auto &entry : point_constraints)
+    {
+        if (constraints.find(entry.first) != constraints.end() &&
+            coupling_constraints.find(entry.first) != coupling_constraints.end())
+        {
+            ++overridden_couplings;
+            apec::logging::warn("Point constraint overrides coupling constraint ({})",
+                                describe_dof_owner(*this->get_parent_object(), entry.first));
+        }
+        add_or_update_constraint(entry.first, entry.second);
+    }
+
+    auto time_integration_constraints = build_time_integration_constraints();
+    for (const auto &entry : time_integration_constraints)
+    {
+        ConstraintEntry forced_zero = entry.second;
+        forced_zero.row.clear();
+        forced_zero.value = 0.0;
+        add_or_update_constraint(entry.first, forced_zero);
+    }
+
+    std::size_t applied_constraints = 0;
     for (const auto &entry : constraints)
     {
         if (dof_map.is_constrained_dof(entry.first))
             continue;
         dof_map.add_constraint_row(entry.first, entry.second.row, entry.second.value, true);
+        ++applied_constraints;
+        count_applied_for_dof(entry.first);
     }
+
+    const auto &comm = dof_map.comm();
+    std::size_t global_time_integration_constraints = time_integration_constraints.size();
+    std::size_t global_point_constraints = point_constraints.size();
+    std::size_t global_coupling_constraints = coupling_constraints.size();
+    std::size_t global_total_constraints = constraints.size();
+    std::size_t global_applied_constraints = applied_constraints;
+    for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
+    {
+        comm.sum(total_constraints_per_variable[var_idx]);
+        comm.sum(applied_constraints_per_variable[var_idx]);
+    }
+    comm.sum(unknown_total_constraints);
+    comm.sum(unknown_applied_constraints);
+    comm.sum(global_time_integration_constraints);
+    comm.sum(global_point_constraints);
+    comm.sum(global_coupling_constraints);
+    comm.sum(global_total_constraints);
+    comm.sum(global_applied_constraints);
+
+    std::vector<VariableConstraintStat> variable_stats;
+    variable_stats.reserve(n_vars);
+    for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
+    {
+        const std::size_t total_count = total_constraints_per_variable[var_idx];
+        const std::size_t applied_count = applied_constraints_per_variable[var_idx];
+        if (total_count == 0 && applied_count == 0)
+            continue;
+        variable_stats.push_back({system.variable_name(var_idx), total_count, applied_count});
+    }
+    std::sort(variable_stats.begin(), variable_stats.end(),
+              [](const VariableConstraintStat &lhs, const VariableConstraintStat &rhs)
+              {
+                  if (lhs.total_count != rhs.total_count)
+                      return lhs.total_count > rhs.total_count;
+                  return lhs.variable_name < rhs.variable_name;
+              });
+
+    apec::logging::table_root(format_constraints_summary_table(global_time_integration_constraints,
+                                                               global_point_constraints,
+                                                               global_coupling_constraints,
+                                                               global_total_constraints,
+                                                               global_applied_constraints,
+                                                               variable_stats,
+                                                               unknown_total_constraints,
+                                                               unknown_applied_constraints));
 }
 
 bool GlobalConstraintsObject::check_update_boundary_conditions()
 {
-    libMesh::out << "Checking constrained DOFs..." << std::endl;
-
     bool update_boundary_conditions = false;
     DofMap &dof_map = this->parent_object->get_dof_map();
     const auto &comm = dof_map.comm();
@@ -859,7 +1077,7 @@ bool GlobalConstraintsObject::check_update_boundary_conditions()
     if (keys_differ())
     {
         update_boundary_conditions = true;
-        libMesh::out << "Boundary conditions update required: different constrained DOFs" << std::endl;
+        apec::logging::info("Boundary conditions update required: constrained DOF set changed");
     }
 
     comm.max(update_boundary_conditions);

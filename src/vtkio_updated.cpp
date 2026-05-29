@@ -53,6 +53,7 @@
 #include "libmesh/restore_warnings.h"
 #include "variables_map.h"
 #include "apec_m_system.h"
+#include "apec_m_logging.h"
 // C++ includes
 #include <algorithm>
 #include <cctype>
@@ -206,6 +207,8 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
         std::vector<std::string> var_names;
         _eq_sys->build_variable_names(var_names, nullptr, &system_names);
 
+        if ("Nodal Solution" == system_name)
+            apec::logging::info("Averaging nodal solution at nodes");
         auto parallel_solution = _eq_sys->build_parallel_solution_vector(&system_names);
         libmesh_error_msg_if(!parallel_solution,
                              "VTKIO_Updated::write_system_grid: failed to build parallel nodal solution vector.");

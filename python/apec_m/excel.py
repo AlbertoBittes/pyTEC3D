@@ -2,10 +2,21 @@ import os
 from os import PathLike
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
+import numpy as np
 import pandas as pd
 
 from .constants import DEFAULT_COLUMNS_ATTRIBUTES_TYPES, VARIABLES_GLOBAL_LIST
 from .model_edit import ModelEdit
+from .logging_utils import get_logger
+from .validation_utils import (
+    ensure_in_options,
+    ensure_non_empty_string,
+    ensure_pathlike,
+    ensure_vtk_unstructured_grid,
+)
+
+
+LOGGER = get_logger("apec_m.excel")
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     import vtk
@@ -32,17 +43,19 @@ class Excel:
         Raises:
             ValueError: If the data_type is invalid.
         """
+        ensure_vtk_unstructured_grid(mesh)
+        output_excel_file = ensure_pathlike(output_excel_file, "output_excel_file")
+        data_type = ensure_in_options(data_type, "data_type", ("elem", "node"))
+
+        output_dir = os.path.dirname(output_excel_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         # Determine the VTK data and mapping based on the data_type
-        if data_type == "elem":
-            vtk_data = mesh.GetCellData()
-        elif data_type == "node":
-            vtk_data = mesh.GetPointData()
-        else:
-            raise ValueError("Invalid data_type. Must be 'elem' or 'node'.")
+        vtk_data = mesh.GetCellData() if data_type == "elem" else mesh.GetPointData()
 
-        # Retrieve the final_data NumPy array
-        final_data = Binary.create_numpy_array_for_binary(vtk_data)
+        # Retrieve the final_data as a structured DataFrame
+        final_data = Excel._vtk_data_to_records(vtk_data)
 
         # Convert the NumPy array to a pandas DataFrame
         df = pd.DataFrame(final_data)
@@ -67,7 +80,55 @@ class Excel:
         else:
             with pd.ExcelWriter(output_excel_file, engine="openpyxl") as writer:
                 df.to_excel(writer, sheet_name=data_type, index=False)
-        print(f"{data_type.capitalize()} written to '{output_excel_file}'.")
+        LOGGER.info("%s written to '%s'.", data_type.capitalize(), output_excel_file)
+
+    @staticmethod
+    def _vtk_data_to_records(vtk_data: "vtk.vtkDataSetAttributes") -> pd.DataFrame:
+        """Extract non-NaN values from named VTK arrays into a structured records table.
+
+        Iterates over VARIABLES_GLOBAL_LIST and collects every non-NaN entry as a
+        row with columns [vtk_id, load_bc_number, component, value].
+
+        Args:
+            vtk_data: VTK data attributes object (CellData or PointData).
+
+        Returns:
+            pd.DataFrame: Records with columns [vtk_id, load_bc_number, component, value].
+        """
+        import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
+
+        records: List[Dict[str, Any]] = []
+        for load_bc_number, var_name in enumerate(VARIABLES_GLOBAL_LIST):
+            vtk_array = vtk_data.GetArray(var_name)
+            if vtk_array is None:
+                continue
+            arr = np.asarray(vtknp.vtk_to_numpy(vtk_array), dtype=float)
+            if arr.ndim == 1:
+                valid_ids = np.flatnonzero(~np.isnan(arr))
+                for vtk_id in valid_ids:
+                    records.append(
+                        {
+                            "vtk_id": int(vtk_id),
+                            "load_bc_number": load_bc_number,
+                            "component": 0,
+                            "value": float(arr[vtk_id]),
+                        }
+                    )
+            else:
+                valid_rows, valid_cols = np.where(~np.isnan(arr))
+                for vtk_id, comp in zip(valid_rows.tolist(), valid_cols.tolist()):
+                    records.append(
+                        {
+                            "vtk_id": int(vtk_id),
+                            "load_bc_number": load_bc_number,
+                            "component": int(comp),
+                            "value": float(arr[vtk_id, comp]),
+                        }
+                    )
+        return pd.DataFrame(
+            records,
+            columns=["vtk_id", "load_bc_number", "component", "value"],
+        )
 
     @staticmethod
     def read_excel_dict(
@@ -89,6 +150,9 @@ class Excel:
             FileNotFoundError: If the Excel file does not exist.
         """
 
+        excel_file = ensure_pathlike(excel_file, "excel_file")
+        sheet_name = ensure_non_empty_string(sheet_name, "sheet_name")
+
         if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys():
             raise ValueError(
                 f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
@@ -98,7 +162,7 @@ class Excel:
         try:
             df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
         except ValueError:
-            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            LOGGER.warning("Sheet '%s' not found in '%s'.", sheet_name, excel_file)
             return None
         required_columns = ["SETTING", "VALUE"]
         if not all(column in df.columns for column in required_columns):
@@ -126,7 +190,7 @@ class Excel:
                 elif typ == str:
                     value = str(value)
             result_dict[setting] = value
-        print(f"Data from sheet '{sheet_name}' successfully loaded into dictionary.")
+        LOGGER.info("Data from sheet '%s' successfully loaded into dictionary.", sheet_name)
         return result_dict
 
     @staticmethod
@@ -148,6 +212,9 @@ class Excel:
             ValueError: If the sheet name is not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES or if the columns do not match.
             FileNotFoundError: If the Excel file does not exist.
         """
+        excel_file = ensure_pathlike(excel_file, "excel_file")
+        sheet_name = ensure_non_empty_string(sheet_name, "sheet_name")
+
         if sheet_name not in DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys():
             raise ValueError(
                 f"Invalid sheet name '{sheet_name}'. Must be one of {list(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys())}."
@@ -157,7 +224,7 @@ class Excel:
         try:
             df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
         except ValueError:
-            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            LOGGER.warning("Sheet '%s' not found in '%s'.", sheet_name, excel_file)
             return None
         expected_columns = DEFAULT_COLUMNS_ATTRIBUTES_TYPES[sheet_name]
         if not all(column in expected_columns for column in df.columns):
@@ -174,7 +241,7 @@ class Excel:
                     df[col] = df[col].astype(float)
                 elif typ == str:
                     df[col] = df[col].astype(str)
-        print(f"Data from sheet '{sheet_name}' successfully loaded into DataFrame.")
+        LOGGER.info("Data from sheet '%s' successfully loaded into DataFrame.", sheet_name)
         return df
 
     @staticmethod
@@ -200,23 +267,30 @@ class Excel:
             ValueError: If the data_type is invalid or the sheet does not exist.
             FileNotFoundError: If the Excel file is missing.
         """
+        ensure_vtk_unstructured_grid(mesh)
+        excel_file = ensure_pathlike(excel_file, "excel_file")
+        sheet_name = ensure_non_empty_string(sheet_name, "sheet_name")
         try:
             df = pd.read_excel(excel_file, sheet_name=sheet_name, engine="openpyxl")
         except ValueError:
-            print(f"Warning: Sheet '{sheet_name}' not found in '{excel_file}'.")
+            LOGGER.warning("Sheet '%s' not found in '%s'.", sheet_name, excel_file)
             return
+
+        required_columns = {"vtk_id", "label", "component", "value"}
+        missing_columns = required_columns.difference(df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Sheet '{sheet_name}' is missing required columns: {sorted(missing_columns)}."
+            )
 
         if data_type is None:
             data_type = sheet_name
+        data_type = ensure_in_options(data_type, "data_type", ("elem", "node"))
         # Determine the VTK data type to update
         if data_type == "elem":
             vtk_data = mesh.GetCellData()
         elif data_type == "node":
             vtk_data = mesh.GetPointData()
-        else:
-            raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be 'elem' or 'node'."
-            )
 
         ModelEdit.update_vtk_grid(vtk_data, df)
-        print(f"VTK grid updated with data from sheet '{sheet_name}'.")
+        LOGGER.info("VTK grid updated with data from sheet '%s'.", sheet_name)

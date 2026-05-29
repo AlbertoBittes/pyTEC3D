@@ -69,7 +69,7 @@ Notes:
 Use this if you want to run the same script outside `conda build`.
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 mpi4py pip -y
+conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 spdlog mpi4py pip -y
 conda activate apec-m-dev
 
 git clone https://github.com/AlbertoBittes/APEC-M.git
@@ -83,7 +83,7 @@ bash conda-recipe/recipe/build.sh
 ## 3) Local editable debug build via `build.sh` (`editable` mode)
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 mpi4py pip -y
+conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 spdlog mpi4py pip -y
 conda activate apec-m-dev
 
 git clone https://github.com/AlbertoBittes/APEC-M.git

@@ -15,7 +15,7 @@ apec = APEC_M()
 # )
 filename = "ITER_coil_inf_3D"
 
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 apec.read_mesh(filepath)
 

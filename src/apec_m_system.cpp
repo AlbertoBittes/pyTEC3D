@@ -1,6 +1,8 @@
 #include "apec_m_system.h"
 
 #include <array>
+#include <iomanip>
+#include <sstream>
 #include <set>
 #include <unordered_set>
 #include <vector>
@@ -8,16 +10,48 @@
 #include "system_matrix_reduction.h"
 #include "element_types_factory.h"
 #include "global_constraints_object.h"
+#include "apec_m_logging.h"
 
 #include "libmesh/libmesh.h"
 #include "libmesh/mesh_serializer.h"
 #include "libmesh/numeric_vector.h"
 #include "variables_map.h"
 
+namespace
+{
+    std::string to_scientific_string(Real value)
+    {
+        std::ostringstream out;
+        out << std::scientific << std::setprecision(6) << value;
+        return out.str();
+    }
+
+    std::string format_time_step_table(const ApecMLinearSystem::TimeStep &ts, const std::string &title)
+    {
+        std::ostringstream out;
+        const auto append_row = [&out](const std::string &label, const std::string &value)
+        {
+            out << "| " << std::left << std::setw(20) << label
+                << " | " << std::left << std::setw(20) << value << " |\n";
+        };
+
+        out << "+---------------------------------------------+\n";
+        out << "| " << std::left << std::setw(44) << title << "|\n";
+        out << "+----------------------+----------------------+\n";
+        append_row("index", std::to_string(ts.time_step_idx));
+        append_row("time", to_scientific_string(ts.time));
+        append_row("dt", to_scientific_string(ts.dt));
+        append_row("theta", to_scientific_string(ts.theta));
+        append_row("transient_effects", ts.transient_effects ? "true" : "false");
+        out << "+----------------------+----------------------+";
+        return out.str();
+    }
+} // namespace
+
 const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM_INFO_MAP = {
-    {ApecMSystemBase::DOF_SOLUTION_SYSTEM, "ApecMLinearSystem"},
-    {ApecMSystemBase::NODAL_SOLUTION, "NodalSolutionSystem"},
-    {ApecMSystemBase::ELEMENT_SOLUTION, "ElementSolutionSystem"},
+    {ApecMSystemBase::DOF_SOLUTION_SYSTEM, "DOF Solution"},
+    {ApecMSystemBase::NODAL_SOLUTION, "Nodal Solution"},
+    {ApecMSystemBase::ELEMENT_SOLUTION, "Element Solution"},
 };
 
 const std::string &ApecMSystemBase::system_name_from_type(ApecMSystemBase::SystemType system_type)
@@ -54,6 +88,8 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
         time_step->updated = true;
         *this->old_local_solution = *this->current_local_solution;
         this->old_local_solution->close();
+        apec::logging::info("Advanced to new time step");
+        apec::logging::table_root(format_time_step_table(*time_step, "Time Step Information"));
         return;
     }
 
@@ -74,6 +110,8 @@ void ApecMLinearSystem::prepare_time_step_solve(const pybind11::dict &time_step_
         time_step->updated = true;
         *this->old_local_solution = *this->current_local_solution;
         this->old_local_solution->close();
+        apec::logging::info("Advanced to new time step");
+        apec::logging::table_root(format_time_step_table(*time_step, "Time Step Information"));
         return;
     }
 
@@ -135,7 +173,7 @@ void ApecMLinearSystem::compute_solution_time_derivative()
 
 void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
-    libMesh::out << "Removing constrained DOFs from the system..." << std::endl;
+    apec::logging::info("Removing constrained DOFs from system matrix and RHS");
     SystemMatrixReduction *subset_ptr = new SystemMatrixReduction(*this);
     this->release_subset_solve();
     this->restrict_solve_to(subset_ptr, SUBSET_ZERO);

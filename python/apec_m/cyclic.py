@@ -9,6 +9,7 @@ import vtk.util.numpy_support as vtknp
 from .selector import Selector
 from .model_edit import ModelEdit
 from .constants import CONSTANTS_COLUMNS_TYPES
+from .validation_utils import ensure_vtk_unstructured_grid
 
 from .coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
 
@@ -32,6 +33,7 @@ class Cyclic:
         Returns:
             dict: Contains `"node"` and/or `"elem"` keys for computed flux arrays.
         """
+        ensure_vtk_unstructured_grid(mesh)
         if coordinate_system.type != "cylindrical":
             raise ValueError("coordinate_system must be cylindrical.")
         spatial_dim = mesh.GetMaxSpatialDimension()
@@ -160,6 +162,8 @@ class Cyclic:
         Raises:
             ValueError: If inputs are invalid or the input mesh is not 2D.
         """
+        ensure_vtk_unstructured_grid(input_mesh, arg_name="input_mesh")
+        ensure_vtk_unstructured_grid(target_mesh, arg_name="target_mesh")
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
@@ -330,6 +334,7 @@ class Cyclic:
             Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "VARIABLE"] when
                 variables are provided, otherwise None.
         """
+        ensure_vtk_unstructured_grid(mesh)
         if coordinate_system.type != "cylindrical":
             raise ValueError("coordinate_system must be cylindrical.")
         if tolerance <= 0:
@@ -430,6 +435,7 @@ class Cyclic:
         Returns:
             pd.DataFrame: Rows ready to assign into apec.constants.
         """
+        ensure_vtk_unstructured_grid(mesh)
         if coordinate_system.type != "cylindrical":
             raise ValueError("coordinate_system must be cylindrical.")
 

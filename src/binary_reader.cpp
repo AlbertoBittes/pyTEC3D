@@ -13,6 +13,7 @@
 #include "element_builder.h"
 #include "element_types_factory.h"
 #include "solver_configuration.h"
+#include "apec_m_logging.h"
 
 BinaryReader::BinaryReader() = default;
 
@@ -23,6 +24,7 @@ std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::
     {
     case FileMode::Read:
     {
+        apec::logging::trace("Opening binary file for read: {}", filepath.string());
         auto stream = std::make_unique<std::ifstream>(filepath, std::ios::binary);
         if (!stream->is_open())
             libmesh_error_msg("BinaryReader: failed to open file for reading '" + filepath.string() + "'.");
@@ -34,6 +36,7 @@ std::unique_ptr<std::ios> BinaryReader::open_file_stream(const std::filesystem::
         if (!folder.empty() && !std::filesystem::exists(folder))
             std::filesystem::create_directories(folder);
 
+        apec::logging::trace("Opening binary file for write: {}", filepath.string());
         auto stream = std::make_unique<std::ofstream>(filepath, std::ios::binary | std::ios::trunc);
         if (!stream->is_open())
             libmesh_error_msg("BinaryReader: failed to open file for writing '" + filepath.string() + "'.");
@@ -62,6 +65,7 @@ void BinaryReader::close_file_streams(std::vector<std::unique_ptr<std::ios>> &st
     for (auto &stream : streams)
         stream.reset();
     streams.clear();
+    apec::logging::trace("Closed binary streams");
 }
 
 void BinaryReader::write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set)

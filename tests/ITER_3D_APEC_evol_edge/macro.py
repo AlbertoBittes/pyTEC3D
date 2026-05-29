@@ -17,8 +17,8 @@ apec_evolution_mesh_notrans = "ITER_3D_APEC_evol_edge_1"
 apec_equilibrium_output = "ITER_2D_APEC_out_0"
 
 
-evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
-static_mesh_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu")
+evol_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+static_mesh_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh_notrans + ".vtu")
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),

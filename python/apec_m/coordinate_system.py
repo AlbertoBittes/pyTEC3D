@@ -3,6 +3,11 @@ from typing import Any, Optional, Sequence, Type, TypeVar, cast
 
 import numpy as np
 
+from .logging_utils import get_logger
+
+
+LOGGER = get_logger("apec_m.coordinate_system")
+
 TCoordinateSystem = TypeVar("TCoordinateSystem", bound="CoordinateSystem")
 
 class CoordinateSystem(ABC):
@@ -10,49 +15,244 @@ class CoordinateSystem(ABC):
     def __init__(
         self, origin: Sequence[float], local_to_global_cart: np.ndarray, cs_type: str
     ):
-        self._origin = np.asarray(origin, dtype=float).reshape(3)
-        self._local_to_global_cart = np.asarray(
-            local_to_global_cart, dtype=float
-        ).reshape(3, 3)
+        """Store validated origin/rotation and coordinate-system type.
+
+        Args:
+            origin: Coordinate-system origin.
+            local_to_global_cart: 3x3 local-to-global rotation matrix.
+            cs_type: Coordinate-system type name.
+
+        Returns:
+            None
+        """
+        self._origin = CoordinateSystem._as_vector3(origin, "origin")
+        self._local_to_global_cart = CoordinateSystem._as_rotation_matrix(
+            local_to_global_cart,
+            "local_to_global_cart",
+        )
+        if not isinstance(cs_type, str) or not cs_type.strip():
+            raise ValueError("cs_type must be a non-empty string.")
         self._type = cs_type
+        LOGGER.debug("Initialized %s coordinate system.", cs_type)
+
+    @staticmethod
+    def _as_vector3(values: Sequence[float], arg_name: str) -> np.ndarray:
+        """Convert an input sequence to a finite shape-(3,) NumPy array.
+
+        Args:
+            values: Candidate vector.
+            arg_name: Parameter name used in error messages.
+
+        Returns:
+            np.ndarray: Validated shape-(3,) vector.
+        """
+        arr = np.asarray(values, dtype=float)
+        if arr.shape != (3,):
+            raise ValueError(f"{arg_name} must have shape (3,), got {arr.shape}.")
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{arg_name} must contain only finite values.")
+        return arr
+
+    @staticmethod
+    def _as_points3(values: np.ndarray, arg_name: str) -> np.ndarray:
+        """Convert points/vectors to a finite shape-(N, 3) NumPy array.
+
+        Args:
+            values: Candidate points/vectors array.
+            arg_name: Parameter name used in error messages.
+
+        Returns:
+            np.ndarray: Validated shape-(N, 3) array.
+        """
+        arr = np.asarray(values, dtype=float)
+        if arr.ndim == 1:
+            if arr.shape[0] != 3:
+                raise ValueError(
+                    f"{arg_name} must have shape (N, 3) or (3,), got {arr.shape}."
+                )
+            arr = arr.reshape(1, 3)
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(
+                f"{arg_name} must have shape (N, 3) or (3,), got {arr.shape}."
+            )
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{arg_name} must contain only finite values.")
+        return arr
+
+    @staticmethod
+    def _as_rotation_matrix(values: np.ndarray, arg_name: str) -> np.ndarray:
+        """Validate a finite orthonormal 3x3 rotation matrix.
+
+        Args:
+            values: Candidate rotation matrix.
+            arg_name: Parameter name used in error messages.
+
+        Returns:
+            np.ndarray: Validated shape-(3, 3) rotation matrix.
+        """
+        arr = np.asarray(values, dtype=float)
+        if arr.shape != (3, 3):
+            raise ValueError(f"{arg_name} must have shape (3, 3), got {arr.shape}.")
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{arg_name} must contain only finite values.")
+        gram = arr.T @ arr
+        if not np.allclose(gram, np.eye(3), atol=1e-8):
+            raise ValueError(
+                f"{arg_name} must be orthonormal (R^T R == I within tolerance)."
+            )
+        return arr
+
+    @staticmethod
+    def _validate_vector_mapping_inputs(
+        vectors: np.ndarray,
+        positions: np.ndarray,
+        vectors_name: str,
+        positions_name: str,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Validate vector/position arrays and ensure matching row counts.
+
+        Args:
+            vectors: Vector-components array.
+            positions: Associated position array.
+            vectors_name: Vector argument name.
+            positions_name: Position argument name.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Validated vectors and positions.
+        """
+        vectors_arr = CoordinateSystem._as_points3(vectors, vectors_name)
+        positions_arr = CoordinateSystem._as_points3(positions, positions_name)
+        if vectors_arr.shape[0] != positions_arr.shape[0]:
+            raise ValueError(
+                f"{vectors_name} and {positions_name} must have the same number of rows."
+            )
+        return vectors_arr, positions_arr
 
     @property
     def type(self) -> str:
+        """Return coordinate-system type identifier.
+
+        Returns:
+            str: Coordinate-system type.
+        """
         return self._type
 
     @property
     def origin(self) -> np.ndarray:
+        """Return coordinate-system origin.
+
+        Returns:
+            np.ndarray: Origin vector.
+        """
         return self._origin
 
     def axis_direction(self) -> np.ndarray:
+        """Return the global direction of the local z-axis.
+
+        Returns:
+            np.ndarray: Direction vector.
+        """
         return self._local_to_global_cart[:, 2].copy()
 
     def to_local(self, global_points: np.ndarray) -> np.ndarray:
-        return (global_points - self._origin) @ self._local_to_global_cart
+        """Map global Cartesian points into local Cartesian coordinates.
+
+        Args:
+            global_points: Global Cartesian points.
+
+        Returns:
+            np.ndarray: Local Cartesian points.
+        """
+        points = CoordinateSystem._as_points3(global_points, "global_points")
+        return (points - self._origin) @ self._local_to_global_cart
 
     def to_global(self, local_points: np.ndarray) -> np.ndarray:
-        return self._origin + local_points @ self._local_to_global_cart.T
+        """Map local Cartesian points into global Cartesian coordinates.
+
+        Args:
+            local_points: Local Cartesian points.
+
+        Returns:
+            np.ndarray: Global Cartesian points.
+        """
+        points = CoordinateSystem._as_points3(local_points, "local_points")
+        return self._origin + points @ self._local_to_global_cart.T
 
     def vector_components_to_local(
         self, global_vectors: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
-        return global_vectors @ self._local_to_global_cart
+        """Map vector components from global Cartesian basis to local Cartesian basis.
+
+        Args:
+            global_vectors: Global Cartesian vector components.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Local Cartesian vector components.
+        """
+        vectors, _ = CoordinateSystem._validate_vector_mapping_inputs(
+            global_vectors,
+            global_positions,
+            "global_vectors",
+            "global_positions",
+        )
+        return vectors @ self._local_to_global_cart
 
     def vector_components_to_global(
         self, local_components: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
-        return local_components @ self._local_to_global_cart.T
+        """Map vector components from local Cartesian basis to global Cartesian basis.
+
+        Args:
+            local_components: Local Cartesian vector components.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Global Cartesian vector components.
+        """
+        components, _ = CoordinateSystem._validate_vector_mapping_inputs(
+            local_components,
+            global_positions,
+            "local_components",
+            "global_positions",
+        )
+        return components @ self._local_to_global_cart.T
 
     @staticmethod
     def _deg_to_rad(values: np.ndarray) -> np.ndarray:
+        """Convert degrees to radians.
+
+        Args:
+            values: Values in degrees.
+
+        Returns:
+            np.ndarray: Values in radians.
+        """
         return np.deg2rad(values)
 
     @staticmethod
     def _rad_to_deg(values: np.ndarray) -> np.ndarray:
+        """Convert radians to degrees.
+
+        Args:
+            values: Values in radians.
+
+        Returns:
+            np.ndarray: Values in degrees.
+        """
         return np.rad2deg(values)
 
     @staticmethod
     def _normalize_or_error(vec: np.ndarray, error_message: str) -> np.ndarray:
+        """Normalize a vector or raise ValueError when its norm is zero.
+
+        Args:
+            vec: Candidate vector.
+            error_message: Error message for invalid vectors.
+
+        Returns:
+            np.ndarray: Unit-normalized vector.
+        """
         norm = np.linalg.norm(vec)
         if norm <= 0.0:
             raise ValueError(error_message)
@@ -62,6 +262,16 @@ class CoordinateSystem(ABC):
     def _build_local_to_global_from_axes(
         x_axis: np.ndarray, y_axis: np.ndarray, z_axis: np.ndarray
     ) -> np.ndarray:
+        """Build a rotation matrix from local basis vectors expressed in global coordinates.
+
+        Args:
+            x_axis: Local x-axis in global coordinates.
+            y_axis: Local y-axis in global coordinates.
+            z_axis: Local z-axis in global coordinates.
+
+        Returns:
+            np.ndarray: Rotation matrix.
+        """
         rotation = np.zeros((3, 3), dtype=float)
         rotation[:, 0] = x_axis
         rotation[:, 1] = y_axis
@@ -72,6 +282,16 @@ class CoordinateSystem(ABC):
     def _build_local_to_global_from_points(
         origin: np.ndarray, nxax: np.ndarray, nxypl: np.ndarray
     ) -> np.ndarray:
+        """Build a right-handed rotation matrix from origin, x-axis point, and xy-plane point.
+
+        Args:
+            origin: Origin point.
+            nxax: Point defining local x-axis direction.
+            nxypl: Point defining local xy-plane orientation.
+
+        Returns:
+            np.ndarray: Rotation matrix.
+        """
         origin_vec = np.asarray(origin, dtype=float)
         x_axis = CoordinateSystem._normalize_or_error(
             nxax - origin_vec, "Coordinate system x-axis is invalid."
@@ -91,15 +311,42 @@ class CoordinateSystem(ABC):
     def build_local_to_global_matrix(
         angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
     ) -> np.ndarray:
+        """Build one local-to-global rotation matrix from Euler-like angle triplet in degrees.
+
+        Args:
+            angle_xy_deg: Angle in XY plane.
+            angle_yz_deg: Angle in YZ plane.
+            angle_xz_deg: Angle in XZ plane.
+
+        Returns:
+            np.ndarray: Rotation matrix.
+        """
+        for name, value in (
+            ("angle_xy_deg", angle_xy_deg),
+            ("angle_yz_deg", angle_yz_deg),
+            ("angle_xz_deg", angle_xz_deg),
+        ):
+            if not np.isfinite(float(value)):
+                raise ValueError(f"{name} must be finite.")
         angles = np.array([[angle_xy_deg, angle_yz_deg, angle_xz_deg]], dtype=float)
         coeffs = CoordinateSystem.build_local_to_global_coefficients(angles)
         return coeffs[0].reshape(3, 3)
 
     @staticmethod
     def build_local_to_global_coefficients(angles_deg: np.ndarray) -> np.ndarray:
+        """Build flattened local-to-global rotation coefficients for an array of angle triplets.
+
+        Args:
+            angles_deg: Array with shape (N, 3).
+
+        Returns:
+            np.ndarray: Flattened rotation coefficients with shape (N, 9).
+        """
         angles = np.asarray(angles_deg, dtype=float)
         if angles.ndim != 2 or angles.shape[1] != 3:
             raise ValueError("angles_deg must have shape (N, 3).")
+        if not np.all(np.isfinite(angles)):
+            raise ValueError("angles_deg must contain only finite values.")
 
         eps = 1e-12
 
@@ -139,6 +386,16 @@ class CoordinateSystem(ABC):
     def build_global_to_local_matrix(
         angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
     ) -> np.ndarray:
+        """Build one global-to-local rotation matrix from angle triplet in degrees.
+
+        Args:
+            angle_xy_deg: Angle in XY plane.
+            angle_yz_deg: Angle in YZ plane.
+            angle_xz_deg: Angle in XZ plane.
+
+        Returns:
+            np.ndarray: Rotation matrix.
+        """
         return CoordinateSystem.build_local_to_global_matrix(
             angle_xy_deg, angle_yz_deg, angle_xz_deg
         ).T
@@ -147,6 +404,16 @@ class CoordinateSystem(ABC):
     def build_global_to_local(
         angle_xy_deg: float, angle_yz_deg: float, angle_xz_deg: float
     ) -> np.ndarray:
+        """Backward-compatible alias for build_global_to_local_matrix.
+
+        Args:
+            angle_xy_deg: Angle in XY plane.
+            angle_yz_deg: Angle in YZ plane.
+            angle_xz_deg: Angle in XZ plane.
+
+        Returns:
+            np.ndarray: Rotation matrix.
+        """
         return CoordinateSystem.build_global_to_local_matrix(
             angle_xy_deg, angle_yz_deg, angle_xz_deg
         )
@@ -157,6 +424,17 @@ class CoordinateSystem(ABC):
         origin: Sequence[float],
         angles_deg: Sequence[float],
     ) -> TCoordinateSystem:
+        """Construct a coordinate system from origin and three orientation angles.
+
+        Args:
+            origin: Origin point.
+            angles_deg: Sequence of three orientation angles in degrees.
+
+        Returns:
+            TCoordinateSystem: Constructed coordinate-system instance.
+        """
+        if not isinstance(angles_deg, Sequence) or len(angles_deg) != 3:
+            raise ValueError("angles_deg must be a sequence with exactly 3 values.")
         thxy_deg, thyz_deg, thzx_deg = angles_deg
         ctor = cast(Any, cls)
         return ctor(origin, thxy_deg=thxy_deg, thyz_deg=thyz_deg, thzx_deg=thzx_deg)
@@ -168,6 +446,16 @@ class CoordinateSystem(ABC):
         nxax: Sequence[float],
         nxypl: Sequence[float],
     ) -> TCoordinateSystem:
+        """Construct a coordinate system from origin and two reference points.
+
+        Args:
+            origin: Origin point.
+            nxax: Point defining local x-axis direction.
+            nxypl: Point defining local xy-plane orientation.
+
+        Returns:
+            TCoordinateSystem: Constructed coordinate-system instance.
+        """
         ctor = cast(Any, cls)
         return ctor(origin, nxax=nxax, nxypl=nxypl)
 
@@ -181,6 +469,27 @@ class CartesianCoordinateSystem(CoordinateSystem):
         thyz_deg: Optional[float] = None,
         thzx_deg: Optional[float] = None,
     ):
+        """Create a Cartesian coordinate system from either angles or defining points.
+
+        Args:
+            origin: Origin point.
+            nxax: Optional point defining local x-axis direction.
+            nxypl: Optional point defining local xy-plane orientation.
+            thxy_deg: Optional XY angle.
+            thyz_deg: Optional YZ angle.
+            thzx_deg: Optional ZX angle.
+
+        Returns:
+            None
+        """
+        angles = (thxy_deg, thyz_deg, thzx_deg)
+        if any(angle is not None for angle in angles) and not all(
+            angle is not None for angle in angles
+        ):
+            raise ValueError(
+                "thxy_deg, thyz_deg and thzx_deg must all be provided together."
+            )
+
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
             rotation = CoordinateSystem.build_local_to_global_matrix(
                 thxy_deg, thyz_deg, thzx_deg
@@ -200,6 +509,15 @@ class CartesianCoordinateSystem(CoordinateSystem):
     def vector_components_to_local(
         self, global_vectors: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
+        """Convert global vector components to local Cartesian components.
+
+        Args:
+            global_vectors: Global Cartesian vectors.
+            global_positions: Associated positions.
+
+        Returns:
+            np.ndarray: Local Cartesian vectors.
+        """
         return super().vector_components_to_local(global_vectors, global_positions)
 
 
@@ -213,6 +531,27 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         thyz_deg: Optional[float] = None,
         thzx_deg: Optional[float] = None,
     ):
+        """Create a cylindrical coordinate system from either angles or defining points.
+
+        Args:
+            origin: Origin point.
+            nxax: Optional point defining local x-axis direction.
+            nxypl: Optional point defining local xy-plane orientation.
+            thxy_deg: Optional XY angle.
+            thyz_deg: Optional YZ angle.
+            thzx_deg: Optional ZX angle.
+
+        Returns:
+            None
+        """
+        angles = (thxy_deg, thyz_deg, thzx_deg)
+        if any(angle is not None for angle in angles) and not all(
+            angle is not None for angle in angles
+        ):
+            raise ValueError(
+                "thxy_deg, thyz_deg and thzx_deg must all be provided together."
+            )
+
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
             rotation = CoordinateSystem.build_local_to_global_matrix(
                 thxy_deg, thyz_deg, thzx_deg
@@ -232,6 +571,15 @@ class CylindricalCoordinateSystem(CoordinateSystem):
     def vector_components_to_local(
         self, global_vectors: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
+        """Convert global Cartesian vector components into (r, theta, z) components.
+
+        Args:
+            global_vectors: Global Cartesian vectors.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Cylindrical vector components.
+        """
         local_vectors = super().vector_components_to_local(
             global_vectors, global_positions
         )
@@ -256,6 +604,15 @@ class CylindricalCoordinateSystem(CoordinateSystem):
     def vector_components_to_global(
         self, local_components: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
+        """Convert (r, theta, z) components into global Cartesian components.
+
+        Args:
+            local_components: Cylindrical vector components.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Global Cartesian vectors.
+        """
         local_positions = super().to_local(global_positions)
         x = local_positions[:, 0]
         y = local_positions[:, 1]
@@ -279,6 +636,14 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         return local_vectors @ self._local_to_global_cart.T
 
     def to_local(self, global_points: np.ndarray) -> np.ndarray:
+        """Map global points to (r, theta_deg, z) cylindrical coordinates.
+
+        Args:
+            global_points: Global Cartesian points.
+
+        Returns:
+            np.ndarray: Cylindrical coordinates.
+        """
         local = super().to_local(global_points)
         x = local[:, 0]
         y = local[:, 1]
@@ -290,6 +655,15 @@ class CylindricalCoordinateSystem(CoordinateSystem):
         return np.stack((r, theta_deg, local[:, 2]), axis=1)
 
     def to_global(self, local_points: np.ndarray) -> np.ndarray:
+        """Map cylindrical coordinates (r, theta_deg, z) back to global Cartesian points.
+
+        Args:
+            local_points: Cylindrical coordinates.
+
+        Returns:
+            np.ndarray: Global Cartesian points.
+        """
+        local_points = CoordinateSystem._as_points3(local_points, "local_points")
         r = local_points[:, 0]
         theta = CoordinateSystem._deg_to_rad(local_points[:, 1])
         z = local_points[:, 2]
@@ -309,6 +683,27 @@ class SphericalCoordinateSystem(CoordinateSystem):
         thyz_deg: Optional[float] = None,
         thzx_deg: Optional[float] = None,
     ):
+        """Create a spherical coordinate system from either angles or defining points.
+
+        Args:
+            origin: Origin point.
+            nxax: Optional point defining local x-axis direction.
+            nxypl: Optional point defining local xy-plane orientation.
+            thxy_deg: Optional XY angle.
+            thyz_deg: Optional YZ angle.
+            thzx_deg: Optional ZX angle.
+
+        Returns:
+            None
+        """
+        angles = (thxy_deg, thyz_deg, thzx_deg)
+        if any(angle is not None for angle in angles) and not all(
+            angle is not None for angle in angles
+        ):
+            raise ValueError(
+                "thxy_deg, thyz_deg and thzx_deg must all be provided together."
+            )
+
         if thxy_deg is not None and thyz_deg is not None and thzx_deg is not None:
             rotation = CoordinateSystem.build_local_to_global_matrix(
                 thxy_deg, thyz_deg, thzx_deg
@@ -328,6 +723,15 @@ class SphericalCoordinateSystem(CoordinateSystem):
     def vector_components_to_local(
         self, global_vectors: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
+        """Convert global Cartesian vector components into (r, theta, phi) components.
+
+        Args:
+            global_vectors: Global Cartesian vectors.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Spherical vector components.
+        """
         local_vectors = super().vector_components_to_local(
             global_vectors, global_positions
         )
@@ -374,6 +778,15 @@ class SphericalCoordinateSystem(CoordinateSystem):
     def vector_components_to_global(
         self, local_components: np.ndarray, global_positions: np.ndarray
     ) -> np.ndarray:
+        """Convert (r, theta, phi) components into global Cartesian components.
+
+        Args:
+            local_components: Spherical vector components.
+            global_positions: Associated global positions.
+
+        Returns:
+            np.ndarray: Global Cartesian vectors.
+        """
         local_positions = super().to_local(global_positions)
         x = local_positions[:, 0]
         y = local_positions[:, 1]
@@ -421,6 +834,14 @@ class SphericalCoordinateSystem(CoordinateSystem):
         return local_vectors @ self._local_to_global_cart.T
 
     def to_local(self, global_points: np.ndarray) -> np.ndarray:
+        """Map global points to (r, theta_deg, phi_deg) spherical coordinates.
+
+        Args:
+            global_points: Global Cartesian points.
+
+        Returns:
+            np.ndarray: Spherical coordinates.
+        """
         local = super().to_local(global_points)
         x = local[:, 0]
         y = local[:, 1]
@@ -436,6 +857,15 @@ class SphericalCoordinateSystem(CoordinateSystem):
         return np.stack((r, theta_deg, phi_deg), axis=1)
 
     def to_global(self, local_points: np.ndarray) -> np.ndarray:
+        """Map spherical coordinates (r, theta_deg, phi_deg) back to global Cartesian points.
+
+        Args:
+            local_points: Spherical coordinates.
+
+        Returns:
+            np.ndarray: Global Cartesian points.
+        """
+        local_points = CoordinateSystem._as_points3(local_points, "local_points")
         r = local_points[:, 0]
         theta = CoordinateSystem._deg_to_rad(local_points[:, 1])
         phi = CoordinateSystem._deg_to_rad(local_points[:, 2])

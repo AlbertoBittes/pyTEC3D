@@ -294,9 +294,6 @@ void ElementBuilder::build_av3dnodal()
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
 
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
-
         const unsigned int n_dofs_A = n_dofs_var * 3;
 
         auto build_coil_coupling_timeintegrated = [&]()
@@ -680,8 +677,6 @@ void ElementBuilder::build_av3dnodal_element_solution()
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);
-            if (sc == 0.0 || r_coil == 0.0)
-                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
 
             for (unsigned int k = 0; k < 3; k++)
                 Je(k) = coeff * t_vec(k);

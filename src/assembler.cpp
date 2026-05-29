@@ -25,6 +25,7 @@
 #include "element_types.h"
 #include "global_constraints_object.h"
 #include "binary_reader.h"
+#include "apec_m_logging.h"
 
 using namespace libMesh;
 namespace
@@ -59,7 +60,7 @@ void AssemblerLinear::assemble()
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     system.rhs->zero();
 
@@ -90,11 +91,11 @@ void AssemblerLinear::assemble()
     if (!mtrx_input_file || !rhs_input_file)
     {
         reader.close_file_streams(streams);
-        libMesh::out << "AssemblerLinear: failed to open element matrix or rhs file." << std::endl;
+        apec::logging::error_all_ranks("AssemblerLinear: failed to open element matrix or rhs file on rank {}", comm.rank());
         return;
     }
 
-    libMesh::out << "Building system global matrix and RHS" << std::endl;
+    apec::logging::info("Building global matrix and RHS");
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -195,7 +196,8 @@ void AssemblerLinear::assemble()
     }
 
     reader.close_file_streams(streams);
-    libMesh::out << "Finished building system global matrix and RHS" << std::endl;
+    comm.barrier();
+    apec::logging::info("Linear solver output info");
 }
 // That's it.  We don't need to do anything else to the
 // PerfLog.  When it goes out of scope (at this function return)
@@ -210,13 +212,13 @@ bool AssemblerLinear::check_update_system_matrix()
 {
     auto eq_sys = this->get_parent_object();
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
     GlobalConstraintsObject *bc_object = dynamic_cast<GlobalConstraintsObject *>(&system.get_constraint_object());
     auto *solver = dynamic_cast<PetscLinearSolver<Number> *>(system.get_linear_solver());
 
     if (bc_object->check_update_boundary_conditions())
     {
-        libMesh::out << "Updating system matrix for current time step" << std::endl;
+        apec::logging::info("New constraints: updating system matrix");
         system.get_system_matrix().zero();
         if (solver)
             solver->reuse_preconditioner(false);
@@ -255,14 +257,14 @@ bool AssemblerLinear::check_update_system_matrix()
 
     if (update_matrix)
     {
-        libMesh::out << "Updating system matrix for current time step" << std::endl;
+        apec::logging::info("Updating system matrix for current time-step");
         system.get_system_matrix().zero();
         if (solver)
             solver->reuse_preconditioner(false);
     }
     else
     {
-        libMesh::out << "Reusing system matrix from previous time step" << std::endl;
+        apec::logging::info("Reusing system matrix from previous time step");
         if (solver)
             solver->reuse_preconditioner(true);
     }
@@ -276,7 +278,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("ApecMLinearSystem");
+    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
     auto &dof_map = system.get_dof_map();
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = system.comm();
@@ -299,7 +301,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
     if (!emat_files_exist)
     {
-        libMesh::out << "Recomputing element matrices and vectors because one or more .emat files are missing" << std::endl;
+        apec::logging::info("Computing element matrices and RHS for current time-step");
 
         auto streams = reader.open_file_streams(emat_folderpath, filenames, FileMode::Write);
         auto *mtrx_output_file = dynamic_cast<std::ofstream *>(streams[0].get());
@@ -323,7 +325,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     }
     else
     {
-        libMesh::out << "Element matrices will be reused from previous time step" << std::endl;
+        apec::logging::info("Reusing element matrices from previous time step");
     }
 
     const std::vector<std::string> inp_filenames = {"base_rhs_" + rank_str + ".emat"};
@@ -335,7 +337,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     auto *base_rhs_input_file = dynamic_cast<std::ifstream *>(streams_in[0].get());
     auto *rhs_output_file = dynamic_cast<std::ofstream *>(streams_out[0].get());
 
-    libMesh::out << "Applying loads to RHS" << std::endl;
+    apec::logging::info("Applying loads to elements RHS");
 
     builder.clear_nodal_loads_dof_cache();
 
@@ -354,7 +356,7 @@ void AssemblerLinear::write_element_matrices_and_rhs()
 
 void AssemblerLinear::write_nodal_solution()
 {
-    libMesh::out << "Computing derived quantities..." << std::endl;
+    apec::logging::info("Computing nodal solution");
 
     auto eq_sys = this->get_parent_object();
 
@@ -374,7 +376,7 @@ void AssemblerLinear::write_nodal_solution()
     if (!nodal_solution_mtrx_input_file)
     {
         reader.close_file_streams(inp_streams);
-        libMesh::out << "AssemblerLinear: failed to open solution matrix file." << std::endl;
+        apec::logging::error("AssemblerLinear: failed to open nodal solution matrix file");
         return;
     }
 
@@ -393,7 +395,7 @@ void AssemblerLinear::write_nodal_solution()
 
 void AssemblerLinear::write_element_solution()
 {
-    libMesh::out << "Computing derived quantities..." << std::endl;
+    apec::logging::info("Computing elemental solution");
 
     auto eq_sys = this->get_parent_object();
 
@@ -413,7 +415,7 @@ void AssemblerLinear::write_element_solution()
     if (!element_solution_mtrx_input_file)
     {
         reader.close_file_streams(inp_streams);
-        libMesh::out << "AssemblerLinear: failed to open solution matrix file." << std::endl;
+        apec::logging::error("AssemblerLinear: failed to open element solution matrix file");
         return;
     }
 

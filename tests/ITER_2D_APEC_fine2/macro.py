@@ -10,7 +10,7 @@ aplasma = 0
 
 filename = "ITER_2D_APEC_fine2"
 
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 apec.read_mesh(filepath)
 

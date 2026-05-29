@@ -7,7 +7,7 @@ apec = APEC_M()
 
 filename = "coil_2D_avolt"
 
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 apec.read_mesh(filepath)
 

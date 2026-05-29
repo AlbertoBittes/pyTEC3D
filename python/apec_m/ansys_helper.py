@@ -5,10 +5,21 @@ from typing import TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
-import vtk.util.numpy_support as vtknp
+import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 from .model_edit import ModelEdit
 from .excel import Excel
+from .logging_utils import get_logger
+from .validation_utils import (
+    ensure_dataframe,
+    ensure_non_empty_string,
+    ensure_numpy_2d,
+    ensure_pathlike,
+    ensure_vtk_unstructured_grid,
+)
+
+
+LOGGER = get_logger("apec_m.ansys_helper")
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtk
@@ -36,13 +47,22 @@ class AnsysHelper:
         Side Effects:
             Updates the mesh's CellData arrays and prints a summary message.
         """
+        ensure_vtk_unstructured_grid(mesh)
+        file_path = ensure_pathlike(file_path, "file_path")
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"BFELIST file '{file_path}' not found.")
+
         df = AnsysHelper.read_parse_bfelist(file_path)
+        if df.empty:
+            raise ValueError(f"No element load records were parsed from '{file_path}'.")
+
         mapping_array = AnsysHelper.map_data_to_vtk(
             mesh.GetCellData(), "ansys_elem_num"
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_elem_num")
         ModelEdit.update_vtk_grid(mesh.GetCellData(), df)
-        print(f"Grid updated with element loads from '{file_path}'.")
+        LOGGER.info("Grid updated with element loads from '%s'.", file_path)
 
     @staticmethod
     def convert_bfelist(
@@ -68,15 +88,12 @@ class AnsysHelper:
         Side Effects:
             Updates mesh CellData, writes loads to Excel, and prints a summary message.
         """
-
-        if not os.path.exists(bfelist_file):
-            raise FileNotFoundError(f"BFELIST file '{bfelist_file}' not found.")
         AnsysHelper.read_bfelist(mesh, bfelist_file)
 
         Excel.write_excel_cell_point_data(
             mesh, output_excel_file, data_type="elem"
         )
-        print(f"Loads from '{bfelist_file}' written to '{output_excel_file}'.")
+        LOGGER.info("Loads from '%s' written to '%s'.", bfelist_file, output_excel_file)
 
     @staticmethod
     def read_dlist(
@@ -99,14 +116,23 @@ class AnsysHelper:
         Side Effects:
             Updates the mesh's PointData arrays and prints a summary message.
         """
+        ensure_vtk_unstructured_grid(mesh)
+        file_path = ensure_pathlike(file_path, "file_path")
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"DLIST file '{file_path}' not found.")
+
         df = AnsysHelper.read_parse_dlist(file_path)
+        if df.empty:
+            raise ValueError(f"No node load records were parsed from '{file_path}'.")
+
         mapping_array = AnsysHelper.map_data_to_vtk(
             mesh.GetPointData(), "ansys_node_num"
         )
         df = AnsysHelper.replace_ansys_with_vtk_ids(df, mapping_array, "ansys_node_num")
 
         ModelEdit.update_vtk_grid(mesh.GetPointData(), df)
-        print(f"Grid updated with node data from '{file_path}'.")
+        LOGGER.info("Grid updated with node data from '%s'.", file_path)
 
     @staticmethod
     def convert_dlist(
@@ -132,14 +158,12 @@ class AnsysHelper:
         Side Effects:
             Updates mesh PointData, writes node data to Excel, and prints a summary message.
         """
-        if not os.path.exists(dlist_file):
-            raise FileNotFoundError(f"DLIST file '{dlist_file}' not found.")
         AnsysHelper.read_dlist(mesh, dlist_file)
 
         Excel.write_excel_cell_point_data(
             mesh, output_excel_file, data_type="node"
         )
-        print(f"Node data from '{dlist_file}' written to '{output_excel_file}'.")
+        LOGGER.info("Node data from '%s' written to '%s'.", dlist_file, output_excel_file)
 
     @staticmethod
     def map_data_to_vtk(data: "vtk.vtkDataSetAttributes", label: str) -> np.ndarray:
@@ -157,6 +181,10 @@ class AnsysHelper:
         Raises:
             ValueError: If the specified label is not found in the provided data.
         """
+        if data is None:
+            raise ValueError("VTK data attributes object must not be None.")
+        label = ensure_non_empty_string(label, "label")
+
         vtk_array = data.GetArray(label)
         if vtk_array is None:
             raise ValueError(f"Array '{label}' not found in the provided VTK data.")
@@ -180,10 +208,28 @@ class AnsysHelper:
         Returns:
             pd.DataFrame: Copy with ANSYS numbers replaced by VTK IDs in a `vtk_id` column.
         """
+        df = ensure_dataframe(df, "df")
+        label = ensure_non_empty_string(label, "label")
+        mapping_array = ensure_numpy_2d(mapping_array, "mapping_array", cols=2)
+
+        if label not in df.columns:
+            raise ValueError(f"DataFrame is missing required column '{label}'.")
+
         ansys_numbers = df[label].to_numpy()
-        vtk_ids = mapping_array[:, 0]
-        ansys_mapping = mapping_array[:, 1]
-        vtk_id_array = vtk_ids[np.searchsorted(ansys_mapping, ansys_numbers)]
+        vtk_ids = np.asarray(mapping_array[:, 0], dtype=np.int64)
+        ansys_mapping = np.asarray(mapping_array[:, 1])
+
+        unique_ansys, unique_indices = np.unique(ansys_mapping, return_index=True)
+        unique_vtk_ids = vtk_ids[unique_indices]
+
+        missing_ansys = np.setdiff1d(np.unique(ansys_numbers), unique_ansys)
+        if missing_ansys.size:
+            raise ValueError(
+                f"Some ANSYS IDs from input are not present in mesh mapping: {missing_ansys.tolist()[:10]}"
+            )
+
+        positions = np.searchsorted(unique_ansys, ansys_numbers)
+        vtk_id_array = unique_vtk_ids[positions]
         df.insert(0, "vtk_id", vtk_id_array)
         df = df.drop(columns=[label])
         return df
@@ -206,6 +252,7 @@ class AnsysHelper:
         Raises:
             FileNotFoundError: If `file_path` cannot be opened.
         """
+        file_path = ensure_pathlike(file_path, "file_path")
         # Regular expressions to match element and density lines
         element_pattern = re.compile(r"ELEMENT\s*=\s*(\d+)")
         density_pattern = re.compile(
@@ -217,7 +264,7 @@ class AnsysHelper:
         current_element = None
         load_label = None
 
-        with open(file_path, "r") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             # Skip empty lines and find the line with "CURRENT DENSITIES"
             for line in file:
                 if line.strip():  # Skip empty lines
@@ -274,13 +321,14 @@ class AnsysHelper:
         Raises:
             FileNotFoundError: If `file_path` cannot be opened.
         """
+        file_path = ensure_pathlike(file_path, "file_path")
         # Regular expression to match node data lines
         node_pattern = re.compile(r"^\s*(\d+)\s+(\S+)\s+([\d\.\-E]+)")
 
         # List to store parsed data
         data = []
 
-        with open(file_path, "r") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             for line in file:
                 # Skip header lines
                 if line.startswith("NODE") or line.startswith("//"):

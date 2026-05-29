@@ -20,6 +20,7 @@
 #include "element_types_factory.h"
 
 #include "variables_map.h"
+#include "apec_m_logging.h"
 
 namespace py = pybind11;
 
@@ -223,6 +224,7 @@ void ElementBuilder::build_element()
         this->build_av2dnodal();
         break;
     default:
+        apec::logging::error("Unsupported element type enum={} while building element", static_cast<unsigned int>(etype));
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }
@@ -243,6 +245,7 @@ void ElementBuilder::build_element_rhs()
         this->build_av2dnodal_rhs();
         break;
     default:
+        apec::logging::error("Unsupported element type enum={} while building element RHS", static_cast<unsigned int>(etype));
         libmesh_error_msg("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
     }
 }

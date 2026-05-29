@@ -13,11 +13,11 @@ apec = APEC_M()
 apec_evolution_mesh = "ITER_2D_APEC_evol"
 apec_evolution_mesh_notrans = "ITER_2D_APEC_out_1"
 
-evol_filepath = os.path.join(os.getcwd(), "tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+evol_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
 # Read the output of the equilibrium analysis
 static_mesh_filepath = os.path.join(
     os.getcwd(),
-    "tests",
+    "..",
     "ITER_2D_APEC",
     "output",
     "ITER_2D_APEC_out_1.vtu",

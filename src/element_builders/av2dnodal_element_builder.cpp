@@ -93,8 +93,6 @@ void ElementBuilder::build_av2dnodal()
     Real r_sign = pow(-1, axisymm);
 
     Real thk = this->constant_value(constant_id, CONST_THK);
-    if (thk == 0.0)
-        thk = 1.0;
 
     auto build_ke = [&]()
     {
@@ -288,9 +286,6 @@ void ElementBuilder::build_av2dnodal()
         const Real tz = this->constant_value(constant_id, CONST_T_Z);
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
-
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
 
         const Real kav_scale = -(nc / (sc * r_coil)) * tz;
         const Real kvv_scale = 1.0 / (r_coil * vc);
@@ -612,8 +607,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 break;
 
             Real thk = this->constant_value(constant_id, CONST_THK);
-            if (thk == 0.0)
-                libmesh_error_msg("THK is zero for SOLID_CONDUCTOR elements.");
+
             Real V_factor = sigma * Vn / thk;
             if (axisymm)
             {
@@ -655,8 +649,6 @@ void ElementBuilder::build_av2dnodal_element_solution()
             const Real tz = this->constant_value(constant_id, CONST_T_Z);
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
-            if (sc == 0.0 || r_coil == 0.0)
-                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
             Je(0) = (nc / (sc * r_coil)) * tz * (Vn - En);
             break;
         }

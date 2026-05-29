@@ -5,9 +5,14 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
 import numpy as np
 import pandas as pd
 import vtk
-import vtk.util.numpy_support as vtknp
+import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 from .constants import VTK_ARRAYS_TO_INIT
+from .logging_utils import get_logger
+from .validation_utils import ensure_pathlike, ensure_vtk_unstructured_grid
+
+
+LOGGER = get_logger("apec_m.model_edit")
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
@@ -20,6 +25,16 @@ class ModelEdit:
         mesh: "vtk.vtkUnstructuredGrid",
         location: str,
     ) -> np.ndarray:
+        """Return node coordinates or cached cell centroids for a mesh location.
+
+        Args:
+            mesh: Input unstructured grid.
+            location: "node" for points or "elem" for cell centroids.
+
+        Returns:
+            np.ndarray: Array of positions with shape (N, 3).
+        """
+        ensure_vtk_unstructured_grid(mesh)
         if location == "node":
             points = mesh.GetPoints()
             if points is None:
@@ -172,9 +187,17 @@ class ModelEdit:
         Map a 3-component vector field into local coordinate components.
 
         For cartesian, this returns local x/y/z. For cylindrical, r/theta/z.
-        For spherical, r/theta/phi. Local axes come from the coordinate system
-        orientation; cylindrical/spherical components are computed in that
-        local Cartesian frame.
+        For spherical, r/theta/phi.
+
+        Args:
+            mesh: Mesh containing the vector array.
+            array_name: Name of the vector array.
+            coordinate_system: Coordinate system used for the mapping.
+            location: "node" or "elem".
+            selected_only: When True, map only selected ids.
+
+        Returns:
+            np.ndarray: Updated NumPy view of the target array.
         """
         data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
         vtk_array = data.GetArray(array_name) if data is not None else None
@@ -213,6 +236,18 @@ class ModelEdit:
         location: str = "node",
         selected_only: bool = False,
     ) -> np.ndarray:
+        """Compute local vector components without writing them back to VTK.
+
+        Args:
+            mesh: Mesh containing the vector array.
+            array_name: Name of the vector array.
+            coordinate_system: Coordinate system used for the mapping.
+            location: "node" or "elem".
+            selected_only: When True, return values only for selected ids.
+
+        Returns:
+            np.ndarray: Mapped vector components.
+        """
         from .selector import Selector
 
         if location not in ["node", "elem"]:
@@ -335,6 +370,18 @@ class ModelEdit:
         location: str = "node",
         selected_only: bool = False,
     ) -> np.ndarray:
+        """Compute global vector components without writing them back to VTK.
+
+        Args:
+            mesh: Mesh containing the vector array.
+            array_name: Name of the vector array.
+            coordinate_system: Coordinate system used for the mapping.
+            location: "node" or "elem".
+            selected_only: When True, return values only for selected ids.
+
+        Returns:
+            np.ndarray: Mapped global vector components.
+        """
         from .selector import Selector
 
         if location not in ["node", "elem"]:
@@ -414,7 +461,7 @@ class ModelEdit:
         Returns:
             vtk.vtkUnstructuredGrid: The loaded mesh.
         """
-        path = os.fspath(vtk_file_path)
+        path = ensure_pathlike(vtk_file_path, "vtk_file_path")
         if not os.path.exists(path):
             raise FileNotFoundError(f"Mesh file '{path}' not found.")
 
@@ -422,11 +469,21 @@ class ModelEdit:
         ext = ext.lower()
         if ext == ".pvtu":
             reader = vtk.vtkXMLPUnstructuredGridReader()
-        else:
+        elif ext == ".vtu":
             reader = vtk.vtkXMLUnstructuredGridReader()
+        else:
+            raise ValueError(
+                f"Unsupported mesh extension '{ext}'. Expected '.vtu' or '.pvtu'."
+            )
         reader.SetFileName(path)
         reader.Update()
-        mesh = reader.GetOutput()
+        mesh = ensure_vtk_unstructured_grid(reader.GetOutput(), arg_name="mesh")
+
+        if mesh.GetNumberOfPoints() == 0:
+            raise ValueError(f"Loaded mesh '{path}' has zero points.")
+
+        if mesh.GetNumberOfCells() == 0:
+            raise ValueError(f"Loaded mesh '{path}' has zero cells.")
 
         ModelEdit.store_cell_centroids(mesh)
         ModelEdit.store_cell_volumes(mesh)
@@ -441,12 +498,7 @@ class ModelEdit:
             TreeGauge.add_midside_nodes_mask_array(mesh)
             ModelEdit.reset_vtk_arrays_to_default(mesh)
 
-        print(f"VTK unstructured grid loaded from '{path}'.")
-        print(f"Number of points: {mesh.GetNumberOfPoints()}")
-        print(f"Number of cells: {mesh.GetNumberOfCells()}")
-        print(f"Number of point data arrays: {mesh.GetPointData().GetNumberOfArrays()}")
-        print(f"Number of cell data arrays: {mesh.GetCellData().GetNumberOfArrays()}")
-        print(f"Number of field data arrays: {mesh.GetFieldData().GetNumberOfArrays()}")
+        LOGGER.info("VTK unstructured grid loaded from '%s'.", path)
 
         return mesh
 
@@ -460,7 +512,7 @@ class ModelEdit:
         dtype: Optional[int] = vtk.VTK_DOUBLE,
         values: Optional[np.ndarray] = None,
         replace: bool = False,
-    ) -> Union[np.ndarray, "vtk.vtkDataArray"]:
+    ) -> "vtk.vtkDataArray":
         """
         Adds a VTK array to the mesh at the specified location.
 
@@ -472,13 +524,15 @@ class ModelEdit:
             fill: Default value to fill the array if values are not provided (default 0).
             dtype: VTK data type (default vtk.VTK_DOUBLE). If None, dtype validation is skipped.
             values: Explicit values to store in the array. Must match expected shape.
+            replace: When True, remove and recreate the array if it already exists.
 
         Returns:
-            vtkDataArray or np.ndarray: The created VTK array, or an existing array's NumPy view.
+            vtk.vtkDataArray: The created or pre-existing VTK array.
 
         Raises:
             ValueError: If location is invalid, shapes/components mismatch, or dtype differs.
         """
+        ensure_vtk_unstructured_grid(mesh)
         if location not in ["elem", "node"]:
             raise ValueError(f"Unknown location '{location}'. Use 'elem' or 'node'.")
 
@@ -539,14 +593,25 @@ class ModelEdit:
         Returns:
             None
         """
+        ensure_vtk_unstructured_grid(mesh)
+
+        output_path = ensure_pathlike(output_file, "output_file")
+
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
         writer = vtk.vtkXMLUnstructuredGridWriter()
-        writer.SetFileName(os.fspath(output_file))
+        writer.SetFileName(output_path)
         writer.SetInputData(mesh)
         if binary:
             writer.SetDataModeToBinary()
         else:
             writer.SetDataModeToAscii()
-        writer.Write()
+
+        write_status = writer.Write()
+        if write_status != 1:
+            raise IOError(f"Failed to write VTK mesh to '{output_path}'.")
 
     @staticmethod
     def initialize_vtk_arrays(
@@ -563,6 +628,7 @@ class ModelEdit:
         Returns:
             None
         """
+        ensure_vtk_unstructured_grid(mesh)
         if arrays_to_init is None:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
@@ -587,10 +653,12 @@ class ModelEdit:
         Args:
             mesh: The VTK unstructured grid whose arrays will be reset.
             arrays_to_init: Dictionary specifying arrays to reset; defaults to VTK_ARRAYS_TO_INIT.
-        """
-        if arrays_to_init is None:
-            from .constants import VTK_ARRAYS_TO_INIT
 
+        Returns:
+            None
+        """
+        ensure_vtk_unstructured_grid(mesh)
+        if arrays_to_init is None:
             arrays_to_init = VTK_ARRAYS_TO_INIT
 
         cell_data = mesh.GetCellData()
@@ -645,13 +713,17 @@ class ModelEdit:
         Safely removes an array from CellData or PointData of the mesh if it exists.
 
         Args:
-            mesh (vtk.vtkUnstructuredGrid): The mesh from which to remove the array.
+            mesh: The mesh from which to remove the array.
             array_name: The name of the array to remove.
-            location: "elem", "node", or None. If None, tries to guess location.
+            location: "elem", "node", or None. If None, guesses from the data that contains it.
 
         Side Effects:
             Removes the array from the detected or specified data location if present.
+
+        Returns:
+            None
         """
+        ensure_vtk_unstructured_grid(mesh)
         # Try to guess location if not provided
         if location is None:
             cell_data = mesh.GetCellData()
@@ -663,7 +735,7 @@ class ModelEdit:
                 point_data.RemoveArray(array_name)
                 return
             else:
-                print(f"Array '{array_name}' not found in CellData or PointData.")
+                LOGGER.warning("Array '%s' not found in CellData or PointData.", array_name)
                 return
         elif location == "elem":
             data = mesh.GetCellData()
@@ -694,6 +766,7 @@ class ModelEdit:
         Raises:
             ValueError: If the source point-data array does not exist.
         """
+        ensure_vtk_unstructured_grid(mesh)
         point_data = mesh.GetPointData()
         source_array = point_data.GetArray(point_array_name)
         if source_array is None:
@@ -816,6 +889,7 @@ class ModelEdit:
         Notes:
             Uses vtkCellCenters to compute centroids. The output array is ordered by cell index.
         """
+        ensure_vtk_unstructured_grid(mesh)
         cellCenters = vtk.vtkCellCenters()
         cellCenters.SetInputData(mesh)
         cellCenters.Update()
@@ -836,6 +910,9 @@ class ModelEdit:
 
         Side Effects:
             Adds/overwrites the centroid array on mesh.GetCellData().
+
+        Returns:
+            None
         """
         np_centers = ModelEdit.compute_cell_centroids(mesh)
         ModelEdit.add_array(
@@ -862,6 +939,7 @@ class ModelEdit:
             Uses vtkCellSizeFilter so all supported cell types are handled
             consistently (including non-triangular 2D cells).
         """
+        ensure_vtk_unstructured_grid(mesh)
         n_cells = mesh.GetNumberOfCells()
         if n_cells == 0:
             return np.zeros((0,), dtype=float)
@@ -937,6 +1015,9 @@ class ModelEdit:
 
         Side Effects:
             Adds/overwrites the volume/area array on mesh.GetCellData().
+
+        Returns:
+            None
         """
         volumes = ModelEdit.compute_cell_volumes(mesh)
         ModelEdit.add_array(
@@ -964,6 +1045,7 @@ class ModelEdit:
         Returns:
             vtkDataArray: The created component array.
         """
+        ensure_vtk_unstructured_grid(mesh)
         if type not in ["elem", "node"]:
             raise ValueError("type must be 'elem' or 'node'.")
 
@@ -989,7 +1071,12 @@ class ModelEdit:
             fill=0,
             dtype=vtk.VTK_UNSIGNED_CHAR,
         )
-        target_np = vtknp.vtk_to_numpy(new_array)
+        new_array_vtk = data_obj.GetArray(component_name)
+        if new_array_vtk is None:
+            raise RuntimeError(
+                f"add_array did not create array '{component_name}' as expected."
+            )
+        target_np = vtknp.vtk_to_numpy(new_array_vtk)
         target_np[:] = selection_mask
-        new_array.Modified()
-        return new_array
+        new_array_vtk.Modified()
+        return new_array_vtk

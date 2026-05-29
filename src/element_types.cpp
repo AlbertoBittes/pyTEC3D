@@ -30,21 +30,22 @@ void ElementType::build_fe_array(std::function<void(std::vector<FEDataShapeFunct
         std::unique_ptr<FEVectorBase> fe_vec_obj;
 
         Order quad_order = fe_data.quadrature_order != INVALID_ORDER ? fe_data.quadrature_order : fe_type.default_quadrature_order();
-
-        QGauss *qrule = new QGauss(fe_data.quadrature_dim, quad_order);
+        auto qrule = std::make_unique<QGauss>(fe_data.quadrature_dim, quad_order);
+        QBase *qrule_ptr = qrule.get();
+        quadrature_rules.push_back(std::move(qrule));
 
         if (fe_data.is_vector)
         {
             fe_vec_obj = FEVectorBase::build(fe_data.dimension, fe_type);
 
-            fe_vec_obj->attach_quadrature_rule(qrule);
+            fe_vec_obj->attach_quadrature_rule(qrule_ptr);
             fe_array.push_back(std::move(fe_vec_obj));
         }
         else
         {
             fe_obj = FEBase::build(fe_data.dimension, fe_type);
 
-            fe_obj->attach_quadrature_rule(qrule);
+            fe_obj->attach_quadrature_rule(qrule_ptr);
             fe_array.push_back(std::move(fe_obj));
         }
     }

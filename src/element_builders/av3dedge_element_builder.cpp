@@ -249,9 +249,6 @@ void ElementBuilder::build_av3dedge()
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
 
-        if (sc == 0.0 || r_coil == 0.0 || vc == 0.0)
-            libmesh_error_msg("Invalid real constants (SC, R, VC) for STRANDED_COIL elements.");
-
         auto build_cav = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -660,8 +657,6 @@ void ElementBuilder::build_av3dedge_element_solution()
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);
-            if (sc == 0.0 || r_coil == 0.0)
-                libmesh_error_msg("Invalid real constants (SC, R) for STRANDED_COIL elements.");
 
             for (unsigned int k = 0; k < 3; k++)
                 Je(k) = coeff * t_vec(k);

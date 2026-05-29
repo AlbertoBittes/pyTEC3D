@@ -17,7 +17,13 @@ class ElementTypesFactory;
 class ApecMSystemBase;
 class ApecMSolver;
 
-class ApecMEquationSystems
+#if defined(__GNUC__) || defined(__clang__)
+#define APEC_M_EQSYS_CLASS_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define APEC_M_EQSYS_CLASS_HIDDEN
+#endif
+
+class APEC_M_EQSYS_CLASS_HIDDEN ApecMEquationSystems
     : public EquationSystems,
       public FEParentObjectBase<ApecMSolver>
 
@@ -37,5 +43,7 @@ public:
     {
     }
 };
+
+#undef APEC_M_EQSYS_CLASS_HIDDEN
 
 #endif // APEC_M_EQUATION_SYSTEMS_H

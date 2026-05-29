@@ -2,8 +2,10 @@ import os
 import sys
 import re
 import copy
+import gc
 import importlib
 import shutil
+import atexit
 from os import PathLike
 from typing import (
     Any,
@@ -19,10 +21,14 @@ import vtk
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_PACKAGES_PATH = os.path.join(CURRENT_DIR, "local_packages")
 
+from .logging_utils import get_logger
 from .model_edit import ModelEdit
 from .excel import Excel
 from .constants import *
 from .apec_algorithm import ApecAlgorithm
+
+
+LOGGER = get_logger("apec_m.APEC_M")
 
 
 # Prefer environment openpyxl; fall back to vendored local_packages when needed.
@@ -34,7 +40,7 @@ except ImportError:
     try:
         import openpyxl
     except ImportError:
-        print(
+        LOGGER.warning(
             "Failed to import openpyxl. Ensure it is installed or vendored under local_packages."
         )
 
@@ -61,6 +67,9 @@ class APEC_M:
                 Number of ranks to include in the internally-built solver
                 communicator when mpi_communicator is None. If None, use all
                 ranks in COMM_WORLD.
+
+        Returns:
+            None
         """
         self._mesh: Optional[vtk.vtkUnstructuredGrid] = None
         self._mesh_name: Optional[str] = None
@@ -68,14 +77,14 @@ class APEC_M:
         self._solver_session: Optional[Any] = None
         if mpi_communicator is not None:
             self._solver_mpi_communicator: Optional[Any] = mpi_communicator
+            self._owns_solver_mpi_communicator: bool = False
         else:
             self._solver_mpi_communicator = self._build_solver_mpi_communicator(
                 num_processors=num_processors
             )
-        self._python_output_root_only: bool = False
-        self._saved_stdout = None
-        self._saved_stderr = None
+            self._owns_solver_mpi_communicator = True
         self._null_output_stream = None
+        self._closed: bool = False
 
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
@@ -92,54 +101,58 @@ class APEC_M:
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
         self.algorithm = ApecAlgorithm(self)
-        self.set_python_output_root_only(True)
+        self._configure_python_output_root_only()
+        atexit.register(self._cleanup_at_exit)
 
     @staticmethod
     def _world_rank() -> int:
+        """Return MPI rank in COMM_WORLD when available.
+
+        Returns:
+            int: MPI rank, or 0 when mpi4py is unavailable.
+        """
         try:
             from mpi4py import MPI
         except ImportError:
             return 0
         return MPI.COMM_WORLD.Get_rank()
 
-    def set_python_output_root_only(self, enabled: bool = True) -> None:
-        """
-        Enable/disable Python output only on MPI rank 0.
+    def _configure_python_output_root_only(self) -> None:
+        """Enforce Python stdout/stderr emission only on MPI rank 0.
 
-        When enabled, non-root ranks redirect both stdout and stderr to os.devnull.
+        Non-root ranks are permanently redirected to os.devnull for this process.
+
+        Returns:
+            None
         """
-        enabled = bool(enabled)
-        if enabled == self._python_output_root_only:
+        rank = self._world_rank()
+        if rank == 0:
             return
 
-        rank = self._world_rank()
-        if enabled and rank != 0:
-            if self._saved_stdout is None:
-                self._saved_stdout = sys.stdout
-            if self._saved_stderr is None:
-                self._saved_stderr = sys.stderr
-            if self._null_output_stream is None or self._null_output_stream.closed:
-                self._null_output_stream = open(os.devnull, "w")
-            sys.stdout = self._null_output_stream
-            sys.stderr = self._null_output_stream
-        else:
-            if self._saved_stdout is not None:
-                sys.stdout = self._saved_stdout
-            if self._saved_stderr is not None:
-                sys.stderr = self._saved_stderr
-
-        self._python_output_root_only = enabled
+        if self._null_output_stream is None or self._null_output_stream.closed:
+            self._null_output_stream = open(os.devnull, "w", encoding="utf-8")
+        sys.stdout = self._null_output_stream
+        sys.stderr = self._null_output_stream
+        LOGGER.debug("Python stdout/stderr redirected to os.devnull for rank %d.", rank)
 
     @property
     def solver_mpi_communicator(self) -> Optional[Any]:
         """
         Solver communicator used when creating C++ solver sessions.
+
+        Returns:
+            Optional[Any]: MPI communicator used for solver creation.
         """
         return self._solver_mpi_communicator
 
     def __del__(self) -> None:
+        """Best-effort destructor that releases runtime resources.
+
+        Returns:
+            None
+        """
         try:
-            self.set_python_output_root_only(False)
+            self.close()
         except Exception:
             pass
         try:
@@ -147,10 +160,121 @@ class APEC_M:
                 self._null_output_stream.close()
         except Exception:
             pass
+
+    def _cleanup_at_exit(self) -> None:
+        """Atexit hook that closes runtime resources.
+
+        Returns:
+            None
+        """
+        self.close()
+
+    def _shutdown_solver_runtime(self) -> None:
+        """Request C++ module runtime shutdown when available.
+
+        Returns:
+            None
+        """
+        try:
+            solver_module = self._require_solver_module()
+        except Exception:
+            return
+
+        shutdown_runtime = getattr(solver_module, "shutdown_runtime", None)
+        if shutdown_runtime is not None:
+            try:
+                shutdown_runtime()
+            except Exception:
+                pass
+
+    def _close_solver_session(self) -> None:
+        """Close and clear the active solver session.
+
+        Returns:
+            None
+        """
+        if self._solver_session is None:
+            return
+
+        try:
+            close_method = getattr(self._solver_session, "close", None)
+            if close_method is not None:
+                close_method()
+        except Exception:
+            pass
+        finally:
+            self._solver_session = None
+            # Ensure pybind-wrapped C++ objects are finalized before runtime shutdown.
+            gc.collect()
+
+    def _release_runtime_references(self) -> None:
+        """Release Python-held references that may keep C++ runtime objects alive.
+
+        Returns:
+            None
+        """
+        try:
+            self.algorithm.equilibrium_mesh = None
+            self.algorithm._b_target_axis_cache = None
+        except Exception:
+            pass
+
+        self._mesh = None
+
+    def _free_owned_solver_communicator(self) -> None:
+        """Free internally-owned MPI communicator when applicable.
+
+        Returns:
+            None
+        """
+        if not self._owns_solver_mpi_communicator:
+            return
+
+        comm = self._solver_mpi_communicator
+        if comm is None:
+            return
+
+        try:
+            from mpi4py import MPI
+        except ImportError:
+            self._solver_mpi_communicator = None
+            return
+
+        try:
+            if comm not in (MPI.COMM_NULL, MPI.COMM_WORLD, MPI.COMM_SELF):
+                comm.Free()
+        except Exception:
+            pass
+        finally:
+            self._solver_mpi_communicator = None
+
+    def close(self) -> None:
+        """Close solver session and runtime resources.
+
+        Returns:
+            None
+        """
+        if self._closed:
+            return
+
+        LOGGER.info("Closing APEC_M runtime resources.")
+
+        self._close_solver_session()
+        self._release_runtime_references()
+        self._shutdown_solver_runtime()
+        self._free_owned_solver_communicator()
+
+        self._closed = True
+
+        LOGGER.info("APEC_M runtime resources closed.")
+
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
         """
         Mesh accessor.
+
+        Returns:
+            vtk.vtkUnstructuredGrid: Loaded mesh.
         """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
@@ -160,6 +284,12 @@ class APEC_M:
     def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
         """
         Direct mesh assignment is disallowed.
+
+        Args:
+            value: Candidate mesh value.
+
+        Returns:
+            None
         """
         raise AttributeError("Direct mesh assignment is not allowed. Use read_mesh().")
 
@@ -167,6 +297,9 @@ class APEC_M:
     def solver(self) -> Optional[Any]:
         """
         Solver session accessor.
+
+        Returns:
+            Optional[Any]: Active solver session object.
         """
         return self._solver_session
 
@@ -192,7 +325,19 @@ class APEC_M:
         Args:
             vtk_file_path: Path to the VTK file in XML format.
             reset_arrays: When True, reset initialized arrays to defaults after loading.
+
+        Returns:
+            None
         """
+        if not isinstance(reset_arrays, bool):
+            raise TypeError("reset_arrays must be a bool.")
+
+        LOGGER.info(
+            "Loading mesh from '%s' (reset_arrays=%s).",
+            os.fspath(vtk_file_path),
+            reset_arrays,
+        )
+
         loaded_mesh = ModelEdit.read_mesh(vtk_file_path, reset_arrays=reset_arrays)
 
         mesh_path = os.path.abspath(os.fspath(vtk_file_path))
@@ -223,7 +368,8 @@ class APEC_M:
         self._mesh = loaded_mesh
         self._mesh_name = resolved_name
         self.mesh_filepath = mesh_path
-        self._solver_session = None
+        self._close_solver_session()
+        LOGGER.info(APEC_M._format_mesh_summary(loaded_mesh, resolved_name, mesh_path, os.getcwd()))
 
     def save_mesh(
         self, output_file: Optional[Union[str, PathLike[str]]] = None
@@ -234,11 +380,14 @@ class APEC_M:
         Validates that the first column of element_types has unique values, all values have a correspondence
         in the 'ansys_elem_num' array, and there are no undefined element types in the grid.
 
-        Returns:
-            None
+        Args:
+            output_file: Optional output path. Defaults to '<mesh_name>.vtu' in current cwd.
 
         Raises:
             ValueError: If output_file is not provided and no mesh is loaded.
+
+        Returns:
+            None
         """
         if self._world_rank() != 0:
             return
@@ -254,7 +403,7 @@ class APEC_M:
         # Write the unstructured grid to the .vtu file
         ModelEdit.save_mesh(self.mesh, output_file, binary=True)
 
-        print(f"Mesh saved to '{output_file}'.")
+        LOGGER.info("Mesh saved to '%s'.", output_file)
 
     def write_output(self) -> None:
         """
@@ -266,6 +415,9 @@ class APEC_M:
         The time step is computed at runtime by scanning existing files in the
         output directory and taking max(existing_step) + 1. If no output files
         are present, the first generated time step is 1.
+
+        Returns:
+            None
         """
         if self._mesh_name is None:
             raise ValueError("No mesh is loaded. Load a mesh before writing output.")
@@ -320,16 +472,17 @@ class APEC_M:
         Raises:
             FileNotFoundError: If the Excel file is missing.
         """
-        # Check if the Excel file exists
-        if not os.path.exists(excel_file_path):
-            raise FileNotFoundError(f"Excel file '{excel_file_path}' not found.")
+        if not isinstance(data_to_read, Sequence):
+            raise TypeError("data_to_read must be a sequence of sheet names.")
+
+        LOGGER.info("Reading Excel workbook '%s'.", excel_file_path)
 
         # Loop through the data_to_read labels and process each one
         for label in data_to_read:
             try:
                 self.read_excel_sheet(excel_file_path, label)
             except ValueError as e:
-                print(f"Warning: {e}")
+                LOGGER.warning("%s", e)
 
     def read_excel_sheet(
         self, excel_file: Union[str, PathLike[str]], sheet_name: str
@@ -342,6 +495,9 @@ class APEC_M:
             excel_file: Path to the Excel file.
             sheet_name: Name of the sheet to process.
 
+        Returns:
+            None
+
         Raises:
             ValueError: If the sheet name is not recognized or mapped method is missing.
         """
@@ -350,13 +506,17 @@ class APEC_M:
                 f"Invalid sheet name '{sheet_name}'. Must be one of {list(SHEET_PROCESSING_MAP.keys())}."
             )
         processing_info = SHEET_PROCESSING_MAP[sheet_name]
-        print(f"Reading sheet '{sheet_name}' from '{excel_file}'...")
+        LOGGER.info("Reading sheet '%s' from '%s'.", sheet_name, excel_file)
         if isinstance(processing_info, str):
             func = getattr(Excel, processing_info)
             result = func(excel_file, sheet_name)
             if result is not None:
                 setattr(self, sheet_name, result)
         elif isinstance(processing_info, tuple):
+            if self._mesh is None:
+                raise RuntimeError(
+                    "No mesh is loaded. Load a mesh before reading mesh-dependent Excel sheets."
+                )
             method_name, data_type = processing_info
             func = getattr(Excel, method_name)
             func(self.mesh, excel_file, sheet_name, data_type)
@@ -375,12 +535,15 @@ class APEC_M:
     def plot(self) -> None:
         """
         Replot the mesh in the active view in Paraview.
+
+        Returns:
+            None
         """
-        from paraview.simple import TrivialProducer, RenameSource, Show, Render
+        from paraview.simple import TrivialProducer, RenameSource, Show, Render  # type: ignore[import-not-found]
 
         # Assuming you have a function to replot the mesh in your application
         # This is a placeholder for the actual replotting logic
-        print("Plotting the mesh...")
+        LOGGER.info("Plotting mesh in ParaView.")
         producer = TrivialProducer()
         producer.GetClientSideObject().SetOutput(self.mesh)
         RenameSource(self._mesh_name or "APEC_Mesh", producer)
@@ -399,7 +562,106 @@ class APEC_M:
     #
     #
     @staticmethod
+    def _format_mesh_summary(
+        mesh: vtk.vtkUnstructuredGrid,
+        mesh_name: str,
+        mesh_path: str,
+        cwd: str,
+    ) -> str:
+        """Build a formatted multi-line mesh summary for logging.
+
+        Args:
+            mesh: Loaded VTK unstructured grid.
+            mesh_name: Job / mesh name (stem of the file).
+            mesh_path: Absolute path to the mesh file.
+            cwd: Working directory after mesh load.
+
+        Returns:
+            str: Multi-line summary string ready to pass to a logger.
+        """
+        W = 70
+        sep = " " + "-" * W
+
+        n_pts = mesh.GetNumberOfPoints()
+        n_cells = mesh.GetNumberOfCells()
+        bounds = mesh.GetBounds()   # xmin xmax ymin ymax zmin zmax
+        z_span = bounds[5] - bounds[4]
+        spatial_dim = "2D" if z_span < 1e-10 else "3D"
+
+        def _bstr(lo: float, hi: float) -> str:
+            return f"[{lo:.6g}, {hi:.6g}]"
+
+        def _array_lines(data_obj: Any, indent: str = "    ") -> list[str]:
+            rows: list[str] = []
+            for i in range(data_obj.GetNumberOfArrays()):
+                arr = data_obj.GetArray(i)
+                if arr is None:
+                    continue
+                name = arr.GetName() or "(unnamed)"
+                nc = arr.GetNumberOfComponents()
+                dtype = arr.GetDataTypeAsString()
+                comp_label = f"{nc} comp" + ("s" if nc != 1 else " ")
+                rows.append(f"{indent}{name:<28}{comp_label:<10}{dtype}")
+            return rows
+
+        def _field_lines(fd: Any, indent: str = "    ") -> list[str]:
+            rows: list[str] = []
+            for i in range(fd.GetNumberOfArrays()):
+                arr = fd.GetAbstractArray(i)
+                if arr is None:
+                    continue
+                name = arr.GetName() or "(unnamed)"
+                nc = arr.GetNumberOfComponents()
+                try:
+                    dtype = arr.GetDataTypeAsString()
+                except Exception:
+                    dtype = "unknown"
+                comp_label = f"{nc} comp" + ("s" if nc != 1 else " ")
+                rows.append(f"{indent}{name:<28}{comp_label:<10}{dtype}")
+            return rows
+
+        pd_obj = mesh.GetPointData()
+        cd_obj = mesh.GetCellData()
+        fd_obj = mesh.GetFieldData()
+        n_pd = pd_obj.GetNumberOfArrays()
+        n_cd = cd_obj.GetNumberOfArrays()
+        n_fd = fd_obj.GetNumberOfArrays()
+
+        L: list[str] = []
+        L.append("")
+        L.append(sep)
+        L.append(f"  {'APEC-M  Mesh Summary':^{W}}")
+        L.append(sep)
+        L.append(f"  {'Job name':<18}: {mesh_name}")
+        L.append(f"  {'Working dir':<18}: {cwd}")
+        L.append(f"  {'Mesh file':<18}: {mesh_path}")
+        L.append(sep)
+        L.append("  Geometry")
+        L.append(f"    {'Points':<20}: {n_pts:,}")
+        L.append(f"    {'Cells':<20}: {n_cells:,}")
+        L.append(f"    {'Spatial dimension':<20}: {spatial_dim}")
+        L.append(f"    {'Bounds X':<20}: {_bstr(bounds[0], bounds[1])}")
+        L.append(f"    {'Bounds Y':<20}: {_bstr(bounds[2], bounds[3])}")
+        L.append(f"    {'Bounds Z':<20}: {_bstr(bounds[4], bounds[5])}")
+        L.append(sep)
+        L.append(f"  Point arrays ({n_pd})")
+        L.extend(_array_lines(pd_obj))
+        L.append(sep)
+        L.append(f"  Cell arrays ({n_cd})")
+        L.extend(_array_lines(cd_obj))
+        L.append(sep)
+        L.append(f"  Field arrays ({n_fd})")
+        L.extend(_field_lines(fd_obj))
+        L.append(sep)
+        return "\n".join(L)
+
+    @staticmethod
     def _require_solver_module() -> Any:
+        """Import and return the pybind solver module.
+
+        Returns:
+            Any: Imported solver module.
+        """
         package_name = __package__ or "apec_m"
         try:
             solver_module = importlib.import_module(f"{package_name}.apec_m_solver")
@@ -410,22 +672,59 @@ class APEC_M:
             ) from exc
         return solver_module
 
-    def load_mesh_into_solver(self) -> Any:
+    def validate(self) -> None:
+        """Run a comprehensive consistency check on the loaded APEC model.
+
+        Validates the ``element_types``, ``dof_couplings``, ``materials``, and
+        ``constants`` DataFrames against each other and against the loaded VTK
+        mesh.  All violations are reported together in a single ``ValueError``.
+        Unused identifiers (TYPE_IDs, MATERIAL_IDs, CONSTANTS_IDs not referenced
+        by any cell) are reported as warnings rather than errors.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If the mesh is not loaded or any consistency check fails.
+        """
+        from .validation_utils import validate_apec_model
+        validate_apec_model(self)
+
+    def load_mesh_into_solver(self) -> None:
         """
         Build a C++ solver session from the loaded VTK grid and current APEC attributes.
 
+        Runs a full model consistency check via :meth:`validate` before creating the
+        session.  The created session is accessible via the `solver` property after
+        this call.
+
+        Returns:
+            None
         """
+        if self._closed:
+            raise RuntimeError("This APEC_M instance is closed and cannot create a new solver session.")
+
+        LOGGER.info("Validating model before creating solver session.")
+        self.validate()
+
+        LOGGER.info("Creating solver session from currently loaded mesh.")
         self._solver_session = self._load_mesh_into_solver()
+        LOGGER.info("Solver session created.")
 
     def _load_mesh_into_solver(self) -> Any:
         """
         Build a C++ solver session from the loaded VTK grid and current APEC attributes.
+
+        Returns:
+            Any: Newly created solver session.
         """
         solver_module = self._require_solver_module()
         mpi_comm = self._solver_mpi_communicator
 
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
+
+        self._close_solver_session()
 
         solver = solver_module.ApecMSolver(mpi_comm)
         solver.load_model(self)
@@ -434,6 +733,9 @@ class APEC_M:
     def solve(self) -> None:
         """
         Solve using the loaded mesh solver session.
+
+        Returns:
+            None
         """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
@@ -444,7 +746,12 @@ class APEC_M:
                 "Call load_mesh_into_solver() first."
             )
 
+        if not hasattr(self._solver_session, "solve"):
+            raise RuntimeError("Loaded solver session does not expose a solve() method.")
+
+        LOGGER.info("Starting solver session solve().")
         self._solver_session.solve()
+        LOGGER.info("Solver session solve() completed.")
 
     @staticmethod
     def _build_solver_mpi_communicator(num_processors: Optional[int]) -> Optional[Any]:
@@ -457,6 +764,12 @@ class APEC_M:
             - When COMM_WORLD has more ranks than requested, only the first
               num_processors ranks are included (others get COMM_NULL and must
               not invoke the solver).
+
+        Args:
+            num_processors: Requested number of participating ranks.
+
+        Returns:
+            Optional[Any]: Duplicated/split communicator, or None when mpi4py is unavailable.
         """
         try:
             from mpi4py import MPI
@@ -473,6 +786,8 @@ class APEC_M:
 
         if num_processors is None:
             num_processors = world_size
+        elif isinstance(num_processors, bool):
+            raise TypeError("num_processors must be an integer >= 1 or None.")
         elif num_processors < 1:
             raise ValueError("num_processors must be >= 1.")
 

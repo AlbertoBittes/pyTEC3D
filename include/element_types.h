@@ -72,6 +72,8 @@ public:
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() = 0;
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() = 0;
 
+    // FE objects keep non-owning qrule pointers; retain ownership here.
+    std::vector<std::unique_ptr<QBase>> quadrature_rules;
     std::vector<std::unique_ptr<FEAbstract>> fe_array; // Finite element objects
 
 protected:
@@ -114,10 +116,10 @@ public:
 
     // Chain-prolonging constructor for derived types
     AV3DNODALType(const std::vector<unsigned int> &OPTIONs,
-                std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
     // Helper to add two FEDataShapeFunctions structs
     static void add_av3dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                       const std::vector<unsigned int> &OPTIONs);
+                                         const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;
@@ -149,11 +151,11 @@ public:
 
     // Chain-prolonging constructor for derived types
     AV2DNODALType(const std::vector<unsigned int> &OPTIONs,
-                 std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
+                  std::function<void(std::vector<FEDataShapeFunctions> &)> fe_collector);
 
     // Helper to add two FEDataShapeFunctions structs
     static void add_av2dnodal_fe_structs(std::vector<FEDataShapeFunctions> &fe_structs,
-                                        const std::vector<unsigned int> &OPTIONs);
+                                         const std::vector<unsigned int> &OPTIONs);
 
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_nodal_solution_matrix_idx_size_map() override;
     virtual std::unique_ptr<std::vector<std::vector<unsigned int>>> get_element_solution_matrix_idx_size_map() override;

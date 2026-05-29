@@ -22,12 +22,19 @@
 #include "assembler.h"
 #include "global_constraints_object.h"
 #include "solver_configuration.h"
+#include "apec_m_logging.h"
 #include "apec_m_solver.h"
 #include "fe_parent_object.h"
 
 using namespace libMesh;
 
 class ElementTypesFactory;
+
+#if defined(__GNUC__) || defined(__clang__)
+#define APEC_M_SYSTEM_CLASS_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define APEC_M_SYSTEM_CLASS_HIDDEN
+#endif
 
 class ApecMSystemBase
 {
@@ -110,7 +117,7 @@ public:
     }
 };
 
-class ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
+class APEC_M_SYSTEM_CLASS_HIDDEN ApecMLinearSystem : public ApecMSystem<TransientSystem<LinearImplicitSystem>>
 {
 public:
     struct TimeStep
@@ -165,12 +172,14 @@ public:
 
     void post_init() override
     {
+        apec::logging::info("Initializing system matrix");
         this->zero_out_matrix_and_rhs = false;
         this->get_system_matrix().zero();
         // These are maybe not needed
         // this->rhs->zero();
         // this->current_local_solution->zero();
         // this->current_local_solution->close();
+        apec::logging::info("Setting linear solver configurations");
         auto *equation_systems = dynamic_cast<ApecMEquationSystems *>(&this->get_equation_systems());
         auto *solver_parent = equation_systems ? equation_systems->get_parent_object() : nullptr;
         auto *petsc_solver = dynamic_cast<PetscLinearSolver<Number> *>(this->linear_solver.get());
@@ -205,5 +214,7 @@ public:
         this->remove_vector("RHS");
     }
 };
+
+#undef APEC_M_SYSTEM_CLASS_HIDDEN
 
 #endif // APEC_M_SYSTEM_H

@@ -2,22 +2,27 @@ from __future__ import annotations
 
 import copy
 import os
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Tuple, cast
 
 import numpy as np
 import pandas as pd
 import vtk
 from .selector import Selector
 from .model_edit import ModelEdit
+from .logging_utils import get_logger
+from .validation_utils import ensure_vtk_unstructured_grid
 from .constants import (
     DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS,
     DEFAULT_APEC_ALGORITHM_STATUS,
 )
 
-import vtk.util.numpy_support as vtknp
+import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from .apec_m import APEC_M
+
+
+LOGGER = get_logger("apec_m.algorithm")
 
 class ApecAlgorithm:
     """
@@ -40,6 +45,15 @@ class ApecAlgorithm:
         apec: "APEC_M",
         input_parameters: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Initialize algorithm state and optional parameter overrides.
+
+        Args:
+            apec: Owning APEC_M object.
+            input_parameters: Optional input-parameter overrides.
+
+        Returns:
+            None
+        """
         self.apec: "APEC_M" = apec
         self.input_parameters: Dict[str, Any] = copy.deepcopy(
             DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS
@@ -72,6 +86,11 @@ class ApecAlgorithm:
         self.equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
 
     def reset(self) -> None:
+        """Reset iterative state and cached data to default values.
+
+        Returns:
+            None
+        """
         self.status = copy.deepcopy(DEFAULT_APEC_ALGORITHM_STATUS)
         self._first_absolute_iteration = True
         self._previous_flux_vector = None
@@ -82,17 +101,57 @@ class ApecAlgorithm:
         self._halo_node_groups = ()
         self._halo_boundary_graph_cache = None
 
-    def set_toroidal_slices(self) -> None:
+    def _require_equilibrium_mesh(self) -> vtk.vtkUnstructuredGrid:
+        """Return a validated equilibrium mesh required by internal algorithm steps.
+
+        Returns:
+            vtk.vtkUnstructuredGrid: Validated equilibrium mesh.
+        """
+        if self.equilibrium_mesh is None:
+            raise ValueError("equilibrium_mesh is not set.")
+        return ensure_vtk_unstructured_grid(
+            self.equilibrium_mesh,
+            arg_name="equilibrium_mesh",
+        )
+
+    @staticmethod
+    def _require_array(
+        data: "vtk.vtkDataSetAttributes",
+        name: str,
+    ) -> "vtk.vtkDataArray":
+        """Return a named VTK array or raise a descriptive error if missing.
+
+        Args:
+            data: VTK data attributes object (CellData or PointData).
+            name: Array name to look up.
+
+        Returns:
+            vtk.vtkDataArray: Found array.
+
+        Raises:
+            ValueError: If the named array is not present in the data object.
+        """
+        arr = data.GetArray(name)
+        if arr is None:
+            raise ValueError(
+                f"Required array '{name}' not found. "
+                "Ensure the mesh is fully initialized before running the algorithm."
+            )
+        return arr
+
+    def _set_toroidal_slices(self) -> None:
+        """Build toroidal node/element mapping slices when they are not cached yet.
+
+        Returns:
+            None
+        """
         if (
             self._toroidal_slices_nodes.size != 0
             and self._toroidal_slices_elems.size != 0
         ):
             return
 
-        if self.equilibrium_mesh is None:
-            raise ValueError(
-                "Equilibrium mesh is not set; cannot build toroidal slices."
-            )
+        equilibrium_mesh = self._require_equilibrium_mesh()
 
         target_dimension = self.apec.mesh.GetMaxSpatialDimension()
         extrusion_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
@@ -112,7 +171,7 @@ class ApecAlgorithm:
         tolerance = float(self.input_parameters["tolerance"])
         coordinate_system = CylindricalCoordinateSystem()
         self._toroidal_slices_nodes = Cyclic.build_toroidal_slices(
-            self.equilibrium_mesh,
+            equilibrium_mesh,
             self.apec.mesh,
             location="node",
             tolerance=tolerance,
@@ -121,7 +180,7 @@ class ApecAlgorithm:
             coordinate_system=coordinate_system,
         )
         self._toroidal_slices_elems = Cyclic.build_toroidal_slices(
-            self.equilibrium_mesh,
+            equilibrium_mesh,
             self.apec.mesh,
             location="elem",
             tolerance=tolerance,
@@ -131,16 +190,39 @@ class ApecAlgorithm:
         )
 
     def _diagnostics_csv_path(self) -> str:
+        """Return diagnostics CSV output path under the __apec__ folder.
+
+        Returns:
+            str: Diagnostics CSV file path.
+        """
         diagnostics_dir = os.path.join(os.getcwd(), "__apec__")
         os.makedirs(diagnostics_dir, exist_ok=True)
         return os.path.join(diagnostics_dir, "apec_iteration_diagnostics.csv")
 
     def _clear_diagnostics_file(self) -> None:
+        """Remove diagnostics CSV on rank 0 before a new run.
+
+        Returns:
+            None
+        """
+        if self.apec._world_rank() != 0:
+            return
+
         csv_path = self._diagnostics_csv_path()
-        if os.path.exists(csv_path):
+        try:
             os.remove(csv_path)
+        except FileNotFoundError:
+            pass
 
     def _build_diagnostics_row(self, converged: bool) -> Dict[str, Any]:
+        """Build one diagnostics record from current algorithm status.
+
+        Args:
+            converged: Current convergence flag.
+
+        Returns:
+            Dict[str, Any]: Row payload for CSV append.
+        """
         row: Dict[str, Any] = {
             "time": float(self.apec.time_step["time"]),
             "picard_iteration": int(self.status["picard_iteration"]),
@@ -181,6 +263,15 @@ class ApecAlgorithm:
         step: str,
         override: Optional[Callable[..., Any]],
     ) -> None:
+        """Register or clear a custom implementation for a supported algorithm step.
+
+        Args:
+            step: Step identifier.
+            override: Callable override or None to clear.
+
+        Returns:
+            None
+        """
         if step not in self._supported_step_overrides:
             raise ValueError(
                 f"Unsupported step '{step}'. "
@@ -194,17 +285,23 @@ class ApecAlgorithm:
         self._step_overrides[step] = override
 
     def clear_step_overrides(self) -> None:
+        """Remove all previously registered step overrides.
+
+        Returns:
+            None
+        """
         self._step_overrides.clear()
 
-    def cache_halo_boundary_graph(self) -> None:
+    def _cache_halo_boundary_graph(self) -> None:
+        """Cache the external boundary graph of selected vacuum-chamber cells.
+
+        Returns:
+            None
+        """
         if self._halo_boundary_graph_cache is not None:
             return
-        if self.equilibrium_mesh is None:
-            raise ValueError(
-                "Equilibrium mesh is not set; cannot cache halo boundary graph."
-            )
 
-        mesh = self.equilibrium_mesh
+        mesh = self._require_equilibrium_mesh()
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         boundary_node_ids, boundary_adjacency = (
             Selector.get_selected_external_node_adjacency(mesh)
@@ -212,8 +309,15 @@ class ApecAlgorithm:
         self._halo_boundary_graph_cache = (boundary_node_ids, boundary_adjacency)
 
     def _get_halo_boundary_graph(self) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
+        """Return cached halo boundary graph, computing it on first use.
+
+        Returns:
+            Tuple[np.ndarray, Dict[int, np.ndarray]]: Boundary node ids and adjacency map.
+        """
         if self._halo_boundary_graph_cache is None:
-            self.cache_halo_boundary_graph()
+            self._cache_halo_boundary_graph()
+        if self._halo_boundary_graph_cache is None:
+            raise RuntimeError("Halo boundary graph cache is unexpectedly empty.")
         return self._halo_boundary_graph_cache
 
     @staticmethod
@@ -221,6 +325,15 @@ class ApecAlgorithm:
         node_ids: np.ndarray,
         boundary_adjacency: Dict[int, np.ndarray],
     ) -> Tuple[np.ndarray, ...]:
+        """Split node ids into ordered edge-connected components on the boundary graph.
+
+        Args:
+            node_ids: Candidate node ids.
+            boundary_adjacency: Boundary adjacency graph.
+
+        Returns:
+            Tuple[np.ndarray, ...]: Ordered connected node groups.
+        """
         node_ids = np.unique(np.asarray(node_ids, dtype=np.int64).reshape(-1))
         if node_ids.size == 0:
             return ()
@@ -303,6 +416,17 @@ class ApecAlgorithm:
         reference_point: Tuple[float, float, float],
         plasma_current: float,
     ) -> Tuple[np.ndarray, ...]:
+        """Orient each halo node path consistently with the plasma-current direction.
+
+        Args:
+            groups: Ordered halo node groups.
+            points: Mesh point coordinates.
+            reference_point: Magnetic axis reference point.
+            plasma_current: Plasma current sign/magnitude.
+
+        Returns:
+            Tuple[np.ndarray, ...]: Oriented node groups.
+        """
         if not groups or plasma_current == 0.0:
             return groups
 
@@ -335,19 +459,33 @@ class ApecAlgorithm:
         step: str,
         default_impl: Callable[..., Any],
     ) -> Any:
+        """Dispatch to an override when provided, else execute the default implementation.
+
+        Args:
+            step: Step identifier.
+            default_impl: Default callable implementation.
+
+        Returns:
+            Any: Step return value.
+        """
         override = self._step_overrides[step] if step in self._step_overrides else None
         if override is None:
             return default_impl()
         return override(self)
 
-    def set_psi_magnetic_axis(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _set_psi_magnetic_axis(self) -> None:
+        """Compute and store magnetic-axis location and PSI from selected vacuum nodes.
 
-        psi_array = mesh.GetPointData().GetArray("PSI")
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
+
+        psi_array = ApecAlgorithm._require_array(mesh.GetPointData(), "PSI")
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsle(mesh)
-        selection_array = mesh.GetPointData().GetArray("selection_point")
+        selection_array = ApecAlgorithm._require_array(mesh.GetPointData(), "selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
@@ -364,18 +502,23 @@ class ApecAlgorithm:
         self.status["psi_max"] = psi_axis
         self.status["magnetic_axis"] = axis_point
 
-    def reset_plasma_components(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _reset_plasma_components(self) -> None:
+        """Reset PLASMA/AMPS and Js fields inside selected vacuum-chamber elements.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
         cell_data = mesh.GetCellData()
 
-        js_array = cell_data.GetArray("Js")
+        js_array = ApecAlgorithm._require_array(cell_data, "Js")
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
         Selector.nsle(mesh)
         Selector.set_value_on_selection(mesh, "AMPS", 0.0, type="node")
 
-        selection_array = cell_data.GetArray("selection_cell")
+        selection_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
         js_np = vtknp.vtk_to_numpy(js_array)
@@ -383,8 +526,13 @@ class ApecAlgorithm:
         js_np[selected_ids, :] = 0.0
         js_array.Modified()
 
-    def identify_plasma_region(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _identify_plasma_region(self) -> None:
+        """Identify plasma elements from PSI thresholds and optional halo settings.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
 
         psi_2_min = float(self.status["psi_2_min"])
         psi_min = float(self.status["psi_min"])
@@ -454,16 +602,21 @@ class ApecAlgorithm:
         if selected_elem_count > 0:
             Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
-    def remove_plasma_out_of_X_point(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _remove_plasma_out_of_X_point(self) -> None:
+        """Remove plasma elements outside the magnetic topology defined around the X-point.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
         cell_data = mesh.GetCellData()
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        cell_selection_array = cell_data.GetArray("selection_cell")
+        cell_selection_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
         vacuum_cell_mask = vtknp.vtk_to_numpy(cell_selection_array).astype(bool)
         vacuum_cell_ids = np.flatnonzero(vacuum_cell_mask)
 
-        centroids_array = cell_data.GetArray("cell_centroids")
+        centroids_array = ApecAlgorithm._require_array(cell_data, "cell_centroids")
         centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
         x_elem = np.asarray(centroids[:, 0], dtype=float)
         y_elem = np.asarray(centroids[:, 1], dtype=float)
@@ -475,7 +628,7 @@ class ApecAlgorithm:
         plasma_current = float(self.input_parameters["plasma_current"])
         current_sign = 1.0 if plasma_current >= 0.0 else -1.0
 
-        be_array = cell_data.GetArray("Be")
+        be_array = ApecAlgorithm._require_array(cell_data, "Be")
         be = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
         bx = be[:, 0]
         by = be[:, 1]
@@ -495,17 +648,22 @@ class ApecAlgorithm:
         )
         Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
-    def check_limiter(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _check_limiter(self) -> None:
+        """Locate limiter contact point and associated PSI among selected boundary nodes.
 
-        psi_array = mesh.GetPointData().GetArray("PSI")
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
+
+        psi_array = ApecAlgorithm._require_array(mesh.GetPointData(), "PSI")
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsel_ext(mesh, mode="s")
         Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
         Selector.nsle(mesh, mode="r")
 
-        selection_array = mesh.GetPointData().GetArray("selection_point")
+        selection_array = ApecAlgorithm._require_array(mesh.GetPointData(), "selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
         if selected_ids.size == 0:
             raise ValueError(
@@ -526,20 +684,26 @@ class ApecAlgorithm:
         self.status["last_psi_limiter"] = psi_limiter
         self.status["limiter_point"] = limiter_point
 
-    def check_X_point(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _check_x_point(self) -> None:
+        """Locate the X-point as a local magnetic-field minimum candidate.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
         point_data = mesh.GetPointData()
 
-        psi_array = point_data.GetArray("PSI")
-        b_array = point_data.GetArray("B")
+        psi_array = ApecAlgorithm._require_array(point_data, "PSI")
+        b_array = ApecAlgorithm._require_array(point_data, "B")
         b = np.asarray(vtknp.vtk_to_numpy(b_array), dtype=float)
         b_norm = np.sqrt(np.square(b[:, 0]) + np.square(b[:, 1]))
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsle(mesh)
-        # This should not be needed logically but I was getting convergence oscillations with 2nd order elements
+        # Exclude midside nodes: their PSI values are interpolated and can
+        # produce false minima near the X-point with second-order elements.
         Selector.select(mesh, "MidsideNodes", 1, type="node", mode="u")
-        selection_array = point_data.GetArray("selection_point")
+        selection_array = ApecAlgorithm._require_array(point_data, "selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
         axis_node_id = int(selected_ids[int(np.argmax(psi[selected_ids]))])
@@ -588,8 +752,13 @@ class ApecAlgorithm:
         self.status["last_psi_x_point"] = psi_x
         self.status["x_point"] = tuple(float(v) for v in xyz[x_point_node_id])
 
-    def set_b_target_axis(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _set_b_target_axis(self) -> None:
+        """Interpolate B at the requested target axis point and store it in status.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
 
         point_data = mesh.GetPointData()
         b_array = point_data.GetArray("B")
@@ -600,6 +769,7 @@ class ApecAlgorithm:
             float(self.input_parameters["target_central_axis_y"]),
             float(self.input_parameters["target_central_axis_z"]),
         )
+        target_point_seq = [target_point[0], target_point[1], target_point[2]]
 
         cache_key = (
             id(mesh),
@@ -614,7 +784,7 @@ class ApecAlgorithm:
             locator = vtk.vtkCellLocator()
             locator.SetDataSet(mesh)
             locator.BuildLocator()
-            cell_id = int(locator.FindCell(target_point))
+            cell_id = int(locator.FindCell(target_point_seq))
             if cell_id < 0:
                 raise ValueError(
                     "Target magnetic axis point is not inside the mesh: "
@@ -633,11 +803,11 @@ class ApecAlgorithm:
             weights = [0.0] * n_points
             inside = int(
                 cell.EvaluatePosition(
-                    target_point,
+                    target_point_seq,
                     closest_point,
-                    sub_id,
+                    cast(Any, sub_id),
                     pcoords,
-                    dist2,
+                    cast(Any, dist2),
                     weights,
                 )
             )
@@ -662,7 +832,12 @@ class ApecAlgorithm:
         target = (float(b_target[0]), float(b_target[1]))
         self.status["b_target_axis"] = target
 
-    def compute_correction_currents(self) -> None:
+    def _compute_correction_currents(self) -> None:
+        """Compute radial/vertical control-current corrections from target-axis B.
+
+        Returns:
+            None
+        """
         bradx = float(self.input_parameters["bradx_value"])
         brady = float(self.input_parameters["brady_value"])
         bverx = float(self.input_parameters["bverx_value"])
@@ -681,8 +856,13 @@ class ApecAlgorithm:
         self.status["radial_correction_current"] = float(correction[0])
         self.status["vertical_correction_current"] = float(correction[1])
 
-    def apply_control_currents(self) -> None:
-        mesh = self.equilibrium_mesh
+    def _apply_control_currents(self) -> None:
+        """Apply computed control currents to PF coil regions via Js updates.
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
 
         cell_data = mesh.GetCellData()
         js_array = cell_data.GetArray("Js")
@@ -755,17 +935,27 @@ class ApecAlgorithm:
         js_array.Modified()
 
     def find_separatrix(self) -> None:
+        """Run the separatrix-detection step (or its registered override).
+
+        Returns:
+            None
+        """
         self._dispatch_step(
             self.STEP_FIND_SEPARATRIX,
             self._find_separatrix_default,
         )
 
     def _find_separatrix_default(self) -> None:
-        self.reset_plasma_components()
-        self.set_psi_magnetic_axis()
-        self.check_X_point()
-        self.remove_plasma_out_of_X_point()
-        self.check_limiter()
+        """Default separatrix detection and plasma-region classification workflow.
+
+        Returns:
+            None
+        """
+        self._reset_plasma_components()
+        self._set_psi_magnetic_axis()
+        self._check_x_point()
+        self._remove_plasma_out_of_X_point()
+        self._check_limiter()
         psi_limiter = float(self.status["last_psi_limiter"])
         psi_x_point = float(self.status["last_psi_x_point"])
         if psi_limiter > psi_x_point:
@@ -793,38 +983,48 @@ class ApecAlgorithm:
             )
         else:
             self.status["psi_2_min"] = self.status["psi_min"]
-        self.identify_plasma_region()
+        self._identify_plasma_region()
 
     def compute_jplasma_gradshafranov(self) -> None:
+        """Run Grad-Shafranov current computation (or its registered override).
+
+        Returns:
+            None
+        """
         self._dispatch_step(
             self.STEP_COMPUTE_JPLASMA,
             self._compute_jplasma_gradshafranov_default,
         )
 
     def _compute_jplasma_gradshafranov_default(self) -> None:
-        mesh = self.equilibrium_mesh
+        """Compute Grad-Shafranov plasma current profile and update Js (and halo AMPS).
+
+        Returns:
+            None
+        """
+        mesh = self._require_equilibrium_mesh()
 
         point_data = mesh.GetPointData()
         cell_data = mesh.GetCellData()
 
-        js_array = cell_data.GetArray("Js")
+        js_array = ApecAlgorithm._require_array(cell_data, "Js")
         js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
 
-        psi_point_array = point_data.GetArray("PSI")
+        psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
         psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
 
-        psie_array = cell_data.GetArray("PSIe")
+        psie_array = ApecAlgorithm._require_array(cell_data, "PSIe")
         psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
 
-        be_array = cell_data.GetArray("Be")
+        be_array = ApecAlgorithm._require_array(cell_data, "Be")
         be_np = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
         bx = np.asarray(be_np[:, 0], dtype=float)
         by = np.asarray(be_np[:, 1], dtype=float)
 
-        volume_array = cell_data.GetArray("cell_volume")
+        volume_array = ApecAlgorithm._require_array(cell_data, "cell_volume")
         cell_volume = np.asarray(vtknp.vtk_to_numpy(volume_array), dtype=float).reshape(-1)
 
-        centroids_array = cell_data.GetArray("cell_centroids")
+        centroids_array = ApecAlgorithm._require_array(cell_data, "cell_centroids")
         centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
         elem_centroid_rad = np.asarray(centroids[:, 0], dtype=float)
 
@@ -946,17 +1146,32 @@ class ApecAlgorithm:
         self.status["plasma_element_count"] = int(selected_ids.size)
 
     def control_currents(self) -> None:
+        """Run control-current update step (or its registered override).
+
+        Returns:
+            None
+        """
         self._dispatch_step(
             self.STEP_CONTROL_CURRENTS,
             self._control_currents_default,
         )
 
     def _control_currents_default(self) -> None:
-        self.set_b_target_axis()
-        self.compute_correction_currents()
-        self.apply_control_currents()
+        """Default control-current pipeline: sample B, compute correction, apply Js.
+
+        Returns:
+            None
+        """
+        self._set_b_target_axis()
+        self._compute_correction_currents()
+        self._apply_control_currents()
 
     def check_convergence(self) -> bool:
+        """Run convergence check step (or its registered override).
+
+        Returns:
+            bool: True when convergence criterion is satisfied.
+        """
         result = self._dispatch_step(
             self.STEP_CHECK_CONVERGENCE,
             self._check_convergence_default,
@@ -964,7 +1179,12 @@ class ApecAlgorithm:
         return bool(result)
 
     def _check_convergence_default(self) -> bool:
-        mesh = self.equilibrium_mesh
+        """Check Picard convergence using max absolute PSI change on selected nodes.
+
+        Returns:
+            bool: True when convergence criterion is satisfied.
+        """
+        mesh = self._require_equilibrium_mesh()
 
         point_data = mesh.GetPointData()
         psi_array = point_data.GetArray("PSI")
@@ -1002,12 +1222,25 @@ class ApecAlgorithm:
 
     # Backward-compatible alias.
     def check_poloidal_flux_convergence(self) -> bool:
+        """Backward-compatible alias for :meth:`check_convergence`.
+
+        Returns:
+            bool: Convergence status.
+        """
         return self.check_convergence()
 
-    def toroidal_average(self, psi_only: bool = False) -> None:
-        equilibrium_mesh = self.equilibrium_mesh
+    def _toroidal_average(self, psi_only: bool = False) -> None:
+        """Average toroidally mapped values from evolution mesh into equilibrium mesh.
+
+        Args:
+            psi_only: When True, average only PSI values.
+
+        Returns:
+            None
+        """
+        equilibrium_mesh = self._require_equilibrium_mesh()
         evolution_mesh = self.apec.mesh
-        self.set_toroidal_slices()
+        self._set_toroidal_slices()
         node_slices = self._toroidal_slices_nodes
         elem_slices = self._toroidal_slices_elems
 
@@ -1110,12 +1343,17 @@ class ApecAlgorithm:
         eq_psie[src_elems] = psie_values
         eq_psie_array.Modified()
 
-    def toroidal_projection_current(self) -> None:
+    def _toroidal_projection_current(self) -> None:
+        """Project equilibrium current state back onto the static/evolution mesh.
+
+        Returns:
+            None
+        """
         from .coordinate_system import CylindricalCoordinateSystem
 
         static_mesh = self.apec.mesh
-        equilibrium_mesh = self.equilibrium_mesh
-        self.set_toroidal_slices()
+        equilibrium_mesh = self._require_equilibrium_mesh()
+        self._set_toroidal_slices()
         node_slices = self._toroidal_slices_nodes
         elem_slices = self._toroidal_slices_elems
 
@@ -1188,10 +1426,21 @@ class ApecAlgorithm:
 
         static_js_array.Modified()
 
-    def append_iteration_diagnostics(
+    def _append_iteration_diagnostics(
         self,
         converged: bool,
     ) -> None:
+        """Append one solver-iteration diagnostics row to the CSV diagnostics file.
+
+        Args:
+            converged: Current convergence flag.
+
+        Returns:
+            None
+        """
+        if not isinstance(converged, (bool, np.bool_)):
+            raise TypeError("converged must be a boolean value.")
+
         self.status["converged"] = bool(converged)
         if self.apec._world_rank() != 0:
             return
@@ -1202,11 +1451,19 @@ class ApecAlgorithm:
         write_header = (not os.path.exists(csv_path)) or os.path.getsize(csv_path) == 0
         row_df.to_csv(csv_path, mode="a", header=write_header, index=False)
 
-    def calculate_poloidal_flux(self) -> None:
+    def _calculate_poloidal_flux(self) -> None:
+        """Update Ae/PSI/PSIe fields from current vector-potential solution arrays.
+
+        Returns:
+            None
+        """
         from .coordinate_system import CylindricalCoordinateSystem
         from .cyclic import Cyclic
 
         mesh = self.apec.mesh
+        if mesh.GetPointData().GetArray("A") is None:
+            raise ValueError("Required PointData array 'A' is missing before poloidal flux calculation.")
+
         ModelEdit.element_solution(mesh, "A")
         Cyclic.poloidal_flux(
             mesh=mesh,
@@ -1214,11 +1471,20 @@ class ApecAlgorithm:
         )
 
     def equilibrium_solve(self) -> bool:
+        """Run the equilibrium Picard loop until convergence or iteration limit.
+
+        Returns:
+            bool: True when convergence is reached.
+        """
+        LOGGER.info("Starting equilibrium solve.")
+        if self.apec.solver is None:
+            raise RuntimeError("No solver session available. Call load_mesh_into_solver() before equilibrium_solve().")
+
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
         self.equilibrium_mesh = self.apec.mesh
         if self._first_absolute_iteration:
-            self.cache_halo_boundary_graph()
+            self._cache_halo_boundary_graph()
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
         )
@@ -1226,6 +1492,11 @@ class ApecAlgorithm:
 
         for iteration in range(max_picard_iterations):
             self.status["picard_iteration"] = iteration + 1
+            LOGGER.info(
+                "Equilibrium Picard iteration %d/%d.",
+                self.status["picard_iteration"],
+                max_picard_iterations,
+            )
 
             if not self._first_absolute_iteration:
                 self.find_separatrix()
@@ -1233,17 +1504,27 @@ class ApecAlgorithm:
                 self.control_currents()
 
             self.apec.solve()
-            self.calculate_poloidal_flux()
+            self._calculate_poloidal_flux()
 
             converged = self.check_convergence()
             # self.apec.write_output()
-            self.append_iteration_diagnostics(converged)
+            self._append_iteration_diagnostics(converged)
             if converged:
                 self.status["converged"] = True
+                LOGGER.info(
+                    "Equilibrium solve converged at iteration %d (flux_norm=%s).",
+                    self.status["picard_iteration"],
+                    self.status["flux_norm"],
+                )
                 return True
             self._first_absolute_iteration = False
 
         self.status["converged"] = False
+        LOGGER.error(
+            "Equilibrium solve did not converge after %d iterations (last flux_norm=%s).",
+            max_picard_iterations,
+            self.status["flux_norm"],
+        )
         raise RuntimeError(
             "Equilibrium solve did not converge after "
             f"{max_picard_iterations} Picard iterations "
@@ -1251,13 +1532,24 @@ class ApecAlgorithm:
         )
 
     def evolution_solve(self) -> bool:
+        """Run the evolution Picard loop, including toroidal transfer operations.
+
+        Returns:
+            bool: True when evolution solve completes successfully.
+        """
+        LOGGER.info("Starting evolution solve.")
+        if self.apec.solver is None:
+            raise RuntimeError("No solver session available. Call load_mesh_into_solver() before evolution_solve().")
+
+        equilibrium_mesh = self._require_equilibrium_mesh()
+
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-            Selector.select(self.equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-            Selector.nsle(self.equilibrium_mesh, mode="s")
+            Selector.select(equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+            Selector.nsle(equilibrium_mesh, mode="s")
             Selector.select_all(self.apec.mesh)
-            self.set_toroidal_slices()
-            self.cache_halo_boundary_graph()
+            self._set_toroidal_slices()
+            self._cache_halo_boundary_graph()
 
         max_picard_iterations = max(
             1, int(self.input_parameters["max_picard_iterations"])
@@ -1265,36 +1557,52 @@ class ApecAlgorithm:
 
         for iteration in range(max_picard_iterations):
             self.status["picard_iteration"] = iteration + 1
+            LOGGER.info(
+                "Evolution Picard iteration %d/%d.",
+                self.status["picard_iteration"],
+                max_picard_iterations,
+            )
 
             if not self._first_absolute_iteration:
-                self.toroidal_average()
+                self._toroidal_average()
                 self.find_separatrix()
                 self.compute_jplasma_gradshafranov()
 
-                self.toroidal_projection_current()
+                self._toroidal_projection_current()
                 self.apec.solve()
-                self.calculate_poloidal_flux()
+                self._calculate_poloidal_flux()
                 # self.apec.write_output()
 
-                self.toroidal_average(psi_only=True)
+                self._toroidal_average(psi_only=True)
 
                 converged = self.check_convergence()
-                self.append_iteration_diagnostics(
+                self._append_iteration_diagnostics(
                     converged,
                 )
                 if converged:
                     self.status["converged"] = True
+                    LOGGER.info(
+                        "Evolution solve converged at iteration %d (flux_norm=%s).",
+                        self.status["picard_iteration"],
+                        self.status["flux_norm"],
+                    )
                     return True
             else:
                 self.apec.solve()
-                self.calculate_poloidal_flux()
+                self._calculate_poloidal_flux()
                 # self.apec.write_output()
                 self.check_convergence()
                 self._first_absolute_iteration = False
                 self.status["converged"] = True
+                LOGGER.info("Evolution solve completed initial absolute iteration.")
                 return True
 
         self.status["converged"] = False
+        LOGGER.error(
+            "Evolution solve did not converge after %d iterations (last flux_norm=%s).",
+            max_picard_iterations,
+            self.status["flux_norm"],
+        )
         raise RuntimeError(
             "Evolution solve did not converge after "
             f"{max_picard_iterations} Picard iterations "

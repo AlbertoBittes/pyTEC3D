@@ -4,6 +4,12 @@ import numpy as np
 import vtk
 import vtk.util.numpy_support as vtknp
 
+from .logging_utils import get_logger
+from .validation_utils import ensure_vtk_unstructured_grid
+
+
+LOGGER = get_logger("apec_m.selector")
+
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     from .coordinate_system import CoordinateSystem
 
@@ -24,6 +30,7 @@ class Selector:
         Side Effects:
             Adds selection arrays to mesh CellData and PointData if missing.
         """
+        ensure_vtk_unstructured_grid(mesh)
         cell_data = mesh.GetCellData()
         if cell_data.GetArray("selection_cell") is None:
             arr = np.zeros(mesh.GetNumberOfCells(), dtype=np.uint8)
@@ -208,6 +215,17 @@ class Selector:
         type: str,
         mode: str,
     ) -> None:
+        """Apply a precomputed boolean mask to node/element selection arrays.
+
+        Args:
+            mask: Boolean mask to apply.
+            data: Target VTK dataset attributes.
+            type: "elem" or "node" selection type.
+            mode: Selection mode ('s', 'a', 'r', 'u').
+
+        Returns:
+            None
+        """
         mask = np.asarray(mask, dtype=bool)
         sel_array = data.GetArray(
             "selection_cell" if type == "elem" else "selection_point"
@@ -431,6 +449,17 @@ class Selector:
         selected_cell_ids: np.ndarray,
         temp_id_name: str = "__apec_original_point_ids__",
     ) -> "vtk.vtkPolyData":
+        """Extract external boundary edges of selected 2D cells as polydata.
+
+        Args:
+            mesh: Source 2D mesh.
+            selected_cell_ids: Selected cell ids.
+            temp_id_name: Temporary point-id array name.
+
+        Returns:
+            vtk.vtkPolyData: Boundary edges as polydata.
+        """
+        ensure_vtk_unstructured_grid(mesh)
         mesh_point_data = mesh.GetPointData()
         created_temp_ids = False
         if mesh_point_data.GetArray(temp_id_name) is None:
@@ -504,7 +533,7 @@ class Selector:
         cell_sel = vtknp.vtk_to_numpy(cell_sel_array)
         selected_cell_ids = np.flatnonzero(cell_sel == 1).astype(np.int64)
         if selected_cell_ids.size == 0:
-            print("No cells are selected.")
+            LOGGER.info("No cells are selected.")
             return
 
         temp_id_name = "__apec_original_point_ids__"
@@ -520,11 +549,11 @@ class Selector:
             if vtk_ids_array is None:
                 vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
             if vtk_ids_array is None:
-                print(f"No external nodes found ({temp_id_name} missing).")
+                LOGGER.info("No external nodes found (%s missing).", temp_id_name)
                 return
             point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
             if point_ids.size == 0:
-                print("No external nodes found (feature edges returned empty).")
+                LOGGER.info("No external nodes found (feature edges returned empty).")
                 return
         else:
             id_array = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
@@ -558,7 +587,7 @@ class Selector:
                 if vtk_ids_array is None:
                     vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
                 if vtk_ids_array is None:
-                    print(f"No external nodes found ({temp_id_name} missing).")
+                    LOGGER.info("No external nodes found (%s missing).", temp_id_name)
                     return
                 point_ids = vtknp.vtk_to_numpy(vtk_ids_array)
             finally:
@@ -583,6 +612,12 @@ class Selector:
 
         The boundary is the 1D polydata produced by the same GeometryFilter +
         FeatureEdges pipeline used by nsel_ext().
+
+        Args:
+            mesh: Source 2D mesh.
+
+        Returns:
+            tuple[np.ndarray, dict[int, np.ndarray]]: Boundary node ids and adjacency map.
         """
         Selector.ensure_selection_arrays(mesh)
         if mesh.GetMaxSpatialDimension() > 2:
@@ -601,12 +636,13 @@ class Selector:
             selected_cell_ids,
             temp_id_name=temp_id_name,
         )
+        original_point_ids = np.empty((0,), dtype=np.int64)
         point_data = edges.GetPointData()
         vtk_ids_array = point_data.GetArray(temp_id_name)
         if vtk_ids_array is None:
             vtk_ids_array = point_data.GetArray("vtkOriginalPointIds")
         if vtk_ids_array is None:
-            print(f"No external nodes found ({temp_id_name} missing).")
+            LOGGER.info("No external nodes found (%s missing).", temp_id_name)
             boundary_node_ids = np.empty((0,), dtype=np.int64)
             edge_connectivity = None
             edge_offsets = None

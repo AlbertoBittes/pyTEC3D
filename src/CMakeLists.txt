@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PETSC QUIET IMPORTED_TARGET PETSc)
 if(NOT PETSC_FOUND)
@@ -76,6 +77,7 @@ if(EXISTS "${APEC_M_REPO_ROOT}/include/dependencies")
 endif()
 
 set(APEC_M_LINK_LIBS
+  spdlog::spdlog_header_only
   ${LIBMESH_LIB}
   ${TIMPI_LIB}
   PkgConfig::PETSC

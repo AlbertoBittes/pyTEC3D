@@ -15,11 +15,11 @@ t0 = time.perf_counter()
 filename = "ITER_3D_APEC_evol"
 apec_equilibrium_output_filename = "ITER_2D_APEC_out_1"
 
-filepath = os.path.join(os.getcwd(), "tests", filename, filename + ".vtu")
+filepath = os.path.join(os.getcwd(), filename + ".vtu")
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
-    "tests",
+    "..",
     "ITER_2D_APEC",
     "output",
     apec_equilibrium_output_filename + ".vtu",
