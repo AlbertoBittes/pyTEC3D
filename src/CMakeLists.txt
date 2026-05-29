@@ -110,7 +110,11 @@ if(APEC_M_BUILD_PYBIND_MODULE)
     PRIVATE ${APEC_M_INCLUDE_DIRS}
   )
 
-  target_compile_definitions(apec_m_solver PRIVATE APEC_M_ENABLE_PYBIND)
+  target_compile_definitions(apec_m_solver PRIVATE
+    APEC_M_ENABLE_PYBIND
+    APEC_M_VERSION=${PROJECT_VERSION}
+    APEC_M_BUILD_TYPE="$<CONFIG>"
+  )
 
   if(PETSC_CFLAGS_OTHER)
     target_compile_options(apec_m_solver PRIVATE ${PETSC_CFLAGS_OTHER})

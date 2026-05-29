@@ -1,6 +1,5 @@
 from apec_m import APEC_M
 from apec_m.model_edit import ModelEdit
-from apec_m.cyclic import Cyclic
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
@@ -10,17 +9,17 @@ import os
 
 apec = APEC_M()
 
-apec_evolution_mesh = "ITER_2D_APEC_evol_fine"
-apec_evolution_mesh_notrans = "ITER_2D_APEC_fine_out_1"
+apec_evolution_mesh = "ITER_2D_APEC_evol_fine2"
+apec_evolution_mesh_notrans = "ITER_2D_APEC_fine2_out_1"
 
-evol_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+evol_filepath = os.path.join(os.getcwd(), apec_evolution_mesh + ".vtu")
 # Read the output of the equilibrium analysis
 static_mesh_filepath = os.path.join(
     os.getcwd(),
     "..",
-    "ITER_2D_APEC_fine",
+    "ITER_2D_APEC_fine2",
     "output",
-    "ITER_2D_APEC_fine_out_1.vtu",
+    "ITER_2D_APEC_fine2_out_1.vtu",
 )
 
 
@@ -53,7 +52,7 @@ Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 Selector.nsle(apec.mesh)
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
-apec.algorithm.input_parameters["tolerance_value"] = 1e-3
+apec.algorithm.input_parameters["tolerance_value"] = 1e-4
 apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2

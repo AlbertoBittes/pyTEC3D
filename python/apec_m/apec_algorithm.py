@@ -84,6 +84,10 @@ class ApecAlgorithm:
         }
         self._static_solver: Optional[Any] = None
         self.equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
+        LOGGER.debug(
+            "ApecAlgorithm initialized%s.",
+            " with parameter overrides" if input_parameters else "",
+        )
 
     def reset(self) -> None:
         """Reset iterative state and cached data to default values.
@@ -100,6 +104,7 @@ class ApecAlgorithm:
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
         self._halo_node_groups = ()
         self._halo_boundary_graph_cache = None
+        LOGGER.debug("ApecAlgorithm state reset.")
 
     def _require_equilibrium_mesh(self) -> vtk.vtkUnstructuredGrid:
         """Return a validated equilibrium mesh required by internal algorithm steps.
@@ -149,7 +154,9 @@ class ApecAlgorithm:
             self._toroidal_slices_nodes.size != 0
             and self._toroidal_slices_elems.size != 0
         ):
+            LOGGER.debug("Toroidal slices already cached; skipping rebuild.")
             return
+        LOGGER.debug("Building toroidal node/element slices.")
 
         equilibrium_mesh = self._require_equilibrium_mesh()
 
@@ -279,10 +286,12 @@ class ApecAlgorithm:
             )
         if override is None:
             self._step_overrides.pop(step, None)
+            LOGGER.debug("Step override cleared for '%s'.", step)
             return
         if not callable(override):
             raise TypeError("override must be callable or None.")
         self._step_overrides[step] = override
+        LOGGER.debug("Step override registered for '%s': %s.", step, override)
 
     def clear_step_overrides(self) -> None:
         """Remove all previously registered step overrides.
@@ -299,8 +308,9 @@ class ApecAlgorithm:
             None
         """
         if self._halo_boundary_graph_cache is not None:
+            LOGGER.debug("Halo boundary graph already cached; skipping rebuild.")
             return
-
+        LOGGER.debug("Building halo boundary graph.")
         mesh = self._require_equilibrium_mesh()
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         boundary_node_ids, boundary_adjacency = (
@@ -501,6 +511,10 @@ class ApecAlgorithm:
         self.status["psi_magnetic_axis"] = psi_axis
         self.status["psi_max"] = psi_axis
         self.status["magnetic_axis"] = axis_point
+        LOGGER.debug(
+            "Magnetic axis at (%.4g, %.4g, %.4g), PSI_axis=%.6g.",
+            axis_point[0], axis_point[1], axis_point[2], psi_axis,
+        )
 
     def _reset_plasma_components(self) -> None:
         """Reset PLASMA/AMPS and Js fields inside selected vacuum-chamber elements.
@@ -601,6 +615,13 @@ class ApecAlgorithm:
 
         if selected_elem_count > 0:
             Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+        halo_group_count = len(self._halo_node_groups)
+        LOGGER.debug(
+            "Plasma region identified: %d elements excluded, %d halo group(s)%s.",
+            selected_elem_count,
+            halo_group_count,
+            " (halo active)" if halo_group_count > 0 else "",
+        )
 
     def _remove_plasma_out_of_X_point(self) -> None:
         """Remove plasma elements outside the magnetic topology defined around the X-point.
@@ -683,6 +704,10 @@ class ApecAlgorithm:
 
         self.status["last_psi_limiter"] = psi_limiter
         self.status["limiter_point"] = limiter_point
+        LOGGER.debug(
+            "Limiter contact at (%.4g, %.4g, %.4g), PSI_limiter=%.6g.",
+            limiter_point[0], limiter_point[1], limiter_point[2], psi_limiter,
+        )
 
     def _check_x_point(self) -> None:
         """Locate the X-point as a local magnetic-field minimum candidate.
@@ -750,7 +775,12 @@ class ApecAlgorithm:
         points = mesh.GetPoints()
         xyz = vtknp.vtk_to_numpy(points.GetData())
         self.status["last_psi_x_point"] = psi_x
-        self.status["x_point"] = tuple(float(v) for v in xyz[x_point_node_id])
+        x_point = tuple(float(v) for v in xyz[x_point_node_id])
+        self.status["x_point"] = x_point
+        LOGGER.debug(
+            "X-point at (%.4g, %.4g, %.4g), PSI_x=%.6g.",
+            x_point[0], x_point[1], x_point[2], psi_x,
+        )
 
     def _set_b_target_axis(self) -> None:
         """Interpolate B at the requested target axis point and store it in status.
@@ -831,6 +861,7 @@ class ApecAlgorithm:
         b_target = weights_np @ b[point_ids_np, :2]
         target = (float(b_target[0]), float(b_target[1]))
         self.status["b_target_axis"] = target
+        LOGGER.debug("B at target axis: Bx=%.6g, By=%.6g.", target[0], target[1])
 
     def _compute_correction_currents(self) -> None:
         """Compute radial/vertical control-current corrections from target-axis B.
@@ -855,6 +886,10 @@ class ApecAlgorithm:
 
         self.status["radial_correction_current"] = float(correction[0])
         self.status["vertical_correction_current"] = float(correction[1])
+        LOGGER.debug(
+            "Correction currents: radial=%.6g A, vertical=%.6g A.",
+            correction[0], correction[1],
+        )
 
     def _apply_control_currents(self) -> None:
         """Apply computed control currents to PF coil regions via Js updates.
@@ -940,6 +975,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
+        LOGGER.info("Step: find_separatrix%s.", " (override)" if self.STEP_FIND_SEPARATRIX in self._step_overrides else "")
         self._dispatch_step(
             self.STEP_FIND_SEPARATRIX,
             self._find_separatrix_default,
@@ -984,6 +1020,13 @@ class ApecAlgorithm:
         else:
             self.status["psi_2_min"] = self.status["psi_min"]
         self._identify_plasma_region()
+        LOGGER.info(
+            "Separatrix: config=%s, PSI_min=%.6g, PSI_2_min=%.6g, PSI_axis=%.6g.",
+            self.status["separatrix_configuration"],
+            self.status["psi_min"],
+            self.status["psi_2_min"],
+            self.status["psi_magnetic_axis"],
+        )
 
     def compute_jplasma_gradshafranov(self) -> None:
         """Run Grad-Shafranov current computation (or its registered override).
@@ -991,6 +1034,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
+        LOGGER.info("Step: compute_jplasma_gradshafranov%s.", " (override)" if self.STEP_COMPUTE_JPLASMA in self._step_overrides else "")
         self._dispatch_step(
             self.STEP_COMPUTE_JPLASMA,
             self._compute_jplasma_gradshafranov_default,
@@ -1144,6 +1188,10 @@ class ApecAlgorithm:
         self.status["total_plasma_current_before_scaling"] = total_plasma_current
         self.status["plasma_current_scaling_lambda"] = float(lambda_scale)
         self.status["plasma_element_count"] = int(selected_ids.size)
+        LOGGER.info(
+            "Grad-Shafranov: %d plasma elements, I_plasma_raw=%.6g A, lambda=%.6g.",
+            selected_ids.size, total_plasma_current, lambda_scale,
+        )
 
     def control_currents(self) -> None:
         """Run control-current update step (or its registered override).
@@ -1151,6 +1199,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
+        LOGGER.info("Step: control_currents%s.", " (override)" if self.STEP_CONTROL_CURRENTS in self._step_overrides else "")
         self._dispatch_step(
             self.STEP_CONTROL_CURRENTS,
             self._control_currents_default,
@@ -1165,6 +1214,11 @@ class ApecAlgorithm:
         self._set_b_target_axis()
         self._compute_correction_currents()
         self._apply_control_currents()
+        LOGGER.info(
+            "Control currents applied: radial=%.6g A, vertical=%.6g A.",
+            self.status["radial_correction_current"],
+            self.status["vertical_correction_current"],
+        )
 
     def check_convergence(self) -> bool:
         """Run convergence check step (or its registered override).
@@ -1218,6 +1272,10 @@ class ApecAlgorithm:
         converged = bool(flux_norm <= tolerance)
         self.status["flux_norm"] = flux_norm
         self.status["converged"] = converged
+        LOGGER.info(
+            "Convergence check: flux_norm=%.6g, tolerance=%.6g -> %s.",
+            flux_norm, tolerance, "CONVERGED" if converged else "not converged",
+        )
         return converged
 
     # Backward-compatible alias.
@@ -1238,6 +1296,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
+        LOGGER.debug("Toroidal average: psi_only=%s.", psi_only)
         equilibrium_mesh = self._require_equilibrium_mesh()
         evolution_mesh = self.apec.mesh
         self._set_toroidal_slices()

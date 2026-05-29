@@ -72,6 +72,10 @@ private:
 
   /** @brief DOF-coupling constraints derived from CP_* periodic-boundary node pairs. */
   std::map<libMesh::dof_id_type, ConstraintEntry> build_coupling_constraints();
+
+  /// Constraint cache: populated on first build and whenever the time step advances.
+  std::map<libMesh::dof_id_type, ConstraintEntry> _constraint_cache;
+  bool _has_constraint_cache = false;
 };
 
 #endif // BOUNDARY_CONDITIONS_OBJECT_H

@@ -1,6 +1,5 @@
 from apec_m import APEC_M
 from apec_m.model_edit import ModelEdit
-from apec_m.cyclic import Cyclic
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector

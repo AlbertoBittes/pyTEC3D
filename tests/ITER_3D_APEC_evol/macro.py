@@ -1,5 +1,4 @@
 from apec_m import APEC_M
-import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
@@ -7,11 +6,9 @@ from apec_m.cyclic import Cyclic
 from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
-import time
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
-t0 = time.perf_counter()
 filename = "ITER_3D_APEC_evol"
 apec_equilibrium_output_filename = "ITER_2D_APEC_out_1"
 
@@ -83,7 +80,7 @@ Selector.nsle(apec.algorithm.equilibrium_mesh)
 Selector.select_all(apec.mesh)
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
-apec.algorithm.toroidal_projection_current()
+apec.algorithm._toroidal_projection_current()
 
 apec.save_mesh()
 
@@ -95,7 +92,7 @@ apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
-apec.algorithm.input_parameters["t0_halo"] = 0.385
+apec.algorithm.input_parameters["t0_halo"] = 1
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))
@@ -120,6 +117,3 @@ for step_idx in range(len(time_steps)):
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()
     apec.write_output()
-
-dt = time.perf_counter() - t0
-print(f"Elapsed time: {dt:.6f} s")

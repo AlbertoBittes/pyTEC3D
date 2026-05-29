@@ -146,7 +146,9 @@ namespace
 
     const char *build_mode_string()
     {
-#if defined(NDEBUG)
+#ifdef APEC_M_BUILD_TYPE
+        return APEC_M_BUILD_TYPE;
+#elif defined(NDEBUG)
         return "Release";
 #else
         return "Debug";

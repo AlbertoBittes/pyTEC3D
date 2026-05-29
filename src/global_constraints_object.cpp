@@ -946,7 +946,22 @@ void GlobalConstraintsObject::constrain()
     if (!this->get_parent_object()->is_initialized())
         return;
 
-    System &system = *this->get_parent_object();
+    ApecMLinearSystem *linear_system = this->get_parent_object();
+    const bool time_step_updated = !linear_system->time_step || linear_system->time_step->updated;
+
+    if (!time_step_updated && _has_constraint_cache)
+    {
+        apec::logging::info("Reusing cached DOF constraints (time step unchanged)");
+        DofMap &dof_map = this->parent_object->get_dof_map();
+        for (const auto &entry : _constraint_cache)
+        {
+            if (!dof_map.is_constrained_dof(entry.first))
+                dof_map.add_constraint_row(entry.first, entry.second.row, entry.second.value, true);
+        }
+        return;
+    }
+
+    System &system = *linear_system;
     DofMap &dof_map = this->parent_object->get_dof_map();
     apec::logging::info("Computing nodal DOF constraints");
 
@@ -1070,6 +1085,11 @@ void GlobalConstraintsObject::constrain()
                       return lhs.total_count > rhs.total_count;
                   return lhs.variable_name < rhs.variable_name;
               });
+
+    // Cache constraints for reuse in subsequent Picard iterations at the same time step.
+    _constraint_cache.clear();
+    _constraint_cache.insert(constraints.begin(), constraints.end());
+    _has_constraint_cache = true;
 
     apec::logging::table_root(format_constraints_summary_table(global_time_integration_constraints,
                                                                global_point_constraints,
