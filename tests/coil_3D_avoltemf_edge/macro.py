@@ -2,9 +2,11 @@ from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.cyclic import Cyclic
 from apec_m.coordinate_system import CylindricalCoordinateSystem
+from apec_m.tree_gauge import TreeGauge
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
+import pandas as pd
 
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -26,38 +28,60 @@ coil = 0.2
 extr_angle = 30
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.constants = Cyclic.coil_winding(
+apec.constants = pd.concat([apec.constants, Cyclic.coil_winding(
     apec.mesh,
     CylindricalCoordinateSystem(),
     (coil**2, 2000, np.pi * size * coil * coil / (360 / extr_angle), 20, 1.0),
-)
-apec.write_model_data()
+)], ignore_index=True)
 
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "Az", 0)
+Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+Selector.select_pos(
+    apec.mesh,
+    0,
+    (-1e-5, 1e-5),
+    mode="u",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.set_value_on_selection(apec.mesh, "_Az", 0)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
+Selector.nsle(apec.mesh)
 Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(
     apec.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
+Selector.nsle(apec.mesh)
+# Take the first selected node as master node (lowest ID)
+master_node_passive = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")
+).nonzero()[0][0]
+Selector.select(apec.mesh, "ID", master_node_passive)
+Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
+
+TreeGauge.tree_gauge(apec.mesh)
+
+apec.load_mesh_into_solver()
 
 Selector.select_all(apec.mesh)
-apec.time_parameters["theta"] = 0.5
+apec.time_step["theta"] = 1.0
+
 
 for i in range(1, 3):
-    apec.time_parameters["time_step_number"] = i
-    apec.time_parameters["time"] = i * 0.00001
+    apec.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
+        Selector.set_value_on_selection(apec.mesh, "_VOLT", np.nan)
     else:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
-        Selector.set_value_on_selection(apec.mesh, "VOLT", 10000)
-    apec.write_load_step(i)
+        Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
+    apec.solve()
+
 
 apec.save_mesh()

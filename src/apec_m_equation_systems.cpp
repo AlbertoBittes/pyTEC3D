@@ -13,6 +13,7 @@
 #include "solver_configuration.h"
 
 #include <iomanip>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <set>
@@ -36,13 +37,15 @@ namespace
         constexpr int fe_w = 16;
         constexpr int order_w = 10;
         constexpr int total_w = 12;
-        constexpr int local_w = 70;
+        constexpr int var_total_w = 14;
+        constexpr int local_w = 53;
 
         const auto make_row = [](const std::string &system_name,
                                  const std::string &variable_name,
                                  const std::string &fe_name,
                                  const std::string &order_name,
                                  const std::string &total_dofs,
+                                 const std::string &variable_dofs,
                                  const std::string &local_dofs) -> std::string
         {
             std::ostringstream row;
@@ -51,12 +54,13 @@ namespace
                 << " | " << std::left << std::setw(fe_w) << fit_cell(fe_name, fe_w)
                 << " | " << std::left << std::setw(order_w) << fit_cell(order_name, order_w)
                 << " | " << std::right << std::setw(total_w) << fit_cell(total_dofs, total_w)
+                << " | " << std::right << std::setw(var_total_w) << fit_cell(variable_dofs, var_total_w)
                 << " | " << std::left << std::setw(local_w) << fit_cell(local_dofs, local_w)
                 << " |";
             return row.str();
         };
 
-        const std::string header = make_row("System", "Variable", "FE Type", "Order", "Total DoFs", "Local DoFs by rank");
+        const std::string header = make_row("System", "Variable", "FE Type", "Order", "Total DoFs", "Variable DoFs", "Local DoFs by rank");
         const std::string border = "+" + std::string(header.size() - 2, '-') + "+";
 
         std::ostringstream table;
@@ -93,6 +97,7 @@ namespace
                                   "-",
                                   "-",
                                   std::to_string(system.n_dofs()),
+                                  "-",
                                   local_dofs_text)
                       << "\n";
                 table << border << "\n";
@@ -105,11 +110,22 @@ namespace
                 const std::string fe_name = libMesh::Utility::enum_to_string<libMesh::FEFamily>(fe_type.family);
                 const std::string var_order_name = libMesh::Utility::enum_to_string<libMesh::Order>(static_cast<libMesh::Order>(fe_type.order));
 
+                std::vector<libMesh::dof_id_type> var_local_dof_indices;
+                system.get_dof_map().local_variable_indices(var_local_dof_indices, var);
+
+                const libMesh::dof_id_type var_local_dofs = static_cast<libMesh::dof_id_type>(var_local_dof_indices.size());
+                std::vector<libMesh::dof_id_type> var_local_dofs_by_rank;
+                system.comm().allgather(var_local_dofs, var_local_dofs_by_rank);
+                const libMesh::dof_id_type var_total_dofs = std::accumulate(var_local_dofs_by_rank.begin(),
+                                                                            var_local_dofs_by_rank.end(),
+                                                                            libMesh::dof_id_type(0));
+
                 table << make_row(var == 0 ? system_name : "",
                                   system.variable_name(var),
                                   fe_name,
                                   var_order_name,
                                   var == 0 ? std::to_string(system.n_dofs()) : "",
+                                  std::to_string(var_total_dofs),
                                   var == 0 ? local_dofs_text : "")
                       << "\n";
             }

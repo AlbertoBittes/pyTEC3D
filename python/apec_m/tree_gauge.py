@@ -288,14 +288,12 @@ class TreeGauge:
     @staticmethod
     def tree_gauge(
         ugrid: "vtk.vtkUnstructuredGrid",
-        array_name: str = "Az",
+        array_name: str = "_Az",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
     ) -> Dict[str, int]:
         """
         Build tree/cotree masks and zero out the tree-marked entries in a PointData array.
-
-        This mirrors the APEC_M.tree_gauge behavior but operates directly on the mesh.
 
         Args:
             ugrid: Target mesh to analyze and annotate.

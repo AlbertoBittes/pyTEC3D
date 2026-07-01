@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -300,6 +300,53 @@ class ApecAlgorithm:
             None
         """
         self._step_overrides.clear()
+
+    def _normalized_control_coils(self) -> List[Dict[str, Any]]:
+        """Validate and normalize control-coil mapping from input parameters.
+
+        Returns:
+            List[Dict[str, Any]]: Normalized list with component/radial_gain/vertical_gain.
+        """
+        raw = self.input_parameters.get("control_coils", [])
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise TypeError(
+                "input_parameters['control_coils'] must be a list of dictionaries."
+            )
+
+        normalized: List[Dict[str, Any]] = []
+        for idx, item in enumerate(raw, start=1):
+            if not isinstance(item, dict):
+                raise TypeError(
+                    f"control_coils[{idx}] must be a dictionary, got {type(item).__name__}."
+                )
+
+            component = str(item.get("component", "")).strip()
+            if not component:
+                raise ValueError(
+                    f"control_coils[{idx}] must define a non-empty 'component'."
+                )
+
+            if "radial_gain" not in item:
+                raise ValueError(
+                    f"control_coils[{idx}] must define 'radial_gain'."
+                )
+            if "vertical_gain" not in item:
+                raise ValueError(
+                    f"control_coils[{idx}] must define 'vertical_gain'."
+                )
+
+            radial_gain = item["radial_gain"]
+            vertical_gain = item["vertical_gain"]
+            normalized.append(
+                {
+                    "component": component,
+                    "radial_gain": float(radial_gain),
+                    "vertical_gain": float(vertical_gain),
+                }
+            )
+        return normalized
 
     def _cache_halo_boundary_graph(self) -> None:
         """Cache the external boundary graph of selected vacuum-chamber cells.
@@ -761,6 +808,10 @@ class ApecAlgorithm:
             neighbor_ids = np.flatnonzero(neighbor_selection)
             neighbor_ids = neighbor_ids[neighbor_ids != node_id]
 
+            # Exclude any node directly connected to the magnetic axis.
+            if np.any(neighbor_ids == axis_node_id):
+                continue
+
             if np.any(b_norm[node_id] > b_norm[neighbor_ids]):
                 continue
 
@@ -873,7 +924,6 @@ class ApecAlgorithm:
         brady = float(self.input_parameters["brady_value"])
         bverx = float(self.input_parameters["bverx_value"])
         bvery = float(self.input_parameters["bvery_value"])
-        cpgain = float(self.input_parameters["cp_gain"])
         btx, bty = self.status["b_target_axis"]
 
         det = bradx * bvery - bverx * brady
@@ -882,7 +932,7 @@ class ApecAlgorithm:
         else:
             dira = -(bverx * bty - bvery * btx) / det
             dive = -(brady * btx - bradx * bty) / det
-            correction = (-cpgain * dira, -cpgain * dive)
+            correction = (-dira, -dive)
 
         self.status["radial_correction_current"] = float(correction[0])
         self.status["vertical_correction_current"] = float(correction[1])
@@ -892,33 +942,43 @@ class ApecAlgorithm:
         )
 
     def _apply_control_currents(self) -> None:
-        """Apply computed control currents to PF coil regions via Js updates.
+        """Apply computed control currents to configured coil regions via Js updates.
 
         Returns:
             None
         """
         mesh = self._require_equilibrium_mesh()
+        control_coils = self._normalized_control_coils()
+        if not control_coils:
+            LOGGER.debug("No control coils configured; skipping control-current update.")
+            return
 
         cell_data = mesh.GetCellData()
-        js_array = cell_data.GetArray("Js")
+        js_array = ApecAlgorithm._require_array(cell_data, "Js")
         js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
-
-        pfc2_array = cell_data.GetArray("PFC_2")
-        pfc3_array = cell_data.GetArray("PFC_3")
-        pfc4_array = cell_data.GetArray("PFC_4")
-        pfc5_array = cell_data.GetArray("PFC_5")
-
-        pfc2_mask = np.asarray(vtknp.vtk_to_numpy(pfc2_array) == 1, dtype=bool)
-        pfc3_mask = np.asarray(vtknp.vtk_to_numpy(pfc3_array) == 1, dtype=bool)
-        pfc4_mask = np.asarray(vtknp.vtk_to_numpy(pfc4_array) == 1, dtype=bool)
-        pfc5_mask = np.asarray(vtknp.vtk_to_numpy(pfc5_array) == 1, dtype=bool)
-
-        selected_mask = pfc2_mask | pfc3_mask | pfc4_mask | pfc5_mask
-        selected_ids = np.flatnonzero(selected_mask)
         radial_current = float(self.status["radial_correction_current"])
         vertical_current = float(self.status["vertical_correction_current"])
 
-        real_constant_array = cell_data.GetArray("CONSTANT")
+        selected_mask = np.zeros(js_np.shape[0], dtype=bool)
+        correction_current_all = np.zeros(js_np.shape[0], dtype=float)
+        for coil in control_coils:
+            component = coil["component"]
+            component_array = ApecAlgorithm._require_array(cell_data, component)
+            component_mask = np.asarray(vtknp.vtk_to_numpy(component_array) == 1, dtype=bool)
+            selected_mask |= component_mask
+
+            correction_current = (
+                float(coil["radial_gain"]) * radial_current
+                + float(coil["vertical_gain"]) * vertical_current
+            )
+            correction_current_all[component_mask] += correction_current
+
+        selected_ids = np.flatnonzero(selected_mask)
+        if selected_ids.size == 0:
+            LOGGER.debug("Configured control coils selected zero elements; skipping update.")
+            return
+
+        real_constant_array = ApecAlgorithm._require_array(cell_data, "CONSTANT")
         real_constant_ids = np.asarray(vtknp.vtk_to_numpy(real_constant_array), dtype=int)
         constants_df = self.apec.constants
         id_col = "CONSTANTS_ID"
@@ -950,21 +1010,7 @@ class ApecAlgorithm:
             base_js_z = np.asarray(js_np[:, 2], dtype=float).copy()
             self._old_control_current_density_base = base_js_z
 
-        corr_current = np.zeros(selected_ids.shape[0], dtype=float)
-        sel_pfc2 = pfc2_mask[selected_ids]
-        sel_pfc3 = pfc3_mask[selected_ids]
-        sel_pfc4 = pfc4_mask[selected_ids]
-        sel_pfc5 = pfc5_mask[selected_ids]
-        # JPF2=(xirad+IPF2)/APF2
-        corr_current[sel_pfc2] = radial_current
-        # JPF3=(xiver+IPF3)/APF3
-        corr_current[sel_pfc3] = vertical_current
-        # JPF4=(xiver+IPF4)/APF4
-        corr_current[sel_pfc4] = vertical_current
-        # JPF5=(-xirad+IPF5)/APF5
-        corr_current[sel_pfc5] = -radial_current
-
-        correction_current_density = corr_current / selected_areas_np
+        correction_current_density = correction_current_all[selected_ids] / selected_areas_np
         js_np[selected_ids, 2] = base_js_z[selected_ids] + correction_current_density
 
         js_array.Modified()

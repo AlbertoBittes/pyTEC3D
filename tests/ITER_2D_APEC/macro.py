@@ -19,7 +19,12 @@ apec.algorithm.input_parameters["target_central_axis_y"] = 0.536537145137914
 apec.algorithm.input_parameters["target_central_axis_z"] = 0.0
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
-apec.algorithm.input_parameters["cp_gain"] = 0.250
+apec.algorithm.input_parameters["control_coils"] = [
+	{"component": "PFC_2", "radial_gain": 0.5, "vertical_gain": 0.0},
+	{"component": "PFC_3", "radial_gain": 0.0, "vertical_gain": 0.5},
+	{"component": "PFC_4", "radial_gain": 0.0, "vertical_gain": 0.5},
+	{"component": "PFC_5", "radial_gain": -0.5, "vertical_gain": 0.0},
+]
 apec.algorithm.input_parameters["tolerance_value"] = 1e-4
 apec.algorithm.input_parameters["bradx_value"] = -3.873415861e-08
 apec.algorithm.input_parameters["brady_value"] = 5.313857037e-09

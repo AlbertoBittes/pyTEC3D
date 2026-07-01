@@ -8,6 +8,12 @@ if [ ! -d "${SRC_DIR}/src" ] || [ ! -d "${SRC_DIR}/python/apec_m" ]; then
   exit 1
 fi
 SRC_DIR="$(cd "${SRC_DIR}" && pwd)"
+RECIPE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "${RECIPE_DIR}" ] || [ ! -f "${RECIPE_DIR}/fe_interface_new.C" ] || [ ! -f "${RECIPE_DIR}/fe_nedelec_one_new.C" ] || [ ! -f "${RECIPE_DIR}/fe_nedelec_one_shape_3D_new.C" ]; then
+  echo "ERROR: Could not resolve recipe directory with override files."
+  echo "Resolved RECIPE_DIR='${RECIPE_DIR}'"
+  exit 1
+fi
 PREFIX=${PREFIX:-${CONDA_PREFIX:-}}
 if [ -z "${PREFIX}" ]; then
   echo "ERROR: PREFIX is not set. Activate a conda environment or export PREFIX explicitly."
@@ -168,6 +174,12 @@ fi
 git clone --depth 1 --branch master https://github.com/libMesh/libmesh.git "${LIBMESH_SRC_DIR}"
 pushd "${LIBMESH_SRC_DIR}"
 git submodule update --init --recursive
+
+# Replace selected libMesh FE sources with recipe-maintained overrides.
+cp -f "${RECIPE_DIR}/fe_interface_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_interface.C"
+cp -f "${RECIPE_DIR}/fe_nedelec_one_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one.C"
+cp -f "${RECIPE_DIR}/fe_nedelec_one_shape_3D_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one_shape_3D.C"
+
 mkdir build
 pushd build
 ../configure \

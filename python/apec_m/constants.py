@@ -56,7 +56,6 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "target_central_axis_z": 0.0,
     "R0": 0.0,
     "max_picard_iterations": 1,
-    "cp_gain": 0.0,
     "tolerance_value": 1e-6,
     "tolerance": 1e-6,
     "bradx_value": 0.0,
@@ -77,6 +76,20 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "halo_delta1": 0.0,
     "halo_delta2": 0.0,
     "t0_halo": 0.0,
+    # Generic control-current mapping.
+    # Per-coil correction current is:
+    #   I_corr = radial_gain * radial_correction_current
+    #          + vertical_gain * vertical_correction_current
+    # and the applied current density increment is dJ = I_corr / CS.
+    # Defaults preserve legacy behavior:
+    #   PFC_2 += radial, PFC_3 += vertical,
+    #   PFC_4 += vertical, PFC_5 -= radial.
+    "control_coils": [
+        {"component": "PFC_2", "radial_gain": 1.0, "vertical_gain": 0.0},
+        {"component": "PFC_3", "radial_gain": 0.0, "vertical_gain": 1.0},
+        {"component": "PFC_4", "radial_gain": 0.0, "vertical_gain": 1.0},
+        {"component": "PFC_5", "radial_gain": -1.0, "vertical_gain": 0.0},
+    ],
 }
 
 DEFAULT_APEC_ALGORITHM_STATUS = {

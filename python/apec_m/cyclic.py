@@ -425,12 +425,12 @@ class Cyclic:
 
         For each selected cell, a new increasing real-constant ID is written to the mesh
         cell-data array, and a matching row is returned in a constants DataFrame with
-        directional cosines TX/TY/TZ aligned with the local theta axis.
+        directional cosines T_X/T_Y/T_Z aligned with the local theta axis.
 
         Args:
             mesh: Mesh containing selected cells (selection_cell == 1).
             coordinate_system: Cylindrical coordinate system used for theta direction.
-            winding_parameters: Optional tuple (SC, NC, VC, R, SYM).
+            winding_parameters: Optional tuple (CS, TURNS, VOL, R, S).
 
         Returns:
             pd.DataFrame: Rows ready to assign into apec.constants.
@@ -441,7 +441,7 @@ class Cyclic:
 
         if winding_parameters is not None and len(winding_parameters) != 5:
             raise ValueError(
-                "winding_values must be a tuple of 5 values: (SC, NC, VC, R, SYM)."
+                "winding_values must be a tuple of 5 values: (CS, TURNS, VOL, R, S)."
             )
 
         Selector.ensure_selection_arrays(mesh)
@@ -476,17 +476,17 @@ class Cyclic:
         constants_df = pd.DataFrame(
             0.0, index=np.arange(selected_ids.size), columns=columns
         )
-        constants_df["CONSTANT"] = new_constants
-        constants_df["TX"] = coil_directions[:, 0]
-        constants_df["TY"] = coil_directions[:, 1]
-        constants_df["TZ"] = coil_directions[:, 2]
+        constants_df["CONSTANTS_ID"] = new_constants
+        constants_df["T_X"] = coil_directions[:, 0]
+        constants_df["T_Y"] = coil_directions[:, 1]
+        constants_df["T_Z"] = coil_directions[:, 2]
 
         if winding_parameters is not None:
-            sc, nc, vc, r_value, sym = winding_parameters
-            constants_df["SC"] = sc
-            constants_df["NC"] = nc
-            constants_df["VC"] = vc
-            constants_df["R"] = r_value
-            constants_df["SYM"] = sym
+            cs, turns, vol, r, s = winding_parameters
+            constants_df["CS"] = cs
+            constants_df["TURNS"] = turns
+            constants_df["VOL"] = vol
+            constants_df["R"] = r
+            constants_df["S"] = s
 
         return constants_df.astype(dtype_map)

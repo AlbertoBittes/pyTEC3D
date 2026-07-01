@@ -225,7 +225,9 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
     {
         const std::set<std::string> system_names = {system_name};
         std::vector<std::string> var_names;
-        _eq_sys->build_variable_names(var_names, nullptr, &system_names);
+        var_names.reserve(system.n_vars());
+        for (unsigned int i = 0; i < system.n_vars(); ++i)
+            var_names.push_back(system.variable_name(i));
 
         if ("Nodal Solution" == system_name)
             apec::logging::info("Averaging nodal solution at nodes");
