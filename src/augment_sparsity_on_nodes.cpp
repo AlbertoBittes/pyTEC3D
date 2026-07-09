@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -26,6 +27,33 @@ namespace
             return false;
         pairs.push_back(candidate);
         return true;
+    }
+
+    std::unordered_map<libMesh::dof_id_type, bool>
+    build_midside_edge_orientation_map(const libMesh::MeshBase &mesh)
+    {
+        std::unordered_map<libMesh::dof_id_type, bool> orientation_by_midside_node;
+
+        for (const auto *elem : mesh.element_ptr_range())
+        {
+
+            for (const auto edge_idx : elem->edge_index_range())
+            {
+                const bool orientation = elem->positive_edge_orientation(edge_idx);
+                const auto local_nodes_on_edge = elem->nodes_on_edge(edge_idx);
+                for (const unsigned int local_node_idx : local_nodes_on_edge)
+                {
+                    // Mid-side (non-vertex) nodes carry edge DOFs for quadratic edges.
+                    if (elem->is_vertex(local_node_idx))
+                        continue;
+
+                    const auto node_id = static_cast<libMesh::dof_id_type>(elem->node_id(local_node_idx));
+                    orientation_by_midside_node.emplace(node_id, orientation);
+                }
+            }
+        }
+
+        return orientation_by_midside_node;
     }
 
 } // namespace
@@ -72,6 +100,8 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
     if (cp_arrays.empty())
         return;
 
+    const auto orientation_by_midside_node = build_midside_edge_orientation_map(_mesh);
+
     std::unordered_map<int, std::unordered_set<libMesh::dof_id_type>> cp_nodes;
     const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
 
@@ -105,18 +135,50 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
             continue;
 
         const libMesh::dof_id_type master_node = *std::min_element(nodes.begin(), nodes.end());
+
+        const auto master_orientation_it = orientation_by_midside_node.find(master_node);
+        const bool has_master_orientation =
+            (master_orientation_it != orientation_by_midside_node.end());
+        const bool master_orientation = has_master_orientation ? master_orientation_it->second : true;
+
         auto &cp_pairs = cp_pairs_by_cp[cp_id];
         for (libMesh::dof_id_type node_id : nodes)
         {
             if (node_id != master_node)
             {
-                cp_pairs.emplace_back(master_node, node_id);
+                bool same_edge_orientation = true;
+                if (has_master_orientation)
+                {
+                    const auto slave_orientation_it = orientation_by_midside_node.find(node_id);
+                    const bool has_slave_orientation =
+                        (slave_orientation_it != orientation_by_midside_node.end());
+                    if (has_slave_orientation)
+                        same_edge_orientation = (slave_orientation_it->second == master_orientation);
+                }
+
+                cp_pairs.push_back({master_node, node_id, same_edge_orientation});
                 node_pairs.emplace_back(master_node, node_id);
             }
         }
 
-        std::sort(cp_pairs.begin(), cp_pairs.end());
-        cp_pairs.erase(std::unique(cp_pairs.begin(), cp_pairs.end()), cp_pairs.end());
+        std::sort(cp_pairs.begin(), cp_pairs.end(),
+                  [](const AugmentSparsityOnNodes::NodePairInfo &lhs,
+                     const AugmentSparsityOnNodes::NodePairInfo &rhs)
+                  {
+                      if (lhs.master_node != rhs.master_node)
+                          return lhs.master_node < rhs.master_node;
+                      if (lhs.slave_node != rhs.slave_node)
+                          return lhs.slave_node < rhs.slave_node;
+                      return lhs.same_edge_orientation < rhs.same_edge_orientation;
+                  });
+        cp_pairs.erase(std::unique(cp_pairs.begin(), cp_pairs.end(),
+                                   [](const AugmentSparsityOnNodes::NodePairInfo &lhs,
+                                      const AugmentSparsityOnNodes::NodePairInfo &rhs)
+                                   {
+                                       return lhs.master_node == rhs.master_node &&
+                                              lhs.slave_node == rhs.slave_node;
+                                   }),
+                       cp_pairs.end());
     }
 
     std::sort(node_pairs.begin(), node_pairs.end());

@@ -273,7 +273,7 @@ std::vector<APIVariableName> VariablesMap::get_api_variables_for_element(const E
     return api_vars;
 }
 
-ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const ElementType &,
+ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const ElementType &element,
                                                                    GlobalVariableName variable)
 {
     switch (variable)
@@ -281,6 +281,9 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
     case GlobalVariableName::A_x:
     case GlobalVariableName::A_y:
     case GlobalVariableName::A_z:
+        if (static_cast<ElementTypeEnum>(element.get_OPTIONs().at(0)) == ElementTypeEnum::AV3DEDGE)
+            return ApecMSystemBase::NODAL_SOLUTION;
+        return ApecMSystemBase::DOF_SOLUTION_SYSTEM;
     case GlobalVariableName::Az:
     case GlobalVariableName::VOLT:
     case GlobalVariableName::EMF:
@@ -357,7 +360,10 @@ std::vector<GlobalVariableName> VariablesMap::add_av3dnodal_variables(const std:
 std::vector<GlobalVariableName> VariablesMap::add_av3dedge_variables(const std::vector<unsigned int> &OPTIONs)
 {
     const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
-    std::vector<GlobalVariableName> vars = {GlobalVariableName::Az};
+    std::vector<GlobalVariableName> vars = {GlobalVariableName::Az,
+                                            GlobalVariableName::A_x,
+                                            GlobalVariableName::A_y,
+                                            GlobalVariableName::A_z};
 
     switch (physical_region)
     {

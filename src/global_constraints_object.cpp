@@ -755,6 +755,7 @@ GlobalConstraintsObject::build_coupling_constraints()
         const Node *node_second = nullptr;
         vtkIdType point_id_first = -1;
         vtkIdType point_id_second = -1;
+        bool same_edge_orientation = true;
     };
 
     struct CouplingEntryPlan
@@ -791,8 +792,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
         for (const auto &pair : pairs_it->second)
         {
-            const Node *node_first = mesh.query_node_ptr(pair.first);
-            const Node *node_second = mesh.query_node_ptr(pair.second);
+            const Node *node_first = mesh.query_node_ptr(pair.master_node);
+            const Node *node_second = mesh.query_node_ptr(pair.slave_node);
             if (!node_second)
                 continue;
             if (node_second->processor_id() != proc_id)
@@ -800,15 +801,16 @@ GlobalConstraintsObject::build_coupling_constraints()
             if (!node_first)
             {
                 std::ostringstream msg;
-                msg << "Coupling constraint: slave node " << pair.second
-                    << " found without master node " << pair.first
+                msg << "Coupling constraint: slave node " << pair.slave_node
+                    << " found without master node " << pair.master_node
                     << ".";
                 apec::logging::error_and_abort(msg.str());
             }
 
             const vtkIdType point_id_first = static_cast<vtkIdType>(node_first->id());
             const vtkIdType point_id_second = static_cast<vtkIdType>(node_second->id());
-            plan.local_pairs.push_back({node_first, node_second, point_id_first, point_id_second});
+            plan.local_pairs.push_back(
+                {node_first, node_second, point_id_first, point_id_second, pair.same_edge_orientation});
 
             if (needs_rotation && angles_array)
             {
@@ -833,6 +835,7 @@ GlobalConstraintsObject::build_coupling_constraints()
             const Node *node_second = pair.node_second;
             const vtkIdType point_id_first = pair.point_id_first;
             const vtkIdType point_id_second = pair.point_id_second;
+            const bool same_edge_orientation = pair.same_edge_orientation;
 
             for (const auto &vec_entry : plan.coupled_vectors)
             {
@@ -932,7 +935,10 @@ GlobalConstraintsObject::build_coupling_constraints()
                 const dof_id_type dof_second = node_second->dof_number(sys_num, var_num, 0);
 
                 ConstraintEntry constraint_entry;
-                constraint_entry.row[dof_first] = 1.0;
+                if (label == "Az")
+                    constraint_entry.row[dof_first] = same_edge_orientation ? 1.0 : -1.0;
+                else
+                    constraint_entry.row[dof_first] = 1.0;
                 constraints.emplace(dof_second, constraint_entry);
             }
         }

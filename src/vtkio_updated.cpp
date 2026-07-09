@@ -65,6 +65,7 @@ using libMesh::ElemMappingType;
 using libMesh::ElemType;
 using libMesh::EquationSystems;
 using libMesh::FEFamily;
+using libMesh::FEInterface;
 using libMesh::HEX20;
 using libMesh::HEX27;
 using libMesh::HEX8;
@@ -100,27 +101,76 @@ namespace Utility = libMesh::Utility;
 
 namespace
 {
+    struct GridWritePlan
+    {
+        std::vector<VariableInfo> vars_to_write;
+        std::vector<std::size_t> source_offsets;
+        std::size_t tuple_stride = 0;
+    };
+
+    GridWritePlan build_grid_write_plan(const System &system, const bool nodal_layout)
+    {
+        GridWritePlan plan;
+
+        const MeshBase &mesh = system.get_mesh();
+        std::size_t running_offset = 0;
+        for (unsigned int var = 0; var < system.n_vars(); ++var)
+        {
+            const std::string &var_name = system.variable_name(var);
+            unsigned int n_components = 1u;
+            if (nodal_layout)
+            {
+                const auto n_vec_dim = FEInterface::n_vec_dim(mesh, system.variable_type(var));
+                if (n_vec_dim > 1)
+                    n_components = cast_int<unsigned int>(n_vec_dim);
+            }
+
+            const auto keys = VariablesMap::get_keys_by_predicate(
+                [&var_name](const VariableInfo &info)
+                { return info.global_label == var_name; });
+
+            // Vector-valued libMesh variables are present in storage, but not written to VTK arrays.
+            if (keys.size() == 1 && n_components == 1)
+            {
+                plan.vars_to_write.push_back(VariablesMap::get_info_by_key(keys.front()));
+                plan.source_offsets.push_back(running_offset);
+            }
+
+            running_offset += n_components;
+        }
+
+        plan.tuple_stride = running_offset;
+        return plan;
+    }
+
     void write_solution_to_grid(vtkDataSetAttributes *data_attributes,
                                 const vtkIdType n_tuples,
-                                const std::vector<std::string> &var_names,
+                                const GridWritePlan &plan,
                                 const std::vector<Number> &localized_solution,
                                 const bool nodal_layout)
     {
-        const std::size_t n_vars = var_names.size();
+        if (!nodal_layout && plan.tuple_stride == 0)
+            apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: invalid elemental tuple stride (zero).");
+
+        const std::size_t n_vars = plan.vars_to_write.size();
         for (std::size_t var = 0; var < n_vars; ++var)
         {
-            const auto key = VariablesMap::get_key_by_predicate_one(
-                [&var_names, var](const VariableInfo &info)
-                { return info.global_label == var_names[var]; });
-            const auto &var_info = VariablesMap::get_info_by_key(key);
+            const auto &var_info = plan.vars_to_write[var];
             vtkDataArray *array =
                 vtkDataArray::SafeDownCast(data_attributes->GetArray(var_info.api_label.c_str()));
+            if (!array)
+                apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: VTK array '" +
+                                               var_info.api_label + "' not found.");
+
+            const std::size_t source_offset = plan.source_offsets[var];
 
             for (vtkIdType tuple_id = 0; tuple_id < n_tuples; ++tuple_id)
             {
                 const std::size_t idx = nodal_layout
-                                            ? static_cast<std::size_t>(tuple_id) * n_vars + var
-                                            : var * static_cast<std::size_t>(n_tuples) + static_cast<std::size_t>(tuple_id);
+                                            ? static_cast<std::size_t>(tuple_id) * plan.tuple_stride + source_offset
+                                            : source_offset * static_cast<std::size_t>(n_tuples) + static_cast<std::size_t>(tuple_id);
+                if (idx >= localized_solution.size())
+                    apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: computed solution index out of range.");
                 array->SetComponent(tuple_id, var_info.component_index, localized_solution[idx]);
             }
         }
@@ -224,10 +274,7 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
     if (system_type != ApecMSystemBase::ELEMENT_SOLUTION)
     {
         const std::set<std::string> system_names = {system_name};
-        std::vector<std::string> var_names;
-        var_names.reserve(system.n_vars());
-        for (unsigned int i = 0; i < system.n_vars(); ++i)
-            var_names.push_back(system.variable_name(i));
+        const auto write_plan = build_grid_write_plan(system, true);
 
         if ("Nodal Solution" == system_name)
             apec::logging::info("Averaging nodal solution at nodes");
@@ -239,7 +286,7 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
         parallel_solution->localize(localized_solution);
         write_solution_to_grid(_vtk_grid->GetPointData(),
                                _vtk_grid->GetNumberOfPoints(),
-                               var_names,
+                               write_plan,
                                localized_solution,
                                true);
     }
@@ -249,6 +296,7 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
         var_names.reserve(system.n_vars());
         for (unsigned int i = 0; i < system.n_vars(); ++i)
             var_names.push_back(system.variable_name(i));
+        const auto write_plan = build_grid_write_plan(system, false);
 
         auto parallel_solution = _eq_sys->build_parallel_elemental_solution_vector(var_names);
         if (!parallel_solution)
@@ -258,7 +306,7 @@ void VTKIO_Updated::write_system_grid(const std::string &system_name)
         parallel_solution->localize(localized_solution);
         write_solution_to_grid(_vtk_grid->GetCellData(),
                                _vtk_grid->GetNumberOfCells(),
-                               var_names,
+                               write_plan,
                                localized_solution,
                                false);
     }

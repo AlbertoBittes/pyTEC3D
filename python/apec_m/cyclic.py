@@ -375,9 +375,23 @@ class Cyclic:
         locator.BuildLocator()
 
         cp_array = point_data.GetArray(array_name)
+        if cp_array is None:
+            raise ValueError(f"Array '{array_name}' not found in PointData.")
         cp_np = vtknp.vtk_to_numpy(cp_array)
 
-        existing_values = set(np.unique(cp_np[cp_np != 0]).astype(int).tolist())
+        # Reserve CP ids used by the full contiguous CP family: CP_0, CP_1, ..., CP_N.
+        existing_values: set[int] = set()
+        cp_idx = 0
+        while True:
+            cp_family_array = point_data.GetArray(f"CP_{cp_idx}")
+            if cp_family_array is None:
+                break
+            cp_family_np = vtknp.vtk_to_numpy(cp_family_array)
+            used = cp_family_np[np.isfinite(cp_family_np) & (cp_family_np != 0)]
+            if used.size > 0:
+                existing_values.update(used.astype(int).tolist())
+            cp_idx += 1
+
         next_value = 1
         while next_value in existing_values:
             next_value += 1

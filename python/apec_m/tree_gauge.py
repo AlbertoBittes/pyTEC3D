@@ -44,6 +44,7 @@ import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 from .logging_utils import get_logger
 from .validation_utils import ensure_vtk_unstructured_grid
+from .selector import Selector
 
 
 LOGGER = get_logger("apec_m.tree_gauge")
@@ -295,9 +296,13 @@ class TreeGauge:
         """
         Build tree/cotree masks and zero out the tree-marked entries in a PointData array.
 
+        Constrained corner nodes are taken directly from the node-selection mask:
+        points with selection_point == 0 are treated as constrained corners.
+        This function does not infer constraints from CP_* arrays or from array_name.
+
         Args:
             ugrid: Target mesh to analyze and annotate.
-            array_name: PointData array used to derive constrained midside edges.
+            array_name: PointData array to be gauge-fixed (tree entries set to zero).
             tree_name: Name for the output tree mask array.
             cotree_name: Name for the output cotree mask array.
 
@@ -309,8 +314,16 @@ class TreeGauge:
             raise ValueError(f"Array '{array_name}' not found in PointData.")
         arr_np = vtknp.vtk_to_numpy(arr)
 
-        constrained_corners = TreeGauge.constrained_corners_from_midside_array(
-            ugrid, array_name
+        Selector.ensure_selection_arrays(ugrid)
+        selection_array = ugrid.GetPointData().GetArray("selection_point")
+        if selection_array is None:
+            raise ValueError("Mesh missing 'selection_point' array.")
+        selection_np = vtknp.vtk_to_numpy(selection_array)
+        constrained_corners = set(np.where(selection_np == 0)[0].astype(int).tolist())
+
+        LOGGER.info(
+            "Tree gauge using user selection: constrained corners=%d",
+            len(constrained_corners),
         )
 
         info = TreeGauge.build_tree_cotree_on_grid(

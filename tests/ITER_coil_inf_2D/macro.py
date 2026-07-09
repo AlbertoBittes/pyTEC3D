@@ -17,32 +17,33 @@ apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
 
-apec.write_model_data()
-
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh, "s")
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-apec.time_parameters["theta"] = 0.5
+apec.load_mesh_into_solver()
+
+apec.time_step["theta"] = 0.5
 
 for i in range(1, 7):
-    apec.time_parameters["time_step_number"] = i
+    apec.time_step["time_step_number"] = i
     if i == 1:
-        apec.time_parameters["transient_effects"] = 0
-        apec.time_parameters["time"] = i * 0.0001
+        apec.time_step["transient_effects"] = 0
+        apec.time_step["time"] = i * 0.0001
     elif i == 5:
-        apec.time_parameters["transient_effects"] = 1
-        apec.time_parameters["time"] = i * 0.0001
-        apec.time_parameters["theta"] = 0.85
+        apec.time_step["transient_effects"] = 1
+        apec.time_step["time"] = i * 0.0001
+        apec.time_step["theta"] = 0.85
     elif i == 6:
-        apec.time_parameters["transient_effects"] = 0
-        apec.time_parameters["time"] = i * 0.001
+        apec.time_step["transient_effects"] = 0
+        apec.time_step["time"] = i * 0.001
     else:
-        apec.time_parameters["transient_effects"] = 1
-        apec.time_parameters["time"] = i * 0.0001
+        apec.time_step["transient_effects"] = 1
+        apec.time_step["time"] = i * 0.0001
 
     Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
     Selector.set_value_on_selection(apec.mesh, "Js", 1 / i, 2, type="elem")
-    apec.write_load_step(i)
+    apec.solve()
+    apec.write_output()
 
 apec.save_mesh()

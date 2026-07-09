@@ -5,13 +5,8 @@ import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
 
-# from convert_mesh import convert_mesh_from_cdb
-
 apec = APEC_M()
 
-# convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
-# )
 filename = "ITER_coil_3D_test_1"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
@@ -20,43 +15,43 @@ apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
 
-apec.write_model_data()
-
 Selector.select(apec.mesh, "X_BOUND", 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 Selector.select(apec.mesh, "Z_BOUND", 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
 
 Selector.select(apec.mesh, "AXIS_NODES", 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 Selector.select(apec.mesh, "ROD_1", 1)
-Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 Selector.select(apec.mesh, "ROD_2", 1)
-Selector.set_value_on_selection(apec.mesh, "VOLT", 0)
+Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 Selector.select(apec.mesh, "INFINITY_BOUNDARY_INNER", 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 0)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 1)
-Selector.set_value_on_selection(apec.mesh, "A", 0, 2)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-apec.time_parameters["theta"] = 1.0
+apec.load_mesh_into_solver()
+
+apec.time_step["theta"] = 1.0
 
 for i in range(1, 10):
-    apec.time_parameters["time_step_number"] = i
+    apec.time_step["time_step_number"] = i
     if i == 1:
-        apec.time_parameters["time"] = i * 0.0001
-        apec.time_parameters["transient_effects"] = 0  # TIMINT,OFF
-        apec.time_parameters["theta"] = 1.0  # autots,off (keep as before)
+        apec.time_step["time"] = i * 0.0001
+        apec.time_step["transient_effects"] = 0  # TIMINT,OFF
+        apec.time_step["theta"] = 1.0  # autots,off (keep as before)
     else:
-        apec.time_parameters["time"] = i * 0.0001
-        apec.time_parameters["transient_effects"] = 1  # TIMINT,ON
-        apec.time_parameters["theta"] = 1.0  # autots,off (default)
+        apec.time_step["time"] = i * 0.0001
+        apec.time_step["transient_effects"] = 1  # TIMINT,ON
+        apec.time_step["theta"] = 1.0  # autots,off (default)
 
     # select coil elements
     Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
@@ -83,7 +78,7 @@ for i in range(1, 10):
         # Apply Js vector to the element (cell_data)
         js_array[l, 0] = js_x
         js_array[l, 2] = js_z
-
-    apec.write_load_step(i)
+    apec.solve()
+    apec.write_output()
 
 apec.save_mesh()

@@ -29,7 +29,14 @@ class vtkUnstructuredGrid;
 class AugmentSparsityOnNodes : public libMesh::GhostingFunctor
 {
 public:
-    using NodePairsByCp = std::unordered_map<int, std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>>>;
+    struct NodePairInfo
+    {
+        libMesh::dof_id_type master_node = libMesh::invalid_uint;
+        libMesh::dof_id_type slave_node = libMesh::invalid_uint;
+        bool same_edge_orientation = true;
+    };
+
+    using NodePairsByCp = std::unordered_map<int, std::vector<NodePairInfo>>;
 
     /** @brief Constructs the functor and performs an initial CP-pair scan. */
     AugmentSparsityOnNodes(
