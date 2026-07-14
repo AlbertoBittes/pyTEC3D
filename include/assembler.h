@@ -62,14 +62,27 @@ public:
      */
     bool check_update_element_matrices();
 
-    /** @brief Computes and caches element matrices and the base RHS to @c .emat files. */
-    void write_element_matrices_and_rhs();
+    /** @brief Computes and caches element matrices to @c .emat files. */
+    void write_element_matrices();
+
+    /** @brief Computes and caches element tangent-stiffness matrices to @c .emat files. */
+    void write_element_tangent_stiffness();
+
+    /** @brief Computes and caches element RHS vectors to @c .emat files. */
+    void write_element_rhs();
 
     /** @brief Computes the nodal-solution (B, H) fields and writes them to the Nodal Solution system. */
     void write_nodal_solution();
 
     /** @brief Computes the element-solution (Be, He, Jt) fields and writes them to the Element Solution system. */
     void write_element_solution();
+};
+
+/** @brief Newton-Rhapson assembler variant used by the nonlinear DOF system. */
+class APEC_M_HIDDEN AssemblerNewtonRhapson : public AssemblerLinear
+{
+public:
+    using AssemblerLinear::AssemblerLinear;
 };
 
 #endif // ASSEMBLER_H

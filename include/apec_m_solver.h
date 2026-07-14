@@ -15,10 +15,12 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <mpi.h>
 #include <pybind11/pybind11.h>
 
 #include "apec_m_visibility.h"
+#include "bh_curve.h"
 
 namespace libMesh
 {
@@ -30,6 +32,9 @@ class vtkUnstructuredGrid;
 class ApecMEquationSystems;
 class AugmentSparsityOnNodes;
 class ElementTypesFactory;
+
+using BHCurveComponentsMap = std::unordered_map<unsigned int, BHCurve>;
+using BHCurveMaterialsMap = std::unordered_map<unsigned int, BHCurveComponentsMap>;
 
 /**
  * @brief Top-level solver that owns the libMesh mesh, equation systems, and VTK grid.
@@ -88,6 +93,12 @@ public:
     /** @brief Returns the ghosting functor used for CP-node coupling (non-owning). */
     const AugmentSparsityOnNodes *get_coupling_functor() const;
 
+    /** @brief Returns true when material BH curves are available. */
+    bool has_bh_curves() const;
+
+    /** @brief Returns parsed BH curves indexed by material and component. */
+    const BHCurveMaterialsMap &get_bh_curves() const;
+
 private:
     int argc = 0;                                               ///< Placeholder argc forwarded to libMesh initialisation.
     char **argv = nullptr;                                      ///< Placeholder argv forwarded to libMesh initialisation.
@@ -99,6 +110,7 @@ private:
     vtkUnstructuredGrid *active_vtk_grid = nullptr;             ///< Non-owning pointer to the Python-side VTK grid.
     pybind11::object apec_object;                               ///< Owning reference to the Python APEC model object.
     pybind11::object mpi_comm_object;                           ///< Owning reference to the mpi4py communicator (or None).
+    BHCurveMaterialsMap bh_curves_;                             ///< Parsed nonlinear B-H curves indexed by material and component.
     bool loaded = false;                                        ///< Set to true after load_model() completes.
     bool closed_ = false;                                       ///< Set to true after close() is called.
 

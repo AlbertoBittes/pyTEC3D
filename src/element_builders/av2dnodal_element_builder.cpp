@@ -58,7 +58,6 @@ void ElementBuilder::build_av2dnodal()
     auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
     auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
     auto &BAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementBAe];
-    auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     unsigned int axisymm = elem_data.element_type->get_OPTIONs()[3];
 
@@ -161,23 +160,10 @@ void ElementBuilder::build_av2dnodal()
     switch (physical_region)
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
-        break;
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
-    {
-        auto build_fa = [&]()
-        {
-            for (unsigned int qp = 0; qp < nq; qp++)
-            {
-                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
-                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
-
-                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                    Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * r_mult * thk; // * js_loads[elem->id()][2];
-            }
-        };
-        build_fa();
         break;
-    }
     case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
@@ -329,11 +315,57 @@ void ElementBuilder::build_av2dnodal()
 
 void ElementBuilder::build_av2dnodal_rhs()
 {
+    std::vector<std::vector<unsigned int>> vector_sizes = {
+        {n_dofs}};
+    this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    FEBase *fe = &elem_data.element_type->scalar_fe(0);
+    const std::vector<Real> &JxW = fe->get_JxW();
+    const std::vector<std::vector<Real>> &phi = fe->get_phi();
+    const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
+    const std::vector<Point> &xyz = fe->get_xyz();
 
-    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
+    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    unsigned int nq;
+
+    Real mg[2] = {0.0, 0.0};
+    Real thk;
+
+    unsigned int axisymm = elem_data.element_type->get_OPTIONs()[3];
+
+    auto physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
+
+    switch (physical_region)
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        fe->reinit(elem_data.elem);
+        nq = fe->n_quadrature_points();
+        const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
+        thk = this->constant_value(constant_id, CONST_THK);
+    }
+    default:
+    {
+        const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+
+        mg[0] = this->material_value(material_id, MAT_M_X);
+        mg[1] = this->material_value(material_id, MAT_M_Y);
+
+        if (mg[0] != 0.0 || mg[1] != 0.0)
+        {
+            fe->reinit(elem_data.elem);
+            nq = fe->n_quadrature_points();
+            const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
+            thk = this->constant_value(constant_id, CONST_THK);
+        }
+    }
+    }
+
+    switch (physical_region)
     {
     case PhysicalRegionEnum::NON_MAGNETIC:
     case PhysicalRegionEnum::SOFT_MAGNETIC:
@@ -348,8 +380,14 @@ void ElementBuilder::build_av2dnodal_rhs()
 
         auto build_fa = [&]()
         {
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Fe(dof_i) *= js_z;
+            for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+
+                for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                    Fe(dof_i) += JxW[qp] * phi[dof_i][qp] * r_mult * thk * js_z;
+            }
         };
         build_fa();
         break;
@@ -383,6 +421,30 @@ void ElementBuilder::build_av2dnodal_rhs()
         apec::logging::error_and_abort("Physical region not implemented");
     }
 
+    switch (physical_region)
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+        break;
+    default:
+    {
+        if (mg[0] != 0.0 || mg[1] != 0.0)
+        {
+            auto build_mg = [&]()
+            {
+                for (unsigned int qp = 0; qp < nq; qp++)
+                {
+                    Real r = sqrt(xyz[qp](2) * xyz[qp](2) + xyz[qp](0) * xyz[qp](0));
+                    Real r_mult = pow(2 * libMesh::pi * r, axisymm);
+
+                    for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+                        Fe(dof_i) += JxW[qp] * (mg[0] * dphi[dof_i][qp](1) - mg[1] * dphi[dof_i][qp](0)) * thk * r_mult;
+                }
+            };
+            build_mg();
+        }
+    }
+    }
     return;
 }
 
@@ -628,4 +690,8 @@ void ElementBuilder::build_av2dnodal_element_solution()
                                   } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
+}
+
+void ElementBuilder::build_av2dnodal_tangent_stiffness()
+{
 }

@@ -29,6 +29,7 @@
 #include <vtkPythonUtil.h>
 
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 
 #include <cstdlib>
 #include <iomanip>
@@ -313,6 +314,60 @@ namespace
         const auto f_comm = static_cast<MPI_Fint>(py::cast<int>(mpi_comm.attr("py2f")()));
         return MPI_Comm_f2c(f_comm);
     }
+
+    BHCurveMaterialsMap parse_bh_curves_from_apec(const py::object &apec_object)
+    {
+        if (!py::hasattr(apec_object, "bh_curves"))
+            return {};
+
+        py::object bh_object = apec_object.attr("bh_curves");
+        if (bh_object.is_none())
+            return {};
+
+        if (!py::isinstance<py::dict>(bh_object))
+            apec::logging::error_and_abort("Expected 'bh_curves' to be a dict of dicts.");
+
+        BHCurveMaterialsMap curves;
+        const py::dict materials_dict = py::reinterpret_borrow<py::dict>(bh_object);
+        for (const auto &material_item : materials_dict)
+        {
+            const unsigned int material_id = py::cast<unsigned int>(material_item.first);
+            if (!py::isinstance<py::dict>(material_item.second))
+                apec::logging::error_and_abort("Each bh_curves material entry must map to a dict.");
+
+            BHCurveComponentsMap material_curves;
+            const py::dict component_dict = py::reinterpret_borrow<py::dict>(material_item.second);
+            for (const auto &component_item : component_dict)
+            {
+                const unsigned int component = py::cast<unsigned int>(component_item.first);
+                if (component > 2)
+                    apec::logging::error_and_abort("BH curve component must be 0, 1, or 2.");
+
+                py::array_t<double, py::array::c_style | py::array::forcecast> curve_array(component_item.second);
+                if (curve_array.ndim() != 2)
+                    apec::logging::error_and_abort("BH curve array must be 2D with shape (2, N).");
+
+                if (curve_array.shape(0) != 2 || curve_array.shape(1) < 2)
+                    apec::logging::error_and_abort("BH curve array must have shape (2, N) with N >= 2.");
+
+                std::vector<double> h_values(static_cast<std::size_t>(curve_array.shape(1)));
+                std::vector<double> b_values(static_cast<std::size_t>(curve_array.shape(1)));
+
+                const auto unchecked = curve_array.unchecked<2>();
+                for (ssize_t i = 0; i < curve_array.shape(1); ++i)
+                {
+                    h_values[static_cast<std::size_t>(i)] = unchecked(0, i);
+                    b_values[static_cast<std::size_t>(i)] = unchecked(1, i);
+                }
+
+                material_curves.emplace(component, BHCurve(std::move(h_values), std::move(b_values)));
+            }
+
+            curves.emplace(material_id, std::move(material_curves));
+        }
+
+        return curves;
+    }
 } // namespace
 
 void ApecMSolver::ensure_libmesh_initialized(MPI_Comm mpi_comm)
@@ -357,6 +412,7 @@ void ApecMSolver::close()
     active_vtk_grid = nullptr;
     apec_object = py::none();
     mpi_comm_object = py::none();
+    bh_curves_.clear();
     loaded = false;
     closed_ = true;
 
@@ -376,6 +432,7 @@ void ApecMSolver::load_model(py::object apec_object)
 
     apec::logging::info("Loading model into solver");
     this->apec_object = apec_object;
+    bh_curves_ = parse_bh_curves_from_apec(this->apec_object);
     element_types_factory = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
 
     mesh = std::make_unique<libMesh::DistributedMesh>(libmesh_init->comm());
@@ -397,8 +454,7 @@ void ApecMSolver::load_model(py::object apec_object)
 
     apec::logging::info("Preparing to distribute Mesh and Degrees-Of-Freedom across processors");
     apec::logging::info("Identifying coupled nodes for mesh distribution");
-    auto &main_system = equation_system->get_system<ApecMLinearSystem>(
-        ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    auto &main_system = equation_system->get_dof_solution_system();
     coupling_functor = std::make_unique<AugmentSparsityOnNodes>(*mesh,
                                                                 grid_ptr);
     main_system.get_dof_map().add_coupling_functor(*coupling_functor);
@@ -467,4 +523,14 @@ const AugmentSparsityOnNodes *ApecMSolver::get_coupling_functor() const
     if (!coupling_functor)
         apec::logging::error_and_abort("Solver coupling functor is not initialized.");
     return coupling_functor.get();
+}
+
+bool ApecMSolver::has_bh_curves() const
+{
+    return !bh_curves_.empty();
+}
+
+const BHCurveMaterialsMap &ApecMSolver::get_bh_curves() const
+{
+    return bh_curves_;
 }

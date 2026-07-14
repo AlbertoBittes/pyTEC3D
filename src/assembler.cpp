@@ -52,13 +52,12 @@ namespace
      *
      * Centralises the element loop pattern shared by matrix, RHS, and solution builds.
      */
-    template <typename PrepareFn, typename BuildFn>
-    void run_for_elements(const MeshBase &mesh, ElementBuilder &builder, PrepareFn &&prepare_fn, BuildFn &&build_fn)
+    template <typename BuildFn>
+    void run_for_elements(const MeshBase &mesh, ElementBuilder &builder, BuildFn &&build_fn)
     {
         for (const auto &elem : mesh.active_local_element_ptr_range())
         {
             builder.set_element_data(elem);
-            prepare_fn();
             build_fn();
         }
     }
@@ -83,7 +82,7 @@ void AssemblerLinear::assemble()
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
+    auto &system = eq_sys->get_dof_solution_system();
     SparseMatrix<Number> &matrix = system.get_system_matrix();
     system.rhs->zero();
 
@@ -159,7 +158,7 @@ bool AssemblerLinear::check_update_system_matrix()
 {
     auto eq_sys = this->get_parent_object();
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
+    auto &system = eq_sys->get_dof_solution_system();
     auto bc_object = system.get_global_constraints_object();
     auto *solver = system.get_petsc_solver();
 
@@ -219,13 +218,13 @@ bool AssemblerLinear::check_update_system_matrix()
     return update_matrix;
 }
 
-void AssemblerLinear::write_element_matrices_and_rhs()
+void AssemblerLinear::write_element_matrices()
 {
     auto eq_sys = this->get_parent_object();
 
     auto builder = ElementBuilder(this->get_parent_object());
 
-    auto &system = eq_sys->get_system<ApecMLinearSystem>("DOF Solution");
+    auto &system = eq_sys->get_dof_solution_system();
     const MeshBase &mesh = eq_sys->get_mesh();
     const auto &comm = system.comm();
 
@@ -237,30 +236,27 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     const std::vector<std::string> filenames = {
         "mtrx_" + rank_str + ".emat",
         "nodal_sol_mtrx_" + rank_str + ".emat",
-        "element_sol_mtrx_" + rank_str + ".emat",
-        "base_rhs_" + rank_str + ".emat"};
+        "element_sol_mtrx_" + rank_str + ".emat"};
 
     const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
                                               { return std::filesystem::exists(emat_folderpath / filename); });
 
     if (!emat_files_exist)
     {
-        apec::logging::info("Computing element matrices and RHS for current time-step");
+        apec::logging::info("Computing element matrices for current time-step");
 
         auto streams = reader.open_output_streams(emat_folderpath, filenames);
         auto &mtrx_output_file = *streams[0];
         auto &nodal_sol_mtrx_output_file = *streams[1];
         auto &element_sol_mtrx_output_file = *streams[2];
-        auto &base_rhs_output_file = *streams[3];
 
-        run_for_elements(mesh, builder, []() {}, [&]()
+        run_for_elements(mesh, builder, [&]()
                          {
                              builder.build_element();
 
                              BinaryReader::write_element_matrices(builder, mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
                              BinaryReader::write_element_matrices(builder, nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-                             BinaryReader::write_element_matrices(builder, element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
-                             BinaryReader::write_element_vectors(builder, base_rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS); });
+                             BinaryReader::write_element_matrices(builder, element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); });
 
         reader.close_file_streams(streams);
     }
@@ -268,27 +264,71 @@ void AssemblerLinear::write_element_matrices_and_rhs()
     {
         apec::logging::info("Reusing element matrices from previous time step");
     }
+}
 
-    const std::vector<std::string> inp_filenames = {"base_rhs_" + rank_str + ".emat"};
+void AssemblerLinear::write_element_tangent_stiffness()
+{
+    auto eq_sys = this->get_parent_object();
+
+    auto builder = ElementBuilder(this->get_parent_object());
+
+    auto &system = eq_sys->get_dof_solution_system();
+    const MeshBase &mesh = eq_sys->get_mesh();
+    const auto &comm = system.comm();
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
+
+    BinaryReader reader;
+
+    const std::vector<std::string> filenames = {
+        "tngt_mtrx_" + rank_str + ".emat"};
+
+    const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
+                                              { return std::filesystem::exists(emat_folderpath / filename); });
+
+    apec::logging::info("Computing element nonlinear matrices for current iteration");
+
+    auto streams = reader.open_output_streams(emat_folderpath, filenames);
+    auto &tngt_mtrx_output_file = *streams[0];
+
+    run_for_elements(mesh, builder, [&]()
+                     {builder.build_element_tangent_stiffness();
+                      BinaryReader::write_element_matrices(builder, tngt_mtrx_output_file, ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES); });
+
+    reader.close_file_streams(streams);
+}
+
+void AssemblerLinear::write_element_rhs()
+{
+    auto eq_sys = this->get_parent_object();
+
+    auto builder = ElementBuilder(this->get_parent_object());
+
+    auto &system = eq_sys->get_dof_solution_system();
+    const MeshBase &mesh = eq_sys->get_mesh();
+    const auto &comm = system.comm();
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
+
+    BinaryReader reader;
+
     const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
 
-    auto streams_in = reader.open_input_streams(emat_folderpath, inp_filenames);
     auto streams_out = reader.open_output_streams(emat_folderpath, out_filenames);
 
-    auto &base_rhs_input_file = *streams_in[0];
     auto &rhs_output_file = *streams_out[0];
 
-    apec::logging::info("Applying loads to elements RHS");
+    apec::logging::info("Calculating elements RHS");
 
     builder.clear_nodal_loads_dof_cache();
 
     run_for_elements(mesh, builder, [&]()
-                     { BinaryReader::read_element_vectors(builder, base_rhs_input_file, ElementBuilder::VectorsSet::RHS_VECTORS); }, [&]()
                      {
                          builder.build_element_rhs();
                          BinaryReader::write_element_vectors(builder, rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS); });
 
-    reader.close_file_streams(streams_in);
     reader.close_file_streams(streams_out);
 }
 
@@ -311,8 +351,8 @@ void AssemblerLinear::write_nodal_solution()
     auto &nodal_solution_mtrx_input_file = *inp_streams[0];
 
     run_for_elements(mesh, builder, [&]()
-                     { BinaryReader::read_element_matrices(builder, nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); }, [&]()
-                     { builder.build_nodal_solution(); });
+                     { BinaryReader::read_element_matrices(builder, nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES); 
+                       builder.build_nodal_solution(); });
 
     reader.close_file_streams(inp_streams);
 
@@ -342,8 +382,8 @@ void AssemblerLinear::write_element_solution()
     auto &element_solution_mtrx_input_file = *inp_streams[0];
 
     run_for_elements(mesh, builder, [&]()
-                     { BinaryReader::read_element_matrices(builder, element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); }, [&]()
-                     { builder.build_element_solution(); });
+                     { BinaryReader::read_element_matrices(builder, element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
+                        builder.build_element_solution(); });
 
     reader.close_file_streams(inp_streams);
 

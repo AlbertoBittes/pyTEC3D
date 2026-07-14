@@ -4,6 +4,7 @@
  */
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
+#include "apec_m_solver.h"
 #include "element_types_factory.h"
 #include "vtkio_updated.h"
 #include "apec_m_logging.h"
@@ -140,7 +141,7 @@ namespace
 void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_step)
 {
     apec::logging::info("Preparing time-step solution");
-    auto &system = this->get_system<ApecMLinearSystem>(ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
+    auto &system = get_dof_solution_system();
 
     system.prepare_time_step_solve(time_step);
 
@@ -148,7 +149,8 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
     system.reinit_constraints();
 
     auto assembler = system.get_assembler();
-    assembler->write_element_matrices_and_rhs();
+    assembler->write_element_matrices();
+    assembler->write_element_rhs();
 
     system.solve();
     system.get_dof_map().enforce_constraints_exactly(system);
@@ -163,6 +165,9 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
 
 void ApecMEquationSystems::configure_systems()
 {
+    auto *solver = this->get_parent_object();
+    use_nonlinear_system_ = (solver != nullptr) && solver->has_bh_curves();
+
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
         ApecMSystemBase::SystemType type = static_cast<ApecMSystemBase::SystemType>(i);
@@ -170,8 +175,10 @@ void ApecMEquationSystems::configure_systems()
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
-            auto &linear_system = this->add_system<ApecMLinearSystem>(sys_name);
-            if (auto assembler = linear_system.get_assembler())
+            auto &dof_system = use_nonlinear_system_
+                                   ? static_cast<ApecMLinearSystem &>(this->add_system<ApecMNonLinearSystem>(sys_name))
+                                   : static_cast<ApecMLinearSystem &>(this->add_system<ApecMLinearSystem>(sys_name));
+            if (auto assembler = dof_system.get_assembler())
                 assembler->set_parent_object(this);
         }
         else
@@ -187,7 +194,7 @@ void ApecMEquationSystems::post_initialize_systems()
         const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            this->get_system<ApecMLinearSystem>(info).post_init();
+            get_dof_solution_system().post_init();
         else
         {
             auto &system = this->get_system<ApecMExplicitSystem>(info);
@@ -206,7 +213,7 @@ void ApecMEquationSystems::initialize_systems()
         const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            this->get_system<ApecMLinearSystem>(info).init_variables();
+            get_dof_solution_system().init_variables();
         else
         {
             auto &system = this->get_system<ApecMExplicitSystem>(info);
@@ -231,8 +238,29 @@ void ApecMEquationSystems::zero_all_systems()
         const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            this->get_system<ApecMLinearSystem>(info).zero_all();
+            get_dof_solution_system().zero_all();
         else
             this->get_system<ApecMExplicitSystem>(info).zero_all();
     }
+}
+
+bool ApecMEquationSystems::uses_nonlinear_system() const
+{
+    return use_nonlinear_system_;
+}
+
+ApecMLinearSystem &ApecMEquationSystems::get_dof_solution_system()
+{
+    const auto &name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    if (use_nonlinear_system_)
+        return this->get_system<ApecMNonLinearSystem>(name);
+    return this->get_system<ApecMLinearSystem>(name);
+}
+
+const ApecMLinearSystem &ApecMEquationSystems::get_dof_solution_system() const
+{
+    const auto &name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    if (use_nonlinear_system_)
+        return this->get_system<ApecMNonLinearSystem>(name);
+    return this->get_system<ApecMLinearSystem>(name);
 }

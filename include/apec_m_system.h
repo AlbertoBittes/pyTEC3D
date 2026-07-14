@@ -246,11 +246,34 @@ public:
         }
     }
 
-private:
+protected:
+    void set_assembler(const std::shared_ptr<AssemblerLinear> &new_assembler)
+    {
+        assembler = new_assembler;
+        this->attach_assemble_object(*assembler);
+    }
+
     std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
     std::shared_ptr<AssemblerLinear> assembler;
+
+private:
     std::unique_ptr<PetscSolverConfiguration> solver_config_copy_;
     std::shared_ptr<libMesh::SystemSubset> subset_solve_holder_;
+};
+
+/**
+ * @brief Nonlinear DOF system that uses the Newton-Rhapson assembler.
+ */
+class APEC_M_HIDDEN ApecMNonLinearSystem : public ApecMLinearSystem
+{
+public:
+    template <typename... Args>
+    ApecMNonLinearSystem(Args &&...args)
+        : ApecMLinearSystem(std::forward<Args>(args)...)
+    {
+        auto nonlinear_assembler = std::make_shared<AssemblerNewtonRhapson>(&this->typed_equation_systems());
+        set_assembler(nonlinear_assembler);
+    }
 };
 
 /**

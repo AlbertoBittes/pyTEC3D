@@ -73,6 +73,9 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
         values[MAT_RHO_X] = py::cast<Real>(row["RHO_X"]);
         values[MAT_RHO_Y] = py::cast<Real>(row["RHO_Y"]);
         values[MAT_RHO_Z] = py::cast<Real>(row["RHO_Z"]);
+        values[MAT_M_X] = py::cast<Real>(row["M_X"]);
+        values[MAT_M_Y] = py::cast<Real>(row["M_Y"]);
+        values[MAT_M_Z] = py::cast<Real>(row["M_Z"]);
     }
 
     for (const py::handle row_obj : constants_attribute.attr("to_dict")("records"))
@@ -168,7 +171,6 @@ void ElementBuilder::prepare_element_matrix_building()
         {n_dofs}};
 
     this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
-    this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
     this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), MatricesSet::NODAL_SOLUTION_MATRICES);
     this->build_matrices(elem_data.element_type->get_element_solution_matrix_idx_size_map().get(), MatricesSet::ELEMENT_SOLUTION_MATRICES);
 }
@@ -183,12 +185,9 @@ void ElementBuilder::set_element_data(Elem *elem)
 
     elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
 
-    if (!elem->infinite())
-    {
-        const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
-        elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));
-        elem_data.real_constant_num = static_cast<unsigned int>(real_constant_cell_array_->GetComponent(elem_id, 0));
-    }
+    const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
+    elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));
+    elem_data.real_constant_num = static_cast<unsigned int>(real_constant_cell_array_->GetComponent(elem_id, 0));
     elem_data.elem = elem;
 
     std::vector<dof_id_type> dof_indices;
@@ -224,6 +223,31 @@ void ElementBuilder::build_element()
         break;
     case ElementTypeEnum::AV2DNODAL:
         this->build_av2dnodal();
+        break;
+    default:
+        apec::logging::error("Unsupported element type enum={} while building element", static_cast<unsigned int>(etype));
+        apec::logging::error_and_abort("Element type not supported: " + std::to_string(static_cast<unsigned int>(etype)));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tangent stiffness matrix and RHS build dispatch
+// ---------------------------------------------------------------------------
+
+void ElementBuilder::build_element_tangent_stiffness()
+{
+    auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
+
+    switch (etype)
+    {
+    case ElementTypeEnum::AV3DNODAL:
+        this->build_av3dnodal_tangent_stiffness();
+        break;
+    case ElementTypeEnum::AV3DEDGE:
+        this->build_av3dedge_tangent_stiffness();
+        break;
+    case ElementTypeEnum::AV2DNODAL:
+        this->build_av2dnodal_tangent_stiffness();
         break;
     default:
         apec::logging::error("Unsupported element type enum={} while building element", static_cast<unsigned int>(etype));

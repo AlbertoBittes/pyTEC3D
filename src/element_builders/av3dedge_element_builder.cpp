@@ -328,7 +328,47 @@ void ElementBuilder::build_av3dedge()
 
 void ElementBuilder::build_av3dedge_rhs()
 {
+    std::vector<std::vector<unsigned int>> vector_sizes = {
+        {n_dofs}};
+    this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
+
+    FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(1);
+    const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_edge->get_phi();
+    const std::vector<std::vector<RealVectorValue>> &curl_phi_vec = fe_edge->get_curl_phi();
+    const std::vector<Real> &JxW = fe_edge->get_JxW();
+
+    unsigned int n_dofs_A = elem_data.elem->n_edges();
+    unsigned int nq;
+
+    Real mg[3] = {0.0, 0.0, 0.0};
+
+    auto physical_region = static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]);
+
+    switch (physical_region)
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+        break;
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+    {
+        fe_edge->reinit(elem_data.elem);
+        nq = fe_edge->n_quadrature_points();
+    }
+    default:
+    {
+        const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+
+        mg[0] = this->material_value(material_id, MAT_M_X),
+        mg[1] = this->material_value(material_id, MAT_M_Y),
+        mg[2] = this->material_value(material_id, MAT_M_Z);
+        if (mg[0] != 0.0 || mg[1] != 0.0 || mg[2] != 0.0)
+        {
+            fe_edge->reinit(elem_data.elem);
+            nq = fe_edge->n_quadrature_points();
+        }
+    }
+    }
 
     switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
     {
@@ -338,18 +378,6 @@ void ElementBuilder::build_av3dedge_rhs()
         break;
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
     {
-        FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(1);
-
-        const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_edge->get_phi();
-
-        const std::vector<Real> &JxW = fe_edge->get_JxW();
-        fe_edge->reinit(elem_data.elem);
-
-        this->prepare_element_matrix_building();
-
-        unsigned int n_dofs_A = fe_edge->n_shape_functions();
-        unsigned int nq = fe_edge->n_quadrature_points();
-
         vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
         const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
         Real js[3] = {
@@ -380,7 +408,6 @@ void ElementBuilder::build_av3dedge_rhs()
 
                 std::vector<dof_id_type> dof_ids_v;
 
-                unsigned int n_dofs_A = elem_data.elem->n_edges();
                 dof_solution_dof_map_->dof_indices(elem_data.elem, dof_ids_v, volt_var_num);
                 const unsigned int n_dofs_V = static_cast<unsigned int>(dof_ids_v.size());
 
@@ -401,6 +428,27 @@ void ElementBuilder::build_av3dedge_rhs()
     }
     default:
         apec::logging::error_and_abort("Physical region not implemented");
+    }
+
+    switch (physical_region)
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+        break;
+    default:
+    {
+        if (mg[0] != 0.0 || mg[1] != 0.0 || mg[2] != 0.0)
+        {
+            auto build_mg = [&]()
+            {
+                for (unsigned int qp = 0; qp < nq; qp++)
+                    for (unsigned int k = 0; k < 3; k++)
+                        for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
+                            Fe(dof_i) += JxW[qp] * curl_phi_vec[dof_i][qp](k) * mg[k];
+            };
+            build_mg();
+        }
+    }
     }
     return;
 }
@@ -696,4 +744,57 @@ void ElementBuilder::build_av3dedge_element_solution()
                                   } });
 
     this->append_and_write_solution(*element_solution_system_, element_vectors);
+}
+
+void ElementBuilder::build_av3dedge_tangent_stiffness()
+{
+    FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(0);
+    const std::vector<Real> &JxW = fe_edge->get_JxW();
+    const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
+    const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
+
+    std::vector<RealGradient> B;
+
+    fe_edge->reinit(elem_data.elem);
+
+    std::vector<std::vector<unsigned int>> matrix_sizes = {
+        {n_dofs, n_dofs}};
+    this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
+
+    unsigned int n_dofs_A = fe_edge->n_shape_functions();
+    unsigned int nq_edge = fe_edge->n_quadrature_points();
+
+    const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
+    const Real nu[3] = {
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
+
+    const auto sol_vectors =
+        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
+                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
+    const auto &Az = sol_vectors[0];
+
+    auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
+
+    auto build_ke = [&]() {
+
+    };
+
+    build_ke();
+
+    switch (static_cast<PhysicalRegionEnum>(elem_data.element_type->get_OPTIONs()[1]))
+    {
+    case PhysicalRegionEnum::NON_MAGNETIC:
+    case PhysicalRegionEnum::SOFT_MAGNETIC:
+    case PhysicalRegionEnum::HARD_MAGNETIC:
+    case PhysicalRegionEnum::STRANDED_CONDUCTOR:
+        break;
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
+    case PhysicalRegionEnum::SOLID_CONDUCTOR:
+    case PhysicalRegionEnum::STRANDED_COIL:
+        break;
+    default:
+        apec::logging::error_and_abort("Physical region not implemented");
+    }
 }

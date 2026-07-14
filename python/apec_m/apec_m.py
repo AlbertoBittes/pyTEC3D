@@ -16,6 +16,7 @@ from typing import (
 )
 
 import pandas as pd
+import numpy as np
 import vtk
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -100,6 +101,7 @@ class APEC_M:
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
+        self.bh_curves: Dict[int, Dict[int, np.ndarray]] = {}
         self.algorithm = ApecAlgorithm(self)
         self._configure_python_output_root_only()
         atexit.register(self._cleanup_at_exit)
