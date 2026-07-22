@@ -14,10 +14,13 @@
 
 namespace py = pybind11;
 
+void bind_coordinate_system(py::module_ &module);
+
 PYBIND11_MODULE(apec_m_solver, module)
 {
      module.doc() = "APEC-M solver module (Python-owned model, C++ execution core).";
      module.def("shutdown_runtime", &ApecMSolver::shutdown_runtime);
+     bind_coordinate_system(module);
 
      py::class_<ApecMSolver>(module, "ApecMSolver")
          .def(py::init<py::object>(),

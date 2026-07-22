@@ -30,6 +30,7 @@
 #include <libmesh/tensor_value.h>
 #include "fe_parent_object.h"
 #include "apec_m_visibility.h"
+#include "apec_m_solver.h"
 #include "element_types_factory.h"
 #include "variables_map.h"
 
@@ -37,14 +38,20 @@ class ApecMLinearSystem;
 class ApecMEquationSystems;
 class vtkUnstructuredGrid;
 class vtkDataArray;
+namespace apec_m
+{
+    class CoordinateSystem;
+}
 
 /** @brief Per-element context bundle populated by set_element_data(). */
 struct ElemData
 {
-    libMesh::Elem *elem = nullptr;       ///< Pointer to the active element.
-    ElementType *element_type = nullptr; ///< Pointer to the element-type descriptor.
-    unsigned int material_num = 0;       ///< Material ID (from VTK MATERIAL cell array).
-    unsigned int real_constant_num = 0;  ///< Real-constant ID (from VTK CONSTANT cell array).
+    libMesh::Elem *elem = nullptr;                               ///< Pointer to the active element.
+    ElementType *element_type = nullptr;                         ///< Pointer to the element-type descriptor.
+    unsigned int material_num = 0;                               ///< Material ID (from VTK MATERIAL cell array).
+    unsigned int real_constant_num = 0;                          ///< Real-constant ID (from VTK CONSTANT cell array).
+    unsigned int coordinate_system_num = 0;                      ///< Coordinate-system ID (from VTK COORDINATE_SYSTEM cell array).
+    const apec_m::CoordinateSystem *coordinate_system = nullptr; ///< Null means global Cartesian.
 };
 
 /**
@@ -227,18 +234,15 @@ private:
     libMesh::System *element_solution_system_ = nullptr; ///< Element post-processing system reference.
     libMesh::System *support_solution_system_ = nullptr; ///< Reserved for future auxiliary system.
 
-    libMesh::DofMap *dof_solution_dof_map_ = nullptr;                                         ///< DOF map for the primary unknown system.
-    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> materials_rows_;     ///< Cached material property rows keyed by material ID.
-    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> constants_rows_;     ///< Cached real-constant rows keyed by constant ID.
-    vtkUnstructuredGrid *vtk_grid_ = nullptr;                                                 ///< Non-owning VTK grid pointer.
-    vtkDataArray *material_cell_array_ = nullptr;                                             ///< VTK MATERIAL cell-data array.
-    vtkDataArray *real_constant_cell_array_ = nullptr;                                        ///< VTK CONSTANT cell-data array.
-    vtkDataArray *system_cell_array_ = nullptr;                                               ///< VTK SYSTEM cell-data array (0=global).
-    vtkDataArray *js_cell_array_ = nullptr;                                                   ///< VTK Js cell-data array (stored in element-local frame).
-    std::unordered_map<libMesh::dof_id_type, std::array<libMesh::Real, 9>> system_rotations_; ///< Local-to-global rotation matrices keyed by SYSTEM id.
-    std::vector<std::vector<libMesh::Real>> element_material_rows_;                           ///< Per-element material rows rotated to global Cartesian.
-    std::vector<std::vector<libMesh::Real>> element_constant_rows_;                           ///< Per-element constants rows (T vector rotated to global Cartesian).
-    std::vector<std::array<libMesh::Real, 3>> element_js_global_;                             ///< Per-element Js vectors rotated to global Cartesian.
+    libMesh::DofMap *dof_solution_dof_map_ = nullptr;                                                        ///< DOF map for the primary unknown system.
+    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> materials_rows_;                    ///< Cached material property rows keyed by material ID.
+    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> constants_rows_;                    ///< Cached real-constant rows keyed by constant ID.
+    vtkUnstructuredGrid *vtk_grid_ = nullptr;                                                                ///< Non-owning VTK grid pointer.
+    vtkDataArray *material_cell_array_ = nullptr;                                                            ///< VTK MATERIAL cell-data array.
+    vtkDataArray *real_constant_cell_array_ = nullptr;                                                       ///< VTK CONSTANT cell-data array.
+    vtkDataArray *coordinate_system_cell_array_ = nullptr;                                                   ///< VTK COORDINATE_SYSTEM cell-data array (0=global Cartesian).
+    std::unordered_map<libMesh::dof_id_type, std::shared_ptr<apec_m::CoordinateSystem>> coordinate_systems_; ///< Coordinate-system objects keyed by positive ID.
+    const BHCurveMaterialsMap *bh_curves_ = nullptr;                                                         ///< Non-owning pointer to solver-owned BH curves map.
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,
@@ -255,20 +259,38 @@ private:
 
     void append_and_write_solution(libMesh::System &system,
                                    const std::vector<libMesh::DenseVector<libMesh::Number>> &ordered_vectors);
-    void build_coordinate_system_rotation_cache(pybind11::object apec_object);
-    void build_per_element_property_cache();
-    const std::array<libMesh::Real, 9> &element_rotation_matrix(vtkIdType elem_id) const;
-    std::array<libMesh::Real, 3> current_js_global() const;
-    static std::array<libMesh::Real, 3> rotate_vector_to_global(
-        const std::array<libMesh::Real, 3> &local,
-        const std::array<libMesh::Real, 9> &rotation);
-    static std::array<libMesh::Real, 3> rotate_diagonal_tensor_to_global_diag(
-        const std::array<libMesh::Real, 3> &local_diag,
-        const std::array<libMesh::Real, 9> &rotation);
-    const std::vector<libMesh::Real> &material_row(libMesh::dof_id_type id) const;
-    const std::vector<libMesh::Real> &constant_row(libMesh::dof_id_type id) const;
-    libMesh::Real material_value(libMesh::dof_id_type id, unsigned int col_idx) const;
-    libMesh::Real constant_value(libMesh::dof_id_type id, unsigned int col_idx) const;
+
+    inline const std::vector<libMesh::Real> &material_row(libMesh::dof_id_type id) const
+    {
+        const auto it = materials_rows_.find(id);
+        return it->second;
+    }
+
+    inline const std::vector<libMesh::Real> &constant_row(libMesh::dof_id_type id) const
+    {
+        const auto it = constants_rows_.find(id);
+        return it->second;
+    }
+
+    inline libMesh::Real material_value(libMesh::dof_id_type id, unsigned int col_idx) const
+    {
+        const auto &row = material_row(id);
+        return row[col_idx];
+    }
+
+    inline libMesh::Real constant_value(libMesh::dof_id_type id, unsigned int col_idx) const
+    {
+        const auto &row = constant_row(id);
+        return row[col_idx];
+    }
+    void vector_components_to_global_for_elem(const libMesh::Real *local_components,
+                                              libMesh::Real *global_components) const;
+    void vector_components_to_global_for_elem(const libMesh::VectorValue<libMesh::Real> &local_components,
+                                              libMesh::VectorValue<libMesh::Real> &global_components) const;
+    void tensor_to_global_for_elem(const libMesh::Real local_tensor[3][3],
+                                   libMesh::Real global_tensor[3][3]) const;
+    void tensor_to_global_for_elem(const libMesh::TensorValue<libMesh::Real> &local_tensor,
+                                   libMesh::TensorValue<libMesh::Real> &global_tensor) const;
 };
 
 #endif // ELEMENT_BUILDER_H

@@ -362,6 +362,46 @@ def validate_apec_model(apec: Any) -> None:
     type_ids = _get_int_array("TYPE")
     mat_ids = _get_int_array("MATERIAL")
     const_ids = _get_int_array("CONSTANT")
+    coordinate_system_ids = _get_int_array("COORDINATE_SYSTEM")
+
+    # ========================================================================
+    # 0a. COORDINATE_SYSTEM cell-data array and coordinate_systems attribute
+    # ========================================================================
+    if coordinate_system_ids is not None:
+        bad_cs = sorted(np.unique(coordinate_system_ids[coordinate_system_ids < 0]).astype(int).tolist())
+        if bad_cs:
+            errors.append(
+                "COORDINATE_SYSTEM: values must be >= 0;"
+                f" found invalid values: {bad_cs}."
+            )
+
+        used_cs_ids: set[int] = set(
+            np.unique(coordinate_system_ids[coordinate_system_ids > 0]).astype(int).tolist()
+        )
+        if used_cs_ids:
+            coordinate_systems = getattr(apec, "coordinate_systems", None)
+            if coordinate_systems is None:
+                errors.append(
+                    "COORDINATE_SYSTEM: found values > 0 in mesh but"
+                    " apec.coordinate_systems is missing or None."
+                )
+            elif not isinstance(coordinate_systems, dict):
+                errors.append(
+                    "apec.coordinate_systems must be a dict mapping integer IDs"
+                    f" to coordinate-system objects; got {type(coordinate_systems).__name__}."
+                )
+            else:
+                available_cs_ids: set[int] = {
+                    int(k)
+                    for k in coordinate_systems.keys()
+                    if isinstance(k, (int, np.integer)) and not isinstance(k, bool) and int(k) > 0
+                }
+                missing_cs = sorted(used_cs_ids - available_cs_ids)
+                if missing_cs:
+                    errors.append(
+                        "COORDINATE_SYSTEM: positive IDs used by mesh are not present"
+                        f" in apec.coordinate_systems: {missing_cs}."
+                    )
 
     # ========================================================================
     # 0. bh_curves dictionary

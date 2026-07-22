@@ -31,6 +31,7 @@ using libMesh::Point;
 using libMesh::Real;
 using libMesh::RealGradient;
 using libMesh::RealVectorValue;
+using libMesh::TensorValue;
 using libMesh::VectorValue;
 
 // Matrix/vector index legend: {0: Ke, 1: Ce, 2: Me, 3: AAe, 4: JAe, 5: JVe}
@@ -55,7 +56,15 @@ void ElementBuilder::build_av3dnodal()
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
     const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
-    const Real nu = 1 / (kMu0 * this->material_value(material_id, MAT_MUR_X));
+    const Real nu_local_diag[3] = {
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
+        1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
+    TensorValue<Real> nu_local_tensor(nu_local_diag[0], 0.0, 0.0,
+                                      0.0, nu_local_diag[1], 0.0,
+                                      0.0, 0.0, nu_local_diag[2]);
+    TensorValue<Real> nu_tensor;
+    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -68,11 +77,18 @@ void ElementBuilder::build_av3dnodal()
     auto build_ke = [&]()
     {
         for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            const Real w = JxW[qp];
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                    for (unsigned int l = 0; l < 3; l++)
-                        Ke(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                            JxW[qp] * nu * (dphi[dof_i][qp] * dphi[dof_j][qp]);
+                {
+                    const Real grad_dot = dphi[dof_i][qp] * dphi[dof_j][qp];
+                    for (unsigned int k = 0; k < 3; ++k)
+                        for (unsigned int l = 0; l < 3; ++l)
+                            Ke(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
+                                w * nu_tensor(k, l) * grad_dot;
+                }
+        }
     };
 
     auto build_bae = [&]()
@@ -87,23 +103,29 @@ void ElementBuilder::build_av3dnodal()
     auto build_aae = [&]()
     {
         for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            const Real w = JxW[qp];
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
                         for (unsigned int l = 0; l < 3; l++)
                             AAe(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
-                                JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
+                                w * (phi_vec[dof_i * 3 + k][qp] * curl_phi_vec[dof_j * 3 + l][qp]);
+        }
     };
 
     auto build_me = [&]()
     {
         for (unsigned int qp = 0; qp < nq; qp++)
+        {
+            const Real w = JxW[qp];
             for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     for (unsigned int k = 0; k < 3; k++)
                         for (unsigned int l = 0; l < 3; l++)
                             Me(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
-                                JxW[qp] * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
+                                w * (phi_vec[dof_i * 3 + k][qp] * phi_vec[dof_j * 3 + l][qp]);
+        }
     };
 
     auto build_jae = [&]()
@@ -138,71 +160,117 @@ void ElementBuilder::build_av3dnodal()
     case PhysicalRegionEnum::HARD_MAGNETIC:
     case PhysicalRegionEnum::STRANDED_CONDUCTOR:
         break;
+    case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     {
-        const Real sigma_matrix[3] = {
+        const Real sigma_local[3] = {
             1.0 / this->material_value(material_id, MAT_RHO_X),
             1.0 / this->material_value(material_id, MAT_RHO_Y),
             1.0 / this->material_value(material_id, MAT_RHO_Z)};
+        TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
+                                             0.0, sigma_local[1], 0.0,
+                                             0.0, 0.0, sigma_local[2]);
+        TensorValue<Real> sigma_tensor;
+        this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
 
         auto build_caa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ce(dof_i + l * n_dofs_var, dof_j + l * n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[l] * (phi[dof_i][qp] * phi[dof_j][qp]);
+                    {
+                        const Real nn = phi[dof_i][qp] * phi[dof_j][qp];
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ce(dof_i + k * n_dofs_var, dof_j + l * n_dofs_var) +=
+                                    w * sigma_tensor(k, l) * nn;
+                    }
+            }
         };
 
         auto build_cav = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ce(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
-                                JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+                    {
+                        const Real phi_i = phi[dof_i][qp];
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ce(dof_i + k * n_dofs_var, n_dofs_A + dof_j) +=
+                                    w * sigma_tensor(k, l) * phi_i * dphi[dof_j][qp](l);
+                    }
+            }
         };
 
         auto build_cva = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ce(n_dofs_A + dof_j, dof_i + l * n_dofs_var) +=
-                                JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+                    {
+                        const Real phi_i = phi[dof_i][qp];
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ce(n_dofs_A + dof_j, dof_i + k * n_dofs_var) +=
+                                    w * sigma_tensor(l, k) * phi_i * dphi[dof_j][qp](l);
+                    }
+            }
         };
 
         auto build_cvv = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
-                                JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
+                    {
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ce(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
+                                    w * dphi[dof_i][qp](k) * sigma_tensor(k, l) * dphi[dof_j][qp](l);
+                    }
+            }
         };
 
         auto build_kav = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ke(dof_i + l * n_dofs_var, n_dofs_A + dof_j) +=
-                                JxW[qp] * sigma_matrix[l] * phi[dof_i][qp] * dphi[dof_j][qp](l);
+                    {
+                        const Real phi_i = phi[dof_i][qp];
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ke(dof_i + k * n_dofs_var, n_dofs_A + dof_j) +=
+                                    w * sigma_tensor(k, l) * phi_i * dphi[dof_j][qp](l);
+                    }
+            }
         };
 
         auto build_kvv = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
+            {
+                const Real w = JxW[qp];
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
-                        for (unsigned int l = 0; l < 3; l++)
-                            Ke(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
-                                JxW[qp] * dphi[dof_i][qp](l) * sigma_matrix[l] * dphi[dof_j][qp](l);
+                    {
+                        for (unsigned int k = 0; k < 3; ++k)
+                            for (unsigned int l = 0; l < 3; ++l)
+                                Ke(n_dofs_A + dof_i, n_dofs_A + dof_j) +=
+                                    w * dphi[dof_i][qp](k) * sigma_tensor(k, l) * dphi[dof_j][qp](l);
+                    }
+            }
         };
 
         build_caa();
@@ -226,9 +294,15 @@ void ElementBuilder::build_av3dnodal()
         const Real sc = this->constant_value(constant_id, CONST_CS);
         const Real nc = this->constant_value(constant_id, CONST_TURNS);
         const Real vc = this->constant_value(constant_id, CONST_VOL);
-        const Real tx = this->constant_value(constant_id, CONST_T_X);
-        const Real ty = this->constant_value(constant_id, CONST_T_Y);
-        const Real tz = this->constant_value(constant_id, CONST_T_Z);
+        const Real t_local[3] = {
+            this->constant_value(constant_id, CONST_T_X),
+            this->constant_value(constant_id, CONST_T_Y),
+            this->constant_value(constant_id, CONST_T_Z)};
+        Real t_global[3] = {0.0, 0.0, 0.0};
+        this->vector_components_to_global_for_elem(t_local, t_global);
+        const Real tx = t_global[0];
+        const Real ty = t_global[1];
+        const Real tz = t_global[2];
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
 
@@ -236,15 +310,17 @@ void ElementBuilder::build_av3dnodal()
 
         auto build_coil_coupling_timeintegrated = [&]()
         {
+            const Real kav_coeff = -(nc / (sc * r_coil));
+            const Real kvv_coeff = (1.0 / (r_coil * vc));
             for (unsigned int qp = 0; qp < nq; qp++)
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
-                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
-                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
-                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
+                        const Real kav_x = kav_coeff * tx * nn;
+                        const Real kav_y = kav_coeff * ty * nn;
+                        const Real kav_z = kav_coeff * tz * nn;
+                        const Real kvv = kvv_coeff * nn;
 
                         Ce(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
                         Ce(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
@@ -267,15 +343,17 @@ void ElementBuilder::build_av3dnodal()
 
         auto build_coil_coupling_notimeintegrated = [&]()
         {
+            const Real kav_coeff = -(nc / (sc * r_coil));
+            const Real kvv_coeff = (1.0 / (r_coil * vc));
             for (unsigned int qp = 0; qp < nq; qp++)
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                     for (unsigned int dof_j = 0; dof_j < n_dofs_var; dof_j++)
                     {
                         const Real nn = JxW[qp] * (phi[dof_i][qp] * phi[dof_j][qp]);
-                        const Real kav_x = -(nc / (sc * r_coil)) * tx * nn;
-                        const Real kav_y = -(nc / (sc * r_coil)) * ty * nn;
-                        const Real kav_z = -(nc / (sc * r_coil)) * tz * nn;
-                        const Real kvv = (1.0 / (r_coil * vc)) * nn;
+                        const Real kav_x = kav_coeff * tx * nn;
+                        const Real kav_y = kav_coeff * ty * nn;
+                        const Real kav_z = kav_coeff * tz * nn;
+                        const Real kvv = kvv_coeff * nn;
 
                         Ke(dof_i + 0 * n_dofs_var, dof_j + n_dofs_A) += kav_x;
                         Ke(dof_i + 1 * n_dofs_var, dof_j + n_dofs_A) += kav_y;
@@ -341,9 +419,11 @@ void ElementBuilder::build_av3dnodal_rhs()
     {
         const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
 
-        mg[0] = this->material_value(material_id, MAT_M_X),
-        mg[1] = this->material_value(material_id, MAT_M_Y),
-        mg[2] = this->material_value(material_id, MAT_M_Z);
+        const Real mg_local[3] = {
+            this->material_value(material_id, MAT_M_X),
+            this->material_value(material_id, MAT_M_Y),
+            this->material_value(material_id, MAT_M_Z)};
+        this->vector_components_to_global_for_elem(mg_local, mg);
         if (mg[0] != 0.0 || mg[1] != 0.0 || mg[2] != 0.0)
         {
             fe_vec->reinit(elem_data.elem);
@@ -362,10 +442,12 @@ void ElementBuilder::build_av3dnodal_rhs()
     {
         vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
         const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
-        Real js[3] = {
+        const Real js_local[3] = {
             js_array->GetComponent(elem_id, 0),
             js_array->GetComponent(elem_id, 1),
             js_array->GetComponent(elem_id, 2)};
+        Real js[3] = {0.0, 0.0, 0.0};
+        this->vector_components_to_global_for_elem(js_local, js);
 
         auto build_fa = [&]()
         {
@@ -446,10 +528,15 @@ void ElementBuilder::build_av3dnodal_nodal_solution()
         return;
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
-    const Real nu[3] = {
+    const Real nu_local[3] = {
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
+    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
+                                      0.0, nu_local[1], 0.0,
+                                      0.0, 0.0, nu_local[2]);
+    TensorValue<Real> nu_tensor;
+    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -485,9 +572,10 @@ void ElementBuilder::build_av3dnodal_nodal_solution()
         if (!have_b)
             build_b();
         Hn.resize(Bn.size());
-        for (unsigned int k = 0; k < 3; k++)
-            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                Hn(dof_i + k * n_dofs_var) += Bn(dof_i + k * n_dofs_var) * nu[k];
+        for (unsigned int dof_i = 0; dof_i < n_dofs_var; ++dof_i)
+            for (unsigned int k = 0; k < 3; ++k)
+                for (unsigned int l = 0; l < 3; ++l)
+                    Hn(dof_i + k * n_dofs_var) += nu_tensor(k, l) * Bn(dof_i + l * n_dofs_var);
         have_h = true;
     };
 
@@ -518,10 +606,15 @@ void ElementBuilder::build_av3dnodal_element_solution()
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
     const dof_id_type constant_id = static_cast<dof_id_type>(this->elem_data.real_constant_num);
-    const Real nu[3] = {
+    const Real nu_local[3] = {
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
+    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
+                                      0.0, nu_local[1], 0.0,
+                                      0.0, 0.0, nu_local[2]);
+    TensorValue<Real> nu_tensor;
+    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -564,8 +657,9 @@ void ElementBuilder::build_av3dnodal_element_solution()
         if (!have_be)
             build_be();
         He.resize(3);
-        for (unsigned int k = 0; k < 3; k++)
-            He(k) = Be(k) * nu[k];
+        for (unsigned int k = 0; k < 3; ++k)
+            for (unsigned int l = 0; l < 3; ++l)
+                He(k) += nu_tensor(k, l) * Be(l);
         have_he = true;
     };
 
@@ -586,8 +680,14 @@ void ElementBuilder::build_av3dnodal_element_solution()
         {
             vtkDataArray *js_array = vtk_grid_->GetCellData()->GetArray("Js");
             const vtkIdType elem_id = static_cast<vtkIdType>(elem_data.elem->id());
+            const Real js_local[3] = {
+                js_array->GetComponent(elem_id, 0),
+                js_array->GetComponent(elem_id, 1),
+                js_array->GetComponent(elem_id, 2)};
+            Real js[3] = {0.0, 0.0, 0.0};
+            this->vector_components_to_global_for_elem(js_local, js);
             for (unsigned int k = 0; k < 3; k++)
-                Je(k) = js_array->GetComponent(elem_id, k);
+                Je(k) = js[k];
             break;
         }
         case PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR:
@@ -596,10 +696,15 @@ void ElementBuilder::build_av3dnodal_element_solution()
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
             auto &JVe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJVe];
 
-            const Real sigma_matrix[3] = {
+            const Real sigma_local[3] = {
                 1.0 / this->material_value(material_id, MAT_RHO_X),
                 1.0 / this->material_value(material_id, MAT_RHO_Y),
                 1.0 / this->material_value(material_id, MAT_RHO_Z)};
+            TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
+                                                 0.0, sigma_local[1], 0.0,
+                                                 0.0, 0.0, sigma_local[2]);
+            TensorValue<Real> sigma_tensor;
+            this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
 
             DenseVector<Number> Vn;
 
@@ -626,12 +731,16 @@ void ElementBuilder::build_av3dnodal_element_solution()
 
             Jq_A += Jq_V;
 
-            for (unsigned int k = 0; k < 3; k++)
+            Real j_avg[3] = {0.0, 0.0, 0.0};
+            for (unsigned int l = 0; l < 3; ++l)
             {
-                for (unsigned int qp = 0; qp < n_qp; qp++)
-                    Je(k) -= Jq_A(qp + k * n_qp);
-                Je(k) = Je(k) * sigma_matrix[k] / n_qp;
+                for (unsigned int qp = 0; qp < n_qp; ++qp)
+                    j_avg[l] -= Jq_A(qp + l * n_qp);
+                j_avg[l] /= n_qp;
             }
+            for (unsigned int k = 0; k < 3; ++k)
+                for (unsigned int l = 0; l < 3; ++l)
+                    Je(k) += sigma_tensor(k, l) * j_avg[l];
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
@@ -657,10 +766,13 @@ void ElementBuilder::build_av3dnodal_element_solution()
 
             const Real sc = this->constant_value(constant_id, CONST_CS);
             const Real nc = this->constant_value(constant_id, CONST_TURNS);
-            const VectorValue t_vec(
+            const Real t_local[3] = {
                 this->constant_value(constant_id, CONST_T_X),
                 this->constant_value(constant_id, CONST_T_Y),
-                this->constant_value(constant_id, CONST_T_Z));
+                this->constant_value(constant_id, CONST_T_Z)};
+            Real t_global[3] = {0.0, 0.0, 0.0};
+            this->vector_components_to_global_for_elem(t_local, t_global);
+            const VectorValue t_vec(t_global[0], t_global[1], t_global[2]);
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);

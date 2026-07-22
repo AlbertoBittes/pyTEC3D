@@ -5,6 +5,7 @@
  */
 #include "element_builder.h"
 #include "binary_reader.h"
+#include "coordinate_system.h"
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
@@ -56,6 +57,11 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
     vtk_grid_ = equation_systems_->get_parent_object()->get_active_vtk_grid();
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
+    coordinate_system_cell_array_ = vtk_grid_->GetCellData()->GetArray("COORDINATE_SYSTEM");
+
+    const auto *solver = equation_systems_->get_parent_object();
+    if (solver && solver->has_bh_curves())
+        bh_curves_ = &solver->get_bh_curves();
 
     py::object apec_object = equation_systems_->get_parent_object()->get_apec_object();
     py::object materials_attribute = apec_object.attr("materials");
@@ -95,38 +101,97 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
         values[CONST_R] = py::cast<Real>(row["R"]);
         values[CONST_S] = py::cast<Real>(row["S"]);
     }
+
+    const py::object coordinate_systems_object = apec_object.attr("coordinate_systems");
+    if (!coordinate_systems_object.is_none())
+    {
+        const py::dict coordinate_systems_dict = py::cast<py::dict>(coordinate_systems_object);
+        for (const auto &item : coordinate_systems_dict)
+        {
+            const dof_id_type id = py::cast<dof_id_type>(item.first);
+            coordinate_systems_.emplace(
+                id,
+                py::cast<std::shared_ptr<apec_m::CoordinateSystem>>(item.second));
+        }
+    }
 }
 
-const std::vector<Real> &ElementBuilder::material_row(dof_id_type id) const
+void ElementBuilder::vector_components_to_global_for_elem(const Real *local_components,
+                                                          Real *global_components) const
 {
-    const auto it = materials_rows_.find(id);
-    if (it == materials_rows_.end())
-        apec::logging::error_and_abort("Material ID not found in cached materials map: " + std::to_string(id));
-    return it->second;
+    if (!elem_data.coordinate_system)
+    {
+        global_components[0] = local_components[0];
+        global_components[1] = local_components[1];
+        global_components[2] = local_components[2];
+        return;
+    }
+
+    const libMesh::Point center = elem_data.elem->vertex_average();
+    const libMesh::Real position[3] = {
+        static_cast<libMesh::Real>(center(0)),
+        static_cast<libMesh::Real>(center(1)),
+        static_cast<libMesh::Real>(center(2))};
+    elem_data.coordinate_system->rotate_vector_to_global_raw(local_components, position, global_components);
 }
 
-const std::vector<Real> &ElementBuilder::constant_row(dof_id_type id) const
+void ElementBuilder::vector_components_to_global_for_elem(const libMesh::VectorValue<Real> &local_components,
+                                                          libMesh::VectorValue<Real> &global_components) const
 {
-    const auto it = constants_rows_.find(id);
-    if (it == constants_rows_.end())
-        apec::logging::error_and_abort("Constant ID not found in cached constants map: " + std::to_string(id));
-    return it->second;
+    const Real local_arr[3] = {local_components(0), local_components(1), local_components(2)};
+    Real global_arr[3] = {0.0, 0.0, 0.0};
+    this->vector_components_to_global_for_elem(local_arr, global_arr);
+    global_components(0) = global_arr[0];
+    global_components(1) = global_arr[1];
+    global_components(2) = global_arr[2];
 }
 
-Real ElementBuilder::material_value(dof_id_type id, unsigned int col_idx) const
+void ElementBuilder::tensor_to_global_for_elem(const Real local_tensor[3][3],
+                                               Real global_tensor[3][3]) const
 {
-    const auto &row = material_row(id);
-    if (col_idx >= row.size())
-        apec::logging::error_and_abort("Material cache column index out of range: " + std::to_string(col_idx));
-    return row[col_idx];
+    if (!elem_data.coordinate_system)
+    {
+        for (unsigned int i = 0; i < 3; ++i)
+            for (unsigned int j = 0; j < 3; ++j)
+                global_tensor[i][j] = local_tensor[i][j];
+        return;
+    }
+
+    const libMesh::Point center = elem_data.elem->vertex_average();
+    const libMesh::Real position[3] = {
+        static_cast<libMesh::Real>(center(0)),
+        static_cast<libMesh::Real>(center(1)),
+        static_cast<libMesh::Real>(center(2))};
+
+    libMesh::Real local_tensor_raw[9] = {
+        local_tensor[0][0], local_tensor[0][1], local_tensor[0][2],
+        local_tensor[1][0], local_tensor[1][1], local_tensor[1][2],
+        local_tensor[2][0], local_tensor[2][1], local_tensor[2][2]};
+    libMesh::Real global_tensor_raw[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    elem_data.coordinate_system->rotate_tensor_to_global_raw(local_tensor_raw, position, global_tensor_raw);
+    for (unsigned int i = 0; i < 3; ++i)
+        for (unsigned int j = 0; j < 3; ++j)
+            global_tensor[i][j] = global_tensor_raw[i * 3 + j];
 }
 
-Real ElementBuilder::constant_value(dof_id_type id, unsigned int col_idx) const
+void ElementBuilder::tensor_to_global_for_elem(const libMesh::TensorValue<Real> &local_tensor,
+                                               libMesh::TensorValue<Real> &global_tensor) const
 {
-    const auto &row = constant_row(id);
-    if (col_idx >= row.size())
-        apec::logging::error_and_abort("Constants cache column index out of range: " + std::to_string(col_idx));
-    return row[col_idx];
+    Real local_arr[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    Real global_arr[3][3] = {{0.0, 0.0, 0.0},
+                             {0.0, 0.0, 0.0},
+                             {0.0, 0.0, 0.0}};
+    for (unsigned int i = 0; i < 3; ++i)
+        for (unsigned int j = 0; j < 3; ++j)
+            local_arr[i][j] = local_tensor(i, j);
+
+    this->tensor_to_global_for_elem(local_arr, global_arr);
+
+    for (unsigned int i = 0; i < 3; ++i)
+        for (unsigned int j = 0; j < 3; ++j)
+            global_tensor(i, j) = global_arr[i][j];
 }
 
 //
@@ -188,7 +253,15 @@ void ElementBuilder::set_element_data(Elem *elem)
     const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
     elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));
     elem_data.real_constant_num = static_cast<unsigned int>(real_constant_cell_array_->GetComponent(elem_id, 0));
+    elem_data.coordinate_system_num = static_cast<unsigned int>(coordinate_system_cell_array_->GetComponent(elem_id, 0));
     elem_data.elem = elem;
+    elem_data.coordinate_system = nullptr;
+
+    if (elem_data.coordinate_system_num != 0)
+    {
+        const auto it = coordinate_systems_.find(static_cast<dof_id_type>(elem_data.coordinate_system_num));
+        elem_data.coordinate_system = it->second.get();
+    }
 
     std::vector<dof_id_type> dof_indices;
     dof_solution_dof_map_->dof_indices(elem, dof_indices);

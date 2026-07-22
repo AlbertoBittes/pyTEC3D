@@ -13,6 +13,7 @@
 #include "apec_m_equation_systems.h"
 #include "apec_m_solver.h"
 #include "augment_sparsity_on_nodes.h"
+#include "coordinate_system.h"
 
 #include "variables_map.h"
 #include <libmesh/dof_map.h>
@@ -22,7 +23,6 @@
 #include <libmesh/numeric_vector.h>
 #include <libmesh/tensor_value.h>
 #include <libmesh/vector_value.h>
-#include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 #include <algorithm>
 #include <array>
@@ -62,8 +62,6 @@ using libMesh::VectorValue;
 
 namespace
 {
-    using RotationCache = std::unordered_map<vtkIdType, TensorValue<Real>>;
-
     struct VariableConstraintStat
     {
         std::string variable_name;
@@ -173,62 +171,38 @@ namespace
         return out.str();
     }
 
-    const py::object &coordinate_system_class()
-    {
-        static py::object cls = []() -> py::object
-        {
-            try
-            {
-                return py::module_::import("apec_m.coordinate_system").attr("CoordinateSystem");
-            }
-            catch (const py::error_already_set &)
-            {
-                // Backward-compat fallback for legacy path setups.
-                return py::module_::import("coordinate_system").attr("CoordinateSystem");
-            }
-        }();
-        return cls;
-    }
-
-    void build_rotation_cache_from_point_ids(
+    TensorValue<Real> build_local_to_global_from_angles(
         vtkDataArray *angles_array,
-        const std::vector<vtkIdType> &point_ids_for_rotation,
-        RotationCache &local_to_global_cache)
+        const vtkIdType point_id,
+        const std::string &context)
     {
-        if (!angles_array || point_ids_for_rotation.empty())
-            return;
-
-        py::gil_scoped_acquire gil;
-        const py::object &coord_system = coordinate_system_class();
-        const std::vector<py::ssize_t> angles_shape = {
-            static_cast<py::ssize_t>(point_ids_for_rotation.size()),
-            static_cast<py::ssize_t>(3)};
-        py::array_t<Real> angles_np(angles_shape);
-        auto angles_view = angles_np.mutable_unchecked<2>();
-        for (py::ssize_t idx = 0; idx < static_cast<py::ssize_t>(point_ids_for_rotation.size()); ++idx)
+        if (!angles_array)
         {
-            const vtkIdType point_id = point_ids_for_rotation[static_cast<std::size_t>(idx)];
-            angles_view(idx, 0) = static_cast<Real>(angles_array->GetComponent(point_id, 0));
-            angles_view(idx, 1) = static_cast<Real>(angles_array->GetComponent(point_id, 1));
-            angles_view(idx, 2) = static_cast<Real>(angles_array->GetComponent(point_id, 2));
+            std::ostringstream msg;
+            msg << context << ": missing 'angles' point-data array.";
+            apec::logging::error_and_abort(msg.str());
         }
 
-        const py::object coeffs_obj =
-            coord_system.attr("build_local_to_global_coefficients")(angles_np);
-        const py::array_t<Real, py::array::c_style | py::array::forcecast> coeffs_np =
-            py::cast<py::array_t<Real, py::array::c_style | py::array::forcecast>>(coeffs_obj);
-        const auto coeffs = coeffs_np.unchecked<2>();
-
-        for (py::ssize_t idx = 0; idx < static_cast<py::ssize_t>(point_ids_for_rotation.size()); ++idx)
+        const vtkIdType n_tuples = angles_array->GetNumberOfTuples();
+        if (point_id < 0 || point_id >= n_tuples)
         {
-            const vtkIdType point_id = point_ids_for_rotation[static_cast<std::size_t>(idx)];
-            local_to_global_cache.emplace(
-                point_id,
-                TensorValue<Real>(
-                    coeffs(idx, 0), coeffs(idx, 1), coeffs(idx, 2),
-                    coeffs(idx, 3), coeffs(idx, 4), coeffs(idx, 5),
-                    coeffs(idx, 6), coeffs(idx, 7), coeffs(idx, 8)));
+            std::ostringstream msg;
+            msg << context << ": invalid node id " << point_id
+                << " for 'angles' array with " << n_tuples << " tuples.";
+            apec::logging::error_and_abort(msg.str());
         }
+
+        double rotation[9];
+        apec_m::CoordinateSystem::build_local_to_global_matrix(
+            static_cast<double>(angles_array->GetComponent(point_id, 0)),
+            static_cast<double>(angles_array->GetComponent(point_id, 1)),
+            static_cast<double>(angles_array->GetComponent(point_id, 2)),
+            rotation);
+
+        return TensorValue<Real>(
+            rotation[0], rotation[1], rotation[2],
+            rotation[3], rotation[4], rotation[5],
+            rotation[6], rotation[7], rotation[8]);
     }
 
 } // namespace
@@ -344,52 +318,6 @@ GlobalConstraintsObject::build_point_constraints()
 
     const Real tol = std::numeric_limits<Real>::epsilon();
     std::unordered_set<dof_id_type> constrained_dofs;
-    RotationCache local_to_global_cache;
-
-    std::vector<vtkIdType> point_ids_for_rotation;
-    std::unordered_set<vtkIdType> seen_point_ids;
-    const vtkIdType n_angle_tuples = angles_array->GetNumberOfTuples();
-
-    for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
-    {
-        const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
-
-        bool needs_rotation = false;
-        for (const auto &var_entry : vector_variables)
-        {
-            auto array_it = vector_arrays.find(var_entry.first);
-            if (array_it == vector_arrays.end() || array_it->second == nullptr)
-                continue;
-
-            vtkDataArray *constraint_array = array_it->second;
-            const auto &components = var_entry.second;
-            const unsigned int max_components = std::min<unsigned int>(3, components.size());
-            for (unsigned int i = 0; i < max_components; ++i)
-            {
-                const unsigned int comp_idx = components[i].component_index;
-                const Real value = static_cast<Real>(constraint_array->GetComponent(point_id, comp_idx));
-                if (!std::isnan(value))
-                {
-                    needs_rotation = true;
-                    break;
-                }
-            }
-
-            if (needs_rotation)
-                break;
-        }
-
-        if (needs_rotation)
-        {
-            if (point_id < 0 || point_id >= n_angle_tuples)
-                continue;
-            if (seen_point_ids.insert(point_id).second)
-                point_ids_for_rotation.push_back(point_id);
-        }
-    }
-
-    build_rotation_cache_from_point_ids(angles_array, point_ids_for_rotation, local_to_global_cache);
-
     for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
     {
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
@@ -468,14 +396,10 @@ GlobalConstraintsObject::build_point_constraints()
             // Apply rotation to constraint values
             if (!rotation_ready)
             {
-                auto cache_it = local_to_global_cache.find(point_id);
-                if (cache_it == local_to_global_cache.end())
-                {
-                    std::ostringstream msg;
-                    msg << "Point constraint rotation matrix cache miss for node id " << point_id << ".";
-                    apec::logging::error_and_abort(msg.str());
-                }
-                local_to_global = cache_it->second;
+                local_to_global = build_local_to_global_from_angles(
+                    angles_array,
+                    point_id,
+                    "Point constraint rotation");
                 global_to_local = TensorValue<Real>(local_to_global.transpose());
                 rotation_ready = true;
             }
@@ -709,8 +633,6 @@ GlobalConstraintsObject::build_coupling_constraints()
     auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
-    RotationCache local_to_global_cache;
-
     const auto build_coupled_groups =
         [&vector_variables](
             const std::string &variable,
@@ -749,28 +671,6 @@ GlobalConstraintsObject::build_coupling_constraints()
         }
     };
 
-    struct LocalPair
-    {
-        const Node *node_first = nullptr;
-        const Node *node_second = nullptr;
-        vtkIdType point_id_first = -1;
-        vtkIdType point_id_second = -1;
-        bool same_edge_orientation = true;
-    };
-
-    struct CouplingEntryPlan
-    {
-        std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
-        std::unordered_set<std::string> coupled_labels;
-        std::vector<LocalPair> local_pairs;
-    };
-
-    std::vector<CouplingEntryPlan> entry_plans;
-    entry_plans.reserve(n_entries);
-    std::vector<vtkIdType> point_ids_for_rotation;
-    std::unordered_set<vtkIdType> seen_point_ids;
-    const vtkIdType n_angle_tuples = angles_array ? angles_array->GetNumberOfTuples() : 0;
-
     for (std::size_t entry_idx = 0; entry_idx < n_entries; ++entry_idx)
     {
         const int cp_id = cp_id_values[entry_idx];
@@ -782,13 +682,11 @@ GlobalConstraintsObject::build_coupling_constraints()
         if (pairs_it == pairs_by_cp.end() || pairs_it->second.empty())
             continue;
 
-        CouplingEntryPlan plan;
-        build_coupled_groups(variable, plan.coupled_vectors, plan.coupled_labels);
-        if (plan.coupled_vectors.empty() && plan.coupled_labels.empty())
+        std::map<std::string, std::vector<VariablesMap::VectorComponent>> coupled_vectors;
+        std::unordered_set<std::string> coupled_labels;
+        build_coupled_groups(variable, coupled_vectors, coupled_labels);
+        if (coupled_vectors.empty() && coupled_labels.empty())
             continue;
-
-        plan.local_pairs.reserve(pairs_it->second.size());
-        const bool needs_rotation = !plan.coupled_vectors.empty();
 
         for (const auto &pair : pairs_it->second)
         {
@@ -809,35 +707,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
             const vtkIdType point_id_first = static_cast<vtkIdType>(node_first->id());
             const vtkIdType point_id_second = static_cast<vtkIdType>(node_second->id());
-            plan.local_pairs.push_back(
-                {node_first, node_second, point_id_first, point_id_second, pair.same_edge_orientation});
 
-            if (needs_rotation && angles_array)
-            {
-                if (point_id_first >= 0 && point_id_first < n_angle_tuples && seen_point_ids.insert(point_id_first).second)
-                    point_ids_for_rotation.push_back(point_id_first);
-                if (point_id_second >= 0 && point_id_second < n_angle_tuples && seen_point_ids.insert(point_id_second).second)
-                    point_ids_for_rotation.push_back(point_id_second);
-            }
-        }
-
-        if (!plan.local_pairs.empty())
-            entry_plans.emplace_back(std::move(plan));
-    }
-
-    build_rotation_cache_from_point_ids(angles_array, point_ids_for_rotation, local_to_global_cache);
-
-    for (const auto &plan : entry_plans)
-    {
-        for (const auto &pair : plan.local_pairs)
-        {
-            const Node *node_first = pair.node_first;
-            const Node *node_second = pair.node_second;
-            const vtkIdType point_id_first = pair.point_id_first;
-            const vtkIdType point_id_second = pair.point_id_second;
-            const bool same_edge_orientation = pair.same_edge_orientation;
-
-            for (const auto &vec_entry : plan.coupled_vectors)
+            for (const auto &vec_entry : coupled_vectors)
             {
                 const auto &components = vec_entry.second;
                 std::array<dof_id_type, 3> dofs_first = {
@@ -880,33 +751,19 @@ GlobalConstraintsObject::build_coupling_constraints()
                 if (!complete)
                     continue;
 
-                TensorValue<Real> first_local_to_global(
-                    1.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0,
-                    0.0, 0.0, 1.0);
-                auto first_cache_it = local_to_global_cache.find(point_id_first);
-                if (first_cache_it == local_to_global_cache.end())
-                {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint master rotation matrix cache miss for node id " << point_id_first << ".";
-                    apec::logging::error_and_abort(msg.str());
-                }
-                first_local_to_global = first_cache_it->second;
+                const TensorValue<Real> first_local_to_global =
+                    build_local_to_global_from_angles(
+                        angles_array,
+                        point_id_first,
+                        "Coupling constraint master rotation");
                 const TensorValue<Real> first_global_to_local =
                     TensorValue<Real>(first_local_to_global.transpose());
 
-                TensorValue<Real> second_local_to_global(
-                    1.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0,
-                    0.0, 0.0, 1.0);
-                auto second_cache_it = local_to_global_cache.find(point_id_second);
-                if (second_cache_it == local_to_global_cache.end())
-                {
-                    std::ostringstream msg;
-                    msg << "Coupling constraint slave rotation matrix cache miss for node id " << point_id_second << ".";
-                    apec::logging::error_and_abort(msg.str());
-                }
-                second_local_to_global = second_cache_it->second;
+                const TensorValue<Real> second_local_to_global =
+                    build_local_to_global_from_angles(
+                        angles_array,
+                        point_id_second,
+                        "Coupling constraint slave rotation");
 
                 const TensorValue<Real> transform =
                     TensorValue<Real>(second_local_to_global * first_global_to_local);
@@ -921,7 +778,7 @@ GlobalConstraintsObject::build_coupling_constraints()
                 }
             }
 
-            for (const auto &label : plan.coupled_labels)
+            for (const auto &label : coupled_labels)
             {
                 const unsigned int sys_num = system->number();
                 const unsigned int var_num = system->variable_number(label);
@@ -935,6 +792,7 @@ GlobalConstraintsObject::build_coupling_constraints()
                 const dof_id_type dof_second = node_second->dof_number(sys_num, var_num, 0);
 
                 ConstraintEntry constraint_entry;
+                const bool same_edge_orientation = pair.same_edge_orientation;
                 if (label == "Az")
                     constraint_entry.row[dof_first] = same_edge_orientation ? 1.0 : -1.0;
                 else

@@ -324,34 +324,22 @@ namespace
         if (bh_object.is_none())
             return {};
 
-        if (!py::isinstance<py::dict>(bh_object))
-            apec::logging::error_and_abort("Expected 'bh_curves' to be a dict of dicts.");
-
         BHCurveMaterialsMap curves;
-        const py::dict materials_dict = py::reinterpret_borrow<py::dict>(bh_object);
+        const py::dict materials_dict = py::cast<py::dict>(bh_object);
         for (const auto &material_item : materials_dict)
         {
             const unsigned int material_id = py::cast<unsigned int>(material_item.first);
-            if (!py::isinstance<py::dict>(material_item.second))
-                apec::logging::error_and_abort("Each bh_curves material entry must map to a dict.");
 
             BHCurveComponentsMap material_curves;
-            const py::dict component_dict = py::reinterpret_borrow<py::dict>(material_item.second);
+            const py::dict component_dict = py::cast<py::dict>(material_item.second);
             for (const auto &component_item : component_dict)
             {
                 const unsigned int component = py::cast<unsigned int>(component_item.first);
-                if (component > 2)
-                    apec::logging::error_and_abort("BH curve component must be 0, 1, or 2.");
+                const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(component_item.second);
 
-                py::array_t<double, py::array::c_style | py::array::forcecast> curve_array(component_item.second);
-                if (curve_array.ndim() != 2)
-                    apec::logging::error_and_abort("BH curve array must be 2D with shape (2, N).");
-
-                if (curve_array.shape(0) != 2 || curve_array.shape(1) < 2)
-                    apec::logging::error_and_abort("BH curve array must have shape (2, N) with N >= 2.");
-
-                std::vector<double> h_values(static_cast<std::size_t>(curve_array.shape(1)));
-                std::vector<double> b_values(static_cast<std::size_t>(curve_array.shape(1)));
+                const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(1));
+                std::vector<double> h_values(n_values);
+                std::vector<double> b_values(n_values);
 
                 const auto unchecked = curve_array.unchecked<2>();
                 for (ssize_t i = 0; i < curve_array.shape(1); ++i)

@@ -101,6 +101,7 @@ class APEC_M:
         self.dof_couplings: pd.DataFrame = pd.DataFrame(
             columns=list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
         )
+        self.coordinate_systems: Dict[int, Any] = {}
         self.bh_curves: Dict[int, Dict[int, np.ndarray]] = {}
         self.algorithm = ApecAlgorithm(self)
         self._configure_python_output_root_only()

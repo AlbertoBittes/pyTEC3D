@@ -1,0 +1,337 @@
+#include "coordinate_system.h"
+
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <libmesh/libmesh.h>
+
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+
+namespace py = pybind11;
+using namespace pybind11::literals;
+
+namespace
+{
+    std::size_t points_count_or_throw(
+        const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &array,
+        const std::string &arg_name)
+    {
+        if (array.ndim() == 1)
+        {
+            if (array.shape(0) != 3)
+            {
+                std::ostringstream msg;
+                msg << arg_name << " must have shape (N, 3) or (3,), got (" << array.shape(0) << ").";
+                throw std::invalid_argument(msg.str());
+            }
+            return 1;
+        }
+
+        if (array.ndim() != 2 || array.shape(1) != 3)
+        {
+            std::ostringstream msg;
+            msg << arg_name << " must have shape (N, 3) or (3,), got ndim=" << array.ndim() << ".";
+            throw std::invalid_argument(msg.str());
+        }
+
+        return static_cast<std::size_t>(array.shape(0));
+    }
+
+    py::array_t<libMesh::Real> allocate_points3_array(const std::size_t n_rows)
+    {
+        return py::array_t<libMesh::Real>({static_cast<py::ssize_t>(n_rows), static_cast<py::ssize_t>(3)});
+    }
+
+    py::array_t<libMesh::Real> point3_out_from_raw(const libMesh::Real *raw3)
+    {
+        py::array_t<libMesh::Real> out({static_cast<py::ssize_t>(3)});
+        auto view = out.mutable_unchecked<1>();
+        view(0) = raw3[0];
+        view(1) = raw3[1];
+        view(2) = raw3[2];
+        return out;
+    }
+
+    py::array_t<libMesh::Real> matrix3_out_from_raw(const libMesh::Real *raw9)
+    {
+        py::array_t<libMesh::Real> out({static_cast<py::ssize_t>(3), static_cast<py::ssize_t>(3)});
+        auto view = out.mutable_unchecked<2>();
+        for (int i = 0; i < 3; ++i)
+        {
+            for (int j = 0; j < 3; ++j)
+                view(i, j) = raw9[i * 3 + j];
+        }
+        return out;
+    }
+
+    const libMesh::Real *optional_point3_ptr(const py::object &obj, libMesh::Real *storage)
+    {
+        if (obj.is_none())
+            return nullptr;
+
+        const auto arr = py::cast<py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast>>(obj);
+        const std::size_t n = points_count_or_throw(arr, "point");
+        if (n != 1)
+            throw std::invalid_argument("Point arguments must have shape (3,).\n");
+
+        storage[0] = arr.data()[0];
+        storage[1] = arr.data()[1];
+        storage[2] = arr.data()[2];
+        return storage;
+    }
+
+    const libMesh::Real *required_point3_ptr(
+        const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &arr,
+        const std::string &arg_name,
+        libMesh::Real *storage)
+    {
+        const std::size_t n = points_count_or_throw(arr, arg_name);
+        if (n != 1)
+            throw std::invalid_argument(arg_name + " must have shape (3,).\n");
+
+        storage[0] = arr.data()[0];
+        storage[1] = arr.data()[1];
+        storage[2] = arr.data()[2];
+        return storage;
+    }
+
+} // namespace
+
+void bind_coordinate_system(py::module_ &module)
+{
+    py::class_<apec_m::CoordinateSystem, std::shared_ptr<apec_m::CoordinateSystem>> coord(module, "CoordinateSystem");
+
+    coord
+        .def_property_readonly("type", &apec_m::CoordinateSystem::type)
+        .def_property_readonly("origin", [](const apec_m::CoordinateSystem &self)
+                               {
+                                   libMesh::Real out[3] = {0.0, 0.0, 0.0};
+                                   self.origin_raw(out);
+                                   return point3_out_from_raw(out); })
+        .def("axis_direction", [](const apec_m::CoordinateSystem &self)
+             {
+                 libMesh::Real out[3] = {0.0, 0.0, 0.0};
+                 self.axis_direction_raw(out);
+                 return point3_out_from_raw(out); })
+        .def("to_local", [](const apec_m::CoordinateSystem &self, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &global_points)
+             {
+                 const std::size_t n_points = points_count_or_throw(global_points, "global_points");
+                 py::array_t<libMesh::Real> out = allocate_points3_array(n_points);
+                 self.to_local_raw(global_points.data(), n_points, out.mutable_data());
+                 return out; }, "global_points"_a)
+        .def("to_global", [](const apec_m::CoordinateSystem &self, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &local_points)
+             {
+                 const std::size_t n_points = points_count_or_throw(local_points, "local_points");
+                 py::array_t<libMesh::Real> out = allocate_points3_array(n_points);
+                 self.to_global_raw(local_points.data(), n_points, out.mutable_data());
+                 return out; }, "local_points"_a)
+        .def("vector_components_to_local", [](const apec_m::CoordinateSystem &self, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &global_vectors, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &global_positions)
+             {
+                 const std::size_t n_vectors = points_count_or_throw(global_vectors, "global_vectors");
+                 const std::size_t n_positions = points_count_or_throw(global_positions, "global_positions");
+                 if (n_vectors != n_positions)
+                     throw std::invalid_argument("global_vectors and global_positions must have the same number of rows.");
+                 py::array_t<libMesh::Real> out = allocate_points3_array(n_vectors);
+                 self.vector_components_to_local_raw(global_vectors.data(), global_positions.data(), n_vectors, out.mutable_data());
+                 return out; }, "global_vectors"_a, "global_positions"_a)
+        .def("vector_components_to_global", [](const apec_m::CoordinateSystem &self, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &local_components, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &global_positions)
+             {
+                 const std::size_t n_vectors = points_count_or_throw(local_components, "local_components");
+                 const std::size_t n_positions = points_count_or_throw(global_positions, "global_positions");
+                 if (n_vectors != n_positions)
+                     throw std::invalid_argument("local_components and global_positions must have the same number of rows.");
+                 py::array_t<libMesh::Real> out = allocate_points3_array(n_vectors);
+                 self.vector_components_to_global_raw(local_components.data(), global_positions.data(), n_vectors, out.mutable_data());
+                 return out; }, "local_components"_a, "global_positions"_a)
+        .def_static("build_local_to_global_matrix", [](const libMesh::Real angle_xy_deg, const libMesh::Real angle_yz_deg, const libMesh::Real angle_xz_deg)
+                    {
+                        libMesh::Real out[9] = {0.0};
+                        apec_m::CoordinateSystem::build_local_to_global_matrix(angle_xy_deg, angle_yz_deg, angle_xz_deg, out);
+                        return matrix3_out_from_raw(out); }, "angle_xy_deg"_a, "angle_yz_deg"_a, "angle_xz_deg"_a)
+        .def_static("build_local_to_global_coefficients", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &angles_deg)
+                    {
+                        const std::size_t n_rows = points_count_or_throw(angles_deg, "angles_deg");
+                        py::array_t<libMesh::Real> out({static_cast<py::ssize_t>(n_rows), static_cast<py::ssize_t>(9)});
+                        apec_m::CoordinateSystem::build_local_to_global_coefficients_raw(angles_deg.data(), n_rows, out.mutable_data());
+                        return out; }, "angles_deg"_a)
+        .def_static("build_global_to_local_matrix", [](const libMesh::Real angle_xy_deg, const libMesh::Real angle_yz_deg, const libMesh::Real angle_xz_deg)
+                    {
+                        libMesh::Real out[9] = {0.0};
+                        apec_m::CoordinateSystem::build_global_to_local_matrix(angle_xy_deg, angle_yz_deg, angle_xz_deg, out);
+                        return matrix3_out_from_raw(out); }, "angle_xy_deg"_a, "angle_yz_deg"_a, "angle_xz_deg"_a)
+        .def_static("build_global_to_local", [](const libMesh::Real angle_xy_deg, const libMesh::Real angle_yz_deg, const libMesh::Real angle_xz_deg)
+                    {
+                        libMesh::Real out[9] = {0.0};
+                        apec_m::CoordinateSystem::build_global_to_local(angle_xy_deg, angle_yz_deg, angle_xz_deg, out);
+                        return matrix3_out_from_raw(out); }, "angle_xy_deg"_a, "angle_yz_deg"_a, "angle_xz_deg"_a);
+
+    py::class_<apec_m::CartesianCoordinateSystem, apec_m::CoordinateSystem, std::shared_ptr<apec_m::CartesianCoordinateSystem>>(module, "CartesianCoordinateSystem")
+        .def(py::init([](const py::object &origin,
+                         const py::object &nxax,
+                         const py::object &nxypl,
+                         const py::object &thxy_deg,
+                         const py::object &thyz_deg,
+                         const py::object &thzx_deg)
+                      {
+                          libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
+                          const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
+                          const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+
+                          libMesh::Real angles[3] = {0.0, 0.0, 0.0};
+                          const bool has_xy = !thxy_deg.is_none();
+                          const bool has_yz = !thyz_deg.is_none();
+                          const bool has_zx = !thzx_deg.is_none();
+                          const bool any = has_xy || has_yz || has_zx;
+                          const bool all = has_xy && has_yz && has_zx;
+                          if (any && !all)
+                              throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          const libMesh::Real *angles_ptr = nullptr;
+                          if (all)
+                          {
+                              angles[0] = py::cast<libMesh::Real>(thxy_deg);
+                              angles[1] = py::cast<libMesh::Real>(thyz_deg);
+                              angles[2] = py::cast<libMesh::Real>(thzx_deg);
+                              angles_ptr = angles;
+                          }
+
+                          return apec_m::CartesianCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+             "origin"_a = py::none(),
+             "nxax"_a = py::none(),
+             "nxypl"_a = py::none(),
+             "thxy_deg"_a = py::none(),
+             "thyz_deg"_a = py::none(),
+             "thzx_deg"_a = py::none())
+        .def_static("from_angles", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &angles_deg)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real a[3] = {0.0, 0.0, 0.0};
+                        return apec_m::CartesianCoordinateSystem::from_angles(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(angles_deg, "angles_deg", a)); }, "origin"_a, "angles_deg"_a)
+        .def_static("from_points", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxax, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxypl)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                        return apec_m::CartesianCoordinateSystem::from_points(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(nxax, "nxax", x),
+                            required_point3_ptr(nxypl, "nxypl", p)); }, "origin"_a, "nxax"_a, "nxypl"_a);
+
+    py::class_<apec_m::CylindricalCoordinateSystem, apec_m::CoordinateSystem, std::shared_ptr<apec_m::CylindricalCoordinateSystem>>(module, "CylindricalCoordinateSystem")
+        .def(py::init([](const py::object &origin,
+                         const py::object &nxax,
+                         const py::object &nxypl,
+                         const py::object &thxy_deg,
+                         const py::object &thyz_deg,
+                         const py::object &thzx_deg)
+                      {
+                          libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
+                          const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
+                          const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+
+                          libMesh::Real angles[3] = {0.0, 0.0, 0.0};
+                          const bool has_xy = !thxy_deg.is_none();
+                          const bool has_yz = !thyz_deg.is_none();
+                          const bool has_zx = !thzx_deg.is_none();
+                          const bool any = has_xy || has_yz || has_zx;
+                          const bool all = has_xy && has_yz && has_zx;
+                          if (any && !all)
+                              throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          const libMesh::Real *angles_ptr = nullptr;
+                          if (all)
+                          {
+                              angles[0] = py::cast<libMesh::Real>(thxy_deg);
+                              angles[1] = py::cast<libMesh::Real>(thyz_deg);
+                              angles[2] = py::cast<libMesh::Real>(thzx_deg);
+                              angles_ptr = angles;
+                          }
+
+                          return apec_m::CylindricalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+             "origin"_a = py::none(),
+             "nxax"_a = py::none(),
+             "nxypl"_a = py::none(),
+             "thxy_deg"_a = py::none(),
+             "thyz_deg"_a = py::none(),
+             "thzx_deg"_a = py::none())
+        .def_static("from_angles", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &angles_deg)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real a[3] = {0.0, 0.0, 0.0};
+                        return apec_m::CylindricalCoordinateSystem::from_angles(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(angles_deg, "angles_deg", a)); }, "origin"_a, "angles_deg"_a)
+        .def_static("from_points", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxax, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxypl)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                        return apec_m::CylindricalCoordinateSystem::from_points(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(nxax, "nxax", x),
+                            required_point3_ptr(nxypl, "nxypl", p)); }, "origin"_a, "nxax"_a, "nxypl"_a);
+
+    py::class_<apec_m::SphericalCoordinateSystem, apec_m::CoordinateSystem, std::shared_ptr<apec_m::SphericalCoordinateSystem>>(module, "SphericalCoordinateSystem")
+        .def(py::init([](const py::object &origin,
+                         const py::object &nxax,
+                         const py::object &nxypl,
+                         const py::object &thxy_deg,
+                         const py::object &thyz_deg,
+                         const py::object &thzx_deg)
+                      {
+                          libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
+                          const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
+                          const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+
+                          libMesh::Real angles[3] = {0.0, 0.0, 0.0};
+                          const bool has_xy = !thxy_deg.is_none();
+                          const bool has_yz = !thyz_deg.is_none();
+                          const bool has_zx = !thzx_deg.is_none();
+                          const bool any = has_xy || has_yz || has_zx;
+                          const bool all = has_xy && has_yz && has_zx;
+                          if (any && !all)
+                              throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          const libMesh::Real *angles_ptr = nullptr;
+                          if (all)
+                          {
+                              angles[0] = py::cast<libMesh::Real>(thxy_deg);
+                              angles[1] = py::cast<libMesh::Real>(thyz_deg);
+                              angles[2] = py::cast<libMesh::Real>(thzx_deg);
+                              angles_ptr = angles;
+                          }
+
+                          return apec_m::SphericalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+             "origin"_a = py::none(),
+             "nxax"_a = py::none(),
+             "nxypl"_a = py::none(),
+             "thxy_deg"_a = py::none(),
+             "thyz_deg"_a = py::none(),
+             "thzx_deg"_a = py::none())
+        .def_static("from_angles", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &angles_deg)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real a[3] = {0.0, 0.0, 0.0};
+                        return apec_m::SphericalCoordinateSystem::from_angles(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(angles_deg, "angles_deg", a)); }, "origin"_a, "angles_deg"_a)
+        .def_static("from_points", [](const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &origin, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxax, const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &nxypl)
+                    {
+                        libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real x[3] = {0.0, 0.0, 0.0};
+                        libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                        return apec_m::SphericalCoordinateSystem::from_points(
+                            required_point3_ptr(origin, "origin", o),
+                            required_point3_ptr(nxax, "nxax", x),
+                            required_point3_ptr(nxypl, "nxypl", p)); }, "origin"_a, "nxax"_a, "nxypl"_a);
+}
