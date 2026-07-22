@@ -216,9 +216,6 @@ class Cyclic:
         def angular_distance(theta: np.ndarray, expected: float) -> np.ndarray:
             return np.abs((theta - expected + 180.0) % 360.0 - 180.0)
 
-        from .selector import Selector
-
-        Selector.ensure_selection_arrays(input_mesh)
         input_local, input_ids = ModelEdit.to_local_coordinates(
             input_mesh,
             coordinate_system,

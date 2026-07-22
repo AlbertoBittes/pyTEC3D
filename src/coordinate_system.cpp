@@ -16,16 +16,24 @@ namespace apec_m
 
         inline void mat_t_vec3(const libMesh::Real *m, const libMesh::Real *v, libMesh::Real *out) noexcept
         {
-            out[0] = m[0] * v[0] + m[3] * v[1] + m[6] * v[2];
-            out[1] = m[1] * v[0] + m[4] * v[1] + m[7] * v[2];
-            out[2] = m[2] * v[0] + m[5] * v[1] + m[8] * v[2];
+            // Use temporaries so calls with out == v remain correct.
+            const libMesh::Real x = m[0] * v[0] + m[3] * v[1] + m[6] * v[2];
+            const libMesh::Real y = m[1] * v[0] + m[4] * v[1] + m[7] * v[2];
+            const libMesh::Real z = m[2] * v[0] + m[5] * v[1] + m[8] * v[2];
+            out[0] = x;
+            out[1] = y;
+            out[2] = z;
         }
 
         inline void mat_vec3(const libMesh::Real *m, const libMesh::Real *v, libMesh::Real *out) noexcept
         {
-            out[0] = m[0] * v[0] + m[1] * v[1] + m[2] * v[2];
-            out[1] = m[3] * v[0] + m[4] * v[1] + m[5] * v[2];
-            out[2] = m[6] * v[0] + m[7] * v[1] + m[8] * v[2];
+            // Use temporaries so calls with out == v remain correct.
+            const libMesh::Real x = m[0] * v[0] + m[1] * v[1] + m[2] * v[2];
+            const libMesh::Real y = m[3] * v[0] + m[4] * v[1] + m[5] * v[2];
+            const libMesh::Real z = m[6] * v[0] + m[7] * v[1] + m[8] * v[2];
+            out[0] = x;
+            out[1] = y;
+            out[2] = z;
         }
 
         inline libMesh::Real snap_trig(libMesh::Real v) noexcept

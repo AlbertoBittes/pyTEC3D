@@ -9,6 +9,8 @@ import pandas as pd
 import vtk
 from .selector import Selector
 from .model_edit import ModelEdit
+from .coordinate_system import CylindricalCoordinateSystem
+from .cyclic import Cyclic
 from .logging_utils import get_logger
 from .validation_utils import ensure_vtk_unstructured_grid
 from .constants import (
@@ -171,9 +173,6 @@ class ApecAlgorithm:
             )
         if target_dimension <= 2 and n_toroidal_divisions <= 0:
             n_toroidal_divisions = 1
-
-        from .coordinate_system import CylindricalCoordinateSystem
-        from .cyclic import Cyclic
 
         tolerance = float(self.input_parameters["tolerance"])
         coordinate_system = CylindricalCoordinateSystem()
@@ -1693,6 +1692,7 @@ class ApecAlgorithm:
                     )
                     return True
             else:
+                self._toroidal_projection_current()
                 self.apec.solve()
                 self._calculate_poloidal_flux()
                 # self.apec.write_output()
