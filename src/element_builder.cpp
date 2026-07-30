@@ -47,7 +47,7 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
     equation_systems_ = equation_systems;
-    dof_solution_system_ = &equation_systems_->get_system<ApecMLinearSystem>(
+    dof_solution_system_ = &equation_systems_->get_system<libMesh::ImplicitSystem>(
         ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
 
     nodal_solution_system_ = &equation_systems_->get_system(ApecMSystemBase::NODAL_SOLUTION);
@@ -116,84 +116,6 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
     }
 }
 
-void ElementBuilder::vector_components_to_global_for_elem(const Real *local_components,
-                                                          Real *global_components) const
-{
-    if (!elem_data.coordinate_system)
-    {
-        global_components[0] = local_components[0];
-        global_components[1] = local_components[1];
-        global_components[2] = local_components[2];
-        return;
-    }
-
-    const libMesh::Point center = elem_data.elem->vertex_average();
-    const libMesh::Real position[3] = {
-        static_cast<libMesh::Real>(center(0)),
-        static_cast<libMesh::Real>(center(1)),
-        static_cast<libMesh::Real>(center(2))};
-    elem_data.coordinate_system->rotate_vector_to_global_raw(local_components, position, global_components);
-}
-
-void ElementBuilder::vector_components_to_global_for_elem(const libMesh::VectorValue<Real> &local_components,
-                                                          libMesh::VectorValue<Real> &global_components) const
-{
-    const Real local_arr[3] = {local_components(0), local_components(1), local_components(2)};
-    Real global_arr[3] = {0.0, 0.0, 0.0};
-    this->vector_components_to_global_for_elem(local_arr, global_arr);
-    global_components(0) = global_arr[0];
-    global_components(1) = global_arr[1];
-    global_components(2) = global_arr[2];
-}
-
-void ElementBuilder::tensor_to_global_for_elem(const Real local_tensor[3][3],
-                                               Real global_tensor[3][3]) const
-{
-    if (!elem_data.coordinate_system)
-    {
-        for (unsigned int i = 0; i < 3; ++i)
-            for (unsigned int j = 0; j < 3; ++j)
-                global_tensor[i][j] = local_tensor[i][j];
-        return;
-    }
-
-    const libMesh::Point center = elem_data.elem->vertex_average();
-    const libMesh::Real position[3] = {
-        static_cast<libMesh::Real>(center(0)),
-        static_cast<libMesh::Real>(center(1)),
-        static_cast<libMesh::Real>(center(2))};
-
-    libMesh::Real local_tensor_raw[9] = {
-        local_tensor[0][0], local_tensor[0][1], local_tensor[0][2],
-        local_tensor[1][0], local_tensor[1][1], local_tensor[1][2],
-        local_tensor[2][0], local_tensor[2][1], local_tensor[2][2]};
-    libMesh::Real global_tensor_raw[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    elem_data.coordinate_system->rotate_tensor_to_global_raw(local_tensor_raw, position, global_tensor_raw);
-    for (unsigned int i = 0; i < 3; ++i)
-        for (unsigned int j = 0; j < 3; ++j)
-            global_tensor[i][j] = global_tensor_raw[i * 3 + j];
-}
-
-void ElementBuilder::tensor_to_global_for_elem(const libMesh::TensorValue<Real> &local_tensor,
-                                               libMesh::TensorValue<Real> &global_tensor) const
-{
-    Real local_arr[3][3] = {{0.0, 0.0, 0.0},
-                            {0.0, 0.0, 0.0},
-                            {0.0, 0.0, 0.0}};
-    Real global_arr[3][3] = {{0.0, 0.0, 0.0},
-                             {0.0, 0.0, 0.0},
-                             {0.0, 0.0, 0.0}};
-    for (unsigned int i = 0; i < 3; ++i)
-        for (unsigned int j = 0; j < 3; ++j)
-            local_arr[i][j] = local_tensor(i, j);
-
-    this->tensor_to_global_for_elem(local_arr, global_arr);
-
-    for (unsigned int i = 0; i < 3; ++i)
-        for (unsigned int j = 0; j < 3; ++j)
-            global_tensor(i, j) = global_arr[i][j];
-}
-
 //
 //
 // Methods to size element matrices and vectors
@@ -231,9 +153,6 @@ void ElementBuilder::prepare_element_matrix_building()
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs},
         {n_dofs, n_dofs}};
-
-    std::vector<std::vector<unsigned int>> vector_sizes = {
-        {n_dofs}};
 
     this->build_matrices(&matrix_sizes, MatricesSet::DOF_SOLUTION_MATRICES);
     this->build_matrices(elem_data.element_type->get_nodal_solution_matrix_idx_size_map().get(), MatricesSet::NODAL_SOLUTION_MATRICES);
@@ -278,6 +197,67 @@ const ElemData &ElementBuilder::get_elem_data() const
     return elem_data;
 }
 
+bool ElementBuilder::nonlinear_element() const
+{
+    if (!bh_curves_)
+        return false;
+
+    const dof_id_type material_id = static_cast<dof_id_type>(elem_data.material_num);
+    return bh_curves_->find(material_id) != bh_curves_->end();
+}
+
+void ElementBuilder::rotate_vector_for_elem(const Real *local_components,
+                                            Real *global_components) const
+{
+    if (!elem_data.coordinate_system)
+    {
+        global_components[0] = local_components[0];
+        global_components[1] = local_components[1];
+        global_components[2] = local_components[2];
+        return;
+    }
+
+    const libMesh::Point center = elem_data.elem->vertex_average();
+    const libMesh::Real position[3] = {
+        static_cast<libMesh::Real>(center(0)),
+        static_cast<libMesh::Real>(center(1)),
+        static_cast<libMesh::Real>(center(2))};
+    elem_data.coordinate_system->vector_components_to_global_raw(local_components, position, 1, global_components);
+}
+
+void ElementBuilder::rotate_diag_tensor_for_elem(const Real diag[3],
+                                                 Real global_tensor[3][3]) const
+{
+    if (!elem_data.coordinate_system)
+    {
+        global_tensor[0][0] = diag[0];
+        global_tensor[0][1] = 0.0;
+        global_tensor[0][2] = 0.0;
+        global_tensor[1][0] = 0.0;
+        global_tensor[1][1] = diag[1];
+        global_tensor[1][2] = 0.0;
+        global_tensor[2][0] = 0.0;
+        global_tensor[2][1] = 0.0;
+        global_tensor[2][2] = diag[2];
+        return;
+    }
+
+    const libMesh::Point center = elem_data.elem->vertex_average();
+    const libMesh::Real position[3] = {
+        static_cast<libMesh::Real>(center(0)),
+        static_cast<libMesh::Real>(center(1)),
+        static_cast<libMesh::Real>(center(2))};
+    const libMesh::Real local_raw[9] = {
+        diag[0], 0.0, 0.0,
+        0.0, diag[1], 0.0,
+        0.0, 0.0, diag[2]};
+    libMesh::Real global_raw[9] = {0.0};
+    elem_data.coordinate_system->rotate_tensor_to_global_raw(local_raw, position, global_raw);
+    for (unsigned int i = 0; i < 3; ++i)
+        for (unsigned int j = 0; j < 3; ++j)
+            global_tensor[i][j] = global_raw[i * 3 + j];
+}
+
 // ---------------------------------------------------------------------------
 // Element matrix and RHS build dispatch
 // ---------------------------------------------------------------------------
@@ -307,20 +287,20 @@ void ElementBuilder::build_element()
 // Tangent stiffness matrix and RHS build dispatch
 // ---------------------------------------------------------------------------
 
-void ElementBuilder::build_element_tangent_stiffness()
+void ElementBuilder::build_element_tangent_stiffness_residual()
 {
     auto etype = static_cast<ElementTypeEnum>(elem_data.element_type->get_OPTIONs()[0]);
 
     switch (etype)
     {
     case ElementTypeEnum::AV3DNODAL:
-        this->build_av3dnodal_tangent_stiffness();
+        this->build_av3dnodal_tangent_stiffness_residual();
         break;
     case ElementTypeEnum::AV3DEDGE:
-        this->build_av3dedge_tangent_stiffness();
+        this->build_av3dedge_tangent_stiffness_residual();
         break;
     case ElementTypeEnum::AV2DNODAL:
-        this->build_av2dnodal_tangent_stiffness();
+        this->build_av2dnodal_tangent_stiffness_residual();
         break;
     default:
         apec::logging::error("Unsupported element type enum={} while building element", static_cast<unsigned int>(etype));

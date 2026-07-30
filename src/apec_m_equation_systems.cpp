@@ -143,24 +143,11 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
     apec::logging::info("Preparing time-step solution");
     auto &system = get_dof_solution_system();
 
-    system.prepare_time_step_solve(time_step);
+    system.init_time_step(time_step);
 
-    system.get_dof_map().swap_dof_constraints();
-    system.reinit_constraints();
+    system.write_element_data();
 
-    auto assembler = system.get_assembler();
-    assembler->write_element_matrices();
-    assembler->write_element_rhs();
-
-    system.solve();
-    system.get_dof_map().enforce_constraints_exactly(system);
-    system.update();
-    system.compute_solution_time_derivative();
-    apec::logging::info("Finished system solve");
-    assembler->write_nodal_solution();
-    apec::logging::info("Nodal solution updated");
-    assembler->write_element_solution();
-    apec::logging::info("Element solution updated");
+    this->solve();
 }
 
 void ApecMEquationSystems::configure_systems()
@@ -175,14 +162,15 @@ void ApecMEquationSystems::configure_systems()
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
         {
-            auto &dof_system = use_nonlinear_system_
-                                   ? static_cast<ApecMLinearSystem &>(this->add_system<ApecMNonLinearSystem>(sys_name))
-                                   : static_cast<ApecMLinearSystem &>(this->add_system<ApecMLinearSystem>(sys_name));
-            if (auto assembler = dof_system.get_assembler())
-                assembler->set_parent_object(this);
+            if (use_nonlinear_system_)
+                this->add_system<ApecMNonLinearSystem>(sys_name);
+            else
+                this->add_system<ApecMLinearSystem>(sys_name);
         }
-        else
-            this->add_system<ApecMExplicitSystem>(sys_name);
+        else if (type == ApecMSystemBase::NODAL_SOLUTION)
+            this->add_system<ApecMNodalSolutionSystem>(sys_name);
+        else if (type == ApecMSystemBase::ELEMENT_SOLUTION)
+            this->add_system<ApecMElementSolutionSystem>(sys_name);
     }
 }
 
@@ -195,9 +183,14 @@ void ApecMEquationSystems::post_initialize_systems()
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
             get_dof_solution_system().post_init();
-        else
+        else if (type == ApecMSystemBase::NODAL_SOLUTION)
         {
-            auto &system = this->get_system<ApecMExplicitSystem>(info);
+            auto &system = this->get_system<ApecMNodalSolutionSystem>(info);
+            system.post_init();
+        }
+        else if (type == ApecMSystemBase::ELEMENT_SOLUTION)
+        {
+            auto &system = this->get_system<ApecMElementSolutionSystem>(info);
             system.post_init();
         }
     }
@@ -214,9 +207,14 @@ void ApecMEquationSystems::initialize_systems()
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
             get_dof_solution_system().init_variables();
-        else
+        else if (type == ApecMSystemBase::NODAL_SOLUTION)
         {
-            auto &system = this->get_system<ApecMExplicitSystem>(info);
+            auto &system = this->get_system<ApecMNodalSolutionSystem>(info);
+            system.init_variables();
+        }
+        else if (type == ApecMSystemBase::ELEMENT_SOLUTION)
+        {
+            auto &system = this->get_system<ApecMElementSolutionSystem>(info);
             system.init_variables();
         }
     }
@@ -229,27 +227,12 @@ void ApecMEquationSystems::initialize_physics()
     apec::logging::table_root(format_equation_systems_summary_table(*this));
 }
 
-void ApecMEquationSystems::zero_all_systems()
-{
-    apec::logging::info("Zeroing all equation systems");
-    for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
-    {
-        const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-        const auto &info = ApecMSystemBase::system_name_from_type(type);
-
-        if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            get_dof_solution_system().zero_all();
-        else
-            this->get_system<ApecMExplicitSystem>(info).zero_all();
-    }
-}
-
 bool ApecMEquationSystems::uses_nonlinear_system() const
 {
     return use_nonlinear_system_;
 }
 
-ApecMLinearSystem &ApecMEquationSystems::get_dof_solution_system()
+ApecMDOFSystemBase &ApecMEquationSystems::get_dof_solution_system()
 {
     const auto &name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     if (use_nonlinear_system_)
@@ -257,7 +240,7 @@ ApecMLinearSystem &ApecMEquationSystems::get_dof_solution_system()
     return this->get_system<ApecMLinearSystem>(name);
 }
 
-const ApecMLinearSystem &ApecMEquationSystems::get_dof_solution_system() const
+const ApecMDOFSystemBase &ApecMEquationSystems::get_dof_solution_system() const
 {
     const auto &name = ApecMSystemBase::SYSTEM_INFO_MAP.at(ApecMSystemBase::DOF_SOLUTION_SYSTEM);
     if (use_nonlinear_system_)

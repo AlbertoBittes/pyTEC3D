@@ -31,7 +31,6 @@ using libMesh::Number;
 using libMesh::Point;
 using libMesh::Real;
 using libMesh::RealGradient;
-using libMesh::TensorValue;
 
 void ElementBuilder::build_av2dnodal()
 {
@@ -53,11 +52,10 @@ void ElementBuilder::build_av2dnodal()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -98,8 +96,8 @@ void ElementBuilder::build_av2dnodal()
                     const Real by_i = -r_sign * (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
                     const Real bx_j = r_sign * dphi[dof_j][qp](1);
                     const Real by_j = -r_sign * (dphi[dof_j][qp](0) + axisymm * phi[dof_j][qp] / r);
-                    const Real hx_j = nu_tensor(0, 0) * bx_j + nu_tensor(0, 1) * by_j;
-                    const Real hy_j = nu_tensor(1, 0) * bx_j + nu_tensor(1, 1) * by_j;
+                    const Real hx_j = nu_tensor[0][0] * bx_j + nu_tensor[0][1] * by_j;
+                    const Real hy_j = nu_tensor[1][0] * bx_j + nu_tensor[1][1] * by_j;
                     Ke(dof_i, dof_j) += w * (bx_i * hx_j + by_i * hy_j) * r_mult * thk;
                 }
         }
@@ -197,12 +195,11 @@ void ElementBuilder::build_av2dnodal()
             1.0 / this->material_value(material_id, MAT_RHO_X),
             1.0 / this->material_value(material_id, MAT_RHO_Y),
             1.0 / this->material_value(material_id, MAT_RHO_Z)};
-        TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
-                                             0.0, sigma_local[1], 0.0,
-                                             0.0, 0.0, sigma_local[2]);
-        TensorValue<Real> sigma_tensor;
-        this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
-        const Real sigma = sigma_tensor(2, 2);
+        Real sigma_tensor[3][3] = {{0.0, 0.0, 0.0},
+                                   {0.0, 0.0, 0.0},
+                                   {0.0, 0.0, 0.0}};
+        this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
+        const Real sigma = sigma_tensor[2][2];
 
         auto build_caa = [&]()
         {
@@ -284,7 +281,7 @@ void ElementBuilder::build_av2dnodal()
             this->constant_value(constant_id, CONST_T_Y),
             this->constant_value(constant_id, CONST_T_Z)};
         Real t_global[3] = {0.0, 0.0, 0.0};
-        this->vector_components_to_global_for_elem(t_local, t_global);
+        this->rotate_vector_for_elem(t_local, t_global);
         const Real tz = t_global[2];
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
@@ -401,7 +398,7 @@ void ElementBuilder::build_av2dnodal_rhs()
             this->material_value(material_id, MAT_M_Y),
             this->material_value(material_id, MAT_M_Z)};
         Real mg_global[3] = {0.0, 0.0, 0.0};
-        this->vector_components_to_global_for_elem(mg_local, mg_global);
+        this->rotate_vector_for_elem(mg_local, mg_global);
         mg[0] = mg_global[0];
         mg[1] = mg_global[1];
 
@@ -431,7 +428,7 @@ void ElementBuilder::build_av2dnodal_rhs()
             js_array->GetComponent(elem_id, 1),
             js_array->GetComponent(elem_id, 2)};
         Real js_global[3] = {0.0, 0.0, 0.0};
-        this->vector_components_to_global_for_elem(js_local, js_global);
+        this->rotate_vector_for_elem(js_local, js_global);
         const Real js_z = js_global[2];
 
         auto build_fa = [&]()
@@ -515,11 +512,10 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -555,8 +551,8 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
         {
             const Real bx = Bn(dof_i);
             const Real by = Bn(dof_i + n_dofs_var);
-            Hn(dof_i) = nu_tensor(0, 0) * bx + nu_tensor(0, 1) * by;
-            Hn(dof_i + n_dofs_var) = nu_tensor(1, 0) * bx + nu_tensor(1, 1) * by;
+            Hn(dof_i) = nu_tensor[0][0] * bx + nu_tensor[0][1] * by;
+            Hn(dof_i + n_dofs_var) = nu_tensor[1][0] * bx + nu_tensor[1][1] * by;
         }
         have_h = true;
     };
@@ -592,11 +588,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -639,8 +634,8 @@ void ElementBuilder::build_av2dnodal_element_solution()
         if (!have_be)
             build_be();
         He.resize(2);
-        He(0) = nu_tensor(0, 0) * Be(0) + nu_tensor(0, 1) * Be(1);
-        He(1) = nu_tensor(1, 0) * Be(0) + nu_tensor(1, 1) * Be(1);
+        He(0) = nu_tensor[0][0] * Be(0) + nu_tensor[0][1] * Be(1);
+        He(1) = nu_tensor[1][0] * Be(0) + nu_tensor[1][1] * Be(1);
         have_he = true;
     };
 
@@ -666,7 +661,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 js_array->GetComponent(elem_id, 1),
                 js_array->GetComponent(elem_id, 2)};
             Real js_global[3] = {0.0, 0.0, 0.0};
-            this->vector_components_to_global_for_elem(js_local, js_global);
+            this->rotate_vector_for_elem(js_local, js_global);
             Je(0) = js_global[2];
             break;
         }
@@ -692,12 +687,11 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 1.0 / this->material_value(material_id, MAT_RHO_X),
                 1.0 / this->material_value(material_id, MAT_RHO_Y),
                 1.0 / this->material_value(material_id, MAT_RHO_Z)};
-            TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
-                                                 0.0, sigma_local[1], 0.0,
-                                                 0.0, 0.0, sigma_local[2]);
-            TensorValue<Real> sigma_tensor;
-            this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
-            const Real sigma = sigma_tensor(2, 2);
+            Real sigma_tensor[3][3] = {{0.0, 0.0, 0.0},
+                                       {0.0, 0.0, 0.0},
+                                       {0.0, 0.0, 0.0}};
+            this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
+            const Real sigma = sigma_tensor[2][2];
 
             const auto &An_dt = sol_vectors_dt[0];
 
@@ -756,7 +750,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
                 this->constant_value(constant_id, CONST_T_Y),
                 this->constant_value(constant_id, CONST_T_Z)};
             Real t_global[3] = {0.0, 0.0, 0.0};
-            this->vector_components_to_global_for_elem(t_local, t_global);
+            this->rotate_vector_for_elem(t_local, t_global);
             const Real tz = t_global[2];
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
@@ -790,7 +784,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
 
-void ElementBuilder::build_av2dnodal_tangent_stiffness()
+void ElementBuilder::build_av2dnodal_tangent_stiffness_residual()
 {
     FEBase *fe = &elem_data.element_type->scalar_fe(0);
     const std::vector<Real> &JxW = fe->get_JxW();
@@ -803,14 +797,18 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness()
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs}};
     this->build_matrices(&matrix_sizes, MatricesSet::TANGENT_STIFFNESS_MATRICES);
+    std::vector<std::vector<unsigned int>> vector_sizes = {
+        {n_dofs}};
+    this->build_vectors(&vector_sizes, VectorsSet::RESIDUAL_VECTORS);
 
     const unsigned int n_dofs_var = fe->n_shape_functions();
     const unsigned int nq = fe->n_quadrature_points();
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
     auto &Ke = this->matrices[MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
+    auto &Re = this->vectors[VectorsSet::RESIDUAL_VECTORS][0];
 
-    if (!(bh_curves_ && bh_curves_->find(material_id) != bh_curves_->end()))
+    if (!this->nonlinear_element())
         return;
     const auto material_bh = &bh_curves_->find(material_id)->second;
 
@@ -889,6 +887,29 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness()
             b_local[2] = static_cast<Real>(b_local_raw[2]);
         }
 
+        // Nonlinear residual term g^A(A): C_i · H(B(A)).
+        const Real h_local[3] = {
+            bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0])) * b_local[0],
+            bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1])) * b_local[1],
+            0.0};
+        Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
+        if (has_cs)
+        {
+            const libMesh::Real h_local_raw[3] = {
+                static_cast<libMesh::Real>(h_local[0]),
+                static_cast<libMesh::Real>(h_local[1]),
+                static_cast<libMesh::Real>(h_local[2])};
+            libMesh::Real h_global_raw[3] = {0.0, 0.0, 0.0};
+            elem_data.coordinate_system->vector_components_to_global_raw(
+                h_local_raw,
+                position,
+                1,
+                h_global_raw);
+            h_global[0] = static_cast<Real>(h_global_raw[0]);
+            h_global[1] = static_cast<Real>(h_global_raw[1]);
+            h_global[2] = static_cast<Real>(h_global_raw[2]);
+        }
+
         const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
         const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
         const Real d2 = 0.0;
@@ -920,6 +941,7 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness()
         {
             const Real bx_i = static_cast<Real>(BAe_qp(qp, dof_i));
             const Real by_i = static_cast<Real>(BAe_qp(qp + nq, dof_i));
+            Re(dof_i) += JxW[qp] * (bx_i * h_global[0] + by_i * h_global[1]) * r_mult * thk;
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; ++dof_j)
             {
                 const Real bx_j = static_cast<Real>(BAe_qp(qp, dof_j));

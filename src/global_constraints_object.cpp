@@ -212,13 +212,16 @@ GlobalConstraintsObject::build_time_integration_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMLinearSystem *linear_system = this->get_parent_object();
-    System *system = linear_system;
+    ApecMDOFSystemBase *dof_system = this->get_parent_object();
+    System *system = dynamic_cast<System *>(dof_system);
+    if (!system)
+        apec::logging::error_and_abort("GlobalConstraintsObject::build_time_integration_constraints: parent is not a libMesh::System.");
 
-    if (linear_system->time_step->transient_effects)
+    const auto *time_step = dof_system->current_time_step();
+    if (time_step && time_step->transient_effects)
         return constraints;
 
-    auto &equation_systems = linear_system->get_apec_equation_systems();
+    auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
 
     std::vector<unsigned int> option4_values;
@@ -265,9 +268,11 @@ GlobalConstraintsObject::build_point_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMLinearSystem *linear_system = this->get_parent_object();
-    System *system = linear_system;
-    auto &equation_systems = linear_system->get_apec_equation_systems();
+    ApecMDOFSystemBase *dof_system = this->get_parent_object();
+    System *system = dynamic_cast<System *>(dof_system);
+    if (!system)
+        apec::logging::error_and_abort("GlobalConstraintsObject::build_point_constraints: parent is not a libMesh::System.");
+    auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
     vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
 
@@ -602,9 +607,11 @@ GlobalConstraintsObject::build_coupling_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMLinearSystem *linear_system = this->get_parent_object();
-    System *system = linear_system;
-    auto &equation_systems = linear_system->get_apec_equation_systems();
+    ApecMDOFSystemBase *dof_system = this->get_parent_object();
+    System *system = dynamic_cast<System *>(dof_system);
+    if (!system)
+        apec::logging::error_and_abort("GlobalConstraintsObject::build_coupling_constraints: parent is not a libMesh::System.");
+    auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
     vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
 
@@ -810,8 +817,9 @@ void GlobalConstraintsObject::constrain()
     if (!this->get_parent_object()->is_initialized())
         return;
 
-    ApecMLinearSystem *linear_system = this->get_parent_object();
-    const bool time_step_updated = !linear_system->time_step || linear_system->time_step->updated;
+    ApecMDOFSystemBase *dof_system = this->get_parent_object();
+    const auto *time_step = dof_system->current_time_step();
+    const bool time_step_updated = !time_step || time_step->updated;
 
     if (!time_step_updated && _has_constraint_cache)
     {
@@ -1011,8 +1019,9 @@ bool GlobalConstraintsObject::check_update_boundary_conditions()
 
     if (update_boundary_conditions)
     {
-        ApecMLinearSystem &system = static_cast<ApecMLinearSystem &>(*this->get_parent_object());
-        system.delete_rows_cols_constrained_dofs();
+        auto *linear_system = dynamic_cast<ApecMLinearSystem *>(dynamic_cast<System *>(this->get_parent_object()));
+        if (linear_system)
+            linear_system->delete_rows_cols_constrained_dofs();
     }
 
     return update_boundary_conditions;

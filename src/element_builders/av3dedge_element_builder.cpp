@@ -34,8 +34,6 @@ using libMesh::Point;
 using libMesh::Real;
 using libMesh::RealGradient;
 using libMesh::RealVectorValue;
-using libMesh::TensorValue;
-using libMesh::VectorValue;
 
 void ElementBuilder::build_av3dedge()
 {
@@ -69,11 +67,10 @@ void ElementBuilder::build_av3dedge()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -99,7 +96,7 @@ void ElementBuilder::build_av3dedge()
                     Real contraction = 0.0;
                     for (unsigned int a = 0; a < 3; ++a)
                         for (unsigned int b = 0; b < 3; ++b)
-                            contraction += curl_phi_edge[dof_i][qp](a) * nu_tensor(a, b) * curl_phi_edge[dof_j][qp](b);
+                            contraction += curl_phi_edge[dof_i][qp](a) * nu_tensor[a][b] * curl_phi_edge[dof_j][qp](b);
                     Ke(dof_i, dof_j) += w * contraction;
                 }
         }
@@ -154,7 +151,7 @@ void ElementBuilder::build_av3dedge()
                     JVe(qp + k * nq, dof_j) += dphi[dof_j][qp](k);
     };
 
-    if (!(bh_curves_ && bh_curves_->find(material_id) != bh_curves_->end()))
+    if (!this->nonlinear_element())
         build_ke();
     build_aae();
     build_me();
@@ -176,11 +173,10 @@ void ElementBuilder::build_av3dedge()
             1.0 / this->material_value(material_id, MAT_RHO_X),
             1.0 / this->material_value(material_id, MAT_RHO_Y),
             1.0 / this->material_value(material_id, MAT_RHO_Z)};
-        TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
-                                             0.0, sigma_local[1], 0.0,
-                                             0.0, 0.0, sigma_local[2]);
-        TensorValue<Real> sigma_tensor;
-        this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
+        Real sigma_tensor[3][3] = {{0.0, 0.0, 0.0},
+                                   {0.0, 0.0, 0.0},
+                                   {0.0, 0.0, 0.0}};
+        this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
         auto build_caa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -192,7 +188,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor(a, b) * phi_edge[dof_j][qp](b);
+                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor[a][b] * phi_edge[dof_j][qp](b);
                         Ce(dof_i, dof_j) += w * contraction;
                     }
             }
@@ -209,7 +205,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor(a, b) * dphi[dof_j][qp](b);
+                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor[a][b] * dphi[dof_j][qp](b);
                         Ce(dof_i, dof_j + n_dofs_A) += w * contraction;
                     }
             }
@@ -226,7 +222,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += dphi[dof_i][qp](a) * sigma_tensor(a, b) * phi_edge[dof_j][qp](b);
+                                contraction += dphi[dof_i][qp](a) * sigma_tensor[a][b] * phi_edge[dof_j][qp](b);
                         Ce(dof_i + n_dofs_A, dof_j) += w * contraction;
                     }
             }
@@ -243,7 +239,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += dphi[dof_i][qp](a) * sigma_tensor(a, b) * dphi[dof_j][qp](b);
+                                contraction += dphi[dof_i][qp](a) * sigma_tensor[a][b] * dphi[dof_j][qp](b);
                         Ce(dof_i + n_dofs_A, dof_j + n_dofs_A) += w * contraction;
                     }
             }
@@ -260,7 +256,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor(a, b) * dphi[dof_j][qp](b);
+                                contraction += phi_edge[dof_i][qp](a) * sigma_tensor[a][b] * dphi[dof_j][qp](b);
                         Ke(dof_i, dof_j + n_dofs_A) += w * contraction;
                     }
             }
@@ -277,7 +273,7 @@ void ElementBuilder::build_av3dedge()
                         Real contraction = 0.0;
                         for (unsigned int a = 0; a < 3; ++a)
                             for (unsigned int b = 0; b < 3; ++b)
-                                contraction += dphi[dof_i][qp](a) * sigma_tensor(a, b) * dphi[dof_j][qp](b);
+                                contraction += dphi[dof_i][qp](a) * sigma_tensor[a][b] * dphi[dof_j][qp](b);
                         Ke(dof_i + n_dofs_A, dof_j + n_dofs_A) += w * contraction;
                     }
             }
@@ -309,7 +305,7 @@ void ElementBuilder::build_av3dedge()
             this->constant_value(constant_id, CONST_T_Y),
             this->constant_value(constant_id, CONST_T_Z)};
         Real t_global[3] = {0.0, 0.0, 0.0};
-        this->vector_components_to_global_for_elem(t_local, t_global);
+        this->rotate_vector_for_elem(t_local, t_global);
         const Real tx = t_global[0];
         const Real ty = t_global[1];
         const Real tz = t_global[2];
@@ -462,7 +458,7 @@ void ElementBuilder::build_av3dedge_rhs()
             this->material_value(material_id, MAT_M_X),
             this->material_value(material_id, MAT_M_Y),
             this->material_value(material_id, MAT_M_Z)};
-        this->vector_components_to_global_for_elem(mg_local, mg);
+        this->rotate_vector_for_elem(mg_local, mg);
         if (mg[0] != 0.0 || mg[1] != 0.0 || mg[2] != 0.0)
         {
             fe_edge->reinit(elem_data.elem);
@@ -486,7 +482,7 @@ void ElementBuilder::build_av3dedge_rhs()
             js_array->GetComponent(elem_id, 1),
             js_array->GetComponent(elem_id, 2)};
         Real js[3] = {0.0, 0.0, 0.0};
-        this->vector_components_to_global_for_elem(js_local, js);
+        this->rotate_vector_for_elem(js_local, js);
         auto build_fa = [&]()
         {
             for (unsigned int qp = 0; qp < nq; qp++)
@@ -567,11 +563,10 @@ void ElementBuilder::build_av3dedge_nodal_solution()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -649,7 +644,7 @@ void ElementBuilder::build_av3dedge_nodal_solution()
         for (unsigned int dof_i = 0; dof_i < n_dofs_V; ++dof_i)
             for (unsigned int k = 0; k < 3; ++k)
                 for (unsigned int l = 0; l < 3; ++l)
-                    Hn(dof_i + k * n_dofs_V) += nu_tensor(k, l) * Bn(dof_i + l * n_dofs_V);
+                    Hn(dof_i + k * n_dofs_V) += nu_tensor[k][l] * Bn(dof_i + l * n_dofs_V);
         have_h = true;
     };
 
@@ -687,11 +682,10 @@ void ElementBuilder::build_av3dedge_element_solution()
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_X)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Y)),
         1 / (kMu0 * this->material_value(material_id, MAT_MUR_Z))};
-    TensorValue<Real> nu_local_tensor(nu_local[0], 0.0, 0.0,
-                                      0.0, nu_local[1], 0.0,
-                                      0.0, 0.0, nu_local[2]);
-    TensorValue<Real> nu_tensor;
-    this->tensor_to_global_for_elem(nu_local_tensor, nu_tensor);
+    Real nu_tensor[3][3] = {{0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0},
+                            {0.0, 0.0, 0.0}};
+    this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -733,7 +727,7 @@ void ElementBuilder::build_av3dedge_element_solution()
         He.resize(3);
         for (unsigned int k = 0; k < 3; ++k)
             for (unsigned int l = 0; l < 3; ++l)
-                He(k) += nu_tensor(k, l) * Be(l);
+                He(k) += nu_tensor[k][l] * Be(l);
         have_he = true;
     };
 
@@ -759,7 +753,7 @@ void ElementBuilder::build_av3dedge_element_solution()
                 js_array->GetComponent(elem_id, 1),
                 js_array->GetComponent(elem_id, 2)};
             Real js[3] = {0.0, 0.0, 0.0};
-            this->vector_components_to_global_for_elem(js_local, js);
+            this->rotate_vector_for_elem(js_local, js);
             for (unsigned int k = 0; k < 3; k++)
                 Je(k) = js[k];
             break;
@@ -774,11 +768,10 @@ void ElementBuilder::build_av3dedge_element_solution()
                 1.0 / this->material_value(material_id, MAT_RHO_X),
                 1.0 / this->material_value(material_id, MAT_RHO_Y),
                 1.0 / this->material_value(material_id, MAT_RHO_Z)};
-            TensorValue<Real> sigma_local_tensor(sigma_local[0], 0.0, 0.0,
-                                                 0.0, sigma_local[1], 0.0,
-                                                 0.0, 0.0, sigma_local[2]);
-            TensorValue<Real> sigma_tensor;
-            this->tensor_to_global_for_elem(sigma_local_tensor, sigma_tensor);
+            Real sigma_tensor[3][3] = {{0.0, 0.0, 0.0},
+                                       {0.0, 0.0, 0.0},
+                                       {0.0, 0.0, 0.0}};
+            this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
 
             DenseVector<Number> Vn;
 
@@ -811,7 +804,7 @@ void ElementBuilder::build_av3dedge_element_solution()
             }
             for (unsigned int k = 0; k < 3; ++k)
                 for (unsigned int l = 0; l < 3; ++l)
-                    Je(k) += sigma_tensor(k, l) * j_avg[l];
+                    Je(k) += sigma_tensor[k][l] * j_avg[l];
             break;
         }
         case PhysicalRegionEnum::STRANDED_COIL:
@@ -842,14 +835,13 @@ void ElementBuilder::build_av3dedge_element_solution()
                 this->constant_value(constant_id, CONST_T_Y),
                 this->constant_value(constant_id, CONST_T_Z)};
             Real t_global[3] = {0.0, 0.0, 0.0};
-            this->vector_components_to_global_for_elem(t_local, t_global);
-            const VectorValue t_vec(t_global[0], t_global[1], t_global[2]);
+            this->rotate_vector_for_elem(t_local, t_global);
             const Real r_coil = this->constant_value(constant_id, CONST_R);
 
             const Real coeff = nc / (sc * r_coil) * (Vn - En);
 
             for (unsigned int k = 0; k < 3; k++)
-                Je(k) = coeff * t_vec(k);
+                Je(k) = coeff * t_global[k];
             break;
         }
         default:
@@ -879,7 +871,7 @@ void ElementBuilder::build_av3dedge_element_solution()
     this->append_and_write_solution(*element_solution_system_, element_vectors);
 }
 
-void ElementBuilder::build_av3dedge_tangent_stiffness()
+void ElementBuilder::build_av3dedge_tangent_stiffness_residual()
 {
     FEBase *fe = &elem_data.element_type->scalar_fe(3);
     FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(0);
@@ -894,6 +886,9 @@ void ElementBuilder::build_av3dedge_tangent_stiffness()
     std::vector<std::vector<unsigned int>> matrix_sizes = {
         {n_dofs, n_dofs}};
     this->build_matrices(&matrix_sizes, MatricesSet::TANGENT_STIFFNESS_MATRICES);
+    std::vector<std::vector<unsigned int>> vector_sizes = {
+        {n_dofs}};
+    this->build_vectors(&vector_sizes, VectorsSet::RESIDUAL_VECTORS);
 
     const unsigned int n_dofs_A = fe_edge->n_shape_functions();
     const unsigned int n_dofs_V = fe->n_shape_functions();
@@ -906,6 +901,10 @@ void ElementBuilder::build_av3dedge_tangent_stiffness()
     const auto &Az = sol_vectors[0];
 
     auto &Ke = this->matrices[MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
+    auto &Re = this->vectors[VectorsSet::RESIDUAL_VECTORS][0];
+
+    if (!this->nonlinear_element())
+        return;
 
     const auto material_bh = &bh_curves_->find(material_id)->second;
     const auto bh_x = material_bh->find(0);
@@ -962,6 +961,29 @@ void ElementBuilder::build_av3dedge_tangent_stiffness()
             b_local[2] = static_cast<Real>(b_local_raw[2]);
         }
 
+        // Nonlinear residual term g^A(A): C_i · H(B(A)).
+        const Real h_local[3] = {
+            bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0])) * b_local[0],
+            bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1])) * b_local[1],
+            bh_z->second.evaluate_reluctivity_from_b(std::abs(b_local[2])) * b_local[2]};
+        Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
+        if (has_cs)
+        {
+            const libMesh::Real h_local_raw[3] = {
+                static_cast<libMesh::Real>(h_local[0]),
+                static_cast<libMesh::Real>(h_local[1]),
+                static_cast<libMesh::Real>(h_local[2])};
+            libMesh::Real h_global_raw[3] = {0.0, 0.0, 0.0};
+            elem_data.coordinate_system->vector_components_to_global_raw(
+                h_local_raw,
+                position,
+                1,
+                h_global_raw);
+            h_global[0] = static_cast<Real>(h_global_raw[0]);
+            h_global[1] = static_cast<Real>(h_global_raw[1]);
+            h_global[2] = static_cast<Real>(h_global_raw[2]);
+        }
+
         const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
         const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
         const Real d2 = bh_z->second.slope_h_vs_b(std::abs(b_local[2]));
@@ -987,6 +1009,11 @@ void ElementBuilder::build_av3dedge_tangent_stiffness()
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; ++dof_i)
         {
+            Real residual_term = 0.0;
+            for (unsigned int a = 0; a < 3; ++a)
+                residual_term += curl_phi_edge[dof_i][qp](a) * h_global[a];
+            Re(dof_i) += JxW[qp] * residual_term;
+
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; ++dof_j)
             {
                 Real tangential_term = 0.0;

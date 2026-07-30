@@ -23,7 +23,7 @@
 class ElementTypesFactory;
 class ApecMSystemBase;
 class ApecMSolver;
-class ApecMLinearSystem;
+class ApecMDOFSystemBase;
 
 /**
  * @brief Manages all libMesh solution systems for one APEC-M simulation.
@@ -55,17 +55,14 @@ public:
     /** @brief Calls libMesh::EquationSystems::init() to distribute DOFs across the mesh. */
     void initialize_physics();
 
-    /** @brief Zeroes all solution vectors in all systems. */
-    void zero_all_systems();
-
     /** @brief Returns true when the DOF system is configured as nonlinear. */
     bool uses_nonlinear_system() const;
 
     /** @brief Returns the active DOF solution system (linear or nonlinear). */
-    ApecMLinearSystem &get_dof_solution_system();
+    ApecMDOFSystemBase &get_dof_solution_system();
 
     /** @brief Returns the active DOF solution system (linear or nonlinear). */
-    const ApecMLinearSystem &get_dof_solution_system() const;
+    const ApecMDOFSystemBase &get_dof_solution_system() const;
 
     // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
     template <typename... Args>

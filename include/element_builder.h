@@ -34,7 +34,6 @@
 #include "element_types_factory.h"
 #include "variables_map.h"
 
-class ApecMLinearSystem;
 class ApecMEquationSystems;
 class vtkUnstructuredGrid;
 class vtkDataArray;
@@ -118,6 +117,7 @@ public:
     enum VectorsSet
     {
         RHS_VECTORS,
+        RESIDUAL_VECTORS,
         NODAL_SOLUTION_VECTORS,
         ELEMENT_SOLUTION_VECTORS,
         NUM_VECTORS_SETS
@@ -156,6 +156,9 @@ public:
     /** @brief Returns a const reference to the active element context. */
     const ElemData &get_elem_data() const;
 
+    /** @brief Returns true when the active element material has an associated BH curve. */
+    bool nonlinear_element() const;
+
     /** @brief Returns all element matrix sets (indexed by MatricesSet). */
     std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>> &get_matrices() { return matrices; }
 
@@ -189,10 +192,10 @@ public:
     void build_av2dnodal_element_solution(); ///< Computes Be, He, Jt at element centroid for AV2DNODAL.
 
     /** @brief Dispatches element-matrix build to the correct formulation (AV3DNODAL / AV3DEDGE / AV2DNODAL). */
-    void build_element_tangent_stiffness();
-    void build_av3dnodal_tangent_stiffness(); ///< Builds tangent stiffness matrix for the 3D nodal A-V formulation.
-    void build_av3dedge_tangent_stiffness();  ///< Builds tangent stiffness matrix for the 3D Nedelec edge A-V formulation.
-    void build_av2dnodal_tangent_stiffness(); ///< Builds tangent stiffness matrix for the 2D nodal Az-V formulation.
+    void build_element_tangent_stiffness_residual();
+    void build_av3dnodal_tangent_stiffness_residual(); ///< Builds tangent stiffness matrix for the 3D nodal A-V formulation.
+    void build_av3dedge_tangent_stiffness_residual();  ///< Builds tangent stiffness matrix for the 3D Nedelec edge A-V formulation.
+    void build_av2dnodal_tangent_stiffness_residual(); ///< Builds tangent stiffness matrix for the 2D nodal Az-V formulation.
     /**
      * @brief Returns the per-variable local solution vectors for @p dof_map_index system.
      * @param solution       Global solution vector to extract local values from.
@@ -215,7 +218,12 @@ public:
 
 private:
     friend class BinaryReader;
-    friend class AssemblerLinear;
+
+    // Coordinate-system helpers shared across all element formulations.
+    void rotate_vector_for_elem(const libMesh::Real *local_components,
+                                libMesh::Real *global_components) const;
+    void rotate_diag_tensor_for_elem(const libMesh::Real diag[3],
+                                     libMesh::Real global_tensor[3][3]) const;
 
     // Slot 0: stiffness/capacitance matrices (Ke, Ce).
     // Slot 1: nodal-solution matrices (Me, AAe used to interpolate B from A).
@@ -228,11 +236,11 @@ private:
     unsigned int n_dofs = 0;                              ///< Number of DOFs on the active element.
     std::set<libMesh::dof_id_type> nodal_loads_dof_cache; ///< Guards against double-application of nodal loads.
 
-    ApecMEquationSystems *equation_systems_ = nullptr;   ///< Owning equation-systems container.
-    ApecMLinearSystem *dof_solution_system_ = nullptr;   ///< DOF solution system reference.
-    libMesh::System *nodal_solution_system_ = nullptr;   ///< Nodal post-processing system reference.
-    libMesh::System *element_solution_system_ = nullptr; ///< Element post-processing system reference.
-    libMesh::System *support_solution_system_ = nullptr; ///< Reserved for future auxiliary system.
+    ApecMEquationSystems *equation_systems_ = nullptr;       ///< Owning equation-systems container.
+    libMesh::ImplicitSystem *dof_solution_system_ = nullptr; ///< DOF solution system reference.
+    libMesh::System *nodal_solution_system_ = nullptr;       ///< Nodal post-processing system reference.
+    libMesh::System *element_solution_system_ = nullptr;     ///< Element post-processing system reference.
+    libMesh::System *support_solution_system_ = nullptr;     ///< Reserved for future auxiliary system.
 
     libMesh::DofMap *dof_solution_dof_map_ = nullptr;                                                        ///< DOF map for the primary unknown system.
     std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> materials_rows_;                    ///< Cached material property rows keyed by material ID.
@@ -283,14 +291,6 @@ private:
         const auto &row = constant_row(id);
         return row[col_idx];
     }
-    void vector_components_to_global_for_elem(const libMesh::Real *local_components,
-                                              libMesh::Real *global_components) const;
-    void vector_components_to_global_for_elem(const libMesh::VectorValue<libMesh::Real> &local_components,
-                                              libMesh::VectorValue<libMesh::Real> &global_components) const;
-    void tensor_to_global_for_elem(const libMesh::Real local_tensor[3][3],
-                                   libMesh::Real global_tensor[3][3]) const;
-    void tensor_to_global_for_elem(const libMesh::TensorValue<libMesh::Real> &local_tensor,
-                                   libMesh::TensorValue<libMesh::Real> &global_tensor) const;
 };
 
 #endif // ELEMENT_BUILDER_H

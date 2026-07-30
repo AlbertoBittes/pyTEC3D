@@ -556,6 +556,7 @@ class ApecAlgorithm:
 
         self.status["psi_magnetic_axis"] = psi_axis
         self.status["psi_max"] = psi_axis
+        self.status["magnetic_axis_node_id"] = axis_index
         self.status["magnetic_axis"] = axis_point
         LOGGER.debug(
             "Magnetic axis at (%.4g, %.4g, %.4g), PSI_axis=%.6g.",
@@ -676,17 +677,17 @@ class ApecAlgorithm:
             None
         """
         mesh = self._require_equilibrium_mesh()
-        cell_data = mesh.GetCellData()
+        point_data = mesh.GetPointData()
 
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        cell_selection_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
-        vacuum_cell_mask = vtknp.vtk_to_numpy(cell_selection_array).astype(bool)
-        vacuum_cell_ids = np.flatnonzero(vacuum_cell_mask)
+        Selector.nsle(mesh, mode="s")
+        point_selection_array = point_data.GetArray("selection_point")
+        vacuum_node_mask = vtknp.vtk_to_numpy(point_selection_array).astype(bool)
+        vacuum_node_ids = np.flatnonzero(vacuum_node_mask)
 
-        centroids_array = ApecAlgorithm._require_array(cell_data, "cell_centroids")
-        centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
-        x_elem = np.asarray(centroids[:, 0], dtype=float)
-        y_elem = np.asarray(centroids[:, 1], dtype=float)
+        points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+        x_node = np.asarray(points[:, 0], dtype=float)
+        y_node = np.asarray(points[:, 1], dtype=float)
 
         magnetic_axis = self.status["magnetic_axis"]
         axis_x = float(magnetic_axis[0])
@@ -695,25 +696,32 @@ class ApecAlgorithm:
         plasma_current = float(self.input_parameters["plasma_current"])
         current_sign = 1.0 if plasma_current >= 0.0 else -1.0
 
-        be_array = ApecAlgorithm._require_array(cell_data, "Be")
-        be = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
-        bx = be[:, 0]
-        by = be[:, 1]
+        b_point_array = point_data.GetArray("B")
+        b_point = np.asarray(vtknp.vtk_to_numpy(b_point_array), dtype=float)
+        bx = b_point[:, 0]
+        by = b_point[:, 1]
 
         b_rot = current_sign * (
-            by[vacuum_cell_ids] * (x_elem[vacuum_cell_ids] - axis_x)
-            - bx[vacuum_cell_ids] * (y_elem[vacuum_cell_ids] - axis_y)
+            by[vacuum_node_ids] * (x_node[vacuum_node_ids] - axis_x)
+            - bx[vacuum_node_ids] * (y_node[vacuum_node_ids] - axis_y)
         )
-        excluded_cell_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
-        excluded_cell_mask[vacuum_cell_ids] = b_rot >= 0.0
+        excluded_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
+        excluded_node_mask[vacuum_node_ids] = b_rot >= 0.0
 
         Selector.apply_boolean_selection_mask(
-            excluded_cell_mask,
-            cell_data,
-            "elem",
+            excluded_node_mask,
+            point_data,
+            "node",
             "s",
         )
+        Selector.esln(mesh, all_nodes=True, mode="s")
+        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="r")
         Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+
+        magnetic_axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
+        Selector.select(mesh, "ID", magnetic_axis_node_id, type="node", mode="s")
+        Selector.esln(mesh, all_nodes=False, mode="s")
+        Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
 
     def _check_limiter(self) -> None:
         """Locate limiter contact point and associated PSI among selected boundary nodes.
@@ -749,6 +757,7 @@ class ApecAlgorithm:
         limiter_point = tuple(float(v) for v in xyz[limiter_index])
 
         self.status["last_psi_limiter"] = psi_limiter
+        self.status["limiter_node_id"] = limiter_index
         self.status["limiter_point"] = limiter_point
         LOGGER.debug(
             "Limiter contact at (%.4g, %.4g, %.4g), PSI_limiter=%.6g.",
@@ -825,6 +834,7 @@ class ApecAlgorithm:
         points = mesh.GetPoints()
         xyz = vtknp.vtk_to_numpy(points.GetData())
         self.status["last_psi_x_point"] = psi_x
+        self.status["x_point_node_id"] = x_point_node_id
         x_point = tuple(float(v) for v in xyz[x_point_node_id])
         self.status["x_point"] = x_point
         LOGGER.debug(

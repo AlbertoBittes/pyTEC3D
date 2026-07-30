@@ -9,8 +9,8 @@
  *   -# Point/nodal Dirichlet constraints read from VTK point-data arrays.
  *   -# DOF-coupling (periodic boundary) constraints derived from CP_* arrays.
  */
-#ifndef BOUNDARY_CONDITIONS_OBJECT_H
-#define BOUNDARY_CONDITIONS_OBJECT_H
+#ifndef GLOBAL_CONSTRAINTS_OBJECT_H
+#define GLOBAL_CONSTRAINTS_OBJECT_H
 
 #include <libmesh/dof_map.h>
 #include <libmesh/equation_systems.h>
@@ -24,7 +24,7 @@
 #include <vector>
 
 class DofCouplingsObject;
-class ApecMLinearSystem;
+class ApecMDOFSystemBase;
 /**
  * @brief Applies all boundary and coupling constraints to the DOF system.
  *
@@ -35,13 +35,13 @@ class ApecMLinearSystem;
  */
 class GlobalConstraintsObject
     : public libMesh::System::Constraint,
-      public FEParentObjectBase<ApecMLinearSystem>
+      public FEParentObjectBase<ApecMDOFSystemBase>
 {
 public:
-  using FEParentObjectBase<ApecMLinearSystem>::FEParentObjectBase;
+  using FEParentObjectBase<ApecMDOFSystemBase>::FEParentObjectBase;
 
-  GlobalConstraintsObject(ApecMLinearSystem *sys)
-      : FEParentObjectBase<ApecMLinearSystem>(sys) // Set the parent System
+  GlobalConstraintsObject(ApecMDOFSystemBase *sys)
+      : FEParentObjectBase<ApecMDOFSystemBase>(sys) // Set the parent System
   {
   }
 
@@ -78,4 +78,4 @@ private:
   bool _has_constraint_cache = false;
 };
 
-#endif // BOUNDARY_CONDITIONS_OBJECT_H
+#endif // GLOBAL_CONSTRAINTS_OBJECT_H

@@ -12,7 +12,7 @@ import pandas as pd
 
 apec = APEC_M()
 
-filename = "coil_3D_avoltemf_edge_prisms"
+filename = "coil_3D_avoltemf_edge_pyramids"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
