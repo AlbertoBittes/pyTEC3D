@@ -66,6 +66,7 @@ tests/__pycache__/
 .pytest_cache/
 docs/_build/
 build/apec_m/
+build/lib/
 libmesh
 
 python/apec_m/local_packages/*

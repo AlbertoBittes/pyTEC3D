@@ -79,6 +79,7 @@ using libMesh::Point;
 using libMesh::PRISM15;
 using libMesh::PRISM18;
 using libMesh::PRISM6;
+using libMesh::PYRAMID13;
 using libMesh::PYRAMID5;
 using libMesh::QUAD4;
 using libMesh::QUAD8;
@@ -212,6 +213,7 @@ std::map<ElemMappingType, VTKIO_Updated::ElementMaps> VTKIO_Updated::build_eleme
     em.associate(PRISM15, VTK_QUADRATIC_WEDGE);
     em.associate(PRISM18, VTK_BIQUADRATIC_QUADRATIC_WEDGE);
     em.associate(PYRAMID5, VTK_PYRAMID);
+    em.associate(PYRAMID13, VTK_QUADRATIC_PYRAMID);
     em.associate(QUAD9, VTK_BIQUADRATIC_QUAD);
 
     // TRI3SUBDIVISION is for writing only
