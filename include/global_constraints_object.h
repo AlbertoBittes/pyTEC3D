@@ -21,6 +21,7 @@
 
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class DofCouplingsObject;
@@ -37,13 +38,13 @@ class ApecMDOFSystem;
 template <typename ImplSystem>
 class GlobalConstraintsObject
     : public libMesh::System::Constraint,
-    public FEParentObjectBase<ApecMDOFSystem<ImplSystem>>
+      public FEParentObjectBase<ApecMDOFSystem<ImplSystem>>
 {
 public:
   using FEParentObjectBase<ApecMDOFSystem<ImplSystem>>::FEParentObjectBase;
 
   GlobalConstraintsObject(ApecMDOFSystem<ImplSystem> *sys)
-    : FEParentObjectBase<ApecMDOFSystem<ImplSystem>>(sys) // Set the parent System
+      : FEParentObjectBase<ApecMDOFSystem<ImplSystem>>(sys) // Set the parent System
   {
   }
 
@@ -66,6 +67,12 @@ private:
     libMesh::Real value = 0.0;
   };
 
+  struct DofOwnerInfo
+  {
+    libMesh::dof_id_type node_id = libMesh::invalid_uint;
+    std::string variable;
+  };
+
   /** @brief Homogeneous pin constraints imposed when time-integrated formulation is inactive. */
   std::map<libMesh::dof_id_type, ConstraintEntry> build_time_integration_constraints();
 
@@ -77,6 +84,7 @@ private:
 
   /// Constraint cache: populated on first build and whenever the time step advances.
   std::map<libMesh::dof_id_type, ConstraintEntry> _constraint_cache;
+  std::unordered_map<libMesh::dof_id_type, DofOwnerInfo> _point_constraint_owner_cache;
   bool _has_constraint_cache = false;
 };
 

@@ -44,14 +44,14 @@ Selector.select_pos(
     apec.mesh,
     2,
     (size-tol, size+tol),
-    mode="s",
+    mode="a",
     coordinate_system=CylindricalCoordinateSystem(),
 )
 Selector.select_pos(
     apec.mesh,
     2,
     (-size-tol, -size+tol),
-    mode="s",
+    mode="a",
     coordinate_system=CylindricalCoordinateSystem(),
 )
 Selector.set_value_on_selection(apec.mesh, "_Az", 0)
@@ -115,11 +115,8 @@ apec.dof_couplings = pd.concat(
 
 
 Selector.select_all(apec.mesh)
-Selector.select(apec.mesh, "MATERIAL", 24, type="elem", mode="u")
+# Selector.select(apec.mesh, "MATERIAL", 24, type="elem", mode="u")
 Selector.nsel_ext(apec.mesh)
-Selector.select_pos(
-    apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem(), mode="u"
-)
 TreeGauge.tree_gauge(
     apec.mesh,
     periodic_midside_coupling="CP_1"

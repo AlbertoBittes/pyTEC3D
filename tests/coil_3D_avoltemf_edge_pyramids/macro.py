@@ -17,7 +17,8 @@ filename = "coil_3D_avoltemf_edge_pyramids"
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 apec.read_mesh(filepath)
-
+Selector.select_all(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "CONSTANT", 1, type="elem")
 apec.read_excel("input_template.xlsx")
 
 size = 1
@@ -29,12 +30,8 @@ ModelEdit.remove_array(apec.mesh, "CP_1")
 ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.constants = pd.concat([apec.constants, Cyclic.coil_winding(
-    apec.mesh,
-    CylindricalCoordinateSystem(),
-    (coil**2, 2000, np.pi * size * coil * coil / (360 / extr_angle), 20, 1.0),
-)], ignore_index=True)
-
+apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
 Selector.select_pos(
     apec.mesh,
@@ -43,9 +40,20 @@ Selector.select_pos(
     mode="s",
     coordinate_system=CylindricalCoordinateSystem(),
 )
-constrained_nodes_ids = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0].tolist()
-Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (size-tol, size+tol),
+    mode="a",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
+Selector.select_pos(
+    apec.mesh,
+    2,
+    (-size-tol, -size+tol),
+    mode="a",
+    coordinate_system=CylindricalCoordinateSystem(),
+)
 Selector.set_value_on_selection(apec.mesh, "_Az", 0)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
@@ -62,28 +70,15 @@ Selector.nsle(apec.mesh)
 master_node_passive = vtknp.vtk_to_numpy(
     apec.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
-
-Selector.nsle(apec.mesh)
-Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
-conductor_edges_ids = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0]
-
 Selector.select(apec.mesh, "ID", master_node_passive)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
+
 Selector.select_pos(
     apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem()
 )
 Selector.select_pos(
     apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
 )
-Selector.select_pos(
-    apec.mesh,
-    0,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
@@ -96,27 +91,20 @@ apec.dof_couplings = pd.concat(
         ),
     ]
 )
-# collect midside nodes in CP_1 and build the coupled edges map
-midside_nodes_map = {}
-for i in range(1, vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("CP_1")).max() + 1):
-    Selector.select(apec.mesh, "CP_1", i)
-    midside_nodes = vtknp.vtk_to_numpy(
-        apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0]
-    if len(midside_nodes) == 2:
-        midside_nodes_map[midside_nodes[0]] = midside_nodes[1]
 
+
+Selector.select_all(apec.mesh)
+# Selector.select(apec.mesh, "MATERIAL", 24, type="elem", mode="u")
+Selector.nsel_ext(apec.mesh)
 TreeGauge.tree_gauge(
     apec.mesh,
-    dirichlet_midside_ids=constrained_nodes_ids,
-    conductor_midside_ids=conductor_edges_ids,
-    periodic_midside_map=midside_nodes_map,
+    periodic_midside_coupling="CP_1"
 )
 
-apec.save_mesh()
 apec.load_mesh_into_solver()
 
 apec.time_step["theta"] = 1.0
-
+apec.save_mesh()
 for i in range(1, 3):
     apec.time_step["time"] = i * 0.00001
     if i == 1:

@@ -13,9 +13,6 @@ import pandas as pd
 
 apec = APEC_M()
 
-# convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
-# )
 filename = "coil_3D_avoltemf"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
@@ -40,16 +37,6 @@ Selector.set_value_on_selection(apec.mesh, "CP_0", 100000)
 master_node = vtknp.vtk_to_numpy(
     apec.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
-apec.constants = pd.concat(
-    [
-        apec.constants,
-        Cyclic.coil_winding(
-            apec.mesh,
-            CylindricalCoordinateSystem(),
-            (coil**2, 2000, np.pi * size * coil * coil, 10, (360 / extr_angle)),
-        ),
-    ]
-)
 
 Selector.select_pos(
     apec.mesh,

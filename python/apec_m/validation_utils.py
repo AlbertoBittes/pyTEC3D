@@ -729,12 +729,21 @@ def validate_apec_model(apec: Any) -> None:
             if dups_m:
                 errors.append(f"materials: duplicate MATERIAL_ID values: {dups_m}.")
 
-            # All non-ID columns must be positive real numbers
+            # Per-column bounds:
+            # - RHO_X/RHO_Y/RHO_Z and M_X/M_Y/M_Z allow zero (>= 0)
+            # - MUR must remain strictly positive (> 0)
+            # - other material columns keep strict positivity (> 0)
+            nonnegative_cols = {"RHO_X", "RHO_Y", "RHO_Z", "M_X", "M_Y", "M_Z"}
             for col in req_mat:
                 if col == "MATERIAL_ID" or col not in mat.columns:
                     continue
                 col_f = mat[col].astype(float)
-                bad_mask = ~(col_f > 0.0)
+                if col in nonnegative_cols:
+                    bad_mask = ~(np.isfinite(col_f) & (col_f >= 0.0))
+                    rule_text = "a non-negative real number"
+                else:
+                    bad_mask = ~(np.isfinite(col_f) & (col_f > 0.0))
+                    rule_text = "a positive real number"
                 if bad_mask.any():
                     bad_pairs = list(
                         zip(
@@ -745,7 +754,7 @@ def validate_apec_model(apec: Any) -> None:
                     preview = bad_pairs[:5]
                     suffix = "..." if len(bad_pairs) > 5 else ""
                     errors.append(
-                        f"materials: '{col}' must be a positive real number;"
+                        f"materials: '{col}' must be {rule_text};"
                         f" bad (MATERIAL_ID, value) pairs: {preview}{suffix}."
                     )
 

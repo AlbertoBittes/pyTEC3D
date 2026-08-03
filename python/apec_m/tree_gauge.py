@@ -193,6 +193,97 @@ class TreeGauge:
         return cur
 
     @staticmethod
+    def _canonical_corner_id(corner: int, slave_to_master: Dict[int, int]) -> int:
+        """Follow slave->master links until a canonical corner id is reached."""
+        seen: Set[int] = set()
+        cur = int(corner)
+        while cur in slave_to_master:
+            if cur in seen:
+                raise ValueError(
+                    f"Cycle detected in periodic corner mapping at point id {cur}."
+                )
+            seen.add(cur)
+            nxt = int(slave_to_master[cur])
+            if nxt == cur:
+                break
+            cur = nxt
+        return cur
+
+    @staticmethod
+    def _normalize_periodic_corner_mapping(
+        periodic_midside_coupling: Optional[object],
+        ugrid: "vtk.vtkUnstructuredGrid",
+        midside_mask: np.ndarray,
+        raw_edge_map: Dict[int, Tuple[int, int]],
+        canonical_to_raw_mids: Dict[int, Set[int]],
+    ) -> Dict[int, int]:
+        """Build corner-node slave->master periodic map for topology canonicalization."""
+        # Preferred path: use CP_* values on corner nodes directly.
+        if isinstance(periodic_midside_coupling, str):
+            cp_arr = ugrid.GetPointData().GetArray(periodic_midside_coupling)
+            if cp_arr is not None:
+                cp_np = vtknp.vtk_to_numpy(cp_arr)
+                corner_ids = np.where(midside_mask == 0)[0].astype(int)
+                groups: Dict[object, list[int]] = {}
+                for pid in corner_ids:
+                    value = cp_np[pid]
+                    if isinstance(value, (float, np.floating)) and np.isnan(value):
+                        continue
+                    key = value.item() if isinstance(value, np.generic) else value
+                    if key == 0:
+                        continue
+                    groups.setdefault(key, []).append(int(pid))
+
+                mapping: Dict[int, int] = {}
+                for corners in groups.values():
+                    if len(corners) < 2:
+                        continue
+                    master = int(min(corners))
+                    for slave in corners:
+                        if slave != master:
+                            mapping[int(slave)] = master
+                return mapping
+
+        # Fallback: infer corner correspondences from periodic-collapsed midside edge groups.
+        mapping: Dict[int, int] = {}
+        for raw_mids in canonical_to_raw_mids.values():
+            mids = sorted(int(m) for m in raw_mids if int(m) in raw_edge_map)
+            if len(mids) < 2:
+                continue
+
+            rep_raw = mids[0]
+            rep_a, rep_b = raw_edge_map[rep_raw]
+            for raw_mid in mids[1:]:
+                a, b = raw_edge_map[raw_mid]
+
+                options = [
+                    ((a, rep_a), (b, rep_b)),
+                    ((a, rep_b), (b, rep_a)),
+                ]
+
+                def conflict_count(option: Tuple[Tuple[int, int], Tuple[int, int]]) -> int:
+                    conflicts = 0
+                    for slave, master in option:
+                        if slave == master:
+                            continue
+                        if slave in mapping and mapping[slave] != master:
+                            conflicts += 1
+                    return conflicts
+
+                option0_conflicts = conflict_count(options[0])
+                option1_conflicts = conflict_count(options[1])
+                chosen = options[0] if option0_conflicts <= option1_conflicts else options[1]
+
+                for slave, master in chosen:
+                    if slave == master:
+                        continue
+                    if slave in mapping and mapping[slave] != master:
+                        continue
+                    mapping[slave] = master
+
+        return mapping
+
+    @staticmethod
     def build_tree_cotree_for_midside_edges(
         ugrid: "vtk.vtkUnstructuredGrid",
         non_conducting_point_ids: Optional[Iterable[int]] = None,
@@ -254,8 +345,8 @@ class TreeGauge:
         midside_mask = vtknp.vtk_to_numpy(midside_arr)
 
         # BFS graph nodes are corner nodes (edge endpoints). Drop midside ids from user sets.
-        non_conducting = set(i for i in non_conducting_input if midside_mask[i] == 0)
-        start_surface = set(i for i in start_surface_input if midside_mask[i] == 0)
+        raw_non_conducting = set(i for i in non_conducting_input if midside_mask[i] == 0)
+        raw_start_surface = set(i for i in start_surface_input if midside_mask[i] == 0)
 
         periodic_raw = TreeGauge._normalize_periodic_midside_mapping(
             periodic_midside_coupling,
@@ -306,6 +397,29 @@ class TreeGauge:
                     # opposite surfaces. Keep the first representative endpoints.
                     pass
 
+        corner_slave_to_master = TreeGauge._normalize_periodic_corner_mapping(
+            periodic_midside_coupling,
+            ugrid,
+            midside_mask,
+            raw_edge_map,
+            canonical_to_raw_mids,
+        )
+
+        # Canonicalize corner-node ids before topology/BFS construction.
+        non_conducting = {
+            TreeGauge._canonical_corner_id(pid, corner_slave_to_master)
+            for pid in raw_non_conducting
+        }
+        start_surface = {
+            TreeGauge._canonical_corner_id(pid, corner_slave_to_master)
+            for pid in raw_start_surface
+        }
+        for mid, (a, b) in list(edge_map.items()):
+            edge_map[mid] = (
+                TreeGauge._canonical_corner_id(a, corner_slave_to_master),
+                TreeGauge._canonical_corner_id(b, corner_slave_to_master),
+            )
+
         # Eligible edges are those where constraints can be computed.
         eligible_edges: Dict[int, Tuple[int, int]] = {}
         for mid, (a, b) in edge_map.items():
@@ -319,7 +433,7 @@ class TreeGauge:
         num_edges_before_periodic_collapse = sum(
             1
             for a, b in raw_edge_map.values()
-            if (a in non_conducting) and (b in non_conducting)
+            if (a in raw_non_conducting) and (b in raw_non_conducting)
         )
 
         # Build adjacency for boundary-first BFS.
@@ -370,6 +484,10 @@ class TreeGauge:
         # Push canonical decisions back to the raw midside ids.
         for mid, state in edge_state.items():
             for raw_mid in canonical_to_raw_mids[mid]:
+                # Stop the tree constraint from hitting the dependent DoF
+                if raw_mid in slave_to_master:
+                    continue
+
                 if state == 1:
                     tree_np[raw_mid] = 1
                 else:
@@ -433,6 +551,9 @@ class TreeGauge:
             tree_name=tree_name,
             cotree_name=cotree_name,
         )
+        # Replace existing arrays with the same names to avoid stale duplicates.
+        ugrid.GetPointData().RemoveArray(tree_name)
+        ugrid.GetPointData().RemoveArray(cotree_name)
         ugrid.GetPointData().AddArray(tree_arr)
         ugrid.GetPointData().AddArray(cotree_arr)
         return info

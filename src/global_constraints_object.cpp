@@ -81,35 +81,6 @@ namespace
         return dof_to_var_idx;
     }
 
-    std::string describe_dof_owner(const System &system, const dof_id_type dof)
-    {
-        const auto &mesh = system.get_equation_systems().get_mesh();
-        const unsigned int sys_num = system.number();
-
-        for (const auto &node_ptr : mesh.local_node_ptr_range())
-        {
-            for (unsigned int var_num = 0; var_num < system.n_vars(); ++var_num)
-            {
-                if (var_num >= node_ptr->n_vars(sys_num) ||
-                    node_ptr->n_dofs(sys_num, var_num) == 0)
-                    continue;
-
-                if (node_ptr->dof_number(sys_num, var_num, 0) == dof)
-                {
-                    std::ostringstream out;
-                    out << "node=" << node_ptr->id()
-                        << ", variable=" << system.variable_name(var_num)
-                        << ", dof=" << dof;
-                    return out.str();
-                }
-            }
-        }
-
-        std::ostringstream out;
-        out << "node=<unknown>, variable=<unknown>, dof=" << dof;
-        return out.str();
-    }
-
     TensorValue<Real> build_local_to_global_from_angles(
         vtkDataArray *angles_array,
         const vtkIdType point_id,
@@ -206,6 +177,7 @@ std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEn
 GlobalConstraintsObject<ImplSystem>::build_point_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
+    this->_point_constraint_owner_cache.clear();
 
     ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     System &system = *dof_system;
@@ -263,6 +235,7 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
     for (const auto &node_ptr : equation_systems.get_mesh().local_node_ptr_range())
     {
         const vtkIdType point_id = static_cast<vtkIdType>(node_ptr->id());
+        const dof_id_type node_id = node_ptr->id();
 
         bool rotation_ready = false;
         TensorValue<Real> global_to_local(
@@ -358,7 +331,10 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                     ConstraintEntry entry;
                     entry.value = global_values(i);
                     if (constraints.emplace(dofs[i], entry).second)
+                    {
+                        this->_point_constraint_owner_cache[dofs[i]] = DofOwnerInfo{node_id, system.variable_name(components[i].var_number)};
                         constrained_dofs.insert(dofs[i]);
+                    }
                 }
                 continue;
             }
@@ -453,7 +429,10 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                             entry.value = inv0 * rhs0 + inv1 * rhs1;
                             const dof_id_type slave_dof = dofs[slave];
                             if (constraints.emplace(slave_dof, entry).second)
+                            {
+                                this->_point_constraint_owner_cache[slave_dof] = DofOwnerInfo{node_id, system.variable_name(components[slave].var_number)};
                                 constrained_dofs.insert(slave_dof);
+                            }
                         }
 
                         handled = true;
@@ -506,7 +485,10 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                 entry.value = constraint_value / pivot_coeff;
                 const dof_id_type constrained_dof = dofs[pivot_index];
                 if (constraints.emplace(constrained_dof, entry).second)
+                {
+                    this->_point_constraint_owner_cache[constrained_dof] = DofOwnerInfo{node_id, system.variable_name(components[pivot_index].var_number)};
                     constrained_dofs.insert(constrained_dof);
+                }
             }
         }
 
@@ -532,7 +514,10 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
             ConstraintEntry entry;
             entry.value = value;
             if (constraints.emplace(dof, entry).second)
+            {
+                this->_point_constraint_owner_cache[dof] = DofOwnerInfo{node_id, system.variable_name(scalar_entry.var_number)};
                 constrained_dofs.insert(dof);
+            }
         }
     }
 
@@ -833,8 +818,21 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
             coupling_constraints.find(entry.first) != coupling_constraints.end())
         {
             ++overridden_couplings;
-            apec::logging::warn("Point constraint overrides coupling constraint ({})",
-                                describe_dof_owner(*this->get_parent_object(), entry.first));
+            const auto owner_it = this->_point_constraint_owner_cache.find(entry.first);
+            if (owner_it != this->_point_constraint_owner_cache.end())
+            {
+                apec::logging::warn(
+                    "Point constraint overrides coupling constraint (node={}, variable={}, dof={})",
+                    owner_it->second.node_id,
+                    owner_it->second.variable,
+                    entry.first);
+            }
+            else
+            {
+                apec::logging::warn(
+                    "Point constraint overrides coupling constraint (node=<unknown>, variable=<unknown>, dof={})",
+                    entry.first);
+            }
         }
         add_or_update_constraint(entry.first, entry.second);
     }
