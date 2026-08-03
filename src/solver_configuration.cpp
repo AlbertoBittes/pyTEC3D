@@ -22,7 +22,6 @@
 #include "solver_configuration.h"
 #include "apec_m_logging.h"
 
-#include <sstream>
 #include <string>
 
 namespace
@@ -124,15 +123,10 @@ void PetscSolverConfiguration::configure_solver()
     if (g_petsc_config_table_printed)
         return;
 
-    std::ostringstream table;
-    table << "+------------------------------------------------------------+\n";
-    table << "| PETSc Solver Configuration                                 |\n";
-    table << "+----------------+-------------------------------------------+\n";
-    table << fmt::format("| {:<14} | {:<41} |\n", "Backend", backend_name);
-    table << fmt::format("| {:<14} | {:<41} |\n", "Type", solver_class);
-    table << fmt::format("| {:<14} | {:<41} |\n", "KSP", ksp_name);
-    table << fmt::format("| {:<14} | {:<41} |\n", "Preconditioner", pc_name);
-    table << "+------------------------------------------------------------+";
-    apec::logging::table_root(table.str());
+    apec::logging::table_root(apec::logging::format_petsc_solver_configuration_table(
+        backend_name,
+        solver_class,
+        ksp_name,
+        pc_name));
     g_petsc_config_table_printed = true;
 }

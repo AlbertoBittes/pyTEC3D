@@ -15,12 +15,10 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <mpi.h>
 #include <pybind11/pybind11.h>
 
 #include "apec_m_visibility.h"
-#include "bh_curve.h"
 
 namespace libMesh
 {
@@ -31,10 +29,6 @@ class vtkUnstructuredGrid;
 
 class ApecMEquationSystems;
 class AugmentSparsityOnNodes;
-class ElementTypesFactory;
-
-using BHCurveComponentsMap = std::unordered_map<unsigned int, BHCurve>;
-using BHCurveMaterialsMap = std::unordered_map<unsigned int, BHCurveComponentsMap>;
 
 /**
  * @brief Top-level solver that owns the libMesh mesh, equation systems, and VTK grid.
@@ -87,32 +81,21 @@ public:
     /** @brief Returns the active VTK unstructured-grid pointer (non-owning). */
     vtkUnstructuredGrid *get_active_vtk_grid() const;
 
-    /** @brief Returns the element-types factory built from the model description. */
-    std::shared_ptr<ElementTypesFactory> get_element_types_factory() const;
-
     /** @brief Returns the ghosting functor used for CP-node coupling (non-owning). */
     const AugmentSparsityOnNodes *get_coupling_functor() const;
 
-    /** @brief Returns true when material BH curves are available. */
-    bool has_bh_curves() const;
-
-    /** @brief Returns parsed BH curves indexed by material and component. */
-    const BHCurveMaterialsMap &get_bh_curves() const;
-
 private:
-    int argc = 0;                                               ///< Placeholder argc forwarded to libMesh initialisation.
-    char **argv = nullptr;                                      ///< Placeholder argv forwarded to libMesh initialisation.
-    std::shared_ptr<libMesh::LibMeshInit> libmesh_init;         ///< Shared handle to the process-level libMesh init.
-    std::unique_ptr<libMesh::DistributedMesh> mesh;             ///< Distributed libMesh mesh.
-    std::shared_ptr<ApecMEquationSystems> equation_system;      ///< Equation systems container.
-    std::shared_ptr<ElementTypesFactory> element_types_factory; ///< Per-subdomain element-type registry.
-    std::unique_ptr<AugmentSparsityOnNodes> coupling_functor;   ///< Ghosting functor for CP node coupling.
-    vtkUnstructuredGrid *active_vtk_grid = nullptr;             ///< Non-owning pointer to the Python-side VTK grid.
-    pybind11::object apec_object;                               ///< Owning reference to the Python APEC model object.
-    pybind11::object mpi_comm_object;                           ///< Owning reference to the mpi4py communicator (or None).
-    BHCurveMaterialsMap bh_curves_;                             ///< Parsed nonlinear B-H curves indexed by material and component.
-    bool loaded = false;                                        ///< Set to true after load_model() completes.
-    bool closed_ = false;                                       ///< Set to true after close() is called.
+    int argc = 0;                                             ///< Placeholder argc forwarded to libMesh initialisation.
+    char **argv = nullptr;                                    ///< Placeholder argv forwarded to libMesh initialisation.
+    std::shared_ptr<libMesh::LibMeshInit> libmesh_init;       ///< Shared handle to the process-level libMesh init.
+    std::unique_ptr<libMesh::DistributedMesh> mesh;           ///< Distributed libMesh mesh.
+    std::shared_ptr<ApecMEquationSystems> equation_system;    ///< Equation systems container.
+    std::unique_ptr<AugmentSparsityOnNodes> coupling_functor; ///< Ghosting functor for CP node coupling.
+    vtkUnstructuredGrid *active_vtk_grid = nullptr;           ///< Non-owning pointer to the Python-side VTK grid.
+    pybind11::object apec_object;                             ///< Owning reference to the Python APEC model object.
+    pybind11::object mpi_comm_object;                         ///< Owning reference to the mpi4py communicator (or None).
+    bool loaded = false;                                      ///< Set to true after load_model() completes.
+    bool closed_ = false;                                     ///< Set to true after close() is called.
 
     /** @brief Initialises the libMesh runtime on @p mpi_comm if not already initialised. */
     void ensure_libmesh_initialized(MPI_Comm mpi_comm);

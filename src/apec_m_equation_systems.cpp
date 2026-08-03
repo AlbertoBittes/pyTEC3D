@@ -3,139 +3,189 @@
  * @brief ApecMEquationSystems: system registration, variable initialisation, and solve orchestration.
  */
 #include "apec_m_equation_systems.h"
+#include "element_builder.h"
 #include "apec_m_system.h"
 #include "apec_m_solver.h"
+#include "coordinate_system.h"
 #include "element_types_factory.h"
 #include "vtkio_updated.h"
 #include "apec_m_logging.h"
-#include <libmesh/enum_to_string.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <libmesh/solver_configuration.h>
 #include "solver_configuration.h"
 
-#include <iomanip>
-#include <numeric>
-#include <optional>
-#include <sstream>
-#include <set>
+#include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+
+#include <cmath>
+#include <limits>
 #include <utility>
+
+namespace py = pybind11;
 
 namespace
 {
-    std::string fit_cell(const std::string &value, std::size_t width)
+    BHCurveMaterialsMap parse_bh_curves_from_apec(const py::object &apec_object)
     {
-        if (value.size() <= width)
-            return value;
-        if (width <= 3)
-            return value.substr(0, width);
-        return value.substr(0, width - 3) + "...";
-    }
+        if (!py::hasattr(apec_object, "bh_curves"))
+            return {};
 
-    std::string format_equation_systems_summary_table(ApecMEquationSystems &equation_systems)
-    {
-        constexpr int system_w = 22;
-        constexpr int variable_w = 16;
-        constexpr int fe_w = 16;
-        constexpr int order_w = 10;
-        constexpr int total_w = 12;
-        constexpr int var_total_w = 14;
-        constexpr int local_w = 53;
+        py::object bh_object = apec_object.attr("bh_curves");
+        if (bh_object.is_none())
+            return {};
 
-        const auto make_row = [](const std::string &system_name,
-                                 const std::string &variable_name,
-                                 const std::string &fe_name,
-                                 const std::string &order_name,
-                                 const std::string &total_dofs,
-                                 const std::string &variable_dofs,
-                                 const std::string &local_dofs) -> std::string
+        BHCurveMaterialsMap curves;
+        const py::dict materials_dict = py::cast<py::dict>(bh_object);
+        for (const auto &material_item : materials_dict)
         {
-            std::ostringstream row;
-            row << "| " << std::left << std::setw(system_w) << fit_cell(system_name, system_w)
-                << " | " << std::left << std::setw(variable_w) << fit_cell(variable_name, variable_w)
-                << " | " << std::left << std::setw(fe_w) << fit_cell(fe_name, fe_w)
-                << " | " << std::left << std::setw(order_w) << fit_cell(order_name, order_w)
-                << " | " << std::right << std::setw(total_w) << fit_cell(total_dofs, total_w)
-                << " | " << std::right << std::setw(var_total_w) << fit_cell(variable_dofs, var_total_w)
-                << " | " << std::left << std::setw(local_w) << fit_cell(local_dofs, local_w)
-                << " |";
-            return row.str();
-        };
+            const unsigned int material_id = py::cast<unsigned int>(material_item.first);
 
-        const std::string header = make_row("System", "Variable", "FE Type", "Order", "Total DoFs", "Variable DoFs", "Local DoFs by rank");
-        const std::string border = "+" + std::string(header.size() - 2, '-') + "+";
-
-        std::ostringstream table;
-        table << border << "\n";
-        table << "| " << std::left << std::setw(static_cast<int>(header.size() - 4))
-              << "Systems Summary"
-              << " |\n";
-        table << border << "\n";
-        table << header << "\n";
-        table << border << "\n";
-
-        for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
-        {
-            const auto type = static_cast<ApecMSystemBase::SystemType>(i);
-            const auto &system_name = ApecMSystemBase::SYSTEM_INFO_MAP.at(type);
-            auto &system = equation_systems.get_system<libMesh::System>(system_name);
-
-            std::vector<libMesh::dof_id_type> local_dofs_by_rank;
-            system.comm().allgather(system.n_local_dofs(), local_dofs_by_rank);
-
-            std::ostringstream local_dofs_stream;
-            for (std::size_t rank = 0; rank < local_dofs_by_rank.size(); ++rank)
+            BHCurveComponentsMap material_curves;
+            const py::dict component_dict = py::cast<py::dict>(material_item.second);
+            for (const auto &component_item : component_dict)
             {
-                if (rank != 0)
-                    local_dofs_stream << ", ";
-                local_dofs_stream << "p" << rank << "=" << local_dofs_by_rank[rank];
-            }
-            const std::string local_dofs_text = local_dofs_stream.str();
+                const unsigned int component = py::cast<unsigned int>(component_item.first);
+                const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(component_item.second);
 
-            if (system.n_vars() == 0)
-            {
-                table << make_row(system_name,
-                                  "-",
-                                  "-",
-                                  "-",
-                                  std::to_string(system.n_dofs()),
-                                  "-",
-                                  local_dofs_text)
-                      << "\n";
-                table << border << "\n";
-                continue;
+                const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(1));
+                std::vector<double> h_values(n_values);
+                std::vector<double> b_values(n_values);
+
+                const auto unchecked = curve_array.unchecked<2>();
+                for (ssize_t i = 0; i < curve_array.shape(1); ++i)
+                {
+                    h_values[static_cast<std::size_t>(i)] = unchecked(0, i);
+                    b_values[static_cast<std::size_t>(i)] = unchecked(1, i);
+                }
+
+                material_curves.emplace(component, BHCurve(std::move(h_values), std::move(b_values)));
             }
 
-            for (unsigned int var = 0; var < system.n_vars(); ++var)
-            {
-                const libMesh::FEType fe_type = system.variable_type(var);
-                const std::string fe_name = libMesh::Utility::enum_to_string<libMesh::FEFamily>(fe_type.family);
-                const std::string var_order_name = libMesh::Utility::enum_to_string<libMesh::Order>(static_cast<libMesh::Order>(fe_type.order));
-
-                std::vector<libMesh::dof_id_type> var_local_dof_indices;
-                system.get_dof_map().local_variable_indices(var_local_dof_indices, var);
-
-                const libMesh::dof_id_type var_local_dofs = static_cast<libMesh::dof_id_type>(var_local_dof_indices.size());
-                std::vector<libMesh::dof_id_type> var_local_dofs_by_rank;
-                system.comm().allgather(var_local_dofs, var_local_dofs_by_rank);
-                const libMesh::dof_id_type var_total_dofs = std::accumulate(var_local_dofs_by_rank.begin(),
-                                                                            var_local_dofs_by_rank.end(),
-                                                                            libMesh::dof_id_type(0));
-
-                table << make_row(var == 0 ? system_name : "",
-                                  system.variable_name(var),
-                                  fe_name,
-                                  var_order_name,
-                                  var == 0 ? std::to_string(system.n_dofs()) : "",
-                                  std::to_string(var_total_dofs),
-                                  var == 0 ? local_dofs_text : "")
-                      << "\n";
-            }
-            table << border << "\n";
+            curves.emplace(material_id, std::move(material_curves));
         }
 
-        return table.str();
+        return curves;
+    }
+}
+
+void ApecMEquationSystems::load_model_data(py::object apec_object)
+{
+    element_types_factory_ = std::make_shared<ElementTypesFactory>(apec_object.attr("element_types"));
+
+    bh_curves_ = parse_bh_curves_from_apec(apec_object);
+
+    materials_rows_.clear();
+    constants_rows_.clear();
+    coordinate_systems_.clear();
+
+    py::object materials_attribute = apec_object.attr("materials");
+    py::object constants_attribute = apec_object.attr("constants");
+
+    for (const py::handle row_obj : materials_attribute.attr("to_dict")("records"))
+    {
+        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
+        const libMesh::dof_id_type id = py::cast<libMesh::dof_id_type>(row["MATERIAL_ID"]);
+        auto &values = materials_rows_[id];
+        values.resize(MAT_NUM_COLS);
+        values[MAT_MUR_X] = py::cast<libMesh::Real>(row["MUR_X"]);
+        values[MAT_MUR_Y] = py::cast<libMesh::Real>(row["MUR_Y"]);
+        values[MAT_MUR_Z] = py::cast<libMesh::Real>(row["MUR_Z"]);
+        values[MAT_RHO_X] = py::cast<libMesh::Real>(row["RHO_X"]);
+        values[MAT_RHO_Y] = py::cast<libMesh::Real>(row["RHO_Y"]);
+        values[MAT_RHO_Z] = py::cast<libMesh::Real>(row["RHO_Z"]);
+        values[MAT_M_X] = py::cast<libMesh::Real>(row["M_X"]);
+        values[MAT_M_Y] = py::cast<libMesh::Real>(row["M_Y"]);
+        values[MAT_M_Z] = py::cast<libMesh::Real>(row["M_Z"]);
     }
 
+    for (const py::handle row_obj : constants_attribute.attr("to_dict")("records"))
+    {
+        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
+        const libMesh::dof_id_type id = py::cast<libMesh::dof_id_type>(row["CONSTANTS_ID"]);
+        auto &values = constants_rows_[id];
+        values.resize(CONST_NUM_COLS);
+        values[CONST_THK] = py::cast<libMesh::Real>(row["THK"]);
+        values[CONST_CS] = py::cast<libMesh::Real>(row["CS"]);
+        values[CONST_TURNS] = py::cast<libMesh::Real>(row["TURNS"]);
+        values[CONST_VOL] = py::cast<libMesh::Real>(row["VOL"]);
+        values[CONST_RAD] = py::cast<libMesh::Real>(row["RAD"]);
+        values[CONST_T_X] = py::cast<libMesh::Real>(row["T_X"]);
+        values[CONST_T_Y] = py::cast<libMesh::Real>(row["T_Y"]);
+        values[CONST_T_Z] = py::cast<libMesh::Real>(row["T_Z"]);
+        values[CONST_R] = py::cast<libMesh::Real>(row["R"]);
+        values[CONST_S] = py::cast<libMesh::Real>(row["S"]);
+    }
+
+    const py::object coordinate_systems_object = apec_object.attr("coordinate_systems");
+    if (!coordinate_systems_object.is_none())
+    {
+        const py::dict coordinate_systems_dict = py::cast<py::dict>(coordinate_systems_object);
+        for (const auto &item : coordinate_systems_dict)
+        {
+            const libMesh::dof_id_type id = py::cast<libMesh::dof_id_type>(item.first);
+            coordinate_systems_.emplace(
+                id,
+                py::cast<std::shared_ptr<apec_m::CoordinateSystem>>(item.second));
+        }
+    }
+}
+
+void ApecMEquationSystems::prepare_time_step_solve(const pybind11::dict &time_step_dict)
+{
+    const libMesh::Real requested_time = pybind11::cast<libMesh::Real>(time_step_dict["time"]);
+    const libMesh::Real requested_theta = pybind11::cast<libMesh::Real>(time_step_dict["theta"]);
+    const bool requested_transient_effect = pybind11::cast<bool>(time_step_dict["transient_effects"]);
+
+    if (!time_step_)
+    {
+        time_step_ = std::make_unique<ApecMTimeStep>();
+        time_step_->time = requested_time;
+        time_step_->theta = requested_theta;
+        time_step_->transient_effects = requested_transient_effect;
+        time_step_->time_step_idx = 0;
+        time_step_->dt = requested_time;
+        time_step_->updated = true;
+        return;
+    }
+
+    const libMesh::Real current_time = time_step_->time;
+    const libMesh::Real time_scale = std::max(std::abs(requested_time), std::abs(current_time));
+    const libMesh::Real time_tol = std::numeric_limits<libMesh::Real>::epsilon() * time_scale;
+    const libMesh::Real time_delta = requested_time - current_time;
+
+    if (time_delta > time_tol)
+    {
+        old_time_step_ = std::move(time_step_);
+        time_step_ = std::make_unique<ApecMTimeStep>();
+        time_step_->time = requested_time;
+        time_step_->theta = requested_theta;
+        time_step_->transient_effects = requested_transient_effect;
+        time_step_->time_step_idx = old_time_step_->time_step_idx + 1;
+        time_step_->dt = requested_time - current_time;
+        time_step_->updated = true;
+        return;
+    }
+
+    if (std::abs(time_delta) <= time_tol)
+    {
+        const libMesh::Real current_theta = time_step_->theta;
+        const bool current_transient_effect = time_step_->transient_effects;
+        const libMesh::Real theta_tol = std::numeric_limits<libMesh::Real>::epsilon() * std::abs(current_theta);
+
+        if (std::abs(requested_theta - current_theta) > theta_tol ||
+            requested_transient_effect != current_transient_effect)
+        {
+            apec::logging::error_and_abort("ApecMEquationSystems::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
+        }
+
+        time_step_->time = requested_time;
+        time_step_->theta = requested_theta;
+        time_step_->transient_effects = requested_transient_effect;
+        time_step_->updated = false;
+        return;
+    }
+
+    apec::logging::error_and_abort("ApecMEquationSystems::prepare_time_step_solve: received time smaller than current time step.");
 }
 
 void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_step)
@@ -145,15 +195,14 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
 
     system.init_time_step(time_step);
 
-    system.write_element_data();
+    ElementBuilder(this).write_element_data();
 
     this->solve();
 }
 
 void ApecMEquationSystems::configure_systems()
 {
-    auto *solver = this->get_parent_object();
-    use_nonlinear_system_ = (solver != nullptr) && solver->has_bh_curves();
+    use_nonlinear_system_ = this->has_bh_curves();
 
     for (int i = 0; i < ApecMSystemBase::NUM_SYSTEMS; ++i)
     {
@@ -182,7 +231,12 @@ void ApecMEquationSystems::post_initialize_systems()
         const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            get_dof_solution_system().post_init();
+        {
+            auto *system = dynamic_cast<ApecMSystemBase *>(&get_dof_solution_system());
+            if (!system)
+                apec::logging::error_and_abort("DOF solution system is not an ApecMSystemBase.");
+            system->post_init();
+        }
         else if (type == ApecMSystemBase::NODAL_SOLUTION)
         {
             auto &system = this->get_system<ApecMNodalSolutionSystem>(info);
@@ -206,7 +260,12 @@ void ApecMEquationSystems::initialize_systems()
         const auto &info = ApecMSystemBase::system_name_from_type(type);
 
         if (type == ApecMSystemBase::DOF_SOLUTION_SYSTEM)
-            get_dof_solution_system().init_variables();
+        {
+            auto *system = dynamic_cast<ApecMSystemBase *>(&get_dof_solution_system());
+            if (!system)
+                apec::logging::error_and_abort("DOF solution system is not an ApecMSystemBase.");
+            system->init_variables();
+        }
         else if (type == ApecMSystemBase::NODAL_SOLUTION)
         {
             auto &system = this->get_system<ApecMNodalSolutionSystem>(info);
@@ -224,7 +283,7 @@ void ApecMEquationSystems::initialize_physics()
 {
     this->init();
     post_initialize_systems();
-    apec::logging::table_root(format_equation_systems_summary_table(*this));
+    apec::logging::table_root(apec::logging::format_equation_systems_summary_table(*this));
 }
 
 bool ApecMEquationSystems::uses_nonlinear_system() const
@@ -246,4 +305,44 @@ const ApecMDOFSystemBase &ApecMEquationSystems::get_dof_solution_system() const
     if (use_nonlinear_system_)
         return this->get_system<ApecMNonLinearSystem>(name);
     return this->get_system<ApecMLinearSystem>(name);
+}
+
+const ApecMTimeStep *ApecMEquationSystems::current_time_step() const
+{
+    return time_step_.get();
+}
+
+const ApecMTimeStep *ApecMEquationSystems::previous_time_step() const
+{
+    return old_time_step_.get();
+}
+
+bool ApecMEquationSystems::has_bh_curves() const
+{
+    return !bh_curves_.empty();
+}
+
+const BHCurveMaterialsMap &ApecMEquationSystems::get_bh_curves() const
+{
+    return bh_curves_;
+}
+
+const std::shared_ptr<ElementTypesFactory> &ApecMEquationSystems::get_element_types_factory() const
+{
+    return element_types_factory_;
+}
+
+const ApecMEquationSystems::PropertyRowsMap &ApecMEquationSystems::get_material_rows() const
+{
+    return materials_rows_;
+}
+
+const ApecMEquationSystems::PropertyRowsMap &ApecMEquationSystems::get_constant_rows() const
+{
+    return constants_rows_;
+}
+
+const ApecMEquationSystems::CoordinateSystemsMap &ApecMEquationSystems::get_coordinate_systems() const
+{
+    return coordinate_systems_;
 }

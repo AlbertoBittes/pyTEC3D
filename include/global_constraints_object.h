@@ -24,7 +24,8 @@
 #include <vector>
 
 class DofCouplingsObject;
-class ApecMDOFSystemBase;
+template <typename ImplicitSys>
+class ApecMDOFSystem;
 /**
  * @brief Applies all boundary and coupling constraints to the DOF system.
  *
@@ -33,15 +34,16 @@ class ApecMDOFSystemBase;
  * inserted into the DofMap, then the assembler constrains element matrices
  * before scatter-adding them into the global system.
  */
+template <typename ImplSystem>
 class GlobalConstraintsObject
     : public libMesh::System::Constraint,
-      public FEParentObjectBase<ApecMDOFSystemBase>
+    public FEParentObjectBase<ApecMDOFSystem<ImplSystem>>
 {
 public:
-  using FEParentObjectBase<ApecMDOFSystemBase>::FEParentObjectBase;
+  using FEParentObjectBase<ApecMDOFSystem<ImplSystem>>::FEParentObjectBase;
 
-  GlobalConstraintsObject(ApecMDOFSystemBase *sys)
-      : FEParentObjectBase<ApecMDOFSystemBase>(sys) // Set the parent System
+  GlobalConstraintsObject(ApecMDOFSystem<ImplSystem> *sys)
+    : FEParentObjectBase<ApecMDOFSystem<ImplSystem>>(sys) // Set the parent System
   {
   }
 

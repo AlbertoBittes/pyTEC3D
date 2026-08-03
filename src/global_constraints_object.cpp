@@ -62,67 +62,6 @@ using libMesh::VectorValue;
 
 namespace
 {
-    struct VariableConstraintStat
-    {
-        std::string variable_name;
-        std::size_t total_count = 0;
-        std::size_t applied_count = 0;
-    };
-
-    std::string format_constraints_summary_table(std::size_t time_integration_count,
-                                                 std::size_t dof_constraint_count,
-                                                 std::size_t coupling_count,
-                                                 std::size_t total_count,
-                                                 std::size_t applied_count,
-                                                 const std::vector<VariableConstraintStat> &variable_stats,
-                                                 std::size_t unknown_total_count,
-                                                 std::size_t unknown_applied_count)
-    {
-        std::ostringstream out;
-        const auto fit_label = [](const std::string &label) -> std::string
-        {
-            if (label.size() <= 29)
-                return label;
-            return label.substr(0, 26) + "...";
-        };
-
-        const auto append_row = [&out](const std::string &label, std::size_t value)
-        {
-            out << "| " << std::left << std::setw(29) << label
-                << " | " << std::left << std::setw(19) << value << " |\n";
-        };
-
-        const auto append_value_row = [&out, &fit_label](const std::string &label, const std::string &value)
-        {
-            out << "| " << std::left << std::setw(29) << fit_label(label)
-                << " | " << std::left << std::setw(19) << value << " |\n";
-        };
-
-        out << "+-----------------------------------------------------+\n";
-        out << "| " << std::left << std::setw(52) << "Constraints Summary" << "|\n";
-        out << "+-------------------------------+---------------------+\n";
-        append_row("time integration constraints", time_integration_count);
-        append_row("dof constraints", dof_constraint_count);
-        append_row("coupling constraints", coupling_count);
-        append_row("total constraints", total_count);
-        append_row("applied constraints", applied_count);
-
-        out << "+-------------------------------+---------------------+\n";
-        append_value_row("per-variable (total/applied)", "");
-        for (const auto &var_stat : variable_stats)
-        {
-            append_value_row("  " + var_stat.variable_name,
-                             std::to_string(var_stat.total_count) + " / " + std::to_string(var_stat.applied_count));
-        }
-        if (unknown_total_count > 0 || unknown_applied_count > 0)
-        {
-            append_value_row("  <unknown>",
-                             std::to_string(unknown_total_count) + " / " + std::to_string(unknown_applied_count));
-        }
-        out << "+-------------------------------+---------------------+";
-        return out.str();
-    }
-
     std::unordered_map<dof_id_type, unsigned int> build_dof_to_variable_index_map(const System &system)
     {
         std::unordered_map<dof_id_type, unsigned int> dof_to_var_idx;
@@ -207,15 +146,14 @@ namespace
 
 } // namespace
 
-std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
-GlobalConstraintsObject::build_time_integration_constraints()
+template <typename ImplSystem>
+std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
+GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMDOFSystemBase *dof_system = this->get_parent_object();
-    System *system = dynamic_cast<System *>(dof_system);
-    if (!system)
-        apec::logging::error_and_abort("GlobalConstraintsObject::build_time_integration_constraints: parent is not a libMesh::System.");
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    System &system = *dof_system;
 
     const auto *time_step = dof_system->current_time_step();
     if (time_step && time_step->transient_effects)
@@ -244,18 +182,18 @@ GlobalConstraintsObject::build_time_integration_constraints()
     if (!has_timeintegrated_formulation)
         return constraints;
 
-    DofMap &dof_map = system->get_dof_map();
-    const MeshBase &mesh = system->get_equation_systems().get_mesh();
+    DofMap &dof_map = system.get_dof_map();
+    const MeshBase &mesh = system.get_equation_systems().get_mesh();
 
     const std::array<std::string, 2> variable_labels = {"VOLT", "EMF"};
     std::vector<dof_id_type> dof_indices;
     for (const auto &label : variable_labels)
     {
-        if (!system->has_variable(label))
+        if (!system.has_variable(label))
             continue;
 
         dof_indices.clear();
-        dof_map.local_variable_indices(dof_indices, mesh, system->variable_number(label));
+        dof_map.local_variable_indices(dof_indices, mesh, system.variable_number(label));
         for (const dof_id_type dof : dof_indices)
             constraints.emplace(dof, ConstraintEntry{});
     }
@@ -263,15 +201,14 @@ GlobalConstraintsObject::build_time_integration_constraints()
     return constraints;
 }
 
-std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
-GlobalConstraintsObject::build_point_constraints()
+template <typename ImplSystem>
+std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
+GlobalConstraintsObject<ImplSystem>::build_point_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMDOFSystemBase *dof_system = this->get_parent_object();
-    System *system = dynamic_cast<System *>(dof_system);
-    if (!system)
-        apec::logging::error_and_abort("GlobalConstraintsObject::build_point_constraints: parent is not a libMesh::System.");
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    System &system = *dof_system;
     auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
     vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
@@ -280,7 +217,7 @@ GlobalConstraintsObject::build_point_constraints()
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
 
-    auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
+    auto vector_variables = VariablesMap::get_vector_variables_for_system(system);
     std::unordered_map<std::string, vtkDataArray *> vector_arrays;
     std::unordered_set<unsigned int> vector_var_numbers;
     for (const auto &entry : vector_variables)
@@ -299,14 +236,14 @@ GlobalConstraintsObject::build_point_constraints()
     };
 
     std::vector<ScalarArrayEntry> scalar_arrays;
-    const unsigned int n_vars = system->n_vars();
+    const unsigned int n_vars = system.n_vars();
     scalar_arrays.reserve(n_vars);
     for (unsigned int var_num = 0; var_num < n_vars; ++var_num)
     {
         if (vector_var_numbers.count(var_num))
             continue;
 
-        const std::string &var_name = system->variable_name(var_num);
+        const std::string &var_name = system.variable_name(var_num);
         const GlobalVariableName global_var = VariablesMap::get_key_by_predicate_one(
             [&var_name](const VariableInfo &info)
             {
@@ -364,7 +301,7 @@ GlobalConstraintsObject::build_point_constraints()
             {
                 const auto &component = components[i];
 
-                const unsigned int sys_num = system->number();
+                const unsigned int sys_num = system.number();
                 if (component.var_number == libMesh::invalid_uint ||
                     component.var_number >= node_ptr->n_vars(sys_num) ||
                     node_ptr->n_dofs(sys_num, component.var_number) == 0)
@@ -576,7 +513,7 @@ GlobalConstraintsObject::build_point_constraints()
         // Handle scalar variable constraints
         for (const auto &scalar_entry : scalar_arrays)
         {
-            const unsigned int sys_num = system->number();
+            const unsigned int sys_num = system.number();
             if (scalar_entry.var_number == libMesh::invalid_uint ||
                 scalar_entry.var_number >= node_ptr->n_vars(sys_num) ||
                 node_ptr->n_dofs(sys_num, scalar_entry.var_number) == 0)
@@ -602,15 +539,14 @@ GlobalConstraintsObject::build_point_constraints()
     return constraints;
 }
 
-std::map<dof_id_type, GlobalConstraintsObject::ConstraintEntry>
-GlobalConstraintsObject::build_coupling_constraints()
+template <typename ImplSystem>
+std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
+GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    ApecMDOFSystemBase *dof_system = this->get_parent_object();
-    System *system = dynamic_cast<System *>(dof_system);
-    if (!system)
-        apec::logging::error_and_abort("GlobalConstraintsObject::build_coupling_constraints: parent is not a libMesh::System.");
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    System &system = *dof_system;
     auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
     vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
@@ -637,7 +573,7 @@ GlobalConstraintsObject::build_coupling_constraints()
     if (pairs_by_cp.empty())
         return constraints;
 
-    auto vector_variables = VariablesMap::get_vector_variables_for_system(*system);
+    auto vector_variables = VariablesMap::get_vector_variables_for_system(system);
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
     const auto build_coupled_groups =
@@ -728,7 +664,7 @@ GlobalConstraintsObject::build_coupling_constraints()
                     libMesh::invalid_uint};
 
                 bool complete = true;
-                const unsigned int sys_num = system->number();
+                const unsigned int sys_num = system.number();
                 for (const auto &component : components)
                 {
                     if (component.var_number == libMesh::invalid_uint ||
@@ -787,8 +723,8 @@ GlobalConstraintsObject::build_coupling_constraints()
 
             for (const auto &label : coupled_labels)
             {
-                const unsigned int sys_num = system->number();
-                const unsigned int var_num = system->variable_number(label);
+                const unsigned int sys_num = system.number();
+                const unsigned int var_num = system.variable_number(label);
                 if (var_num >= node_first->n_vars(sys_num) ||
                     var_num >= node_second->n_vars(sys_num) ||
                     node_first->n_dofs(sys_num, var_num) == 0 ||
@@ -812,12 +748,13 @@ GlobalConstraintsObject::build_coupling_constraints()
     return constraints;
 }
 
-void GlobalConstraintsObject::constrain()
+template <typename ImplSystem>
+void GlobalConstraintsObject<ImplSystem>::constrain()
 {
     if (!this->get_parent_object()->is_initialized())
         return;
 
-    ApecMDOFSystemBase *dof_system = this->get_parent_object();
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     const auto *time_step = dof_system->current_time_step();
     const bool time_step_updated = !time_step || time_step->updated;
 
@@ -833,7 +770,7 @@ void GlobalConstraintsObject::constrain()
         return;
     }
 
-    System &system = *linear_system;
+    System &system = *this->get_parent_object();
     DofMap &dof_map = this->parent_object->get_dof_map();
     apec::logging::info("Computing nodal DOF constraints");
 
@@ -940,7 +877,7 @@ void GlobalConstraintsObject::constrain()
     comm.sum(global_total_constraints);
     comm.sum(global_applied_constraints);
 
-    std::vector<VariableConstraintStat> variable_stats;
+    std::vector<apec::logging::ConstraintVariableStat> variable_stats;
     variable_stats.reserve(n_vars);
     for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
     {
@@ -951,7 +888,8 @@ void GlobalConstraintsObject::constrain()
         variable_stats.push_back({system.variable_name(var_idx), total_count, applied_count});
     }
     std::sort(variable_stats.begin(), variable_stats.end(),
-              [](const VariableConstraintStat &lhs, const VariableConstraintStat &rhs)
+              [](const apec::logging::ConstraintVariableStat &lhs,
+                 const apec::logging::ConstraintVariableStat &rhs)
               {
                   if (lhs.total_count != rhs.total_count)
                       return lhs.total_count > rhs.total_count;
@@ -963,17 +901,18 @@ void GlobalConstraintsObject::constrain()
     _constraint_cache.insert(constraints.begin(), constraints.end());
     _has_constraint_cache = true;
 
-    apec::logging::table_root(format_constraints_summary_table(global_time_integration_constraints,
-                                                               global_point_constraints,
-                                                               global_coupling_constraints,
-                                                               global_total_constraints,
-                                                               global_applied_constraints,
-                                                               variable_stats,
-                                                               unknown_total_constraints,
-                                                               unknown_applied_constraints));
+    apec::logging::table_root(apec::logging::format_constraints_summary_table(global_time_integration_constraints,
+                                                                              global_point_constraints,
+                                                                              global_coupling_constraints,
+                                                                              global_total_constraints,
+                                                                              global_applied_constraints,
+                                                                              variable_stats,
+                                                                              unknown_total_constraints,
+                                                                              unknown_applied_constraints));
 }
 
-bool GlobalConstraintsObject::check_update_boundary_conditions()
+template <typename ImplSystem>
+bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
 {
     bool update_boundary_conditions = false;
     DofMap &dof_map = this->parent_object->get_dof_map();
@@ -1018,11 +957,10 @@ bool GlobalConstraintsObject::check_update_boundary_conditions()
     comm.max(update_boundary_conditions);
 
     if (update_boundary_conditions)
-    {
-        auto *linear_system = dynamic_cast<ApecMLinearSystem *>(dynamic_cast<System *>(this->get_parent_object()));
-        if (linear_system)
-            linear_system->delete_rows_cols_constrained_dofs();
-    }
+        this->get_parent_object()->delete_rows_cols_constrained_dofs();
 
     return update_boundary_conditions;
 }
+
+template class GlobalConstraintsObject<libMesh::LinearImplicitSystem>;
+template class GlobalConstraintsObject<libMesh::NonlinearImplicitSystem>;

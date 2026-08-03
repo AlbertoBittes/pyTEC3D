@@ -5,6 +5,7 @@
 #ifndef BH_CURVE_H
 #define BH_CURVE_H
 
+#include <unordered_map>
 #include <vector>
 
 #include "apec_m_visibility.h"
@@ -36,5 +37,8 @@ private:
 
     static std::size_t segment_index(const std::vector<libMesh::Real> &x_values, libMesh::Real x);
 };
+
+using BHCurveComponentsMap = std::unordered_map<unsigned int, BHCurve>;
+using BHCurveMaterialsMap = std::unordered_map<unsigned int, BHCurveComponentsMap>;
 
 #endif // BH_CURVE_H

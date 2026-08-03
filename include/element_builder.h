@@ -30,7 +30,7 @@
 #include <libmesh/tensor_value.h>
 #include "fe_parent_object.h"
 #include "apec_m_visibility.h"
-#include "apec_m_solver.h"
+#include "bh_curve.h"
 #include "element_types_factory.h"
 #include "variables_map.h"
 
@@ -213,6 +213,29 @@ public:
     /** @brief Clears the cached DOF index set used to avoid duplicate nodal load applications. */
     void clear_nodal_loads_dof_cache() { nodal_loads_dof_cache.clear(); }
 
+    /** @brief Iterates local active elements, updating internal element context before invoking @p build_fn. */
+    template <typename BuildFn>
+    void run_for_elements(const libMesh::MeshBase &mesh, BuildFn &&build_fn)
+    {
+        for (const auto &elem : mesh.active_local_element_ptr_range())
+        {
+            this->set_element_data(elem);
+            build_fn(elem);
+        }
+    }
+
+    /** @brief Computes and writes all element data needed by subsequent system assembly. */
+    void write_element_data();
+
+    /** @brief Computes and writes linear element matrices (DOF, nodal, and element solution matrices). */
+    void write_element_matrices();
+
+    /** @brief Computes and writes nonlinear tangent stiffness matrices and residual vectors. */
+    void write_element_tangent_stiffness_residual();
+
+    /** @brief Computes and writes element RHS vectors. */
+    void write_element_rhs();
+
     /** @brief Constructs the builder and caches material/constant data from the Python model. */
     ElementBuilder(ApecMEquationSystems *equation_systems);
 
@@ -242,15 +265,16 @@ private:
     libMesh::System *element_solution_system_ = nullptr;     ///< Element post-processing system reference.
     libMesh::System *support_solution_system_ = nullptr;     ///< Reserved for future auxiliary system.
 
-    libMesh::DofMap *dof_solution_dof_map_ = nullptr;                                                        ///< DOF map for the primary unknown system.
-    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> materials_rows_;                    ///< Cached material property rows keyed by material ID.
-    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> constants_rows_;                    ///< Cached real-constant rows keyed by constant ID.
-    vtkUnstructuredGrid *vtk_grid_ = nullptr;                                                                ///< Non-owning VTK grid pointer.
-    vtkDataArray *material_cell_array_ = nullptr;                                                            ///< VTK MATERIAL cell-data array.
-    vtkDataArray *real_constant_cell_array_ = nullptr;                                                       ///< VTK CONSTANT cell-data array.
-    vtkDataArray *coordinate_system_cell_array_ = nullptr;                                                   ///< VTK COORDINATE_SYSTEM cell-data array (0=global Cartesian).
-    std::unordered_map<libMesh::dof_id_type, std::shared_ptr<apec_m::CoordinateSystem>> coordinate_systems_; ///< Coordinate-system objects keyed by positive ID.
-    const BHCurveMaterialsMap *bh_curves_ = nullptr;                                                         ///< Non-owning pointer to solver-owned BH curves map.
+    libMesh::DofMap *dof_solution_dof_map_ = nullptr;                                                                         ///< DOF map for the primary unknown system.
+    ElementTypesFactory *element_types_factory_ = nullptr;                                                                    ///< Non-owning pointer to equation-systems element-types factory.
+    const std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> *materials_rows_ = nullptr;                    ///< Non-owning pointer to cached material property rows keyed by material ID.
+    const std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> *constants_rows_ = nullptr;                    ///< Non-owning pointer to cached real-constant rows keyed by constant ID.
+    vtkUnstructuredGrid *vtk_grid_ = nullptr;                                                                                 ///< Non-owning VTK grid pointer.
+    vtkDataArray *material_cell_array_ = nullptr;                                                                             ///< VTK MATERIAL cell-data array.
+    vtkDataArray *real_constant_cell_array_ = nullptr;                                                                        ///< VTK CONSTANT cell-data array.
+    vtkDataArray *coordinate_system_cell_array_ = nullptr;                                                                    ///< VTK COORDINATE_SYSTEM cell-data array (0=global Cartesian).
+    const std::unordered_map<libMesh::dof_id_type, std::shared_ptr<apec_m::CoordinateSystem>> *coordinate_systems_ = nullptr; ///< Non-owning pointer to coordinate-system objects keyed by positive ID.
+    const BHCurveMaterialsMap *bh_curves_ = nullptr;                                                                          ///< Non-owning pointer to equation-systems-owned BH curves map.
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,
@@ -270,13 +294,13 @@ private:
 
     inline const std::vector<libMesh::Real> &material_row(libMesh::dof_id_type id) const
     {
-        const auto it = materials_rows_.find(id);
+        const auto it = materials_rows_->find(id);
         return it->second;
     }
 
     inline const std::vector<libMesh::Real> &constant_row(libMesh::dof_id_type id) const
     {
-        const auto it = constants_rows_.find(id);
+        const auto it = constants_rows_->find(id);
         return it->second;
     }
 

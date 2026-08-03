@@ -33,44 +33,6 @@ namespace
         return std::filesystem::current_path() / "emat";
     }
 
-    template <typename BuildFn>
-    void run_for_elements(const libMesh::MeshBase &mesh, ElementBuilder &builder, BuildFn &&build_fn)
-    {
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            builder.set_element_data(elem);
-            build_fn();
-        }
-    }
-
-    std::string to_scientific_string(libMesh::Real value)
-    {
-        std::ostringstream out;
-        out << std::scientific << std::setprecision(6) << value;
-        return out.str();
-    }
-
-    std::string format_time_step_table(const ApecMDOFSystemBase::TimeStep &ts, const std::string &title)
-    {
-        std::ostringstream out;
-        const auto append_row = [&out](const std::string &label, const std::string &value)
-        {
-            out << "| " << std::left << std::setw(20) << label
-                << " | " << std::left << std::setw(20) << value << " |\n";
-        };
-
-        out << "+---------------------------------------------+\n";
-        out << "| " << std::left << std::setw(44) << title << "|\n";
-        out << "+----------------------+----------------------+\n";
-        append_row("index", std::to_string(ts.time_step_idx));
-        append_row("time", to_scientific_string(ts.time));
-        append_row("dt", to_scientific_string(ts.dt));
-        append_row("theta", to_scientific_string(ts.theta));
-        append_row("transient_effects", ts.transient_effects ? "true" : "false");
-        out << "+----------------------+----------------------+";
-        return out.str();
-    }
-
 }
 
 const std::map<ApecMSystemBase::SystemType, std::string> ApecMSystemBase::SYSTEM_INFO_MAP = {
@@ -100,74 +62,26 @@ ApecMSystemBase::SystemType ApecMSystemBase::system_type_from_name(const std::st
 template <typename ImplicitSys>
 void ApecMDOFSystem<ImplicitSys>::prepare_time_step_solve(const pybind11::dict &time_step_dict)
 {
-    const libMesh::Real requested_time = pybind11::cast<libMesh::Real>(time_step_dict["time"]);
-    const libMesh::Real requested_theta = pybind11::cast<libMesh::Real>(time_step_dict["theta"]);
-    const bool requested_transient_effect = pybind11::cast<bool>(time_step_dict["transient_effects"]);
-
-    if (!time_step)
-    {
-        time_step = std::make_unique<TimeStep>();
-        time_step->time = requested_time;
-        time_step->theta = requested_theta;
-        time_step->transient_effects = requested_transient_effect;
-        time_step->time_step_idx = 0;
-        time_step->dt = requested_time;
-        time_step->updated = true;
-        *this->old_local_solution = *this->current_local_solution;
-        this->old_local_solution->close();
-        apec::logging::info("Advanced to new time step");
-        apec::logging::table_root(format_time_step_table(*time_step, "Time Step Information"));
-        return;
-    }
-
-    const libMesh::Real current_time = time_step->time;
-    const libMesh::Real time_scale = std::max(std::abs(requested_time), std::abs(current_time));
-    const libMesh::Real time_tol = std::numeric_limits<libMesh::Real>::epsilon() * time_scale;
-    const libMesh::Real time_delta = requested_time - current_time;
-
-    if (time_delta > time_tol)
-    {
-        old_time_step = std::move(time_step);
-        time_step = std::make_unique<TimeStep>();
-        time_step->time = requested_time;
-        time_step->theta = requested_theta;
-        time_step->transient_effects = requested_transient_effect;
-        time_step->time_step_idx = old_time_step->time_step_idx + 1;
-        time_step->dt = requested_time - current_time;
-        time_step->updated = true;
-        *this->old_local_solution = *this->current_local_solution;
-        this->old_local_solution->close();
-        apec::logging::info("Advanced to new time step");
-        apec::logging::table_root(format_time_step_table(*time_step, "Time Step Information"));
-        return;
-    }
-
-    if (std::abs(time_delta) <= time_tol)
-    {
-        const libMesh::Real current_theta = time_step->theta;
-        const bool current_transient_effect = time_step->transient_effects;
-        const libMesh::Real theta_tol = std::numeric_limits<libMesh::Real>::epsilon() * std::abs(current_theta);
-
-        if (std::abs(requested_theta - current_theta) > theta_tol ||
-            requested_transient_effect != current_transient_effect)
-        {
-            apec::logging::error_and_abort("ApecMDOFSystem::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
-        }
-
-        time_step->time = requested_time;
-        time_step->theta = requested_theta;
-        time_step->transient_effects = requested_transient_effect;
-        time_step->updated = false;
-        return;
-    }
-
-    apec::logging::error_and_abort("ApecMDOFSystem::prepare_time_step_solve: received time smaller than current time step.");
+    this->typed_equation_systems().prepare_time_step_solve(time_step_dict);
 }
 
 template <typename ImplicitSys>
 void ApecMDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_step_dict)
 {
     this->prepare_time_step_solve(time_step_dict);
+
+    const auto *time_step = this->current_time_step();
+    if (!time_step)
+        apec::logging::error_and_abort("ApecMDOFSystem::init_time_step: time_step is null after prepare_time_step_solve.");
+
+    if (time_step->updated)
+    {
+        *this->old_local_solution = *this->current_local_solution;
+        this->old_local_solution->close();
+        apec::logging::info("Advanced to new time step");
+        apec::logging::table_root(apec::logging::format_time_step_table(*time_step));
+    }
+
     this->get_dof_map().swap_dof_constraints();
     this->reinit_constraints();
 }
@@ -175,6 +89,7 @@ void ApecMDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_step
 template <typename ImplicitSys>
 void ApecMDOFSystem<ImplicitSys>::compute_solution_time_derivative()
 {
+    const auto *time_step = this->current_time_step();
     if (!time_step)
         apec::logging::error_and_abort("ApecMDOFSystem::compute_solution_time_derivative: time_step is null.");
 
@@ -210,20 +125,16 @@ template <typename ImplicitSys>
 bool ApecMDOFSystem<ImplicitSys>::check_update_system_matrix()
 {
     auto bc_object = this->get_global_constraints_object();
-    auto *solver = this->get_petsc_solver();
 
     if (bc_object && bc_object->check_update_boundary_conditions())
     {
         apec::logging::info("New constraints: updating system matrix");
-        this->get_system_matrix().zero();
-        if (solver)
-            solver->reuse_preconditioner(false);
         return true;
     }
 
     bool update_matrix = false;
-    const auto *current_step = time_step.get();
-    const auto *old_step = old_time_step.get();
+    const auto *current_step = this->current_time_step();
+    const auto *old_step = this->previous_time_step();
 
     if (!current_step)
         update_matrix = true;
@@ -242,18 +153,9 @@ bool ApecMDOFSystem<ImplicitSys>::check_update_system_matrix()
     }
 
     if (update_matrix)
-    {
         apec::logging::info("Updating system matrix for current time-step");
-        this->get_system_matrix().zero();
-        if (solver)
-            solver->reuse_preconditioner(false);
-    }
     else
-    {
         apec::logging::info("Reusing system matrix from previous time step");
-        if (solver)
-            solver->reuse_preconditioner(true);
-    }
 
     return update_matrix;
 }
@@ -262,126 +164,6 @@ template <typename ImplicitSys>
 bool ApecMDOFSystem<ImplicitSys>::check_update_element_matrices()
 {
     return false;
-}
-
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_data()
-{
-    this->write_element_matrices();
-    this->write_element_rhs();
-}
-
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_matrices()
-{
-    auto &system = *this;
-    auto &eq_sys = this->typed_equation_systems();
-    auto builder = ElementBuilder(&eq_sys);
-
-    const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-    const auto &comm = system.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    const std::vector<std::string> filenames = {
-        "mtrx_" + rank_str + ".emat",
-        "nodal_sol_mtrx_" + rank_str + ".emat",
-        "element_sol_mtrx_" + rank_str + ".emat"};
-
-    const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
-                                              { return std::filesystem::exists(emat_folderpath / filename); });
-
-    if (!emat_files_exist)
-    {
-        apec::logging::info("Computing element matrices for current time-step");
-
-        auto streams = reader.open_output_streams(emat_folderpath, filenames);
-        auto &mtrx_output_file = *streams[0];
-        auto &nodal_sol_mtrx_output_file = *streams[1];
-        auto &element_sol_mtrx_output_file = *streams[2];
-
-        run_for_elements(mesh, builder, [&]()
-                         {
-                             builder.build_element();
-
-                             BinaryReader::write_element_matrices(builder, mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
-                             BinaryReader::write_element_matrices(builder, nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-                             BinaryReader::write_element_matrices(builder, element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); });
-
-        reader.close_file_streams(streams);
-    }
-    else
-        apec::logging::info("Reusing element matrices from previous time step");
-}
-
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_tangent_stiffness_residual()
-{
-    auto &system = *this;
-    auto &eq_sys = this->typed_equation_systems();
-    auto builder = ElementBuilder(&eq_sys);
-
-    const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-    const auto &comm = system.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-    const std::vector<std::string> filenames = {
-        "tngt_mtrx_" + rank_str + ".emat",
-        "res_" + rank_str + ".emat"};
-
-    apec::logging::info("Computing element nonlinear matrices for current iteration");
-
-    auto streams = reader.open_output_streams(emat_folderpath, filenames);
-    auto &tngt_mtrx_output_file = *streams[0];
-    auto &res_output_file = *streams[1];
-
-    run_for_elements(mesh, builder, [&]()
-                     {
-                         if (builder.nonlinear_element())
-                         {
-                             builder.build_element_tangent_stiffness_residual();
-                             BinaryReader::write_element_matrices(builder, tngt_mtrx_output_file, ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES);
-                             BinaryReader::write_element_vectors(builder, res_output_file, ElementBuilder::VectorsSet::RESIDUAL_VECTORS);
-                         } });
-
-    reader.close_file_streams(streams);
-}
-
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_rhs()
-{
-    auto &system = *this;
-    auto &eq_sys = this->typed_equation_systems();
-    auto builder = ElementBuilder(&eq_sys);
-
-    const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-    const auto &comm = system.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
-    auto streams_out = reader.open_output_streams(emat_folderpath, out_filenames);
-    auto &rhs_output_file = *streams_out[0];
-
-    apec::logging::info("Calculating elements RHS");
-
-    builder.clear_nodal_loads_dof_cache();
-
-    run_for_elements(mesh, builder, [&]()
-                     {
-                         builder.build_element_rhs();
-                         BinaryReader::write_element_vectors(builder, rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS); });
-
-    reader.close_file_streams(streams_out);
 }
 
 template <typename ImplicitSys>
@@ -406,21 +188,29 @@ void ApecMDOFSystem<ImplicitSys>::post_init()
         apec::logging::error_and_abort("Solver parent or PETSc linear solver not available.");
 }
 
-void ApecMLinearSystem::release_subset_solve()
+template <typename ImplicitSys>
+void ApecMDOFSystem<ImplicitSys>::release_subset_solve()
 {
-    if (this->_subset != nullptr)
+    if constexpr (std::is_same_v<ImplicitSys, libMesh::LinearImplicitSystem>)
     {
-        subset_solve_holder_.reset();
-        this->_subset = nullptr;
+        if (this->_subset != nullptr)
+        {
+            subset_solve_holder_.reset();
+            this->_subset = nullptr;
+        }
     }
 }
 
-void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
+template <typename ImplicitSys>
+void ApecMDOFSystem<ImplicitSys>::delete_rows_cols_constrained_dofs()
 {
-    apec::logging::info("Removing constrained DOFs from system matrix and RHS");
-    this->release_subset_solve();
-    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
-    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+    if constexpr (std::is_same_v<ImplicitSys, libMesh::LinearImplicitSystem>)
+    {
+        apec::logging::info("Removing constrained DOFs from system matrix and RHS");
+        this->release_subset_solve();
+        subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+        this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+    }
 }
 
 void ApecMLinearSystem::solve()
@@ -430,6 +220,11 @@ void ApecMLinearSystem::solve()
     this->update();
     this->compute_solution_time_derivative();
     apec::logging::info("Finished linear system solve");
+}
+
+void ApecMLinearSystem::post_init()
+{
+    ApecMDOFSystem<libMesh::LinearImplicitSystem>::post_init();
 }
 
 void ApecMLinearSystem::assemble_system()
@@ -444,9 +239,18 @@ void ApecMLinearSystem::assemble_system()
 
     const libMesh::DofMap &dof_map = system.get_dof_map();
     const libMesh::MeshBase &mesh = this->typed_equation_systems().get_mesh();
+    auto *solver = this->get_petsc_solver();
     const auto &comm = system.comm();
 
     const bool update_matrix = this->check_update_system_matrix();
+    if (update_matrix)
+    {
+        matrix.zero();
+        solver->reuse_preconditioner(false);
+    }
+    else
+        solver->reuse_preconditioner(true);
+
     std::vector<libMesh::dof_id_type> dof_indices;
     std::vector<libMesh::Real> old_solution_values;
     std::vector<libMesh::Real> old_time_derivative_values;
@@ -467,9 +271,8 @@ void ApecMLinearSystem::assemble_system()
 
     apec::logging::info("Building global matrix and RHS");
 
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
+    builder.run_for_elements(mesh, [&](const libMesh::Elem *elem)
+                             {
         dof_map.dof_indices(elem, dof_indices);
 
         BinaryReader::read_element_matrices(builder, mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -503,8 +306,7 @@ void ApecMLinearSystem::assemble_system()
         }
         else
             dof_map.heterogeneously_constrain_element_vector(Ke, rhs, dof_indices);
-        system.rhs->add_vector(rhs, dof_indices);
-    }
+        system.rhs->add_vector(rhs, dof_indices); });
 
     reader.close_file_streams(streams);
     comm.barrier();
@@ -557,9 +359,8 @@ void ApecMNonLinearSystem::assemble_system()
 
     apec::logging::info("Building global Jacobian and residual");
 
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
+    builder.run_for_elements(mesh, [&](const libMesh::Elem *elem)
+                             {
         dof_map.dof_indices(elem, dof_indices);
 
         BinaryReader::read_element_matrices(builder, mtrx_input_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
@@ -599,12 +400,14 @@ void ApecMNonLinearSystem::assemble_system()
             auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
 
             linear_ke += tangent_ke;
-            linear_rhs -= residual;
+            linear_rhs += residual;
 
-            dof_map.heterogeneously_constrain_element_matrix_and_vector(
+            dof_map.heterogeneously_constrain_element_jacobian_and_residual(
                 linear_ke,
                 linear_rhs,
-                dof_indices);
+                dof_indices,
+                *system.current_local_solution
+            );
             matrix.add_matrix(linear_ke, dof_indices);
             system.rhs->add_vector(linear_rhs, dof_indices);
         }
@@ -612,27 +415,57 @@ void ApecMNonLinearSystem::assemble_system()
         {
             if (update_matrix)
             {
-                dof_map.heterogeneously_constrain_element_matrix_and_vector(
+                dof_map.heterogeneously_constrain_element_jacobian_and_residual(
                     linear_ke,
                     linear_rhs,
-                    dof_indices);
+                    dof_indices,
+                    *system.current_local_solution
+                );
                 linear_matrix.add_matrix(linear_ke, dof_indices);
             }
             else
-                dof_map.heterogeneously_constrain_element_vector(
-                    linear_ke,
+                dof_map.heterogeneously_constrain_element_residual(
                     linear_rhs,
-                    dof_indices);
+                    dof_indices,
+                    *system.current_local_solution
+                );
 
             system.rhs->add_vector(linear_rhs, dof_indices);
-        }
-    }
+        } });
 
     matrix.add(1.0, linear_matrix);
 
     reader.close_file_streams(streams);
     comm.barrier();
     apec::logging::info("Newton-Rhapson solver output info");
+}
+
+void ApecMNonLinearSystem::solve()
+{
+    libMesh::NonlinearImplicitSystem::solve();
+    this->compute_solution_time_derivative();
+    apec::logging::info("Finished nonlinear system solve");
+}
+
+void ApecMNonLinearSystem::post_init()
+{
+    ApecMDOFSystem<libMesh::NonlinearImplicitSystem>::post_init();
+
+    auto &equation_systems = this->get_apec_equation_systems();
+    auto *solver_parent = equation_systems.get_parent_object();
+    auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
+    if (!solver_parent || !newton_solver)
+        apec::logging::error_and_abort("ApecMNonLinearSystem::post_init: solver parent or Newton solver not available.");
+
+    auto *newton_petsc_solver =
+        dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(&newton_solver->get_linear_solver());
+    if (!newton_petsc_solver)
+        apec::logging::error_and_abort("ApecMNonLinearSystem::post_init: Newton linear solver is not PETSc.");
+
+    this->nonlinear_solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
+        solver_parent->get_apec_object().attr("solver_settings"),
+        newton_petsc_solver);
+    this->nonlinear_solver_config_copy_->configure_solver();
 }
 
 void ApecMNodalSolutionSystem::assemble_system()
@@ -652,8 +485,8 @@ void ApecMNodalSolutionSystem::assemble_system()
     auto inp_streams = reader.open_input_streams(emat_folderpath, inp_filenames);
     auto &nodal_solution_mtrx_input_file = *inp_streams[0];
 
-    run_for_elements(mesh, builder, [&]()
-                     {
+    builder.run_for_elements(mesh, [&](const libMesh::Elem *)
+                             {
                          BinaryReader::read_element_matrices(builder, nodal_solution_mtrx_input_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
                          builder.build_nodal_solution(); });
 
@@ -680,8 +513,8 @@ void ApecMElementSolutionSystem::assemble_system()
     auto inp_streams = reader.open_input_streams(emat_folderpath, inp_filenames);
     auto &element_solution_mtrx_input_file = *inp_streams[0];
 
-    run_for_elements(mesh, builder, [&]()
-                     {
+    builder.run_for_elements(mesh, [&](const libMesh::Elem *)
+                             {
                          BinaryReader::read_element_matrices(builder, element_solution_mtrx_input_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES);
                          builder.build_element_solution(); });
 
@@ -695,11 +528,7 @@ template <typename SysType>
 void ApecMSystem<SysType>::init_variables()
 {
     auto &equation_systems = this->typed_equation_systems();
-    auto *solver_parent = equation_systems.get_parent_object();
-    if (!solver_parent)
-        apec::logging::error_and_abort("ApecMSystem::init_variables: solver parent not available.");
-
-    auto element_types_collector = solver_parent->get_element_types_factory();
+    auto element_types_collector = equation_systems.get_element_types_factory();
     const auto type = ApecMSystemBase::system_type_from_name(this->name());
 
     if (!element_types_collector || !element_types_collector->get_element_types_map())

@@ -11,7 +11,6 @@
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <string>
-#include <pybind11/stl.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkUnstructuredGrid.h>
@@ -24,9 +23,16 @@
 #include "variables_map.h"
 #include "apec_m_logging.h"
 
+#include <algorithm>
 #include <stdexcept>
 
-namespace py = pybind11;
+namespace
+{
+    std::filesystem::path get_emat_folderpath_from_solver()
+    {
+        return std::filesystem::current_path() / "emat";
+    }
+}
 
 using libMesh::DenseVector;
 using libMesh::dof_id_type;
@@ -59,61 +65,115 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
     coordinate_system_cell_array_ = vtk_grid_->GetCellData()->GetArray("COORDINATE_SYSTEM");
 
-    const auto *solver = equation_systems_->get_parent_object();
-    if (solver && solver->has_bh_curves())
-        bh_curves_ = &solver->get_bh_curves();
+    element_types_factory_ = equation_systems_->get_element_types_factory().get();
+    bh_curves_ = &equation_systems_->get_bh_curves();
+    materials_rows_ = &equation_systems_->get_material_rows();
+    constants_rows_ = &equation_systems_->get_constant_rows();
+    coordinate_systems_ = &equation_systems_->get_coordinate_systems();
+}
 
-    py::object apec_object = equation_systems_->get_parent_object()->get_apec_object();
-    py::object materials_attribute = apec_object.attr("materials");
-    py::object constants_attribute = apec_object.attr("constants");
+void ElementBuilder::write_element_data()
+{
+    this->write_element_matrices();
+    this->write_element_rhs();
+}
 
-    for (const py::handle row_obj : materials_attribute.attr("to_dict")("records"))
+void ElementBuilder::write_element_matrices()
+{
+    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
+    const auto &comm = mesh.comm();
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
+
+    BinaryReader reader;
+
+    const std::vector<std::string> filenames = {
+        "mtrx_" + rank_str + ".emat",
+        "nodal_sol_mtrx_" + rank_str + ".emat",
+        "element_sol_mtrx_" + rank_str + ".emat"};
+
+    const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
+                                              { return std::filesystem::exists(emat_folderpath / filename); });
+
+    if (!emat_files_exist)
     {
-        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
-        const dof_id_type id = py::cast<dof_id_type>(row["MATERIAL_ID"]);
-        auto &values = materials_rows_[id];
-        values.resize(MAT_NUM_COLS);
-        values[MAT_MUR_X] = py::cast<Real>(row["MUR_X"]);
-        values[MAT_MUR_Y] = py::cast<Real>(row["MUR_Y"]);
-        values[MAT_MUR_Z] = py::cast<Real>(row["MUR_Z"]);
-        values[MAT_RHO_X] = py::cast<Real>(row["RHO_X"]);
-        values[MAT_RHO_Y] = py::cast<Real>(row["RHO_Y"]);
-        values[MAT_RHO_Z] = py::cast<Real>(row["RHO_Z"]);
-        values[MAT_M_X] = py::cast<Real>(row["M_X"]);
-        values[MAT_M_Y] = py::cast<Real>(row["M_Y"]);
-        values[MAT_M_Z] = py::cast<Real>(row["M_Z"]);
-    }
+        apec::logging::info("Computing element matrices for current time-step");
 
-    for (const py::handle row_obj : constants_attribute.attr("to_dict")("records"))
-    {
-        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
-        const dof_id_type id = py::cast<dof_id_type>(row["CONSTANTS_ID"]);
-        auto &values = constants_rows_[id];
-        values.resize(CONST_NUM_COLS);
-        values[CONST_THK] = py::cast<Real>(row["THK"]);
-        values[CONST_CS] = py::cast<Real>(row["CS"]);
-        values[CONST_TURNS] = py::cast<Real>(row["TURNS"]);
-        values[CONST_VOL] = py::cast<Real>(row["VOL"]);
-        values[CONST_RAD] = py::cast<Real>(row["RAD"]);
-        values[CONST_T_X] = py::cast<Real>(row["T_X"]);
-        values[CONST_T_Y] = py::cast<Real>(row["T_Y"]);
-        values[CONST_T_Z] = py::cast<Real>(row["T_Z"]);
-        values[CONST_R] = py::cast<Real>(row["R"]);
-        values[CONST_S] = py::cast<Real>(row["S"]);
-    }
+        auto streams = reader.open_output_streams(emat_folderpath, filenames);
+        auto &mtrx_output_file = *streams[0];
+        auto &nodal_sol_mtrx_output_file = *streams[1];
+        auto &element_sol_mtrx_output_file = *streams[2];
 
-    const py::object coordinate_systems_object = apec_object.attr("coordinate_systems");
-    if (!coordinate_systems_object.is_none())
-    {
-        const py::dict coordinate_systems_dict = py::cast<py::dict>(coordinate_systems_object);
-        for (const auto &item : coordinate_systems_dict)
-        {
-            const dof_id_type id = py::cast<dof_id_type>(item.first);
-            coordinate_systems_.emplace(
-                id,
-                py::cast<std::shared_ptr<apec_m::CoordinateSystem>>(item.second));
-        }
+        this->run_for_elements(mesh, [&](const libMesh::Elem *)
+                               {
+                                   this->build_element();
+
+                                   BinaryReader::write_element_matrices(*this, mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
+                                   BinaryReader::write_element_matrices(*this, nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
+                                   BinaryReader::write_element_matrices(*this, element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); });
+
+        reader.close_file_streams(streams);
     }
+    else
+        apec::logging::info("Reusing element matrices from previous time step");
+}
+
+void ElementBuilder::write_element_tangent_stiffness_residual()
+{
+    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
+    const auto &comm = mesh.comm();
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
+
+    BinaryReader reader;
+    const std::vector<std::string> filenames = {
+        "tngt_mtrx_" + rank_str + ".emat",
+        "res_" + rank_str + ".emat"};
+
+    apec::logging::info("Computing element nonlinear matrices for current iteration");
+
+    auto streams = reader.open_output_streams(emat_folderpath, filenames);
+    auto &tngt_mtrx_output_file = *streams[0];
+    auto &res_output_file = *streams[1];
+
+    this->run_for_elements(mesh, [&](const libMesh::Elem *)
+                           {
+                               if (this->nonlinear_element())
+                               {
+                                   this->build_element_tangent_stiffness_residual();
+                                   BinaryReader::write_element_matrices(*this, tngt_mtrx_output_file, ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES);
+                                   BinaryReader::write_element_vectors(*this, res_output_file, ElementBuilder::VectorsSet::RESIDUAL_VECTORS);
+                               } });
+
+    reader.close_file_streams(streams);
+}
+
+void ElementBuilder::write_element_rhs()
+{
+    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
+    const auto &comm = mesh.comm();
+
+    const std::string rank_str = std::to_string(comm.rank());
+    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
+
+    BinaryReader reader;
+
+    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
+    auto streams_out = reader.open_output_streams(emat_folderpath, out_filenames);
+    auto &rhs_output_file = *streams_out[0];
+
+    apec::logging::info("Calculating elements RHS");
+
+    this->clear_nodal_loads_dof_cache();
+
+    this->run_for_elements(mesh, [&](const libMesh::Elem *)
+                           {
+                               this->build_element_rhs();
+                               BinaryReader::write_element_vectors(*this, rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS); });
+
+    reader.close_file_streams(streams_out);
 }
 
 //
@@ -165,9 +225,7 @@ void ElementBuilder::prepare_element_matrix_building()
 
 void ElementBuilder::set_element_data(Elem *elem)
 {
-    auto element_types = equation_systems_->get_parent_object()->get_element_types_factory();
-
-    elem_data.element_type = element_types->get_element_type(elem->subdomain_id());
+    elem_data.element_type = element_types_factory_->get_element_type(elem->subdomain_id());
 
     const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
     elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));
@@ -178,7 +236,7 @@ void ElementBuilder::set_element_data(Elem *elem)
 
     if (elem_data.coordinate_system_num != 0)
     {
-        const auto it = coordinate_systems_.find(static_cast<dof_id_type>(elem_data.coordinate_system_num));
+        const auto it = coordinate_systems_->find(static_cast<dof_id_type>(elem_data.coordinate_system_num));
         elem_data.coordinate_system = it->second.get();
     }
 

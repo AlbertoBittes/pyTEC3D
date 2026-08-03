@@ -26,6 +26,7 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/petsc_matrix.h>
 #include <libmesh/newton_solver.h>
+#include <libmesh/nonlinear_solver.h>
 #include <pybind11/pybind11.h>
 
 #include "global_constraints_object.h"
@@ -33,6 +34,7 @@
 #include "apec_m_logging.h"
 #include "apec_m_solver.h"
 #include "apec_m_visibility.h"
+#include "apec_m_time_step.h"
 
 class ElementTypesFactory;
 class ApecMEquationSystems;
@@ -51,6 +53,13 @@ public:
     virtual ~ApecMSystemBase() = default;
     virtual bool is_nodal() const = 0;
     virtual void assemble_system() = 0;
+    virtual ApecMEquationSystems &get_apec_equation_systems() = 0;
+    virtual const ApecMEquationSystems &get_apec_equation_systems() const = 0;
+    virtual const ApecMTimeStep *current_time_step() const = 0;
+    virtual const ApecMTimeStep *previous_time_step() const = 0;
+    virtual void solve() = 0;
+    virtual void init_variables() = 0;
+    virtual void post_init() = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
     static const std::string &system_name_from_type(SystemType system_type);
@@ -60,36 +69,14 @@ public:
 class ApecMDOFSystemBase
 {
 public:
-    struct TimeStep
-    {
-        libMesh::Real time = 0.0;
-        libMesh::Real theta = 1.0;
-        bool transient_effects = false;
-        unsigned int time_step_idx = 0;
-        libMesh::Real dt = 0.0;
-        bool updated = true;
-    };
-
     virtual ~ApecMDOFSystemBase() = default;
 
     virtual void init_time_step(const pybind11::dict &time_step_dict) = 0;
     virtual void prepare_time_step_solve(const pybind11::dict &time_step_dict) = 0;
     virtual void compute_solution_time_derivative() = 0;
-    virtual void solve() = 0;
-    virtual void init_variables() = 0;
-    virtual void post_init() = 0;
-    virtual void write_element_data() = 0;
-    virtual void write_element_matrices() = 0;
-    virtual void write_element_tangent_stiffness_residual() = 0;
-    virtual void write_element_rhs() = 0;
     virtual bool check_update_system_matrix() = 0;
     virtual bool check_update_element_matrices() = 0;
-    virtual std::shared_ptr<GlobalConstraintsObject> get_global_constraints_object() const = 0;
     virtual libMesh::PetscLinearSolver<libMesh::Number> *get_petsc_solver() const = 0;
-    virtual ApecMEquationSystems &get_apec_equation_systems() = 0;
-    virtual const ApecMEquationSystems &get_apec_equation_systems() const = 0;
-    virtual const TimeStep *current_time_step() const = 0;
-    virtual const TimeStep *previous_time_step() const = 0;
 };
 
 #include "variables_map.h"
@@ -119,16 +106,41 @@ public:
         this->attach_assemble_function(&ApecMSystem<SysLike>::assemble_dispatch);
     }
 
-    void init_variables();
+    void init_variables() override;
+
+    void solve() override
+    {
+        SysLike::solve();
+    }
 
     inline bool is_nodal() const override
     {
         return system_type != ApecMSystemBase::ELEMENT_SOLUTION;
     }
 
-    virtual void post_init() {}
+    virtual void post_init() override {}
 
     virtual void assemble_system() override = 0;
+
+    ApecMEquationSystems &get_apec_equation_systems() override
+    {
+        return this->typed_equation_systems();
+    }
+
+    const ApecMEquationSystems &get_apec_equation_systems() const override
+    {
+        return this->typed_equation_systems();
+    }
+
+    const ApecMTimeStep *current_time_step() const override
+    {
+        return this->typed_equation_systems().current_time_step();
+    }
+
+    const ApecMTimeStep *previous_time_step() const override
+    {
+        return this->typed_equation_systems().previous_time_step();
+    }
 
 protected:
     ApecMEquationSystems &typed_equation_systems()
@@ -153,7 +165,7 @@ private:
 };
 
 template <typename ImplicitSys>
-class ApecMDOFSystem
+class APEC_M_HIDDEN ApecMDOFSystem
     : public ApecMSystem<libMesh::TransientSystem<ImplicitSys>>,
       public ApecMDOFSystemBase
 {
@@ -163,7 +175,7 @@ public:
         : ApecMSystem<libMesh::TransientSystem<ImplicitSys>>(
               std::forward<Args>(args)...)
     {
-        global_constraints_object = std::make_shared<GlobalConstraintsObject>(this);
+        global_constraints_object = std::make_shared<GlobalConstraintsObject<ImplicitSys>>(this);
         this->attach_constraint_object(*global_constraints_object);
         this->add_vector("solution_time_derivative", true, libMesh::GHOSTED);
     }
@@ -182,20 +194,12 @@ public:
         ApecMSystem<libMesh::TransientSystem<ImplicitSys>>::init_variables();
     }
 
-    void post_init() override
-    {
-        ApecMSystem<libMesh::TransientSystem<ImplicitSys>>::post_init();
-    }
-
-    void write_element_data() override;
-    void write_element_matrices() override;
-    void write_element_tangent_stiffness_residual() override;
-    void write_element_rhs() override;
+    void post_init() override;
 
     bool check_update_system_matrix() override;
     bool check_update_element_matrices() override;
 
-    std::shared_ptr<GlobalConstraintsObject> get_global_constraints_object() const override
+    std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> get_global_constraints_object() const
     {
         return global_constraints_object;
     }
@@ -207,32 +211,14 @@ public:
         return dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(this->linear_solver.get());
     }
 
-    ApecMEquationSystems &get_apec_equation_systems() override
-    {
-        return this->typed_equation_systems();
-    }
+    void release_subset_solve();
 
-    const ApecMEquationSystems &get_apec_equation_systems() const override
-    {
-        return this->typed_equation_systems();
-    }
-
-    const TimeStep *current_time_step() const override
-    {
-        return time_step.get();
-    }
-
-    const TimeStep *previous_time_step() const override
-    {
-        return old_time_step.get();
-    }
-
-    std::unique_ptr<TimeStep> time_step;
-    std::unique_ptr<TimeStep> old_time_step;
+    void delete_rows_cols_constrained_dofs();
 
 protected:
-    std::shared_ptr<GlobalConstraintsObject> global_constraints_object;
-    std::unique_ptr<PetscSolverConfiguration> solver_config_copy_;
+    std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object;
+    std::unique_ptr<libMesh::SolverConfiguration> solver_config_copy_;
+    std::shared_ptr<libMesh::SystemSubset> subset_solve_holder_;
 };
 
 class APEC_M_HIDDEN ApecMLinearSystem : public ApecMDOFSystem<libMesh::LinearImplicitSystem>
@@ -254,14 +240,7 @@ public:
 
     void solve() override;
 
-    void release_subset_solve();
-
-    void delete_rows_cols_constrained_dofs();
-
     void post_init() override;
-
-private:
-    std::shared_ptr<libMesh::SystemSubset> subset_solve_holder_;
 };
 
 class APEC_M_HIDDEN ApecMNonLinearSystem : public ApecMDOFSystem<libMesh::NonlinearImplicitSystem>
@@ -271,7 +250,9 @@ public:
     ApecMNonLinearSystem(Args &&...args)
         : ApecMDOFSystem<libMesh::NonlinearImplicitSystem>(std::forward<Args>(args)...)
     {
-        newton_solver = std::make_unique<libMesh::NewtonSolver>(*this);
+        diff_solver = std::make_unique<libMesh::NewtonSolver>(*this);
+        auto nonlinear_solver = this->nonlinear_solver.get();
+        nonlinear_solver->matvec = &ApecMNonLinearSystem::matvec_callback;
     }
 
     void add_matrices() override
@@ -282,6 +263,20 @@ public:
         this->get_matrix("linear_stiffness").use_hash_table(true);
     }
 
+    static void matvec_callback(const libMesh::NumericVector<libMesh::Number> &X,
+                                libMesh::NumericVector<libMesh::Number> *R,
+                                libMesh::SparseMatrix<libMesh::Number> *J,
+                                libMesh::NonlinearImplicitSystem &S)
+    {
+        (void)X;
+        (void)R;
+        (void)J;
+        auto *sys = dynamic_cast<ApecMNonLinearSystem *>(&S);
+        if (!sys)
+            apec::logging::error_and_abort("ApecMNonLinearSystem::matvec_callback: system is not ApecMNonLinearSystem.");
+        sys->assemble_system();
+    }
+
     void assemble_system() override;
 
     void solve() override;
@@ -289,9 +284,7 @@ public:
     void post_init() override;
 
 protected:
-    std::unique_ptr<libMesh::NewtonSolver> newton_solver = nullptr;
-    unsigned int max_iterations = 50;
-    libMesh::Real convergence_tolerance = 1e-6;
+    std::unique_ptr<libMesh::SolverConfiguration> nonlinear_solver_config_copy_;
 };
 
 class ApecMExplicitSystem : public ApecMSystem<libMesh::ExplicitSystem>
