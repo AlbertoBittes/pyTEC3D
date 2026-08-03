@@ -8,7 +8,6 @@ import vtk.util.numpy_support as vtknp
 
 from .selector import Selector
 from .model_edit import ModelEdit
-from .constants import CONSTANTS_COLUMNS_TYPES
 from .validation_utils import ensure_vtk_unstructured_grid
 
 from .coordinate_system import CoordinateSystem, CylindricalCoordinateSystem
