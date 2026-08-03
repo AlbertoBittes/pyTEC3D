@@ -38,34 +38,13 @@ apec.constants = pd.concat([apec.constants, Cyclic.coil_winding(
 
 Selector.select_pos(
     apec.mesh,
-    2,
-    (1-tol, 1+tol),
+    0,
+    (size-tol, size+tol),
     mode="s",
     coordinate_system=CylindricalCoordinateSystem(),
 )
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (-1-tol, -1+tol),
-    mode="a",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-Selector.select_pos(
-    apec.mesh,
-    0,
-    (1-tol, 1+tol),
-    mode="a",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-# Selector.select_pos(
-#     apec.mesh,
-#     0,
-#     (-tol, +tol),
-#     mode="a",
-#     coordinate_system=CylindricalCoordinateSystem(),
-# )
-# Selector.select_all(apec.mesh)
-# Selector.nsel_ext(apec.mesh)
+constrained_nodes_ids = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0].tolist()
 Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
 Selector.set_value_on_selection(apec.mesh, "_Az", 0)
 
@@ -77,25 +56,13 @@ master_node = vtknp.vtk_to_numpy(
     apec.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
-Selector.select_pos(
-    apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem()
-)
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-Selector.nsle(apec.mesh, mode="r")
+Selector.nsle(apec.mesh)
 # Take the first selected node as master node (lowest ID)
-apec.dof_couplings = pd.concat(
-    [
-        apec.dof_couplings,
-        Cyclic.cpcyc(
-            apec.mesh,
-            CylindricalCoordinateSystem(),
-            extr_angle,
-            array_name="CP_0",
-            variables=("VOLT"),
-        ),
-    ]
-)
-Selector.select(apec.mesh, "ID", 11860)
+master_node_passive = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")
+).nonzero()[0][0]
+Selector.select(apec.mesh, "ID", master_node_passive)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
 
 Selector.select_pos(
@@ -111,22 +78,6 @@ Selector.select_pos(
     mode="u",
     coordinate_system=CylindricalCoordinateSystem(),
 )
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (-size - tol, -size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-# Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-# Selector.nsle(apec.mesh, mode="u")
 Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
 apec.dof_couplings = pd.concat(
     [
@@ -141,37 +92,24 @@ apec.dof_couplings = pd.concat(
     ]
 )
 
-Selector.select_all(apec.mesh)
+
 Selector.select_pos(
-    apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem(), mode="u"
+    apec.mesh, 1, (extr_angle-tol, extr_angle+tol), coordinate_system=CylindricalCoordinateSystem()
 )
 Selector.select_pos(
+    apec.mesh, 0, (-tol, +tol), coordinate_system=CylindricalCoordinateSystem(), mode="u"
+)
+Selector.select(apec.mesh, "MidsideNodes", 1, mode="r")
+slave_edges_ids = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0]
+TreeGauge.tree_gauge(
     apec.mesh,
-    0,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
+    constrained_point_ids=constrained_nodes_ids,
+    forced_cotree_mask=np.isin(np.arange(apec.mesh.GetNumberOfPoints()), slave_edges_ids).astype(np.int32),
 )
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (-size - tol, -size + tol),
-    mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
-)
-# Selector.nsel_ext(apec.mesh, mode="u")
-TreeGauge.tree_gauge(apec.mesh)
 
 apec.load_mesh_into_solver()
 
-Selector.select_all(apec.mesh)
 apec.time_step["theta"] = 1.0
 apec.save_mesh()
 for i in range(1, 3):
