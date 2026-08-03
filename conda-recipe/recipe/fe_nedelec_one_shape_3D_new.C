@@ -606,15 +606,16 @@ namespace libMesh
         libmesh_assert_less_equal(std::fabs(xi), 1. - zeta + 10. * TOLERANCE);
         libmesh_assert_less_equal(std::fabs(eta), 1. - zeta + 10. * TOLERANCE);
 
-        const Real oz = 1. - zeta;
-        libmesh_assert_greater(oz, 10. * TOLERANCE);
+        const Real eps_apex = 1.e-6;
+        const Real oz = std::max(1.0 - zeta, eps_apex); // oz is guaranteed >= 1.e-6
+        const Real z = 1.0 - oz;                        // z is guaranteed <= 0.999999
+        const Real ozi = 1.0 / oz;                      // Safe division! Never 1/0
 
-        const Real x = 0.5 * (1. + xi - zeta);
-        const Real y = 0.5 * (1. + eta - zeta);
-        const Real ox = 0.5 * (1. - xi - zeta);
-        const Real oy = 0.5 * (1. - eta - zeta);
-        const Real ozi = 1. / oz;
-        const Real q = 1. - 2. * zeta;
+        const Real x = 0.5 * (1. + xi - z);
+        const Real y = 0.5 * (1. + eta - z);
+        const Real ox = 0.5 * (1. - xi - z);
+        const Real oy = 0.5 * (1. - eta - z);
+        const Real q = 1. - 2. * z;
 
         const Real dx = (j == 0) ? 0.5 : ((j == 2) ? -0.5 : 0.0);
         const Real dy = (j == 1) ? 0.5 : ((j == 2) ? -0.5 : 0.0);
@@ -656,8 +657,8 @@ namespace libMesh
         }
         case 4:
         {
-          const Real dvx = (doy * zeta + oy * dz) * ozi + oy * zeta * dozi;
-          const Real dvy = (dox * zeta + ox * dz) * ozi + ox * zeta * dozi;
+          const Real dvx = (doy * z + oy * dz) * ozi + oy * z * dozi;
+          const Real dvy = (dox * z + ox * dz) * ozi + ox * z * dozi;
           const Real dvz = -dx - dy +
                            (dx * y + x * dy) * q * ozi * ozi +
                            x * y * dq * ozi * ozi +
@@ -666,8 +667,8 @@ namespace libMesh
         }
         case 5:
         {
-          const Real dvx = -((doy * zeta + oy * dz) * ozi + oy * zeta * dozi);
-          const Real dvy = (dx * zeta + x * dz) * ozi + x * zeta * dozi;
+          const Real dvx = -((doy * z + oy * dz) * ozi + oy * z * dozi);
+          const Real dvy = (dx * z + x * dz) * ozi + x * z * dozi;
           const Real dvz = dx * (1. - y * q * ozi * ozi) -
                            x * (dy * q * ozi * ozi + y * dq * ozi * ozi +
                                 2. * y * q * ozi * dozi);
@@ -675,8 +676,8 @@ namespace libMesh
         }
         case 6:
         {
-          const Real dvx = -((dy * zeta + y * dz) * ozi + y * zeta * dozi);
-          const Real dvy = -((dx * zeta + x * dz) * ozi + x * zeta * dozi);
+          const Real dvx = -((dy * z + y * dz) * ozi + y * z * dozi);
+          const Real dvy = -((dx * z + x * dz) * ozi + x * z * dozi);
           const Real dvz = (dx * y + x * dy) * q * ozi * ozi +
                            x * y * dq * ozi * ozi +
                            2. * x * y * q * ozi * dozi;
@@ -684,8 +685,8 @@ namespace libMesh
         }
         case 7:
         {
-          const Real dvx = (dy * zeta + y * dz) * ozi + y * zeta * dozi;
-          const Real dvy = -((dox * zeta + ox * dz) * ozi + ox * zeta * dozi);
+          const Real dvx = (dy * z + y * dz) * ozi + y * z * dozi;
+          const Real dvy = -((dox * z + ox * dz) * ozi + ox * z * dozi);
           const Real dvz = dy * (1. - x * q * ozi * ozi) -
                            y * (dx * q * ozi * ozi + x * dq * ozi * ozi +
                                 2. * x * q * ozi * dozi);
