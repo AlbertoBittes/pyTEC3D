@@ -86,13 +86,12 @@ void ElementBuilder::build_av3dnodal()
                     const auto &curl_i = curl_phi_vec[dof_i][qp];
                     const auto &curl_j = curl_phi_vec[dof_j][qp];
                     Real curl_term = 0.0;
-                    for (unsigned int k = 0; k < 3; ++k)
-                        for (unsigned int l = 0; l < 3; ++l)
-                            curl_term += curl_i(k) * nu_tensor[k][l] * curl_j(l);
-
                     const Real div_i = div_phi_vec[dof_i][qp];
                     const Real div_j = div_phi_vec[dof_j][qp];
                     const Real gauge_term = nu_penalty * div_i * div_j;
+                    for (unsigned int k = 0; k < 3; ++k)
+                        for (unsigned int l = 0; l < 3; ++l)
+                            curl_term += curl_i(k) * nu_tensor[k][l] * curl_j(l);
                     Ke(dof_i, dof_j) += w * (curl_term + gauge_term);
                 }
         }
@@ -827,7 +826,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
     this->build_matrices(&matrix_sizes, MatricesSet::TANGENT_STIFFNESS_MATRICES);
     std::vector<std::vector<unsigned int>> vector_sizes = {
         {n_dofs}};
-    this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
+    this->build_vectors(&vector_sizes, VectorsSet::RESIDUAL_VECTORS);
 
     const unsigned int n_dofs_var = fe->n_shape_functions();
     const unsigned int n_dofs_A = n_dofs_var * 3;
@@ -852,7 +851,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
         An.append(sol_vectors[k]);
 
     auto &Ke = this->matrices[MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
-    auto &Re = this->vectors[VectorsSet::RHS_VECTORS][0];
+    auto &Re = this->vectors[VectorsSet::RESIDUAL_VECTORS][0];
 
     libMesh::Real position[3] = {0.0, 0.0, 0.0};
     bool has_cs = false;
