@@ -102,12 +102,25 @@ namespace Utility = libMesh::Utility;
 
 namespace
 {
+    struct GridWriteEntry
+    {
+        std::string target_array_name;
+        unsigned int target_component = 0;
+        std::size_t source_offset = 0;
+    };
+
     struct GridWritePlan
     {
-        std::vector<VariableInfo> vars_to_write;
-        std::vector<std::size_t> source_offsets;
+        std::vector<GridWriteEntry> entries;
         std::size_t tuple_stride = 0;
     };
+
+    std::string strip_trailing_lowercase(std::string name)
+    {
+        while (!name.empty() && std::islower(static_cast<unsigned char>(name.back())))
+            name.pop_back();
+        return name;
+    }
 
     GridWritePlan build_grid_write_plan(const System &system, const bool nodal_layout)
     {
@@ -130,11 +143,19 @@ namespace
                 [&var_name](const VariableInfo &info)
                 { return info.global_label == var_name; });
 
-            // Vector-valued libMesh variables are present in storage, but not written to VTK arrays.
             if (keys.size() == 1 && n_components == 1)
             {
-                plan.vars_to_write.push_back(VariablesMap::get_info_by_key(keys.front()));
-                plan.source_offsets.push_back(running_offset);
+                const auto &var_info = VariablesMap::get_info_by_key(keys.front());
+                plan.entries.push_back({var_info.api_label, var_info.component_index, running_offset});
+            }
+            else if (n_components > 1)
+            {
+                const std::string base_name = strip_trailing_lowercase(var_name);
+                if (base_name.empty())
+                    apec::logging::error_and_abort("VTKIO_Updated::build_grid_write_plan: cannot derive base name from vector variable '" + var_name + "'.");
+
+                for (unsigned int comp = 0; comp < n_components; ++comp)
+                    plan.entries.push_back({base_name, comp, running_offset + comp});
             }
 
             running_offset += n_components;
@@ -153,26 +174,22 @@ namespace
         if (!nodal_layout && plan.tuple_stride == 0)
             apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: invalid elemental tuple stride (zero).");
 
-        const std::size_t n_vars = plan.vars_to_write.size();
-        for (std::size_t var = 0; var < n_vars; ++var)
+        for (const auto &entry : plan.entries)
         {
-            const auto &var_info = plan.vars_to_write[var];
             vtkDataArray *array =
-                vtkDataArray::SafeDownCast(data_attributes->GetArray(var_info.api_label.c_str()));
+                vtkDataArray::SafeDownCast(data_attributes->GetArray(entry.target_array_name.c_str()));
             if (!array)
                 apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: VTK array '" +
-                                               var_info.api_label + "' not found.");
-
-            const std::size_t source_offset = plan.source_offsets[var];
+                                               entry.target_array_name + "' not found.");
 
             for (vtkIdType tuple_id = 0; tuple_id < n_tuples; ++tuple_id)
             {
                 const std::size_t idx = nodal_layout
-                                            ? static_cast<std::size_t>(tuple_id) * plan.tuple_stride + source_offset
-                                            : source_offset * static_cast<std::size_t>(n_tuples) + static_cast<std::size_t>(tuple_id);
+                                            ? static_cast<std::size_t>(tuple_id) * plan.tuple_stride + entry.source_offset
+                                            : entry.source_offset * static_cast<std::size_t>(n_tuples) + static_cast<std::size_t>(tuple_id);
                 if (idx >= localized_solution.size())
                     apec::logging::error_and_abort("VTKIO_Updated::write_solution_to_grid: computed solution index out of range.");
-                array->SetComponent(tuple_id, var_info.component_index, localized_solution[idx]);
+                array->SetComponent(tuple_id, entry.target_component, localized_solution[idx]);
             }
         }
     }

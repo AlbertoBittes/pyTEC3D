@@ -1,6 +1,6 @@
 import os
 from os import PathLike
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -174,6 +174,263 @@ class ModelEdit:
 
         global_positions = coordinate_system.to_global(local_positions)
         return global_positions, ids
+
+    @staticmethod
+    def periodic_boundaries(
+        mesh: "vtk.vtkUnstructuredGrid",
+        coordinate_system: "CoordinateSystem",
+        dx: float = 0.0,
+        dy: float = 0.0,
+        dz: float = 0.0,
+        array_name: str = "CP_0",
+        tolerance: float = 1e-6,
+        variables: Optional[Sequence[str]] = None,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Assign incremental pair IDs for selected points using a local-coordinate delta.
+
+        Selected points are transformed to local coordinates in the provided coordinate
+        system, shifted by (dx, dy, dz), mapped back to global coordinates, and then
+        matched to nearest mesh points. Both points in each accepted pair receive the
+        same incrementing CP id. Existing non-zero values are preserved.
+
+        Args:
+            mesh: VTK unstructured grid to operate on.
+            coordinate_system: Coordinate system used for local/global transforms.
+            dx: Delta for local coordinate x (e.g. dr for cylindrical/spherical).
+            dy: Delta for local coordinate y (e.g. dtheta for cylindrical/spherical).
+            dz: Delta for local coordinate z (e.g. dz in cylindrical, dphi in spherical).
+            array_name: Point data array name to store pair IDs (default "CP_0").
+            tolerance: Maximum accepted nearest-point distance in global coordinates.
+            variables: Optional sequence of DOF variable names to couple.
+
+        Returns:
+            Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "VARIABLE"] when
+                variables are provided, otherwise None.
+        """
+        from .selector import Selector
+
+        ensure_vtk_unstructured_grid(mesh)
+        if tolerance <= 0:
+            raise ValueError("tolerance must be positive.")
+
+        dx_value = float(dx)
+        dy_value = float(dy)
+        dz_value = float(dz)
+
+        variables_list: Optional[list[str]]
+        if variables is None:
+            variables_list = None
+        elif isinstance(variables, str):
+            variables_list = [variables]
+        else:
+            variables_list = [str(var) for var in variables]
+
+        Selector.ensure_selection_arrays(mesh)
+
+        local_coords, selected_ids = ModelEdit.to_local_coordinates(
+            mesh,
+            coordinate_system,
+            location="node",
+            selected_only=True,
+        )
+        if local_coords.size == 0:
+            if variables_list is None:
+                return None
+            return pd.DataFrame(columns=["CP_ID", "VARIABLE"]).astype(
+                {"CP_ID": int, "VARIABLE": str}
+            )
+
+        local_coords = np.asarray(local_coords, dtype=float)
+        if local_coords.ndim != 2 or local_coords.shape[1] < 3:
+            raise ValueError("coordinate_system.to_local must return an array with shape (N, >=3).")
+
+        shifted_local = local_coords.copy()
+        shifted_local[:, 0] += dx_value
+        shifted_local[:, 1] += dy_value
+        shifted_local[:, 2] += dz_value
+
+        shifted_global, _ = ModelEdit.to_global_coordinates(
+            mesh,
+            shifted_local,
+            coordinate_system,
+            location="node",
+            selected_only=True,
+        )
+
+        points = mesh.GetPoints()
+        if points is None:
+            raise ValueError("Mesh has no points.")
+        coords = vtknp.vtk_to_numpy(points.GetData())
+
+        locator = vtk.vtkPointLocator()
+        locator.SetDataSet(mesh)
+        locator.BuildLocator()
+
+        point_data = mesh.GetPointData()
+        cp_array = point_data.GetArray(array_name)
+        if cp_array is None:
+            raise ValueError(f"Array '{array_name}' not found in PointData.")
+        cp_np = vtknp.vtk_to_numpy(cp_array)
+
+        # Reserve CP ids used by the full contiguous CP family: CP_0, CP_1, ..., CP_N.
+        existing_values: set[int] = set()
+        cp_idx = 0
+        while True:
+            cp_family_array = point_data.GetArray(f"CP_{cp_idx}")
+            if cp_family_array is None:
+                break
+            cp_family_np = vtknp.vtk_to_numpy(cp_family_array)
+            used = cp_family_np[np.isfinite(cp_family_np) & (cp_family_np != 0)]
+            if used.size > 0:
+                existing_values.update(used.astype(int).tolist())
+            cp_idx += 1
+
+        next_value = 1
+        while next_value in existing_values:
+            next_value += 1
+
+        new_cp_ids: list[int] = []
+        assigned = set()
+        for src_id, target_coord in zip(selected_ids, shifted_global):
+            src_id_int = int(src_id)
+            if src_id_int in assigned or cp_np[src_id_int] != 0:
+                continue
+
+            tgt_id = int(locator.FindClosestPoint(target_coord))
+            if tgt_id < 0 or tgt_id == src_id_int:
+                continue
+
+            matched_coord = coords[tgt_id]
+            if np.linalg.norm(matched_coord - target_coord) > tolerance:
+                continue
+
+            if tgt_id in assigned or cp_np[tgt_id] != 0:
+                continue
+
+            cp_id = next_value
+            cp_np[src_id_int] = cp_id
+            cp_np[tgt_id] = cp_id
+            assigned.add(src_id_int)
+            assigned.add(tgt_id)
+            existing_values.add(cp_id)
+            new_cp_ids.append(cp_id)
+            next_value += 1
+            while next_value in existing_values:
+                next_value += 1
+
+        cp_array.Modified()
+
+        if variables_list is None:
+            return None
+
+        rows = [(cp_id, var) for cp_id in new_cp_ids for var in variables_list]
+        return pd.DataFrame(rows, columns=["CP_ID", "VARIABLE"]).astype(
+            {"CP_ID": int, "VARIABLE": str}
+        )
+
+    @staticmethod
+    def poloidal_flux(
+        mesh: "vtk.vtkUnstructuredGrid",
+        coordinate_system: "CoordinateSystem",
+    ) -> Dict[str, np.ndarray]:
+        """
+        Compute poloidal flux from available vector-potential arrays.
+
+        - If PointData "A" exists, write "PSI".
+        - If CellData "Ae" exists, write "PSIe".
+
+        Args:
+            mesh: Target mesh.
+            coordinate_system: Cylindrical coordinate system.
+
+        Returns:
+            Dict[str, np.ndarray]: Contains "node" and/or "elem" computed values.
+        """
+        ensure_vtk_unstructured_grid(mesh)
+        if coordinate_system.type != "cylindrical":
+            raise ValueError("coordinate_system must be cylindrical.")
+        spatial_dim = mesh.GetMaxSpatialDimension()
+
+        def _compute_and_store(
+            data: "vtk.vtkDataSetAttributes",
+            positions: np.ndarray,
+            source_name: str,
+            target_name: str,
+            target_location: str,
+        ) -> np.ndarray:
+            source_vtk = data.GetArray(source_name)
+            if source_vtk.GetNumberOfComponents() != 3:
+                raise ValueError(f"Array '{source_name}' must have 3 components.")
+
+            source_np = np.asarray(vtknp.vtk_to_numpy(source_vtk), dtype=float)
+            if source_np.ndim != 2 or source_np.shape[1] != 3:
+                raise ValueError(
+                    f"Array '{source_name}' has invalid shape {source_np.shape}; expected (N, 3)."
+                )
+
+            if spatial_dim != 3:
+                radial = np.asarray(positions[:, 0], dtype=float)
+                flux_values = radial * source_np[:, 2]
+            else:
+                local_positions = coordinate_system.to_local(positions)
+                local_vectors = coordinate_system.vector_components_to_local(
+                    source_np,
+                    positions,
+                )
+                radial = local_positions[:, 0]
+                a_theta = local_vectors[:, 1]
+                flux_values = radial * a_theta
+
+            target_vtk = data.GetArray(target_name)
+            if target_vtk is None or target_vtk.GetNumberOfComponents() != 1:
+                ModelEdit.add_array(
+                    mesh,
+                    name=target_name,
+                    location=target_location,
+                    components=1,
+                    dtype=vtk.VTK_DOUBLE,
+                    replace=True,
+                )
+                target_vtk = data.GetArray(target_name)
+
+            target_np = vtknp.vtk_to_numpy(target_vtk)
+            target_np[:] = flux_values
+            target_vtk.Modified()
+            return target_np
+
+        results: Dict[str, np.ndarray] = {}
+
+        point_data = mesh.GetPointData()
+        if point_data.GetArray("A") is not None:
+            node_positions = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+            results["node"] = _compute_and_store(
+                data=point_data,
+                positions=node_positions,
+                source_name="A",
+                target_name="PSI",
+                target_location="node",
+            )
+
+        cell_data = mesh.GetCellData()
+        if cell_data.GetArray("Ae") is not None:
+            centroids_array = cell_data.GetArray("cell_centroids")
+            cell_positions = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
+            results["elem"] = _compute_and_store(
+                data=cell_data,
+                positions=cell_positions,
+                source_name="Ae",
+                target_name="PSIe",
+                target_location="elem",
+            )
+
+        if not results:
+            raise ValueError(
+                "No source arrays found for poloidal flux. "
+                "Expected PointData 'A' and/or CellData 'Ae'."
+            )
+
+        return results
 
     @staticmethod
     def map_vector_field_to_local_components(

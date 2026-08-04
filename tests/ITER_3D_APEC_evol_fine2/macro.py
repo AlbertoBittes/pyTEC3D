@@ -3,7 +3,6 @@ import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.cyclic import Cyclic
 from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
@@ -61,7 +60,7 @@ Selector.select_pos(
 Selector.select_pos(
     apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem(), mode="u"
 )
-apec.dof_couplings = pd.concat([apec.dof_couplings, Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
+apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
 
 # rotate angles
 Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=CylindricalCoordinateSystem())

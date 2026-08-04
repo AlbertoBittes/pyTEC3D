@@ -3,7 +3,6 @@ import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.cyclic import Cyclic
 from apec_m.tree_gauge import TreeGauge
 from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
@@ -76,10 +75,10 @@ apec.apec_settings = {
     "evolution_mesh": "ITER_3D_APEC_evol_edge",
     "equilibrium_mesh": "ITER_3D_APEC_evol_edge_1",
     "print_full_output": 1,
-    "toroidal_slices_nodes": Cyclic.build_toroidal_slices(
+    "toroidal_slices_nodes": apec.algorithm.build_toroidal_slices(
         apec.get_mesh(apec_evolution_mesh_notrans), apec.mesh, "node", n_slices=3, tolerance=1e-3
     ),
-    "toroidal_slices_elems": Cyclic.build_toroidal_slices(
+    "toroidal_slices_elems": apec.algorithm.build_toroidal_slices(
         apec.get_mesh(apec_evolution_mesh_notrans), apec.mesh, "elem", n_slices=2, tolerance=1e-3
     ),
 }
@@ -95,17 +94,10 @@ Selector.select_all(apec.mesh)
 Selector.select_all(apec.get_mesh(apec_equilibrium_output))
 Selector.select(apec.get_mesh(apec_equilibrium_output), "subdomain_id", 23, type="elem")
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-Cyclic.toroidal_projection(
-    apec.get_mesh(apec_equilibrium_output),
-    "Jt_z",
-    0,
-    apec.mesh,
-    "Js",
-    1,
-    location="elem",
-    n_slices=2,
-    tolerance=1e-3,
-)
+apec.algorithm.equilibrium_mesh = apec.get_mesh(apec_equilibrium_output)
+apec.algorithm._toroidal_slices_nodes = apec.apec_settings["toroidal_slices_nodes"].astype(np.int64)
+apec.algorithm._toroidal_slices_elems = apec.apec_settings["toroidal_slices_elems"].astype(np.int64)
+apec.algorithm._toroidal_projection_current()
 ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js", CylindricalCoordinateSystem(), location="elem")
 
 apec.write_loads_bcs()

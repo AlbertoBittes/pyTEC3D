@@ -278,7 +278,6 @@ void ApecMSolver::load_model(py::object apec_object)
     equation_system->initialize_systems();
 
     apec::logging::info("Preparing to distribute Mesh and Degrees-Of-Freedom across processors");
-    apec::logging::info("Identifying coupled nodes for mesh distribution");
     auto &main_system = equation_system->get_system<libMesh::System>(
         ApecMSystemBase::system_name_from_type(ApecMSystemBase::DOF_SOLUTION_SYSTEM));
     coupling_functor = std::make_unique<AugmentSparsityOnNodes>(*mesh,

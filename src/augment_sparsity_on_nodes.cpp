@@ -3,6 +3,7 @@
  * @brief AugmentSparsityOnNodes: CP-node pair detection and ghosting-functor implementation.
  */
 #include "augment_sparsity_on_nodes.h"
+#include "apec_m_logging.h"
 
 #include <algorithm>
 #include <cstring>
@@ -35,7 +36,7 @@ AugmentSparsityOnNodes::AugmentSparsityOnNodes(
     vtkUnstructuredGrid *vtk_grid)
     : _mesh(mesh), _vtk_grid(vtk_grid)
 {
-    rebuild_elem_neighbors();
+    // rebuild_elem_neighbors();
 }
 
 void AugmentSparsityOnNodes::rebuild_node_pairs()
@@ -123,6 +124,8 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
 
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()
 {
+    apec::logging::info("Identifying coupled nodes for mesh distribution");
+
     rebuild_node_pairs();
 
     elem_pairs.clear();

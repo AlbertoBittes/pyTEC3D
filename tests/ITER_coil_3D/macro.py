@@ -17,6 +17,10 @@ apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
 
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
+apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
+
 Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=CylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
@@ -79,17 +83,9 @@ for i in range(1, 10):
 
     # select coil elements
     Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-    selection_cells = vtknp.vtk_to_numpy(
-        apec.mesh.GetCellData().GetArray("selection_cell")
-    )
-    Selector.set_value_on_selection(apec.mesh, "Js", 0, 0, type="elem")
-    Selector.set_value_on_selection(apec.mesh, "Js", 0, 1, type="elem")
-    Selector.set_value_on_selection(apec.mesh, "Js", 0, 2, type="elem")
     fact = i**6
     Selector.set_value_on_selection(apec.mesh, "Js", fact, 1, type="elem")
-    ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js",
-                                                   coordinate_system=CylindricalCoordinateSystem(),
-                                                   location="elem")
+
     apec.solve()
     apec.write_output()
 

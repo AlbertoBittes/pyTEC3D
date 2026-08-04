@@ -7,7 +7,6 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
-#include <libmesh/fe_interface.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -71,11 +70,6 @@ void ElementBuilder::build_av3dedge()
                             {0.0, 0.0, 0.0},
                             {0.0, 0.0, 0.0}};
     this->rotate_diag_tensor_for_elem(nu_local, nu_tensor);
-
-    const auto sol_vectors =
-        this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
-                                     ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &Az = sol_vectors[0];
 
     auto &Ke = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ke];
     auto &Ce = this->matrices[MatricesSet::DOF_SOLUTION_MATRICES][DOFMatrices::Ce];
@@ -578,55 +572,13 @@ void ElementBuilder::build_av3dedge_nodal_solution()
     auto &nodal_vectors = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS];
     nodal_vectors.clear();
     nodal_vectors.resize(api_vars.size());
-    DenseVector<Number> An;
     DenseVector<Number> Bn;
     DenseVector<Number> Hn;
 
     unsigned int n_dofs_V = AAe.m() / 3;
-    const unsigned int n_nodes = elem_data.elem->n_nodes();
-
-    bool have_a = false;
 
     bool have_b = false;
     bool have_h = false;
-
-    auto build_a = [&]()
-    {
-        const auto &system = *dof_solution_system_;
-        libMesh::NumericVector<Number> &sys_soln(*system.current_local_solution);
-        const libMesh::DofMap &dof_map = system.get_dof_map();
-
-        const unsigned int az_var_num = system.variable_number("Az");
-        const auto &fe_type = system.variable_type(az_var_num);
-
-        std::vector<Number> elem_soln;
-        std::vector<Number> nodal_soln;
-        std::vector<dof_id_type> dof_indices;
-
-        dof_map.dof_indices(elem_data.elem, dof_indices, az_var_num);
-        sys_soln.get(dof_indices, elem_soln);
-
-        const bool add_p_level = fe_type.p_refinement;
-        const unsigned int n_vec_dim = libMesh::FEInterface::n_vec_dim(system.get_mesh(), fe_type);
-
-        libMesh::FEInterface::nodal_soln(elem_data.elem->dim(),
-                                         fe_type,
-                                         elem_data.elem,
-                                         elem_soln,
-                                         nodal_soln,
-                                         add_p_level,
-                                         n_vec_dim);
-
-        An.resize(3 * n_dofs_V);
-
-        const unsigned int nodes_to_copy = std::min(n_nodes, n_dofs_V);
-        const unsigned int components_to_copy = std::min(3u, n_vec_dim);
-        for (unsigned int n = 0; n < nodes_to_copy; ++n)
-            for (unsigned int d = 0; d < components_to_copy; ++d)
-                An(n + d * n_dofs_V) = nodal_soln[n * n_vec_dim + d];
-
-        have_a = true;
-    };
 
     auto build_b = [&]()
     {
@@ -652,9 +604,6 @@ void ElementBuilder::build_av3dedge_nodal_solution()
                               {
                                   switch (api_var)
                                   {
-                                  case APIVariableName::A:
-                                      build_a();
-                                      return have_a ? &An : nullptr;
                                   case APIVariableName::B:
                                       build_b();
                                       return have_b ? &Bn : nullptr;

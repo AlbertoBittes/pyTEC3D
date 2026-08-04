@@ -1,6 +1,5 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
-from apec_m.cyclic import Cyclic
 from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import CylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
@@ -103,10 +102,10 @@ Selector.select_pos(
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
-        Cyclic.cpcyc(
+        ModelEdit.periodic_boundaries(
             apec.mesh,
             CylindricalCoordinateSystem(),
-            extr_angle,
+            dy=extr_angle,
             array_name="CP_1",
             variables=("Az"),
         ),

@@ -2,7 +2,6 @@ from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import SphericalCoordinateSystem, CylindricalCoordinateSystem
-from apec_m.cyclic import Cyclic
 import os
 import vtk
 import vtk.util.numpy_support as vtknp
@@ -26,7 +25,7 @@ Selector.set_value_on_selection(apec.mesh, "angles", -90.0, 2)
 Selector.select_pos(apec.mesh, 1, 0.0, coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=CylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
-apec.dof_couplings = Cyclic.cpcyc(apec.mesh, CylindricalCoordinateSystem(), -90.0, variables=("A", "VOLT"))
+apec.dof_couplings = ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=-90.0, variables=("A", "VOLT"))
 
 Selector.select(apec.mesh, "TYPE", 24, type="elem")
 Selector.nsle(apec.mesh, "r")

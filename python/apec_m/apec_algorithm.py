@@ -10,7 +10,6 @@ import vtk
 from .selector import Selector
 from .model_edit import ModelEdit
 from .coordinate_system import CylindricalCoordinateSystem
-from .cyclic import Cyclic
 from .logging_utils import get_logger
 from .validation_utils import ensure_vtk_unstructured_grid
 from .constants import (
@@ -146,6 +145,184 @@ class ApecAlgorithm:
             )
         return arr
 
+    @staticmethod
+    def build_toroidal_slices(
+        input_mesh: "vtk.vtkUnstructuredGrid",
+        target_mesh: "vtk.vtkUnstructuredGrid",
+        location: str = "node",
+        tolerance: float = 1e-6,
+        extrusion_angle: float = 360.0,
+        n_divisions: Optional[int] = None,
+        coordinate_system: Optional["CylindricalCoordinateSystem"] = None,
+        n_slices: Optional[int] = None,
+    ) -> np.ndarray:
+        """
+        Build a toroidal projection map from a 2D input mesh to a target mesh.
+
+        The first column stores source IDs; remaining columns store matched target IDs.
+        For 3D targets this returns one column per toroidal station.
+
+        Args:
+            input_mesh: 2D unstructured grid used to generate a surface of revolution.
+            target_mesh: Target unstructured grid (typically 3D).
+            location: "node" to map point IDs or "elem" to map cell IDs.
+            tolerance: Absolute tolerance for matching radii and axial coordinates.
+            extrusion_angle: Total toroidal extrusion angle in degrees.
+            n_divisions: Number of toroidal element divisions.
+            coordinate_system: Cylindrical coordinate system used for local coordinates.
+            n_slices: Backward-compatible alias for n_divisions.
+
+        Returns:
+            np.ndarray: Integer map with shape (num_input, 1 + num_matches).
+        """
+        ensure_vtk_unstructured_grid(input_mesh, arg_name="input_mesh")
+        ensure_vtk_unstructured_grid(target_mesh, arg_name="target_mesh")
+        if location not in ["node", "elem"]:
+            raise ValueError("location must be 'node' or 'elem'.")
+        if tolerance <= 0:
+            raise ValueError("tolerance must be positive.")
+        if extrusion_angle <= 0:
+            raise ValueError("extrusion_angle must be positive.")
+
+        if input_mesh.GetNumberOfCells() > 0 and input_mesh.GetMaxSpatialDimension() > 2:
+            raise ValueError("Input mesh must be 2D.")
+
+        if n_divisions is None and n_slices is not None:
+            n_divisions = n_slices
+
+        if coordinate_system is None:
+            coordinate_system = CylindricalCoordinateSystem()
+        assert coordinate_system is not None
+        if coordinate_system.type != "cylindrical":
+            raise ValueError(
+                "coordinate_system must be cylindrical for toroidal projection."
+            )
+
+        target_is_3d = target_mesh.GetMaxSpatialDimension() > 2
+        if target_is_3d:
+            if n_divisions is None:
+                raise ValueError("n_divisions must be provided for 3D target meshes.")
+            try:
+                n_divisions = int(n_divisions)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("n_divisions must be a positive integer.") from exc
+            if n_divisions <= 0:
+                raise ValueError("n_divisions must be a positive integer.")
+            num_matches = n_divisions + 1 if location == "node" else n_divisions
+            if location == "node":
+                expected_theta = np.linspace(
+                    0.0,
+                    float(extrusion_angle),
+                    n_divisions + 1,
+                    dtype=float,
+                )
+            else:
+                step = float(extrusion_angle) / float(n_divisions)
+                expected_theta = (np.arange(n_divisions, dtype=float) + 0.5) * step
+        else:
+            if input_mesh.GetMaxSpatialDimension() > 2:
+                raise ValueError("2D target meshes can only be mapped from 2D input meshes.")
+            num_matches = 1
+            expected_theta = np.zeros((1,), dtype=float)
+
+        def angular_distance(theta: np.ndarray, expected: float) -> np.ndarray:
+            return np.abs((theta - expected + 180.0) % 360.0 - 180.0)
+
+        input_local, input_ids = ModelEdit.to_local_coordinates(
+            input_mesh,
+            coordinate_system,
+            location=location,
+            selected_only=True,
+        )
+        target_local, target_ids = ModelEdit.to_local_coordinates(
+            target_mesh,
+            coordinate_system,
+            location=location,
+            selected_only=True,
+        )
+
+        if input_local.size == 0:
+            return np.empty((0, 1 + num_matches), dtype=np.int64)
+
+        input_radius = input_local[:, 0]
+        input_axial = input_local[:, 2]
+        target_radius = target_local[:, 0]
+        target_theta = target_local[:, 1]
+        target_axial = target_local[:, 2]
+
+        target_count = target_radius.shape[0]
+        if target_count == 0:
+            raise ValueError("Target mesh has no points/cells to map.")
+        if num_matches > target_count:
+            raise ValueError(
+                "Number of requested toroidal matches cannot exceed the number of "
+                "available target points/cells."
+            )
+
+        num_input = input_radius.shape[0]
+        tolerance_current = tolerance
+        counts = np.empty(num_input, dtype=int)
+
+        axis_mask = input_radius <= tolerance
+        required_counts = np.where(axis_mask, 1, num_matches)
+
+        max_iterations = 50
+        for _ in range(max_iterations):
+            for input_id in range(num_input):
+                dr = np.abs(target_radius - input_radius[input_id])
+                dz = np.abs(target_axial - input_axial[input_id])
+                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+                counts[input_id] = int(np.count_nonzero(mask))
+            if np.all(counts >= required_counts):
+                break
+            tolerance_current *= 2.0
+        else:
+            raise ValueError(
+                "Toroidal projection map did not converge within the "
+                "tolerance expansion limit."
+            )
+
+        mapping = np.full((num_input, 1 + num_matches), -1, dtype=np.int64)
+        mapping[:, 0] = input_ids.astype(np.int64, copy=False)
+        for row_idx in range(num_input):
+            dr = np.abs(target_radius - input_radius[row_idx])
+            dz = np.abs(target_axial - input_axial[row_idx])
+            mask = (dr <= tolerance_current) & (dz <= tolerance_current)
+            candidate_idx = np.where(mask)[0]
+            if candidate_idx.size == 0:
+                continue
+            candidate_ids = target_ids[candidate_idx]
+            if axis_mask[row_idx]:
+                trimmed = np.full(
+                    (num_matches,),
+                    candidate_ids[0],
+                    dtype=candidate_ids.dtype,
+                )
+            else:
+                trimmed = np.empty((num_matches,), dtype=candidate_ids.dtype)
+                used = np.zeros(candidate_idx.size, dtype=bool)
+                poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
+                for theta_idx, theta_value in enumerate(expected_theta):
+                    theta_dist = angular_distance(
+                        target_theta[candidate_idx],
+                        theta_value,
+                    )
+                    score = theta_dist + poloidal_dist / max(
+                        tolerance_current,
+                        np.finfo(float).eps,
+                    )
+                    if np.any(~used):
+                        score = np.where(used, np.inf, score)
+                    pick = int(np.argmin(score))
+                    trimmed[theta_idx] = candidate_ids[pick]
+                    used[pick] = True
+            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:num_matches].astype(
+                np.int64,
+                copy=False,
+            )
+
+        return mapping
+
     def _set_toroidal_slices(self) -> None:
         """Build toroidal node/element mapping slices when they are not cached yet.
 
@@ -176,7 +353,7 @@ class ApecAlgorithm:
 
         tolerance = float(self.input_parameters["tolerance"])
         coordinate_system = CylindricalCoordinateSystem()
-        self._toroidal_slices_nodes = Cyclic.build_toroidal_slices(
+        self._toroidal_slices_nodes = self.build_toroidal_slices(
             equilibrium_mesh,
             self.apec.mesh,
             location="node",
@@ -185,7 +362,7 @@ class ApecAlgorithm:
             n_divisions=n_toroidal_divisions,
             coordinate_system=coordinate_system,
         )
-        self._toroidal_slices_elems = Cyclic.build_toroidal_slices(
+        self._toroidal_slices_elems = self.build_toroidal_slices(
             equilibrium_mesh,
             self.apec.mesh,
             location="elem",
@@ -1571,15 +1748,12 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        from .coordinate_system import CylindricalCoordinateSystem
-        from .cyclic import Cyclic
-
         mesh = self.apec.mesh
         if mesh.GetPointData().GetArray("A") is None:
             raise ValueError("Required PointData array 'A' is missing before poloidal flux calculation.")
 
         ModelEdit.element_solution(mesh, "A")
-        Cyclic.poloidal_flux(
+        ModelEdit.poloidal_flux(
             mesh=mesh,
             coordinate_system=CylindricalCoordinateSystem(),
         )
