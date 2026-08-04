@@ -6,7 +6,9 @@
  * root rank (rank 0) emits messages.  All free functions forward to the
  * process-wide spdlog default logger initialised by apec::logging::initialize().
  * Use apec::logging::error_and_abort() for unrecoverable errors; it logs the
- * message and then calls libmesh_error_msg() to terminate cleanly.
+ * message on all ranks and then throws in debug builds so Python/debuggers can
+ * show the original failure. In release builds, set APEC_M_HARD_ABORT=1 to
+ * force libmesh_error_msg() hard-abort semantics.
  */
 #pragma once
 
@@ -14,6 +16,8 @@
 #include <spdlog/spdlog.h>
 #include <libmesh/libmesh_common.h>
 
+#include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -129,7 +133,7 @@ namespace apec::logging
 
     [[noreturn]] inline void error_and_abort(const std::string &message)
     {
-        error("{}", message);
-        libmesh_error_msg(message);
+        error_all_ranks("[rank {}/{}] {}", rank(), size(), message);
+        throw std::runtime_error(message);
     }
 } // namespace apec::logging

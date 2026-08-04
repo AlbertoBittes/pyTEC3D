@@ -17,6 +17,7 @@
 
 #include "variables_map.h"
 #include <libmesh/dof_map.h>
+#include <libmesh/elem.h>
 #include <libmesh/libmesh.h>
 #include <libmesh/mesh_base.h>
 #include <libmesh/node.h>
@@ -618,8 +619,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 
         for (const auto &pair : pairs_it->second)
         {
-            const Node *node_first = mesh.query_node_ptr(pair.master_node);
-            const Node *node_second = mesh.query_node_ptr(pair.slave_node);
+            const Node *node_first = mesh.query_node_ptr(pair.first);
+            const Node *node_second = mesh.query_node_ptr(pair.second);
             if (!node_second)
                 continue;
             if (node_second->processor_id() != proc_id)
@@ -627,8 +628,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
             if (!node_first)
             {
                 std::ostringstream msg;
-                msg << "Coupling constraint: slave node " << pair.slave_node
-                    << " found without master node " << pair.master_node
+                msg << "Coupling constraint: slave node " << pair.second
+                    << " found without master node " << pair.first
                     << ".";
                 apec::logging::error_and_abort(msg.str());
             }
@@ -720,9 +721,19 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                 const dof_id_type dof_second = node_second->dof_number(sys_num, var_num, 0);
 
                 ConstraintEntry constraint_entry;
-                const bool same_edge_orientation = pair.same_edge_orientation;
+                bool same_edge_orientation = true;
                 if (label == "Az")
+                {
+                    if (_edge_orientations_map)
+                    {
+                        const auto orientation_it = _edge_orientations_map->find(
+                            std::make_pair(static_cast<dof_id_type>(node_first->id()),
+                                           static_cast<dof_id_type>(node_second->id())));
+                        if (orientation_it != _edge_orientations_map->end())
+                            same_edge_orientation = orientation_it->second;
+                    }
                     constraint_entry.row[dof_first] = same_edge_orientation ? 1.0 : -1.0;
+                }
                 else
                     constraint_entry.row[dof_first] = 1.0;
                 constraints.emplace(dof_second, constraint_entry);
@@ -734,10 +745,86 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 }
 
 template <typename ImplSystem>
+void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
+{
+    if (!_edge_orientations_map)
+        _edge_orientations_map =
+            std::make_unique<std::map<std::pair<dof_id_type, dof_id_type>, bool>>();
+    else
+        _edge_orientations_map->clear();
+
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    auto &equation_systems = dof_system->get_apec_equation_systems();
+    auto *solver = equation_systems.get_parent_object();
+
+    const auto *coupling_functor = solver->get_coupling_functor();
+    const auto &pairs_by_cp = coupling_functor->cp_pairs_by_cp;
+    if (pairs_by_cp.empty())
+        return;
+
+    const MeshBase &mesh = equation_systems.get_mesh();
+    const unsigned int proc_id = mesh.comm().rank();
+    std::unordered_map<dof_id_type, bool> orientation_by_midside_node;
+
+    // Build orientation on the distributed mesh view (owned + ghosted elements).
+    for (const auto *elem : mesh.element_ptr_range())
+    {
+        for (const auto edge_idx : elem->edge_index_range())
+        {
+            const bool orientation = elem->positive_edge_orientation(edge_idx);
+            const auto local_nodes_on_edge = elem->nodes_on_edge(edge_idx);
+            for (const unsigned int local_node_idx : local_nodes_on_edge)
+            {
+                if (elem->is_vertex(local_node_idx))
+                    continue;
+
+                const auto node_id =
+                    static_cast<dof_id_type>(elem->node_id(local_node_idx));
+                orientation_by_midside_node.emplace(node_id, orientation);
+            }
+        }
+    }
+
+    for (const auto &entry : pairs_by_cp)
+    {
+        const auto &cp_pairs = entry.second;
+        for (const auto &pair : cp_pairs)
+        {
+            const Node *slave_node = mesh.query_node_ptr(pair.second);
+            if (!slave_node || slave_node->processor_id() != proc_id)
+                continue;
+
+            const Node *master_node = mesh.query_node_ptr(pair.first);
+            if (!master_node)
+            {
+                std::ostringstream msg;
+                msg << "Coupling constraint: slave node " << pair.second
+                    << " found without master node " << pair.first
+                    << ".";
+                apec::logging::error_and_abort(msg.str());
+            }
+
+            bool same_edge_orientation = true;
+            const auto master_it = orientation_by_midside_node.find(pair.first);
+            const auto slave_it = orientation_by_midside_node.find(pair.second);
+            if (master_it != orientation_by_midside_node.end() &&
+                slave_it != orientation_by_midside_node.end())
+                same_edge_orientation = (master_it->second == slave_it->second);
+
+            (*_edge_orientations_map)[std::make_pair(pair.first, pair.second)] =
+                same_edge_orientation;
+        }
+    }
+}
+
+template <typename ImplSystem>
 void GlobalConstraintsObject<ImplSystem>::constrain()
 {
     if (!this->get_parent_object()->is_initialized())
         return;
+
+    if (_edge_orientations_map == nullptr || _edge_orientations_map->empty())
+        build_edge_orientations_map();
 
     ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     const auto *time_step = dof_system->current_time_step();

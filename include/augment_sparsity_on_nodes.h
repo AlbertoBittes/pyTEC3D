@@ -29,14 +29,7 @@ class vtkUnstructuredGrid;
 class AugmentSparsityOnNodes : public libMesh::GhostingFunctor
 {
 public:
-    struct NodePairInfo
-    {
-        libMesh::dof_id_type master_node = libMesh::invalid_uint;
-        libMesh::dof_id_type slave_node = libMesh::invalid_uint;
-        bool same_edge_orientation = true;
-    };
-
-    using NodePairsByCp = std::unordered_map<int, std::vector<NodePairInfo>>;
+    using NodePairsByCp = std::unordered_map<int, std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>>>;
 
     /** @brief Constructs the functor and performs an initial CP-pair scan. */
     AugmentSparsityOnNodes(
@@ -66,13 +59,13 @@ public:
 
 private:
     void rebuild_node_pairs();     ///< Scans VTK CP_* arrays and builds @c node_pairs.
-    void rebuild_elem_neighbors(); ///< Maps node pairs to element pairs via @c slave_to_master_elem.
+    void rebuild_elem_neighbors(); ///< Maps node pairs to element pairs via @c slave_to_master_elems.
 
-    libMesh::MeshBase &_mesh;                                                            ///< Reference to the distributed mesh.
-    vtkUnstructuredGrid *_vtk_grid = nullptr;                                            ///< Non-owning VTK grid pointer.
-    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> node_pairs;       ///< All master-slave node pairs.
-    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> elem_pairs;       ///< Representative element pairs.
-    std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type> slave_to_master_elem; ///< Maps each slave element ID to its master element ID.
+    libMesh::MeshBase &_mesh;                                                                          ///< Reference to the distributed mesh.
+    vtkUnstructuredGrid *_vtk_grid = nullptr;                                                          ///< Non-owning VTK grid pointer.
+    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> node_pairs;                     ///< All master-slave node pairs.
+    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> elem_pairs;                     ///< Representative element pairs.
+    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> slave_to_master_elems; ///< Maps each slave element ID to all of its master element IDs.
 };
 
 #endif // AUGMENT_SPARSITY_ON_NODES_H

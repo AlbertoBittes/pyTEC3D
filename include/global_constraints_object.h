@@ -20,8 +20,10 @@
 #include "fe_parent_object.h"
 
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class DofCouplingsObject;
@@ -82,9 +84,13 @@ private:
   /** @brief DOF-coupling constraints derived from CP_* periodic-boundary node pairs. */
   std::map<libMesh::dof_id_type, ConstraintEntry> build_coupling_constraints();
 
+  /** @brief Builds slave-vs-master midside edge-orientation parity on first constrain() call. */
+  void build_edge_orientations_map();
+
   /// Constraint cache: populated on first build and whenever the time step advances.
   std::map<libMesh::dof_id_type, ConstraintEntry> _constraint_cache;
   std::unordered_map<libMesh::dof_id_type, DofOwnerInfo> _point_constraint_owner_cache;
+  std::unique_ptr<std::map<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>, bool>> _edge_orientations_map = nullptr;
   bool _has_constraint_cache = false;
 };
 
