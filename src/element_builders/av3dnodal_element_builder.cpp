@@ -83,7 +83,7 @@ void ElementBuilder::build_av3dnodal()
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 {
-                    const auto &curl_i = curl_phi_vec[dof_i][qp];
+                    const auto &curl_i = curl_phi_vec[dof_i % n_dofs_var][qp];
                     const auto &curl_j = curl_phi_vec[dof_j][qp];
                     Real curl_term = 0.0;
                     const Real div_i = div_phi_vec[dof_i][qp];
