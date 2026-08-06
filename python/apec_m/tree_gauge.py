@@ -289,7 +289,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_midside_coupling: Optional[object] = None,
-        spanning_method: str = "kruskal",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
     ) -> Tuple["vtk.vtkIntArray", "vtk.vtkIntArray", Dict[str, int]]:
@@ -310,10 +309,6 @@ class TreeGauge:
                 or an ndarray with shape (N, 2), where each row is [slave_id, master_id],
                 or a CP_* PointData array name. For CP_* arrays, midside edges sharing the
                 same CP value are coupled automatically. Non-midside pairs are ignored.
-            spanning_method: Tree construction algorithm. "kruskal" (default) uses
-                a weighted spanning-forest with priority levels
-                (Dirichlet boundary edges: 0, periodic-cut edges: 1, interior edges: 2+quality).
-                "bfs" runs boundary-first BFS from start_surface_point_ids.
             tree_name: Name for the tree output array (PointData).
             cotree_name: Name for the cotree output array (PointData).
 
@@ -453,142 +448,63 @@ class TreeGauge:
             for mid in eligible_edges
         }
 
-        method = spanning_method.strip().lower()
-        if method not in {"kruskal", "bfs"}:
-            raise ValueError("spanning_method must be either 'kruskal' or 'bfs'.")
-
-        def run_bfs() -> Dict[int, int]:
-            edge_state_local: Dict[int, int] = {}  # 1=tree, 2=cotree
-            visited: Set[int] = set()
-            queue: deque[int] = deque()
-
-            def run_bfs_from_seed(seed: int) -> None:
-                if seed in visited:
-                    return
-                if seed not in adjacency:
-                    visited.add(seed)
-                    return
-
-                visited.add(seed)
-                queue.append(seed)
-                while queue:
-                    node = queue.popleft()
-                    for nbr, mid in adjacency.get(node, []):
-                        if mid in edge_state_local:
-                            continue
-                        if nbr not in visited:
-                            edge_state_local[mid] = 1
-                            visited.add(nbr)
-                            queue.append(nbr)
-                        else:
-                            edge_state_local[mid] = 2
-
-            # Primary boundary-first traversal from user-provided start surfaces.
-            for seed in sorted(start_surface):
-                if seed in non_conducting:
-                    run_bfs_from_seed(seed)
-
-            for node in sorted(adjacency.keys()):
-                if node not in visited:
-                    run_bfs_from_seed(node)
-
-            # Any remaining eligible edge not classified by BFS is conservatively cotree.
-            for mid in eligible_edges:
-                if mid not in edge_state_local:
-                    edge_state_local[mid] = 2
-
-            return edge_state_local
-
-        def run_kruskal() -> Dict[int, int]:
-            edge_state_local: Dict[int, int] = {}  # 1=tree, 2=cotree
-            # Kruskal spanning forest with multilevel priorities:
-            # 0: Dirichlet boundary edges, 1: periodic-cut edges, 2+quality: interior edges.
-            nodes = sorted(adjacency.keys())
-            parent_uf: Dict[int, int] = {n: n for n in nodes}
-            rank_uf: Dict[int, int] = {n: 0 for n in nodes}
-
-            def uf_find(x: int) -> int:
-                root = x
-                while parent_uf[root] != root:
-                    root = parent_uf[root]
-                while parent_uf[x] != x:
-                    nxt = parent_uf[x]
-                    parent_uf[x] = root
-                    x = nxt
-                return root
-
-            def uf_union(a: int, b: int) -> bool:
-                ra = uf_find(a)
-                rb = uf_find(b)
-                if ra == rb:
-                    return False
-                if rank_uf[ra] < rank_uf[rb]:
-                    parent_uf[ra] = rb
-                elif rank_uf[ra] > rank_uf[rb]:
-                    parent_uf[rb] = ra
-                else:
-                    parent_uf[rb] = ra
-                    rank_uf[ra] += 1
-                return True
-
-            def edge_weight(mid: int, a: int, b: int) -> tuple[int, float, int]:
-                if (a in start_surface) and (b in start_surface):
-                    return (0, 0.0, mid)
-                if periodic_edge_parity.get(mid, 0) == 1:
-                    return (1, 0.0, mid)
-                pa = np.asarray(ugrid.GetPoint(a), dtype=float)
-                pb = np.asarray(ugrid.GetPoint(b), dtype=float)
-                quality = float(np.linalg.norm(pa - pb))
-                return (2, quality, mid)
-
-            weighted_edges: list[tuple[tuple[int, float, int], int, int, int]] = []
-            for mid, (a, b) in eligible_edges.items():
-                weighted_edges.append((edge_weight(mid, a, b), mid, a, b))
-            weighted_edges.sort(key=lambda item: item[0])
-
-            for _, mid, a, b in weighted_edges:
-                if uf_union(a, b):
-                    edge_state_local[mid] = 1
-                else:
-                    edge_state_local[mid] = 2
-
-            return edge_state_local
-
-        edge_state = run_bfs() if method == "bfs" else run_kruskal()
-
-        # Compute parity-to-root and component labels from the current tree set.
+        edge_state: Dict[int, int] = {}  # 1=tree, 2=cotree
+        visited: Set[int] = set()
+        queue: deque[int] = deque()
+        parent: Dict[int, int] = {}
+        parent_edge: Dict[int, int] = {}
         parity_to_root: Dict[int, int] = {}
         node_component: Dict[int, int] = {}
-        tree_adjacency: Dict[int, list[Tuple[int, int]]] = {}
-        for mid, state in edge_state.items():
-            if state != 1:
-                continue
-            a, b = eligible_edges[mid]
-            tree_adjacency.setdefault(a, []).append((b, mid))
-            tree_adjacency.setdefault(b, []).append((a, mid))
-
         component_id = 0
-        seen_nodes: Set[int] = set()
-        for root in sorted(adjacency.keys()):
-            if root in seen_nodes:
-                continue
-            stack: list[int] = [root]
-            seen_nodes.add(root)
-            node_component[root] = component_id
-            parity_to_root[root] = 0
-            while stack:
-                node = stack.pop()
-                for nbr, mid in tree_adjacency.get(node, []):
-                    if nbr in seen_nodes:
+
+        def run_bfs_from_seed(seed: int) -> None:
+            nonlocal component_id
+            if seed in visited:
+                return
+            if seed not in adjacency:
+                visited.add(seed)
+                parity_to_root[seed] = 0
+                node_component[seed] = component_id
+                component_id += 1
+                return
+
+            visited.add(seed)
+            parity_to_root[seed] = 0
+            node_component[seed] = component_id
+            queue.append(seed)
+            while queue:
+                node = queue.popleft()
+                for nbr, mid in adjacency.get(node, []):
+                    if mid in edge_state:
                         continue
-                    seen_nodes.add(nbr)
-                    node_component[nbr] = component_id
-                    parity_to_root[nbr] = parity_to_root[node] ^ periodic_edge_parity.get(mid, 0)
-                    stack.append(nbr)
+                    if nbr not in visited:
+                        edge_state[mid] = 1
+                        visited.add(nbr)
+                        parent[nbr] = node
+                        parent_edge[nbr] = mid
+                        parity_to_root[nbr] = parity_to_root[node] ^ periodic_edge_parity.get(mid, 0)
+                        node_component[nbr] = component_id
+                        queue.append(nbr)
+                    else:
+                        edge_state[mid] = 2
             component_id += 1
 
-        # Kill remaining periodic global modes by anchoring one odd-periodic
-        # fundamental-cycle cotree edge per connected component.
+        # Primary boundary-first traversal from user-provided start surfaces.
+        for seed in sorted(start_surface):
+            if seed in non_conducting:
+                run_bfs_from_seed(seed)
+
+        for node in sorted(adjacency.keys()):
+            if node not in visited:
+                run_bfs_from_seed(node)
+
+        # Any remaining eligible edge not classified by BFS is conservatively cotree.
+        for mid in eligible_edges:
+            if mid not in edge_state:
+                edge_state[mid] = 2
+
+        # For a single periodic generator, kill the remaining global mode by anchoring
+        # one cotree edge whose fundamental cycle has odd periodic-crossing parity.
         odd_periodic_cotree: list[int] = []
         odd_by_component: Dict[int, list[int]] = {}
         for mid, state in edge_state.items():
@@ -643,7 +559,6 @@ class TreeGauge:
             "num_tree": int(np.sum(tree_np)),
             "num_cotree": int(np.sum(cotree_np)),
             "skipped_unknown_cells": unknown_cells,
-            "spanning_method": method,
             "num_periodic_couplings": len(slave_to_master),
             "num_odd_periodic_fundamental_cycles": len(odd_periodic_cotree),
             "num_odd_periodic_components": len(odd_by_component),
@@ -659,7 +574,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_midside_coupling: Optional[object] = None,
-        spanning_method: str = "kruskal",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
     ) -> Dict[str, int]:
@@ -676,7 +590,6 @@ class TreeGauge:
                 If omitted, defaults to currently selected nodes.
             periodic_midside_coupling: Periodic midside edge coupling (slave->master),
                 or CP_* PointData array name.
-            spanning_method: "kruskal" (default) or "bfs".
             tree_name: Name for the tree output array.
             cotree_name: Name for the cotree output array.
 
@@ -688,7 +601,6 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_point_ids,
             start_surface_point_ids=start_surface_point_ids,
             periodic_midside_coupling=periodic_midside_coupling,
-            spanning_method=spanning_method,
             tree_name=tree_name,
             cotree_name=cotree_name,
         )
@@ -705,7 +617,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_midside_coupling: Optional[object] = None,
-        spanning_method: str = "kruskal",
         array_name: str = "_Az",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
@@ -726,7 +637,6 @@ class TreeGauge:
                 If omitted, defaults to currently selected nodes.
             periodic_midside_coupling: Periodic midside edge coupling (slave->master)
                 as dict-like, ndarray (N,2), or CP_* PointData array name.
-            spanning_method: "kruskal" (default) or "bfs".
 
         Returns:
             Dict[str, int]: Diagnostic info from the tree/cotree build.
@@ -758,7 +668,6 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_points,
             start_surface_point_ids=start_surface_points,
             periodic_midside_coupling=periodic_midside_coupling,
-            spanning_method=spanning_method,
             tree_name=tree_name,
             cotree_name=cotree_name,
         )

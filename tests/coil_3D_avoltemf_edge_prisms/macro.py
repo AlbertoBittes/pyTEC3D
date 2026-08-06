@@ -118,7 +118,8 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 TreeGauge.tree_gauge(
     apec.mesh,
-    periodic_midside_coupling="CP_1"
+    periodic_midside_coupling="CP_1",
+    spanning_method="bfs",
 )
 
 apec.load_mesh_into_solver()
