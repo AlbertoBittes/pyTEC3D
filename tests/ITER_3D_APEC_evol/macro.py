@@ -5,6 +5,7 @@ from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
+from vtkmodules.util import numpy_support as vtknp
 # from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
@@ -38,7 +39,7 @@ Selector.select_pos(
     apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem()
 )
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
+# Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 
 # Outer boundary far field zero boundary conditions
@@ -49,37 +50,33 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 
+
 # Cyclic periodic boundaries
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem(), mode="u"
-)
-Selector.select_pos(
-    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem(), mode="u"
-)
 apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
 
 # rotate angles
 Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem(), mode="u"
-)
-Selector.select_pos(
-    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem(), mode="u"
-)
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
 Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 # 1. Build source->destination element map using toroidal slices
-Selector.select(apec.algorithm.equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-Selector.select(apec.algorithm.equilibrium_mesh, "COILS", 1, type="elem", mode="a")
-Selector.nsle(apec.algorithm.equilibrium_mesh)
-Selector.select_all(apec.mesh)
-apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
-apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
-apec.algorithm._toroidal_projection_current()
+Selector.select(apec.mesh, "COILS", 1, type="elem", mode="a")
+apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
+coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
+         "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
+for coil in coils:
+    Selector.select(apec.algorithm.equilibrium_mesh, coil, 1, type="elem", mode="s")
+    eq_cell_data = apec.algorithm.equilibrium_mesh.GetCellData()
+    first_elem = vtknp.vtk_to_numpy(
+        eq_cell_data.GetArray("selection_cell")
+    ).nonzero()[0][0]
+    js_z = float(eq_cell_data.GetArray("Js").GetTuple(first_elem)[2])
+    Selector.select(apec.mesh, coil, 1, type="elem", mode="s")
+    Selector.set_value_on_selection(apec.mesh, "Js", js_z, 1, type="elem")
 
 apec.save_mesh()
 
@@ -92,6 +89,8 @@ apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
 apec.algorithm.input_parameters["t0_halo"] = 1
+apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
+apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))
