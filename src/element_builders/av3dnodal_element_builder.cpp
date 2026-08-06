@@ -83,15 +83,20 @@ void ElementBuilder::build_av3dnodal()
             for (unsigned int dof_i = 0; dof_i < n_dofs_A; dof_i++)
                 for (unsigned int dof_j = 0; dof_j < n_dofs_A; dof_j++)
                 {
-                    const auto &curl_i = curl_phi_vec[dof_i % n_dofs_var][qp];
-                    const auto &curl_j = curl_phi_vec[dof_j][qp];
+                    const unsigned int dof_idx_i = 3 * (dof_i % n_dofs_var) + (dof_i / n_dofs_var);
+                    const unsigned int dof_idx_j = 3 * (dof_j % n_dofs_var) + (dof_j / n_dofs_var);
+
+                    const auto &curl_i = curl_phi_vec[dof_idx_i][qp];
+                    const auto &curl_j = curl_phi_vec[dof_idx_j][qp];
                     Real curl_term = 0.0;
-                    const Real div_i = div_phi_vec[dof_i][qp];
-                    const Real div_j = div_phi_vec[dof_j][qp];
-                    const Real gauge_term = nu_penalty * div_i * div_j;
                     for (unsigned int k = 0; k < 3; ++k)
                         for (unsigned int l = 0; l < 3; ++l)
                             curl_term += curl_i(k) * nu_tensor[k][l] * curl_j(l);
+
+                    const Real div_i = div_phi_vec[dof_idx_i][qp];
+                    const Real div_j = div_phi_vec[dof_idx_j][qp];
+                    const Real gauge_term = nu_penalty * div_i * div_j;
+
                     Ke(dof_i, dof_j) += w * (curl_term + gauge_term);
                 }
         }
@@ -869,10 +874,25 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
     for (unsigned int qp = 0; qp < nq; ++qp)
         for (unsigned int k = 0; k < 3; ++k)
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; ++dof_j)
-                BAe_qp(qp + k * nq, dof_j) += curl_phi_vec[dof_j][qp](k);
+            {
+                const unsigned int dof_idx_j = 3 * (dof_j % n_dofs_var) + (dof_j / n_dofs_var);
+                BAe_qp(qp + k * nq, dof_j) += curl_phi_vec[dof_idx_j][qp](k);
+            }
 
     DenseVector<Number> Bq;
     BAe_qp.vector_mult(Bq, An);
+
+    libMesh::DenseMatrix<libMesh::Number> DAe_qp;
+    DAe_qp.resize(nq, n_dofs_A);
+    for (unsigned int qp = 0; qp < nq; ++qp)
+        for (unsigned int dof_j = 0; dof_j < n_dofs_A; ++dof_j)
+        {
+            const unsigned int dof_idx_j = 3 * (dof_j % n_dofs_var) + (dof_j / n_dofs_var);
+            DAe_qp(qp, dof_j) += div_phi_vec[dof_idx_j][qp];
+        }
+
+    DenseVector<Number> divA_qp;
+    DAe_qp.vector_mult(divA_qp, An);
 
     for (unsigned int qp = 0; qp < nq; ++qp)
     {
@@ -900,10 +920,13 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
             b_local[2] = static_cast<Real>(b_local_raw[2]);
         }
 
+        const Real nu_x = bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0]));
+        const Real nu_y = bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1]));
+        const Real nu_z = bh_z->second.evaluate_reluctivity_from_b(std::abs(b_local[2]));
         const Real h_local[3] = {
-            bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0])) * b_local[0],
-            bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1])) * b_local[1],
-            bh_z->second.evaluate_reluctivity_from_b(std::abs(b_local[2])) * b_local[2]};
+            nu_x * b_local[0],
+            nu_y * b_local[1],
+            nu_z * b_local[2]};
         Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
         if (has_cs)
         {
@@ -925,6 +948,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
         const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
         const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
         const Real d2 = bh_z->second.slope_h_vs_b(std::abs(b_local[2]));
+        const Real nu_penalty = std::cbrt(std::abs(nu_x * nu_y * nu_z));
 
         Real nu_diff[3][3] = {{d0, 0.0, 0.0},
                               {0.0, d1, 0.0},
@@ -945,22 +969,25 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
                     nu_diff[a][b] = nu_global_raw[a * 3 + b];
         }
 
-        const Real nu_penalty = std::cbrt(std::abs(d0 * d1 * d2));
+        const Real div_a_qp = static_cast<Real>(divA_qp(qp));
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; ++dof_i)
         {
+            const unsigned int dof_idx_i = 3 * (dof_i % n_dofs_var) + (dof_i / n_dofs_var);
             Real residual_term = 0.0;
             for (unsigned int a = 0; a < 3; ++a)
-                residual_term += curl_phi_vec[dof_i][qp](a) * h_global[a];
+                residual_term += curl_phi_vec[dof_idx_i][qp](a) * h_global[a];
+            residual_term += nu_penalty * div_phi_vec[dof_idx_i][qp] * div_a_qp;
             Re(dof_i) += JxW[qp] * residual_term;
 
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; ++dof_j)
             {
+                const unsigned int dof_idx_j = 3 * (dof_j % n_dofs_var) + (dof_j / n_dofs_var);
                 Real tangential_term = 0.0;
                 for (unsigned int a = 0; a < 3; ++a)
                     for (unsigned int b = 0; b < 3; ++b)
-                        tangential_term += curl_phi_vec[dof_i][qp](a) * nu_diff[a][b] * curl_phi_vec[dof_j][qp](b);
-                const Real gauge_term = nu_penalty * div_phi_vec[dof_i][qp] * div_phi_vec[dof_j][qp];
+                        tangential_term += curl_phi_vec[dof_idx_i][qp](a) * nu_diff[a][b] * curl_phi_vec[dof_idx_j][qp](b);
+                const Real gauge_term = nu_penalty * div_phi_vec[dof_idx_i][qp] * div_phi_vec[dof_idx_j][qp];
                 Ke(dof_i, dof_j) += JxW[qp] * (tangential_term + gauge_term);
             }
         }
