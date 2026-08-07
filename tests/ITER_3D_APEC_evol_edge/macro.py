@@ -55,7 +55,7 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 TreeGauge.tree_gauge(
     apec.mesh,
-    periodic_midside_coupling="CP_0",
+    periodic_point_coupling="CP_0",
 )
 
 # 1. Build source->destination element map using toroidal slices

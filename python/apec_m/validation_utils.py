@@ -417,7 +417,7 @@ def validate_apec_model(apec: Any) -> None:
         if mat_ids is not None:
             material_ids_in_grid = set(np.unique(mat_ids).astype(int).tolist())
 
-        for material_id_raw, component_map in bh_curves.items():
+        for material_id_raw, curve_values in bh_curves.items():
             if isinstance(material_id_raw, bool) or not isinstance(material_id_raw, (int, np.integer)):
                 errors.append(
                     "bh_curves: material key must be an integer material ID; "
@@ -435,79 +435,41 @@ def validate_apec_model(apec: Any) -> None:
                     f"bh_curves: material ID {material_id} is not present in mesh MATERIAL cell values."
                 )
 
-            if not isinstance(component_map, dict):
+            try:
+                curve = np.asarray(curve_values, dtype=float)
+            except Exception:
                 errors.append(
-                    f"bh_curves[{material_id}]: value must be a dict indexed by component 0/1/2."
+                    f"bh_curves[{material_id}]: could not be converted to a float NumPy array."
                 )
                 continue
 
-            missing_components = {0, 1, 2} - {int(k) for k in component_map.keys() if isinstance(k, (int, np.integer)) and not isinstance(k, bool)}
-            if missing_components:
+            if curve.ndim != 2 or curve.shape[0] != 2 or curve.shape[1] < 2:
                 errors.append(
-                    f"bh_curves[{material_id}]: missing component curves for {sorted(missing_components)}."
+                    f"bh_curves[{material_id}]: expected shape (2, N) with N >= 2, got {curve.shape}."
                 )
+                continue
 
-            for component_raw, curve_values in component_map.items():
-                if isinstance(component_raw, bool) or not isinstance(component_raw, (int, np.integer)):
-                    errors.append(
-                        f"bh_curves[{material_id}]: component key must be integer 0/1/2, got {component_raw!r}."
-                    )
-                    continue
+            h_values = curve[0, :]
+            b_values = curve[1, :]
 
-                component = int(component_raw)
-                if component not in (0, 1, 2):
-                    errors.append(
-                        f"bh_curves[{material_id}]: component key must be 0, 1, or 2, got {component}."
-                    )
-                    continue
+            if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
+                errors.append(f"bh_curves[{material_id}]: H and B values must be finite.")
+                continue
 
-                try:
-                    curve = np.asarray(curve_values, dtype=float)
-                except Exception:
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: could not be converted to a float NumPy array."
-                    )
-                    continue
+            if h_values[0] != 0.0:
+                errors.append(f"bh_curves[{material_id}]: H must start at 0.0, got {h_values[0]!r}.")
+            if b_values[0] != 0.0:
+                errors.append(f"bh_curves[{material_id}]: B must start at 0.0, got {b_values[0]!r}.")
 
-                if curve.ndim != 2 or curve.shape[0] != 2 or curve.shape[1] < 2:
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: expected shape (2, N) with N >= 2, got {curve.shape}."
-                    )
-                    continue
+            if np.any(h_values < 0.0) or np.any(b_values < 0.0):
+                errors.append(f"bh_curves[{material_id}]: H and B values must be non-negative.")
 
-                h_values = curve[0, :]
-                b_values = curve[1, :]
-
-                if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: H and B values must be finite."
-                    )
-                    continue
-
-                if h_values[0] != 0.0:
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: H must start at 0.0, got {h_values[0]!r}."
-                    )
-                if b_values[0] != 0.0:
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: B must start at 0.0, got {b_values[0]!r}."
-                    )
-
-                if np.any(h_values < 0.0) or np.any(b_values < 0.0):
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: H and B values must be non-negative."
-                    )
-
-                dh = np.diff(h_values)
-                db = np.diff(b_values)
-                if np.any(dh <= 0.0):
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: H values must be strictly monotonic increasing."
-                    )
-                if np.any(db <= 0.0):
-                    errors.append(
-                        f"bh_curves[{material_id}][{component}]: B values must be strictly monotonic increasing."
-                    )
+            dh = np.diff(h_values)
+            db = np.diff(b_values)
+            if np.any(dh <= 0.0):
+                errors.append(f"bh_curves[{material_id}]: H values must be strictly monotonic increasing.")
+            if np.any(db <= 0.0):
+                errors.append(f"bh_curves[{material_id}]: B values must be strictly monotonic increasing.")
 
     # ========================================================================
     # 1. element_types DataFrame

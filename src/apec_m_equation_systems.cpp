@@ -39,29 +39,20 @@ namespace
         for (const auto &material_item : materials_dict)
         {
             const unsigned int material_id = py::cast<unsigned int>(material_item.first);
+            const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(material_item.second);
 
-            BHCurveComponentsMap material_curves;
-            const py::dict component_dict = py::cast<py::dict>(material_item.second);
-            for (const auto &component_item : component_dict)
+            const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(1));
+            std::vector<double> h_values(n_values);
+            std::vector<double> b_values(n_values);
+
+            const auto unchecked = curve_array.unchecked<2>();
+            for (ssize_t i = 0; i < curve_array.shape(1); ++i)
             {
-                const unsigned int component = py::cast<unsigned int>(component_item.first);
-                const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(component_item.second);
-
-                const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(1));
-                std::vector<double> h_values(n_values);
-                std::vector<double> b_values(n_values);
-
-                const auto unchecked = curve_array.unchecked<2>();
-                for (ssize_t i = 0; i < curve_array.shape(1); ++i)
-                {
-                    h_values[static_cast<std::size_t>(i)] = unchecked(0, i);
-                    b_values[static_cast<std::size_t>(i)] = unchecked(1, i);
-                }
-
-                material_curves.emplace(component, BHCurve(std::move(h_values), std::move(b_values)));
+                h_values[static_cast<std::size_t>(i)] = unchecked(0, i);
+                b_values[static_cast<std::size_t>(i)] = unchecked(1, i);
             }
 
-            curves.emplace(material_id, std::move(material_curves));
+            curves.emplace(material_id, BHCurve(std::move(h_values), std::move(b_values)));
         }
 
         return curves;

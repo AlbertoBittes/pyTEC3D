@@ -855,23 +855,7 @@ void ElementBuilder::build_av3dedge_tangent_stiffness_residual()
     if (!this->nonlinear_element())
         return;
 
-    const auto material_bh = &bh_curves_->find(material_id)->second;
-    const auto bh_x = material_bh->find(0);
-    const auto bh_y = material_bh->find(1);
-    const auto bh_z = material_bh->find(2);
-    if (bh_x == material_bh->end() || bh_y == material_bh->end() || bh_z == material_bh->end())
-        apec::logging::error_and_abort("Missing BH curve component for AV3D edge tangent stiffness material");
-
-    libMesh::Real position[3] = {0.0, 0.0, 0.0};
-    bool has_cs = false;
-    if (elem_data.coordinate_system)
-    {
-        has_cs = true;
-        const Point center = elem_data.elem->vertex_average();
-        position[0] = static_cast<libMesh::Real>(center(0));
-        position[1] = static_cast<libMesh::Real>(center(1));
-        position[2] = static_cast<libMesh::Real>(center(2));
-    }
+    const auto &material_bh = bh_curves_->find(material_id)->second;
 
     // Nonlinear KAA block: build BAe(qp,k;dof) and compute Bq = BAe * Az (3*nq_edge entries).
     libMesh::DenseMatrix<libMesh::Number> BAe_qp;
@@ -886,81 +870,19 @@ void ElementBuilder::build_av3dedge_tangent_stiffness_residual()
 
     for (unsigned int qp = 0; qp < nq_edge; ++qp)
     {
-        const Real bx_global = static_cast<Real>(Bq(qp + 0 * nq_edge));
-        const Real by_global = static_cast<Real>(Bq(qp + 1 * nq_edge));
-        const Real bz_global = static_cast<Real>(Bq(qp + 2 * nq_edge));
-        Real b_local[3] = {
-            bx_global,
-            by_global,
-            bz_global};
-        if (has_cs)
-        {
-            const libMesh::Real b_global_raw[3] = {
-                static_cast<libMesh::Real>(bx_global),
-                static_cast<libMesh::Real>(by_global),
-                static_cast<libMesh::Real>(bz_global)};
-            libMesh::Real b_local_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_local_raw(
-                b_global_raw,
-                position,
-                1,
-                b_local_raw);
-            b_local[0] = static_cast<Real>(b_local_raw[0]);
-            b_local[1] = static_cast<Real>(b_local_raw[1]);
-            b_local[2] = static_cast<Real>(b_local_raw[2]);
-        }
-
-        // Nonlinear residual term g^A(A): C_i · H(B(A)).
-        const Real h_local[3] = {
-            bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0])) * b_local[0],
-            bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1])) * b_local[1],
-            bh_z->second.evaluate_reluctivity_from_b(std::abs(b_local[2])) * b_local[2]};
-        Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
-        if (has_cs)
-        {
-            const libMesh::Real h_local_raw[3] = {
-                static_cast<libMesh::Real>(h_local[0]),
-                static_cast<libMesh::Real>(h_local[1]),
-                static_cast<libMesh::Real>(h_local[2])};
-            libMesh::Real h_global_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_global_raw(
-                h_local_raw,
-                position,
-                1,
-                h_global_raw);
-            h_global[0] = static_cast<Real>(h_global_raw[0]);
-            h_global[1] = static_cast<Real>(h_global_raw[1]);
-            h_global[2] = static_cast<Real>(h_global_raw[2]);
-        }
-
-        const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
-        const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
-        const Real d2 = bh_z->second.slope_h_vs_b(std::abs(b_local[2]));
-
-        Real nu_diff[3][3] = {{d0, 0.0, 0.0},
-                              {0.0, d1, 0.0},
-                              {0.0, 0.0, d2}};
-        if (has_cs)
-        {
-            const libMesh::Real nu_local_raw[9] = {
-                d0, 0.0, 0.0,
-                0.0, d1, 0.0,
-                0.0, 0.0, d2};
-            libMesh::Real nu_global_raw[9] = {0.0};
-            elem_data.coordinate_system->rotate_tensor_to_global_raw(
-                nu_local_raw,
-                position,
-                nu_global_raw);
-            for (unsigned int a = 0; a < 3; ++a)
-                for (unsigned int b = 0; b < 3; ++b)
-                    nu_diff[a][b] = nu_global_raw[a * 3 + b];
-        }
+        Real B[3] = {
+            static_cast<Real>(Bq(qp + 0 * nq_edge)),
+            static_cast<Real>(Bq(qp + 1 * nq_edge)),
+            static_cast<Real>(Bq(qp + 2 * nq_edge))};
+        Real H[3];
+        Real jac[3][3];
+        this->evaluate_isotropic_bh(material_bh, B, 3, H, jac);
 
         for (unsigned int dof_i = 0; dof_i < n_dofs_A; ++dof_i)
         {
             Real residual_term = 0.0;
             for (unsigned int a = 0; a < 3; ++a)
-                residual_term += curl_phi_edge[dof_i][qp](a) * h_global[a];
+                residual_term += curl_phi_edge[dof_i][qp](a) * H[a];
             Re(dof_i) += JxW[qp] * residual_term;
 
             for (unsigned int dof_j = 0; dof_j < n_dofs_A; ++dof_j)
@@ -968,7 +890,7 @@ void ElementBuilder::build_av3dedge_tangent_stiffness_residual()
                 Real tangential_term = 0.0;
                 for (unsigned int a = 0; a < 3; ++a)
                     for (unsigned int b = 0; b < 3; ++b)
-                        tangential_term += curl_phi_edge[dof_i][qp](a) * nu_diff[a][b] * curl_phi_edge[dof_j][qp](b);
+                        tangential_term += curl_phi_edge[dof_i][qp](a) * jac[a][b] * curl_phi_edge[dof_j][qp](b);
                 Ke(dof_i, dof_j) += JxW[qp] * tangential_term;
             }
         }

@@ -38,7 +38,6 @@ private:
     static std::size_t segment_index(const std::vector<libMesh::Real> &x_values, libMesh::Real x);
 };
 
-using BHCurveComponentsMap = std::unordered_map<unsigned int, BHCurve>;
-using BHCurveMaterialsMap = std::unordered_map<unsigned int, BHCurveComponentsMap>;
+using BHCurveMaterialsMap = std::unordered_map<unsigned int, BHCurve>;
 
 #endif // BH_CURVE_H

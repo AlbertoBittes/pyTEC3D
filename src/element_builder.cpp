@@ -24,6 +24,7 @@
 #include "apec_m_logging.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace
@@ -117,37 +118,6 @@ void ElementBuilder::write_element_matrices()
     }
     else
         apec::logging::info("Reusing element matrices from previous time step");
-}
-
-void ElementBuilder::write_element_tangent_stiffness_residual()
-{
-    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
-    const auto &comm = mesh.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-    const std::vector<std::string> filenames = {
-        "tngt_mtrx_" + rank_str + ".emat",
-        "res_" + rank_str + ".emat"};
-
-    apec::logging::info("Computing element nonlinear matrices for current iteration");
-
-    auto streams = reader.open_output_streams(emat_folderpath, filenames);
-    auto &tngt_mtrx_output_file = *streams[0];
-    auto &res_output_file = *streams[1];
-
-    this->run_for_elements(mesh, [&](const libMesh::Elem *)
-                           {
-                               if (this->nonlinear_element())
-                               {
-                                   this->build_element_tangent_stiffness_residual();
-                                   BinaryReader::write_element_matrices(*this, tngt_mtrx_output_file, ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES);
-                                   BinaryReader::write_element_vectors(*this, res_output_file, ElementBuilder::VectorsSet::RESIDUAL_VECTORS);
-                               } });
-
-    reader.close_file_streams(streams);
 }
 
 void ElementBuilder::write_element_rhs()
@@ -314,6 +284,38 @@ void ElementBuilder::rotate_diag_tensor_for_elem(const Real diag[3],
     for (unsigned int i = 0; i < 3; ++i)
         for (unsigned int j = 0; j < 3; ++j)
             global_tensor[i][j] = global_raw[i * 3 + j];
+}
+
+void ElementBuilder::evaluate_isotropic_bh(const BHCurve &curve, const Real B[3], unsigned int dim,
+                                           Real H[3], Real jac[3][3], Real *nu_out) const
+{
+    Real b_mag_sq = 0.0;
+    for (unsigned int k = 0; k < dim; ++k)
+        b_mag_sq += B[k] * B[k];
+    const Real b_mag = std::sqrt(b_mag_sq);
+
+    const Real nu = curve.evaluate_reluctivity_from_b(b_mag);
+    const Real dhdb = curve.slope_h_vs_b(b_mag);
+    if (nu_out)
+        *nu_out = nu;
+
+    for (unsigned int k = 0; k < 3; ++k)
+    {
+        H[k] = 0.0;
+        for (unsigned int l = 0; l < 3; ++l)
+            jac[k][l] = 0.0;
+    }
+
+    // Isotropic differential reluctivity tensor: nu(B)*I + (dH/dB - nu(B)) * (B tensor B)/B^2.
+    constexpr Real kZeroB = 1e-14;
+    for (unsigned int k = 0; k < dim; ++k)
+    {
+        H[k] = nu * B[k];
+        jac[k][k] += nu;
+        if (b_mag > kZeroB)
+            for (unsigned int l = 0; l < dim; ++l)
+                jac[k][l] += (dhdb - nu) * B[k] * B[l] / b_mag_sq;
+    }
 }
 
 // ---------------------------------------------------------------------------

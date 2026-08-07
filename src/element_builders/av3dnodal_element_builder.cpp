@@ -841,12 +841,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
     if (!this->nonlinear_element())
         return;
 
-    const auto material_bh = &bh_curves_->find(material_id)->second;
-    const auto bh_x = material_bh->find(0);
-    const auto bh_y = material_bh->find(1);
-    const auto bh_z = material_bh->find(2);
-    if (bh_x == material_bh->end() || bh_y == material_bh->end() || bh_z == material_bh->end())
-        apec::logging::error_and_abort("Missing BH curve component for AV3D nodal tangent stiffness material");
+    const auto &material_bh = bh_curves_->find(material_id)->second;
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -857,17 +852,6 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
 
     auto &Ke = this->matrices[MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
     auto &Re = this->vectors[VectorsSet::RESIDUAL_VECTORS][0];
-
-    libMesh::Real position[3] = {0.0, 0.0, 0.0};
-    bool has_cs = false;
-    if (elem_data.coordinate_system)
-    {
-        has_cs = true;
-        const Point center = elem_data.elem->vertex_average();
-        position[0] = static_cast<libMesh::Real>(center(0));
-        position[1] = static_cast<libMesh::Real>(center(1));
-        position[2] = static_cast<libMesh::Real>(center(2));
-    }
 
     libMesh::DenseMatrix<libMesh::Number> BAe_qp;
     BAe_qp.resize(3 * nq, n_dofs_A);
@@ -896,78 +880,14 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
 
     for (unsigned int qp = 0; qp < nq; ++qp)
     {
-        const Real bx_global = static_cast<Real>(Bq(qp + 0 * nq));
-        const Real by_global = static_cast<Real>(Bq(qp + 1 * nq));
-        const Real bz_global = static_cast<Real>(Bq(qp + 2 * nq));
-        Real b_local[3] = {
-            bx_global,
-            by_global,
-            bz_global};
-        if (has_cs)
-        {
-            const libMesh::Real b_global_raw[3] = {
-                static_cast<libMesh::Real>(bx_global),
-                static_cast<libMesh::Real>(by_global),
-                static_cast<libMesh::Real>(bz_global)};
-            libMesh::Real b_local_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_local_raw(
-                b_global_raw,
-                position,
-                1,
-                b_local_raw);
-            b_local[0] = static_cast<Real>(b_local_raw[0]);
-            b_local[1] = static_cast<Real>(b_local_raw[1]);
-            b_local[2] = static_cast<Real>(b_local_raw[2]);
-        }
-
-        const Real nu_x = bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0]));
-        const Real nu_y = bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1]));
-        const Real nu_z = bh_z->second.evaluate_reluctivity_from_b(std::abs(b_local[2]));
-        const Real h_local[3] = {
-            nu_x * b_local[0],
-            nu_y * b_local[1],
-            nu_z * b_local[2]};
-        Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
-        if (has_cs)
-        {
-            const libMesh::Real h_local_raw[3] = {
-                static_cast<libMesh::Real>(h_local[0]),
-                static_cast<libMesh::Real>(h_local[1]),
-                static_cast<libMesh::Real>(h_local[2])};
-            libMesh::Real h_global_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_global_raw(
-                h_local_raw,
-                position,
-                1,
-                h_global_raw);
-            h_global[0] = static_cast<Real>(h_global_raw[0]);
-            h_global[1] = static_cast<Real>(h_global_raw[1]);
-            h_global[2] = static_cast<Real>(h_global_raw[2]);
-        }
-
-        const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
-        const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
-        const Real d2 = bh_z->second.slope_h_vs_b(std::abs(b_local[2]));
-        const Real nu_penalty = std::cbrt(std::abs(nu_x * nu_y * nu_z));
-
-        Real nu_diff[3][3] = {{d0, 0.0, 0.0},
-                              {0.0, d1, 0.0},
-                              {0.0, 0.0, d2}};
-        if (has_cs)
-        {
-            const libMesh::Real nu_local_raw[9] = {
-                d0, 0.0, 0.0,
-                0.0, d1, 0.0,
-                0.0, 0.0, d2};
-            libMesh::Real nu_global_raw[9] = {0.0};
-            elem_data.coordinate_system->rotate_tensor_to_global_raw(
-                nu_local_raw,
-                position,
-                nu_global_raw);
-            for (unsigned int a = 0; a < 3; ++a)
-                for (unsigned int b = 0; b < 3; ++b)
-                    nu_diff[a][b] = nu_global_raw[a * 3 + b];
-        }
+        Real B[3] = {
+            static_cast<Real>(Bq(qp + 0 * nq)),
+            static_cast<Real>(Bq(qp + 1 * nq)),
+            static_cast<Real>(Bq(qp + 2 * nq))};
+        Real H[3];
+        Real jac[3][3];
+        Real nu_penalty;
+        this->evaluate_isotropic_bh(material_bh, B, 3, H, jac, &nu_penalty);
 
         const Real div_a_qp = static_cast<Real>(divA_qp(qp));
 
@@ -976,7 +896,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
             const unsigned int dof_idx_i = 3 * (dof_i % n_dofs_var) + (dof_i / n_dofs_var);
             Real residual_term = 0.0;
             for (unsigned int a = 0; a < 3; ++a)
-                residual_term += curl_phi_vec[dof_idx_i][qp](a) * h_global[a];
+                residual_term += curl_phi_vec[dof_idx_i][qp](a) * H[a];
             residual_term += nu_penalty * div_phi_vec[dof_idx_i][qp] * div_a_qp;
             Re(dof_i) += JxW[qp] * residual_term;
 
@@ -986,7 +906,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
                 Real tangential_term = 0.0;
                 for (unsigned int a = 0; a < 3; ++a)
                     for (unsigned int b = 0; b < 3; ++b)
-                        tangential_term += curl_phi_vec[dof_idx_i][qp](a) * nu_diff[a][b] * curl_phi_vec[dof_idx_j][qp](b);
+                        tangential_term += curl_phi_vec[dof_idx_i][qp](a) * jac[a][b] * curl_phi_vec[dof_idx_j][qp](b);
                 const Real gauge_term = nu_penalty * div_phi_vec[dof_idx_i][qp] * div_phi_vec[dof_idx_j][qp];
                 Ke(dof_i, dof_j) += JxW[qp] * (tangential_term + gauge_term);
             }

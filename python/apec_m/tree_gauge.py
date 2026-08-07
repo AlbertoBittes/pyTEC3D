@@ -1,37 +1,71 @@
-# VTK Tree–Cotree Gauge via Midside Nodes (general 2nd‑order cells)
+# VTK Tree–Cotree Gauge via Midside Nodes (general 2nd-order cells)
 #
-# This module builds a tree–cotree decomposition on a vtkUnstructuredGrid that
-# contains second‑order elements (edges identified by their midside nodes).
+# Changes in this revision (relative to the previous fixed version):
 #
-# Key ideas:
-# - Every edge is uniquely identified by its midside node (point id).
-# - The tree is built with boundary-first BFS over non-conducting nodes.
-# - Start-surface nodes provide BFS seeds (one or more per disconnected region).
-# - Periodic slave/master midside couplings are collapsed to canonical edges.
-# - The result is written into two vtkIntArray attached to PointData
-#   (size = number of points), with 1 at midside nodes for tree/cotree.
+#   [CHG-1] Removed `match_periodic_points_by_geometry` — geometric matching
+#           of periodic node pairs is now handled by a separate module owned
+#           by the caller. This module only consumes the resulting mapping.
+#
+#   [CHG-2] `periodic_midside_coupling` and `periodic_corner_coupling` are
+#           replaced by a single `periodic_point_coupling` argument. The
+#           caller now supplies ONE dict / (N,2) ndarray / CP_* array name
+#           containing BOTH corner and midside slave->master pairs mixed
+#           together; this module splits them internally by point type
+#           (using the MidsideNodes mask) into the midside-edge map and the
+#           corner-node map it needs internally.
+#
+#   [CHG-3] `tree_gauge()` no longer zeros out `array_name` entries at
+#           periodic-slave points, even if they carry the tree bit. Those
+#           points are tied to their master (A_slave = ± A_master, applied
+#           elsewhere by the caller's periodic constraint code) rather than
+#           independently fixed to zero. Non-slave tree points are zeroed as
+#           before.
+#
+# Carried over from the previous revision:
+#
+#   [FIX-3] BFS root selection is true multi-source: ALL start-surface seeds
+#           belonging to a connected component act as simultaneous roots.
+#           This means you can freely pass point ids from several different
+#           physical surfaces (e.g. multiple PEC boundaries bounding one air
+#           region) in a single `start_surface_point_ids` set — each will
+#           anchor its own local branch of the tree rather than only the
+#           first-encountered one winning, which keeps tree paths short.
+#
+#   [FIX-4] Diagnostics: `info` reports connected-component count and
+#           validates the spanning-forest identity
+#           (#tree_edges == #nodes - #components); mismatches are logged as
+#           errors so a broken graph is never silent.
+#
+#   [FIX-5] Skipped (non-quadratic / unknown) cells emit a logged warning
+#           with the offending cell type ids instead of a silent count only.
+#
+# Known limitation (unchanged, documented on purpose): if the non-conducting
+# region is not simply connected (e.g. air threading a conductor loop), plain
+# tree-cotree is still correct and sufficient for an A / A-V formulation
+# driven by a prescribed (divergence-free) source current — the source term
+# supplies the circulations that a scalar-potential formulation would need
+# explicit cohomology "cuts" for. Cuts are NOT implemented here and are not
+# needed unless you introduce a magnetic scalar potential (T-Omega / reduced
+# scalar potential) somewhere in the formulation.
 #
 # Supported cell types:
-#   - VTK_QUADRATIC_EDGE (3)
-#   - VTK_QUADRATIC_TRIANGLE (6)
-#   - VTK_QUADRATIC_QUAD (8)
-#   - VTK_QUADRATIC_TETRA (10)
-#   - VTK_QUADRATIC_WEDGE (15)
-#   - VTK_QUADRATIC_PYRAMID (13)
-#   - VTK_QUADRATIC_HEXAHEDRON (20)
+#   - VTK_QUADRATIC_EDGE
+#   - VTK_QUADRATIC_TRIANGLE
+#   - VTK_QUADRATIC_QUAD
+#   - VTK_QUADRATIC_TETRA
+#   - VTK_QUADRATIC_WEDGE
+#   - VTK_QUADRATIC_PYRAMID
+#   - VTK_QUADRATIC_HEXAHEDRON
 #
 # Usage example:
 #   tree_arr, cotree_arr, info = build_tree_cotree_for_midside_edges(
 #       ugrid,
 #       non_conducting_point_ids={...},
-#       start_surface_point_ids={...},
-#       periodic_midside_coupling=periodic_map,
+#       start_surface_point_ids={...},          # can span multiple surfaces
+#       periodic_point_coupling=periodic_map,   # corner + midside ids mixed
 #   )
 #   ugrid.GetPointData().AddArray(tree_arr)
 #   ugrid.GetPointData().AddArray(cotree_arr)
-#
-# Notes:
-# - Among the remaining eligible edges, a boundary-first BFS builds the tree.
 #
 # (c) Provide as-is; tailor as needed for your mesh conventions.
 
@@ -103,26 +137,65 @@ EDGE_TABLES: Dict[int, Tuple[Sequence[Tuple[int, int]], Sequence[int]]] = {
 # ------------------------------
 class TreeGauge:
     @staticmethod
-    def _normalize_periodic_midside_mapping(
-        periodic_midside_coupling: Optional[object],
-        ugrid: Optional["vtk.vtkUnstructuredGrid"] = None,
-        midside_mask: Optional[np.ndarray] = None,
-    ) -> Dict[int, int]:
-        """Normalize periodic midside coupling as slave->master map."""
-        if periodic_midside_coupling is None:
-            return {}
+    def _canonical_id(point_id: int, slave_to_master: Dict[int, int]) -> int:
+        """Follow slave->master links until a canonical point id is reached.
+        Shared helper for both midside and corner canonicalization."""
+        seen: Set[int] = set()
+        cur = int(point_id)
+        while cur in slave_to_master:
+            if cur in seen:
+                raise ValueError(
+                    f"Cycle detected in periodic point coupling at point id {cur}."
+                )
+            seen.add(cur)
+            nxt = int(slave_to_master[cur])
+            if nxt == cur:
+                break
+            cur = nxt
+        return cur
 
-        if isinstance(periodic_midside_coupling, str):
-            cp_array_name = periodic_midside_coupling
+    # [CHG-2] Unified periodic coupling normalization: accepts corner and
+    # midside slave->master pairs mixed together in a single input, and
+    # splits them into two separate maps by point type.
+    @staticmethod
+    def _normalize_periodic_point_coupling(
+        periodic_point_coupling: Optional[object],
+        ugrid: "vtk.vtkUnstructuredGrid",
+        midside_mask: np.ndarray,
+    ) -> Tuple[Dict[int, int], Dict[int, int]]:
+        """
+        Normalize a unified periodic point coupling input into two separate
+        slave->master maps, one for midside (edge) ids and one for corner
+        (node) ids.
+
+        Accepted formats for `periodic_point_coupling`:
+          - None: both maps are empty.
+          - str starting with "CP_": a PointData array name. Points sharing
+            the same nonzero CP value are grouped, with the lowest point id
+            in each group chosen as master. Corner and midside points are
+            grouped independently (a group never mixes the two types, since
+            grouping is performed separately per node type using each
+            point's own CP value from the same array).
+          - Mapping[int, int] or ndarray of shape (N, 2): explicit
+            slave->master pairs with corner and midside ids mixed together.
+            Each pair is routed to the corner or midside map according to
+            the type of its endpoints. A pair whose slave and master are of
+            different types (one corner, one midside) is dropped with a
+            logged warning, since that indicates a mis-specified mapping.
+
+        Returns:
+            Tuple[Dict[int, int], Dict[int, int]]:
+                (midside_slave_to_master, corner_slave_to_master)
+        """
+        if periodic_point_coupling is None:
+            return {}, {}
+
+        if isinstance(periodic_point_coupling, str):
+            cp_array_name = periodic_point_coupling
             if not cp_array_name.startswith("CP_"):
                 raise ValueError(
-                    "periodic_midside_coupling string must be a CP_* PointData array name."
+                    "periodic_point_coupling string must be a CP_* PointData array name."
                 )
-            if ugrid is None or midside_mask is None:
-                raise ValueError(
-                    "ugrid and midside_mask are required when periodic_midside_coupling is a string."
-                )
-
             cp_arr = ugrid.GetPointData().GetArray(cp_array_name)
             if cp_arr is None:
                 raise ValueError(
@@ -134,98 +207,10 @@ class TreeGauge:
                     f"'{cp_array_name}' length must equal number of points in the mesh."
                 )
 
-            midside_ids = np.where(midside_mask == 1)[0].astype(int)
-            groups: Dict[object, list[int]] = {}
-            for mid in midside_ids:
-                value = cp_np[mid]
-                if isinstance(value, (float, np.floating)) and np.isnan(value):
-                    continue
-                key = value.item() if isinstance(value, np.generic) else value
-                if key == 0:
-                    continue
-                groups.setdefault(key, []).append(mid)
-
-            mapping: Dict[int, int] = {}
-            for mids in groups.values():
-                if len(mids) < 2:
-                    continue
-                master = int(min(mids))
-                for slave in mids:
-                    slave_i = int(slave)
-                    if slave_i != master:
-                        mapping[slave_i] = master
-            return mapping
-
-        mapping: Dict[int, int] = {}
-        if isinstance(periodic_midside_coupling, Mapping):
-            for slave, master in periodic_midside_coupling.items():
-                mapping[int(slave)] = int(master)
-            return mapping
-
-        if isinstance(periodic_midside_coupling, np.ndarray):
-            if periodic_midside_coupling.ndim != 2 or periodic_midside_coupling.shape[1] != 2:
-                raise ValueError(
-                    "periodic_midside_coupling ndarray must have shape (N, 2)"
-                )
-            for row in periodic_midside_coupling:
-                mapping[int(row[0])] = int(row[1])
-            return mapping
-
-        raise TypeError(
-            "periodic_midside_coupling must be dict-like, a (N, 2) numpy array, a CP_* array name string, or None"
-        )
-
-    @staticmethod
-    def _canonical_midside_id(mid: int, slave_to_master: Dict[int, int]) -> int:
-        """Follow slave->master links until a canonical midside id is reached."""
-        seen: Set[int] = set()
-        cur = int(mid)
-        while cur in slave_to_master:
-            if cur in seen:
-                raise ValueError(
-                    f"Cycle detected in periodic_midside_coupling at midside id {cur}."
-                )
-            seen.add(cur)
-            nxt = int(slave_to_master[cur])
-            if nxt == cur:
-                break
-            cur = nxt
-        return cur
-
-    @staticmethod
-    def _canonical_corner_id(corner: int, slave_to_master: Dict[int, int]) -> int:
-        """Follow slave->master links until a canonical corner id is reached."""
-        seen: Set[int] = set()
-        cur = int(corner)
-        while cur in slave_to_master:
-            if cur in seen:
-                raise ValueError(
-                    f"Cycle detected in periodic corner mapping at point id {cur}."
-                )
-            seen.add(cur)
-            nxt = int(slave_to_master[cur])
-            if nxt == cur:
-                break
-            cur = nxt
-        return cur
-
-    @staticmethod
-    def _normalize_periodic_corner_mapping(
-        periodic_midside_coupling: Optional[object],
-        ugrid: "vtk.vtkUnstructuredGrid",
-        midside_mask: np.ndarray,
-        raw_edge_map: Dict[int, Tuple[int, int]],
-        canonical_to_raw_mids: Dict[int, Set[int]],
-    ) -> Dict[int, int]:
-        """Build corner-node slave->master periodic map for topology canonicalization."""
-        # Preferred path: use CP_* values on corner nodes directly.
-        if isinstance(periodic_midside_coupling, str):
-            cp_arr = ugrid.GetPointData().GetArray(periodic_midside_coupling)
-            if cp_arr is not None:
-                cp_np = vtknp.vtk_to_numpy(cp_arr)
-                corner_ids = np.where(midside_mask == 0)[0].astype(int)
+            def build_groups(mask_value: int) -> Dict[int, int]:
+                ids = np.where(midside_mask == mask_value)[0].astype(int)
                 groups: Dict[object, list[int]] = {}
-                for pid in corner_ids:
+                for pid in ids:
                     value = cp_np[pid]
                     if isinstance(value, (float, np.floating)) and np.isnan(value):
                         continue
@@ -233,88 +218,94 @@ class TreeGauge:
                     if key == 0:
                         continue
                     groups.setdefault(key, []).append(int(pid))
-
                 mapping: Dict[int, int] = {}
-                for corners in groups.values():
-                    if len(corners) < 2:
+                for members in groups.values():
+                    if len(members) < 2:
                         continue
-                    master = int(min(corners))
-                    for slave in corners:
+                    master = int(min(members))
+                    for slave in members:
                         if slave != master:
                             mapping[int(slave)] = master
                 return mapping
 
-        # Fallback: infer corner correspondences from periodic-collapsed midside edge groups.
-        mapping: Dict[int, int] = {}
-        for raw_mids in canonical_to_raw_mids.values():
-            mids = sorted(int(m) for m in raw_mids if int(m) in raw_edge_map)
-            if len(mids) < 2:
+            midside_map = build_groups(1)
+            corner_map = build_groups(0)
+            return midside_map, corner_map
+
+        # dict / ndarray path: pairs may mix corner and midside ids together.
+        raw_pairs: list[Tuple[int, int]] = []
+        if isinstance(periodic_point_coupling, Mapping):
+            raw_pairs = [(int(s), int(m)) for s, m in periodic_point_coupling.items()]
+        elif isinstance(periodic_point_coupling, np.ndarray):
+            if periodic_point_coupling.ndim != 2 or periodic_point_coupling.shape[1] != 2:
+                raise ValueError("periodic_point_coupling ndarray must have shape (N, 2)")
+            raw_pairs = [(int(r[0]), int(r[1])) for r in periodic_point_coupling]
+        else:
+            raise TypeError(
+                "periodic_point_coupling must be dict-like, a (N, 2) numpy array, "
+                "a CP_* array name string, or None"
+            )
+
+        midside_map = {}
+        corner_map = {}
+        for slave, master in raw_pairs:
+            slave_is_mid = bool(midside_mask[slave])
+            master_is_mid = bool(midside_mask[master])
+            if slave_is_mid != master_is_mid:
+                LOGGER.warning(
+                    "periodic_point_coupling pair (%d -> %d) mixes a corner id "
+                    "with a midside id; skipping this pair.", slave, master,
+                )
                 continue
-
-            rep_raw = mids[0]
-            rep_a, rep_b = raw_edge_map[rep_raw]
-            for raw_mid in mids[1:]:
-                a, b = raw_edge_map[raw_mid]
-
-                options = [
-                    ((a, rep_a), (b, rep_b)),
-                    ((a, rep_b), (b, rep_a)),
-                ]
-
-                def conflict_count(option: Tuple[Tuple[int, int], Tuple[int, int]]) -> int:
-                    conflicts = 0
-                    for slave, master in option:
-                        if slave == master:
-                            continue
-                        if slave in mapping and mapping[slave] != master:
-                            conflicts += 1
-                    return conflicts
-
-                option0_conflicts = conflict_count(options[0])
-                option1_conflicts = conflict_count(options[1])
-                chosen = options[0] if option0_conflicts <= option1_conflicts else options[1]
-
-                for slave, master in chosen:
-                    if slave == master:
-                        continue
-                    if slave in mapping and mapping[slave] != master:
-                        continue
-                    mapping[slave] = master
-
-        return mapping
+            if slave_is_mid:
+                midside_map[slave] = master
+            else:
+                corner_map[slave] = master
+        return midside_map, corner_map
 
     @staticmethod
     def build_tree_cotree_for_midside_edges(
         ugrid: "vtk.vtkUnstructuredGrid",
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
-        periodic_midside_coupling: Optional[object] = None,
+        periodic_point_coupling: Optional[object] = None,  # [CHG-2]
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
+        periodic_slave_name: str = "PERIODIC_SLAVE",
     ) -> Tuple["vtk.vtkIntArray", "vtk.vtkIntArray", Dict[str, int]]:
         """
-        Build a tree–cotree decomposition for second‑order cells, identifying edges by
+        Build a tree-cotree decomposition for second-order cells, identifying edges by
         their midside node ids. Results are vtkIntArray on PointData (1 at midside nodes).
 
         Args:
-            ugrid: Mesh with second‑order elements (quadratic). Edges are implicit.
+            ugrid: Mesh with second-order elements (quadratic). Edges are implicit.
             non_conducting_point_ids: Point ids for non-conducting regions where gauge tree constraints are built.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
             start_surface_point_ids: Point ids used as BFS roots (boundary-first traversal).
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
-                Multiple disconnected regions are supported by providing roots in each region.
-                If omitted, defaults to currently selected nodes.
-            periodic_midside_coupling: Periodic edge coupling as either a dict-like slave->master map
-                or an ndarray with shape (N, 2), where each row is [slave_id, master_id],
-                or a CP_* PointData array name. For CP_* arrays, midside edges sharing the
-                same CP value are coupled automatically. Non-midside pairs are ignored.
+                You can freely combine point ids from several distinct physical
+                surfaces here (e.g. two different PEC boundaries bounding the
+                same air region) — every seed that lands in a given connected
+                component acts as a simultaneous root for that component, so
+                using multiple surfaces only shortens the resulting tree, it
+                never conflicts. If omitted, defaults to currently selected nodes.
+            periodic_point_coupling: [CHG-2] Unified periodic coupling input
+                containing BOTH corner and midside slave->master pairs mixed
+                together. Accepts a dict-like mapping, an (N, 2) ndarray, or a
+                CP_* PointData array name (grouped by matching CP value,
+                corner and midside groups kept separate automatically).
             tree_name: Name for the tree output array (PointData).
             cotree_name: Name for the cotree output array (PointData).
+            periodic_slave_name: Name for a PointData array marking
+                periodic-slave midside nodes (1 = slave), so downstream
+                constraint code can distinguish "tied to master" from
+                "tree-fixed-to-zero" even though both may carry the tree bit.
 
         Returns:
             Tuple[vtkIntArray, vtkIntArray, Dict[str, int]]: (tree_arr, cotree_arr, info) where info contains
-            diagnostic counts like num_edges, num_tree, num_cotree, skipped_unknown_cells.
+            diagnostic counts like num_edges, num_tree, num_cotree, skipped_unknown_cells,
+            num_components, and a tree_identity_ok flag.
         """
         ensure_vtk_unstructured_grid(ugrid, arg_name="ugrid")
         npts = ugrid.GetNumberOfPoints()
@@ -329,13 +320,11 @@ class TreeGauge:
             start_surface_input = set(int(pid) for pid in start_surface_point_ids)
 
         if non_conducting_point_ids is None:
-            # Build default non-conducting set from selected elements.
             Selector.nsle(ugrid, mode="s")
             point_sel_current = vtknp.vtk_to_numpy(point_sel_array)
             non_conducting_input: Set[int] = set(
                 np.where(point_sel_current == 1)[0].astype(int).tolist()
             )
-            # Preserve caller selection state.
             point_sel_current[:] = point_sel_original
             point_sel_array.Modified()
         else:
@@ -344,37 +333,33 @@ class TreeGauge:
         midside_arr = ugrid.GetPointData().GetArray("MidsideNodes")
         midside_mask = vtknp.vtk_to_numpy(midside_arr)
 
-        # BFS graph nodes are corner nodes (edge endpoints). Drop midside ids from user sets.
         raw_non_conducting = set(i for i in non_conducting_input if midside_mask[i] == 0)
         raw_start_surface = set(i for i in start_surface_input if midside_mask[i] == 0)
 
-        periodic_raw = TreeGauge._normalize_periodic_midside_mapping(
-            periodic_midside_coupling,
-            ugrid=ugrid,
-            midside_mask=midside_mask,
+        # [CHG-2] Single normalization call splits corner/midside pairs.
+        periodic_midside_raw, corner_slave_to_master = TreeGauge._normalize_periodic_point_coupling(
+            periodic_point_coupling, ugrid, midside_mask
         )
         slave_to_master: Dict[int, int] = {}
-        for slave, master in periodic_raw.items():
+        for slave, master in periodic_midside_raw.items():
             if midside_mask[slave] != 1 or midside_mask[master] != 1:
                 continue
             slave_to_master[slave] = master
 
-        # Use 0 for non-midside nodes, 1 for tree/cotree
         tree_np = np.zeros(npts, dtype=np.int32)
         cotree_np = np.zeros(npts, dtype=np.int32)
+        periodic_slave_np = np.zeros(npts, dtype=np.int32)
 
-        # Collect unique edges using canonical midside id as key.
-        # The same canonical edge may have multiple raw midside ids due to periodic coupling.
         edge_map: Dict[int, Tuple[int, int]] = {}
         raw_edge_map: Dict[int, Tuple[int, int]] = {}
         canonical_to_raw_mids: Dict[int, Set[int]] = {}
-        unknown_cells = 0
+        unknown_cell_types: Dict[int, int] = {}
 
         for ci in range(ugrid.GetNumberOfCells()):
             cell = ugrid.GetCell(ci)
             ctype = cell.GetCellType()
             if ctype not in EDGE_TABLES:
-                unknown_cells += 1
+                unknown_cell_types[ctype] = unknown_cell_types.get(ctype, 0) + 1
                 continue
             corner_pairs, mid_locals = EDGE_TABLES[ctype]
             ids = cell.GetPointIds()
@@ -384,47 +369,40 @@ class TreeGauge:
                 raw_mid = ids.GetId(mid_local)
                 if raw_mid not in raw_edge_map:
                     raw_edge_map[raw_mid] = (v0, v1)
-                mid = TreeGauge._canonical_midside_id(raw_mid, slave_to_master)
+                mid = TreeGauge._canonical_id(raw_mid, slave_to_master)
 
-                if mid not in canonical_to_raw_mids:
-                    canonical_to_raw_mids[mid] = set()
-                canonical_to_raw_mids[mid].add(raw_mid)
+                canonical_to_raw_mids.setdefault(mid, set()).add(raw_mid)
 
                 if mid not in edge_map:
                     edge_map[mid] = (v0, v1)
-                else:
-                    # For periodic-coupled midsides, corner ids can differ across
-                    # opposite surfaces. Keep the first representative endpoints.
-                    pass
 
-        corner_slave_to_master = TreeGauge._normalize_periodic_corner_mapping(
-            periodic_midside_coupling,
-            ugrid,
-            midside_mask,
-            raw_edge_map,
-            canonical_to_raw_mids,
-        )
+        if unknown_cell_types:
+            total_skipped = sum(unknown_cell_types.values())
+            LOGGER.warning(
+                "Skipped %d cell(s) with unsupported (non-quadratic) cell types "
+                "while building the tree-cotree graph: %s. Edges belonging to "
+                "these cells are NOT included in the gauge graph — verify this "
+                "is intended (e.g. mixed-order mesh, boundary tag elements).",
+                total_skipped, unknown_cell_types,
+            )
 
-        # Canonicalize corner-node ids before topology/BFS construction.
         non_conducting = {
-            TreeGauge._canonical_corner_id(pid, corner_slave_to_master)
+            TreeGauge._canonical_id(pid, corner_slave_to_master)
             for pid in raw_non_conducting
         }
         start_surface = {
-            TreeGauge._canonical_corner_id(pid, corner_slave_to_master)
+            TreeGauge._canonical_id(pid, corner_slave_to_master)
             for pid in raw_start_surface
         }
         for mid, (a, b) in list(edge_map.items()):
             edge_map[mid] = (
-                TreeGauge._canonical_corner_id(a, corner_slave_to_master),
-                TreeGauge._canonical_corner_id(b, corner_slave_to_master),
+                TreeGauge._canonical_id(a, corner_slave_to_master),
+                TreeGauge._canonical_id(b, corner_slave_to_master),
             )
 
-        # Eligible edges are those where constraints can be computed.
         eligible_edges: Dict[int, Tuple[int, int]] = {}
         for mid, (a, b) in edge_map.items():
             if (a not in non_conducting) or (b not in non_conducting):
-                # In conducting regions no tree-gauge constraints are needed.
                 for raw_mid in canonical_to_raw_mids[mid]:
                     cotree_np[raw_mid] = 1
                 continue
@@ -436,42 +414,28 @@ class TreeGauge:
             if (a in raw_non_conducting) and (b in raw_non_conducting)
         )
 
-        # Build adjacency for boundary-first BFS.
         adjacency: Dict[int, list[Tuple[int, int]]] = {}
         for mid, (a, b) in eligible_edges.items():
             adjacency.setdefault(a, []).append((b, mid))
             adjacency.setdefault(b, []).append((a, mid))
 
-        # Z2 seam marker: canonical edges created by collapsing multiple periodic raw midsides.
-        periodic_edge_parity: Dict[int, int] = {
-            mid: 1 if len(canonical_to_raw_mids.get(mid, set())) > 1 else 0
-            for mid in eligible_edges
-        }
-
         edge_state: Dict[int, int] = {}  # 1=tree, 2=cotree
         visited: Set[int] = set()
         queue: deque[int] = deque()
-        parent: Dict[int, int] = {}
-        parent_edge: Dict[int, int] = {}
-        parity_to_root: Dict[int, int] = {}
-        node_component: Dict[int, int] = {}
-        component_id = 0
 
-        def run_bfs_from_seed(seed: int) -> None:
-            nonlocal component_id
-            if seed in visited:
+        # True multi-source BFS: all seeds belonging to the same connected
+        # component act as simultaneous roots. Pass point ids from as many
+        # distinct physical surfaces as you like in start_surface_point_ids;
+        # each becomes its own local root within its component, so the tree
+        # stays shallow instead of only the first-encountered seed winning.
+        def run_multi_source_bfs(seeds: Iterable[int]) -> None:
+            local_seeds = [s for s in seeds if s not in visited]
+            if not local_seeds:
                 return
-            if seed not in adjacency:
-                visited.add(seed)
-                parity_to_root[seed] = 0
-                node_component[seed] = component_id
-                component_id += 1
-                return
-
-            visited.add(seed)
-            parity_to_root[seed] = 0
-            node_component[seed] = component_id
-            queue.append(seed)
+            for s in local_seeds:
+                visited.add(s)
+                if s in adjacency:
+                    queue.append(s)
             while queue:
                 node = queue.popleft()
                 for nbr, mid in adjacency.get(node, []):
@@ -480,76 +444,84 @@ class TreeGauge:
                     if nbr not in visited:
                         edge_state[mid] = 1
                         visited.add(nbr)
-                        parent[nbr] = node
-                        parent_edge[nbr] = mid
-                        parity_to_root[nbr] = parity_to_root[node] ^ periodic_edge_parity.get(mid, 0)
-                        node_component[nbr] = component_id
                         queue.append(nbr)
                     else:
                         edge_state[mid] = 2
-            component_id += 1
 
-        # Primary boundary-first traversal from user-provided start surfaces.
-        for seed in sorted(start_surface):
-            if seed in non_conducting:
-                run_bfs_from_seed(seed)
+        # Primary pass: all boundary/reference seeds fire together.
+        run_multi_source_bfs(s for s in sorted(start_surface) if s in non_conducting)
 
+        # Any remaining components (no start-surface seed reached them) get
+        # an arbitrary single root each.
         for node in sorted(adjacency.keys()):
             if node not in visited:
-                run_bfs_from_seed(node)
+                run_multi_source_bfs([node])
 
-        # Any remaining eligible edge not classified by BFS is conservatively cotree.
         for mid in eligible_edges:
             if mid not in edge_state:
-                edge_state[mid] = 2
+                edge_state[mid] = 2  # safety net; should not trigger
 
-        # For a single periodic generator, kill the remaining global mode by anchoring
-        # one cotree edge whose fundamental cycle has odd periodic-crossing parity.
-        odd_periodic_cotree: list[int] = []
-        odd_by_component: Dict[int, list[int]] = {}
-        for mid, state in edge_state.items():
-            if state != 2:
-                continue
-            a, b = eligible_edges[mid]
-            parity = parity_to_root.get(a, 0) ^ parity_to_root.get(b, 0) ^ periodic_edge_parity.get(mid, 0)
-            if parity == 1:
-                odd_periodic_cotree.append(mid)
-                comp = node_component.get(a, -1)
-                odd_by_component.setdefault(comp, []).append(mid)
-
-        anchored_global_mode_mids: list[int] = []
-        for mids in odd_by_component.values():
-            if not mids:
-                continue
-            anchored_mid = min(mids)
-            edge_state[anchored_mid] = 1
-            anchored_global_mode_mids.append(anchored_mid)
-
-        anchored_global_mode_mid: Optional[int] = (
-            min(anchored_global_mode_mids) if anchored_global_mode_mids else None
-        )
-
-        # Push canonical decisions back to the raw midside ids.
+        # Propagate classification to periodic-slave raw mids too, so they
+        # carry the same tree/cotree state as their master. Downstream
+        # constraint code must check PERIODIC_SLAVE before deciding whether
+        # to zero a tree point or tie it to its master instead (see
+        # tree_gauge() below for the reference implementation of that check).
         for mid, state in edge_state.items():
             for raw_mid in canonical_to_raw_mids[mid]:
-                # Stop the tree constraint from hitting the dependent DoF
-                if raw_mid in slave_to_master:
-                    continue
-
                 if state == 1:
                     tree_np[raw_mid] = 1
                 else:
                     cotree_np[raw_mid] = 1
+                if raw_mid in slave_to_master:
+                    periodic_slave_np[raw_mid] = 1
 
-        # Keep sets disjoint.
         tree_np[cotree_np == 1] = 0
 
         tree_arr = vtknp.numpy_to_vtk(tree_np, deep=1, array_type=vtk.VTK_INT)
         tree_arr.SetName(tree_name)
         cotree_arr = vtknp.numpy_to_vtk(cotree_np, deep=1, array_type=vtk.VTK_INT)
         cotree_arr.SetName(cotree_name)
+        periodic_slave_arr = vtknp.numpy_to_vtk(
+            periodic_slave_np, deep=1, array_type=vtk.VTK_INT
+        )
+        periodic_slave_arr.SetName(periodic_slave_name)
+        ugrid.GetPointData().RemoveArray(periodic_slave_name)
+        ugrid.GetPointData().AddArray(periodic_slave_arr)
 
         num_edges_after_periodic_collapse = len(eligible_edges)
+
+        # Spanning-forest identity check: for each connected component,
+        # #tree_edges_in_component == #nodes_in_component - 1. Count
+        # connected components directly (cheap, same complexity as the BFS
+        # already performed).
+        num_components = 0
+        visited_for_count: Set[int] = set()
+        for node in adjacency.keys():
+            if node in visited_for_count:
+                continue
+            num_components += 1
+            stack = [node]
+            visited_for_count.add(node)
+            while stack:
+                cur = stack.pop()
+                for nbr, _mid in adjacency.get(cur, []):
+                    if nbr not in visited_for_count:
+                        visited_for_count.add(nbr)
+                        stack.append(nbr)
+
+        num_tree_canonical = sum(1 for s in edge_state.values() if s == 1)
+        num_nodes_in_graph = len(adjacency)
+        expected_tree = num_nodes_in_graph - num_components if num_nodes_in_graph else 0
+        tree_identity_ok = (num_tree_canonical == expected_tree)
+        if not tree_identity_ok:
+            LOGGER.error(
+                "Tree-cotree identity check FAILED: got %d tree edges, expected "
+                "%d (= %d nodes - %d components). This indicates a bug in the "
+                "gauge graph construction (e.g. wrong non-conducting/PEC "
+                "classification or a periodic-mapping error) — do not trust "
+                "this gauge until resolved.",
+                num_tree_canonical, expected_tree, num_nodes_in_graph, num_components,
+            )
 
         info = {
             "num_points": npts,
@@ -558,13 +530,13 @@ class TreeGauge:
             "num_edges_after_periodic_collapse": num_edges_after_periodic_collapse,
             "num_tree": int(np.sum(tree_np)),
             "num_cotree": int(np.sum(cotree_np)),
-            "skipped_unknown_cells": unknown_cells,
+            "num_periodic_slave_marked": int(np.sum(periodic_slave_np)),
+            "skipped_unknown_cells": sum(unknown_cell_types.values()),
             "num_periodic_couplings": len(slave_to_master),
-            "num_odd_periodic_fundamental_cycles": len(odd_periodic_cotree),
-            "num_odd_periodic_components": len(odd_by_component),
-            "num_global_mode_anchors": len(anchored_global_mode_mids),
-            "anchored_global_mode_mids": anchored_global_mode_mids,
-            "anchored_global_mode_mid": -1 if anchored_global_mode_mid is None else int(anchored_global_mode_mid),
+            "num_components": num_components,
+            "num_tree_canonical": num_tree_canonical,
+            "expected_tree_canonical": expected_tree,
+            "tree_identity_ok": tree_identity_ok,
         }
         return tree_arr, cotree_arr, info
 
@@ -573,38 +545,23 @@ class TreeGauge:
         ugrid: "vtk.vtkUnstructuredGrid",
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
-        periodic_midside_coupling: Optional[object] = None,
+        periodic_point_coupling: Optional[object] = None,  # [CHG-2]
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
+        periodic_slave_name: str = "PERIODIC_SLAVE",
     ) -> Dict[str, int]:
         """
         Convenience wrapper that builds tree/cotree arrays and attaches them to the grid.
-
-        Args:
-            ugrid: Mesh to annotate.
-            non_conducting_point_ids: Point ids where tree constraints are computed.
-                Mixed corner+midside inputs are accepted; midside ids are ignored.
-                If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: Point ids used as BFS roots.
-                Mixed corner+midside inputs are accepted; midside ids are ignored.
-                If omitted, defaults to currently selected nodes.
-            periodic_midside_coupling: Periodic midside edge coupling (slave->master),
-                or CP_* PointData array name.
-            tree_name: Name for the tree output array.
-            cotree_name: Name for the cotree output array.
-
-        Returns:
-            Dict[str, int]: Diagnostic info from `build_tree_cotree_for_midside_edges`.
         """
         tree_arr, cotree_arr, info = TreeGauge.build_tree_cotree_for_midside_edges(
             ugrid,
             non_conducting_point_ids=non_conducting_point_ids,
             start_surface_point_ids=start_surface_point_ids,
-            periodic_midside_coupling=periodic_midside_coupling,
+            periodic_point_coupling=periodic_point_coupling,
             tree_name=tree_name,
             cotree_name=cotree_name,
+            periodic_slave_name=periodic_slave_name,
         )
-        # Replace existing arrays with the same names to avoid stale duplicates.
         ugrid.GetPointData().RemoveArray(tree_name)
         ugrid.GetPointData().RemoveArray(cotree_name)
         ugrid.GetPointData().AddArray(tree_arr)
@@ -616,13 +573,22 @@ class TreeGauge:
         ugrid: "vtk.vtkUnstructuredGrid",
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
-        periodic_midside_coupling: Optional[object] = None,
+        periodic_point_coupling: Optional[object] = None,  # [CHG-2]
         array_name: str = "_Az",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
+        periodic_slave_name: str = "PERIODIC_SLAVE",
     ) -> Dict[str, int]:
         """
-        Build tree/cotree masks and zero out the tree-marked entries in a PointData array.
+        Build tree/cotree masks and zero out the tree-marked entries in a
+        PointData array — EXCEPT at periodic-slave points. [CHG-3]
+
+        Periodic-slave points are tied to their master (A_slave = ± A_master)
+        by the caller's own periodic constraint code, so this method leaves
+        their `array_name` value untouched even if they carry the tree bit;
+        zeroing them here would be redundant at best and wrong at worst if
+        the periodic sign/offset is nonzero. Non-slave tree points are
+        zeroed as before.
 
         Args:
             ugrid: Target mesh to analyze and annotate.
@@ -632,11 +598,14 @@ class TreeGauge:
             non_conducting_point_ids: Point ids where tree constraints are computed.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: BFS root point ids.
+            start_surface_point_ids: BFS root point ids; may span multiple surfaces.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to currently selected nodes.
-            periodic_midside_coupling: Periodic midside edge coupling (slave->master)
-                as dict-like, ndarray (N,2), or CP_* PointData array name.
+            periodic_point_coupling: Unified periodic coupling (corner and
+                midside pairs mixed) as dict-like, ndarray (N,2), or CP_*
+                PointData array name.
+            periodic_slave_name: Name of the PointData array marking
+                periodic-slave midside nodes.
 
         Returns:
             Dict[str, int]: Diagnostic info from the tree/cotree build.
@@ -667,16 +636,29 @@ class TreeGauge:
             ugrid,
             non_conducting_point_ids=non_conducting_points,
             start_surface_point_ids=start_surface_points,
-            periodic_midside_coupling=periodic_midside_coupling,
+            periodic_point_coupling=periodic_point_coupling,
             tree_name=tree_name,
             cotree_name=cotree_name,
+            periodic_slave_name=periodic_slave_name,
         )
+        if not info.get("tree_identity_ok", True):
+            LOGGER.error(
+                "tree_gauge(): tree-cotree identity check failed — see prior "
+                "error log. Proceeding, but the resulting gauge is suspect."
+            )
         LOGGER.info("Tree/cotree gauge built. Info: %s", info)
 
         tree_arr = ugrid.GetPointData().GetArray(tree_name)
         if tree_arr is not None:
             tree_np = vtknp.vtk_to_numpy(tree_arr)
-            arr_np[tree_np == 1] = 0
+            periodic_slave_arr = ugrid.GetPointData().GetArray(periodic_slave_name)
+            if periodic_slave_arr is not None:
+                periodic_slave_np = vtknp.vtk_to_numpy(periodic_slave_arr)
+            else:
+                periodic_slave_np = np.zeros_like(tree_np)
+            # [CHG-3] Only zero tree points that are NOT periodic slaves.
+            zero_mask = (tree_np == 1) & (periodic_slave_np == 0)
+            arr_np[zero_mask] = 0
             arr.Modified()
 
         return info
@@ -687,21 +669,11 @@ class TreeGauge:
     ) -> "vtk.vtkIntArray":
         """
         Add a PointData array with 1 on midside nodes, 0 on corner nodes.
-
-        The mask is determined by the cell types and VTK quadratic element conventions.
-
-        Args:
-            ugrid: Target unstructured grid.
-            array_name: Name for the mask array (default "MidsideNodes").
-
-        Returns:
-            vtkIntArray: Added mask array.
         """
         ensure_vtk_unstructured_grid(ugrid, arg_name="ugrid")
         npts = ugrid.GetNumberOfPoints()
         mask = np.zeros(npts, dtype=np.int32)
 
-        # Scan all cells and mark midside nodes
         for ci in range(ugrid.GetNumberOfCells()):
             cell = ugrid.GetCell(ci)
             ctype = cell.GetCellType()

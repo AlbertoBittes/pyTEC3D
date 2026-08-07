@@ -349,13 +349,9 @@ void ApecMNonLinearSystem::assemble_system()
     BinaryReader reader;
     auto streams = reader.open_input_streams(emat_folderpath,
                                              {"mtrx_" + rank_str + ".emat",
-                                              "rhs_" + rank_str + ".emat",
-                                              "tngt_mtrx_" + rank_str + ".emat",
-                                              "res_" + rank_str + ".emat"});
+                                              "rhs_" + rank_str + ".emat"});
     auto &mtrx_input_file = *streams[0];
     auto &rhs_input_file = *streams[1];
-    auto &tngt_mtrx_input_file = *streams[2];
-    auto &res_input_file = *streams[3];
 
     apec::logging::info("Building global Jacobian and residual");
 
@@ -394,8 +390,7 @@ void ApecMNonLinearSystem::assemble_system()
         const bool nonlinear_element = builder.nonlinear_element();
         if (nonlinear_element)
         {
-            BinaryReader::read_element_matrices(builder, tngt_mtrx_input_file, ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES);
-            BinaryReader::read_element_vectors(builder, res_input_file, ElementBuilder::VectorsSet::RESIDUAL_VECTORS);
+            builder.build_element_tangent_stiffness_residual();
             auto &tangent_ke = builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
             auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
 

@@ -230,9 +230,6 @@ public:
     /** @brief Computes and writes linear element matrices (DOF, nodal, and element solution matrices). */
     void write_element_matrices();
 
-    /** @brief Computes and writes nonlinear tangent stiffness matrices and residual vectors. */
-    void write_element_tangent_stiffness_residual();
-
     /** @brief Computes and writes element RHS vectors. */
     void write_element_rhs();
 
@@ -247,6 +244,10 @@ private:
                                 libMesh::Real *global_components) const;
     void rotate_diag_tensor_for_elem(const libMesh::Real diag[3],
                                      libMesh::Real global_tensor[3][3]) const;
+
+    /** @brief Evaluates isotropic H(B) and its differential reluctivity Jacobian from a single BH curve. */
+    void evaluate_isotropic_bh(const BHCurve &curve, const libMesh::Real B[3], unsigned int dim,
+                               libMesh::Real H[3], libMesh::Real jac[3][3], libMesh::Real *nu_out = nullptr) const;
 
     // Slot 0: stiffness/capacitance matrices (Ke, Ce).
     // Slot 1: nodal-solution matrices (Me, AAe used to interpolate B from A).

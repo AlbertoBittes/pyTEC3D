@@ -483,6 +483,9 @@ void ElementBuilder::build_av2dnodal_rhs()
     {
         if (mg[0] != 0.0 || mg[1] != 0.0)
         {
+            // Same curl operator (bx_i, by_i) as build_ke()/build_bae(), so that the magnetization
+            // source term stays consistent with B = curl(A) under the axisymmetric r_sign/curvature terms.
+            const Real r_sign = axisymm ? -1.0 : 1.0;
             auto build_mg = [&]()
             {
                 for (unsigned int qp = 0; qp < nq; qp++)
@@ -491,7 +494,11 @@ void ElementBuilder::build_av2dnodal_rhs()
                     Real r_mult = pow(2 * libMesh::pi * r, axisymm);
 
                     for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
-                        Fe(dof_i) += JxW[qp] * (mg[0] * dphi[dof_i][qp](1) - mg[1] * dphi[dof_i][qp](0)) * thk * r_mult;
+                    {
+                        const Real bx_i = r_sign * dphi[dof_i][qp](1);
+                        const Real by_i = -r_sign * (dphi[dof_i][qp](0) + axisymm * phi[dof_i][qp] / r);
+                        Fe(dof_i) += JxW[qp] * (bx_i * mg[0] + by_i * mg[1]) * thk * r_mult;
+                    }
                 }
             };
             build_mg();
@@ -810,7 +817,7 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness_residual()
 
     if (!this->nonlinear_element())
         return;
-    const auto material_bh = &bh_curves_->find(material_id)->second;
+    const auto &material_bh = bh_curves_->find(material_id)->second;
 
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
@@ -831,22 +838,6 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness_residual()
         r_mult_qp[qp] = axisymm ? (two_pi * r) : 1.0;
     }
 
-    libMesh::Real position[3] = {0.0, 0.0, 0.0};
-    bool has_cs = false;
-    if (elem_data.coordinate_system)
-    {
-        has_cs = true;
-        const Point center = elem_data.elem->vertex_average();
-        position[0] = static_cast<libMesh::Real>(center(0));
-        position[1] = static_cast<libMesh::Real>(center(1));
-        position[2] = static_cast<libMesh::Real>(center(2));
-    }
-
-    const auto bh_x = material_bh->find(0);
-    const auto bh_y = material_bh->find(1);
-    if (bh_x == material_bh->end() || bh_y == material_bh->end())
-        apec::logging::error_and_abort("Missing BH curve component for AV2D tangent stiffness material");
-
     libMesh::DenseMatrix<libMesh::Number> BAe_qp;
     BAe_qp.resize(2 * nq, n_dofs_var);
     for (unsigned int qp = 0; qp < nq; ++qp)
@@ -863,77 +854,10 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness_residual()
     BAe_qp.vector_mult(Bq, Az);
     for (unsigned int qp = 0; qp < nq; ++qp)
     {
-        const Real bx_global = static_cast<Real>(Bq(qp));
-        const Real by_global = static_cast<Real>(Bq(qp + nq));
-        Real b_local[3] = {
-            bx_global,
-            by_global,
-            0.0};
-
-        if (has_cs)
-        {
-            const libMesh::Real b_global_raw[3] = {
-                static_cast<libMesh::Real>(bx_global),
-                static_cast<libMesh::Real>(by_global),
-                0.0};
-            libMesh::Real b_local_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_local_raw(
-                b_global_raw,
-                position,
-                1,
-                b_local_raw);
-            b_local[0] = static_cast<Real>(b_local_raw[0]);
-            b_local[1] = static_cast<Real>(b_local_raw[1]);
-            b_local[2] = static_cast<Real>(b_local_raw[2]);
-        }
-
-        // Nonlinear residual term g^A(A): C_i · H(B(A)).
-        const Real h_local[3] = {
-            bh_x->second.evaluate_reluctivity_from_b(std::abs(b_local[0])) * b_local[0],
-            bh_y->second.evaluate_reluctivity_from_b(std::abs(b_local[1])) * b_local[1],
-            0.0};
-        Real h_global[3] = {h_local[0], h_local[1], h_local[2]};
-        if (has_cs)
-        {
-            const libMesh::Real h_local_raw[3] = {
-                static_cast<libMesh::Real>(h_local[0]),
-                static_cast<libMesh::Real>(h_local[1]),
-                static_cast<libMesh::Real>(h_local[2])};
-            libMesh::Real h_global_raw[3] = {0.0, 0.0, 0.0};
-            elem_data.coordinate_system->vector_components_to_global_raw(
-                h_local_raw,
-                position,
-                1,
-                h_global_raw);
-            h_global[0] = static_cast<Real>(h_global_raw[0]);
-            h_global[1] = static_cast<Real>(h_global_raw[1]);
-            h_global[2] = static_cast<Real>(h_global_raw[2]);
-        }
-
-        const Real d0 = bh_x->second.slope_h_vs_b(std::abs(b_local[0]));
-        const Real d1 = bh_y->second.slope_h_vs_b(std::abs(b_local[1]));
-        const Real d2 = 0.0;
-
-        Real nu00 = d0;
-        Real nu01 = 0.0;
-        Real nu10 = 0.0;
-        Real nu11 = d1;
-        if (has_cs)
-        {
-            const libMesh::Real nu_local_raw[9] = {
-                d0, 0.0, 0.0,
-                0.0, d1, 0.0,
-                0.0, 0.0, d2};
-            libMesh::Real nu_global_raw[9] = {0.0};
-            elem_data.coordinate_system->rotate_tensor_to_global_raw(
-                nu_local_raw,
-                position,
-                nu_global_raw);
-            nu00 = static_cast<Real>(nu_global_raw[0]);
-            nu01 = static_cast<Real>(nu_global_raw[1]);
-            nu10 = static_cast<Real>(nu_global_raw[3]);
-            nu11 = static_cast<Real>(nu_global_raw[4]);
-        }
+        Real B[3] = {static_cast<Real>(Bq(qp)), static_cast<Real>(Bq(qp + nq)), 0.0};
+        Real H[3];
+        Real jac[3][3];
+        this->evaluate_isotropic_bh(material_bh, B, 2, H, jac);
 
         const Real r_mult = r_mult_qp[qp];
 
@@ -941,13 +865,13 @@ void ElementBuilder::build_av2dnodal_tangent_stiffness_residual()
         {
             const Real bx_i = static_cast<Real>(BAe_qp(qp, dof_i));
             const Real by_i = static_cast<Real>(BAe_qp(qp + nq, dof_i));
-            Re(dof_i) += JxW[qp] * (bx_i * h_global[0] + by_i * h_global[1]) * r_mult * thk;
+            Re(dof_i) += JxW[qp] * (bx_i * H[0] + by_i * H[1]) * r_mult * thk;
             for (unsigned int dof_j = 0; dof_j < n_dofs_var; ++dof_j)
             {
                 const Real bx_j = static_cast<Real>(BAe_qp(qp, dof_j));
                 const Real by_j = static_cast<Real>(BAe_qp(qp + nq, dof_j));
-                const Real hx_j = nu00 * bx_j + nu01 * by_j;
-                const Real hy_j = nu10 * bx_j + nu11 * by_j;
+                const Real hx_j = jac[0][0] * bx_j + jac[0][1] * by_j;
+                const Real hy_j = jac[1][0] * bx_j + jac[1][1] * by_j;
                 Ke(dof_i, dof_j) += JxW[qp] * (bx_i * hx_j + by_i * hy_j) * r_mult * thk;
             }
         }
