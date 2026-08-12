@@ -13,6 +13,7 @@
 #include <string>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
+#include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
 #include "element_types.h"
@@ -120,6 +121,55 @@ void ElementBuilder::write_element_matrices()
         apec::logging::info("Reusing element matrices from previous time step");
 }
 
+void ElementBuilder::build_nodal_load_injector_map(const libMesh::MeshBase &mesh,
+                                                   const std::string &dof_variable_name,
+                                                   const std::string &nodal_load_array_name)
+{
+    this->clear_nodal_load_injector_map();
+
+    if (!dof_solution_system_->has_variable(dof_variable_name))
+        return;
+
+    vtkDataArray *load_array = vtk_grid_->GetPointData()->GetArray(nodal_load_array_name.c_str());
+    if (!load_array)
+        return;
+
+    const unsigned int dof_var_num = dof_solution_system_->variable_number(dof_variable_name);
+    const unsigned int sys_num = dof_solution_system_->number();
+
+    std::map<dof_id_type, dof_id_type> local_injector_elem_by_dof;
+
+    for (const auto &elem : mesh.active_local_element_ptr_range())
+    {
+        for (unsigned int i = 0; i < elem->n_nodes(); ++i)
+        {
+            const auto &node = elem->node_ref(i);
+            if (node.n_dofs(sys_num, dof_var_num) == 0)
+                continue;
+
+            const auto node_id = static_cast<vtkIdType>(node.id());
+            const Real load_value = load_array->GetComponent(node_id, 0);
+            if (load_value == 0.0)
+                continue;
+
+            const dof_id_type dof_id = node.dof_number(sys_num, dof_var_num, 0);
+            local_injector_elem_by_dof.emplace(dof_id, static_cast<dof_id_type>(elem->id()));
+        }
+    }
+
+    auto global_injector_elem_by_dof = local_injector_elem_by_dof;
+    mesh.comm().set_union(global_injector_elem_by_dof);
+    for (const auto &entry : global_injector_elem_by_dof)
+        nodal_load_injector_elem_by_dof[entry.first] = entry.second;
+}
+
+bool ElementBuilder::should_inject_nodal_load_dof(dof_id_type dof_id) const
+{
+    const auto it = nodal_load_injector_elem_by_dof.find(dof_id);
+    return (it != nodal_load_injector_elem_by_dof.end()) &&
+           (it->second == static_cast<dof_id_type>(elem_data.elem->id()));
+}
+
 void ElementBuilder::write_element_rhs()
 {
     const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
@@ -136,7 +186,7 @@ void ElementBuilder::write_element_rhs()
 
     apec::logging::info("Calculating elements RHS");
 
-    this->clear_nodal_loads_dof_cache();
+    this->build_nodal_load_injector_map(mesh, "VOLT", "AMPS");
 
     this->run_for_elements(mesh, [&](const libMesh::Elem *)
                            {

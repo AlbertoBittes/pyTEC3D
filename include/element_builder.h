@@ -17,8 +17,8 @@
 #include <filesystem>
 #include <memory>
 #include <array>
+#include <map>
 #include <unordered_map>
-#include <set>
 #include <vector>
 
 #include <libmesh/elem.h>
@@ -210,8 +210,8 @@ public:
     /** @brief Returns the number of DOFs for the active element. */
     unsigned int get_n_dofs() const { return n_dofs; }
 
-    /** @brief Clears the cached DOF index set used to avoid duplicate nodal load applications. */
-    void clear_nodal_loads_dof_cache() { nodal_loads_dof_cache.clear(); }
+    /** @brief Clears the map that assigns each loaded nodal DOF to a canonical injector element. */
+    void clear_nodal_load_injector_map() { nodal_load_injector_elem_by_dof.clear(); }
 
     /** @brief Iterates local active elements, updating internal element context before invoking @p build_fn. */
     template <typename BuildFn>
@@ -258,7 +258,7 @@ private:
 
     ElemData elem_data;                                   ///< Context for the element currently being processed.
     unsigned int n_dofs = 0;                              ///< Number of DOFs on the active element.
-    std::set<libMesh::dof_id_type> nodal_loads_dof_cache; ///< Guards against double-application of nodal loads.
+    std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type> nodal_load_injector_elem_by_dof; ///< Canonical injector element ID for each loaded nodal DOF.
 
     ApecMEquationSystems *equation_systems_ = nullptr;       ///< Owning equation-systems container.
     libMesh::ImplicitSystem *dof_solution_system_ = nullptr; ///< DOF solution system reference.
@@ -276,6 +276,11 @@ private:
     vtkDataArray *coordinate_system_cell_array_ = nullptr;                                                                    ///< VTK COORDINATE_SYSTEM cell-data array (0=global Cartesian).
     const std::unordered_map<libMesh::dof_id_type, std::shared_ptr<apec_m::CoordinateSystem>> *coordinate_systems_ = nullptr; ///< Non-owning pointer to coordinate-system objects keyed by positive ID.
     const BHCurveMaterialsMap *bh_curves_ = nullptr;                                                                          ///< Non-owning pointer to equation-systems-owned BH curves map.
+
+    void build_nodal_load_injector_map(const libMesh::MeshBase &mesh,
+                                       const std::string &dof_variable_name,
+                                       const std::string &nodal_load_array_name);
+    bool should_inject_nodal_load_dof(libMesh::dof_id_type dof_id) const;
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,

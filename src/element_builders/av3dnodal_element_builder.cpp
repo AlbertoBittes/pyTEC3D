@@ -487,8 +487,8 @@ void ElementBuilder::build_av3dnodal_rhs()
                     const Node &node = elem_data.elem->node_ref(dof_i);
                     const vtkIdType node_id = static_cast<vtkIdType>(node.id());
                     const Real amps_value = amps_array->GetComponent(node_id, 0);
-                    const dof_id_type dof_id = node.dof_number(ApecMSystemBase::DOF_SOLUTION_SYSTEM, volt_var_num, 0);
-                    if (!nodal_loads_dof_cache.insert(dof_id).second)
+                    const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), volt_var_num, 0);
+                    if (!this->should_inject_nodal_load_dof(dof_id))
                         continue;
                     Fe(dof_i + volt_var_num * n_dofs_var) = amps_value;
                 }
