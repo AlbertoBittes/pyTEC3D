@@ -139,6 +139,9 @@ def ensure_in_options(value: Any, arg_name: str, options: Sequence[Any]) -> Any:
 # Solver-settings validation
 # ---------------------------------------------------------------------------
 
+#: Vacuum permeability [H/m], used as the BH-curve saturation-slope reference.
+_MU0: float = 4.0 * np.pi * 1e-7
+
 #: KSP types supported by PETSc / APEC-M (direct and iterative).
 _VALID_KSP_TYPES: frozenset[str] = frozenset({
     "preonly",       # direct solve (pair with lu / cholesky)
@@ -443,14 +446,14 @@ def validate_apec_model(apec: Any) -> None:
                 )
                 continue
 
-            if curve.ndim != 2 or curve.shape[0] != 2 or curve.shape[1] < 2:
+            if curve.ndim != 2 or curve.shape[1] != 2 or curve.shape[0] < 2:
                 errors.append(
-                    f"bh_curves[{material_id}]: expected shape (2, N) with N >= 2, got {curve.shape}."
+                    f"bh_curves[{material_id}]: expected shape (N, 2) with N >= 2 and columns [H, B], got {curve.shape}."
                 )
                 continue
 
-            h_values = curve[0, :]
-            b_values = curve[1, :]
+            h_values = curve[:, 0]
+            b_values = curve[:, 1]
 
             if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
                 errors.append(f"bh_curves[{material_id}]: H and B values must be finite.")
@@ -470,6 +473,39 @@ def validate_apec_model(apec: Any) -> None:
                 errors.append(f"bh_curves[{material_id}]: H values must be strictly monotonic increasing.")
             if np.any(db <= 0.0):
                 errors.append(f"bh_curves[{material_id}]: B values must be strictly monotonic increasing.")
+                continue
+
+            # The C++ solver floors the extrapolated slope beyond b_values[-1] at
+            # 1/mu0 (vacuum permeability). If the curve's own last segment is far
+            # softer than that, dH/dB will visibly kink right at the last point.
+            last_slope = dh[-1] / db[-1]
+            if last_slope < 0.5 / _MU0:
+                _log.warning(
+                    "bh_curves[%d]: last segment slope (dH/dB=%.3g) is well below "
+                    "vacuum reluctivity (1/mu0=%.3g); extrapolation beyond B=%.4g will "
+                    "show a slope discontinuity there. Consider extending the table so "
+                    "it saturates toward the vacuum slope.",
+                    material_id, last_slope, 1.0 / _MU0, b_values[-1],
+                )
+
+        # MUR is ignored by the solver for materials with a bh_curve (nonlinear
+        # elements always use the B-H table instead of a constant permeability),
+        # so a MUR != 1 on those materials likely indicates an unintended input.
+        if not mat.empty and {"MATERIAL_ID", "MUR_X", "MUR_Y", "MUR_Z"}.issubset(mat.columns):
+            bh_material_ids = {
+                int(mid) for mid in bh_curves.keys()
+                if not isinstance(mid, bool) and isinstance(mid, (int, np.integer))
+            }
+            for mid in sorted(bh_material_ids):
+                for _, row in mat.loc[mat["MATERIAL_ID"] == mid].iterrows():
+                    mur = (float(row["MUR_X"]), float(row["MUR_Y"]), float(row["MUR_Z"]))
+                    if any(abs(m - 1.0) > 1e-9 for m in mur):
+                        _log.warning(
+                            "materials: MATERIAL_ID=%d has a bh_curve defined, so "
+                            "MUR_X/Y/Z=%s is ignored by the solver (nonlinear elements "
+                            "use the B-H table only).",
+                            mid, mur,
+                        )
 
     # ========================================================================
     # 1. element_types DataFrame

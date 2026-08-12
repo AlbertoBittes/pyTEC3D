@@ -196,7 +196,7 @@ public:
 
     void post_init() override;
 
-    bool check_update_system_matrix() override;
+    virtual bool check_update_system_matrix() override;
     bool check_update_element_matrices() override;
 
     std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> get_global_constraints_object() const
@@ -251,8 +251,14 @@ public:
         : ApecMDOFSystem<libMesh::NonlinearImplicitSystem>(std::forward<Args>(args)...)
     {
         diff_solver = std::make_unique<libMesh::NewtonSolver>(*this);
+        diff_solver->verbose = true;
+        auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(diff_solver.get());
+        if (!newton_solver)
+            apec::logging::error_and_abort("ApecMNonLinearSystem ctor: failed to create Newton solver.");
+        newton_solver->require_residual_reduction = false;
         auto nonlinear_solver = this->nonlinear_solver.get();
         nonlinear_solver->matvec = &ApecMNonLinearSystem::matvec_callback;
+        nonlinear_solver->residual = &ApecMNonLinearSystem::residual_callback;
     }
 
     void add_matrices() override
@@ -269,21 +275,56 @@ public:
                                 libMesh::NonlinearImplicitSystem &S)
     {
         (void)X;
-        (void)R;
-        (void)J;
         auto *sys = dynamic_cast<ApecMNonLinearSystem *>(&S);
         if (!sys)
             apec::logging::error_and_abort("ApecMNonLinearSystem::matvec_callback: system is not ApecMNonLinearSystem.");
-        sys->assemble_system();
+        if (R && J)
+        {
+            sys->assemble_system();
+            sys->residual_ready_from_matvec_ = true;
+        }
+        else if (J)
+        {
+            sys->assemble_jacobian_only();
+            sys->residual_ready_from_matvec_ = false;
+        }
+        else if (R)
+        {
+            sys->assemble_residual_only();
+            sys->residual_ready_from_matvec_ = false;
+        }
+    }
+
+    static void residual_callback(const libMesh::NumericVector<libMesh::Number> &X,
+                                  libMesh::NumericVector<libMesh::Number> &R,
+                                  libMesh::NonlinearImplicitSystem &S)
+    {
+        (void)X;
+        (void)R;
+        auto *sys = dynamic_cast<ApecMNonLinearSystem *>(&S);
+        if (!sys)
+            apec::logging::error_and_abort("ApecMNonLinearSystem::residual_callback: system is not ApecMNonLinearSystem.");
+        if (sys->residual_ready_from_matvec_)
+        {
+            sys->residual_ready_from_matvec_ = false;
+            return;
+        }
+        sys->assemble_residual_only();
     }
 
     void assemble_system() override;
+    void assemble_jacobian_only();
+    void assemble_residual_only();
+
+    bool check_update_system_matrix() override;
 
     void solve() override;
 
     void post_init() override;
 
 protected:
+    void assemble_system_impl(bool assemble_jacobian, bool assemble_residual);
+    bool residual_ready_from_matvec_ = false;
     std::unique_ptr<libMesh::SolverConfiguration> nonlinear_solver_config_copy_;
 };
 

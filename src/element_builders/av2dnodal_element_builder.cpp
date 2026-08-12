@@ -173,7 +173,8 @@ void ElementBuilder::build_av2dnodal()
         }
     };
 
-    build_ke();
+    if (!this->nonlinear_element())
+        build_ke();
     build_bae();
     build_jae();
     build_aae();
@@ -554,12 +555,30 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
         if (!have_b)
             build_b();
         Hn.resize(Bn.size());
-        for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+        if (this->nonlinear_element())
         {
-            const Real bx = Bn(dof_i);
-            const Real by = Bn(dof_i + n_dofs_var);
-            Hn(dof_i) = nu_tensor[0][0] * bx + nu_tensor[0][1] * by;
-            Hn(dof_i + n_dofs_var) = nu_tensor[1][0] * bx + nu_tensor[1][1] * by;
+            const auto &material_bh = bh_curves_->find(material_id)->second;
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            {
+                const Real bx = Bn(dof_i);
+                const Real by = Bn(dof_i + n_dofs_var);
+                Real B[3] = {bx, by, 0.0};
+                Real H[3];
+                Real jac[3][3];
+                this->evaluate_isotropic_bh(material_bh, B, 2, H, jac);
+                Hn(dof_i) = H[0];
+                Hn(dof_i + n_dofs_var) = H[1];
+            }
+        }
+        else
+        {
+            for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
+            {
+                const Real bx = Bn(dof_i);
+                const Real by = Bn(dof_i + n_dofs_var);
+                Hn(dof_i) = nu_tensor[0][0] * bx + nu_tensor[0][1] * by;
+                Hn(dof_i + n_dofs_var) = nu_tensor[1][0] * bx + nu_tensor[1][1] * by;
+            }
         }
         have_h = true;
     };
@@ -641,8 +660,24 @@ void ElementBuilder::build_av2dnodal_element_solution()
         if (!have_be)
             build_be();
         He.resize(2);
-        He(0) = nu_tensor[0][0] * Be(0) + nu_tensor[0][1] * Be(1);
-        He(1) = nu_tensor[1][0] * Be(0) + nu_tensor[1][1] * Be(1);
+        if (this->nonlinear_element())
+        {
+            const auto &material_bh = bh_curves_->find(material_id)->second;
+            Real B[3] = {
+                static_cast<Real>(Be(0)),
+                static_cast<Real>(Be(1)),
+                0.0};
+            Real H[3];
+            Real jac[3][3];
+            this->evaluate_isotropic_bh(material_bh, B, 2, H, jac);
+            He(0) = H[0];
+            He(1) = H[1];
+        }
+        else
+        {
+            He(0) = nu_tensor[0][0] * Be(0) + nu_tensor[0][1] * Be(1);
+            He(1) = nu_tensor[1][0] * Be(0) + nu_tensor[1][1] * Be(1);
+        }
         have_he = true;
     };
 

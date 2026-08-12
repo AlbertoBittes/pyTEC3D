@@ -1,0 +1,16 @@
+! Define two cylindrical coordinate system for the coil elements in the corners
+! Cylindrical CS has local Y = THETA. Rotated so its axis (local Z) aligns with global X.
+! Origin is at the corner of the coil winding pack.
+xc0 = L/2
+yc0 = Lp/2 - s2/2
+zc0 = h
+
+xc1 = L/2
+yc1 = Lp/2 - s2/2
+zc1 = h - h1
+
+! This is correct
+LOCAL, 11, 1, xc0,yc0,zc0, 0,0,90
+LOCAL, 12, 1, xc1,yc1,zc1, 0,0,90
+
+CSYS,0

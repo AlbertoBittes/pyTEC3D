@@ -593,10 +593,30 @@ void ElementBuilder::build_av3dedge_nodal_solution()
         if (!have_b)
             build_b();
         Hn.resize(Bn.size());
-        for (unsigned int dof_i = 0; dof_i < n_dofs_V; ++dof_i)
-            for (unsigned int k = 0; k < 3; ++k)
-                for (unsigned int l = 0; l < 3; ++l)
-                    Hn(dof_i + k * n_dofs_V) += nu_tensor[k][l] * Bn(dof_i + l * n_dofs_V);
+        if (this->nonlinear_element())
+        {
+            const auto &material_bh = bh_curves_->find(material_id)->second;
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; ++dof_i)
+            {
+                Real B[3] = {
+                    static_cast<Real>(Bn(dof_i + 0 * n_dofs_V)),
+                    static_cast<Real>(Bn(dof_i + 1 * n_dofs_V)),
+                    static_cast<Real>(Bn(dof_i + 2 * n_dofs_V))};
+                Real H[3];
+                Real jac[3][3];
+                this->evaluate_isotropic_bh(material_bh, B, 3, H, jac);
+                Hn(dof_i + 0 * n_dofs_V) = H[0];
+                Hn(dof_i + 1 * n_dofs_V) = H[1];
+                Hn(dof_i + 2 * n_dofs_V) = H[2];
+            }
+        }
+        else
+        {
+            for (unsigned int dof_i = 0; dof_i < n_dofs_V; ++dof_i)
+                for (unsigned int k = 0; k < 3; ++k)
+                    for (unsigned int l = 0; l < 3; ++l)
+                        Hn(dof_i + k * n_dofs_V) += nu_tensor[k][l] * Bn(dof_i + l * n_dofs_V);
+        }
         have_h = true;
     };
 
@@ -674,9 +694,26 @@ void ElementBuilder::build_av3dedge_element_solution()
         if (!have_be)
             build_be();
         He.resize(3);
-        for (unsigned int k = 0; k < 3; ++k)
-            for (unsigned int l = 0; l < 3; ++l)
-                He(k) += nu_tensor[k][l] * Be(l);
+        if (this->nonlinear_element())
+        {
+            const auto &material_bh = bh_curves_->find(material_id)->second;
+            Real B[3] = {
+                static_cast<Real>(Be(0)),
+                static_cast<Real>(Be(1)),
+                static_cast<Real>(Be(2))};
+            Real H[3];
+            Real jac[3][3];
+            this->evaluate_isotropic_bh(material_bh, B, 3, H, jac);
+            He(0) = H[0];
+            He(1) = H[1];
+            He(2) = H[2];
+        }
+        else
+        {
+            for (unsigned int k = 0; k < 3; ++k)
+                for (unsigned int l = 0; l < 3; ++l)
+                    He(k) += nu_tensor[k][l] * Be(l);
+        }
         have_he = true;
     };
 

@@ -160,6 +160,17 @@ bool ApecMDOFSystem<ImplicitSys>::check_update_system_matrix()
     return update_matrix;
 }
 
+bool ApecMNonLinearSystem::check_update_system_matrix()
+{
+    if (this->diff_solver->total_inner_iterations() > 0)
+    {
+        apec::logging::info("Reusing system matrix from previous time step");
+        return false;
+    }
+    else
+        return ApecMDOFSystem<libMesh::NonlinearImplicitSystem>::check_update_system_matrix();
+}
+
 template <typename ImplicitSys>
 bool ApecMDOFSystem<ImplicitSys>::check_update_element_matrices()
 {
@@ -173,19 +184,6 @@ void ApecMDOFSystem<ImplicitSys>::post_init()
     this->zero_out_matrix_and_rhs = false;
     this->get_system_matrix().zero();
     apec::logging::info("Setting linear solver configurations");
-
-    auto &equation_systems = this->get_apec_equation_systems();
-    auto *solver_parent = equation_systems.get_parent_object();
-    auto *petsc_solver = this->get_petsc_solver();
-    if (solver_parent && petsc_solver)
-    {
-        this->solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
-            solver_parent->get_apec_object().attr("solver_settings"),
-            petsc_solver);
-        this->solver_config_copy_->configure_solver();
-    }
-    else
-        apec::logging::error_and_abort("Solver parent or PETSc linear solver not available.");
 }
 
 template <typename ImplicitSys>
@@ -225,6 +223,19 @@ void ApecMLinearSystem::solve()
 void ApecMLinearSystem::post_init()
 {
     ApecMDOFSystem<libMesh::LinearImplicitSystem>::post_init();
+
+    auto &equation_systems = this->get_apec_equation_systems();
+    auto *solver_parent = equation_systems.get_parent_object();
+    auto *petsc_solver = this->get_petsc_solver();
+    if (solver_parent && petsc_solver)
+    {
+        this->solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
+            solver_parent->get_apec_object().attr("solver_settings"),
+            petsc_solver);
+        this->solver_config_copy_->configure_solver();
+    }
+    else
+        apec::logging::error_and_abort("Solver parent or PETSc linear solver not available.");
 }
 
 void ApecMLinearSystem::assemble_system()
@@ -313,7 +324,7 @@ void ApecMLinearSystem::assemble_system()
     apec::logging::info("Linear solver output info");
 }
 
-void ApecMNonLinearSystem::assemble_system()
+void ApecMNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool assemble_residual)
 {
     libMesh::PerfLog perf_log("Matrix Assembly");
 
@@ -341,10 +352,14 @@ void ApecMNonLinearSystem::assemble_system()
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
     const std::string rank_str = std::to_string(comm.rank());
 
-    if (update_matrix)
-        linear_matrix.zero();
-    matrix.zero();
-    system.rhs->zero();
+    if (assemble_jacobian)
+    {
+        if (update_matrix)
+            linear_matrix.zero();
+        matrix.zero();
+    }
+    if (assemble_residual)
+        system.rhs->zero();
 
     BinaryReader reader;
     auto streams = reader.open_input_streams(emat_folderpath,
@@ -353,7 +368,12 @@ void ApecMNonLinearSystem::assemble_system()
     auto &mtrx_input_file = *streams[0];
     auto &rhs_input_file = *streams[1];
 
-    apec::logging::info("Building global Jacobian and residual");
+    if (assemble_jacobian && assemble_residual)
+        apec::logging::info("Building global Jacobian and residual");
+    else if (assemble_jacobian)
+        apec::logging::info("Building global Jacobian");
+    else
+        apec::logging::info("Building global residual");
 
     builder.run_for_elements(mesh, [&](const libMesh::Elem *elem)
                              {
@@ -387,6 +407,10 @@ void ApecMNonLinearSystem::assemble_system()
             }
         }
 
+        // NewtonSolver solves J * du = r and then updates u <- u - du, so r
+        // must be the true residual F(u), not -F(u).
+        linear_rhs.scale(-1.0);
+
         const bool nonlinear_element = builder.nonlinear_element();
         if (nonlinear_element)
         {
@@ -394,45 +418,98 @@ void ApecMNonLinearSystem::assemble_system()
             auto &tangent_ke = builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
             auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
 
-            linear_ke += tangent_ke;
-            linear_rhs += residual;
+            if (assemble_jacobian)
+                linear_ke += tangent_ke;
+            if (assemble_residual)
+                linear_rhs += residual;
 
-            dof_map.heterogeneously_constrain_element_jacobian_and_residual(
-                linear_ke,
-                linear_rhs,
-                dof_indices,
-                *system.current_local_solution
-            );
-            matrix.add_matrix(linear_ke, dof_indices);
-            system.rhs->add_vector(linear_rhs, dof_indices);
+            if (assemble_jacobian)
+            {
+                if (assemble_residual)
+                    dof_map.heterogeneously_constrain_element_jacobian_and_residual(
+                        linear_ke,
+                        linear_rhs,
+                        dof_indices,
+                        *system.current_local_solution
+                    );
+                else
+                    dof_map.heterogeneously_constrain_element_matrix_and_vector(
+                        linear_ke,
+                        linear_rhs,
+                        dof_indices
+                    );
+
+                matrix.add_matrix(linear_ke, dof_indices);
+            }
+
+            if (assemble_residual)
+            {
+                if (!assemble_jacobian)
+                    dof_map.heterogeneously_constrain_element_residual(
+                        linear_rhs,
+                        dof_indices,
+                        *system.current_local_solution
+                    );
+                system.rhs->add_vector(linear_rhs, dof_indices);
+            }
         }
         else
         {
-            if (update_matrix)
+            if (assemble_jacobian && update_matrix)
             {
-                dof_map.heterogeneously_constrain_element_jacobian_and_residual(
-                    linear_ke,
-                    linear_rhs,
-                    dof_indices,
-                    *system.current_local_solution
-                );
+                if (assemble_residual)
+                    dof_map.heterogeneously_constrain_element_jacobian_and_residual(
+                        linear_ke,
+                        linear_rhs,
+                        dof_indices,
+                        *system.current_local_solution
+                    );
+                else
+                    dof_map.heterogeneously_constrain_element_matrix_and_vector(
+                        linear_ke,
+                        linear_rhs,
+                        dof_indices
+                    );
                 linear_matrix.add_matrix(linear_ke, dof_indices);
             }
-            else
+            else if (assemble_residual)
                 dof_map.heterogeneously_constrain_element_residual(
                     linear_rhs,
                     dof_indices,
                     *system.current_local_solution
                 );
 
-            system.rhs->add_vector(linear_rhs, dof_indices);
+            if (assemble_residual)
+                system.rhs->add_vector(linear_rhs, dof_indices);
         } });
 
-    matrix.add(1.0, linear_matrix);
+    if (assemble_jacobian)
+    {
+        // MatAXPY (add()) requires both operands assembled; add_matrix() above leaves them open.
+        matrix.close();
+        linear_matrix.close();
+        matrix.add(1.0, linear_matrix);
+    }
 
     reader.close_file_streams(streams);
     comm.barrier();
-    apec::logging::info("Newton-Rhapson solver output info");
+    if (assemble_jacobian && assemble_residual)
+        apec::logging::info("Newton-Rhapson solver output info");
+}
+
+void ApecMNonLinearSystem::assemble_system()
+{
+    this->assemble_system_impl(true, true);
+}
+
+void ApecMNonLinearSystem::assemble_jacobian_only()
+{
+    this->assemble_system_impl(true, false);
+}
+
+void ApecMNonLinearSystem::assemble_residual_only()
+{
+    this->assemble_system_impl(false, true);
 }
 
 void ApecMNonLinearSystem::solve()

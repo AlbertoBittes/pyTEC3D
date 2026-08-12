@@ -41,15 +41,22 @@ namespace
             const unsigned int material_id = py::cast<unsigned int>(material_item.first);
             const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(material_item.second);
 
-            const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(1));
+            if (curve_array.ndim() != 2 || curve_array.shape(1) != 2 || curve_array.shape(0) < 2)
+            {
+                apec::logging::error_and_abort(
+                    "bh_curves[" + std::to_string(material_id) +
+                    "]: expected shape (N, 2) with N >= 2 and columns [H, B].");
+            }
+
+            const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(0));
             std::vector<double> h_values(n_values);
             std::vector<double> b_values(n_values);
 
             const auto unchecked = curve_array.unchecked<2>();
-            for (ssize_t i = 0; i < curve_array.shape(1); ++i)
+            for (ssize_t i = 0; i < curve_array.shape(0); ++i)
             {
-                h_values[static_cast<std::size_t>(i)] = unchecked(0, i);
-                b_values[static_cast<std::size_t>(i)] = unchecked(1, i);
+                h_values[static_cast<std::size_t>(i)] = unchecked(i, 0);
+                b_values[static_cast<std::size_t>(i)] = unchecked(i, 1);
             }
 
             curves.emplace(material_id, BHCurve(std::move(h_values), std::move(b_values)));

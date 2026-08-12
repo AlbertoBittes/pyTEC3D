@@ -423,6 +423,27 @@ class TreeGauge:
         visited: Set[int] = set()
         queue: deque[int] = deque()
 
+        # Union-Find over graph nodes. Each seed starts as its OWN singleton
+        # set (they are NOT pre-merged with each other) so that an edge
+        # directly bridging two still-separate seed-rooted fragments is
+        # correctly recognized as a genuine tree edge instead of always
+        # being discarded as a "revisit". See dsu_bug note in repo memory.
+        dsu_parent: Dict[int, int] = {}
+
+        def dsu_find(x: int) -> int:
+            dsu_parent.setdefault(x, x)
+            while dsu_parent[x] != x:
+                dsu_parent[x] = dsu_parent[dsu_parent[x]]
+                x = dsu_parent[x]
+            return x
+
+        def dsu_union(a: int, b: int) -> bool:
+            ra, rb = dsu_find(a), dsu_find(b)
+            if ra == rb:
+                return False
+            dsu_parent[rb] = ra
+            return True
+
         # True multi-source BFS: all seeds belonging to the same connected
         # component act as simultaneous roots. Pass point ids from as many
         # distinct physical surfaces as you like in start_surface_point_ids;
@@ -434,6 +455,7 @@ class TreeGauge:
                 return
             for s in local_seeds:
                 visited.add(s)
+                dsu_find(s)
                 if s in adjacency:
                     queue.append(s)
             while queue:
@@ -444,9 +466,19 @@ class TreeGauge:
                     if nbr not in visited:
                         edge_state[mid] = 1
                         visited.add(nbr)
+                        dsu_union(node, nbr)
                         queue.append(nbr)
                     else:
-                        edge_state[mid] = 2
+                        # nbr already visited: this bridges two distinct
+                        # multi-source fragments (tree edge, merges them) or
+                        # closes a real cycle within one fragment (cotree).
+                        # Without this DSU check every seed-adjacent edge
+                        # would be miscounted as a cycle, undercounting the
+                        # tree by (#seeds - #true_components) edges.
+                        if dsu_union(node, nbr):
+                            edge_state[mid] = 1
+                        else:
+                            edge_state[mid] = 2
 
         # Primary pass: all boundary/reference seeds fire together.
         run_multi_source_bfs(s for s in sorted(start_surface) if s in non_conducting)
