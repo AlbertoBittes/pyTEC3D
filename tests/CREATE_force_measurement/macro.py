@@ -1,12 +1,11 @@
 from apec_m import APEC_M
+import os
 from apec_m.coordinate_system import CylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
 from apec_m.selector import Selector
-import os
+from apec_m.coordinate_system import ZAxisCylindricalCoordinateSystem
 import vtk.util.numpy_support as vtknp
-import vtk
-import numpy as np
-import pandas as pd
+
 
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -121,20 +120,14 @@ master_node = vtknp.vtk_to_numpy(
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
-xc0, yc0, zc0 = 4.6855e-2, 3.493e-2, 7.604e-2
-xc1, yc1, zc1 = 4.6855e-2, 1.296e-2, 4.763e-2
+xc0, yc0, zc0 = 0.01786, 0.012965, 0.04555
+xc1, yc1, zc1 = 0.01786, 0.050605, 0.04555
 
-apec.coordinate_systems[91] = CylindricalCoordinateSystem(
+apec.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
     origin=[xc0, yc0, zc0],
-    thxy_deg=0.0,
-    thyz_deg=0.0,
-    thzx_deg=90.0,
 )
-apec.coordinate_systems[92] = CylindricalCoordinateSystem(
+apec.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
     origin=[xc1, yc1, zc1],
-    thxy_deg=0.0,
-    thyz_deg=0.0,
-    thzx_deg=90.0,
 )
 
 Selector.select(apec.mesh, "CONSTANT", 2, type="elem")
@@ -143,16 +136,18 @@ Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 91, type="elem")
 Selector.select(apec.mesh, "CONSTANT", 4, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 92, type="elem")
 
-# Symmetry BCs + Far field
+# Az: Symmetry BCs + Far field + Tree Gauging
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.select_pos(apec.mesh, 1, (-1e-6, 1e-6))
+Selector.select_pos(apec.mesh, 1, (-1e-6, 1e-6), mode="u")
 Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
-
-# Tree gauging
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
 TreeGauge.tree_gauge(apec.mesh)
+
+# Volt 0 in static step
+Selector.select(apec.mesh, "TYPE", 2, type="elem")
+Selector.nsle(apec.mesh)
+# Selector.select_pos(apec.mesh, 0, (-1e-6, 1e-6), mode="r")
+Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
 
 apec.load_mesh_into_solver()
 

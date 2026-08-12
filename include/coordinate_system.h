@@ -163,6 +163,27 @@ namespace apec_m
             double *global_points_out) const override;
     };
 
+    // Rotation axis (local Z) aligned with global X.
+    class XAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
+    {
+    public:
+        explicit XAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+    };
+
+    // Rotation axis (local Z) aligned with global Y.
+    class YAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
+    {
+    public:
+        explicit YAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+    };
+
+    // Rotation axis (local Z) aligned with global Z (ANSYS APDL LOCAL default).
+    class ZAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
+    {
+    public:
+        explicit ZAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+    };
+
     class SphericalCoordinateSystem : public CoordinateSystem
     {
     public:

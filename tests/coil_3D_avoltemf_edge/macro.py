@@ -1,7 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import CylindricalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
 import os
 import vtk
@@ -29,7 +29,7 @@ ModelEdit.remove_array(apec.mesh, "CP_1")
 ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
 Selector.select_pos(
@@ -37,21 +37,21 @@ Selector.select_pos(
     0,
     (size-tol, size+tol),
     mode="s",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
     apec.mesh,
     2,
     (size-tol, size+tol),
     mode="a",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
     apec.mesh,
     2,
     (-size-tol, -size+tol),
     mode="a",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.set_value_on_selection(apec.mesh, "_Az", 0)
 
@@ -73,38 +73,38 @@ Selector.select(apec.mesh, "ID", master_node_passive)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
 
 Selector.select_pos(
-    apec.mesh, 1, (-tol, tol), coordinate_system=CylindricalCoordinateSystem()
+    apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
 Selector.select_pos(
-    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=CylindricalCoordinateSystem()
+    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem()
 )
 Selector.select_pos(
     apec.mesh,
     0,
     (size - tol, size + tol),
     mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
     apec.mesh,
     2,
     (size - tol, size + tol),
     mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
     apec.mesh,
     2,
     (-size - tol, -size + tol),
     mode="u",
-    coordinate_system=CylindricalCoordinateSystem(),
+    coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
         ModelEdit.periodic_boundaries(
             apec.mesh,
-            CylindricalCoordinateSystem(),
+            YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
             variables=("Az"),

@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
 import os
@@ -18,17 +18,17 @@ apec.read_mesh(filepath)
 apec.read_excel("input_template.xlsx")
 
 Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
-Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 2)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-Selector.select_pos(apec.mesh, 1, (89.999, 90.001), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (89.999, 90.001), mode="s", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 0)

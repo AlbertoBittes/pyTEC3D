@@ -3,7 +3,7 @@ import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
 
@@ -38,7 +38,7 @@ apec.read_excel("input_template.xlsx")
 # # Set Boundary conditions
 # Axis boundary conditions
 Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem()
+    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
@@ -53,19 +53,19 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 
 # Cyclic periodic boundaries
-Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem(), mode="u"
+    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem(), mode="u"
 )
 Selector.select_pos(
     apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem(), mode="u"
 )
-apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
+apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
 
 # rotate angles
-Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem(), mode="u"
+    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem(), mode="u"
 )
 Selector.select_pos(
     apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem(), mode="u"

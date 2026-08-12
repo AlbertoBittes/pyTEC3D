@@ -9,7 +9,7 @@ import pandas as pd
 import vtk
 from .selector import Selector
 from .model_edit import ModelEdit
-from .coordinate_system import CylindricalCoordinateSystem
+from .coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
 from .logging_utils import get_logger
 from .validation_utils import ensure_vtk_unstructured_grid
 from .constants import (
@@ -191,7 +191,7 @@ class ApecAlgorithm:
             n_divisions = n_slices
 
         if coordinate_system is None:
-            coordinate_system = CylindricalCoordinateSystem()
+            coordinate_system = YAxisCylindricalCoordinateSystem()
         assert coordinate_system is not None
         if coordinate_system.type != "cylindrical":
             raise ValueError(
@@ -352,7 +352,7 @@ class ApecAlgorithm:
             n_toroidal_divisions = 1
 
         tolerance = float(self.input_parameters["tolerance"])
-        coordinate_system = CylindricalCoordinateSystem()
+        coordinate_system = YAxisCylindricalCoordinateSystem()
         self._toroidal_slices_nodes = self.build_toroidal_slices(
             equilibrium_mesh,
             self.apec.mesh,
@@ -1587,9 +1587,9 @@ class ApecAlgorithm:
         eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
         evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
 
-        from .coordinate_system import CylindricalCoordinateSystem
+        from .coordinate_system import YAxisCylindricalCoordinateSystem
 
-        cylindrical = CylindricalCoordinateSystem()
+        cylindrical = YAxisCylindricalCoordinateSystem()
 
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
@@ -1640,7 +1640,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        from .coordinate_system import CylindricalCoordinateSystem
+        from .coordinate_system import YAxisCylindricalCoordinateSystem
 
         static_mesh = self.apec.mesh
         equilibrium_mesh = self._require_equilibrium_mesh()
@@ -1653,7 +1653,7 @@ class ApecAlgorithm:
         static_js_array = static_mesh.GetCellData().GetArray("Js")
         equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
 
-        cylindrical = CylindricalCoordinateSystem()
+        cylindrical = YAxisCylindricalCoordinateSystem()
         static_amps = (
             np.asarray(vtknp.vtk_to_numpy(static_amps_array), dtype=float).reshape(-1)
             if static_amps_array is not None and equilibrium_amps_array is not None
@@ -1755,7 +1755,7 @@ class ApecAlgorithm:
         ModelEdit.element_solution(mesh, "A")
         ModelEdit.poloidal_flux(
             mesh=mesh,
-            coordinate_system=CylindricalCoordinateSystem(),
+            coordinate_system=YAxisCylindricalCoordinateSystem(),
         )
 
     def equilibrium_solve(self) -> bool:

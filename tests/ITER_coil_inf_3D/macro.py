@@ -1,7 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
@@ -16,14 +16,14 @@ apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
 
-Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (-0.0001, 0.0001), mode="s", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-Selector.select_pos(apec.mesh, 1, (-90.0001, -89.999), mode="s", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (-90.0001, -89.999), mode="s", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select(apec.mesh, "AXIS_NODES", 1, mode="u")
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", 90.0, 0)
@@ -87,7 +87,7 @@ for i in range(1, 10):
     fact = i**6
     Selector.set_value_on_selection(apec.mesh, "Js", fact, 1, type="elem")
     ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js",
-                                                   coordinate_system=CylindricalCoordinateSystem(),
+                                                   coordinate_system=YAxisCylindricalCoordinateSystem(),
                                                    location="elem")
     apec.solve()
     apec.write_output()

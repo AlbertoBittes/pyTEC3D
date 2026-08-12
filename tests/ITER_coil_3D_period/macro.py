@@ -1,7 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import SphericalCoordinateSystem, CylindricalCoordinateSystem
+from apec_m.coordinate_system import SphericalCoordinateSystem, YAxisCylindricalCoordinateSystem
 import os
 import vtk
 import vtk.util.numpy_support as vtknp
@@ -17,20 +17,20 @@ apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
 
-Selector.select_pos(apec.mesh, 1, (-90.0001, -89.999), coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (-90.0001, -89.999), coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", -90.0, 2)
 
-Selector.select_pos(apec.mesh, 1, 0.0, coordinate_system=CylindricalCoordinateSystem())
-Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, 0.0, coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
-apec.dof_couplings = ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=-90.0, variables=("A", "VOLT"))
+apec.dof_couplings = ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=-90.0, variables=("A", "VOLT"))
 
 Selector.select(apec.mesh, "TYPE", 24, type="elem")
 Selector.nsle(apec.mesh, "r")
 
-Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
@@ -67,7 +67,7 @@ for i in range(1, 3):
     fact = i**6
     Selector.set_value_on_selection(apec.mesh, "Js", fact, 1, type="elem")
     ModelEdit.map_vector_field_to_global_components(apec.mesh, "Js",
-                                                   coordinate_system=CylindricalCoordinateSystem(),
+                                                   coordinate_system=YAxisCylindricalCoordinateSystem(),
                                                    location="elem")
     apec.solve()
     apec.write_output()

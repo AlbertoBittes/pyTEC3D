@@ -2,7 +2,7 @@ from apec_m import APEC_M
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
 from vtkmodules.util import numpy_support as vtknp
@@ -36,7 +36,7 @@ apec.read_excel("input_template.xlsx")
 # # Set Boundary conditions
 # Axis boundary conditions
 Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=CylindricalCoordinateSystem()
+    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
 # Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
@@ -52,11 +52,11 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 
 
 # Cyclic periodic boundaries
-Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=CylindricalCoordinateSystem())
-apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
+Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
 
 # rotate angles
-Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=CylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
 Selector.select(apec.mesh, "ID", 16170)
@@ -64,7 +64,7 @@ Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 # 1. Build source->destination element map using toroidal slices
 Selector.select(apec.mesh, "COILS", 1, type="elem", mode="a")
-apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]

@@ -21,7 +21,7 @@ AugmentSparsityOnNodes::AugmentSparsityOnNodes(
     vtkUnstructuredGrid *vtk_grid)
     : _mesh(mesh), _vtk_grid(vtk_grid)
 {
-    // rebuild_elem_neighbors();
+    rebuild_elem_neighbors();
 }
 
 void AugmentSparsityOnNodes::rebuild_node_pairs()
@@ -173,7 +173,7 @@ void AugmentSparsityOnNodes::operator()(const libMesh::MeshBase::const_element_i
 
 void AugmentSparsityOnNodes::mesh_reinit()
 {
-    rebuild_elem_neighbors();
+    // rebuild_elem_neighbors();
 }
 
 void AugmentSparsityOnNodes::redistribute()

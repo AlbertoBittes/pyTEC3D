@@ -2,7 +2,7 @@ from apec_m import APEC_M
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import CylindricalCoordinateSystem, SphericalCoordinateSystem
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
 from vtkmodules.util import numpy_support as vtknp
@@ -44,8 +44,8 @@ Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
 apec.save_mesh()
 
 # Cyclic periodic boundaries
-Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=CylindricalCoordinateSystem())
-apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, CylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
+Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
 
 Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
@@ -64,7 +64,7 @@ TreeGauge.tree_gauge(
 
 # 1. Build source->destination element map using toroidal slices
 Selector.select(apec.mesh, "COILS", 1, type="elem", mode="a")
-apec.coordinate_systems[1] = CylindricalCoordinateSystem()
+apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]

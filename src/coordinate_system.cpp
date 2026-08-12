@@ -13,6 +13,10 @@ namespace apec_m
         constexpr libMesh::Real kOrthonormalTol = 1e-8;
         constexpr libMesh::Real kFiniteTolerance = 1e-12;
         constexpr libMesh::Real kDefaultOrigin[3] = {0.0, 0.0, 0.0};
+        // THXY, THYZ, THZX (deg) rotating the reference (Z-aligned) axis onto each global axis.
+        constexpr libMesh::Real kXAxisAngles[3] = {0.0, 0.0, 90.0};
+        constexpr libMesh::Real kYAxisAngles[3] = {0.0, -90.0, 0.0};
+        constexpr libMesh::Real kZAxisAngles[3] = {0.0, 0.0, 0.0};
 
         inline void mat_t_vec3(const libMesh::Real *m, const libMesh::Real *v, libMesh::Real *out) noexcept
         {
@@ -444,6 +448,21 @@ namespace apec_m
         const libMesh::Real *nxypl)
     {
         return CylindricalCoordinateSystem(origin, nxax, nxypl, nullptr);
+    }
+
+    XAxisCylindricalCoordinateSystem::XAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kXAxisAngles)
+    {
+    }
+
+    YAxisCylindricalCoordinateSystem::YAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kYAxisAngles)
+    {
+    }
+
+    ZAxisCylindricalCoordinateSystem::ZAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kZAxisAngles)
+    {
     }
 
     void CylindricalCoordinateSystem::vector_components_to_local_raw(
