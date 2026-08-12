@@ -136,17 +136,18 @@ void ElementBuilder::build_nodal_load_injector_map(const libMesh::MeshBase &mesh
 
     const unsigned int dof_var_num = dof_solution_system_->variable_number(dof_variable_name);
     const unsigned int sys_num = dof_solution_system_->number();
+    const auto &dof_var = dof_solution_system_->variable(dof_var_num);
 
     std::map<dof_id_type, dof_id_type> local_injector_elem_by_dof;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
+        if (!dof_var.active_on_subdomain(elem->subdomain_id()))
+            continue;
+
         for (unsigned int i = 0; i < elem->n_nodes(); ++i)
         {
             const auto &node = elem->node_ref(i);
-            if (node.n_dofs(sys_num, dof_var_num) == 0)
-                continue;
-
             const auto node_id = static_cast<vtkIdType>(node.id());
             const Real load_value = load_array->GetComponent(node_id, 0);
             if (load_value == 0.0)
