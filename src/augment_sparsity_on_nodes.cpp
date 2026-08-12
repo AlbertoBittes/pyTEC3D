@@ -7,7 +7,7 @@
 
 #include <algorithm>
 #include <cstring>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
 
 #include <libmesh/elem.h>
@@ -15,21 +15,6 @@
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
-
-namespace
-{
-    bool add_pair(std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> &pairs,
-                  libMesh::dof_id_type first,
-                  libMesh::dof_id_type second)
-    {
-        const auto candidate = std::make_pair(first, second);
-        if (std::find(pairs.begin(), pairs.end(), candidate) != pairs.end())
-            return false;
-        pairs.push_back(candidate);
-        return true;
-    }
-
-} // namespace
 
 AugmentSparsityOnNodes::AugmentSparsityOnNodes(
     libMesh::MeshBase &mesh,
@@ -42,7 +27,6 @@ AugmentSparsityOnNodes::AugmentSparsityOnNodes(
 void AugmentSparsityOnNodes::rebuild_node_pairs()
 {
     cp_pairs_by_cp.clear();
-    node_pairs.clear();
 
     if (!_vtk_grid)
         return;
@@ -73,16 +57,11 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
     if (cp_arrays.empty())
         return;
 
-    std::unordered_map<int, std::unordered_set<libMesh::dof_id_type>> cp_nodes;
-    const vtkIdType n_points = _vtk_grid->GetNumberOfPoints();
-
+    std::unordered_map<int, std::vector<libMesh::dof_id_type>> cp_nodes;
     // Match legacy behavior: only build CP pairs from nodes known on this mesh
     // partition (local + currently ghosted), not from all global VTK points.
     for (const auto *node_ptr : _mesh.node_ptr_range())
     {
-        if (!node_ptr)
-            continue;
-
         const libMesh::dof_id_type node_id = static_cast<libMesh::dof_id_type>(node_ptr->id());
         const vtkIdType vtk_node_id = static_cast<vtkIdType>(node_id);
 
@@ -92,7 +71,7 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
             if (cp_value <= 0)
                 continue;
 
-            cp_nodes[cp_value].insert(node_id);
+            cp_nodes[cp_value].push_back(node_id);
         }
     }
 
@@ -108,18 +87,9 @@ void AugmentSparsityOnNodes::rebuild_node_pairs()
         for (libMesh::dof_id_type node_id : nodes)
         {
             if (node_id != master_node)
-            {
                 cp_pairs.emplace_back(master_node, node_id);
-                node_pairs.emplace_back(master_node, node_id);
-            }
         }
-
-        std::sort(cp_pairs.begin(), cp_pairs.end());
-        cp_pairs.erase(std::unique(cp_pairs.begin(), cp_pairs.end()), cp_pairs.end());
     }
-
-    std::sort(node_pairs.begin(), node_pairs.end());
-    node_pairs.erase(std::unique(node_pairs.begin(), node_pairs.end()), node_pairs.end());
 }
 
 void AugmentSparsityOnNodes::rebuild_elem_neighbors()
@@ -128,46 +98,42 @@ void AugmentSparsityOnNodes::rebuild_elem_neighbors()
 
     rebuild_node_pairs();
 
-    elem_pairs.clear();
     slave_to_master_elems.clear();
 
     std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> node_to_elems;
+    node_to_elems.reserve(_mesh.n_nodes());
     for (const auto *elem : _mesh.element_ptr_range())
     {
-        if (!elem)
-            continue;
         for (unsigned int i = 0; i < elem->n_nodes(); ++i)
             node_to_elems[static_cast<libMesh::dof_id_type>(elem->node_id(i))].push_back(elem->id());
     }
 
-    for (auto &entry : node_to_elems)
+    for (const auto &cp_entry : cp_pairs_by_cp)
     {
-        auto &elem_ids = entry.second;
-        std::sort(elem_ids.begin(), elem_ids.end());
-        elem_ids.erase(std::unique(elem_ids.begin(), elem_ids.end()), elem_ids.end());
-    }
+        const auto &cp_pairs = cp_entry.second;
+        if (cp_pairs.empty())
+            continue;
 
-    for (const auto &pair : node_pairs)
-    {
-        const auto master_elem_it = node_to_elems.find(pair.first);
-        const auto slave_elem_it = node_to_elems.find(pair.second);
-        if (master_elem_it == node_to_elems.end() || slave_elem_it == node_to_elems.end())
+        const libMesh::dof_id_type master_node = cp_pairs.front().first;
+        const auto master_elem_it = node_to_elems.find(master_node);
+        if (master_elem_it == node_to_elems.end())
             continue;
 
         const auto &master_elem_ids = master_elem_it->second;
-        const auto &slave_elem_ids = slave_elem_it->second;
-        if (master_elem_ids.empty() || slave_elem_ids.empty())
+        if (master_elem_ids.empty())
             continue;
 
-        for (const libMesh::dof_id_type master_elem_id : master_elem_ids)
+        for (const auto &cp_pair : cp_pairs)
         {
+            const auto slave_elem_it = node_to_elems.find(cp_pair.second);
+            if (slave_elem_it == node_to_elems.end())
+                continue;
+
+            const auto &slave_elem_ids = slave_elem_it->second;
             for (const libMesh::dof_id_type slave_elem_id : slave_elem_ids)
             {
-                add_pair(elem_pairs, master_elem_id, slave_elem_id);
-
                 auto &master_ids = slave_to_master_elems[slave_elem_id];
-                if (std::find(master_ids.begin(), master_ids.end(), master_elem_id) == master_ids.end())
-                    master_ids.push_back(master_elem_id);
+                master_ids.insert(master_ids.end(), master_elem_ids.begin(), master_elem_ids.end());
             }
         }
     }
@@ -189,9 +155,6 @@ void AugmentSparsityOnNodes::operator()(const libMesh::MeshBase::const_element_i
 
     for (const auto &elem : libMesh::as_range(range_begin, range_end))
     {
-        if (!elem)
-            continue;
-
         if (elem->processor_id() != p)
             continue;
 

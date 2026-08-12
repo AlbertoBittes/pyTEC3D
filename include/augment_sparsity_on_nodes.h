@@ -58,13 +58,11 @@ public:
     NodePairsByCp cp_pairs_by_cp;
 
 private:
-    void rebuild_node_pairs();     ///< Scans VTK CP_* arrays and builds @c node_pairs.
+    void rebuild_node_pairs();     ///< Scans VTK CP_* arrays and builds @c cp_pairs_by_cp.
     void rebuild_elem_neighbors(); ///< Maps node pairs to element pairs via @c slave_to_master_elems.
 
     libMesh::MeshBase &_mesh;                                                                          ///< Reference to the distributed mesh.
     vtkUnstructuredGrid *_vtk_grid = nullptr;                                                          ///< Non-owning VTK grid pointer.
-    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> node_pairs;                     ///< All master-slave node pairs.
-    std::vector<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>> elem_pairs;                     ///< Representative element pairs.
     std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> slave_to_master_elems; ///< Maps each slave element ID to all of its master element IDs.
 };
 
