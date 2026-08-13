@@ -106,17 +106,6 @@ for step_idx in range(len(time_steps)):
         apec.time_step["time"] = 1e-10
     else:
         apec.time_step["transient_effects"] = True
-        # Tree gauge
-        Selector.select_all(apec.mesh)
-        Selector.set_value_on_selection(apec.mesh, "_Az", np.nan)
-        Selector.select(apec.mesh, "MATERIAL", [21, 23], type="elem")
-        Selector.select_pos(
-            apec.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
-        )
-        TreeGauge.tree_gauge(
-            apec.mesh,
-            periodic_point_coupling="CP_0",
-        )
     apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()
