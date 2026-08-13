@@ -800,7 +800,6 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
     const unsigned int proc_id = mesh.comm().rank();
     struct EdgeInfo
     {
-        bool orientation = true;
         dof_id_type corner0 = libMesh::invalid_uint;
         dof_id_type corner1 = libMesh::invalid_uint;
     };
@@ -811,12 +810,11 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
         for (const auto &pair : cp_entry.second)
             master_to_slave_any_cp.emplace(pair.first, pair.second);
 
-    // Build orientation on the distributed mesh view (owned + ghosted elements).
+    // Build edge-corner lookup on the distributed mesh view (owned + ghosted elements).
     for (const auto *elem : mesh.element_ptr_range())
     {
         for (const auto edge_idx : elem->edge_index_range())
         {
-            const bool orientation = elem->positive_edge_orientation(edge_idx);
             const unsigned int corner0_local = elem->local_edge_node(edge_idx, 0);
             const unsigned int corner1_local = elem->local_edge_node(edge_idx, 1);
             const dof_id_type corner0 = static_cast<dof_id_type>(elem->node_id(corner0_local));
@@ -830,7 +828,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 
                 const auto node_id =
                     static_cast<dof_id_type>(elem->node_id(local_node_idx));
-                edge_info_by_midside_node.emplace(node_id, EdgeInfo{orientation, corner0, corner1});
+                edge_info_by_midside_node.emplace(node_id, EdgeInfo{corner0, corner1});
             }
         }
     }
@@ -864,8 +862,6 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             if (master_it != edge_info_by_midside_node.end() &&
                 slave_it != edge_info_by_midside_node.end())
             {
-                same_edge_orientation = (master_it->second.orientation == slave_it->second.orientation);
-
                 const auto mapped_master_corner0_it = master_to_slave_any_cp.find(master_it->second.corner0);
                 const auto mapped_master_corner1_it = master_to_slave_any_cp.find(master_it->second.corner1);
                 if (mapped_master_corner0_it != master_to_slave_any_cp.end() &&
@@ -881,15 +877,20 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
                         (mapped_corner0 == slave_it->second.corner1 &&
                          mapped_corner1 == slave_it->second.corner0);
 
-                    if (reversed_corner_order)
-                        same_edge_orientation = !same_edge_orientation;
-                    else if (!same_corner_order)
+                    if (!same_corner_order && !reversed_corner_order)
                     {
                         std::ostringstream msg;
                         msg << "Coupling constraint: unable to match Az edge corner pairs for master midside node "
                             << pair.first << " and slave midside node " << pair.second << ".";
                         apec::logging::error_and_abort(msg.str());
                     }
+
+                    const bool master_corner_order_is_ascending =
+                        (master_it->second.corner0 < master_it->second.corner1);
+                    const bool mapped_corner_order_is_ascending =
+                        (mapped_corner0 < mapped_corner1);
+                    same_edge_orientation =
+                        (master_corner_order_is_ascending == mapped_corner_order_is_ascending);
                 }
             }
 
