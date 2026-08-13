@@ -35,14 +35,6 @@ apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, r
 
 apec.read_excel("input_template.xlsx")
 
-# Outer boundary far field zero boundary conditions
-Selector.select_pos(
-    apec.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
-)
-Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
-
-apec.save_mesh()
-
 # Cyclic periodic boundaries
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
@@ -50,20 +42,23 @@ apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundarie
 Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
-# Tree gauge
+# BCs: Outer boundary far field zero boundary conditions + Tree gauge
 Selector.select_all(apec.mesh)
-# Selector.select(apec.mesh, "MATERIAL", [21, 24], type="elem")
-# Selector.select_pos(
-#     apec.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
-# )
-Selector.nsel_ext(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
+Selector.select_pos(
+    apec.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
+)
+Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
 TreeGauge.tree_gauge(
     apec.mesh,
     periodic_point_coupling="CP_0",
 )
 
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
+
 # 1. Build source->destination element map using toroidal slices
-Selector.select(apec.mesh, "COILS", 1, type="elem", mode="a")
+Selector.select(apec.mesh, "COILS", 1, type="elem", mode="s")
 apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
@@ -77,8 +72,6 @@ for coil in coils:
     js_z = float(eq_cell_data.GetArray("Js").GetTuple(first_elem)[2])
     Selector.select(apec.mesh, coil, 1, type="elem", mode="s")
     Selector.set_value_on_selection(apec.mesh, "Js", js_z, 1, type="elem")
-
-apec.save_mesh()
 
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
@@ -102,6 +95,8 @@ time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
 apec.time_step["theta"] = 1.0
+
+apec.save_mesh()
 
 apec.load_mesh_into_solver()
 for step_idx in range(len(time_steps)):

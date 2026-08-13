@@ -32,6 +32,35 @@ Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
 apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
+
+Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
+Selector.nsle(apec.mesh)
+Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
+# Take the first selected node as master node (lowest ID)
+master_node = vtknp.vtk_to_numpy(
+    apec.mesh.GetPointData().GetArray("selection_point")
+).nonzero()[0][0]
+
+Selector.select_pos(
+    apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
+)
+# Selector.select_pos(
+#     apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem()
+# )
+apec.dof_couplings = pd.concat(
+    [
+        apec.dof_couplings,
+        ModelEdit.periodic_boundaries(
+            apec.mesh,
+            YAxisCylindricalCoordinateSystem(),
+            dy=extr_angle,
+            array_name="CP_1",
+            variables=("Az"),
+        ),
+    ]
+)
+
+Selector.select_all(apec.mesh)
 Selector.select_pos(
     apec.mesh,
     0,
@@ -54,14 +83,10 @@ Selector.select_pos(
     coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.set_value_on_selection(apec.mesh, "_Az", 0)
-
-Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
-# Take the first selected node as master node (lowest ID)
-master_node = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")
-).nonzero()[0][0]
+TreeGauge.tree_gauge(
+    apec.mesh,
+    periodic_point_coupling="CP_1"
+)
 
 Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 Selector.nsle(apec.mesh)
@@ -71,55 +96,6 @@ master_node_passive = vtknp.vtk_to_numpy(
 ).nonzero()[0][0]
 Selector.select(apec.mesh, "ID", master_node_passive)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
-
-Selector.select_pos(
-    apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
-)
-Selector.select_pos(
-    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem()
-)
-Selector.select_pos(
-    apec.mesh,
-    0,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=YAxisCylindricalCoordinateSystem(),
-)
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (size - tol, size + tol),
-    mode="u",
-    coordinate_system=YAxisCylindricalCoordinateSystem(),
-)
-Selector.select_pos(
-    apec.mesh,
-    2,
-    (-size - tol, -size + tol),
-    mode="u",
-    coordinate_system=YAxisCylindricalCoordinateSystem(),
-)
-apec.dof_couplings = pd.concat(
-    [
-        apec.dof_couplings,
-        ModelEdit.periodic_boundaries(
-            apec.mesh,
-            YAxisCylindricalCoordinateSystem(),
-            dy=extr_angle,
-            array_name="CP_1",
-            variables=("Az"),
-        ),
-    ]
-)
-
-
-Selector.select_all(apec.mesh)
-# Selector.select(apec.mesh, "MATERIAL", 24, type="elem", mode="u")
-Selector.nsel_ext(apec.mesh)
-TreeGauge.tree_gauge(
-    apec.mesh,
-    periodic_midside_coupling="CP_1"
-)
 
 apec.load_mesh_into_solver()
 
