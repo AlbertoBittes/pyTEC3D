@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -45,10 +46,7 @@ class GlobalConstraintsObject
 public:
   using FEParentObjectBase<ApecMDOFSystem<ImplSystem>>::FEParentObjectBase;
 
-  GlobalConstraintsObject(ApecMDOFSystem<ImplSystem> *sys)
-      : FEParentObjectBase<ApecMDOFSystem<ImplSystem>>(sys) // Set the parent System
-  {
-  }
+  GlobalConstraintsObject(ApecMDOFSystem<ImplSystem> *sys);
 
   virtual ~GlobalConstraintsObject() = default;
 
@@ -84,6 +82,9 @@ private:
   /** @brief DOF-coupling constraints derived from CP_* periodic-boundary node pairs. */
   std::map<libMesh::dof_id_type, ConstraintEntry> build_coupling_constraints();
 
+  /** @brief Caches CP_ID/VARIABLE coupling entries once at construction time. */
+  void initialize_coupling_entries_cache();
+
   /** @brief Builds slave-vs-master midside edge-orientation parity on first constrain() call. */
   void build_edge_orientations_map();
 
@@ -91,6 +92,9 @@ private:
   std::map<libMesh::dof_id_type, ConstraintEntry> _constraint_cache;
   std::unordered_map<libMesh::dof_id_type, DofOwnerInfo> _point_constraint_owner_cache;
   std::unique_ptr<std::map<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>, bool>> _edge_orientations_map = nullptr;
+  std::vector<int> _coupling_cp_id_values;
+  std::vector<std::string> _coupling_variable_values;
+  std::unordered_set<int> _az_coupling_cp_ids;
   bool _has_constraint_cache = false;
 };
 

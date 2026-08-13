@@ -119,6 +119,42 @@ namespace
 } // namespace
 
 template <typename ImplSystem>
+GlobalConstraintsObject<ImplSystem>::GlobalConstraintsObject(ApecMDOFSystem<ImplSystem> *sys)
+    : FEParentObjectBase<ApecMDOFSystem<ImplSystem>>(sys)
+{
+    this->initialize_coupling_entries_cache();
+}
+
+template <typename ImplSystem>
+void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
+{
+    _coupling_cp_id_values.clear();
+    _coupling_variable_values.clear();
+    _az_coupling_cp_ids.clear();
+
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    auto &equation_systems = dof_system->get_apec_equation_systems();
+    auto *solver = equation_systems.get_parent_object();
+    if (!solver)
+        return;
+
+    {
+        py::gil_scoped_acquire gil;
+        py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
+        _coupling_cp_id_values = py::cast<std::vector<int>>(
+            dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")());
+        _coupling_variable_values = py::cast<std::vector<std::string>>(
+            dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")());
+    }
+
+    const std::size_t n_entries =
+        std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
+    for (std::size_t i = 0; i < n_entries; ++i)
+        if (_coupling_variable_values[i] == "Az")
+            _az_coupling_cp_ids.insert(_coupling_cp_id_values[i]);
+}
+
+template <typename ImplSystem>
 std::map<dof_id_type, typename GlobalConstraintsObject<ImplSystem>::ConstraintEntry>
 GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
 {
@@ -540,17 +576,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
     vtkPointData *point_data = vtk_grid->GetPointData();
 
     vtkDataArray *angles_array = vtkDataArray::SafeDownCast(point_data->GetArray("angles"));
-    std::vector<int> cp_id_values;
-    std::vector<std::string> variable_values;
-    {
-        py::gil_scoped_acquire gil;
-        py::object dof_couplings_df = solver->get_apec_object().attr("dof_couplings");
-        cp_id_values = py::cast<std::vector<int>>(
-            dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")());
-        variable_values = py::cast<std::vector<std::string>>(
-            dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")());
-    }
-    const std::size_t n_entries = cp_id_values.size();
+    const std::size_t n_entries =
+        std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
     if (n_entries == 0)
         return constraints;
 
@@ -602,8 +629,8 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 
     for (std::size_t entry_idx = 0; entry_idx < n_entries; ++entry_idx)
     {
-        const int cp_id = cp_id_values[entry_idx];
-        const std::string &variable = variable_values[entry_idx];
+        const int cp_id = _coupling_cp_id_values[entry_idx];
+        const std::string &variable = _coupling_variable_values[entry_idx];
         if (variable.empty())
             continue;
 
@@ -747,13 +774,20 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 template <typename ImplSystem>
 void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 {
+    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    System &system = *dof_system;
+    if (!system.has_variable("Az") || _az_coupling_cp_ids.empty())
+    {
+        _edge_orientations_map.reset();
+        return;
+    }
+
     if (!_edge_orientations_map)
         _edge_orientations_map =
             std::make_unique<std::map<std::pair<dof_id_type, dof_id_type>, bool>>();
     else
         _edge_orientations_map->clear();
 
-    ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     auto &equation_systems = dof_system->get_apec_equation_systems();
     auto *solver = equation_systems.get_parent_object();
 
@@ -764,7 +798,18 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
-    std::unordered_map<dof_id_type, bool> orientation_by_midside_node;
+    struct EdgeInfo
+    {
+        bool orientation = true;
+        dof_id_type corner0 = libMesh::invalid_uint;
+        dof_id_type corner1 = libMesh::invalid_uint;
+    };
+    std::unordered_map<dof_id_type, EdgeInfo> edge_info_by_midside_node;
+
+    std::unordered_map<dof_id_type, dof_id_type> master_to_slave_any_cp;
+    for (const auto &cp_entry : pairs_by_cp)
+        for (const auto &pair : cp_entry.second)
+            master_to_slave_any_cp.emplace(pair.first, pair.second);
 
     // Build orientation on the distributed mesh view (owned + ghosted elements).
     for (const auto *elem : mesh.element_ptr_range())
@@ -772,6 +817,11 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
         for (const auto edge_idx : elem->edge_index_range())
         {
             const bool orientation = elem->positive_edge_orientation(edge_idx);
+            const unsigned int corner0_local = elem->local_edge_node(edge_idx, 0);
+            const unsigned int corner1_local = elem->local_edge_node(edge_idx, 1);
+            const dof_id_type corner0 = static_cast<dof_id_type>(elem->node_id(corner0_local));
+            const dof_id_type corner1 = static_cast<dof_id_type>(elem->node_id(corner1_local));
+
             const auto local_nodes_on_edge = elem->nodes_on_edge(edge_idx);
             for (const unsigned int local_node_idx : local_nodes_on_edge)
             {
@@ -780,14 +830,18 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 
                 const auto node_id =
                     static_cast<dof_id_type>(elem->node_id(local_node_idx));
-                orientation_by_midside_node.emplace(node_id, orientation);
+                edge_info_by_midside_node.emplace(node_id, EdgeInfo{orientation, corner0, corner1});
             }
         }
     }
 
-    for (const auto &entry : pairs_by_cp)
+    for (const int cp_id : _az_coupling_cp_ids)
     {
-        const auto &cp_pairs = entry.second;
+        const auto cp_it = pairs_by_cp.find(cp_id);
+        if (cp_it == pairs_by_cp.end())
+            continue;
+
+        const auto &cp_pairs = cp_it->second;
         for (const auto &pair : cp_pairs)
         {
             const Node *slave_node = mesh.query_node_ptr(pair.second);
@@ -805,11 +859,39 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             }
 
             bool same_edge_orientation = true;
-            const auto master_it = orientation_by_midside_node.find(pair.first);
-            const auto slave_it = orientation_by_midside_node.find(pair.second);
-            if (master_it != orientation_by_midside_node.end() &&
-                slave_it != orientation_by_midside_node.end())
-                same_edge_orientation = (master_it->second == slave_it->second);
+            const auto master_it = edge_info_by_midside_node.find(pair.first);
+            const auto slave_it = edge_info_by_midside_node.find(pair.second);
+            if (master_it != edge_info_by_midside_node.end() &&
+                slave_it != edge_info_by_midside_node.end())
+            {
+                same_edge_orientation = (master_it->second.orientation == slave_it->second.orientation);
+
+                const auto mapped_master_corner0_it = master_to_slave_any_cp.find(master_it->second.corner0);
+                const auto mapped_master_corner1_it = master_to_slave_any_cp.find(master_it->second.corner1);
+                if (mapped_master_corner0_it != master_to_slave_any_cp.end() &&
+                    mapped_master_corner1_it != master_to_slave_any_cp.end())
+                {
+                    const dof_id_type mapped_corner0 = mapped_master_corner0_it->second;
+                    const dof_id_type mapped_corner1 = mapped_master_corner1_it->second;
+
+                    const bool same_corner_order =
+                        (mapped_corner0 == slave_it->second.corner0 &&
+                         mapped_corner1 == slave_it->second.corner1);
+                    const bool reversed_corner_order =
+                        (mapped_corner0 == slave_it->second.corner1 &&
+                         mapped_corner1 == slave_it->second.corner0);
+
+                    if (reversed_corner_order)
+                        same_edge_orientation = !same_edge_orientation;
+                    else if (!same_corner_order)
+                    {
+                        std::ostringstream msg;
+                        msg << "Coupling constraint: unable to match Az edge corner pairs for master midside node "
+                            << pair.first << " and slave midside node " << pair.second << ".";
+                        apec::logging::error_and_abort(msg.str());
+                    }
+                }
+            }
 
             (*_edge_orientations_map)[std::make_pair(pair.first, pair.second)] =
                 same_edge_orientation;
@@ -823,7 +905,8 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
     if (!this->get_parent_object()->is_initialized())
         return;
 
-    if (_edge_orientations_map == nullptr || _edge_orientations_map->empty())
+    if (this->get_parent_object()->has_variable("Az") &&
+        (_edge_orientations_map == nullptr || _edge_orientations_map->empty()))
         build_edge_orientations_map();
 
     ApecMDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
