@@ -75,9 +75,9 @@ Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
 Selector.select_pos(
     apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-Selector.select_pos(
-    apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem()
-)
+# Selector.select_pos(
+#     apec.mesh, 0, (-tol, tol), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem()
+# )
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
@@ -97,7 +97,7 @@ Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
 TreeGauge.tree_gauge(
     apec.mesh,
-    periodic_midside_coupling="CP_1"
+    periodic_point_coupling="CP_1"
 )
 
 apec.load_mesh_into_solver()

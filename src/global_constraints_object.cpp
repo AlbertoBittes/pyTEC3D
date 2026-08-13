@@ -805,11 +805,6 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
     };
     std::unordered_map<dof_id_type, EdgeInfo> edge_info_by_midside_node;
 
-    std::unordered_map<dof_id_type, dof_id_type> master_to_slave_any_cp;
-    for (const auto &cp_entry : pairs_by_cp)
-        for (const auto &pair : cp_entry.second)
-            master_to_slave_any_cp.emplace(pair.first, pair.second);
-
     // Build edge-corner lookup on the distributed mesh view (owned + ghosted elements).
     for (const auto *elem : mesh.element_ptr_range())
     {
@@ -840,6 +835,10 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             continue;
 
         const auto &cp_pairs = cp_it->second;
+        std::unordered_map<dof_id_type, dof_id_type> master_to_slave_this_az_cp;
+        for (const auto &cp_pair : cp_pairs)
+            master_to_slave_this_az_cp.emplace(cp_pair.first, cp_pair.second);
+
         for (const auto &pair : cp_pairs)
         {
             const Node *slave_node = mesh.query_node_ptr(pair.second);
@@ -862,35 +861,42 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             if (master_it != edge_info_by_midside_node.end() &&
                 slave_it != edge_info_by_midside_node.end())
             {
-                const auto mapped_master_corner0_it = master_to_slave_any_cp.find(master_it->second.corner0);
-                const auto mapped_master_corner1_it = master_to_slave_any_cp.find(master_it->second.corner1);
-                if (mapped_master_corner0_it != master_to_slave_any_cp.end() &&
-                    mapped_master_corner1_it != master_to_slave_any_cp.end())
+                const auto mapped_master_corner0_it =
+                    master_to_slave_this_az_cp.find(master_it->second.corner0);
+                const auto mapped_master_corner1_it =
+                    master_to_slave_this_az_cp.find(master_it->second.corner1);
+                const bool has_mapped_corner0 =
+                    (mapped_master_corner0_it != master_to_slave_this_az_cp.end());
+                const bool has_mapped_corner1 =
+                    (mapped_master_corner1_it != master_to_slave_this_az_cp.end());
+
+                if (has_mapped_corner0 || has_mapped_corner1)
                 {
-                    const dof_id_type mapped_corner0 = mapped_master_corner0_it->second;
-                    const dof_id_type mapped_corner1 = mapped_master_corner1_it->second;
+                    // Infer orientation from a single mapped corner. When both corners are
+                    // available in this Az CP set, corner0 is used as the reference.
+                    const bool reference_is_master_corner0 = has_mapped_corner0;
+                    const dof_id_type mapped_corner = reference_is_master_corner0
+                                                          ? mapped_master_corner0_it->second
+                                                          : mapped_master_corner1_it->second;
 
-                    const bool same_corner_order =
-                        (mapped_corner0 == slave_it->second.corner0 &&
-                         mapped_corner1 == slave_it->second.corner1);
-                    const bool reversed_corner_order =
-                        (mapped_corner0 == slave_it->second.corner1 &&
-                         mapped_corner1 == slave_it->second.corner0);
+                    const bool mapped_matches_slave_corner0 =
+                        (mapped_corner == slave_it->second.corner0);
+                    const bool mapped_matches_slave_corner1 =
+                        (mapped_corner == slave_it->second.corner1);
 
-                    if (!same_corner_order && !reversed_corner_order)
+                    if (!mapped_matches_slave_corner0 && !mapped_matches_slave_corner1)
                     {
                         std::ostringstream msg;
-                        msg << "Coupling constraint: unable to match Az edge corner pairs for master midside node "
-                            << pair.first << " and slave midside node " << pair.second << ".";
+                        msg << "Coupling constraint: unable to match Az edge corner pair for master midside node "
+                            << pair.first << " and slave midside node " << pair.second
+                            << " using single-corner CP mapping.";
                         apec::logging::error_and_abort(msg.str());
                     }
 
-                    const bool master_corner_order_is_ascending =
-                        (master_it->second.corner0 < master_it->second.corner1);
-                    const bool mapped_corner_order_is_ascending =
-                        (mapped_corner0 < mapped_corner1);
-                    same_edge_orientation =
-                        (master_corner_order_is_ascending == mapped_corner_order_is_ascending);
+                    if (reference_is_master_corner0)
+                        same_edge_orientation = mapped_matches_slave_corner0;
+                    else
+                        same_edge_orientation = mapped_matches_slave_corner1;
                 }
             }
 
