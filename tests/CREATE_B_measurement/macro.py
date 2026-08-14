@@ -142,8 +142,8 @@ TreeGauge.tree_gauge(apec.mesh)
 
 
 # Read the numpy arrays of time, current and beta from file
-time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "times.txt"))
-voltages = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "voltages.txt"))
+time_steps = np.loadtxt("times.txt")
+voltages = np.loadtxt("volt.txt")
 
 # Consider only the time steps every 5 in the list
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::2]))
