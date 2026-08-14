@@ -798,6 +798,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
+
     struct EdgeInfo
     {
         dof_id_type corner0 = libMesh::invalid_uint;
@@ -828,6 +829,46 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
         }
     }
 
+    // Build a per-node CP label map from the already assembled CP pairs.
+    // Missing labels are treated as 0 during orientation inference.
+    std::unordered_map<dof_id_type, int> node_cp_label;
+    for (const auto &cp_entry : pairs_by_cp)
+    {
+        const int cp_label = cp_entry.first;
+        for (const auto &cp_pair : cp_entry.second)
+        {
+            node_cp_label.emplace(cp_pair.first, cp_label);
+            node_cp_label.emplace(cp_pair.second, cp_label);
+        }
+    }
+
+    const auto cp_of = [&node_cp_label](const dof_id_type node_id) -> int
+    {
+        const auto it = node_cp_label.find(node_id);
+        return it == node_cp_label.end() ? 0 : it->second;
+    };
+
+    const auto order_corners_by_point =
+        [&mesh](const dof_id_type c0, const dof_id_type c1) -> std::array<dof_id_type, 2>
+    {
+        const Node *n0 = mesh.query_node_ptr(c0);
+        const Node *n1 = mesh.query_node_ptr(c1);
+        if (!n0 || !n1)
+        {
+            std::ostringstream msg;
+            msg << "Coupling constraint: missing corner node while ordering edge corners by coordinates ("
+                << c0 << ", " << c1 << ").";
+            apec::logging::error_and_abort(msg.str());
+        }
+
+        // Match libMesh positive-edge-orientation style: compare Point coordinates.
+        const Point &p0 = *n0;
+        const Point &p1 = *n1;
+        return (p0 > p1)
+                   ? std::array<dof_id_type, 2>{c0, c1}
+                   : std::array<dof_id_type, 2>{c1, c0};
+    };
+
     for (const int cp_id : _az_coupling_cp_ids)
     {
         const auto cp_it = pairs_by_cp.find(cp_id);
@@ -835,9 +876,6 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             continue;
 
         const auto &cp_pairs = cp_it->second;
-        std::unordered_map<dof_id_type, dof_id_type> master_to_slave_this_az_cp;
-        for (const auto &cp_pair : cp_pairs)
-            master_to_slave_this_az_cp.emplace(cp_pair.first, cp_pair.second);
 
         for (const auto &pair : cp_pairs)
         {
@@ -861,43 +899,83 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
             if (master_it != edge_info_by_midside_node.end() &&
                 slave_it != edge_info_by_midside_node.end())
             {
-                const auto mapped_master_corner0_it =
-                    master_to_slave_this_az_cp.find(master_it->second.corner0);
-                const auto mapped_master_corner1_it =
-                    master_to_slave_this_az_cp.find(master_it->second.corner1);
-                const bool has_mapped_corner0 =
-                    (mapped_master_corner0_it != master_to_slave_this_az_cp.end());
-                const bool has_mapped_corner1 =
-                    (mapped_master_corner1_it != master_to_slave_this_az_cp.end());
+                const std::array<dof_id_type, 2> master_corners = order_corners_by_point(
+                    master_it->second.corner0,
+                    master_it->second.corner1);
+                const std::array<dof_id_type, 2> slave_corners = order_corners_by_point(
+                    slave_it->second.corner0,
+                    slave_it->second.corner1);
 
-                if (has_mapped_corner0 || has_mapped_corner1)
+                std::array<int, 3> master_tokens = {
+                    cp_of(master_corners[0]),
+                    cp_of(pair.first),
+                    cp_of(master_corners[1]),
+                };
+                std::array<int, 3> slave_tokens = {
+                    cp_of(slave_corners[0]),
+                    cp_of(pair.second),
+                    cp_of(slave_corners[1]),
+                };
+
+                const int master_corner_cp_count =
+                    static_cast<int>(master_tokens[0] != 0) +
+                    static_cast<int>(master_tokens[2] != 0);
+                const int slave_corner_cp_count =
+                    static_cast<int>(slave_tokens[0] != 0) +
+                    static_cast<int>(slave_tokens[2] != 0);
+                if (master_corner_cp_count == 0 && slave_corner_cp_count == 0)
                 {
-                    // Infer orientation from a single mapped corner. When both corners are
-                    // available in this Az CP set, corner0 is used as the reference.
-                    const bool reference_is_master_corner0 = has_mapped_corner0;
-                    const dof_id_type mapped_corner = reference_is_master_corner0
-                                                          ? mapped_master_corner0_it->second
-                                                          : mapped_master_corner1_it->second;
-
-                    const bool mapped_matches_slave_corner0 =
-                        (mapped_corner == slave_it->second.corner0);
-                    const bool mapped_matches_slave_corner1 =
-                        (mapped_corner == slave_it->second.corner1);
-
-                    if (!mapped_matches_slave_corner0 && !mapped_matches_slave_corner1)
-                    {
-                        std::ostringstream msg;
-                        msg << "Coupling constraint: unable to match Az edge corner pair for master midside node "
-                            << pair.first << " and slave midside node " << pair.second
-                            << " using single-corner CP mapping.";
-                        apec::logging::error_and_abort(msg.str());
-                    }
-
-                    if (reference_is_master_corner0)
-                        same_edge_orientation = mapped_matches_slave_corner0;
-                    else
-                        same_edge_orientation = mapped_matches_slave_corner1;
+                    std::ostringstream msg;
+                    msg << "Coupling constraint: unable to infer Az edge orientation because "
+                        << "no corner CP label was found for either edge in CP_ID="
+                        << cp_id << " (master midside node " << pair.first
+                        << ", slave midside node " << pair.second << ").";
+                    apec::logging::error_and_abort(msg.str());
                 }
+
+                std::array<int, 3> master_cp_sorted = master_tokens;
+                std::array<int, 3> slave_cp_sorted = slave_tokens;
+                std::sort(master_cp_sorted.begin(), master_cp_sorted.end());
+                std::sort(slave_cp_sorted.begin(), slave_cp_sorted.end());
+                if (master_cp_sorted != slave_cp_sorted)
+                {
+                    std::ostringstream msg;
+                    msg << "Coupling constraint: incompatible edge CP token triplets for CP_ID="
+                        << cp_id << " (master midside node " << pair.first
+                        << ", slave midside node " << pair.second << ").";
+                    apec::logging::error_and_abort(msg.str());
+                }
+
+                const bool direct_match =
+                    (master_tokens[0] == slave_tokens[0]) &&
+                    (master_tokens[1] == slave_tokens[1]) &&
+                    (master_tokens[2] == slave_tokens[2]);
+                const bool reversed_match =
+                    (master_tokens[0] == slave_tokens[2]) &&
+                    (master_tokens[1] == slave_tokens[1]) &&
+                    (master_tokens[2] == slave_tokens[0]);
+
+                const bool direct_missing_ok =
+                    !((master_tokens[0] == 0 && slave_tokens[0] == 0 && master_corners[0] != slave_corners[0]) ||
+                      (master_tokens[2] == 0 && slave_tokens[2] == 0 && master_corners[1] != slave_corners[1]));
+                const bool reversed_missing_ok =
+                    !((master_tokens[0] == 0 && slave_tokens[2] == 0 && master_corners[0] != slave_corners[1]) ||
+                      (master_tokens[2] == 0 && slave_tokens[0] == 0 && master_corners[1] != slave_corners[0]));
+
+                const bool direct_valid = direct_match && direct_missing_ok;
+                const bool reversed_valid = reversed_match && reversed_missing_ok;
+
+                if (!direct_valid && !reversed_valid)
+                {
+                    std::ostringstream msg;
+                    msg << "Coupling constraint: unable to infer Az edge orientation from CP tokens/coordinates for CP_ID="
+                        << cp_id << " (master midside node " << pair.first
+                        << ", slave midside node " << pair.second
+                        << "). If CP is missing on matched corners, the missing-CP corners must be the same node.";
+                    apec::logging::error_and_abort(msg.str());
+                }
+
+                same_edge_orientation = direct_valid;
             }
 
             (*_edge_orientations_map)[std::make_pair(pair.first, pair.second)] =
