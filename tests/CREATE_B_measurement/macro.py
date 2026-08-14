@@ -145,9 +145,9 @@ TreeGauge.tree_gauge(apec.mesh)
 time_steps = np.loadtxt("times.txt")
 voltages = np.loadtxt("volt.txt")
 
-# Consider only the time steps every 5 in the list
-time_steps = np.concatenate((time_steps[0:1], time_steps[1::2]))
-voltages = np.concatenate((voltages[0:1], voltages[1::2]))
+# # Consider only the time steps every 5 in the list
+# time_steps = np.concatenate((time_steps[0:1], time_steps[1::2]))
+# voltages = np.concatenate((voltages[0:1], voltages[1::2]))
 
 apec.save_mesh()
 
@@ -169,7 +169,7 @@ for step_idx in range(len(time_steps)):
             # Remove static step BCs
             Selector.select(apec.mesh, "TYPE", 2, type="elem")
             Selector.nsle(apec.mesh)
-            Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
+            Selector.set_value_on_selection(apec.mesh, "_VOLT", np.nan)
             # Symmetry BCs
             Selector.select_all(apec.mesh)
             Selector.nsel_ext(apec.mesh)
@@ -180,4 +180,5 @@ for step_idx in range(len(time_steps)):
     Selector.select(apec.mesh, "ID", master_node)
     Selector.set_value_on_selection(apec.mesh, "_VOLT", voltages[step_idx])
     apec.solve()
-    apec.write_output()
+    if step_idx % 10 == 0:
+        apec.write_output()
