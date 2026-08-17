@@ -57,11 +57,6 @@ apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 
-
-# Save the toroidal projection maps to files
-# np.savetxt("toroidal_slices_nodes.txt", apec.algorithm.input_parameters["toroidal_slices_nodes"].astype(int), fmt="%d")
-# np.savetxt("toroidal_slices_elems.txt", apec.algorithm.input_parameters["toroidal_slices_elems"].astype(int), fmt="%d")
-
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))
 currents = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "plasma_current.txt"))

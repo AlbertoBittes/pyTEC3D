@@ -725,3 +725,90 @@ class Selector:
         else:
             arr_np[selected_ids, component] = value
         vtk_array.Modified()
+
+    @staticmethod
+    def get_selection_values(
+        mesh: "vtk.vtkUnstructuredGrid",
+        array_name: str,
+        component: Union[int, str] = 0,
+        type: str = "node",
+    ) -> np.ndarray:
+        """
+        Retrieves array values for all currently selected cells or points.
+
+        Args:
+            mesh: The mesh to operate on.
+            array_name: Name of the array to retrieve values from (or "ID").
+            component: Component index or 'magnitude' for vector arrays (default 0).
+            type: 'elem' or 'node' to specify selection type (default 'node').
+
+        Returns:
+            np.ndarray: 1D NumPy array containing array values for selected elements.
+
+        Raises:
+            ValueError: If the specified array is missing in cell or point data.
+        """
+        Selector.ensure_selection_arrays(mesh)
+        data = mesh.GetCellData() if type == "elem" else mesh.GetPointData()
+
+        sel_array_name = "selection_cell" if type == "elem" else "selection_point"
+        sel_array = data.GetArray(sel_array_name)
+        sel_np = vtknp.vtk_to_numpy(sel_array)
+        selected_ids = np.flatnonzero(sel_np == 1)
+
+        if array_name == "ID":
+            count = (
+                mesh.GetNumberOfCells() if type == "elem" else mesh.GetNumberOfPoints()
+            )
+            arr = np.arange(count, dtype=np.int64)
+        else:
+            vtk_array = data.GetArray(array_name)
+            if vtk_array is None:
+                raise ValueError(f"Array '{array_name}' not found in {type}.")
+            arr_np = vtknp.vtk_to_numpy(vtk_array)
+            if component == "magnitude":
+                if arr_np.ndim == 1:
+                    arr = np.abs(arr_np)
+                else:
+                    arr = np.linalg.norm(arr_np, axis=1)
+            else:
+                arr = arr_np if arr_np.ndim == 1 else arr_np[:, component]
+
+        return arr[selected_ids]
+
+    @staticmethod
+    def inv(mesh: "vtk.vtkUnstructuredGrid", type: Optional[str] = None) -> None:
+        """Inverts the current selection status for cells, points, or both.
+
+        Args:
+            mesh: The mesh to operate on.
+            type: 'elem' or 'node'. If None, inverts both cell and point selections.
+
+        Returns:
+            None
+
+        Side Effects:
+            Toggles values (0 -> 1, 1 -> 0) in the selection array(s) and calls Modified().
+        """
+        Selector.ensure_selection_arrays(mesh)
+
+        if type is None or type not in ["elem", "node"]:
+            cell_arr = mesh.GetCellData().GetArray("selection_cell")
+            cell_sel = vtknp.vtk_to_numpy(cell_arr)
+            cell_sel[:] = 1 - cell_sel
+            cell_arr.Modified()
+
+            point_arr = mesh.GetPointData().GetArray("selection_point")
+            point_sel = vtknp.vtk_to_numpy(point_arr)
+            point_sel[:] = 1 - point_sel
+            point_arr.Modified()
+        elif type == "elem":
+            cell_arr = mesh.GetCellData().GetArray("selection_cell")
+            cell_sel = vtknp.vtk_to_numpy(cell_arr)
+            cell_sel[:] = 1 - cell_sel
+            cell_arr.Modified()
+        elif type == "node":
+            point_arr = mesh.GetPointData().GetArray("selection_point")
+            point_sel = vtknp.vtk_to_numpy(point_arr)
+            point_sel[:] = 1 - point_sel
+            point_arr.Modified()

@@ -6,6 +6,7 @@ from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
+import vtk
 
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -52,6 +53,8 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 
 # Cyclic periodic boundaries
+ModelEdit.remove_array(apec.mesh, "CP_0")
+ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))])
 

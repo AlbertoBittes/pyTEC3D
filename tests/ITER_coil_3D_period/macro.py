@@ -22,6 +22,8 @@ Selector.select_pos(apec.mesh, 0, (-0.0001, 0.0001), mode="u", coordinate_system
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", -90.0, 2)
 
+ModelEdit.remove_array(apec.mesh, "CP_0")
+ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(apec.mesh, 1, 0.0, coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(apec.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())

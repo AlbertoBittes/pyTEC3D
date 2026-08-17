@@ -5,6 +5,7 @@ from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
+import vtk
 from vtkmodules.util import numpy_support as vtknp
 from apec_m.tree_gauge import TreeGauge
 # from convert_mesh import convert_mesh_from_cdb
@@ -36,6 +37,8 @@ apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, r
 apec.read_excel("input_template.xlsx")
 
 # Cyclic periodic boundaries
+ModelEdit.remove_array(apec.mesh, "CP_0")
+ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
 

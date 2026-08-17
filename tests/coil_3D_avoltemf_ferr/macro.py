@@ -31,7 +31,16 @@ tol = 1e-5
 ModelEdit.remove_array(apec.mesh, "CP_1")
 ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
 
-apec.bh_curves[24] = [
+Selector.select_all(apec.mesh)
+Selector.select_pos(apec.mesh, 0, (0.4, 0.6), type="elem", coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 2, (-0.6, 0.6), type="elem", mode="r", coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.inv(apec.mesh)
+Selector.select_pos(apec.mesh, 0, (0.25, 0.75), type="elem", mode="r", coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.select_pos(apec.mesh, 2, (-0.75, 0.75), type="elem", mode="r", coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.set_value_on_selection(apec.mesh, "MATERIAL", 26, type="elem")
+Selector.set_value_on_selection(apec.mesh, "TYPE", 26, type="elem")
+
+apec.bh_curves[26] = [
     [0.0, 0.0],
     [100.0, 0.371974867],
     [200.0, 0.743949735],
@@ -160,10 +169,10 @@ Selector.select_all(apec.mesh)
 apec.time_step["theta"] = 1.0
 
 for i in range(1, 3):
-    apec.time_step["time"] = i * 0.00001
+    apec.time_step["time"] = i * 1e5
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
+        Selector.set_value_on_selection(apec.mesh, "AMPS", 15)
     else:
         Selector.select(apec.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.mesh, "AMPS", 0)

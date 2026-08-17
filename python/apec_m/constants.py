@@ -303,16 +303,4 @@ VTK_ARRAYS_TO_INIT = {
         "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
-    "CP_0": {
-        "location": "node",
-        "components": 1,
-        "fill": 0,
-        "dtype": vtk.VTK_INT,
-    },
-    "COORDINATE_SYSTEM": {
-        "location": "elem",
-        "components": 1,
-        "fill": 0,
-        "dtype": vtk.VTK_INT,
-    },
 }

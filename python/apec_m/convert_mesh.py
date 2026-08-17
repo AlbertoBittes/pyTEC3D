@@ -57,6 +57,15 @@ def convert_mesh_from_cdb(file_path):
             archive.grid.cell_data[new_name] = archive.grid.cell_data[old_name]
             del archive.grid.cell_data[old_name]
 
+    array_to_add = "COORDINATE_SYSTEM"
+    if array_to_add not in archive.grid.cell_data:
+        LOGGER.info("Adding missing cell data array '%s' with default value 0.", array_to_add)
+        archive.grid.cell_data[array_to_add] = np.zeros(archive.grid.n_cells, dtype=np.int32)
+    array_to_add_point = "CP_0"
+    if array_to_add_point not in archive.grid.point_data:
+        LOGGER.info("Adding missing point data array '%s' with default value 0.", array_to_add_point)
+        archive.grid.point_data[array_to_add_point] = np.zeros(archive.grid.n_points, dtype=np.int32)
+
     # Remove specified arrays if they exist in the grid
     # Check and remove from cell data
     for array_name in ["ansys_elem_type_num"]:

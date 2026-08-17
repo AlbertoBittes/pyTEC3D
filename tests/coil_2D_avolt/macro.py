@@ -1,6 +1,8 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
+from apec_m.model_edit import ModelEdit
 import os
+import vtk
 import vtk.util.numpy_support as vtknp
 
 apec = APEC_M()
@@ -12,6 +14,8 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
+
+ModelEdit.add_array(apec.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
 
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)

@@ -1,7 +1,9 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
+from apec_m.model_edit import ModelEdit
 import os
 import vtk.util.numpy_support as vtknp
+import vtk
 
 apec = APEC_M()
 

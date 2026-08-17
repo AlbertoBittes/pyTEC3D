@@ -1,5 +1,6 @@
 from apec_m import APEC_M
 import numpy as np
+import vtk
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
 from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
@@ -36,6 +37,8 @@ apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, r
 apec.read_excel("input_template.xlsx")
 
 # Cyclic periodic boundaries
+ModelEdit.remove_array(apec.mesh, "CP_0")
+ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
 
@@ -100,6 +103,7 @@ apec.time_step["theta"] = 1.0
 apec.save_mesh()
 
 apec.load_mesh_into_solver()
+
 for step_idx in range(len(time_steps)):
     apec.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
