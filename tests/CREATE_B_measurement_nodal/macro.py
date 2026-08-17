@@ -134,11 +134,24 @@ Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 91, type="elem")
 Selector.select(apec.mesh, "CONSTANT", 4, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 92, type="elem")
 
-# Az: Symmetry BCs + Far field + Tree Gauging
+Selector.select(apec.mesh, "CONSTANT", 2, type="elem")
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 91, type="elem")
+
+Selector.select(apec.mesh, "CONSTANT", 4, type="elem")
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 92, type="elem")
+
+# Az: Symmetry BCs + Far field
+Selector.select_pos(apec.mesh, 1, (0.05-1e-6, 0.05+1e-6))
+# Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
+
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
-TreeGauge.tree_gauge(apec.mesh)
+Selector.select_pos(apec.mesh, 1, (0.05-1e-6, 0.05+1e-6), mode="u")
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 
 # Read the numpy arrays of time, current and beta from file
