@@ -1249,16 +1249,26 @@ class ApecAlgorithm:
         )
 
     def _set_b_target_axis(self) -> None:
-        """Interpolate B at the requested target axis point and store it in status.
+        """Interpolate poloidal magnetic field (BR, BZ) at target axis using vtkGradientFilter on PSI.
 
         Returns:
             None
         """
         mesh = self._require_equilibrium_mesh()
 
-        point_data = mesh.GetPointData()
-        b_array = point_data.GetArray("B")
-        b = np.asarray(vtknp.vtk_to_numpy(b_array), dtype=float)
+        # 1. Compute nodal gradient of PSI using VTK Gradient Filter
+        grad_filter = vtk.vtkGradientFilter()
+        grad_filter.SetInputData(mesh)
+        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        grad_filter.SetResultArrayName("__apec_grad_psi_axis__")
+        grad_filter.Update()
+
+        grad_mesh = grad_filter.GetOutput()
+        grad_array = grad_mesh.GetPointData().GetArray("__apec_grad_psi_axis__")
+        if grad_array is None:
+            raise RuntimeError("Failed to compute PSI gradient for target magnetic axis.")
+
+        grad_np = np.asarray(vtknp.vtk_to_numpy(grad_array), dtype=float)
 
         target_point = (
             float(self.input_parameters["target_central_axis_x"]),
@@ -1273,6 +1283,7 @@ class ApecAlgorithm:
             mesh.GetNumberOfCells(),
             target_point,
         )
+
         if (
             self._b_target_axis_cache is None
             or self._b_target_axis_cache[0] != cache_key
@@ -1324,10 +1335,22 @@ class ApecAlgorithm:
         else:
             _, point_ids_np, weights_np = self._b_target_axis_cache
 
-        b_target = weights_np @ b[point_ids_np, :2]
-        target = (float(b_target[0]), float(b_target[1]))
+        # 2. Interpolate dPSI/dR and dPSI/dZ at the target point using cell weights
+        grad_target = weights_np @ grad_np[point_ids_np, :2]
+        dpsi_dr = float(grad_target[0])
+        dpsi_dz = float(grad_target[1])
+
+        r_target = target_point[0]
+        if r_target <= 0.0:
+            raise ValueError(f"Invalid non-positive radial coordinate R={r_target} for target axis.")
+
+        # 3. Convert gradient components to magnetic field: BR = -(1/R) * dPSI/dZ, BZ = (1/R) * dPSI/dR
+        br = -dpsi_dz / r_target
+        bz = dpsi_dr / r_target
+
+        target = (float(br), float(bz))
         self.status["b_target_axis"] = target
-        LOGGER.debug("B at target axis: Bx=%.6g, By=%.6g.", target[0], target[1])
+        LOGGER.debug("B at target axis via vtkGradientFilter: BR=%.6g, BZ=%.6g.", target[0], target[1])
 
     def _compute_correction_currents(self) -> None:
         """Compute radial/vertical control-current corrections from target-axis B.
