@@ -39,12 +39,14 @@ enum class GlobalVariableName
     A_y,
     A_z,
     Az,
+    V,
     VOLT,
     EMF,
     Js_x,
     Js_y,
     Js_z,
     AMPS,
+    CURR,
     B_x,
     B_y,
     B_z,
@@ -67,9 +69,11 @@ enum class APIVariableName
 {
     A,
     Az,
+    V,
     VOLT,
     EMF,
     AMPS,
+    CURR,
     Js,
     B,
     H,
@@ -92,6 +96,7 @@ class VariablesMap
 {
 public:
     static const std::map<GlobalVariableName, VariableInfo> GLOBAL_VARIABLE_INFO_MAP;
+    static const std::map<std::string, std::string> DOF_VARIABLE_NODAL_LOAD_MAP;
 
     struct VectorComponent
     {
@@ -150,6 +155,7 @@ public:
         const libMesh::System &system);
 
     static std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system);
+    static std::map<std::string, std::string> get_dof_variable_nodal_load_map_for_system(const libMesh::System &system);
 
 private:
     static std::vector<GlobalVariableName> add_av_variables();

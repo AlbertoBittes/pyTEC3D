@@ -1,13 +1,13 @@
 /clear
-/filname,coil_2D_avolt
+/filname,coil_2D
 /prep7
 
 size = 1
 coil = 0.2
 
-et,21,plane233,0,2,1
-et,23,plane233,1,2,1
-et,24,plane233,1,2,1
+et,21,plane233,0,0,1
+et,23,plane233,1,0,1
+et,24,plane233,1,0,1
 
 ! air/non conducting
 mp,murx,21,1

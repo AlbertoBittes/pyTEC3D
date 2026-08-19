@@ -66,6 +66,7 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::A_y, {GlobalVariableName::A_y, APIVariableName::A, "A_y", "A", 1}},
     {GlobalVariableName::A_z, {GlobalVariableName::A_z, APIVariableName::A, "A_z", "A", 2}},
     {GlobalVariableName::Az, {GlobalVariableName::Az, APIVariableName::Az, "Az", "Az", 0}},
+    {GlobalVariableName::V, {GlobalVariableName::V, APIVariableName::V, "V", "V", 0}},
     {GlobalVariableName::VOLT, {GlobalVariableName::VOLT, APIVariableName::VOLT, "VOLT", "VOLT", 0}},
     {GlobalVariableName::EMF, {GlobalVariableName::EMF, APIVariableName::EMF, "EMF", "EMF", 0}},
 
@@ -87,6 +88,11 @@ const std::map<GlobalVariableName, VariableInfo> VariablesMap::GLOBAL_VARIABLE_I
     {GlobalVariableName::Jt_x, {GlobalVariableName::Jt_x, APIVariableName::Jt, "Jt_x", "Jt", 0}},
     {GlobalVariableName::Jt_y, {GlobalVariableName::Jt_y, APIVariableName::Jt, "Jt_y", "Jt", 1}},
     {GlobalVariableName::Jt_z, {GlobalVariableName::Jt_z, APIVariableName::Jt, "Jt_z", "Jt", 2}},
+};
+
+const std::map<std::string, std::string> VariablesMap::DOF_VARIABLE_NODAL_LOAD_MAP = {
+    {"V", "AMPS"},
+    {"VOLT", "CURR"},
 };
 
 const VariableInfo &VariablesMap::get_info_by_key(GlobalVariableName key)
@@ -285,6 +291,7 @@ ApecMSystemBase::SystemType VariablesMap::get_variable_system_type(const Element
         //     return ApecMSystemBase::NODAL_SOLUTION;
         return ApecMSystemBase::DOF_SOLUTION_SYSTEM;
     case GlobalVariableName::Az:
+    case GlobalVariableName::V:
     case GlobalVariableName::VOLT:
     case GlobalVariableName::EMF:
         return ApecMSystemBase::DOF_SOLUTION_SYSTEM;
@@ -346,10 +353,11 @@ std::vector<GlobalVariableName> VariablesMap::add_av3dnodal_variables(const std:
     {
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
+        vars.insert(vars.end(), {GlobalVariableName::V});
+        break;
     case STRANDED_COIL:
         vars.insert(vars.end(), {GlobalVariableName::VOLT});
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
+        vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     default:
         break;
@@ -366,10 +374,11 @@ std::vector<GlobalVariableName> VariablesMap::add_av3dedge_variables(const std::
     {
     case SHORT_CIRCUIT_CONDUCTOR:
     case SOLID_CONDUCTOR:
+        vars.insert(vars.end(), {GlobalVariableName::V});
+        break;
     case STRANDED_COIL:
         vars.insert(vars.end(), {GlobalVariableName::VOLT});
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
+        vars.insert(vars.end(), {GlobalVariableName::EMF});
         break;
     default:
         break;
@@ -418,6 +427,21 @@ std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System 
     return vars;
 }
 
+std::map<std::string, std::string> VariablesMap::get_dof_variable_nodal_load_map_for_system(const System &system)
+{
+    std::map<std::string, std::string> system_map;
+    const unsigned int n_vars = system.n_vars();
+    for (unsigned int i = 0; i < n_vars; ++i)
+    {
+        const std::string &var_name = system.variable_name(i);
+        const auto it = DOF_VARIABLE_NODAL_LOAD_MAP.find(var_name);
+        if (it == DOF_VARIABLE_NODAL_LOAD_MAP.end())
+            continue;
+        system_map.emplace(it->first, it->second);
+    }
+    return system_map;
+}
+
 FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
                                               GlobalVariableName variable)
 {
@@ -426,6 +450,7 @@ FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
     case GlobalVariableName::A_x:
     case GlobalVariableName::A_y:
     case GlobalVariableName::A_z:
+    case GlobalVariableName::V:
     case GlobalVariableName::VOLT:
     case GlobalVariableName::EMF:
         return LAGRANGE;

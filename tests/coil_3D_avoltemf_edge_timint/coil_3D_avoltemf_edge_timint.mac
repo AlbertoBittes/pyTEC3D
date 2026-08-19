@@ -1,0 +1,128 @@
+/clear
+/filname,coil_3D_avoltemf_edge
+/prep7
+
+size = 1
+coil = 0.2
+extr_angle = 30
+n_div = 5
+et,1,mesh200,7
+et,2,mesh200,11
+et,21,solid236,0,2
+et,23,solid236,2,2
+et,24,solid236,1,2
+
+! air/non conducting
+mp,murx,21,1
+
+mp,murx,23,1
+mp,rsvx,23,3e-7
+!mp,mury,21,1
+!mp,murz,21,1
+
+mp,murx,24,1 
+mp,rsvx,24,2e-8
+mp,rsvy,24,2e-8
+mp,rsvz,24,2e-8
+mp,mury,24,1
+mp,murz,24,1
+
+
+RECTNG,0,size,-size,size
+
+pi=acos(-1)
+r,1,coil*coil,2000,pi*size*coil*coil/(360/extr_angle),0,1,0
+rmore,20,(360/extr_angle)
+
+alls
+Asel,all
+mshape,0
+MSHKEY,1
+ESIZE,coil/4
+TYPE,1
+MAT,21
+REAL,1
+AMESH,ALL
+
+alls
+extopt,aclear,1
+type, 21
+ESIZE, , 1
+VROTAT, all,,,,,, 1, 4, extr_angle, n_div
+
+esel,s,mat,,21
+emodif,all,type,21
+
+cs,11,1,201,319,15799
+csys,5
+esel,s,cent,x,size/2-coil/2,size/2+coil/2
+esel,r,cent,z,-size/2-coil/2,-size/2+coil/2
+emodif,all,type,23
+emodif,all,mat,23
+emodif,all,esys,11
+csys,0
+
+csys,5
+esel,s,cent,x,size/2-coil/2,size/2+coil/2
+esel,r,cent,z,+size/2-coil/2,+size/2+coil/2
+emodif,all,type,24
+emodif,all,mat,24
+csys,0
+
+alls
+nrotat,all
+/solu
+
+alls
+nsel,s,ext
+d,all,az,0
+
+alls
+nsel,s,node,,10601
+d,all,volt,0
+alls
+
+alls
+csys,5
+nsel,s,loc,y,extr_angle - 0.0001, extr_angle + 0.0001
+nsel,a,loc,y,- 0.0001, 0.0001
+cm,bound_nodes,node
+cpcyc,VOLT,,5,,extr_angle,
+alls
+csys,0
+
+esel,s,mat,,23
+nsle,s
+*get,master_node,node,0,num,min
+cpdele,all
+cp,10000,volt,all
+cp,20000,emf,all
+nsel,s,node,,master_node
+cm,master_node,node
+
+antype,trans ! new analysis
+timint,on
+kbc,0
+outres,all,all
+pivcheck,on,every
+tintp,,,,0.5
+
+*do,i,1,2
+    time, i*0.00001
+   *if,i,eq,1,then
+      f,master_node,amps,100
+      autots,off
+      nsub,4
+    *else
+      fdele,all
+      d,master_node,volt,10000
+      autots,off
+      nsub,4
+    *endif
+    alls
+
+   alls
+   solve
+*enddo
+
+SAVE

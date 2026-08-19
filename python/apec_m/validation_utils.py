@@ -687,7 +687,7 @@ def validate_apec_model(apec: Any) -> None:
         if miss_dof:
             errors.append(f"dof_couplings missing columns: {sorted(miss_dof)}.")
         else:
-            _valid_vars = {"A", "Az", "VOLT", "EMF"}
+            _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
             mask_vars = ~dof["VARIABLE"].isin(_valid_vars)
             if mask_vars.any():
                 bad_pairs_var = list(zip(

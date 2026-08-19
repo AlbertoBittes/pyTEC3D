@@ -1,8 +1,6 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
-from apec_m.model_edit import ModelEdit
 import os
-import vtk
 import vtk.util.numpy_support as vtknp
 
 apec = APEC_M()
@@ -14,8 +12,6 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 apec.read_mesh(filepath)
 
 apec.read_excel("input_template.xlsx")
-
-ModelEdit.add_array(apec.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
 
 Selector.select_all(apec.mesh)
 Selector.nsel_ext(apec.mesh)
@@ -36,10 +32,10 @@ for i in range(1, 3):
     apec.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 100)
     else:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()

@@ -32,7 +32,7 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
 Selector.select(apec.mesh, "VOLT_0_1", 1)
 Selector.select(apec.mesh, "VOLT_0_2", 1, mode="a")
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+Selector.set_value_on_selection(apec.mesh, "_V", 0)
 
 b = 2**0.5 / 2
 

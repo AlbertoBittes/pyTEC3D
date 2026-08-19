@@ -7,6 +7,7 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
+#include <libmesh/fe_interface.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -26,6 +27,7 @@
 using libMesh::DenseVector;
 using libMesh::dof_id_type;
 using libMesh::FEBase;
+using libMesh::FEInterface;
 using libMesh::FEVectorBase;
 using libMesh::Node;
 using libMesh::Number;
@@ -45,8 +47,6 @@ void ElementBuilder::build_av3dedge()
     const std::vector<std::vector<RealVectorValue>> &phi_edge = fe_edge->get_phi();
     const std::vector<std::vector<RealGradient>> &curl_phi_edge = fe_edge->get_curl_phi();
     const std::vector<std::vector<RealGradient>> &phi_vec_lagrange = fe_vec_lagrange->get_phi();
-    // const auto &qp_edge = fe_edge->get_xyz();
-    // const auto &qp_vec_lagrange = fe_vec_lagrange->get_xyz();
 
     fe->reinit(elem_data.elem);
     fe_edge->reinit(elem_data.elem);
@@ -412,7 +412,6 @@ void ElementBuilder::build_av3dedge()
     default:
         apec::logging::error_and_abort("Physical region not implemented");
     }
-    // The penalty values, for solution boundary trace and flux.
 }
 
 void ElementBuilder::build_av3dedge_rhs()
@@ -423,11 +422,15 @@ void ElementBuilder::build_av3dedge_rhs()
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
     FEVectorBase *fe_edge = &elem_data.element_type->vector_fe(1);
+    FEBase *fe = &elem_data.element_type->scalar_fe(3);
     const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_edge->get_phi();
     const std::vector<std::vector<RealVectorValue>> &curl_phi_vec = fe_edge->get_curl_phi();
     const std::vector<Real> &JxW = fe_edge->get_JxW();
 
-    unsigned int n_dofs_A = elem_data.elem->n_edges();
+    unsigned int n_dofs_A = FEInterface::n_shape_functions(fe_edge->get_fe_type(),
+                                                           elem_data.elem);
+    unsigned int n_dofs_V = FEInterface::n_shape_functions(fe->get_fe_type(),
+                                                           elem_data.elem);
     unsigned int nq;
 
     Real mg[3] = {0.0, 0.0, 0.0};
@@ -492,27 +495,29 @@ void ElementBuilder::build_av3dedge_rhs()
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        if (dof_solution_system_->has_variable("VOLT") && dof_solution_system_->has_variable("Az"))
+        std::string volt_var_name = "V";
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
+            volt_var_name = "VOLT";
+        if (dof_solution_system_->has_variable(volt_var_name) && dof_solution_system_->has_variable("Az"))
         {
             auto build_fv = [&]()
             {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
-                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
-
-                std::vector<dof_id_type> dof_ids_v;
-
-                dof_solution_dof_map_->dof_indices(elem_data.elem, dof_ids_v, volt_var_num);
-                const unsigned int n_dofs_V = static_cast<unsigned int>(dof_ids_v.size());
+                const unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
+                vtkDataArray *amps_curr_array = nullptr;
+                if (volt_var_name == "V")
+                    amps_curr_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+                else
+                    amps_curr_array = vtk_grid_->GetPointData()->GetArray("CURR");
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_V; dof_i++)
                 {
                     const Node &node = elem_data.elem->node_ref(dof_i);
                     const vtkIdType node_id = static_cast<vtkIdType>(node.id());
-                    const Real amps_value = amps_array->GetComponent(node_id, 0);
+                    const Real amps_curr_value = amps_curr_array->GetComponent(node_id, 0);
                     const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), volt_var_num, 0);
-                    if (!this->should_inject_nodal_load_dof(dof_id))
+                    if (!this->should_inject_nodal_load_dof(volt_var_name, dof_id))
                         continue;
-                    Fe(dof_i + n_dofs_A) = amps_value;
+                    Fe(dof_i + n_dofs_A) = amps_curr_value;
                 }
             };
             build_fv();
@@ -565,7 +570,8 @@ void ElementBuilder::build_av3dedge_nodal_solution()
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
                                      ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &Az = sol_vectors[0];
+    const unsigned int az_var_num = dof_solution_system_->variable_number("Az");
+    const auto &Az = sol_vectors[az_var_num];
 
     auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalMe];
     auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalAAe];
@@ -659,7 +665,8 @@ void ElementBuilder::build_av3dedge_element_solution()
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
                                      ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &Az = sol_vectors[0];
+    const unsigned int az_var_num = dof_solution_system_->variable_number("Az");
+    const auto &Az = sol_vectors[az_var_num];
 
     auto &element_vectors = this->vectors[VectorsSet::ELEMENT_SOLUTION_VECTORS];
     element_vectors.clear();
@@ -760,18 +767,19 @@ void ElementBuilder::build_av3dedge_element_solution()
             this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
 
             DenseVector<Number> Vn;
+            const unsigned int v_var_num = dof_solution_system_->variable_number("V");
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
                 elem_data.element_type->get_OPTIONs()[4] == 0)
-                Vn = sol_vectors[1];
+                Vn = sol_vectors[v_var_num];
             const auto sol_vectors_dt =
-                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             const auto &A_dt = sol_vectors_dt[0];
 
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR ||
                 elem_data.element_type->get_OPTIONs()[4] != 0)
-                Vn = sol_vectors_dt[1];
+                Vn = sol_vectors_dt[v_var_num];
 
             DenseVector<Number> Jq_A;
             JAe.vector_mult(Jq_A, A_dt);
@@ -797,11 +805,13 @@ void ElementBuilder::build_av3dedge_element_solution()
         {
             Real Vn = 0.0;
             Real En = 0.0;
+            const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+            const unsigned int emf_var_num = dof_solution_system_->variable_number("EMF");
 
             if (elem_data.element_type->get_OPTIONs()[4] == 0)
             {
-                Vn = sol_vectors[1][0];
-                En = sol_vectors[2][0];
+                Vn = sol_vectors[volt_var_num][0];
+                En = sol_vectors[emf_var_num][0];
             }
 
             const auto sol_vectors_dt =
@@ -810,8 +820,8 @@ void ElementBuilder::build_av3dedge_element_solution()
 
             if (elem_data.element_type->get_OPTIONs()[4] != 0)
             {
-                Vn = sol_vectors_dt[1][0];
-                En = sol_vectors_dt[2][0];
+                Vn = sol_vectors_dt[volt_var_num][0];
+                En = sol_vectors_dt[emf_var_num][0];
             }
 
             const Real sc = this->constant_value(constant_id, CONST_CS);

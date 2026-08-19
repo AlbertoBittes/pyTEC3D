@@ -20,7 +20,7 @@ def start_apec_for_paraview() -> APEC_M:
     Returns:
         APEC_M: Initialized package entry object.
     """
-    LOGGER.info("Initializing APEC_M in ParaView startup context.")
+    LOGGER.info("Initializing APEC_M in ParaView.")
     return APEC_M()
 
 

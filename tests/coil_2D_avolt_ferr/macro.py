@@ -7,7 +7,7 @@ import vtk
 
 apec = APEC_M()
 
-filename = "coil_2D_av_ferr"
+filename = "coil_2D_avolt_ferr"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
@@ -77,10 +77,10 @@ for i in range(1, 3):
     apec.time_step["time"] = i * 1e-5
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 30000)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 30000)
     else:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.232874)
     apec.solve()
     apec.write_output()

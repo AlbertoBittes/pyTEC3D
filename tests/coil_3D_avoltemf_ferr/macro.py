@@ -8,13 +8,8 @@ import vtk
 import numpy as np
 import pandas as pd
 
-# from convert_mesh import convert_mesh_from_cdb
-
 apec = APEC_M()
 
-# convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
-# )
 filename = "coil_3D_avoltemf_ferr"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
@@ -118,8 +113,6 @@ master_node = vtknp.vtk_to_numpy(
 Selector.select_pos(
     apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-Selector.nsle(apec.mesh, mode="u")
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
@@ -128,26 +121,7 @@ apec.dof_couplings = pd.concat(
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
-            variables=("A"),
-        ),
-    ]
-)
-
-
-Selector.select_pos(
-    apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
-)
-Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-Selector.nsle(apec.mesh, mode="r")
-apec.dof_couplings = pd.concat(
-    [
-        apec.dof_couplings,
-        ModelEdit.periodic_boundaries(
-            apec.mesh,
-            YAxisCylindricalCoordinateSystem(),
-            dy=extr_angle,
-            array_name="CP_1",
-            variables=("A", "VOLT"),
+            variables=("A", "V"),
         ),
     ]
 )
@@ -161,7 +135,7 @@ Selector.select_pos(
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
 Selector.select(apec.mesh, "ID", 2220)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+Selector.set_value_on_selection(apec.mesh, "_V", 0)
 
 apec.load_mesh_into_solver()
 
@@ -172,10 +146,10 @@ for i in range(1, 3):
     apec.time_step["time"] = i * 1e5
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 15)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 15)
     else:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()

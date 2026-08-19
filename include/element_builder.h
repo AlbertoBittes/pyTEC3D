@@ -210,8 +210,8 @@ public:
     /** @brief Returns the number of DOFs for the active element. */
     unsigned int get_n_dofs() const { return n_dofs; }
 
-    /** @brief Clears the map that assigns each loaded nodal DOF to a canonical injector element. */
-    void clear_nodal_load_injector_map() { nodal_load_injector_elem_by_dof.clear(); }
+    /** @brief Clears per-variable maps that assign loaded nodal DOFs to canonical injector elements. */
+    void clear_nodal_load_injector_map() { nodal_load_injector_elem_by_dof_by_variable.clear(); }
 
     /** @brief Iterates local active elements, updating internal element context before invoking @p build_fn. */
     template <typename BuildFn>
@@ -256,9 +256,9 @@ private:
     // Slot 0: element RHS vectors (Fe).
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors; ///< Per-element vector containers (by VectorsSet).
 
-    ElemData elem_data;                                   ///< Context for the element currently being processed.
-    unsigned int n_dofs = 0;                              ///< Number of DOFs on the active element.
-    std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type> nodal_load_injector_elem_by_dof; ///< Canonical injector element ID for each loaded nodal DOF.
+    ElemData elem_data;                                                                                                                          ///< Context for the element currently being processed.
+    unsigned int n_dofs = 0;                                                                                                                     ///< Number of DOFs on the active element.
+    std::unordered_map<std::string, std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type>> nodal_load_injector_elem_by_dof_by_variable; ///< Canonical injector element ID for each loaded nodal DOF, grouped by DOF variable label.
 
     ApecMEquationSystems *equation_systems_ = nullptr;       ///< Owning equation-systems container.
     libMesh::ImplicitSystem *dof_solution_system_ = nullptr; ///< DOF solution system reference.
@@ -280,7 +280,8 @@ private:
     void build_nodal_load_injector_map(const libMesh::MeshBase &mesh,
                                        const std::string &dof_variable_name,
                                        const std::string &nodal_load_array_name);
-    bool should_inject_nodal_load_dof(libMesh::dof_id_type dof_id) const;
+    bool should_inject_nodal_load_dof(const std::string &dof_variable_name,
+                                      libMesh::dof_id_type dof_id) const;
 
     template <typename Resolver>
     void fill_vectors_by_api(const std::vector<APIVariableName> &api_vars,

@@ -2,13 +2,9 @@ from apec_m import APEC_M
 from apec_m.selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
-# from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
 
-# convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
-# )
 filename = "coil_2D_avoltemf"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
@@ -35,17 +31,17 @@ Selector.select(apec.mesh, "ID", master_node_ground)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
 apec.load_mesh_into_solver()
-
 apec.time_step["theta"] = 0.5
+
 Selector.select_all(apec.mesh)
 for i in range(1, 3):
     apec.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 100)
     else:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()

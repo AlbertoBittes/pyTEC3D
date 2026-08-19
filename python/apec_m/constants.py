@@ -5,6 +5,7 @@ import numpy as np
 VARIABLES_GLOBAL_LIST = [
     "A",
     "Az",
+    "V",
     "VOLT",
     "EMF",
     "B",
@@ -13,6 +14,7 @@ VARIABLES_GLOBAL_LIST = [
     "He",
     "Jt",
     "AMPS",
+    "CURR",
     "Js",
 ]
 
@@ -231,6 +233,12 @@ VTK_ARRAYS_TO_INIT = {
         "fill": 0.0,
         "dtype": vtk.VTK_DOUBLE,
     },
+    "V": {
+        "location": "node",
+        "components": 1,
+        "fill": 0.0,
+        "dtype": vtk.VTK_DOUBLE,
+    },
     "EMF": {
         "location": "node",
         "components": 1,
@@ -250,6 +258,12 @@ VTK_ARRAYS_TO_INIT = {
         "dtype": vtk.VTK_DOUBLE,
     },
     "_VOLT": {
+        "location": "node",
+        "components": 1,
+        "fill": np.nan,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "_V": {
         "location": "node",
         "components": 1,
         "fill": np.nan,
@@ -292,6 +306,12 @@ VTK_ARRAYS_TO_INIT = {
         "dtype": vtk.VTK_DOUBLE,
     },
     "AMPS": {
+        "location": "node",
+        "components": 1,
+        "fill": 0.0,
+        "dtype": vtk.VTK_DOUBLE,
+    },
+    "CURR": {
         "location": "node",
         "components": 1,
         "fill": 0.0,

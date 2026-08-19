@@ -55,7 +55,7 @@ apec.dof_couplings = pd.concat(
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
-            variables=("Az"),
+            variables=("Az", "V"),
         ),
     ]
 )
@@ -95,7 +95,7 @@ master_node_passive = vtknp.vtk_to_numpy(
     apec.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 Selector.select(apec.mesh, "ID", master_node_passive)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
+Selector.set_value_on_selection(apec.mesh, "_V", 0.0)
 
 apec.load_mesh_into_solver()
 
@@ -105,11 +105,11 @@ for i in range(1, 3):
     apec.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 100)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 100)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", np.nan)
     else:
         Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "AMPS", 0)
+        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
         Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()

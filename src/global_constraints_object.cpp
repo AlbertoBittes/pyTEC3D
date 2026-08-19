@@ -167,33 +167,10 @@ GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
     if (time_step && time_step->transient_effects)
         return constraints;
 
-    auto &equation_systems = dof_system->get_apec_equation_systems();
-    auto *solver = equation_systems.get_parent_object();
-
-    std::vector<unsigned int> option4_values;
-    {
-        py::gil_scoped_acquire gil;
-        const py::object element_types = solver->get_apec_object().attr("element_types");
-        option4_values = py::cast<std::vector<unsigned int>>(
-            element_types.attr("__getitem__")("OPTION4").attr("to_numpy")());
-    }
-
-    bool has_timeintegrated_formulation = false;
-    for (const unsigned int opt4 : option4_values)
-    {
-        if (opt4 == 1)
-        {
-            has_timeintegrated_formulation = true;
-            break;
-        }
-    }
-    if (!has_timeintegrated_formulation)
-        return constraints;
-
     DofMap &dof_map = system.get_dof_map();
     const MeshBase &mesh = system.get_equation_systems().get_mesh();
 
-    const std::array<std::string, 2> variable_labels = {"VOLT", "EMF"};
+    const std::array<std::string, 2> variable_labels = {"V", "EMF"};
     std::vector<dof_id_type> dof_indices;
     for (const auto &label : variable_labels)
     {

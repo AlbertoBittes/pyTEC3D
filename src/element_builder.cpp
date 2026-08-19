@@ -125,8 +125,6 @@ void ElementBuilder::build_nodal_load_injector_map(const libMesh::MeshBase &mesh
                                                    const std::string &dof_variable_name,
                                                    const std::string &nodal_load_array_name)
 {
-    this->clear_nodal_load_injector_map();
-
     if (!dof_solution_system_->has_variable(dof_variable_name))
         return;
 
@@ -160,15 +158,22 @@ void ElementBuilder::build_nodal_load_injector_map(const libMesh::MeshBase &mesh
 
     auto global_injector_elem_by_dof = local_injector_elem_by_dof;
     mesh.comm().set_union(global_injector_elem_by_dof);
+    auto &injector_elem_by_dof = nodal_load_injector_elem_by_dof_by_variable[dof_variable_name];
     for (const auto &entry : global_injector_elem_by_dof)
-        nodal_load_injector_elem_by_dof[entry.first] = entry.second;
+        injector_elem_by_dof[entry.first] = entry.second;
 }
 
-bool ElementBuilder::should_inject_nodal_load_dof(dof_id_type dof_id) const
+bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variable_name,
+                                                  dof_id_type dof_id) const
 {
-    const auto it = nodal_load_injector_elem_by_dof.find(dof_id);
-    return (it != nodal_load_injector_elem_by_dof.end()) &&
-           (it->second == static_cast<dof_id_type>(elem_data.elem->id()));
+    const auto var_it = nodal_load_injector_elem_by_dof_by_variable.find(dof_variable_name);
+    if (var_it == nodal_load_injector_elem_by_dof_by_variable.end())
+        return false;
+
+    const auto &injector_elem_by_dof = var_it->second;
+    const auto dof_it = injector_elem_by_dof.find(dof_id);
+    return (dof_it != injector_elem_by_dof.end()) &&
+           (dof_it->second == static_cast<dof_id_type>(elem_data.elem->id()));
 }
 
 void ElementBuilder::write_element_rhs()
@@ -187,7 +192,11 @@ void ElementBuilder::write_element_rhs()
 
     apec::logging::info("Calculating elements RHS");
 
-    this->build_nodal_load_injector_map(mesh, "VOLT", "AMPS");
+    this->clear_nodal_load_injector_map();
+    const auto dof_nodal_load_map =
+        VariablesMap::get_dof_variable_nodal_load_map_for_system(*dof_solution_system_);
+    for (const auto &entry : dof_nodal_load_map)
+        this->build_nodal_load_injector_map(mesh, entry.first, entry.second);
 
     this->run_for_elements(mesh, [&](const libMesh::Elem *)
                            {
@@ -496,14 +505,19 @@ std::vector<DenseVector<Number>> ElementBuilder::get_variables_solution(const Nu
     if (!solution || !dof_map)
         return sol_vectors;
 
-    const auto vars = VariablesMap::get_active_variables_for_element(*elem_data.element_type, sys_type);
-    sol_vectors.reserve(vars.size());
+    std::vector<unsigned int> vars_numbers;
+    sol_vectors.reserve(sys->n_vars());
 
-    for (const auto &var_enum : vars)
+    for (unsigned int var_num = 0; var_num < sys->n_vars(); ++var_num)
     {
-        unsigned int system_var_num = sys->variable_number(VariablesMap::get_info_by_key(var_enum).global_label);
+        auto variable = dof_map->variable(var_num);
+        if (!variable.active_on_subdomain(elem_data.elem->subdomain_id()))
+        {
+            sol_vectors.emplace_back(DenseVector<Number>(0));
+            continue;
+        }
         std::vector<dof_id_type> dof_indices_variable;
-        dof_map->dof_indices(elem_data.elem, dof_indices_variable, system_var_num);
+        dof_map->dof_indices(elem_data.elem, dof_indices_variable, var_num);
         DenseVector<Number> local_sol(dof_indices_variable.size());
         for (unsigned int i = 0; i < dof_indices_variable.size(); ++i)
             local_sol(i) = solution->el(dof_indices_variable[i]);

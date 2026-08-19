@@ -7,6 +7,7 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
+#include <libmesh/fe_interface.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -26,6 +27,7 @@ using libMesh::DenseVector;
 using libMesh::dof_id_type;
 using libMesh::Elem;
 using libMesh::FEBase;
+using libMesh::FEInterface;
 using libMesh::Node;
 using libMesh::Number;
 using libMesh::Point;
@@ -304,7 +306,7 @@ void ElementBuilder::build_av2dnodal()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // Time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
+                        // Time-integrated A-V-EMF formulation (OPTION(2)=0/1).
                         Ce(dof_i, dof_j + n_dofs_var) += kav;
                         Ce(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ce(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -331,7 +333,7 @@ void ElementBuilder::build_av2dnodal()
                         const Real kav = kav_scale * nn;
                         const Real kvv = kvv_scale * nn;
 
-                        // No-time-integrated A-VOLT-EMF formulation (OPTION(2)=0/1).
+                        // No-time-integrated A-V-EMF formulation (OPTION(2)=0/1).
                         Ke(dof_i, dof_j + n_dofs_var) += kav;
                         Ke(dof_i, dof_j + 2 * n_dofs_var) -= kav;
                         Ke(dof_i + n_dofs_var, dof_j + n_dofs_var) += sym * kvv;
@@ -368,7 +370,8 @@ void ElementBuilder::build_av2dnodal_rhs()
     const std::vector<std::vector<RealGradient>> &dphi = fe->get_dphi();
     const std::vector<Point> &xyz = fe->get_xyz();
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    unsigned int n_dofs_var = FEInterface::n_shape_functions(fe->get_fe_type(),
+                                                             elem_data.elem);
     unsigned int nq;
 
     Real mg[2] = {0.0, 0.0};
@@ -454,17 +457,18 @@ void ElementBuilder::build_av2dnodal_rhs()
             auto build_fv = [&]()
             {
                 const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
-                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+                const std::string volt_var_name = "VOLT";
+                vtkDataArray *curr_array = vtk_grid_->GetPointData()->GetArray("CURR");
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
                     const Node &node = elem_data.elem->node_ref(dof_i);
                     const vtkIdType node_id = static_cast<vtkIdType>(node.id());
-                    const Real amps_value = amps_array->GetComponent(node_id, 0);
+                    const Real curr_value = curr_array->GetComponent(node_id, 0);
                     const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), volt_var_num, 0);
-                    if (!this->should_inject_nodal_load_dof(dof_id))
+                    if (!this->should_inject_nodal_load_dof(volt_var_name, dof_id))
                         continue;
-                    Fe(dof_i + n_dofs_var) = amps_value;
+                    Fe(dof_i + n_dofs_var) = curr_value;
                 }
             };
             build_fv();
@@ -528,7 +532,8 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
                                      ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &An = sol_vectors[0];
+    const unsigned int az_var_num = dof_solution_system_->variable_number("A_z");
+    const auto &An = sol_vectors[az_var_num];
 
     auto &nodal_vectors = this->vectors[VectorsSet::NODAL_SOLUTION_VECTORS];
     nodal_vectors.clear();
@@ -537,7 +542,7 @@ void ElementBuilder::build_av2dnodal_nodal_solution()
     DenseVector<Number> Hn;
     auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalMe];
     auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalAAe];
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    unsigned int n_dofs_var = An.size();
 
     bool have_b = false;
     bool have_h = false;
@@ -622,7 +627,8 @@ void ElementBuilder::build_av2dnodal_element_solution()
     const auto sol_vectors =
         this->get_variables_solution(dof_solution_system_->current_local_solution.get(),
                                      ApecMSystemBase::DOF_SOLUTION_SYSTEM);
-    const auto &An = sol_vectors[0];
+    const unsigned int az_var_num = dof_solution_system_->variable_number("A_z");
+    const auto &An = sol_vectors[az_var_num];
 
     bool axisymm = this->elem_data.element_type->get_OPTIONs()[3];
     Point centroid = this->elem_data.elem->vertex_average();
@@ -713,7 +719,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
             Real Vn = 0.0;
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
                 elem_data.element_type->get_OPTIONs()[4] == 0)
-                Vn = sol_vectors[1][0];
+            {
+                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+                Vn = sol_vectors[volt_var_num][0];
+            }
 
             const auto sol_vectors_dt =
                 get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
@@ -721,7 +730,10 @@ void ElementBuilder::build_av2dnodal_element_solution()
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
                 elem_data.element_type->get_OPTIONs()[4] != 0)
-                Vn = sol_vectors_dt[1][0];
+            {
+                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+                Vn = sol_vectors_dt[volt_var_num][0];
+            }
 
             auto &JAe = this->matrices[MatricesSet::ELEMENT_SOLUTION_MATRICES][kElementJAe];
 
@@ -735,7 +747,7 @@ void ElementBuilder::build_av2dnodal_element_solution()
             this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
             const Real sigma = sigma_tensor[2][2];
 
-            const auto &An_dt = sol_vectors_dt[0];
+            const auto &An_dt = sol_vectors_dt[az_var_num];
 
             DenseVector<Number> Jq_A(n_qp);
             JAe.vector_mult(Jq_A, An_dt);
@@ -768,11 +780,13 @@ void ElementBuilder::build_av2dnodal_element_solution()
         {
             Real Vn = 0.0;
             Real En = 0.0;
+            const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+            const unsigned int emf_var_num = dof_solution_system_->variable_number("EMF");
 
             if (elem_data.element_type->get_OPTIONs()[4] == 0)
             {
-                Vn = sol_vectors[1][0];
-                En = sol_vectors[2][0];
+                Vn = sol_vectors[volt_var_num][0];
+                En = sol_vectors[emf_var_num][0];
             }
 
             const auto sol_vectors_dt =
@@ -781,8 +795,8 @@ void ElementBuilder::build_av2dnodal_element_solution()
 
             if (elem_data.element_type->get_OPTIONs()[4] != 0)
             {
-                Vn = sol_vectors_dt[1][0];
-                En = sol_vectors_dt[2][0];
+                Vn = sol_vectors_dt[volt_var_num][0];
+                En = sol_vectors_dt[emf_var_num][0];
             }
 
             const Real sc = this->constant_value(constant_id, CONST_CS);

@@ -7,6 +7,7 @@
 #include <libmesh/dof_map.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
+#include <libmesh/fe_interface.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -26,6 +27,7 @@
 using libMesh::DenseVector;
 using libMesh::dof_id_type;
 using libMesh::FEBase;
+using libMesh::FEInterface;
 using libMesh::FEVectorBase;
 using libMesh::Node;
 using libMesh::Number;
@@ -52,7 +54,7 @@ void ElementBuilder::build_av3dnodal()
     this->prepare_element_matrix_building();
 
     unsigned int n_dofs_var = fe->n_shape_functions();
-    unsigned int n_dofs_A = n_dofs_var * 3;
+    unsigned int n_dofs_A = fe_vec->n_shape_functions();
     unsigned int nq = fe->n_quadrature_points();
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
@@ -317,8 +319,6 @@ void ElementBuilder::build_av3dnodal()
         const Real r_coil = this->constant_value(constant_id, CONST_R);
         const Real sym = this->constant_value(constant_id, CONST_S);
 
-        const unsigned int n_dofs_A = n_dofs_var * 3;
-
         auto build_coil_coupling_timeintegrated = [&]()
         {
             const Real kav_coeff = -(nc / (sc * r_coil));
@@ -403,9 +403,13 @@ void ElementBuilder::build_av3dnodal_rhs()
     this->build_vectors(&vector_sizes, VectorsSet::RHS_VECTORS);
     auto &Fe = this->vectors[VectorsSet::RHS_VECTORS][0];
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
-
     FEVectorBase *fe_vec = &elem_data.element_type->vector_fe(0);
+    FEBase *fe = &elem_data.element_type->scalar_fe(1);
+    unsigned int n_dofs_A = FEInterface::n_shape_functions(fe_vec->get_fe_type(),
+                                                           elem_data.elem);
+    unsigned int n_dofs_var = FEInterface::n_shape_functions(fe->get_fe_type(),
+                                                             elem_data.elem);
+
     const std::vector<Real> &JxW = fe_vec->get_JxW();
     const std::vector<std::vector<RealVectorValue>> &phi_vec = fe_vec->get_phi();
     const std::vector<std::vector<RealGradient>> &curl_phi_vec = fe_vec->get_curl_phi();
@@ -475,22 +479,29 @@ void ElementBuilder::build_av3dnodal_rhs()
     case PhysicalRegionEnum::SOLID_CONDUCTOR:
     case PhysicalRegionEnum::STRANDED_COIL:
     {
-        if (dof_solution_system_->has_variable("VOLT"))
+        std::string volt_var_name = "V";
+        if (physical_region == PhysicalRegionEnum::STRANDED_COIL)
+            volt_var_name = "VOLT";
+        if (dof_solution_system_->has_variable(volt_var_name))
         {
             auto build_fv = [&]()
             {
-                const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
-                vtkDataArray *amps_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+                const unsigned int volt_var_num = dof_solution_system_->variable_number(volt_var_name);
+                vtkDataArray *amps_curr_array = nullptr;
+                if (volt_var_name == "V")
+                    amps_curr_array = vtk_grid_->GetPointData()->GetArray("AMPS");
+                else
+                    amps_curr_array = vtk_grid_->GetPointData()->GetArray("CURR");
 
                 for (unsigned int dof_i = 0; dof_i < n_dofs_var; dof_i++)
                 {
                     const Node &node = elem_data.elem->node_ref(dof_i);
                     const vtkIdType node_id = static_cast<vtkIdType>(node.id());
-                    const Real amps_value = amps_array->GetComponent(node_id, 0);
+                    const Real amps_value = amps_curr_array->GetComponent(node_id, 0);
                     const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), volt_var_num, 0);
-                    if (!this->should_inject_nodal_load_dof(dof_id))
+                    if (!this->should_inject_nodal_load_dof(volt_var_name, dof_id))
                         continue;
-                    Fe(dof_i + volt_var_num * n_dofs_var) = amps_value;
+                    Fe(dof_i + n_dofs_A) = amps_value;
                 }
             };
             build_fv();
@@ -556,7 +567,9 @@ void ElementBuilder::build_av3dnodal_nodal_solution()
     for (unsigned int k = 0; k < 3; k++)
         An.append(sol_vectors[k]);
 
-    unsigned int n_dofs_var = elem_data.elem->n_nodes();
+    FEBase *fe = &elem_data.element_type->scalar_fe(1);
+    unsigned int n_dofs_var = FEInterface::n_shape_functions(fe->get_fe_type(),
+                                                             elem_data.elem);
 
     auto &Me = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalMe];
     auto &AAe = this->matrices[MatricesSet::NODAL_SOLUTION_MATRICES][kNodalAAe];
@@ -752,13 +765,15 @@ void ElementBuilder::build_av3dnodal_element_solution()
             this->rotate_diag_tensor_for_elem(sigma_local, sigma_tensor);
 
             DenseVector<Number> Vn;
+            const unsigned int v_var_num = dof_solution_system_->variable_number("V");
 
             if (physical_region == PhysicalRegionEnum::SOLID_CONDUCTOR &&
                 elem_data.element_type->get_OPTIONs()[4] == 0)
-                Vn = sol_vectors[3];
+                Vn = sol_vectors[v_var_num];
 
             const auto sol_vectors_dt =
-                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"), 0); // solution_derivative
+                get_variables_solution(dof_solution_system_->request_vector("solution_time_derivative"),
+                                       ApecMSystemBase::DOF_SOLUTION_SYSTEM); // solution_derivative
 
             DenseVector<Number> An_dt;
             for (unsigned int k = 0; k < 3; k++)
@@ -766,7 +781,7 @@ void ElementBuilder::build_av3dnodal_element_solution()
 
             if (physical_region == PhysicalRegionEnum::SHORT_CIRCUIT_CONDUCTOR ||
                 elem_data.element_type->get_OPTIONs()[4] != 0)
-                Vn = sol_vectors_dt[3];
+                Vn = sol_vectors_dt[v_var_num];
 
             DenseVector<Number> Jq_A;
             JAe.vector_mult(Jq_A, An_dt);
@@ -792,11 +807,13 @@ void ElementBuilder::build_av3dnodal_element_solution()
         {
             Real Vn = 0.0;
             Real En = 0.0;
+            const unsigned int volt_var_num = dof_solution_system_->variable_number("VOLT");
+            const unsigned int emf_var_num = dof_solution_system_->variable_number("EMF");
 
             if (elem_data.element_type->get_OPTIONs()[4] == 0)
             {
-                Vn = sol_vectors[3][0];
-                En = sol_vectors[4][0];
+                Vn = sol_vectors[volt_var_num][0];
+                En = sol_vectors[emf_var_num][0];
             }
 
             const auto sol_vectors_dt =
@@ -805,8 +822,8 @@ void ElementBuilder::build_av3dnodal_element_solution()
 
             if (elem_data.element_type->get_OPTIONs()[4] != 0)
             {
-                Vn = sol_vectors_dt[3][0];
-                En = sol_vectors_dt[4][0];
+                Vn = sol_vectors_dt[volt_var_num][0];
+                En = sol_vectors_dt[emf_var_num][0];
             }
 
             const Real sc = this->constant_value(constant_id, CONST_CS);
@@ -871,7 +888,7 @@ void ElementBuilder::build_av3dnodal_tangent_stiffness_residual()
     this->build_vectors(&vector_sizes, VectorsSet::RESIDUAL_VECTORS);
 
     const unsigned int n_dofs_var = fe->n_shape_functions();
-    const unsigned int n_dofs_A = n_dofs_var * 3;
+    const unsigned int n_dofs_A = fe_vec->n_shape_functions();
     const unsigned int nq = fe->n_quadrature_points();
 
     const dof_id_type material_id = static_cast<dof_id_type>(this->elem_data.material_num);
