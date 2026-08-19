@@ -7,6 +7,11 @@ from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, ca
 import numpy as np
 import pandas as pd
 import vtk
+try:
+    from vmtk.vtkvmtkDifferentialGeometryPython import vtkvmtkUnstructuredGridGradientFilter
+except ImportError:
+    vtkvmtkUnstructuredGridGradientFilter = None
+
 from .selector import Selector
 from .model_edit import ModelEdit
 from .coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
@@ -643,6 +648,51 @@ class ApecAlgorithm:
         return tuple(sorted(groups, key=lambda group: int(group[0])))
 
     @staticmethod
+    def _extract_main_plasma_region_nodes(
+        mesh: "vtk.vtkUnstructuredGrid",
+        start_node_id: int,
+        psi_point: np.ndarray,
+        psi_x: float,
+        vacuum_cell_mask: np.ndarray,
+    ) -> np.ndarray:
+        """Return the PSI>PSI_x node component connected to start_node_id via vacuum cells."""
+        n_points = mesh.GetNumberOfPoints()
+        if start_node_id < 0 or start_node_id >= n_points:
+            return np.zeros(0, dtype=np.int64)
+        if not np.isfinite(psi_point[start_node_id]) or psi_point[start_node_id] <= psi_x:
+            return np.zeros(0, dtype=np.int64)
+
+        mesh.BuildLinks()
+
+        visited = np.zeros(n_points, dtype=bool)
+        visited[start_node_id] = True
+
+        from collections import deque
+
+        queue = deque([int(start_node_id)])
+        cell_ids = vtk.vtkIdList()
+        point_ids = vtk.vtkIdList()
+
+        while queue:
+            curr_node = int(queue.popleft())
+            mesh.GetPointCells(curr_node, cell_ids)
+            for i in range(cell_ids.GetNumberOfIds()):
+                cell_id = int(cell_ids.GetId(i))
+                if cell_id < 0 or cell_id >= vacuum_cell_mask.shape[0] or not vacuum_cell_mask[cell_id]:
+                    continue
+
+                mesh.GetCellPoints(cell_id, point_ids)
+                for j in range(point_ids.GetNumberOfIds()):
+                    nbr_node = int(point_ids.GetId(j))
+                    if visited[nbr_node]:
+                        continue
+                    if np.isfinite(psi_point[nbr_node]) and psi_point[nbr_node] > psi_x:
+                        visited[nbr_node] = True
+                        queue.append(nbr_node)
+
+        return np.flatnonzero(visited).astype(np.int64)
+
+    @staticmethod
     def _orient_halo_node_groups(
         groups: Tuple[np.ndarray, ...],
         points: np.ndarray,
@@ -839,6 +889,72 @@ class ApecAlgorithm:
 
         if selected_elem_count > 0:
             Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+
+        # Topological filter: for PSIe > PSI_x, keep only the component connected
+        # to the magnetic axis node; disconnected components are private-flux islands.
+        psi_x = self.status.get("last_psi_x_point")
+        axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
+        if psi_x is not None and axis_node_id >= 0:
+            psi_x = float(psi_x)
+            psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
+            psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
+            psie_array = ApecAlgorithm._require_array(cell_data, "PSIe")
+            psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
+
+            # Select vacuum-chamber cells and derive node-level masks/connectivity.
+            Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+            vac_cell_sel_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
+            vac_cell_mask = np.asarray(vtknp.vtk_to_numpy(vac_cell_sel_array), dtype=bool)
+            if np.any(vac_cell_mask):
+                Selector.nsle(mesh, mode="s")
+                vac_point_sel_array = ApecAlgorithm._require_array(point_data, "selection_point")
+                vac_node_mask = np.asarray(vtknp.vtk_to_numpy(vac_point_sel_array), dtype=bool)
+
+                candidate_node_mask = vac_node_mask & (psi_point > psi_x)
+                if axis_node_id < candidate_node_mask.shape[0] and candidate_node_mask[axis_node_id]:
+                    connected_nodes = self._extract_main_plasma_region_nodes(
+                        mesh,
+                        axis_node_id,
+                        psi_point,
+                        psi_x,
+                        vac_cell_mask,
+                    )
+
+                    if connected_nodes.size == 0:
+                        connected_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
+                    else:
+                        connected_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
+                        connected_node_mask[connected_nodes] = True
+
+                    cells = mesh.GetCells()
+                    offsets_array = cells.GetOffsetsArray()
+                    connectivity_array = cells.GetConnectivityArray()
+                    if offsets_array is not None and connectivity_array is not None:
+                        offsets = np.asarray(vtknp.vtk_to_numpy(offsets_array), dtype=np.int64)
+                        connectivity = np.asarray(vtknp.vtk_to_numpy(connectivity_array), dtype=np.int64)
+
+                        # Remove vacuum cells above PSI_x not connected to the axis component.
+                        remove_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
+                        vac_cell_ids = np.flatnonzero(vac_cell_mask)
+                        for cell_id in vac_cell_ids:
+                            if not np.isfinite(psi_elem[cell_id]) or psi_elem[cell_id] <= psi_x:
+                                continue
+                            start = offsets[cell_id]
+                            end = offsets[cell_id + 1]
+                            cell_nodes = connectivity[start:end]
+                            # Keep only if cell touches the axis-connected candidate-node component.
+                            if not np.any(connected_node_mask[cell_nodes]):
+                                remove_mask[cell_id] = True
+
+                        if np.any(remove_mask):
+                            Selector.apply_boolean_selection_mask(
+                                remove_mask,
+                                cell_data,
+                                "elem",
+                                "s",
+                            )
+                            Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+
         halo_group_count = len(self._halo_node_groups)
         LOGGER.debug(
             "Plasma region identified: %d elements excluded, %d halo group(s)%s.",
@@ -846,59 +962,6 @@ class ApecAlgorithm:
             halo_group_count,
             " (halo active)" if halo_group_count > 0 else "",
         )
-
-    def _remove_plasma_out_of_X_point(self) -> None:
-        """Remove plasma elements outside the magnetic topology defined around the X-point.
-
-        Returns:
-            None
-        """
-        mesh = self._require_equilibrium_mesh()
-        point_data = mesh.GetPointData()
-
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh, mode="s")
-        point_selection_array = point_data.GetArray("selection_point")
-        vacuum_node_mask = vtknp.vtk_to_numpy(point_selection_array).astype(bool)
-        vacuum_node_ids = np.flatnonzero(vacuum_node_mask)
-
-        points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
-        x_node = np.asarray(points[:, 0], dtype=float)
-        y_node = np.asarray(points[:, 1], dtype=float)
-
-        magnetic_axis = self.status["magnetic_axis"]
-        axis_x = float(magnetic_axis[0])
-        axis_y = float(magnetic_axis[1])
-
-        plasma_current = float(self.input_parameters["plasma_current"])
-        current_sign = 1.0 if plasma_current >= 0.0 else -1.0
-
-        b_point_array = point_data.GetArray("B")
-        b_point = np.asarray(vtknp.vtk_to_numpy(b_point_array), dtype=float)
-        bx = b_point[:, 0]
-        by = b_point[:, 1]
-
-        b_rot = current_sign * (
-            by[vacuum_node_ids] * (x_node[vacuum_node_ids] - axis_x)
-            - bx[vacuum_node_ids] * (y_node[vacuum_node_ids] - axis_y)
-        )
-        excluded_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
-        excluded_node_mask[vacuum_node_ids] = b_rot >= 0.0
-
-        Selector.apply_boolean_selection_mask(
-            excluded_node_mask,
-            point_data,
-            "node",
-            "s",
-        )
-        Selector.esln(mesh, all_nodes=True, mode="s")
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="r")
-        Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
-
-        magnetic_axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
-        Selector.select(mesh, "ID", magnetic_axis_node_id, type="node", mode="s")
-        Selector.esln(mesh, all_nodes=False, mode="s")
-        Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
 
     def _check_limiter(self) -> None:
         """Locate limiter contact point and associated PSI among selected boundary nodes.
@@ -941,72 +1004,174 @@ class ApecAlgorithm:
             limiter_point[0], limiter_point[1], limiter_point[2], psi_limiter,
         )
 
+    @staticmethod
+    def _compute_hessian_vmtk(
+        ugrid: "vtk.vtkUnstructuredGrid",
+        scalar_array_name: str,
+    ) -> "vtk.vtkUnstructuredGrid":
+        """Compute a 9-component Hessian tensor via two VMTK gradient passes."""
+        if vtkvmtkUnstructuredGridGradientFilter is None:
+            raise RuntimeError("VMTK gradient filter is unavailable.")
+
+        grad_filter_1 = vtkvmtkUnstructuredGridGradientFilter()
+        grad_filter_1_dyn = cast(Any, grad_filter_1)
+        grad_filter_1.SetInputData(ugrid)
+        grad_filter_1_dyn.SetInputArrayName(scalar_array_name)
+        grad_filter_1_dyn.SetGradientArrayName("__apec_gradient_1__")
+        grad_filter_1_dyn.SetQuadratureOrder(3)
+        grad_filter_1.Update()
+
+        grad_filter_2 = vtkvmtkUnstructuredGridGradientFilter()
+        grad_filter_2_dyn = cast(Any, grad_filter_2)
+        grad_filter_2.SetInputConnection(grad_filter_1.GetOutputPort())
+        grad_filter_2_dyn.SetInputArrayName("__apec_gradient_1__")
+        grad_filter_2_dyn.SetGradientArrayName("__apec_psi_hessian__")
+        grad_filter_2_dyn.SetQuadratureOrder(3)
+        grad_filter_2.Update()
+
+        return cast("vtk.vtkUnstructuredGrid", grad_filter_2.GetOutput())
+
     def _check_x_point(self) -> None:
-        """Locate the X-point as a local magnetic-field minimum candidate.
+        """Locate the X-point as a PSI saddle-point candidate.
 
         Returns:
             None
         """
         mesh = self._require_equilibrium_mesh()
-        point_data = mesh.GetPointData()
 
-        psi_array = ApecAlgorithm._require_array(point_data, "PSI")
-        b_array = ApecAlgorithm._require_array(point_data, "B")
-        b = np.asarray(vtknp.vtk_to_numpy(b_array), dtype=float)
-        b_norm = np.sqrt(np.square(b[:, 0]) + np.square(b[:, 1]))
+        # Extract only VACUUM_CHAMBER elements before Hessian evaluation.
+        work_mesh = vtk.vtkUnstructuredGrid()
+        work_mesh.DeepCopy(mesh)
+        work_point_data = work_mesh.GetPointData()
 
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh)
-        # Exclude midside nodes: their PSI values are interpolated and can
+        original_point_ids_np = np.arange(work_mesh.GetNumberOfPoints(), dtype=np.int64)
+        original_point_ids_vtk = vtknp.numpy_to_vtk(original_point_ids_np, deep=True)
+        original_point_ids_vtk.SetName("__apec_original_point_id__")
+        work_point_data.AddArray(original_point_ids_vtk)
+
+        Selector.select(work_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        selection_cell_array = ApecAlgorithm._require_array(work_mesh.GetCellData(), "selection_cell")
+        selected_cell_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_cell_array) == 1).astype(np.int64)
+        if selected_cell_ids.size == 0:
+            raise ValueError("No VACUUM_CHAMBER elements found for X-point search.")
+
+        selected_cell_ids_vtk = vtk.vtkIdTypeArray()
+        selected_cell_ids_vtk.SetNumberOfValues(selected_cell_ids.size)
+        for i, cell_id in enumerate(selected_cell_ids):
+            selected_cell_ids_vtk.SetValue(i, int(cell_id))
+
+        selection_node = vtk.vtkSelectionNode()
+        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+        selection_node.SetSelectionList(selected_cell_ids_vtk)
+
+        selection = vtk.vtkSelection()
+        selection.AddNode(selection_node)
+
+        extract = vtk.vtkExtractSelection()
+        extract.SetInputData(0, work_mesh)
+        extract.SetInputData(1, selection)
+        extract.Update()
+
+        vacuum_mesh = vtk.vtkUnstructuredGrid.SafeDownCast(extract.GetOutput())
+        if vacuum_mesh is None or vacuum_mesh.GetNumberOfPoints() == 0:
+            raise ValueError("Failed to extract VACUUM_CHAMBER subgrid for X-point search.")
+
+        vacuum_point_data = vacuum_mesh.GetPointData()
+        psi_array = ApecAlgorithm._require_array(vacuum_point_data, "PSI")
+
+        try:
+            hessian_output = self._compute_hessian_vmtk(vacuum_mesh, "PSI")
+        except RuntimeError:
+            grad_filter = vtk.vtkGradientFilter()
+            grad_filter.SetInputData(vacuum_mesh)
+            grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+            grad_filter.SetResultArrayName("__apec_psi_gradient__")
+            if hasattr(grad_filter, "SetComputeGradient"):
+                grad_filter.SetComputeGradient(True)
+            grad_filter.Update()
+
+            # Portable Hessian computation fallback: H(PSI) = grad(grad(PSI)).
+            hessian_filter = vtk.vtkGradientFilter()
+            hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
+            hessian_filter.SetInputScalars(
+                vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
+                "__apec_psi_gradient__",
+            )
+            hessian_filter.SetResultArrayName("__apec_psi_hessian__")
+            if hasattr(hessian_filter, "SetComputeGradient"):
+                hessian_filter.SetComputeGradient(True)
+            hessian_filter.Update()
+            hessian_output = hessian_filter.GetOutput()
+
+        hessian_point_data = hessian_output.GetPointData()
+        hessian_array = hessian_point_data.GetArray("__apec_psi_hessian__")
+        if hessian_array is None:
+            raise ValueError("vtkGradientFilter did not produce a PSI Hessian (gradient-of-gradient) point array.")
+
+        gradient_array = hessian_point_data.GetArray("__apec_gradient_1__")
+        if gradient_array is None:
+            gradient_array = hessian_point_data.GetArray("__apec_psi_gradient__")
+        if gradient_array is None:
+            gradient_array = hessian_point_data.GetArray("Gradients")
+        if gradient_array is None:
+            raise ValueError("Could not find PSI gradient array to enforce X-point stationarity criterion.")
+
+        Selector.select_all(vacuum_mesh, type="elem")
+        Selector.nsle(vacuum_mesh)
+        # Exclude midside nod
+        # es: their PSI values are interpolated and can
         # produce false minima near the X-point with second-order elements.
-        Selector.select(mesh, "MidsideNodes", 1, type="node", mode="u")
-        selection_array = ApecAlgorithm._require_array(point_data, "selection_point")
+        Selector.select(vacuum_mesh, "MidsideNodes", 1, type="node", mode="u")
+        selection_array = ApecAlgorithm._require_array(vacuum_point_data, "selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
+
+        # Exclude external boundary nodes; keep only interior candidates.
+        # Selector.nsel_ext(vacuum_mesh, mode="s")
+        # boundary_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
+        # selected_ids = np.setdiff1d(selected_ids, boundary_ids, assume_unique=False)
+
+        if selected_ids.size == 0:
+            raise ValueError("No interior nodes selected for X-point saddle search.")
+
         psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
-        axis_node_id = int(selected_ids[int(np.argmax(psi[selected_ids]))])
-
-        Selector.select(mesh, "ID", axis_node_id, type="node", mode="s")
-        Selector.esln(mesh, all_nodes=False, mode="s")
-        Selector.nsle(mesh, mode="s")
-        axis_neighbor_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-
-        candidate_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
-        candidate_mask[selected_ids] = True
-        candidate_mask[axis_neighbor_ids] = False
-        candidate_ids = np.flatnonzero(candidate_mask)
-        if candidate_ids.size == 0:
+        hessian = np.asarray(vtknp.vtk_to_numpy(hessian_array), dtype=float)
+        if hessian.ndim != 2 or hessian.shape[1] != 9:
             raise ValueError(
-                "No X-point candidates found after excluding the magnetic axis "
-                "node and its connected node neighborhood."
+                "Unexpected PSI Hessian shape: expected (n_points, 9) for scalar PSI on 2D mesh."
             )
 
-        x_point_node_id: Optional[int] = None
+        # VTK/VMTK flattened tensor layout: [xx, xy, xz, yx, yy, yz, zx, zy, zz].
+        hxx = hessian[:, 0]
+        hxy = hessian[:, 1]
+        hyx = hessian[:, 3]
+        hyy = hessian[:, 4]
 
-        for node_id in candidate_ids[np.argsort(b_norm[candidate_ids])]:
-            node_id = int(node_id)
-            Selector.select(mesh, "ID", node_id, type="node", mode="s")
-            Selector.esln(mesh, all_nodes=False, mode="s")
-            Selector.nsle(mesh, mode="s")
-            Selector.select(mesh, "MidsideNodes", 1, type="node", mode="u")
+        det_h = hxx * hyy - hxy * hyx
+        finite_mask = np.isfinite(det_h)
+        saddle_mask = finite_mask & (det_h < 0.0)
+        saddle_ids = selected_ids[saddle_mask[selected_ids]]
 
-            neighbor_selection = vtknp.vtk_to_numpy(selection_array) == 1
-            neighbor_ids = np.flatnonzero(neighbor_selection)
-            neighbor_ids = neighbor_ids[neighbor_ids != node_id]
+        if saddle_ids.size == 0:
+            raise ValueError("No PSI saddle-point candidates found for the X point.")
 
-            # Exclude any node directly connected to the magnetic axis.
-            if np.any(neighbor_ids == axis_node_id):
-                continue
+        gradient = np.asarray(vtknp.vtk_to_numpy(gradient_array), dtype=float)
+        if gradient.ndim != 2 or gradient.shape[1] < 2:
+            raise ValueError("Unexpected PSI gradient shape while enforcing X-point stationarity criterion.")
+        grad_mag = np.sqrt(np.square(gradient[:, 0]) + np.square(gradient[:, 1]))
+        finite_grad_ids = saddle_ids[np.isfinite(grad_mag[saddle_ids])]
+        if finite_grad_ids.size == 0:
+            raise ValueError("No finite gradient magnitudes found among PSI saddle-point candidates.")
 
-            if np.any(b_norm[node_id] > b_norm[neighbor_ids]):
-                continue
+        x_point_local_id = int(finite_grad_ids[int(np.argmin(grad_mag[finite_grad_ids]))])
+        original_point_ids_array = ApecAlgorithm._require_array(
+            hessian_point_data,
+            "__apec_original_point_id__",
+        )
+        original_point_ids = np.asarray(vtknp.vtk_to_numpy(original_point_ids_array), dtype=np.int64).reshape(-1)
+        x_point_node_id = int(original_point_ids[x_point_local_id])
 
-            x_point_node_id = node_id
-            break
-
-        if x_point_node_id is None:
-            raise ValueError("No local magnetic-field minimum found for the X point.")
-
-        psi_x = float(psi[x_point_node_id])
+        psi_x = float(psi[x_point_local_id])
 
         points = mesh.GetPoints()
         xyz = vtknp.vtk_to_numpy(points.GetData())
@@ -1222,7 +1387,6 @@ class ApecAlgorithm:
         self._reset_plasma_components()
         self._set_psi_magnetic_axis()
         self._check_x_point()
-        self._remove_plasma_out_of_X_point()
         self._check_limiter()
         psi_limiter = float(self.status["last_psi_limiter"])
         psi_x_point = float(self.status["last_psi_x_point"])
@@ -1325,8 +1489,9 @@ class ApecAlgorithm:
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
         psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
-        psi_segn = np.maximum(psi_segn, 0.0)
-        one_minus = 1.0 - np.power(psi_segn, alpha_mp)
+        psi_segn = np.nan_to_num(psi_segn, nan=0.0, posinf=1.0, neginf=0.0)
+        psi_segn = np.clip(psi_segn, 0.0, 1.0)
+        one_minus = np.maximum(1.0 - np.power(psi_segn, alpha_mp), 0.0)
         pprime_h2 = np.power(one_minus, alpha_np)
         grad_shafranov_current_density = pprime_h2 * (
             beta_profile * elem_centroid_rad[selected_ids] / r0
@@ -1561,74 +1726,22 @@ class ApecAlgorithm:
         eq_cell_data = equilibrium_mesh.GetCellData()
         evol_cell_data = evolution_mesh.GetCellData()
 
-        eq_b_array = eq_point_data.GetArray("B")
-        evol_b_array = evol_point_data.GetArray("B")
-        eq_be_array = eq_cell_data.GetArray("Be")
-        evol_be_array = evol_cell_data.GetArray("Be")
         eq_psie_array = eq_cell_data.GetArray("PSIe")
         evol_psie_array = evol_cell_data.GetArray("PSIe")
         if (
-            eq_b_array is None
-            or evol_b_array is None
-            or eq_be_array is None
-            or evol_be_array is None
-            or eq_psie_array is None
+            eq_psie_array is None
             or evol_psie_array is None
         ):
             raise ValueError(
                 "Required arrays for toroidal_average are missing "
-                "(PSI, B, Be, PSIe)."
+                "(PSIe)."
             )
 
-        eq_b = np.asarray(vtknp.vtk_to_numpy(eq_b_array), dtype=float)
-        eq_be = np.asarray(vtknp.vtk_to_numpy(eq_be_array), dtype=float)
-        evol_b = np.asarray(vtknp.vtk_to_numpy(evol_b_array), dtype=float)
-        evol_be = np.asarray(vtknp.vtk_to_numpy(evol_be_array), dtype=float)
         eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
         evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
 
-        from .coordinate_system import YAxisCylindricalCoordinateSystem
-
-        cylindrical = YAxisCylindricalCoordinateSystem()
-
         src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
         dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
-
-        converted_vectors_to_cylindrical = evolution_mesh.GetMaxSpatialDimension() > 2
-        if converted_vectors_to_cylindrical:
-            flat_dst_nodes = dst_nodes.reshape(-1)
-            flat_dst_elems = dst_elems.reshape(-1)
-            evol_node_positions = ModelEdit._get_positions(evolution_mesh, "node")
-            evol_elem_positions = ModelEdit._get_positions(evolution_mesh, "elem")
-            evol_b_values = cylindrical.vector_components_to_local(
-                evol_b[flat_dst_nodes],
-                evol_node_positions[flat_dst_nodes],
-            ).reshape((*dst_nodes.shape, 3))
-            evol_be_values = cylindrical.vector_components_to_local(
-                evol_be[flat_dst_elems],
-                evol_elem_positions[flat_dst_elems],
-            ).reshape((*dst_elems.shape, 3))
-        else:
-            evol_b_values = evol_b[dst_nodes]
-            evol_be_values = evol_be[dst_elems]
-
-        eq_b[src_nodes] = np.mean(evol_b_values, axis=1)
-        eq_be[src_elems] = np.mean(evol_be_values, axis=1)
-
-        if converted_vectors_to_cylindrical:
-            eq_node_positions = ModelEdit._get_positions(equilibrium_mesh, "node")
-            eq_elem_positions = ModelEdit._get_positions(equilibrium_mesh, "elem")
-            eq_b[src_nodes] = cylindrical.vector_components_to_global(
-                eq_b[src_nodes],
-                eq_node_positions[src_nodes],
-            )
-            eq_be[src_elems] = cylindrical.vector_components_to_global(
-                eq_be[src_elems],
-                eq_elem_positions[src_elems],
-            )
-
-        eq_b_array.Modified()
-        eq_be_array.Modified()
 
         psie_values = np.mean(evol_psie[dst_elems], axis=1)
         eq_psie[src_elems] = psie_values
