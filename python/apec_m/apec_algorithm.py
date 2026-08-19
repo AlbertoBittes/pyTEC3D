@@ -7,10 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, ca
 import numpy as np
 import pandas as pd
 import vtk
-try:
-    from vmtk.vtkvmtkDifferentialGeometryPython import vtkvmtkUnstructuredGridGradientFilter
-except ImportError:
-    vtkvmtkUnstructuredGridGradientFilter = None
 
 from .selector import Selector
 from .model_edit import ModelEdit
@@ -1102,33 +1098,6 @@ class ApecAlgorithm:
             limiter_point[0], limiter_point[1], limiter_point[2], psi_limiter,
         )
 
-    @staticmethod
-    def _compute_hessian_vmtk(
-        ugrid: "vtk.vtkUnstructuredGrid",
-        scalar_array_name: str,
-    ) -> "vtk.vtkUnstructuredGrid":
-        """Compute a 9-component Hessian tensor via two VMTK gradient passes."""
-        if vtkvmtkUnstructuredGridGradientFilter is None:
-            raise RuntimeError("VMTK gradient filter is unavailable.")
-
-        grad_filter_1 = vtkvmtkUnstructuredGridGradientFilter()
-        grad_filter_1_dyn = cast(Any, grad_filter_1)
-        grad_filter_1.SetInputData(ugrid)
-        grad_filter_1_dyn.SetInputArrayName(scalar_array_name)
-        grad_filter_1_dyn.SetGradientArrayName("__apec_gradient_1__")
-        grad_filter_1_dyn.SetQuadratureOrder(3)
-        grad_filter_1.Update()
-
-        grad_filter_2 = vtkvmtkUnstructuredGridGradientFilter()
-        grad_filter_2_dyn = cast(Any, grad_filter_2)
-        grad_filter_2.SetInputConnection(grad_filter_1.GetOutputPort())
-        grad_filter_2_dyn.SetInputArrayName("__apec_gradient_1__")
-        grad_filter_2_dyn.SetGradientArrayName("__apec_psi_hessian__")
-        grad_filter_2_dyn.SetQuadratureOrder(3)
-        grad_filter_2.Update()
-
-        return cast("vtk.vtkUnstructuredGrid", grad_filter_2.GetOutput())
-
     def _check_x_point(self) -> None:
         """Locate the X-point as a PSI saddle-point candidate.
 
@@ -1178,29 +1147,26 @@ class ApecAlgorithm:
         vacuum_point_data = vacuum_mesh.GetPointData()
         psi_array = ApecAlgorithm._require_array(vacuum_point_data, "PSI")
 
-        try:
-            hessian_output = self._compute_hessian_vmtk(vacuum_mesh, "PSI")
-        except RuntimeError:
-            grad_filter = vtk.vtkGradientFilter()
-            grad_filter.SetInputData(vacuum_mesh)
-            grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-            grad_filter.SetResultArrayName("__apec_psi_gradient__")
-            if hasattr(grad_filter, "SetComputeGradient"):
-                grad_filter.SetComputeGradient(True)
-            grad_filter.Update()
+        grad_filter = vtk.vtkGradientFilter()
+        grad_filter.SetInputData(vacuum_mesh)
+        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        grad_filter.SetResultArrayName("__apec_psi_gradient__")
+        if hasattr(grad_filter, "SetComputeGradient"):
+            grad_filter.SetComputeGradient(True)
+        grad_filter.Update()
 
-            # Portable Hessian computation fallback: H(PSI) = grad(grad(PSI)).
-            hessian_filter = vtk.vtkGradientFilter()
-            hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
-            hessian_filter.SetInputScalars(
-                vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
-                "__apec_psi_gradient__",
-            )
-            hessian_filter.SetResultArrayName("__apec_psi_hessian__")
-            if hasattr(hessian_filter, "SetComputeGradient"):
-                hessian_filter.SetComputeGradient(True)
-            hessian_filter.Update()
-            hessian_output = hessian_filter.GetOutput()
+        # Portable Hessian computation fallback: H(PSI) = grad(grad(PSI)).
+        hessian_filter = vtk.vtkGradientFilter()
+        hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
+        hessian_filter.SetInputScalars(
+            vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
+            "__apec_psi_gradient__",
+        )
+        hessian_filter.SetResultArrayName("__apec_psi_hessian__")
+        if hasattr(hessian_filter, "SetComputeGradient"):
+            hessian_filter.SetComputeGradient(True)
+        hessian_filter.Update()
+        hessian_output = hessian_filter.GetOutput()
 
         hessian_point_data = hessian_output.GetPointData()
         hessian_array = hessian_point_data.GetArray("__apec_psi_hessian__")
@@ -1587,8 +1553,9 @@ class ApecAlgorithm:
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
         psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
-        psi_segn = np.maximum(psi_segn, 0.0)
-        one_minus = 1.0 - np.power(psi_segn, alpha_mp)
+        psi_segn = np.nan_to_num(psi_segn, nan=0.0, posinf=1.0, neginf=0.0)
+        psi_segn = np.clip(psi_segn, 0.0, 1.0)
+        one_minus = np.maximum(1.0 - np.power(psi_segn, alpha_mp), 0.0)
         pprime_h2 = np.power(one_minus, alpha_np)
         grad_shafranov_current_density = pprime_h2 * (
             beta_profile * elem_centroid_rad[selected_ids] / r0
