@@ -73,11 +73,7 @@ coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
 for coil in coils:
     Selector.select(apec.algorithm.equilibrium_mesh, coil, 1, type="elem", mode="s")
-    eq_cell_data = apec.algorithm.equilibrium_mesh.GetCellData()
-    first_elem = vtknp.vtk_to_numpy(
-        eq_cell_data.GetArray("selection_cell")
-    ).nonzero()[0][0]
-    js_z = float(eq_cell_data.GetArray("Js").GetTuple(first_elem)[2])
+    js_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Js", 2, type="elem")[0]
     Selector.select(apec.mesh, coil, 1, type="elem", mode="s")
     Selector.set_value_on_selection(apec.mesh, "Js", js_z, 1, type="elem")
 
@@ -91,7 +87,7 @@ apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
-apec.algorithm.input_parameters["t0_halo"] = 1
+apec.algorithm.input_parameters["t0_halo"] = 0.37
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 
