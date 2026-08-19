@@ -648,49 +648,110 @@ class ApecAlgorithm:
         return tuple(sorted(groups, key=lambda group: int(group[0])))
 
     @staticmethod
-    def _extract_main_plasma_region_nodes(
+    def _extract_main_plasma_region_cells(
         mesh: "vtk.vtkUnstructuredGrid",
-        start_node_id: int,
+        axis_node_id: int,
         psi_point: np.ndarray,
         psi_x: float,
-        vacuum_cell_mask: np.ndarray,
+        vac_cell_mask: np.ndarray,
     ) -> np.ndarray:
-        """Return the PSI>PSI_x node component connected to start_node_id via vacuum cells."""
+        """Traverses VACUUM_CHAMBER elements starting from the magnetic axis.
+        
+        Candidate elements must have ALL nodes satisfying PSI >= PSI_x.
+        Adjacent elements MUST share >= 2 nodes to prevent BFS traversal 
+        across a single-node X-point saddle contact.
+        """
+        n_cells = mesh.GetNumberOfCells()
         n_points = mesh.GetNumberOfPoints()
-        if start_node_id < 0 or start_node_id >= n_points:
+
+        if axis_node_id < 0 or axis_node_id >= n_points:
             return np.zeros(0, dtype=np.int64)
-        if not np.isfinite(psi_point[start_node_id]) or psi_point[start_node_id] <= psi_x:
+
+        psi_axis = psi_point[axis_node_id]
+        if not np.isfinite(psi_axis):
             return np.zeros(0, dtype=np.int64)
 
-        mesh.BuildLinks()
+        core_above = psi_axis >= psi_x
 
-        visited = np.zeros(n_points, dtype=bool)
-        visited[start_node_id] = True
+        cells = mesh.GetCells()
+        offsets_array = cells.GetOffsetsArray()
+        connectivity_array = cells.GetConnectivityArray()
 
+        if offsets_array is None or connectivity_array is None:
+            return np.zeros(0, dtype=np.int64)
+
+        offsets = np.asarray(vtknp.vtk_to_numpy(offsets_array), dtype=np.int64)
+        connectivity = np.asarray(vtknp.vtk_to_numpy(connectivity_array), dtype=np.int64)
+
+        # 1. Filter VACUUM_CHAMBER cells where ALL nodes satisfy PSI condition
+        candidate_cell_mask = np.zeros(n_cells, dtype=bool)
+        vac_cell_ids = np.flatnonzero(vac_cell_mask)
+
+        for cell_id in vac_cell_ids:
+            start = offsets[cell_id]
+            end = offsets[cell_id + 1]
+            cell_nodes = connectivity[start:end]
+            cell_psi = psi_point[cell_nodes]
+
+            if not np.all(np.isfinite(cell_psi)):
+                continue
+
+            all_nodes_valid = np.all(cell_psi >= psi_x) if core_above else np.all(cell_psi <= psi_x)
+            if all_nodes_valid:
+                candidate_cell_mask[cell_id] = True
+
+        # 2. Build reverse lookup: Node ID -> List of Candidate Cell IDs
+        node_to_cand_cells = [[] for _ in range(n_points)]
+        cand_cell_ids = np.flatnonzero(candidate_cell_mask)
+
+        for cell_id in cand_cell_ids:
+            start = offsets[cell_id]
+            end = offsets[cell_id + 1]
+            for node_id in connectivity[start:end]:
+                node_to_cand_cells[node_id].append(cell_id)
+
+        # 3. Seed BFS from candidate cells touching the magnetic axis node
+        seed_cells = node_to_cand_cells[axis_node_id]
+        if not seed_cells:
+            return np.zeros(0, dtype=np.int64)
+
+        # 4. Run cell-level BFS with strict edge-connectivity check (>= 2 common nodes)
         from collections import deque
 
-        queue = deque([int(start_node_id)])
-        cell_ids = vtk.vtkIdList()
-        point_ids = vtk.vtkIdList()
+        visited_cells = np.zeros(n_cells, dtype=bool)
+        queue = deque(seed_cells)
+        for cid in seed_cells:
+            visited_cells[cid] = True
 
         while queue:
-            curr_node = int(queue.popleft())
-            mesh.GetPointCells(curr_node, cell_ids)
-            for i in range(cell_ids.GetNumberOfIds()):
-                cell_id = int(cell_ids.GetId(i))
-                if cell_id < 0 or cell_id >= vacuum_cell_mask.shape[0] or not vacuum_cell_mask[cell_id]:
+            curr_cid = queue.popleft()
+            start = offsets[curr_cid]
+            end = offsets[curr_cid + 1]
+            curr_nodes = set(connectivity[start:end])
+
+            # Get potential neighbor candidate cells sharing at least 1 node
+            potential_neighbors = set()
+            for node_id in curr_nodes:
+                potential_neighbors.update(node_to_cand_cells[node_id])
+
+            # Test edge-connectivity (>= 2 common nodes required)
+            for nbr_cid in potential_neighbors:
+                if visited_cells[nbr_cid]:
                     continue
 
-                mesh.GetCellPoints(cell_id, point_ids)
-                for j in range(point_ids.GetNumberOfIds()):
-                    nbr_node = int(point_ids.GetId(j))
-                    if visited[nbr_node]:
-                        continue
-                    if np.isfinite(psi_point[nbr_node]) and psi_point[nbr_node] > psi_x:
-                        visited[nbr_node] = True
-                        queue.append(nbr_node)
+                nbr_start = offsets[nbr_cid]
+                nbr_end = offsets[nbr_cid + 1]
+                nbr_nodes = connectivity[nbr_start:nbr_end]
 
-        return np.flatnonzero(visited).astype(np.int64)
+                # Count overlapping nodes between current cell and neighbor
+                common_nodes_count = sum(1 for node in nbr_nodes if node in curr_nodes)
+
+                # If common_nodes_count == 1, it is a point-contact (X-point node) -> REJECT
+                if common_nodes_count >= 2:
+                    visited_cells[nbr_cid] = True
+                    queue.append(nbr_cid)
+
+        return np.flatnonzero(visited_cells).astype(np.int64)
 
     @staticmethod
     def _orient_halo_node_groups(
@@ -890,70 +951,69 @@ class ApecAlgorithm:
         if selected_elem_count > 0:
             Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
-        # Topological filter: for PSIe > PSI_x, keep only the component connected
-        # to the magnetic axis node; disconnected components are private-flux islands.
-        psi_x = self.status.get("last_psi_x_point")
-        axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
-        if psi_x is not None and axis_node_id >= 0:
-            psi_x = float(psi_x)
-            psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
-            psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
-            psie_array = ApecAlgorithm._require_array(cell_data, "PSIe")
-            psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
+        # 1. Select VACUUM_CHAMBER elements
+        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        vac_cell_sel_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
+        vac_cell_mask = np.asarray(vtknp.vtk_to_numpy(vac_cell_sel_array), dtype=bool)
 
-            # Select vacuum-chamber cells and derive node-level masks/connectivity.
-            Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-            vac_cell_sel_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
-            vac_cell_mask = np.asarray(vtknp.vtk_to_numpy(vac_cell_sel_array), dtype=bool)
-            if np.any(vac_cell_mask):
-                Selector.nsle(mesh, mode="s")
-                vac_point_sel_array = ApecAlgorithm._require_array(point_data, "selection_point")
-                vac_node_mask = np.asarray(vtknp.vtk_to_numpy(vac_point_sel_array), dtype=bool)
+        if np.any(vac_cell_mask):
+            psi_x = self.status.get("last_psi_x_point")
+            axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
 
-                candidate_node_mask = vac_node_mask & (psi_point > psi_x)
-                if axis_node_id < candidate_node_mask.shape[0] and candidate_node_mask[axis_node_id]:
-                    connected_nodes = self._extract_main_plasma_region_nodes(
-                        mesh,
-                        axis_node_id,
-                        psi_point,
-                        psi_x,
-                        vac_cell_mask,
+            if psi_x is not None and axis_node_id >= 0:
+                psi_x = float(psi_x)
+                psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
+                psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
+
+                # 2, 3 & 4. Run cell-based BFS requiring ALL nodes >= PSI_x AND >= 2 shared nodes
+                connected_cell_ids = self._extract_main_plasma_region_cells(
+                    mesh,
+                    axis_node_id,
+                    psi_point,
+                    psi_x,
+                    vac_cell_mask,
+                )
+
+                connected_cell_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
+                if connected_cell_ids.size > 0:
+                    connected_cell_mask[connected_cell_ids] = True
+
+                # 5. Unselect candidate cells that are topologically disconnected
+                cells = mesh.GetCells()
+                offsets = np.asarray(vtknp.vtk_to_numpy(cells.GetOffsetsArray()), dtype=np.int64)
+                connectivity = np.asarray(vtknp.vtk_to_numpy(cells.GetConnectivityArray()), dtype=np.int64)
+
+                psi_axis = psi_point[axis_node_id]
+                core_above = psi_axis >= psi_x
+
+                remove_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
+                vac_cell_ids = np.flatnonzero(vac_cell_mask)
+
+                for cell_id in vac_cell_ids:
+                    start = offsets[cell_id]
+                    end = offsets[cell_id + 1]
+                    cell_nodes = connectivity[start:end]
+                    cell_psi = psi_point[cell_nodes]
+
+                    # Candidate condition: ALL nodes satisfy the PSI constraint
+                    all_nodes_valid = np.all(cell_psi >= psi_x) if core_above else np.all(cell_psi <= psi_x)
+
+                    # If element is a valid candidate BUT unreachable via edge-sharing BFS, unselect it
+                    if all_nodes_valid and not connected_cell_mask[cell_id]:
+                        remove_mask[cell_id] = True
+
+                # 1. Any VACUUM_CHAMBER element not reached by the core BFS is non-plasma
+                remove_mask = vac_cell_mask & (~connected_cell_mask)
+
+                # 2. Reset PLASMA flag on all disconnected divertor/SOL elements
+                if np.any(remove_mask):
+                    Selector.apply_boolean_selection_mask(
+                        remove_mask,
+                        cell_data,
+                        "elem",
+                        "s",
                     )
-
-                    if connected_nodes.size == 0:
-                        connected_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
-                    else:
-                        connected_node_mask = np.zeros(mesh.GetNumberOfPoints(), dtype=bool)
-                        connected_node_mask[connected_nodes] = True
-
-                    cells = mesh.GetCells()
-                    offsets_array = cells.GetOffsetsArray()
-                    connectivity_array = cells.GetConnectivityArray()
-                    if offsets_array is not None and connectivity_array is not None:
-                        offsets = np.asarray(vtknp.vtk_to_numpy(offsets_array), dtype=np.int64)
-                        connectivity = np.asarray(vtknp.vtk_to_numpy(connectivity_array), dtype=np.int64)
-
-                        # Remove vacuum cells above PSI_x not connected to the axis component.
-                        remove_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
-                        vac_cell_ids = np.flatnonzero(vac_cell_mask)
-                        for cell_id in vac_cell_ids:
-                            if not np.isfinite(psi_elem[cell_id]) or psi_elem[cell_id] <= psi_x:
-                                continue
-                            start = offsets[cell_id]
-                            end = offsets[cell_id + 1]
-                            cell_nodes = connectivity[start:end]
-                            # Keep only if cell touches the axis-connected candidate-node component.
-                            if not np.any(connected_node_mask[cell_nodes]):
-                                remove_mask[cell_id] = True
-
-                        if np.any(remove_mask):
-                            Selector.apply_boolean_selection_mask(
-                                remove_mask,
-                                cell_data,
-                                "elem",
-                                "s",
-                            )
-                            Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+                    Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
 
         halo_group_count = len(self._halo_node_groups)
         LOGGER.debug(
@@ -964,7 +1024,8 @@ class ApecAlgorithm:
         )
 
     def _check_limiter(self) -> None:
-        """Locate limiter contact point and associated PSI among selected boundary nodes.
+        """Locate limiter contact point and associated PSI among selected boundary nodes,
+        excluding divertor/private-flux nodes with inverted poloidal field rotation.
 
         Returns:
             None
@@ -972,11 +1033,11 @@ class ApecAlgorithm:
         mesh = self._require_equilibrium_mesh()
 
         psi_array = ApecAlgorithm._require_array(mesh.GetPointData(), "PSI")
+        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
 
+        # 1. Initial selection of vacuum chamber external boundary nodes attached to PLASMA
         Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
         Selector.nsel_ext(mesh, mode="s")
-        Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
-        Selector.nsle(mesh, mode="r")
 
         selection_array = ApecAlgorithm._require_array(mesh.GetPointData(), "selection_point")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
@@ -986,14 +1047,51 @@ class ApecAlgorithm:
                 "boundary attached to PLASMA elements."
             )
 
-        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
+        # 2. Compute PSI point gradient to evaluate field rotation
+        grad_filter = vtk.vtkGradientFilter()
+        grad_filter.SetInputData(mesh)
+        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        grad_filter.SetResultArrayName("__apec_psi_grad_limiter__")
+        grad_filter.Update()
+
+        grad_mesh = grad_filter.GetOutput()
+        grad_array = grad_mesh.GetPointData().GetArray("__apec_psi_grad_limiter__")
+        if grad_array is None:
+            raise RuntimeError("Failed to compute PSI gradient for limiter candidate filtering.")
+        grad = np.asarray(vtknp.vtk_to_numpy(grad_array), dtype=float)
+
+        # 3. Filter out divertor nodes where (r - r_axis) . grad(PSI) has reversed sign
+        axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
+        psi_x = self.status.get("last_psi_x_point")
+
+        points = mesh.GetPoints()
+        xyz = vtknp.vtk_to_numpy(points.GetData())
+
+        if axis_node_id >= 0 and axis_node_id < mesh.GetNumberOfPoints():
+            axis_xyz = xyz[axis_node_id]
+            psi_axis = psi[axis_node_id]
+
+            reference_psi = float(psi_x) if psi_x is not None else float(psi.max())
+            core_sign = 1.0 if reference_psi >= psi_axis else -1.0
+
+            candidate_xyz = xyz[selected_ids]
+            candidate_grad = grad[selected_ids]
+
+            # 2D radial vector from magnetic axis in (R, Z)
+            vec_r = candidate_xyz[:, :2] - axis_xyz[:2]
+            dot_prod = vec_r[:, 0] * candidate_grad[:, 0] + vec_r[:, 1] * candidate_grad[:, 1]
+
+            # Keep only nodes matching core outward gradient alignment
+            valid_mask = (core_sign * dot_prod) > 0.0
+            if np.any(valid_mask):
+                selected_ids = selected_ids[valid_mask]
+
+        # 4. Find maximum PSI among filtered main-chamber boundary nodes
         psi_selected = psi[selected_ids]
         limiter_local_index = int(np.argmax(psi_selected))
         limiter_index = int(selected_ids[limiter_local_index])
         psi_limiter = float(psi[limiter_index])
 
-        points = mesh.GetPoints()
-        xyz = vtknp.vtk_to_numpy(points.GetData())
         limiter_point = tuple(float(v) for v in xyz[limiter_index])
 
         self.status["last_psi_limiter"] = psi_limiter
