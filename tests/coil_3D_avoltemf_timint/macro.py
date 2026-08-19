@@ -9,7 +9,7 @@ import pandas as pd
 
 apec = APEC_M()
 
-filename = "coil_3D_avoltemf"
+filename = "coil_3D_avoltemf_timint"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
@@ -24,7 +24,6 @@ tol = 1e-5
 
 ModelEdit.remove_array(apec.mesh, "CP_1")
 ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
-
 
 Selector.select_pos(
     apec.mesh,
@@ -73,6 +72,7 @@ master_node = vtknp.vtk_to_numpy(
 Selector.select_pos(
     apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
+Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
 apec.dof_couplings = pd.concat(
     [
         apec.dof_couplings,
@@ -85,7 +85,6 @@ apec.dof_couplings = pd.concat(
         ),
     ]
 )
-
 
 Selector.select_pos(
     apec.mesh,

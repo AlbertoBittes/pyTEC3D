@@ -9,7 +9,7 @@ import pandas as pd
 
 apec = APEC_M()
 
-filename = "coil_3D_avoltemf_noint"
+filename = "coil_3D_avoltemf"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
