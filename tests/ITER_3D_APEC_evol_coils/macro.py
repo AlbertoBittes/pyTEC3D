@@ -59,10 +59,12 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
 Selector.select(apec.mesh, "ID", 16170)
 Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
 
+Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
+Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 # 1. Set coils equilibrium voltages from the equilibrium output mesh
 ModelEdit.remove_array(apec.mesh, "CP_0")
 ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
-Selector.select(apec.mesh, "COILS", 1, type="elem", mode="a")
+Selector.select(apec.mesh, "COILS", 1, type="elem")
 apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
@@ -81,7 +83,7 @@ for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
     jt_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Jt", 2, type="elem")[0]
     cs = apec.constants[mask]["CS"].values[0]
     current = cs * jt_z
-    voltage = -resistance * current / n_turns
+    voltage = resistance * current / n_turns
     Selector.set_value_on_selection(apec.mesh, "_VOLT", voltage)
 
 for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"]):
@@ -97,7 +99,7 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
     jt_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Jt", 2, type="elem")[0]
     cs = apec.constants[mask]["CS"].values[0]
     current = cs * jt_z
-    voltage = -resistance * current / n_turns
+    voltage = resistance * current / n_turns
     Selector.set_value_on_selection(apec.mesh, "_VOLT", voltage)
 
 

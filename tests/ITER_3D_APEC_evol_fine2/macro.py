@@ -70,7 +70,7 @@ Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 
 # Apply equilibrium coils current densities
-Selector.select(apec.mesh, "COILS", 1, type="elem", mode="s")
+Selector.select(apec.mesh, "COILS", 1, type="elem")
 apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
