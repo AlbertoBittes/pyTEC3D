@@ -1501,7 +1501,7 @@ class ApecAlgorithm:
         )
 
     def _compute_jplasma_gradshafranov_default(self) -> None:
-        """Compute Grad-Shafranov plasma current profile and update Js (and halo AMPS).
+        """Compute Grad-Shafranov plasma current profile and update Js using PSI gradients.
 
         Returns:
             None
@@ -1520,17 +1520,42 @@ class ApecAlgorithm:
         psie_array = ApecAlgorithm._require_array(cell_data, "PSIe")
         psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
 
-        be_array = ApecAlgorithm._require_array(cell_data, "Be")
-        be_np = np.asarray(vtknp.vtk_to_numpy(be_array), dtype=float)
-        bx = np.asarray(be_np[:, 0], dtype=float)
-        by = np.asarray(be_np[:, 1], dtype=float)
+        # -------------------------------------------------------------------------
+        # 1. Compute magnetic field components (Bx, By) via VTK Gradient Filter on PSI
+        # -------------------------------------------------------------------------
+        grad_filter = vtk.vtkGradientFilter()
+        grad_filter.SetInputData(mesh)
+        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        grad_filter.SetResultArrayName("__apec_grad_psi__")
+        grad_filter.Update()
 
-        volume_array = ApecAlgorithm._require_array(cell_data, "cell_volume")
-        cell_volume = np.asarray(vtknp.vtk_to_numpy(volume_array), dtype=float).reshape(-1)
+        # Interpolate computed point gradients to cell centroids
+        p2c_filter = vtk.vtkPointDataToCellData()
+        p2c_filter.SetInputConnection(grad_filter.GetOutputPort())
+        p2c_filter.SetProcessAllArrays(False)
+        p2c_filter.AddPointDataArray("__apec_grad_psi__")
+        p2c_filter.Update()
+
+        grad_cell_data = p2c_filter.GetOutput().GetCellData().GetArray("__apec_grad_psi__")
+        grad_cell_np = np.asarray(vtknp.vtk_to_numpy(grad_cell_data), dtype=float)
+
+        dpsi_dr = grad_cell_np[:, 0]
+        dpsi_dz = grad_cell_np[:, 1]
 
         centroids_array = ApecAlgorithm._require_array(cell_data, "cell_centroids")
         centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
         elem_centroid_rad = np.asarray(centroids[:, 0], dtype=float)
+
+        # Grad-Shafranov magnetic field: B_R = -(1/R) * dPSI/dZ, B_Z = (1/R) * dPSI/dR
+        # Note: If your PSI definition includes a 2*pi factor, adjust denominator to (2.0 * np.pi * elem_centroid_rad)
+        bx = -dpsi_dz / elem_centroid_rad
+        by = dpsi_dr / elem_centroid_rad
+
+        # -------------------------------------------------------------------------
+        # 2. Extract domain setup and parameters
+        # -------------------------------------------------------------------------
+        volume_array = ApecAlgorithm._require_array(cell_data, "cell_volume")
+        cell_volume = np.asarray(vtknp.vtk_to_numpy(volume_array), dtype=float).reshape(-1)
 
         psi_magnetic_axis = float(self.status["psi_magnetic_axis"])
         psi_min = float(self.status["psi_2_min"])
@@ -1548,15 +1573,22 @@ class ApecAlgorithm:
         af0 = float(self.input_parameters["AF0"])
         target_plasma_current = float(self.input_parameters["plasma_current"])
 
+        # -------------------------------------------------------------------------
+        # 3. Select active PLASMA elements
+        # -------------------------------------------------------------------------
         Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
         selection_array = cell_data.GetArray("selection_cell")
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
+        # -------------------------------------------------------------------------
+        # 4. Compute toroidal and poloidal current densities
+        # -------------------------------------------------------------------------
         psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
         psi_segn = np.nan_to_num(psi_segn, nan=0.0, posinf=1.0, neginf=0.0)
         psi_segn = np.clip(psi_segn, 0.0, 1.0)
         one_minus = np.maximum(1.0 - np.power(psi_segn, alpha_mp), 0.0)
         pprime_h2 = np.power(one_minus, alpha_np)
+        
         grad_shafranov_current_density = pprime_h2 * (
             beta_profile * elem_centroid_rad[selected_ids] / r0
             + (1.0 - beta_profile) * (r0 / elem_centroid_rad[selected_ids])
@@ -1589,6 +1621,7 @@ class ApecAlgorithm:
         js_radial = fprime * bx[selected_ids]
         js_vertical = fprime * by[selected_ids]
 
+        # Update output current density array
         js_np[selected_ids, 0] = js_radial
         js_np[selected_ids, 1] = js_vertical
         js_np[selected_ids, 2] = js_toroidal
