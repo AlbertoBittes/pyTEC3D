@@ -1587,9 +1587,8 @@ class ApecAlgorithm:
         selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
 
         psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
-        psi_segn = np.nan_to_num(psi_segn, nan=0.0, posinf=1.0, neginf=0.0)
-        psi_segn = np.clip(psi_segn, 0.0, 1.0)
-        one_minus = np.maximum(1.0 - np.power(psi_segn, alpha_mp), 0.0)
+        psi_segn = np.maximum(psi_segn, 0.0)
+        one_minus = 1.0 - np.power(psi_segn, alpha_mp)
         pprime_h2 = np.power(one_minus, alpha_np)
         grad_shafranov_current_density = pprime_h2 * (
             beta_profile * elem_centroid_rad[selected_ids] / r0
