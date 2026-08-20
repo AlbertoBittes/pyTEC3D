@@ -186,29 +186,31 @@ void ApecMDOFSystem<ImplicitSys>::post_init()
     apec::logging::info("Setting linear solver configurations");
 }
 
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::release_subset_solve()
+void ApecMLinearSystem::release_subset_solve()
 {
-    if constexpr (std::is_same_v<ImplicitSys, libMesh::LinearImplicitSystem>)
+    if (this->_subset != nullptr)
     {
-        if (this->_subset != nullptr)
-        {
-            subset_solve_holder_.reset();
-            this->_subset = nullptr;
-        }
+        subset_solve_holder_.reset();
+        this->_subset = nullptr;
     }
 }
 
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::delete_rows_cols_constrained_dofs()
+void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
-    if constexpr (std::is_same_v<ImplicitSys, libMesh::LinearImplicitSystem>)
-    {
-        apec::logging::info("Removing constrained DOFs from system matrix and RHS");
-        this->release_subset_solve();
-        subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
-        this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
-    }
+    apec::logging::info("Removing constrained DOFs from system matrix and RHS");
+    this->release_subset_solve();
+    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+}
+
+void ApecMNonLinearSystem::delete_rows_cols_constrained_dofs()
+{
+    apec::logging::info("Removing constrained DOFs from system matrix and RHS");
+    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+    auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
+    auto *newton_petsc_solver =
+        dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(&newton_solver->get_linear_solver());
+    newton_petsc_solver->restrict_solve_to(&subset_solve_holder_.get()->dof_ids(), libMesh::SUBSET_ZERO);
 }
 
 void ApecMLinearSystem::solve()

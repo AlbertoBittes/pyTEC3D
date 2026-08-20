@@ -211,9 +211,7 @@ public:
         return dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(this->linear_solver.get());
     }
 
-    void release_subset_solve();
-
-    void delete_rows_cols_constrained_dofs();
+    virtual void delete_rows_cols_constrained_dofs() = 0;
 
 protected:
     std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object;
@@ -241,6 +239,10 @@ public:
     void solve() override;
 
     void post_init() override;
+
+    void release_subset_solve();
+
+    void delete_rows_cols_constrained_dofs() override;
 };
 
 class APEC_M_HIDDEN ApecMNonLinearSystem : public ApecMDOFSystem<libMesh::NonlinearImplicitSystem>
@@ -321,6 +323,8 @@ public:
     void solve() override;
 
     void post_init() override;
+
+    void delete_rows_cols_constrained_dofs() override;
 
 protected:
     void assemble_system_impl(bool assemble_jacobian, bool assemble_residual);
