@@ -147,12 +147,6 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
-# Volt 0 in static step
-Selector.select(apec.mesh, "TYPE", 2, type="elem")
-Selector.nsle(apec.mesh)
-# Selector.select_pos(apec.mesh, 0, (-1e-6, 1e-6), mode="r")
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
-
 apec.load_mesh_into_solver()
 
 apec.time_step["time"] = 0.00001

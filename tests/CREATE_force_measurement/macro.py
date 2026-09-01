@@ -143,12 +143,6 @@ Selector.select_pos(apec.mesh, 1, (-1e-6, 1e-6), mode="u")
 Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
 TreeGauge.tree_gauge(apec.mesh)
 
-# Volt 0 in static step
-Selector.select(apec.mesh, "TYPE", 2, type="elem")
-Selector.nsle(apec.mesh)
-# Selector.select_pos(apec.mesh, 0, (-1e-6, 1e-6), mode="r")
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
-
 apec.load_mesh_into_solver()
 
 apec.time_step["time"] = 0.00001

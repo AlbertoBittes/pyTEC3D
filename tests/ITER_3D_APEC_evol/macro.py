@@ -63,7 +63,7 @@ Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordina
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
 Selector.select(apec.mesh, "ID", 16170)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+Selector.set_value_on_selection(apec.mesh, "_V", 0)
 
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
@@ -89,7 +89,7 @@ apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
-apec.algorithm.input_parameters["t0_halo"] = 0.37
+apec.algorithm.input_parameters["t0_halo"] = 0.38
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 

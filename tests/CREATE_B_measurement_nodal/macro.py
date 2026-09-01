@@ -153,6 +153,12 @@ Selector.set_value_on_selection(apec.mesh, "_A", 0, 0)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 1)
 Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
 
+# Symmetry BCs
+Selector.select_all(apec.mesh)
+Selector.nsel_ext(apec.mesh)
+Selector.select(apec.mesh, "TYPE", 2, type="elem")
+Selector.nsle(apec.mesh, mode="r")
+Selector.set_value_on_selection(apec.mesh, "_V", 0.0)
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "times_CREATE.txt"))
@@ -172,23 +178,8 @@ for step_idx in range(len(time_steps)):
     if step_idx == 0:
         apec.time_step["transient_effects"] = False
         apec.time_step["time"] = 1e-10
-        # Volt 0 in static step
-        Selector.select(apec.mesh, "TYPE", 2, type="elem")
-        Selector.nsle(apec.mesh)
-        Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
     else:
         apec.time_step["transient_effects"] = True
-        if step_idx == 1:
-            # Remove static step BCs
-            Selector.select(apec.mesh, "TYPE", 2, type="elem")
-            Selector.nsle(apec.mesh)
-            Selector.set_value_on_selection(apec.mesh, "_VOLT", np.nan)
-            # Symmetry BCs
-            Selector.select_all(apec.mesh)
-            Selector.nsel_ext(apec.mesh)
-            Selector.select(apec.mesh, "TYPE", 2, type="elem")
-            Selector.nsle(apec.mesh, mode="r")
-            Selector.set_value_on_selection(apec.mesh, "_VOLT", 0.0)
 
     Selector.select(apec.mesh, "ID", master_node)
     Selector.set_value_on_selection(apec.mesh, "_VOLT", voltages[step_idx])

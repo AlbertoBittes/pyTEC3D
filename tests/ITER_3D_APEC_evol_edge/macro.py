@@ -40,10 +40,7 @@ apec.read_excel("input_template.xlsx")
 ModelEdit.remove_array(apec.mesh, "CP_0")
 ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "VOLT"))])
-
-Selector.select(apec.mesh, "ID", 16170)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "V"))])
 
 # BCs: Outer boundary far field zero boundary conditions + Tree gauge
 Selector.select_all(apec.mesh)
@@ -56,6 +53,10 @@ TreeGauge.tree_gauge(
     apec.mesh,
     periodic_point_coupling="CP_0",
 )
+
+# Ground Vacuum Vessel
+Selector.select(apec.mesh, "ID", 16170)
+Selector.set_value_on_selection(apec.mesh, "_V", 0)
 
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
@@ -80,7 +81,7 @@ apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
-apec.algorithm.input_parameters["t0_halo"] = 0.37
+apec.algorithm.input_parameters["t0_halo"] = 0.38
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 

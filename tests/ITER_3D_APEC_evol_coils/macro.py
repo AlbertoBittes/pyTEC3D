@@ -39,26 +39,6 @@ Selector.set_value_on_selection(apec.mesh, "TYPE", 35, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
 
-# # Set Boundary conditions
-# Axis boundary conditions
-Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
-)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
-
-# Outer boundary far field zero boundary conditions
-Selector.select_pos(
-    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
-)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
-
-# Ground Vacuum Vessel
-Selector.select(apec.mesh, "ID", 16170)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
-
 Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 # 1. Set coils equilibrium voltages from the equilibrium output mesh
@@ -113,6 +93,25 @@ apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundarie
 Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
 
+# # Set Boundary conditions
+# Axis boundary conditions
+Selector.select_pos(
+    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
+)
+Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
+
+# Outer boundary far field zero boundary conditions
+Selector.select_pos(
+    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
+)
+Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
+Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
+Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
+
+# Ground Vacuum Vessel
+Selector.select(apec.mesh, "ID", 16170)
+Selector.set_value_on_selection(apec.mesh, "_V", 0)
 
 apec.save_mesh()
 
@@ -124,7 +123,7 @@ apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
-apec.algorithm.input_parameters["t0_halo"] = 0.37
+apec.algorithm.input_parameters["t0_halo"] = 0.41
 apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 2
 

@@ -257,7 +257,7 @@ public:
         auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(diff_solver.get());
         if (!newton_solver)
             apec::logging::error_and_abort("ApecMNonLinearSystem ctor: failed to create Newton solver.");
-        newton_solver->require_residual_reduction = false;
+        newton_solver->require_residual_reduction = true;
         auto nonlinear_solver = this->nonlinear_solver.get();
         nonlinear_solver->matvec = &ApecMNonLinearSystem::matvec_callback;
         nonlinear_solver->residual = &ApecMNonLinearSystem::residual_callback;
