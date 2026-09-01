@@ -11,22 +11,22 @@ filename = "coil_2D_avoltemf"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_mesh(filepath)
+apec.read_model(filepath)
 
-apec.read_excel("input_template.xlsx")
+apec.model.read_excel("input_template.xlsx")
 
-ModelEdit.add_array(apec.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
+ModelEdit.add_array(apec.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
 
-Selector.select_all(apec.mesh)
-Selector.select_pos(apec.mesh, 0, (0.4, 0.6), type="elem")
-Selector.select_pos(apec.mesh, 1, (-0.6, 0.6), type="elem", mode="r")
-Selector.inv(apec.mesh)
-Selector.select_pos(apec.mesh, 0, (0.25, 0.75), type="elem", mode="r")
-Selector.select_pos(apec.mesh, 1, (-0.75, 0.75), type="elem", mode="r")
-Selector.set_value_on_selection(apec.mesh, "MATERIAL", 26, type="elem")
-Selector.set_value_on_selection(apec.mesh, "TYPE", 26, type="elem")
+Selector.select_all(apec.model.mesh)
+Selector.select_pos(apec.model.mesh, 0, (0.4, 0.6), type="elem")
+Selector.select_pos(apec.model.mesh, 1, (-0.6, 0.6), type="elem", mode="r")
+Selector.inv(apec.model.mesh)
+Selector.select_pos(apec.model.mesh, 0, (0.25, 0.75), type="elem", mode="r")
+Selector.select_pos(apec.model.mesh, 1, (-0.75, 0.75), type="elem", mode="r")
+Selector.set_value_on_selection(apec.model.mesh, "MATERIAL", 26, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "TYPE", 26, type="elem")
 
-apec.bh_curves[26] = [
+apec.model.bh_curves[26] = [
     [0.0, 0.0],
     [100.0, 0.371974867],
     [200.0, 0.743949735],
@@ -57,37 +57,37 @@ apec.bh_curves[26] = [
     [20396.79471, 2.434974089],
 ]
 
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
+Selector.select_all(apec.model.mesh)
+Selector.nsel_ext(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
-Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
+Selector.select(apec.model.mesh, "MATERIAL", 23, type="elem")
+Selector.nsle(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
-master_node = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+master_node = vtknp.vtk_to_numpy(apec.model.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
-Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 2)
-master_node_ground = vtknp.vtk_to_numpy(apec.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
-Selector.select(apec.mesh, "ID", master_node_ground)
-Selector.set_value_on_selection(apec.mesh, "_VOLT", 0)
+Selector.select(apec.model.mesh, "MATERIAL", 24, type="elem")
+Selector.nsle(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CP_0", 2)
+master_node_ground = vtknp.vtk_to_numpy(apec.model.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+Selector.select(apec.model.mesh, "ID", master_node_ground)
+Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 0)
 
-apec.load_mesh_into_solver()
-apec.time_step["theta"] = 1.0
+apec.load_model_into_solver()
+apec.model.time_step["theta"] = 1.0
 
-Selector.select_all(apec.mesh)
+Selector.select_all(apec.model.mesh)
 for i in range(1, 3):
-    apec.time_step["time"] = i * 0.00001
+    apec.model.time_step["time"] = i * 0.00001
     if i == 1:
-        Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "CURR", 100)
+        Selector.select(apec.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.model.mesh, "CURR", 100)
     else:
-        Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
-        Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
+        Selector.select(apec.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.model.mesh, "CURR", 0)
+        Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()
 
-apec.save_mesh()
+apec.save_model()

@@ -197,7 +197,7 @@ def validate_solver_settings(settings: dict[str, Any]) -> None:
     - ``max_linear_iterations``: integer ≥ 1.
 
     Args:
-        settings: Dictionary of solver settings (typically ``apec.solver_settings``).
+        settings: Dictionary of solver settings (typically ``apec.model.solver_settings``).
 
     Returns:
         None
@@ -332,17 +332,17 @@ def validate_apec_model(apec: Any) -> None:
     _log = get_logger("apec_m.validation")
     errors: list[str] = []
 
-    mesh = apec._mesh
+    mesh = apec.model.mesh
     if mesh is None:
         raise ValueError("No mesh loaded; call read_mesh() before validating.")
 
-    et = apec.element_types
-    mat = apec.materials
-    const = apec.constants
-    dof = apec.dof_couplings
+    et = apec.model.element_types
+    mat = apec.model.materials
+    const = apec.model.constants
+    dof = apec.model.dof_couplings
 
     # ── solver settings ─────────────────────────────────────────────────────
-    validate_solver_settings(apec.solver_settings)
+    validate_solver_settings(apec.model.solver_settings)
 
     n_cells: int = mesh.GetNumberOfCells()
     cell_data = mesh.GetCellData()
@@ -382,15 +382,15 @@ def validate_apec_model(apec: Any) -> None:
             np.unique(coordinate_system_ids[coordinate_system_ids > 0]).astype(int).tolist()
         )
         if used_cs_ids:
-            coordinate_systems = getattr(apec, "coordinate_systems", None)
+            coordinate_systems = getattr(apec.model, "coordinate_systems", None)
             if coordinate_systems is None:
                 errors.append(
                     "COORDINATE_SYSTEM: found values > 0 in mesh but"
-                    " apec.coordinate_systems is missing or None."
+                    " apec.model.coordinate_systems is missing or None."
                 )
             elif not isinstance(coordinate_systems, dict):
                 errors.append(
-                    "apec.coordinate_systems must be a dict mapping integer IDs"
+                    "apec.model.coordinate_systems must be a dict mapping integer IDs"
                     f" to coordinate-system objects; got {type(coordinate_systems).__name__}."
                 )
             else:
@@ -403,13 +403,13 @@ def validate_apec_model(apec: Any) -> None:
                 if missing_cs:
                     errors.append(
                         "COORDINATE_SYSTEM: positive IDs used by mesh are not present"
-                        f" in apec.coordinate_systems: {missing_cs}."
+                        f" in apec.model.coordinate_systems: {missing_cs}."
                     )
 
     # ========================================================================
     # 0. bh_curves dictionary
     # ========================================================================
-    bh_curves = getattr(apec, "bh_curves", {})
+    bh_curves = getattr(apec.model, "bh_curves", {})
     if bh_curves is None:
         bh_curves = {}
 

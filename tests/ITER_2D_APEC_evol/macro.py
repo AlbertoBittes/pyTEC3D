@@ -23,33 +23,33 @@ static_mesh_filepath = os.path.join(
 )
 
 
-apec.read_mesh(evol_filepath)
+apec.read_model(evol_filepath)
 apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, reset_arrays=False)
 
-apec.read_excel("input_template.xlsx")
+apec.model.read_excel("input_template.xlsx")
 
 # Write loads and BCs and save the static mesh
-apec.load_mesh_into_solver()
+apec.load_model_into_solver()
 
 # Now start the evolution analysis
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "_A", 0, 2)
+Selector.select_all(apec.model.mesh)
+Selector.nsel_ext(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
 # 1. Build source->destination element map in VACUUM_CHAMBER using toroidal slices
 # Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "VACUUM_CHAMBER", 1, type="elem", mode="s")
 # Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "COILS", 1, type="elem", mode="a")
-# Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+# Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
 
 # 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] through map ids
 jt_z_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Jt"))
-js_array = vtknp.vtk_to_numpy(apec.mesh.GetCellData().GetArray("Js"))
+js_array = vtknp.vtk_to_numpy(apec.model.mesh.GetCellData().GetArray("Js"))
 
 js_array[:] = jt_z_array
-apec.mesh.GetCellData().GetArray("Js").Modified()
+apec.model.mesh.GetCellData().GetArray("Js").Modified()
 
-Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-Selector.nsle(apec.mesh)
+Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+Selector.nsle(apec.model.mesh)
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
 apec.algorithm.input_parameters["tolerance_value"] = 1e-4
@@ -71,17 +71,17 @@ betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-apec.time_step["theta"] = 1.0
+apec.model.time_step["theta"] = 1.0
 for step_idx in range(len(time_steps)):
-    apec.time_step["time"] = time_steps[step_idx]
+    apec.model.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        apec.time_step["transient_effects"] = False
-        apec.time_step["time"] = 1e-10
+        apec.model.time_step["transient_effects"] = False
+        apec.model.time_step["time"] = 1e-10
     else:
-        apec.time_step["transient_effects"] = True
+        apec.model.time_step["transient_effects"] = True
     apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()
     apec.write_output()
 
-apec.save_mesh()
+apec.save_model()

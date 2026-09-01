@@ -11,7 +11,7 @@
 #include "fe_parent_object.h"
 #include "apec_m_system.h"
 #include "apec_m_equation_systems.h"
-#include "apec_m_solver.h"
+#include "apec_m_model.h"
 #include "augment_sparsity_on_nodes.h"
 #include "coordinate_system.h"
 

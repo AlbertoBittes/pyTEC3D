@@ -29,57 +29,57 @@ max_rad = 100.0
 extr_angle = 2.0
 
 # # Read the evolution mesh
-apec.read_mesh(filepath)
+apec.read_model(filepath)
 apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
-apec.read_excel("input_template.xlsx")
+apec.model.read_excel("input_template.xlsx")
 
 # # Set Boundary conditions
 # Axis boundary conditions
 Selector.select_pos(
-    apec.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
+    apec.model.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
-# Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 0)
+# Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 1)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 2)
 
 # Outer boundary far field zero boundary conditions
 Selector.select_pos(
-    apec.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
+    apec.model.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
 )
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 1)
-Selector.set_value_on_selection(apec.mesh, "_A", 0.0, 2)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 0)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 1)
+Selector.set_value_on_selection(apec.model.mesh, "_A", 0.0, 2)
 
 
 # Cyclic periodic boundaries
-ModelEdit.remove_array(apec.mesh, "CP_0")
-ModelEdit.add_array(apec.mesh, "CP_0", dtype=vtk.VTK_INT)
-Selector.select_pos(apec.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-apec.dof_couplings = pd.concat([apec.dof_couplings, ModelEdit.periodic_boundaries(apec.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "V"))])
+ModelEdit.remove_array(apec.model.mesh, "CP_0")
+ModelEdit.add_array(apec.model.mesh, "CP_0", dtype=vtk.VTK_INT)
+Selector.select_pos(apec.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+apec.model.dof_couplings = pd.concat([apec.model.dof_couplings, ModelEdit.periodic_boundaries(apec.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "V"))])
 
 # rotate angles
-Selector.select_pos(apec.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-Selector.set_value_on_selection(apec.mesh, "angles", extr_angle, 2)
+Selector.select_pos(apec.model.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+Selector.set_value_on_selection(apec.model.mesh, "angles", extr_angle, 2)
 
-Selector.select(apec.mesh, "ID", 16170)
-Selector.set_value_on_selection(apec.mesh, "_V", 0)
+Selector.select(apec.model.mesh, "ID", 16170)
+Selector.set_value_on_selection(apec.model.mesh, "_V", 0)
 
-Selector.select(apec.mesh, "VACUUM_CHAMBER", 1, type="elem")
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 0, type="elem")
+Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 # 1. Build source->destination element map using toroidal slices
-Selector.select(apec.mesh, "COILS", 1, type="elem")
-apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
+Selector.select(apec.model.mesh, "COILS", 1, type="elem")
+apec.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
 for coil in coils:
     Selector.select(apec.algorithm.equilibrium_mesh, coil, 1, type="elem", mode="s")
     js_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Js", 2, type="elem")[0]
-    Selector.select(apec.mesh, coil, 1, type="elem", mode="s")
-    Selector.set_value_on_selection(apec.mesh, "Js", js_z, 1, type="elem")
+    Selector.select(apec.model.mesh, coil, 1, type="elem", mode="s")
+    Selector.set_value_on_selection(apec.model.mesh, "Js", js_z, 1, type="elem")
 
-apec.save_mesh()
+apec.save_model()
 
 apec.algorithm.input_parameters["R0"] = 6.2
 apec.algorithm.input_parameters["max_picard_iterations"] = 70
@@ -102,16 +102,16 @@ betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-apec.time_step["theta"] = 1.0
+apec.model.time_step["theta"] = 1.0
 
-apec.load_mesh_into_solver()
+apec.load_model_into_solver()
 for step_idx in range(len(time_steps)):
-    apec.time_step["time"] = time_steps[step_idx]
+    apec.model.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        apec.time_step["transient_effects"] = False
-        apec.time_step["time"] = 1e-10
+        apec.model.time_step["transient_effects"] = False
+        apec.model.time_step["time"] = 1e-10
     else:
-        apec.time_step["transient_effects"] = True
+        apec.model.time_step["transient_effects"] = True
     apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()

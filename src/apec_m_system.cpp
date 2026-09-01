@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "apec_m_equation_systems.h"
+#include "apec_m_model.h"
 #include "apec_m_logging.h"
 #include "binary_reader.h"
 #include "element_builder.h"

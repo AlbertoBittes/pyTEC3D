@@ -16,11 +16,11 @@ filename = "CREATE_B_measurement"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_mesh(filepath)
+apec.read_model(filepath)
 
-apec.read_excel("input_template.xlsx")
+apec.model.read_excel("input_template.xlsx")
 
-# apec.bh_curves[1] = [
+# apec.model.bh_curves[1] = [
 #     [0.0, 0.0],
 #     [98.3939940905, 0.0136155688067],
 #     [146.889262617, 0.0213264689263],
@@ -51,7 +51,7 @@ apec.read_excel("input_template.xlsx")
 #     [8303.31592013, 2.11657067391],
 # ]
 
-apec.bh_curves[2] = [
+apec.model.bh_curves[2] = [
     [0.0, 0.0],
     [100.0, 0.31],
     [200.0, 0.62],
@@ -85,7 +85,7 @@ apec.bh_curves[2] = [
     [2337890.865, 5],
 ]
 
-apec.bh_curves[3] = [
+apec.model.bh_curves[3] = [
     [0.0, 0.0],
     [156.167232069, 0.239888044992],
     [210.113464193, 0.316039547109],
@@ -110,42 +110,42 @@ apec.bh_curves[3] = [
 ]
 
 # Coupling for stranded coils
-Selector.select(apec.mesh, "TYPE", 3, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
+Selector.select(apec.model.mesh, "TYPE", 3, type="elem")
+Selector.nsle(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
 master_node = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")
+    apec.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
 xc0, yc0, zc0 = 0.0645, 0.035, 0.05
 xc1, yc1, zc1 = 0.0645, 0.035, 0.078
 
-apec.coordinate_systems[91] = XAxisCylindricalCoordinateSystem(
+apec.model.coordinate_systems[91] = XAxisCylindricalCoordinateSystem(
     origin=[xc0, yc0, zc0],
 )
-apec.coordinate_systems[92] = XAxisCylindricalCoordinateSystem(
+apec.model.coordinate_systems[92] = XAxisCylindricalCoordinateSystem(
     origin=[xc1, yc1, zc1],
 )
 
-Selector.select(apec.mesh, "CONSTANT", 2, type="elem")
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 91, type="elem")
+Selector.select(apec.model.mesh, "CONSTANT", 2, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 91, type="elem")
 
-Selector.select(apec.mesh, "CONSTANT", 4, type="elem")
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 92, type="elem")
+Selector.select(apec.model.mesh, "CONSTANT", 4, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 92, type="elem")
 
 # Az: Symmetry BCs + Far field + Tree Gauging
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
-TreeGauge.tree_gauge(apec.mesh)
+Selector.select_all(apec.model.mesh)
+Selector.nsel_ext(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "_Az", 0.0)
+TreeGauge.tree_gauge(apec.model.mesh)
 
 # Symmetry BCs
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
-Selector.select(apec.mesh, "TYPE", 2, type="elem")
-Selector.nsle(apec.mesh, mode="r")
-Selector.set_value_on_selection(apec.mesh, "_V", 0.0)
+Selector.select_all(apec.model.mesh)
+Selector.nsel_ext(apec.model.mesh)
+Selector.select(apec.model.mesh, "TYPE", 2, type="elem")
+Selector.nsle(apec.model.mesh, mode="r")
+Selector.set_value_on_selection(apec.model.mesh, "_V", 0.0)
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "times_CREATE.txt"))
@@ -155,20 +155,20 @@ voltages = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "volt_CREATE.txt"
 # time_steps = np.concatenate((time_steps[0:1], time_steps[1::2]))
 # voltages = np.concatenate((voltages[0:1], voltages[1::2]))
 
-apec.save_mesh()
+apec.save_model()
 
-apec.load_mesh_into_solver()
+apec.load_model_into_solver()
 
-apec.time_step["theta"] = 1.0
+apec.model.time_step["theta"] = 1.0
 for step_idx in range(len(time_steps)):
-    apec.time_step["time"] = time_steps[step_idx]
+    apec.model.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        apec.time_step["transient_effects"] = False
-        apec.time_step["time"] = 1e-10
+        apec.model.time_step["transient_effects"] = False
+        apec.model.time_step["time"] = 1e-10
     else:
-        apec.time_step["transient_effects"] = True
-    Selector.select(apec.mesh, "ID", master_node)
-    Selector.set_value_on_selection(apec.mesh, "_VOLT", voltages[step_idx])
+        apec.model.time_step["transient_effects"] = True
+    Selector.select(apec.model.mesh, "ID", master_node)
+    Selector.set_value_on_selection(apec.model.mesh, "_VOLT", voltages[step_idx])
     apec.solve()
     if step_idx % 10 == 0:
         apec.write_output()

@@ -340,7 +340,7 @@ class ApecAlgorithm:
 
         equilibrium_mesh = self._require_equilibrium_mesh()
 
-        target_dimension = self.apec.mesh.GetMaxSpatialDimension()
+        target_dimension = self.apec.model.mesh.GetMaxSpatialDimension()
         extrusion_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
         n_toroidal_divisions = int(
             self.input_parameters.get("n_toroidal_divisions", -1)
@@ -356,7 +356,7 @@ class ApecAlgorithm:
         coordinate_system = YAxisCylindricalCoordinateSystem()
         self._toroidal_slices_nodes = self.build_toroidal_slices(
             equilibrium_mesh,
-            self.apec.mesh,
+            self.apec.model.mesh,
             location="node",
             tolerance=tolerance,
             extrusion_angle=extrusion_angle,
@@ -365,7 +365,7 @@ class ApecAlgorithm:
         )
         self._toroidal_slices_elems = self.build_toroidal_slices(
             equilibrium_mesh,
-            self.apec.mesh,
+            self.apec.model.mesh,
             location="elem",
             tolerance=tolerance,
             extrusion_angle=extrusion_angle,
@@ -408,7 +408,7 @@ class ApecAlgorithm:
             Dict[str, Any]: Row payload for CSV append.
         """
         row: Dict[str, Any] = {
-            "time": float(self.apec.time_step["time"]),
+            "time": float(self.apec.model.time_step["time"]),
             "picard_iteration": int(self.status["picard_iteration"]),
             "flux_metric": float(self.status["flux_norm"]),
             "flux_threshold": float(self.status["flux_tolerance"]),
@@ -887,7 +887,7 @@ class ApecAlgorithm:
         halo_requested = (
             is_limiter
             and halo_delta1 > 0.0
-            and self.apec.time_step["time"] >= t0_halo
+            and self.apec.model.time_step["time"] >= t0_halo
         )
 
         point_data = mesh.GetPointData()
@@ -1418,7 +1418,7 @@ class ApecAlgorithm:
 
         real_constant_array = ApecAlgorithm._require_array(cell_data, "CONSTANT")
         real_constant_ids = np.asarray(vtknp.vtk_to_numpy(real_constant_array), dtype=int)
-        constants_df = self.apec.constants
+        constants_df = self.apec.model.constants
         id_col = "CONSTANTS_ID"
         area_col = "CS"
 
@@ -1490,11 +1490,11 @@ class ApecAlgorithm:
             raise ValueError("halo_delta1 must be non-negative.")
         if (
             halo_delta1 > 0.0
-            and self.apec.time_step["time"] >= t0_halo
+            and self.apec.model.time_step["time"] >= t0_halo
             and self.status["separatrix_configuration"] == "limiter"
         ):
             halo_scale = halo_delta1 * (
-                1.0 + (self.apec.time_step["time"] - t0_halo) * halo_delta2
+                1.0 + (self.apec.model.time_step["time"] - t0_halo) * halo_delta2
             )
             self.status["psi_2_min"] = (
                 self.status["psi_min"]
@@ -1652,10 +1652,10 @@ class ApecAlgorithm:
 
         amps_array = point_data.GetArray("AMPS")
         halo_currents_enabled = (
-            self.apec.mesh.GetMaxSpatialDimension() > 2
+            self.apec.model.mesh.GetMaxSpatialDimension() > 2
             and self.status["separatrix_configuration"] == "limiter"
             and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
-            and self.apec.time_step["time"]
+            and self.apec.model.time_step["time"]
             >= float(self.input_parameters.get("t0_halo", 0.0))
             and float(self.status["psi_2_min"]) < float(self.status["psi_min"])
         )
@@ -1815,7 +1815,7 @@ class ApecAlgorithm:
         """
         LOGGER.debug("Toroidal average: psi_only=%s.", psi_only)
         equilibrium_mesh = self._require_equilibrium_mesh()
-        evolution_mesh = self.apec.mesh
+        evolution_mesh = self.apec.model.mesh
         self._set_toroidal_slices()
         node_slices = self._toroidal_slices_nodes
         elem_slices = self._toroidal_slices_elems
@@ -1875,7 +1875,7 @@ class ApecAlgorithm:
         """
         from .coordinate_system import YAxisCylindricalCoordinateSystem
 
-        static_mesh = self.apec.mesh
+        static_mesh = self.apec.model.mesh
         equilibrium_mesh = self._require_equilibrium_mesh()
         self._set_toroidal_slices()
         node_slices = self._toroidal_slices_nodes
@@ -1981,7 +1981,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self.apec.mesh
+        mesh = self.apec.model.mesh
         if mesh.GetPointData().GetArray("A") is None:
             raise ValueError("Required PointData array 'A' is missing before poloidal flux calculation.")
 
@@ -1999,11 +1999,11 @@ class ApecAlgorithm:
         """
         LOGGER.info("Starting equilibrium solve.")
         if self.apec.solver is None:
-            raise RuntimeError("No solver session available. Call load_mesh_into_solver() before equilibrium_solve().")
+            raise RuntimeError("No solver session available. Call load_model_into_solver() before equilibrium_solve().")
 
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-        self.equilibrium_mesh = self.apec.mesh
+        self.equilibrium_mesh = self.apec.model.mesh
         if self._first_absolute_iteration:
             self._cache_halo_boundary_graph()
         max_picard_iterations = max(
@@ -2060,7 +2060,7 @@ class ApecAlgorithm:
         """
         LOGGER.info("Starting evolution solve.")
         if self.apec.solver is None:
-            raise RuntimeError("No solver session available. Call load_mesh_into_solver() before evolution_solve().")
+            raise RuntimeError("No solver session available. Call load_model_into_solver() before evolution_solve().")
 
         equilibrium_mesh = self._require_equilibrium_mesh()
 
@@ -2068,7 +2068,7 @@ class ApecAlgorithm:
             self._clear_diagnostics_file()
             Selector.select(equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
             Selector.nsle(equilibrium_mesh, mode="s")
-            Selector.select_all(self.apec.mesh)
+            Selector.select_all(self.apec.model.mesh)
             self._set_toroidal_slices()
             self._cache_halo_boundary_graph()
 

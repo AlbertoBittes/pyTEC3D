@@ -5,7 +5,7 @@
 #include "apec_m_equation_systems.h"
 #include "element_builder.h"
 #include "apec_m_system.h"
-#include "apec_m_solver.h"
+#include "apec_m_model.h"
 #include "coordinate_system.h"
 #include "element_types_factory.h"
 #include "vtkio_updated.h"

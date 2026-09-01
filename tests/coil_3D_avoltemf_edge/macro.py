@@ -15,40 +15,40 @@ filename = "coil_3D_avoltemf_edge"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_mesh(filepath)
-Selector.select_all(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CONSTANT", 1, type="elem")
-apec.read_excel("input_template.xlsx")
+apec.read_model(filepath)
+Selector.select_all(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CONSTANT", 1, type="elem")
+apec.model.read_excel("input_template.xlsx")
 
 size = 1
 coil = 0.2
 extr_angle = 30
 tol = 1e-5
 
-ModelEdit.remove_array(apec.mesh, "CP_1")
-ModelEdit.add_array(apec.mesh, "CP_1", dtype=vtk.VTK_INT)
+ModelEdit.remove_array(apec.model.mesh, "CP_1")
+ModelEdit.add_array(apec.model.mesh, "CP_1", dtype=vtk.VTK_INT)
 
-Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-apec.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 1, type="elem")
+Selector.select(apec.model.mesh, "MATERIAL", 23, type="elem")
+apec.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
 
-Selector.select(apec.mesh, "MATERIAL", 23, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
+Selector.select(apec.model.mesh, "MATERIAL", 23, type="elem")
+Selector.nsle(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")
+    apec.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
 Selector.select_pos(
-    apec.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
+    apec.model.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-apec.dof_couplings = pd.concat(
+apec.model.dof_couplings = pd.concat(
     [
-        apec.dof_couplings,
+        apec.model.dof_couplings,
         ModelEdit.periodic_boundaries(
-            apec.mesh,
+            apec.model.mesh,
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
@@ -57,58 +57,58 @@ apec.dof_couplings = pd.concat(
     ]
 )
 
-Selector.select_all(apec.mesh)
+Selector.select_all(apec.model.mesh)
 Selector.select_pos(
-    apec.mesh,
+    apec.model.mesh,
     0,
     (size-tol, size+tol),
     mode="s",
     coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
-    apec.mesh,
+    apec.model.mesh,
     2,
     (size-tol, size+tol),
     mode="a",
     coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
 Selector.select_pos(
-    apec.mesh,
+    apec.model.mesh,
     2,
     (-size-tol, -size+tol),
     mode="a",
     coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
-Selector.set_value_on_selection(apec.mesh, "_Az", 0)
+Selector.set_value_on_selection(apec.model.mesh, "_Az", 0)
 TreeGauge.tree_gauge(
-    apec.mesh,
+    apec.model.mesh,
     periodic_point_coupling="CP_1"
 )
 
-Selector.select(apec.mesh, "MATERIAL", 24, type="elem")
-Selector.nsle(apec.mesh)
+Selector.select(apec.model.mesh, "MATERIAL", 24, type="elem")
+Selector.nsle(apec.model.mesh)
 # Take the first selected node as master node (lowest ID)
 master_node_passive = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")
+    apec.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
-Selector.select(apec.mesh, "ID", master_node_passive)
-Selector.set_value_on_selection(apec.mesh, "_V", 0.0)
+Selector.select(apec.model.mesh, "ID", master_node_passive)
+Selector.set_value_on_selection(apec.model.mesh, "_V", 0.0)
 
-apec.load_mesh_into_solver()
+apec.load_model_into_solver()
 
-apec.time_step["theta"] = 1.0
-apec.save_mesh()
+apec.model.time_step["theta"] = 1.0
+apec.save_model()
 for i in range(1, 3):
-    apec.time_step["time"] = i * 0.00001
+    apec.model.time_step["time"] = i * 0.00001
     if i == 1:
-        Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "CURR", 100)
-        Selector.set_value_on_selection(apec.mesh, "_VOLT", np.nan)
+        Selector.select(apec.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.model.mesh, "CURR", 100)
+        Selector.set_value_on_selection(apec.model.mesh, "_VOLT", np.nan)
     else:
-        Selector.select(apec.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.mesh, "CURR", 0)
-        Selector.set_value_on_selection(apec.mesh, "_VOLT", 10000)
+        Selector.select(apec.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(apec.model.mesh, "CURR", 0)
+        Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()
 
-apec.save_mesh()
+apec.save_model()

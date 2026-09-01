@@ -25,7 +25,7 @@
 
 class ElementTypesFactory;
 class ApecMSystemBase;
-class ApecMSolver;
+class ApecMModel;
 class ApecMDOFSystemBase;
 namespace apec_m
 {
@@ -35,7 +35,7 @@ namespace apec_m
 /**
  * @brief Manages all libMesh solution systems for one APEC-M simulation.
  *
- * Derives from libMesh::EquationSystems and FEParentObjectBase<ApecMSolver>.
+ * Derives from libMesh::EquationSystems and FEParentObjectBase<ApecMModel>.
  * Responsible for:
  *   - Registering and configuring DOF/nodal/element solution systems.
  *   - Driving variable and physics initialisation (variable adds, mesh prepare, DOF distribute).
@@ -43,7 +43,7 @@ namespace apec_m
  */
 class APEC_M_HIDDEN ApecMEquationSystems
     : public libMesh::EquationSystems,
-      public FEParentObjectBase<ApecMSolver>
+      public FEParentObjectBase<ApecMModel>
 
 {
 public:

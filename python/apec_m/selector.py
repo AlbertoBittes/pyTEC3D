@@ -15,6 +15,17 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 
 class Selector:
+    MODE_LABELS = {0: "s", 1: "a", 2: "r", 3: "u"}
+    TYPE_LABELS = {0: "node", 1: "elem"}
+
+    @staticmethod
+    def mode_label(value: int) -> str:
+        return Selector.MODE_LABELS.get(int(value), "s")
+
+    @staticmethod
+    def type_label(value: int) -> str:
+        return Selector.TYPE_LABELS.get(int(value), "node")
+
     @staticmethod
     def ensure_selection_arrays(mesh: "vtk.vtkUnstructuredGrid") -> None:
         """

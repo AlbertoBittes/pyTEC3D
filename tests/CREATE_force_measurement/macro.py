@@ -18,11 +18,11 @@ filename = "CREATE_force_measurement"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_mesh(filepath)
+apec.read_model(filepath)
 
-apec.read_excel("input_template.xlsx")
+apec.model.read_excel("input_template.xlsx")
 
-# apec.bh_curves[1] = [
+# apec.model.bh_curves[1] = [
 #     [0.0, 0.0],
 #     [98.3939940905, 0.0136155688067],
 #     [146.889262617, 0.0213264689263],
@@ -53,7 +53,7 @@ apec.read_excel("input_template.xlsx")
 #     [8303.31592013, 2.11657067391],
 # ]
 
-apec.bh_curves[2] = [
+apec.model.bh_curves[2] = [
     [0.0, 0.0],
     [100.0, 0.31],
     [200.0, 0.62],
@@ -87,7 +87,7 @@ apec.bh_curves[2] = [
     [2337890.865, 5],
 ]
 
-apec.bh_curves[3] = [
+apec.model.bh_curves[3] = [
     [0.0, 0.0],
     [156.167232069, 0.239888044992],
     [210.113464193, 0.316039547109],
@@ -112,46 +112,46 @@ apec.bh_curves[3] = [
 ]
 
 # Coupling for stranded coils
-Selector.select(apec.mesh, "TYPE", 3, type="elem")
-Selector.nsle(apec.mesh)
-Selector.set_value_on_selection(apec.mesh, "CP_0", 1)
+Selector.select(apec.model.mesh, "TYPE", 3, type="elem")
+Selector.nsle(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
 master_node = vtknp.vtk_to_numpy(
-    apec.mesh.GetPointData().GetArray("selection_point")
+    apec.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
 xc0, yc0, zc0 = 0.01786, 0.012965, 0.04555
 xc1, yc1, zc1 = 0.01786, 0.050605, 0.04555
 
-apec.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
+apec.model.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
     origin=[xc0, yc0, zc0],
 )
-apec.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
+apec.model.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
     origin=[xc1, yc1, zc1],
 )
 
-Selector.select(apec.mesh, "CONSTANT", 2, type="elem")
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 91, type="elem")
+Selector.select(apec.model.mesh, "CONSTANT", 2, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 91, type="elem")
 
-Selector.select(apec.mesh, "CONSTANT", 4, type="elem")
-Selector.set_value_on_selection(apec.mesh, "COORDINATE_SYSTEM", 92, type="elem")
+Selector.select(apec.model.mesh, "CONSTANT", 4, type="elem")
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 92, type="elem")
 
 # Az: Symmetry BCs + Far field + Tree Gauging
-Selector.select_all(apec.mesh)
-Selector.nsel_ext(apec.mesh)
-Selector.select_pos(apec.mesh, 1, (-1e-6, 1e-6), mode="u")
-Selector.set_value_on_selection(apec.mesh, "_Az", 0.0)
-TreeGauge.tree_gauge(apec.mesh)
+Selector.select_all(apec.model.mesh)
+Selector.nsel_ext(apec.model.mesh)
+Selector.select_pos(apec.model.mesh, 1, (-1e-6, 1e-6), mode="u")
+Selector.set_value_on_selection(apec.model.mesh, "_Az", 0.0)
+TreeGauge.tree_gauge(apec.model.mesh)
 
-apec.load_mesh_into_solver()
+apec.load_model_into_solver()
 
-apec.time_step["time"] = 0.00001
-apec.time_step["transient_effects"] = False
+apec.model.time_step["time"] = 0.00001
+apec.model.time_step["transient_effects"] = False
 
-Selector.select(apec.mesh, "ID", master_node)
-Selector.set_value_on_selection(apec.mesh, "AMPS", 5)
+Selector.select(apec.model.mesh, "ID", master_node)
+Selector.set_value_on_selection(apec.model.mesh, "AMPS", 5)
 
 apec.solve()
 apec.write_output()
 
-apec.save_mesh()
+apec.save_model()

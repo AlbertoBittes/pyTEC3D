@@ -18,7 +18,7 @@
 
 #include "element_types.h"
 #include "apec_m_system.h"
-#include "apec_m_solver.h"
+#include "apec_m_model.h"
 #include "element_types_factory.h"
 
 #include "variables_map.h"
