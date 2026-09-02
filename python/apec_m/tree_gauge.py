@@ -21,9 +21,9 @@
 #           independently fixed to zero. Non-slave tree points are zeroed as
 #           before.
 #
-#   [CHG-4] Tree construction uses a weighted multi-source shortest-path tree
+#   [CHG-4] Tree construction uses a multi-source shortest-path tree
 #           (Dijkstra) on the non-conducting corner-node graph, with edge
-#           cost = length * (1 + aspect_ratio_alpha * penalty).
+#           cost = edge length only.
 #
 # Carried over from the previous revision:
 #
@@ -69,7 +69,7 @@
 #
 # (c) Provide as-is; tailor as needed for your mesh conventions.
 
-from typing import Dict, Iterable, Mapping, Optional, Sequence, Set, Tuple, TYPE_CHECKING
+from typing import Dict, Iterable, Mapping, Optional, Sequence, Set, Tuple, TYPE_CHECKING, cast
 
 import heapq
 import numpy as np
@@ -208,24 +208,42 @@ class TreeGauge:
                 )
 
             def build_groups(mask_value: int) -> Dict[int, int]:
-                ids = np.where(midside_mask == mask_value)[0].astype(int)
-                groups: Dict[object, list[int]] = {}
-                for pid in ids:
-                    value = cp_np[pid]
-                    if isinstance(value, (float, np.floating)) and np.isnan(value):
-                        continue
-                    key = value.item() if isinstance(value, np.generic) else value
-                    if key == 0:
-                        continue
-                    groups.setdefault(key, []).append(int(pid))
+                ids = np.flatnonzero(midside_mask == mask_value)
+                if ids.size == 0:
+                    return {}
+
+                vals = cp_np[ids]
+                if np.issubdtype(vals.dtype, np.floating):
+                    valid = np.isfinite(vals) & (vals != 0)
+                else:
+                    valid = vals != 0
+
+                ids = ids[valid]
+                vals = vals[valid]
+                if ids.size < 2:
+                    return {}
+
+                order = np.argsort(vals, kind="mergesort")
+                vals_sorted = vals[order]
+                ids_sorted = ids[order]
+
+                is_new = np.empty(vals_sorted.size, dtype=bool)
+                is_new[0] = True
+                is_new[1:] = vals_sorted[1:] != vals_sorted[:-1]
+                starts = np.flatnonzero(is_new)
+                ends = np.empty_like(starts)
+                ends[:-1] = starts[1:]
+                ends[-1] = vals_sorted.size
+
                 mapping: Dict[int, int] = {}
-                for members in groups.values():
-                    if len(members) < 2:
+                for s, e in zip(starts, ends):
+                    if (e - s) < 2:
                         continue
-                    master = int(min(members))
-                    for slave in members:
-                        if slave != master:
-                            mapping[int(slave)] = master
+                    members = ids_sorted[s:e]
+                    master = int(members.min())
+                    slaves = members[members != master]
+                    if slaves.size:
+                        mapping.update(zip(slaves.tolist(), [master] * int(slaves.size)))
                 return mapping
 
             midside_map = build_groups(1)
@@ -233,35 +251,95 @@ class TreeGauge:
             return midside_map, corner_map
 
         # dict / ndarray path: pairs may mix corner and midside ids together.
-        raw_pairs: list[Tuple[int, int]] = []
+        raw_pairs: np.ndarray
         if isinstance(periodic_point_coupling, Mapping):
-            raw_pairs = [(int(s), int(m)) for s, m in periodic_point_coupling.items()]
+            raw_pairs = np.array(
+                [(int(s), int(m)) for s, m in periodic_point_coupling.items()],
+                dtype=np.int64,
+            )
         elif isinstance(periodic_point_coupling, np.ndarray):
-            if periodic_point_coupling.ndim != 2 or periodic_point_coupling.shape[1] != 2:
+            coupling_arr = cast(np.ndarray, periodic_point_coupling)
+            if coupling_arr.ndim != 2 or coupling_arr.shape[1] != 2:
                 raise ValueError("periodic_point_coupling ndarray must have shape (N, 2)")
-            raw_pairs = [(int(r[0]), int(r[1])) for r in periodic_point_coupling]
+            raw_pairs = coupling_arr.astype(np.int64, copy=False)
         else:
             raise TypeError(
                 "periodic_point_coupling must be dict-like, a (N, 2) numpy array, "
                 "a CP_* array name string, or None"
             )
 
-        midside_map = {}
-        corner_map = {}
-        for slave, master in raw_pairs:
-            slave_is_mid = bool(midside_mask[slave])
-            master_is_mid = bool(midside_mask[master])
-            if slave_is_mid != master_is_mid:
-                LOGGER.warning(
-                    "periodic_point_coupling pair (%d -> %d) mixes a corner id "
-                    "with a midside id; skipping this pair.", slave, master,
-                )
-                continue
-            if slave_is_mid:
-                midside_map[slave] = master
-            else:
-                corner_map[slave] = master
+        if raw_pairs.size == 0:
+            return {}, {}
+
+        slave = raw_pairs[:, 0]
+        master = raw_pairs[:, 1]
+        slave_is_mid = midside_mask[slave] == 1
+        master_is_mid = midside_mask[master] == 1
+        same_type = slave_is_mid == master_is_mid
+
+        skipped = int(np.count_nonzero(~same_type))
+        if skipped:
+            LOGGER.warning(
+                "periodic_point_coupling skipped %d mixed corner/midside pair(s).",
+                skipped,
+            )
+
+        midside_pairs = same_type & slave_is_mid
+        corner_pairs = same_type & (~slave_is_mid)
+
+        midside_map = dict(
+            zip(slave[midside_pairs].tolist(), master[midside_pairs].tolist())
+        )
+        corner_map = dict(
+            zip(slave[corner_pairs].tolist(), master[corner_pairs].tolist())
+        )
         return midside_map, corner_map
+
+    @staticmethod
+    def _canonicalize_ids(
+        ids: np.ndarray,
+        slave_to_master: Dict[int, int],
+        cache: Dict[int, int],
+    ) -> np.ndarray:
+        if ids.size == 0 or not slave_to_master:
+            return ids.astype(np.int64, copy=False)
+
+        out = np.empty(ids.size, dtype=np.int64)
+        for i in range(ids.size):
+            pid = int(ids[i])
+            cached = cache.get(pid)
+            if cached is not None:
+                out[i] = cached
+                continue
+
+            path = []
+            seen = set()
+            cur = pid
+            while True:
+                cached_cur = cache.get(cur)
+                if cached_cur is not None:
+                    root = cached_cur
+                    break
+
+                nxt = slave_to_master.get(cur)
+                if nxt is None or int(nxt) == cur:
+                    root = cur
+                    break
+
+                if cur in seen:
+                    raise ValueError(
+                        f"Cycle detected in periodic point coupling at point id {cur}."
+                    )
+                seen.add(cur)
+                path.append(cur)
+                cur = int(nxt)
+
+            cache[pid] = root
+            for p in path:
+                cache[p] = root
+            out[i] = root
+
+        return out
 
     @staticmethod
     def build_tree_cotree_for_midside_edges(
@@ -269,7 +347,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
-        aspect_ratio_alpha: float = 0.25,
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
         periodic_slave_name: str = "PERIODIC_SLAVE",
@@ -283,7 +360,7 @@ class TreeGauge:
             non_conducting_point_ids: Point ids for non-conducting regions where gauge tree constraints are built.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: Multi-source seeds for the weighted
+            start_surface_point_ids: Multi-source seeds for the
                 shortest-path (Dijkstra) builder.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 Components with no seed fall back to an arbitrary local root.
@@ -292,11 +369,6 @@ class TreeGauge:
                 together. Accepts a dict-like mapping, an (N, 2) ndarray, or a
                 CP_* PointData array name (grouped by matching CP value,
                 corner and midside groups kept separate automatically).
-            aspect_ratio_alpha: Weight of the aspect-ratio penalty in
-                weighted shortest-path traversal. Edge weight is
-                length * (1 + alpha * penalty), where penalty is the
-                average of max(0, aspect_ratio - 1) over cells incident
-                to that edge.
             tree_name: Name for the tree output array (PointData).
             cotree_name: Name for the cotree output array (PointData).
             periodic_slave_name: Name for a PointData array marking
@@ -315,38 +387,40 @@ class TreeGauge:
         point_sel_original = vtknp.vtk_to_numpy(point_sel_array).copy()
 
         if start_surface_point_ids is None:
-            start_surface_input: Set[int] = set(
-                np.where(point_sel_original == 1)[0].astype(int).tolist()
-            )
+            start_surface_ids = np.flatnonzero(point_sel_original == 1).astype(np.int64)
         else:
-            start_surface_input = set(int(pid) for pid in start_surface_point_ids)
+            start_surface_ids = np.fromiter(
+                (int(pid) for pid in start_surface_point_ids), dtype=np.int64
+            )
 
         if non_conducting_point_ids is None:
             Selector.nsle(ugrid, mode="s")
             point_sel_current = vtknp.vtk_to_numpy(point_sel_array)
-            non_conducting_input: Set[int] = set(
-                np.where(point_sel_current == 1)[0].astype(int).tolist()
-            )
+            non_conducting_ids = np.flatnonzero(point_sel_current == 1).astype(np.int64)
             point_sel_current[:] = point_sel_original
             point_sel_array.Modified()
         else:
-            non_conducting_input = set(int(pid) for pid in non_conducting_point_ids)
+            non_conducting_ids = np.fromiter(
+                (int(pid) for pid in non_conducting_point_ids), dtype=np.int64
+            )
 
         midside_arr = ugrid.GetPointData().GetArray("MidsideNodes")
+        if midside_arr is None:
+            raise ValueError("PointData array 'MidsideNodes' was not found on the mesh.")
         midside_mask = vtknp.vtk_to_numpy(midside_arr)
 
-        raw_non_conducting = set(i for i in non_conducting_input if midside_mask[i] == 0)
-        raw_start_surface = set(i for i in start_surface_input if midside_mask[i] == 0)
+        raw_non_conducting = non_conducting_ids[midside_mask[non_conducting_ids] == 0]
+        raw_start_surface = start_surface_ids[midside_mask[start_surface_ids] == 0]
 
         # [CHG-2] Single normalization call splits corner/midside pairs.
         periodic_midside_raw, corner_slave_to_master = TreeGauge._normalize_periodic_point_coupling(
             periodic_point_coupling, ugrid, midside_mask
         )
-        slave_to_master: Dict[int, int] = {}
-        for slave, master in periodic_midside_raw.items():
-            if midside_mask[slave] != 1 or midside_mask[master] != 1:
-                continue
-            slave_to_master[slave] = master
+        slave_to_master = {
+            int(slave): int(master)
+            for slave, master in periodic_midside_raw.items()
+            if midside_mask[slave] == 1 and midside_mask[master] == 1
+        }
 
         tree_np = np.zeros(npts, dtype=np.int32)
         cotree_np = np.zeros(npts, dtype=np.int32)
@@ -357,15 +431,28 @@ class TreeGauge:
             raise ValueError("Mesh has no points data.")
         points_np = vtknp.vtk_to_numpy(points_data.GetData())
 
-        if aspect_ratio_alpha < 0.0:
-            raise ValueError("aspect_ratio_alpha must be >= 0.")
-
         edge_map: Dict[int, Tuple[int, int]] = {}
         raw_edge_map: Dict[int, Tuple[int, int]] = {}
-        canonical_to_raw_mids: Dict[int, Set[int]] = {}
-        edge_penalty_accum: Dict[int, float] = {}
-        edge_penalty_count: Dict[int, int] = {}
+        raw_to_canonical_mid: Dict[int, int] = {}
         unknown_cell_types: Dict[int, int] = {}
+        corner_cache: Dict[int, int] = {}
+        midside_cache: Dict[int, int] = {}
+
+        def canonical_corner(pid: int) -> int:
+            cached = corner_cache.get(pid)
+            if cached is not None:
+                return cached
+            out = TreeGauge._canonical_id(pid, corner_slave_to_master)
+            corner_cache[pid] = out
+            return out
+
+        def canonical_mid(pid: int) -> int:
+            cached = midside_cache.get(pid)
+            if cached is not None:
+                return cached
+            out = TreeGauge._canonical_id(pid, slave_to_master)
+            midside_cache[pid] = out
+            return out
 
         for ci in range(ugrid.GetNumberOfCells()):
             cell = ugrid.GetCell(ci)
@@ -376,36 +463,17 @@ class TreeGauge:
             corner_pairs, mid_locals = EDGE_TABLES[ctype]
             ids = cell.GetPointIds()
 
-            # Cell-local aspect-ratio proxy from corner-edge lengths.
-            # This works uniformly for the supported quadratic cell families.
-            local_lengths: list[float] = []
-            for v0_local, v1_local in corner_pairs:
-                p0 = points_np[ids.GetId(v0_local)]
-                p1 = points_np[ids.GetId(v1_local)]
-                local_lengths.append(float(np.linalg.norm(p0 - p1)))
-            if local_lengths:
-                min_len = min(local_lengths)
-                max_len = max(local_lengths)
-                eps = 1.0e-12
-                aspect_ratio = max_len / max(min_len, eps)
-                cell_penalty = max(0.0, aspect_ratio - 1.0)
-            else:
-                cell_penalty = 0.0
-
             for (v0_local, v1_local), mid_local in zip(corner_pairs, mid_locals):
-                v0 = ids.GetId(v0_local)
-                v1 = ids.GetId(v1_local)
-                raw_mid = ids.GetId(mid_local)
+                v0 = int(ids.GetId(v0_local))
+                v1 = int(ids.GetId(v1_local))
+                raw_mid = int(ids.GetId(mid_local))
                 if raw_mid not in raw_edge_map:
                     raw_edge_map[raw_mid] = (v0, v1)
-                mid = TreeGauge._canonical_id(raw_mid, slave_to_master)
-
-                canonical_to_raw_mids.setdefault(mid, set()).add(raw_mid)
-                edge_penalty_accum[mid] = edge_penalty_accum.get(mid, 0.0) + cell_penalty
-                edge_penalty_count[mid] = edge_penalty_count.get(mid, 0) + 1
+                mid = canonical_mid(raw_mid)
+                raw_to_canonical_mid[raw_mid] = mid
 
                 if mid not in edge_map:
-                    edge_map[mid] = (v0, v1)
+                    edge_map[mid] = (canonical_corner(v0), canonical_corner(v1))
 
         if unknown_cell_types:
             total_skipped = sum(unknown_cell_types.values())
@@ -417,117 +485,157 @@ class TreeGauge:
                 total_skipped, unknown_cell_types,
             )
 
-        non_conducting = {
-            TreeGauge._canonical_id(pid, corner_slave_to_master)
-            for pid in raw_non_conducting
-        }
-        start_surface = {
-            TreeGauge._canonical_id(pid, corner_slave_to_master)
-            for pid in raw_start_surface
-        }
-        for mid, (a, b) in list(edge_map.items()):
-            edge_map[mid] = (
-                TreeGauge._canonical_id(a, corner_slave_to_master),
-                TreeGauge._canonical_id(b, corner_slave_to_master),
-            )
-
-        eligible_edges: Dict[int, Tuple[int, int]] = {}
-        for mid, (a, b) in edge_map.items():
-            if (a not in non_conducting) or (b not in non_conducting):
-                for raw_mid in canonical_to_raw_mids[mid]:
-                    cotree_np[raw_mid] = 1
-                continue
-            eligible_edges[mid] = (a, b)
-
-        num_edges_before_periodic_collapse = sum(
-            1
-            for a, b in raw_edge_map.values()
-            if (a in raw_non_conducting) and (b in raw_non_conducting)
+        non_conducting = np.unique(
+            TreeGauge._canonicalize_ids(raw_non_conducting, corner_slave_to_master, corner_cache)
+        )
+        start_surface = np.unique(
+            TreeGauge._canonicalize_ids(raw_start_surface, corner_slave_to_master, corner_cache)
         )
 
-        adjacency: Dict[int, list[Tuple[int, int, float]]] = {}
-        for mid, (a, b) in eligible_edges.items():
-            length = float(np.linalg.norm(points_np[a] - points_np[b]))
-            if (not np.isfinite(length)) or (length <= 0.0):
-                # Keep graph connected even for degenerate edges.
-                length = 1.0e-12
-            penalty_count = edge_penalty_count.get(mid, 0)
-            penalty = (
-                edge_penalty_accum.get(mid, 0.0) / float(penalty_count)
-                if penalty_count > 0
-                else 0.0
+        if non_conducting.size:
+            non_cond_lookup = np.zeros(npts, dtype=bool)
+            non_cond_lookup[non_conducting] = True
+        else:
+            non_cond_lookup = np.zeros(npts, dtype=bool)
+
+        edge_mid_ids = np.fromiter(edge_map.keys(), dtype=np.int64)
+        edge_uv = np.array(list(edge_map.values()), dtype=np.int64)
+
+        if edge_mid_ids.size:
+            eligible_mask = non_cond_lookup[edge_uv[:, 0]] & non_cond_lookup[edge_uv[:, 1]]
+            eligible_mid_ids = edge_mid_ids[eligible_mask]
+            eligible_uv = edge_uv[eligible_mask]
+        else:
+            eligible_mid_ids = np.empty(0, dtype=np.int64)
+            eligible_uv = np.empty((0, 2), dtype=np.int64)
+
+        if raw_edge_map:
+            raw_uv = np.array(list(raw_edge_map.values()), dtype=np.int64)
+            raw_non_cond_lookup = np.zeros(npts, dtype=bool)
+            raw_non_cond_lookup[raw_non_conducting] = True
+            num_edges_before_periodic_collapse = int(
+                np.count_nonzero(
+                    raw_non_cond_lookup[raw_uv[:, 0]] & raw_non_cond_lookup[raw_uv[:, 1]]
+                )
             )
-            weight = length * (1.0 + aspect_ratio_alpha * penalty)
-            adjacency.setdefault(int(a), []).append((int(b), int(mid), weight))
-            adjacency.setdefault(int(b), []).append((int(a), int(mid), weight))
+        else:
+            num_edges_before_periodic_collapse = 0
 
-        edge_state: Dict[int, int] = {}  # 1=tree, 2=cotree
+        edge_state_lookup = np.zeros(npts, dtype=np.int8)  # 1=tree, 2=cotree
+        edge_state_lookup[eligible_mid_ids] = 2
+
         num_components = 0
-        remaining_nodes: Set[int] = set(adjacency.keys())
+        num_roots_total = 0
 
-        while remaining_nodes:
-            num_components += 1
-            root = min(remaining_nodes)
+        if eligible_mid_ids.size:
+            u = eligible_uv[:, 0]
+            v = eligible_uv[:, 1]
+            lengths = np.linalg.norm(points_np[u] - points_np[v], axis=1)
+            bad_len = (~np.isfinite(lengths)) | (lengths <= 0.0)
+            if np.any(bad_len):
+                lengths[bad_len] = 1.0e-12
 
-            stack = [root]
-            component_nodes: Set[int] = {root}
-            while stack:
-                cur = stack.pop()
-                for nbr, _mid, _w in adjacency.get(cur, []):
-                    if nbr not in component_nodes:
-                        component_nodes.add(nbr)
-                        stack.append(nbr)
-            remaining_nodes.difference_update(component_nodes)
+            node_ids = np.unique(np.concatenate((u, v)))
+            u_idx = np.searchsorted(node_ids, u)
+            v_idx = np.searchsorted(node_ids, v)
 
-            component_seeds = sorted(n for n in component_nodes if n in start_surface)
-            if not component_seeds:
-                component_seeds = [root]
+            src = np.concatenate((u_idx, v_idx))
+            dst = np.concatenate((v_idx, u_idx))
+            mid_dir = np.concatenate((eligible_mid_ids, eligible_mid_ids))
+            w = np.concatenate((lengths, lengths))
 
-            dist: Dict[int, float] = {n: float("inf") for n in component_nodes}
-            parent: Dict[int, Tuple[int, int]] = {}
-            heap: list[Tuple[float, int]] = []
-            for seed in component_seeds:
-                dist[seed] = 0.0
-                heapq.heappush(heap, (0.0, seed))
+            order = np.argsort(src, kind="mergesort")
+            src = src[order]
+            dst = dst[order]
+            mid_dir = mid_dir[order]
+            w = w[order]
 
+            n_nodes = int(node_ids.size)
+            indptr = np.zeros(n_nodes + 1, dtype=np.int64)
+            np.add.at(indptr, src + 1, 1)
+            np.cumsum(indptr, out=indptr)
+
+            start_lookup = np.zeros(npts, dtype=bool)
+            if start_surface.size:
+                start_lookup[start_surface] = True
+
+            visited = np.zeros(n_nodes, dtype=bool)
             tol = 1.0e-14
-            while heap:
-                dcur, node = heapq.heappop(heap)
-                if dcur > dist[node] + tol:
+
+            for root in range(n_nodes):
+                if visited[root]:
                     continue
 
-                for nbr, mid, weight in adjacency.get(node, []):
-                    nd = dcur + weight
-                    if nd < dist[nbr] - tol:
-                        dist[nbr] = nd
-                        parent[nbr] = (node, mid)
-                        heapq.heappush(heap, (nd, nbr))
-                    elif abs(nd - dist[nbr]) <= tol and nbr in parent:
-                        old_parent_node, old_mid = parent[nbr]
-                        if (mid < old_mid) or (mid == old_mid and node < old_parent_node):
-                            parent[nbr] = (node, mid)
+                num_components += 1
+                stack = [root]
+                visited[root] = True
+                component = []
 
-            component_tree_mids = {mid for _node, mid in parent.values()}
-            for mid in component_tree_mids:
-                edge_state[mid] = 1
+                while stack:
+                    cur = stack.pop()
+                    component.append(cur)
+                    row_start = int(indptr[cur])
+                    row_end = int(indptr[cur + 1])
+                    nbrs = dst[row_start:row_end]
+                    for nbr in nbrs:
+                        if not visited[nbr]:
+                            visited[nbr] = True
+                            stack.append(int(nbr))
 
-        for mid in eligible_edges:
-            if mid not in edge_state:
-                edge_state[mid] = 2  # safety net; should not trigger
+                component_np = np.array(component, dtype=np.int64)
+                component_global = node_ids[component_np]
+                seeds = component_np[start_lookup[component_global]]
+                if seeds.size == 0:
+                    seeds = np.array([root], dtype=np.int64)
 
-        # Propagate classification to periodic-slave raw mids too, so they
-        # carry the same tree/cotree state as their master. Downstream
-        # constraint code must check PERIODIC_SLAVE before deciding whether
-        # to zero a tree point or tie it to its master instead (see
-        # tree_gauge() below for the reference implementation of that check).
-        for mid, state in edge_state.items():
-            for raw_mid in canonical_to_raw_mids[mid]:
-                if state == 1:
-                    tree_np[raw_mid] = 1
-                else:
-                    cotree_np[raw_mid] = 1
-                if raw_mid in slave_to_master:
-                    periodic_slave_np[raw_mid] = 1
+                num_roots_total += int(seeds.size)
+
+                dist = np.full(n_nodes, np.inf, dtype=np.float64)
+                parent_node = np.full(n_nodes, -1, dtype=np.int64)
+                parent_mid = np.full(n_nodes, -1, dtype=np.int64)
+                heap: list[Tuple[float, int]] = []
+                for s in seeds:
+                    s_int = int(s)
+                    dist[s_int] = 0.0
+                    heapq.heappush(heap, (0.0, s_int))
+
+                while heap:
+                    dcur, node = heapq.heappop(heap)
+                    if dcur > dist[node] + tol:
+                        continue
+
+                    row_start = int(indptr[node])
+                    row_end = int(indptr[node + 1])
+                    for j in range(row_start, row_end):
+                        nbr = int(dst[j])
+                        nd = dcur + float(w[j])
+                        if nd < dist[nbr] - tol:
+                            dist[nbr] = nd
+                            parent_node[nbr] = node
+                            parent_mid[nbr] = int(mid_dir[j])
+                            heapq.heappush(heap, (nd, nbr))
+                        elif abs(nd - dist[nbr]) <= tol and parent_mid[nbr] >= 0:
+                            old_mid = int(parent_mid[nbr])
+                            old_parent = int(parent_node[nbr])
+                            new_mid = int(mid_dir[j])
+                            if (new_mid < old_mid) or (
+                                (new_mid == old_mid) and (node < old_parent)
+                            ):
+                                parent_node[nbr] = node
+                                parent_mid[nbr] = new_mid
+
+                tree_mids = np.unique(parent_mid[component_np][parent_mid[component_np] >= 0])
+                edge_state_lookup[tree_mids] = 1
+
+        raw_mids = np.fromiter(raw_to_canonical_mid.keys(), dtype=np.int64)
+        raw_canonical = np.fromiter(raw_to_canonical_mid.values(), dtype=np.int64)
+        if raw_mids.size:
+            raw_is_tree = edge_state_lookup[raw_canonical] == 1
+            tree_np[raw_mids[raw_is_tree]] = 1
+            cotree_np[raw_mids[~raw_is_tree]] = 1
+
+        if slave_to_master:
+            periodic_slave_np[np.fromiter(slave_to_master.keys(), dtype=np.int64)] = 1
 
         tree_np[cotree_np == 1] = 0
 
@@ -542,31 +650,12 @@ class TreeGauge:
         ugrid.GetPointData().RemoveArray(periodic_slave_name)
         ugrid.GetPointData().AddArray(periodic_slave_arr)
 
-        num_edges_after_periodic_collapse = len(eligible_edges)
+        num_edges_after_periodic_collapse = int(eligible_mid_ids.size)
 
-        # Spanning-forest identity check for multi-source Dijkstra:
-        # in each connected component, every seed is a root, so
-        # #tree_edges_in_component == #nodes_in_component - #roots_in_component.
-        # With no seeds in a component we inject one fallback root.
-
-        num_tree_canonical = sum(1 for s in edge_state.values() if s == 1)
-        num_nodes_in_graph = len(adjacency)
-        num_roots_total = 0
-        remaining_nodes_for_roots: Set[int] = set(adjacency.keys())
-        while remaining_nodes_for_roots:
-            root = min(remaining_nodes_for_roots)
-            stack = [root]
-            component_nodes: Set[int] = {root}
-            while stack:
-                cur = stack.pop()
-                for nbr, _mid, _w in adjacency.get(cur, []):
-                    if nbr not in component_nodes:
-                        component_nodes.add(nbr)
-                        stack.append(nbr)
-            remaining_nodes_for_roots.difference_update(component_nodes)
-
-            roots_in_component = sum(1 for n in component_nodes if n in start_surface)
-            num_roots_total += roots_in_component if roots_in_component > 0 else 1
+        num_tree_canonical = int(np.count_nonzero(edge_state_lookup == 1))
+        num_nodes_in_graph = 0
+        if eligible_mid_ids.size:
+            num_nodes_in_graph = int(np.unique(eligible_uv).size)
 
         expected_tree = num_nodes_in_graph - num_roots_total if num_nodes_in_graph else 0
         tree_identity_ok = (num_tree_canonical == expected_tree)
@@ -585,7 +674,7 @@ class TreeGauge:
             )
 
         info = {
-            "tree_build_algorithm": "multi_source_weighted_dijkstra",
+            "tree_build_algorithm": "multi_source_dijkstra_edge_length",
             "num_points": npts,
             "num_cells": ugrid.GetNumberOfCells(),
             "num_edges": num_edges_before_periodic_collapse,
@@ -600,7 +689,6 @@ class TreeGauge:
             "num_tree_canonical": num_tree_canonical,
             "expected_tree_canonical": expected_tree,
             "tree_identity_ok": tree_identity_ok,
-            "aspect_ratio_alpha": float(aspect_ratio_alpha),
         }
         return tree_arr, cotree_arr, info
 
@@ -610,7 +698,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
-        aspect_ratio_alpha: float = 0.25,
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
         periodic_slave_name: str = "PERIODIC_SLAVE",
@@ -623,7 +710,6 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_point_ids,
             start_surface_point_ids=start_surface_point_ids,
             periodic_point_coupling=periodic_point_coupling,
-            aspect_ratio_alpha=aspect_ratio_alpha,
             tree_name=tree_name,
             cotree_name=cotree_name,
             periodic_slave_name=periodic_slave_name,
@@ -640,7 +726,6 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
-        aspect_ratio_alpha: float = 0.25,
         array_name: str = "_Az",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
@@ -665,16 +750,13 @@ class TreeGauge:
             non_conducting_point_ids: Point ids where tree constraints are computed.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: Multi-source seeds for the weighted
+            start_surface_point_ids: Multi-source seeds for the
                 shortest-path (Dijkstra) builder.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 Components with no seed fall back to an arbitrary local root.
             periodic_point_coupling: Unified periodic coupling (corner and
                 midside pairs mixed) as dict-like, ndarray (N,2), or CP_*
                 PointData array name.
-            aspect_ratio_alpha: Weight of aspect-ratio penalty in the
-                weighted shortest-path edge cost, where
-                edge_cost = length * (1 + alpha * penalty).
             periodic_slave_name: Name of the PointData array marking
                 periodic-slave midside nodes.
 
@@ -699,7 +781,7 @@ class TreeGauge:
 
         LOGGER.info(
             "Tree gauge input: non-conducting points=%d, start-surface points=%d "
-            "(used as multi-source seeds for weighted Dijkstra)",
+            "(used as multi-source seeds for edge-length Dijkstra)",
             -1 if non_conducting_points is None else len(non_conducting_points),
             -1 if start_surface_points is None else len(start_surface_points),
         )
@@ -709,7 +791,6 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_points,
             start_surface_point_ids=start_surface_points,
             periodic_point_coupling=periodic_point_coupling,
-            aspect_ratio_alpha=aspect_ratio_alpha,
             tree_name=tree_name,
             cotree_name=cotree_name,
             periodic_slave_name=periodic_slave_name,

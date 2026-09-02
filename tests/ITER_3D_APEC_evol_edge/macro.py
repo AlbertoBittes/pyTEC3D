@@ -54,7 +54,6 @@ Selector.set_value_on_selection(apec.model.mesh, "_Az", 0.0)
 TreeGauge.tree_gauge(
     apec.model.mesh,
     periodic_point_coupling="CP_0",
-    aspect_ratio_alpha=0.0
 )
 
 # Ground Vacuum Vessel
