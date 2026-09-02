@@ -706,7 +706,7 @@ class ModelEdit:
     @staticmethod
     def read_mesh(
         vtk_file_path: Union[str, PathLike[str]],
-        reset_arrays: bool = True,
+        reset_arrays: bool = False,
     ) -> "vtk.vtkUnstructuredGrid":
         """
         Reads a VTK unstructured grid from a file in XML format (.vtu or .pvtu).

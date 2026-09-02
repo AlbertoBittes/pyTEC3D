@@ -89,6 +89,12 @@ namespace apec_m
         origin_out[2] = _origin[2];
     }
 
+    void CoordinateSystem::local_to_global_cart_raw(libMesh::Real *matrix_out) const noexcept
+    {
+        for (int i = 0; i < 9; ++i)
+            matrix_out[i] = _local_to_global_cart[i];
+    }
+
     void CoordinateSystem::axis_direction_raw(libMesh::Real *axis_out) const noexcept
     {
         axis_out[0] = _local_to_global_cart[2];
@@ -362,7 +368,8 @@ namespace apec_m
         const libMesh::Real *origin,
         const libMesh::Real *nxax,
         const libMesh::Real *nxypl,
-        const libMesh::Real *angles_deg)
+        const libMesh::Real *angles_deg,
+        const libMesh::Real *local_to_global_cart)
         : CoordinateSystem(
               origin ? origin : kDefaultOrigin,
               nullptr,
@@ -377,7 +384,12 @@ namespace apec_m
         _origin[1] = o[1];
         _origin[2] = o[2];
 
-        if (angles_deg)
+        if (local_to_global_cart)
+        {
+            for (int i = 0; i < 9; ++i)
+                _local_to_global_cart[i] = local_to_global_cart[i];
+        }
+        else if (angles_deg)
         {
             build_local_to_global_matrix(angles_deg[0], angles_deg[1], angles_deg[2], _local_to_global_cart);
         }
@@ -408,7 +420,8 @@ namespace apec_m
         const libMesh::Real *origin,
         const libMesh::Real *nxax,
         const libMesh::Real *nxypl,
-        const libMesh::Real *angles_deg)
+        const libMesh::Real *angles_deg,
+        const libMesh::Real *local_to_global_cart)
         : CoordinateSystem(
               origin ? origin : kDefaultOrigin,
               nullptr,
@@ -423,7 +436,12 @@ namespace apec_m
         _origin[1] = o[1];
         _origin[2] = o[2];
 
-        if (angles_deg)
+        if (local_to_global_cart)
+        {
+            for (int i = 0; i < 9; ++i)
+                _local_to_global_cart[i] = local_to_global_cart[i];
+        }
+        else if (angles_deg)
         {
             build_local_to_global_matrix(angles_deg[0], angles_deg[1], angles_deg[2], _local_to_global_cart);
         }
@@ -450,18 +468,24 @@ namespace apec_m
         return CylindricalCoordinateSystem(origin, nxax, nxypl, nullptr);
     }
 
-    XAxisCylindricalCoordinateSystem::XAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
-        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kXAxisAngles)
+    XAxisCylindricalCoordinateSystem::XAxisCylindricalCoordinateSystem(
+        const libMesh::Real *origin,
+        const libMesh::Real *local_to_global_cart)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, local_to_global_cart ? nullptr : kXAxisAngles, local_to_global_cart)
     {
     }
 
-    YAxisCylindricalCoordinateSystem::YAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
-        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kYAxisAngles)
+    YAxisCylindricalCoordinateSystem::YAxisCylindricalCoordinateSystem(
+        const libMesh::Real *origin,
+        const libMesh::Real *local_to_global_cart)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, local_to_global_cart ? nullptr : kYAxisAngles, local_to_global_cart)
     {
     }
 
-    ZAxisCylindricalCoordinateSystem::ZAxisCylindricalCoordinateSystem(const libMesh::Real *origin)
-        : CylindricalCoordinateSystem(origin, nullptr, nullptr, kZAxisAngles)
+    ZAxisCylindricalCoordinateSystem::ZAxisCylindricalCoordinateSystem(
+        const libMesh::Real *origin,
+        const libMesh::Real *local_to_global_cart)
+        : CylindricalCoordinateSystem(origin, nullptr, nullptr, local_to_global_cart ? nullptr : kZAxisAngles, local_to_global_cart)
     {
     }
 
@@ -578,7 +602,8 @@ namespace apec_m
         const libMesh::Real *origin,
         const libMesh::Real *nxax,
         const libMesh::Real *nxypl,
-        const libMesh::Real *angles_deg)
+        const libMesh::Real *angles_deg,
+        const libMesh::Real *local_to_global_cart)
         : CoordinateSystem(
               origin ? origin : kDefaultOrigin,
               nullptr,
@@ -593,7 +618,12 @@ namespace apec_m
         _origin[1] = o[1];
         _origin[2] = o[2];
 
-        if (angles_deg)
+        if (local_to_global_cart)
+        {
+            for (int i = 0; i < 9; ++i)
+                _local_to_global_cart[i] = local_to_global_cart[i];
+        }
+        else if (angles_deg)
         {
             build_local_to_global_matrix(angles_deg[0], angles_deg[1], angles_deg[2], _local_to_global_cart);
         }

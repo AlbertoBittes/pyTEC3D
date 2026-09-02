@@ -6,10 +6,7 @@ import importlib
 import shutil
 import atexit
 from os import PathLike
-from typing import Any, Dict, Optional, Union
-
-import pandas as pd
-import numpy as np
+from typing import Any, Optional, Union
 import vtk
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,23 +23,7 @@ from .apec_algorithm import ApecAlgorithm
 from .apec_m_model import APEC_M_Model
 from .model_edit import ModelEdit
 
-
 LOGGER = get_logger("apec_m.APEC_M")
-
-
-# Prefer environment openpyxl; fall back to vendored local_packages when needed.
-try:
-    import openpyxl
-except ImportError:
-    if os.path.isdir(LOCAL_PACKAGES_PATH) and LOCAL_PACKAGES_PATH not in sys.path:
-        sys.path.insert(0, LOCAL_PACKAGES_PATH)
-    try:
-        import openpyxl
-    except ImportError:
-        LOGGER.warning(
-            "Failed to import openpyxl. Ensure it is installed or vendored under local_packages."
-        )
-
 
 class APEC_M:
     """APEC solver/session manager that owns runtime/session and a Python model."""
@@ -54,8 +35,6 @@ class APEC_M:
         self._num_threads = int(num_threads)
         self.model: APEC_M_Model = APEC_M_Model()
         self._mesh_filepath: Optional[str] = None
-        self._working_directory: str = os.getcwd()
-        self._working_directory_explicit: bool = False
         self._solver_session: Optional[Any] = None
         self._null_output_stream = None
         self._closed = False
@@ -88,27 +67,8 @@ class APEC_M:
         return self._num_threads
 
     @property
-    def mesh(self) -> vtk.vtkUnstructuredGrid:
-        return self.model.mesh
-
-    @mesh.setter
-    def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
-        raise AttributeError("Direct mesh assignment is not allowed. Use read_model().")
-
-    @property
     def solver(self) -> Optional[Any]:
         return self._solver_session
-
-    @property
-    def working_directory(self) -> str:
-        return self._working_directory
-
-    @working_directory.setter
-    def working_directory(self, value: Union[str, PathLike[str]]) -> None:
-        target = os.path.abspath(os.fspath(value))
-        os.makedirs(target, exist_ok=True)
-        self._working_directory = target
-        self._working_directory_explicit = True
 
     @property
     def mesh_filepath(self) -> Optional[str]:
@@ -120,70 +80,6 @@ class APEC_M:
             self._mesh_filepath = None
             return
         self._mesh_filepath = os.path.abspath(os.fspath(value))
-
-    @property
-    def element_types(self) -> pd.DataFrame:
-        return self.model.element_types
-
-    @element_types.setter
-    def element_types(self, value: pd.DataFrame) -> None:
-        self.model.element_types = value
-
-    @property
-    def materials(self) -> pd.DataFrame:
-        return self.model.materials
-
-    @materials.setter
-    def materials(self, value: pd.DataFrame) -> None:
-        self.model.materials = value
-
-    @property
-    def constants(self) -> pd.DataFrame:
-        return self.model.constants
-
-    @constants.setter
-    def constants(self, value: pd.DataFrame) -> None:
-        self.model.constants = value
-
-    @property
-    def time_step(self) -> Dict[str, Any]:
-        return self.model.time_step
-
-    @time_step.setter
-    def time_step(self, value: Dict[str, Any]) -> None:
-        self.model.time_step = value
-
-    @property
-    def solver_settings(self) -> Dict[str, Any]:
-        return self.model.solver_settings
-
-    @solver_settings.setter
-    def solver_settings(self, value: Dict[str, Any]) -> None:
-        self.model.solver_settings = value
-
-    @property
-    def dof_couplings(self) -> pd.DataFrame:
-        return self.model.dof_couplings
-
-    @dof_couplings.setter
-    def dof_couplings(self, value: pd.DataFrame) -> None:
-        self.model.dof_couplings = value
-
-    @property
-    def coordinate_systems(self) -> Dict[int, Any]:
-        return self.model.coordinate_systems
-
-    @coordinate_systems.setter
-    def coordinate_systems(self, value: Dict[int, Any]) -> None:
-        self.model.coordinate_systems = value
-
-    @property
-    def bh_curves(self) -> Dict[int, np.ndarray]:
-        return self.model.bh_curves
-
-    @bh_curves.setter
-    def bh_curves(self, value: Dict[int, np.ndarray]) -> None:
-        self.model.bh_curves = value
 
     def __del__(self) -> None:
         try:
@@ -249,22 +145,20 @@ class APEC_M:
         instance = cls(num_threads=num_threads)
         instance.model = APEC_M_Model.from_grid(mesh, mesh_name=mesh_name)
         instance.mesh_filepath = None
-        instance._working_directory = os.getcwd()
-        instance._working_directory_explicit = False
         instance._close_solver_session()
         log_mesh_summary_info(
             LOGGER,
-            instance.mesh,
+            instance.model.mesh,
             instance.model._mesh_name or "APEC_Mesh",
             instance.mesh_filepath,
-            instance.working_directory,
+            os.getcwd(),
         )
         return instance
 
     def read_model(
         self,
         vtk_file_path: Union[str, PathLike[str]],
-        reset_arrays: bool = False,
+        reset_arrays: bool = True,
     ) -> None:
         if not isinstance(reset_arrays, bool):
             raise TypeError("reset_arrays must be a bool.")
@@ -281,13 +175,9 @@ class APEC_M:
         loaded_mesh = ModelEdit.read_mesh(mesh_path, reset_arrays=reset_arrays)
         resolved_name = os.path.splitext(os.path.basename(mesh_path))[0]
         loaded_model = APEC_M_Model.from_grid(loaded_mesh, mesh_name=resolved_name)
-        mesh_folder = os.path.dirname(mesh_path) or os.getcwd()
-        if not self._working_directory_explicit:
-            self._working_directory = os.path.abspath(mesh_folder)
-            os.makedirs(self._working_directory, exist_ok=True)
-
-        emat_dir = os.path.join(self.working_directory, "emat")
-        output_dir = os.path.join(self.working_directory, "output")
+        base_cwd = os.getcwd()
+        emat_dir = os.path.join(base_cwd, "emat")
+        output_dir = os.path.join(base_cwd, "output")
         if self._world_rank() == 0:
             os.makedirs(emat_dir, exist_ok=True)
             os.makedirs(output_dir, exist_ok=True)
@@ -310,16 +200,15 @@ class APEC_M:
         self._close_solver_session()
         log_mesh_summary_info(
             LOGGER,
-            self.mesh,
+            self.model.mesh,
             resolved_name,
             self.mesh_filepath,
-            self.working_directory,
+            base_cwd,
         )
 
     def save_model(
         self,
         output_file: Optional[Union[str, PathLike[str]]] = None,
-        cwd: Optional[Union[str, PathLike[str]]] = None,
     ) -> None:
         if self._world_rank() != 0:
             return
@@ -327,7 +216,7 @@ class APEC_M:
         if output_file is None and self.model._mesh_name is None:
             raise ValueError("No mesh is loaded. Load a mesh before saving.")
 
-        base_cwd = os.path.abspath(os.fspath(cwd)) if cwd is not None else self.working_directory
+        base_cwd = os.getcwd()
         if output_file is None:
             output_file = os.path.join(base_cwd, f"{self.model._mesh_name}.vtu")
         else:
@@ -336,7 +225,7 @@ class APEC_M:
         self.model._save_model(output_file, binary=True)
         LOGGER.info("Model saved to %s.", output_file)
 
-    def write_output(self, cwd: Optional[Union[str, PathLike[str]]] = None) -> None:
+    def write_output(self) -> None:
         if self.model._mesh_name is None:
             raise ValueError("No mesh is loaded. Load a mesh before writing output.")
 
@@ -344,7 +233,7 @@ class APEC_M:
             return
 
         mesh_name = self.model._mesh_name
-        base_cwd = os.path.abspath(os.fspath(cwd)) if cwd is not None else self.working_directory
+        base_cwd = os.getcwd()
         output_dir = os.path.join(base_cwd, "output")
         os.makedirs(output_dir, exist_ok=True)
 
@@ -360,7 +249,7 @@ class APEC_M:
 
         next_time_step = last_time_step + 1
         output_file = os.path.join(output_dir, f"{mesh_name}_out_{next_time_step}.vtu")
-        self.save_model(output_file=output_file, cwd=base_cwd)
+        self.save_model(output_file=output_file)
 
     @staticmethod
     def _require_solver_module() -> Any:

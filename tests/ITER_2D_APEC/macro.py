@@ -1,6 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 import os
+from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem
 
 # from convert_mesh import convert_mesh_from_cdb
 
@@ -62,6 +63,7 @@ a_plasma = 28.6027095
 apec.model.read_excel("input_template.xlsx")
 
 Selector.select_all(apec.model.mesh)
+Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 Selector.nsel_ext(apec.model.mesh)
 Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 

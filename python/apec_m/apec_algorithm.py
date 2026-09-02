@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,6 @@ from .selector import Selector
 from .model_edit import ModelEdit
 from .coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
 from .logging_utils import get_logger
-from .validation_utils import ensure_vtk_unstructured_grid
 from .constants import (
     DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS,
     DEFAULT_APEC_ALGORITHM_STATUS,
@@ -36,11 +35,6 @@ class ApecAlgorithm:
           left as VTK-grid placeholders and can be refined incrementally.
         - Only time-step logic is supported (no substeps).
     """
-
-    STEP_FIND_SEPARATRIX = "find_separatrix"
-    STEP_COMPUTE_JPLASMA = "compute_jplasma_gradshafranov"
-    STEP_CONTROL_CURRENTS = "control_currents"
-    STEP_CHECK_CONVERGENCE = "check_convergence"
 
     def __init__(
         self,
@@ -71,21 +65,13 @@ class ApecAlgorithm:
         self._b_target_axis_cache: Optional[
             Tuple[Tuple[Any, ...], np.ndarray, np.ndarray]
         ] = None
-        self._step_overrides: Dict[str, Callable[..., Any]] = {}
         self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
         self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
         self._halo_node_groups: Tuple[np.ndarray, ...] = ()
         self._halo_boundary_graph_cache: Optional[
             Tuple[np.ndarray, Dict[int, np.ndarray]]
         ] = None
-        self._supported_step_overrides = {
-            self.STEP_FIND_SEPARATRIX,
-            self.STEP_COMPUTE_JPLASMA,
-            self.STEP_CONTROL_CURRENTS,
-            self.STEP_CHECK_CONVERGENCE,
-        }
-        self._static_solver: Optional[Any] = None
-        self.equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
+        self._equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
         LOGGER.debug(
             "ApecAlgorithm initialized%s.",
             " with parameter overrides" if input_parameters else "",
@@ -108,18 +94,60 @@ class ApecAlgorithm:
         self._halo_boundary_graph_cache = None
         LOGGER.debug("ApecAlgorithm state reset.")
 
-    def _require_equilibrium_mesh(self) -> vtk.vtkUnstructuredGrid:
-        """Return a validated equilibrium mesh required by internal algorithm steps.
+    @property
+    def vacuum_chamber_mesh(self) -> vtk.vtkUnstructuredGrid:
+        """Return the extracted vacuum-chamber equilibrium mesh.
 
         Returns:
             vtk.vtkUnstructuredGrid: Validated equilibrium mesh.
         """
-        if self.equilibrium_mesh is None:
+        if self._equilibrium_mesh is None:
             raise ValueError("equilibrium_mesh is not set.")
-        return ensure_vtk_unstructured_grid(
-            self.equilibrium_mesh,
-            arg_name="equilibrium_mesh",
-        )
+        return self._equilibrium_mesh
+
+    @vacuum_chamber_mesh.setter
+    def vacuum_chamber_mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
+        """Set the equilibrium mesh from a source mesh by extracting VACUUM_CHAMBER cells."""
+
+        if self._equilibrium_mesh is not None:
+            raise ValueError("equilibrium_mesh is already set.")
+
+        source_mesh = vtk.vtkUnstructuredGrid()
+        source_mesh.DeepCopy(value)
+
+        Selector.select(source_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        selection_cell_array = self._require_array(source_mesh.GetCellData(), "selection_cell")
+        selected_cell_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_cell_array) == 1).astype(np.int64)
+        if selected_cell_ids.size == 0:
+            raise ValueError("No VACUUM_CHAMBER elements found while setting equilibrium_mesh.")
+
+        selected_cell_ids_vtk = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
+
+        selection_node = vtk.vtkSelectionNode()
+        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
+        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+        selection_node.SetSelectionList(selected_cell_ids_vtk)
+
+        selection = vtk.vtkSelection()
+        selection.AddNode(selection_node)
+
+        extract = vtk.vtkExtractSelection()
+        extract.SetInputData(0, source_mesh)
+        extract.SetInputData(1, selection)
+        extract.Update()
+
+        extracted = vtk.vtkUnstructuredGrid.SafeDownCast(extract.GetOutput())
+        if extracted is None or extracted.GetNumberOfCells() == 0:
+            raise ValueError("Failed to extract VACUUM_CHAMBER subgrid for equilibrium_mesh.")
+
+        Selector.select_all(extracted, type="elem")
+        Selector.nsle(extracted, mode="s")
+
+        self._equilibrium_mesh = extracted
+        model_mesh = self.apec.model.mesh
+        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
+        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
+        self._halo_boundary_graph_cache = None
 
     @staticmethod
     def _require_array(
@@ -176,8 +204,6 @@ class ApecAlgorithm:
         Returns:
             np.ndarray: Integer map with shape (num_input, 1 + num_matches).
         """
-        ensure_vtk_unstructured_grid(input_mesh, arg_name="input_mesh")
-        ensure_vtk_unstructured_grid(target_mesh, arg_name="target_mesh")
         if location not in ["node", "elem"]:
             raise ValueError("location must be 'node' or 'elem'.")
         if tolerance <= 0:
@@ -338,7 +364,7 @@ class ApecAlgorithm:
             return
         LOGGER.debug("Building toroidal node/element slices.")
 
-        equilibrium_mesh = self._require_equilibrium_mesh()
+        equilibrium_mesh = self.vacuum_chamber_mesh
 
         target_dimension = self.apec.model.mesh.GetMaxSpatialDimension()
         extrusion_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
@@ -352,8 +378,11 @@ class ApecAlgorithm:
         if target_dimension <= 2 and n_toroidal_divisions <= 0:
             n_toroidal_divisions = 1
 
+        Selector.select(self.apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        Selector.nsle(self.apec.model.mesh, mode="s")
+        Selector.select(equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+
         tolerance = float(self.input_parameters["tolerance"])
-        coordinate_system = YAxisCylindricalCoordinateSystem()
         self._toroidal_slices_nodes = self.build_toroidal_slices(
             equilibrium_mesh,
             self.apec.model.mesh,
@@ -361,7 +390,6 @@ class ApecAlgorithm:
             tolerance=tolerance,
             extrusion_angle=extrusion_angle,
             n_divisions=n_toroidal_divisions,
-            coordinate_system=coordinate_system,
         )
         self._toroidal_slices_elems = self.build_toroidal_slices(
             equilibrium_mesh,
@@ -370,7 +398,6 @@ class ApecAlgorithm:
             tolerance=tolerance,
             extrusion_angle=extrusion_angle,
             n_divisions=n_toroidal_divisions,
-            coordinate_system=coordinate_system,
         )
 
     def _diagnostics_csv_path(self) -> str:
@@ -442,41 +469,49 @@ class ApecAlgorithm:
                 row[key] = value
         return row
 
-    def set_step_override(
-        self,
-        step: str,
-        override: Optional[Callable[..., Any]],
-    ) -> None:
-        """Register or clear a custom implementation for a supported algorithm step.
+    def _compute_psi_derivatives(self) -> None:
+        """Compute and cache PSI gradient and Hessian on the equilibrium mesh."""
+        mesh = self.vacuum_chamber_mesh
 
-        Args:
-            step: Step identifier.
-            override: Callable override or None to clear.
+        grad_filter = vtk.vtkGradientFilter()
+        grad_filter.SetInputData(mesh)
+        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        grad_filter.SetResultArrayName("__apec_psi_gradient__")
+        if hasattr(grad_filter, "SetComputeGradient"):
+            grad_filter.SetComputeGradient(True)
+        grad_filter.Update()
 
-        Returns:
-            None
-        """
-        if step not in self._supported_step_overrides:
-            raise ValueError(
-                f"Unsupported step '{step}'. "
-                f"Supported steps: {sorted(self._supported_step_overrides)}."
-            )
-        if override is None:
-            self._step_overrides.pop(step, None)
-            LOGGER.debug("Step override cleared for '%s'.", step)
-            return
-        if not callable(override):
-            raise TypeError("override must be callable or None.")
-        self._step_overrides[step] = override
-        LOGGER.debug("Step override registered for '%s': %s.", step, override)
+        grad_output = grad_filter.GetOutput()
+        gradient_array = grad_output.GetPointData().GetArray("__apec_psi_gradient__")
+        if gradient_array is None:
+            raise RuntimeError("Failed to compute PSI gradient on equilibrium mesh.")
 
-    def clear_step_overrides(self) -> None:
-        """Remove all previously registered step overrides.
+        hessian_filter = vtk.vtkGradientFilter()
+        hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
+        hessian_filter.SetInputScalars(
+            vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
+            "__apec_psi_gradient__",
+        )
+        hessian_filter.SetResultArrayName("__apec_psi_hessian__")
+        if hasattr(hessian_filter, "SetComputeGradient"):
+            hessian_filter.SetComputeGradient(True)
+        hessian_filter.Update()
 
-        Returns:
-            None
-        """
-        self._step_overrides.clear()
+        hessian_output = hessian_filter.GetOutput()
+        hessian_array = hessian_output.GetPointData().GetArray("__apec_psi_hessian__")
+        if hessian_array is None:
+            raise RuntimeError("Failed to compute PSI Hessian on equilibrium mesh.")
+
+        mesh_point_data = mesh.GetPointData()
+        existing_grad = mesh_point_data.GetArray("__apec_psi_gradient__")
+        if existing_grad is not None:
+            mesh_point_data.RemoveArray("__apec_psi_gradient__")
+        existing_hess = mesh_point_data.GetArray("__apec_psi_hessian__")
+        if existing_hess is not None:
+            mesh_point_data.RemoveArray("__apec_psi_hessian__")
+
+        mesh_point_data.AddArray(gradient_array)
+        mesh_point_data.AddArray(hessian_array)
 
     def _normalized_control_coils(self) -> List[Dict[str, Any]]:
         """Validate and normalize control-coil mapping from input parameters.
@@ -535,8 +570,8 @@ class ApecAlgorithm:
             LOGGER.debug("Halo boundary graph already cached; skipping rebuild.")
             return
         LOGGER.debug("Building halo boundary graph.")
-        mesh = self._require_equilibrium_mesh()
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        mesh = self.vacuum_chamber_mesh
+        Selector.select_all(mesh)
         boundary_node_ids, boundary_adjacency = (
             Selector.get_selected_external_node_adjacency(mesh)
         )
@@ -676,8 +711,8 @@ class ApecAlgorithm:
         if offsets_array is None or connectivity_array is None:
             return np.zeros(0, dtype=np.int64)
 
-        offsets = np.asarray(vtknp.vtk_to_numpy(offsets_array), dtype=np.int64)
-        connectivity = np.asarray(vtknp.vtk_to_numpy(connectivity_array), dtype=np.int64)
+        offsets = vtknp.vtk_to_numpy(offsets_array)
+        connectivity = vtknp.vtk_to_numpy(connectivity_array)
 
         # 1. Filter VACUUM_CHAMBER cells where ALL nodes satisfy PSI condition
         candidate_cell_mask = np.zeros(n_cells, dtype=bool)
@@ -794,44 +829,18 @@ class ApecAlgorithm:
 
         return tuple(oriented_groups)
 
-    def _dispatch_step(
-        self,
-        step: str,
-        default_impl: Callable[..., Any],
-    ) -> Any:
-        """Dispatch to an override when provided, else execute the default implementation.
-
-        Args:
-            step: Step identifier.
-            default_impl: Default callable implementation.
-
-        Returns:
-            Any: Step return value.
-        """
-        override = self._step_overrides[step] if step in self._step_overrides else None
-        if override is None:
-            return default_impl()
-        return override(self)
-
     def _set_psi_magnetic_axis(self) -> None:
-        """Compute and store magnetic-axis location and PSI from selected vacuum nodes.
+        """Compute and store magnetic-axis location and PSI from all mesh nodes.
 
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
 
         psi_array = ApecAlgorithm._require_array(mesh.GetPointData(), "PSI")
 
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh)
-        selection_array = ApecAlgorithm._require_array(mesh.GetPointData(), "selection_point")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-
-        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
-        psi_selected = psi[selected_ids]
-        axis_local_index = int(np.argmax(psi_selected))
-        axis_index = int(selected_ids[axis_local_index])
+        psi = vtknp.vtk_to_numpy(psi_array)
+        axis_index = int(np.argmax(psi))
         psi_axis = float(psi[axis_index])
 
         points = mesh.GetPoints()
@@ -848,27 +857,29 @@ class ApecAlgorithm:
         )
 
     def _reset_plasma_components(self) -> None:
-        """Reset PLASMA/AMPS and Js fields inside selected vacuum-chamber elements.
+        """Reset PLASMA/AMPS and Js fields over the full mesh.
 
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
         cell_data = mesh.GetCellData()
+        point_data = mesh.GetPointData()
 
+        plasma_array = ApecAlgorithm._require_array(cell_data, "PLASMA")
+        amps_array = ApecAlgorithm._require_array(point_data, "AMPS")
         js_array = ApecAlgorithm._require_array(cell_data, "Js")
 
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.set_value_on_selection(mesh, "PLASMA", 1, type="elem")
-        Selector.nsle(mesh)
-        Selector.set_value_on_selection(mesh, "AMPS", 0.0, type="node")
-
-        selection_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-
+        plasma_np = vtknp.vtk_to_numpy(plasma_array)
+        amps_np = vtknp.vtk_to_numpy(amps_array)
         js_np = vtknp.vtk_to_numpy(js_array)
 
-        js_np[selected_ids, :] = 0.0
+        plasma_np[...] = 1
+        amps_np[...] = 0.0
+        js_np[...] = 0.0
+
+        plasma_array.Modified()
+        amps_array.Modified()
         js_array.Modified()
 
     def _identify_plasma_region(self) -> None:
@@ -877,7 +888,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
 
         psi_2_min = float(self.status["psi_2_min"])
         psi_min = float(self.status["psi_min"])
@@ -900,57 +911,9 @@ class ApecAlgorithm:
             )
         has_halo = halo_requested and psi_2_min < psi_min
 
-        if has_halo:
-            lower_strict = np.nextafter(psi_2_min, np.inf)
-            upper_strict = np.nextafter(psi_min, -np.inf)
-            Selector.select(
-                mesh,
-                "PSI",
-                (lower_strict, upper_strict),
-                type="node",
-                mode="r",
-            )
-            selection_array = point_data.GetArray("selection_point")
-            halo_node_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-            boundary_node_ids, boundary_adjacency = self._get_halo_boundary_graph()
-            halo_node_ids = np.intersect1d(
-                halo_node_ids,
-                boundary_node_ids,
-                assume_unique=True,
-            )
-            halo_node_groups = self._connected_node_groups(
-                halo_node_ids,
-                boundary_adjacency,
-            )
-            points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
-            self._halo_node_groups = self._orient_halo_node_groups(
-                halo_node_groups,
-                points,
-                self.status["magnetic_axis"],
-                float(self.input_parameters["plasma_current"]),
-            )
+        selected_elem_count = 0
 
-        # Strict PSIe < psi_2_min using an upper bound just below psi_2_min.
-        upper_strict = np.nextafter(psi_2_min, -np.inf)
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.select(
-            mesh,
-            "PSIe",
-            (-np.inf, upper_strict),
-            type="elem",
-            mode="r",
-        )
-
-        selection_array = cell_data.GetArray("selection_cell")
-        selected_elem_count = int(np.count_nonzero(vtknp.vtk_to_numpy(selection_array)))
-
-        if selected_elem_count > 0:
-            Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
-
-        # 1. Select VACUUM_CHAMBER elements
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        vac_cell_sel_array = ApecAlgorithm._require_array(cell_data, "selection_cell")
-        vac_cell_mask = np.asarray(vtknp.vtk_to_numpy(vac_cell_sel_array), dtype=bool)
+        vac_cell_mask = np.ones(mesh.GetNumberOfCells(), dtype=bool)
 
         if np.any(vac_cell_mask):
             psi_x = self.status.get("last_psi_x_point")
@@ -959,7 +922,7 @@ class ApecAlgorithm:
             if psi_x is not None and axis_node_id >= 0:
                 psi_x = float(psi_x)
                 psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
-                psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
+                psi_point = vtknp.vtk_to_numpy(psi_point_array)
 
                 # 2, 3 & 4. Run cell-based BFS requiring ALL nodes >= PSI_x AND >= 2 shared nodes
                 connected_cell_ids = self._extract_main_plasma_region_cells(
@@ -976,8 +939,8 @@ class ApecAlgorithm:
 
                 # 5. Unselect candidate cells that are topologically disconnected
                 cells = mesh.GetCells()
-                offsets = np.asarray(vtknp.vtk_to_numpy(cells.GetOffsetsArray()), dtype=np.int64)
-                connectivity = np.asarray(vtknp.vtk_to_numpy(cells.GetConnectivityArray()), dtype=np.int64)
+                offsets = vtknp.vtk_to_numpy(cells.GetOffsetsArray())
+                connectivity = vtknp.vtk_to_numpy(cells.GetConnectivityArray())
 
                 psi_axis = psi_point[axis_node_id]
                 core_above = psi_axis >= psi_x
@@ -1003,6 +966,7 @@ class ApecAlgorithm:
 
                 # 2. Reset PLASMA flag on all disconnected divertor/SOL elements
                 if np.any(remove_mask):
+                    selected_elem_count = int(np.count_nonzero(remove_mask))
                     Selector.apply_boolean_selection_mask(
                         remove_mask,
                         cell_data,
@@ -1010,6 +974,40 @@ class ApecAlgorithm:
                         "s",
                     )
                     Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
+
+        if has_halo:
+            lower_strict = np.nextafter(psi_2_min, np.inf)
+            upper_strict = np.nextafter(psi_min, -np.inf)
+            Selector.select(
+                mesh,
+                "PSI",
+                (lower_strict, upper_strict),
+                type="node",
+                mode="s",
+            )
+            # Keep only PSI-band nodes attached to currently active plasma elements.
+            Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
+            Selector.nsle(mesh, mode="r")
+
+            selection_array = point_data.GetArray("selection_point")
+            halo_node_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
+            boundary_node_ids, boundary_adjacency = self._get_halo_boundary_graph()
+            halo_node_ids = np.intersect1d(
+                halo_node_ids,
+                boundary_node_ids,
+                assume_unique=True,
+            )
+            halo_node_groups = self._connected_node_groups(
+                halo_node_ids,
+                boundary_adjacency,
+            )
+            points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
+            self._halo_node_groups = self._orient_halo_node_groups(
+                halo_node_groups,
+                points,
+                self.status["magnetic_axis"],
+                float(self.input_parameters["plasma_current"]),
+            )
 
         halo_group_count = len(self._halo_node_groups)
         LOGGER.debug(
@@ -1026,13 +1024,13 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
 
         psi_array = ApecAlgorithm._require_array(mesh.GetPointData(), "PSI")
-        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
+        psi = vtknp.vtk_to_numpy(psi_array)
 
-        # 1. Initial selection of vacuum chamber external boundary nodes attached to PLASMA
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
+        # 1. Initial selection of external boundary nodes attached to PLASMA.
+        Selector.select_all(mesh, type="elem")
         Selector.nsel_ext(mesh, mode="s")
 
         selection_array = ApecAlgorithm._require_array(mesh.GetPointData(), "selection_point")
@@ -1043,18 +1041,9 @@ class ApecAlgorithm:
                 "boundary attached to PLASMA elements."
             )
 
-        # 2. Compute PSI point gradient to evaluate field rotation
-        grad_filter = vtk.vtkGradientFilter()
-        grad_filter.SetInputData(mesh)
-        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-        grad_filter.SetResultArrayName("__apec_psi_grad_limiter__")
-        grad_filter.Update()
-
-        grad_mesh = grad_filter.GetOutput()
-        grad_array = grad_mesh.GetPointData().GetArray("__apec_psi_grad_limiter__")
-        if grad_array is None:
-            raise RuntimeError("Failed to compute PSI gradient for limiter candidate filtering.")
-        grad = np.asarray(vtknp.vtk_to_numpy(grad_array), dtype=float)
+        # 2. Use precomputed PSI point gradient to evaluate field rotation.
+        grad_array = ApecAlgorithm._require_array(mesh.GetPointData(), "__apec_psi_gradient__")
+        grad = vtknp.vtk_to_numpy(grad_array)
 
         # 3. Filter out divertor nodes where (r - r_axis) . grad(PSI) has reversed sign
         axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
@@ -1104,102 +1093,14 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
+        point_data = mesh.GetPointData()
+        psi_array = ApecAlgorithm._require_array(point_data, "PSI")
+        hessian_array = ApecAlgorithm._require_array(point_data, "__apec_psi_hessian__")
+        gradient_array = ApecAlgorithm._require_array(point_data, "__apec_psi_gradient__")
 
-        # Extract only VACUUM_CHAMBER elements before Hessian evaluation.
-        work_mesh = vtk.vtkUnstructuredGrid()
-        work_mesh.DeepCopy(mesh)
-        work_point_data = work_mesh.GetPointData()
-
-        original_point_ids_np = np.arange(work_mesh.GetNumberOfPoints(), dtype=np.int64)
-        original_point_ids_vtk = vtknp.numpy_to_vtk(original_point_ids_np, deep=True)
-        original_point_ids_vtk.SetName("__apec_original_point_id__")
-        work_point_data.AddArray(original_point_ids_vtk)
-
-        Selector.select(work_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        selection_cell_array = ApecAlgorithm._require_array(work_mesh.GetCellData(), "selection_cell")
-        selected_cell_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_cell_array) == 1).astype(np.int64)
-        if selected_cell_ids.size == 0:
-            raise ValueError("No VACUUM_CHAMBER elements found for X-point search.")
-
-        selected_cell_ids_vtk = vtk.vtkIdTypeArray()
-        selected_cell_ids_vtk.SetNumberOfValues(selected_cell_ids.size)
-        for i, cell_id in enumerate(selected_cell_ids):
-            selected_cell_ids_vtk.SetValue(i, int(cell_id))
-
-        selection_node = vtk.vtkSelectionNode()
-        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
-        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
-        selection_node.SetSelectionList(selected_cell_ids_vtk)
-
-        selection = vtk.vtkSelection()
-        selection.AddNode(selection_node)
-
-        extract = vtk.vtkExtractSelection()
-        extract.SetInputData(0, work_mesh)
-        extract.SetInputData(1, selection)
-        extract.Update()
-
-        vacuum_mesh = vtk.vtkUnstructuredGrid.SafeDownCast(extract.GetOutput())
-        if vacuum_mesh is None or vacuum_mesh.GetNumberOfPoints() == 0:
-            raise ValueError("Failed to extract VACUUM_CHAMBER subgrid for X-point search.")
-
-        vacuum_point_data = vacuum_mesh.GetPointData()
-        psi_array = ApecAlgorithm._require_array(vacuum_point_data, "PSI")
-
-        grad_filter = vtk.vtkGradientFilter()
-        grad_filter.SetInputData(vacuum_mesh)
-        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-        grad_filter.SetResultArrayName("__apec_psi_gradient__")
-        if hasattr(grad_filter, "SetComputeGradient"):
-            grad_filter.SetComputeGradient(True)
-        grad_filter.Update()
-
-        # Portable Hessian computation fallback: H(PSI) = grad(grad(PSI)).
-        hessian_filter = vtk.vtkGradientFilter()
-        hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
-        hessian_filter.SetInputScalars(
-            vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
-            "__apec_psi_gradient__",
-        )
-        hessian_filter.SetResultArrayName("__apec_psi_hessian__")
-        if hasattr(hessian_filter, "SetComputeGradient"):
-            hessian_filter.SetComputeGradient(True)
-        hessian_filter.Update()
-        hessian_output = hessian_filter.GetOutput()
-
-        hessian_point_data = hessian_output.GetPointData()
-        hessian_array = hessian_point_data.GetArray("__apec_psi_hessian__")
-        if hessian_array is None:
-            raise ValueError("vtkGradientFilter did not produce a PSI Hessian (gradient-of-gradient) point array.")
-
-        gradient_array = hessian_point_data.GetArray("__apec_gradient_1__")
-        if gradient_array is None:
-            gradient_array = hessian_point_data.GetArray("__apec_psi_gradient__")
-        if gradient_array is None:
-            gradient_array = hessian_point_data.GetArray("Gradients")
-        if gradient_array is None:
-            raise ValueError("Could not find PSI gradient array to enforce X-point stationarity criterion.")
-
-        Selector.select_all(vacuum_mesh, type="elem")
-        Selector.nsle(vacuum_mesh)
-        # Exclude midside nod
-        # es: their PSI values are interpolated and can
-        # produce false minima near the X-point with second-order elements.
-        Selector.select(vacuum_mesh, "MidsideNodes", 1, type="node", mode="u")
-        selection_array = ApecAlgorithm._require_array(vacuum_point_data, "selection_point")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-
-        # Exclude external boundary nodes; keep only interior candidates.
-        # Selector.nsel_ext(vacuum_mesh, mode="s")
-        # boundary_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        # selected_ids = np.setdiff1d(selected_ids, boundary_ids, assume_unique=False)
-
-        if selected_ids.size == 0:
-            raise ValueError("No interior nodes selected for X-point saddle search.")
-
-        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
-        hessian = np.asarray(vtknp.vtk_to_numpy(hessian_array), dtype=float)
+        psi = vtknp.vtk_to_numpy(psi_array)
+        hessian = vtknp.vtk_to_numpy(hessian_array)
         if hessian.ndim != 2 or hessian.shape[1] != 9:
             raise ValueError(
                 "Unexpected PSI Hessian shape: expected (n_points, 9) for scalar PSI on 2D mesh."
@@ -1214,12 +1115,12 @@ class ApecAlgorithm:
         det_h = hxx * hyy - hxy * hyx
         finite_mask = np.isfinite(det_h)
         saddle_mask = finite_mask & (det_h < 0.0)
-        saddle_ids = selected_ids[saddle_mask[selected_ids]]
+        saddle_ids = np.flatnonzero(saddle_mask)
 
         if saddle_ids.size == 0:
             raise ValueError("No PSI saddle-point candidates found for the X point.")
 
-        gradient = np.asarray(vtknp.vtk_to_numpy(gradient_array), dtype=float)
+        gradient = vtknp.vtk_to_numpy(gradient_array)
         if gradient.ndim != 2 or gradient.shape[1] < 2:
             raise ValueError("Unexpected PSI gradient shape while enforcing X-point stationarity criterion.")
         grad_mag = np.sqrt(np.square(gradient[:, 0]) + np.square(gradient[:, 1]))
@@ -1227,15 +1128,8 @@ class ApecAlgorithm:
         if finite_grad_ids.size == 0:
             raise ValueError("No finite gradient magnitudes found among PSI saddle-point candidates.")
 
-        x_point_local_id = int(finite_grad_ids[int(np.argmin(grad_mag[finite_grad_ids]))])
-        original_point_ids_array = ApecAlgorithm._require_array(
-            hessian_point_data,
-            "__apec_original_point_id__",
-        )
-        original_point_ids = np.asarray(vtknp.vtk_to_numpy(original_point_ids_array), dtype=np.int64).reshape(-1)
-        x_point_node_id = int(original_point_ids[x_point_local_id])
-
-        psi_x = float(psi[x_point_local_id])
+        x_point_node_id = int(finite_grad_ids[int(np.argmin(grad_mag[finite_grad_ids]))])
+        psi_x = float(psi[x_point_node_id])
 
         points = mesh.GetPoints()
         xyz = vtknp.vtk_to_numpy(points.GetData())
@@ -1254,21 +1148,9 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
-
-        # 1. Compute nodal gradient of PSI using VTK Gradient Filter
-        grad_filter = vtk.vtkGradientFilter()
-        grad_filter.SetInputData(mesh)
-        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-        grad_filter.SetResultArrayName("__apec_grad_psi_axis__")
-        grad_filter.Update()
-
-        grad_mesh = grad_filter.GetOutput()
-        grad_array = grad_mesh.GetPointData().GetArray("__apec_grad_psi_axis__")
-        if grad_array is None:
-            raise RuntimeError("Failed to compute PSI gradient for target magnetic axis.")
-
-        grad_np = np.asarray(vtknp.vtk_to_numpy(grad_array), dtype=float)
+        mesh = self.vacuum_chamber_mesh
+        grad_array = ApecAlgorithm._require_array(mesh.GetPointData(), "__apec_psi_gradient__")
+        grad_np = vtknp.vtk_to_numpy(grad_array)
 
         target_point = (
             float(self.input_parameters["target_central_axis_x"]),
@@ -1385,7 +1267,7 @@ class ApecAlgorithm:
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.apec.model.mesh
         control_coils = self._normalized_control_coils()
         if not control_coils:
             LOGGER.debug("No control coils configured; skipping control-current update.")
@@ -1393,7 +1275,7 @@ class ApecAlgorithm:
 
         cell_data = mesh.GetCellData()
         js_array = ApecAlgorithm._require_array(cell_data, "Js")
-        js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
+        js_np = vtknp.vtk_to_numpy(js_array)
         radial_current = float(self.status["radial_correction_current"])
         vertical_current = float(self.status["vertical_correction_current"])
 
@@ -1402,7 +1284,7 @@ class ApecAlgorithm:
         for coil in control_coils:
             component = coil["component"]
             component_array = ApecAlgorithm._require_array(cell_data, component)
-            component_mask = np.asarray(vtknp.vtk_to_numpy(component_array) == 1, dtype=bool)
+            component_mask = vtknp.vtk_to_numpy(component_array) == 1
             selected_mask |= component_mask
 
             correction_current = (
@@ -1417,7 +1299,7 @@ class ApecAlgorithm:
             return
 
         real_constant_array = ApecAlgorithm._require_array(cell_data, "CONSTANT")
-        real_constant_ids = np.asarray(vtknp.vtk_to_numpy(real_constant_array), dtype=int)
+        real_constant_ids = vtknp.vtk_to_numpy(real_constant_array)
         constants_df = self.apec.model.constants
         id_col = "CONSTANTS_ID"
         area_col = "CS"
@@ -1454,18 +1336,6 @@ class ApecAlgorithm:
         js_array.Modified()
 
     def find_separatrix(self) -> None:
-        """Run the separatrix-detection step (or its registered override).
-
-        Returns:
-            None
-        """
-        LOGGER.info("Step: find_separatrix%s.", " (override)" if self.STEP_FIND_SEPARATRIX in self._step_overrides else "")
-        self._dispatch_step(
-            self.STEP_FIND_SEPARATRIX,
-            self._find_separatrix_default,
-        )
-
-    def _find_separatrix_default(self) -> None:
         """Default separatrix detection and plasma-region classification workflow.
 
         Returns:
@@ -1512,62 +1382,45 @@ class ApecAlgorithm:
         )
 
     def compute_jplasma_gradshafranov(self) -> None:
-        """Run Grad-Shafranov current computation (or its registered override).
-
-        Returns:
-            None
-        """
-        LOGGER.info("Step: compute_jplasma_gradshafranov%s.", " (override)" if self.STEP_COMPUTE_JPLASMA in self._step_overrides else "")
-        self._dispatch_step(
-            self.STEP_COMPUTE_JPLASMA,
-            self._compute_jplasma_gradshafranov_default,
-        )
-
-    def _compute_jplasma_gradshafranov_default(self) -> None:
         """Compute Grad-Shafranov plasma current profile and update Js using PSI gradients.
 
         Returns:
             None
         """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
 
         point_data = mesh.GetPointData()
         cell_data = mesh.GetCellData()
 
         js_array = ApecAlgorithm._require_array(cell_data, "Js")
-        js_np = np.asarray(vtknp.vtk_to_numpy(js_array), dtype=float)
+        js_np = vtknp.vtk_to_numpy(js_array)
 
         psi_point_array = ApecAlgorithm._require_array(point_data, "PSI")
-        psi_point = np.asarray(vtknp.vtk_to_numpy(psi_point_array), dtype=float).reshape(-1)
+        psi_point = vtknp.vtk_to_numpy(psi_point_array)
 
         psie_array = ApecAlgorithm._require_array(cell_data, "PSIe")
-        psi_elem = np.asarray(vtknp.vtk_to_numpy(psie_array), dtype=float).reshape(-1)
+        psi_elem = vtknp.vtk_to_numpy(psie_array)
 
         # -------------------------------------------------------------------------
-        # 1. Compute magnetic field components (Bx, By) via VTK Gradient Filter on PSI
+        # 1. Interpolate precomputed PSI point gradients to cell centroids
         # -------------------------------------------------------------------------
-        grad_filter = vtk.vtkGradientFilter()
-        grad_filter.SetInputData(mesh)
-        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-        grad_filter.SetResultArrayName("__apec_grad_psi__")
-        grad_filter.Update()
+        ApecAlgorithm._require_array(point_data, "__apec_psi_gradient__")
 
-        # Interpolate computed point gradients to cell centroids
         p2c_filter = vtk.vtkPointDataToCellData()
-        p2c_filter.SetInputConnection(grad_filter.GetOutputPort())
+        p2c_filter.SetInputData(mesh)
         p2c_filter.SetProcessAllArrays(False)
-        p2c_filter.AddPointDataArray("__apec_grad_psi__")
+        p2c_filter.AddPointDataArray("__apec_psi_gradient__")
         p2c_filter.Update()
 
-        grad_cell_data = p2c_filter.GetOutput().GetCellData().GetArray("__apec_grad_psi__")
-        grad_cell_np = np.asarray(vtknp.vtk_to_numpy(grad_cell_data), dtype=float)
+        grad_cell_data = p2c_filter.GetOutput().GetCellData().GetArray("__apec_psi_gradient__")
+        grad_cell_np = vtknp.vtk_to_numpy(grad_cell_data)
 
         dpsi_dr = grad_cell_np[:, 0]
         dpsi_dz = grad_cell_np[:, 1]
 
         centroids_array = ApecAlgorithm._require_array(cell_data, "cell_centroids")
-        centroids = np.asarray(vtknp.vtk_to_numpy(centroids_array), dtype=float)
-        elem_centroid_rad = np.asarray(centroids[:, 0], dtype=float)
+        centroids = vtknp.vtk_to_numpy(centroids_array)
+        elem_centroid_rad = centroids[:, 0]
 
         # Grad-Shafranov magnetic field: B_R = -(1/R) * dPSI/dZ, B_Z = (1/R) * dPSI/dR
         # Note: If your PSI definition includes a 2*pi factor, adjust denominator to (2.0 * np.pi * elem_centroid_rad)
@@ -1578,7 +1431,7 @@ class ApecAlgorithm:
         # 2. Extract domain setup and parameters
         # -------------------------------------------------------------------------
         volume_array = ApecAlgorithm._require_array(cell_data, "cell_volume")
-        cell_volume = np.asarray(vtknp.vtk_to_numpy(volume_array), dtype=float).reshape(-1)
+        cell_volume = vtknp.vtk_to_numpy(volume_array)
 
         psi_magnetic_axis = float(self.status["psi_magnetic_axis"])
         psi_min = float(self.status["psi_2_min"])
@@ -1711,18 +1564,6 @@ class ApecAlgorithm:
         )
 
     def control_currents(self) -> None:
-        """Run control-current update step (or its registered override).
-
-        Returns:
-            None
-        """
-        LOGGER.info("Step: control_currents%s.", " (override)" if self.STEP_CONTROL_CURRENTS in self._step_overrides else "")
-        self._dispatch_step(
-            self.STEP_CONTROL_CURRENTS,
-            self._control_currents_default,
-        )
-
-    def _control_currents_default(self) -> None:
         """Default control-current pipeline: sample B, compute correction, apply Js.
 
         Returns:
@@ -1738,35 +1579,17 @@ class ApecAlgorithm:
         )
 
     def check_convergence(self) -> bool:
-        """Run convergence check step (or its registered override).
+        """Check Picard convergence using max absolute PSI change on all nodes.
 
         Returns:
             bool: True when convergence criterion is satisfied.
         """
-        result = self._dispatch_step(
-            self.STEP_CHECK_CONVERGENCE,
-            self._check_convergence_default,
-        )
-        return bool(result)
-
-    def _check_convergence_default(self) -> bool:
-        """Check Picard convergence using max absolute PSI change on selected nodes.
-
-        Returns:
-            bool: True when convergence criterion is satisfied.
-        """
-        mesh = self._require_equilibrium_mesh()
+        mesh = self.vacuum_chamber_mesh
 
         point_data = mesh.GetPointData()
         psi_array = point_data.GetArray("PSI")
 
-        Selector.select(mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(mesh)
-        selection_array = point_data.GetArray("selection_point")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-
-        psi = np.asarray(vtknp.vtk_to_numpy(psi_array), dtype=float).reshape(-1)
-        current_flux_vector = psi[selected_ids].copy()
+        current_flux_vector = vtknp.vtk_to_numpy(psi_array).copy()
 
         tolerance = float(self.input_parameters["tolerance_value"])
         self.status["flux_tolerance"] = tolerance
@@ -1778,10 +1601,7 @@ class ApecAlgorithm:
             return False
 
         if self._previous_flux_vector.size != current_flux_vector.size:
-            self._previous_flux_vector = current_flux_vector.copy()
-            self.status["flux_norm"] = np.nan
-            self.status["converged"] = False
-            return False
+            raise ValueError("Size mismatch between current and previous flux vectors.")
 
         flux_norm = float(np.max(np.abs(current_flux_vector - self._previous_flux_vector)))
         self._previous_flux_vector = current_flux_vector.copy()
@@ -1795,160 +1615,132 @@ class ApecAlgorithm:
         )
         return converged
 
-    # Backward-compatible alias.
-    def check_poloidal_flux_convergence(self) -> bool:
-        """Backward-compatible alias for :meth:`check_convergence`.
+    def toroidal_average(
+        self,
+        array_name: str,
+        location: str,
+        component: Optional[int] = None,
+    ) -> None:
+        """Average a mapped array component from model mesh into equilibrium mesh."""
+        if location not in ("node", "elem"):
+            raise ValueError("location must be 'node' or 'elem'.")
 
-        Returns:
-            bool: Convergence status.
-        """
-        return self.check_convergence()
-
-    def _toroidal_average(self, psi_only: bool = False) -> None:
-        """Average toroidally mapped values from evolution mesh into equilibrium mesh.
-
-        Args:
-            psi_only: When True, average only PSI values.
-
-        Returns:
-            None
-        """
-        LOGGER.debug("Toroidal average: psi_only=%s.", psi_only)
-        equilibrium_mesh = self._require_equilibrium_mesh()
-        evolution_mesh = self.apec.model.mesh
+        equilibrium_mesh = self.vacuum_chamber_mesh
+        model_mesh = self.apec.model.mesh
         self._set_toroidal_slices()
-        node_slices = self._toroidal_slices_nodes
-        elem_slices = self._toroidal_slices_elems
 
-        eq_point_data = equilibrium_mesh.GetPointData()
-        evol_point_data = evolution_mesh.GetPointData()
+        mapping = self._toroidal_slices_nodes if location == "node" else self._toroidal_slices_elems
+        src_ids = np.asarray(mapping[:, 0], dtype=np.int64)
+        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
 
-        eq_psi_array = eq_point_data.GetArray("PSI")
-        evol_psi_array = evol_point_data.GetArray("PSI")
-        if eq_psi_array is None or evol_psi_array is None:
-            raise ValueError(
-                "Required arrays for toroidal_average are missing (PSI)."
-            )
+        eq_data = equilibrium_mesh.GetPointData() if location == "node" else equilibrium_mesh.GetCellData()
+        model_data = model_mesh.GetPointData() if location == "node" else model_mesh.GetCellData()
+        eq_array = ApecAlgorithm._require_array(eq_data, array_name)
+        model_array = ApecAlgorithm._require_array(model_data, array_name)
 
-        eq_psi = np.asarray(vtknp.vtk_to_numpy(eq_psi_array), dtype=float).reshape(-1)
-        evol_psi = np.asarray(vtknp.vtk_to_numpy(evol_psi_array), dtype=float).reshape(-1)
+        eq_np = vtknp.vtk_to_numpy(eq_array)
+        model_np = vtknp.vtk_to_numpy(model_array)
 
-        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
-        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
-
-        psi_values = np.mean(evol_psi[dst_nodes], axis=1)
-        eq_psi[src_nodes] = psi_values
-        eq_psi_array.Modified()
-
-        if psi_only:
+        if eq_np.ndim == 1:
+            avg_values = np.mean(model_np[dst_ids], axis=1)
+            eq_np[src_ids] = avg_values
+            eq_array.Modified()
             return
 
-        eq_cell_data = equilibrium_mesh.GetCellData()
-        evol_cell_data = evolution_mesh.GetCellData()
+        n_components = eq_np.shape[1]
+        if component is None:
+            for comp in range(n_components):
+                self.toroidal_average(array_name, location, component=comp)
+            return
+        if component < 0 or component >= n_components:
+            raise ValueError(f"Invalid component index {component} for array '{array_name}'.")
 
-        eq_psie_array = eq_cell_data.GetArray("PSIe")
-        evol_psie_array = evol_cell_data.GetArray("PSIe")
-        if (
-            eq_psie_array is None
-            or evol_psie_array is None
-        ):
-            raise ValueError(
-                "Required arrays for toroidal_average are missing "
-                "(PSIe)."
-            )
+        avg_values = np.mean(model_np[dst_ids, component], axis=1)
+        eq_np[src_ids, component] = avg_values
+        eq_array.Modified()
 
-        eq_psie = np.asarray(vtknp.vtk_to_numpy(eq_psie_array), dtype=float).reshape(-1)
-        evol_psie = np.asarray(vtknp.vtk_to_numpy(evol_psie_array), dtype=float).reshape(-1)
+    def toroidal_projection(
+        self,
+        array_name: str,
+        location: str,
+        component: Optional[int] = None,
+    ) -> None:
+        """Project an equilibrium-mesh array component to the mapped model mesh entities."""
+        if location not in ("node", "elem"):
+            raise ValueError("location must be 'node' or 'elem'.")
 
-        src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
-        dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
-
-        psie_values = np.mean(evol_psie[dst_elems], axis=1)
-        eq_psie[src_elems] = psie_values
-        eq_psie_array.Modified()
-
-    def _toroidal_projection_current(self) -> None:
-        """Project equilibrium current state back onto the static/evolution mesh.
-
-        Returns:
-            None
-        """
-        from .coordinate_system import YAxisCylindricalCoordinateSystem
-
-        static_mesh = self.apec.model.mesh
-        equilibrium_mesh = self._require_equilibrium_mesh()
+        equilibrium_mesh = self.vacuum_chamber_mesh
+        model_mesh = self.apec.model.mesh
         self._set_toroidal_slices()
-        node_slices = self._toroidal_slices_nodes
-        elem_slices = self._toroidal_slices_elems
 
-        static_amps_array = static_mesh.GetPointData().GetArray("AMPS")
-        equilibrium_amps_array = equilibrium_mesh.GetPointData().GetArray("AMPS")
-        static_js_array = static_mesh.GetCellData().GetArray("Js")
-        equilibrium_js_array = equilibrium_mesh.GetCellData().GetArray("Js")
+        mapping = self._toroidal_slices_nodes if location == "node" else self._toroidal_slices_elems
+        src_ids = np.asarray(mapping[:, 0], dtype=np.int64)
+        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
 
-        cylindrical = YAxisCylindricalCoordinateSystem()
-        static_amps = (
-            np.asarray(vtknp.vtk_to_numpy(static_amps_array), dtype=float).reshape(-1)
-            if static_amps_array is not None and equilibrium_amps_array is not None
-            else None
-        )
-        equilibrium_amps = (
-            np.asarray(vtknp.vtk_to_numpy(equilibrium_amps_array), dtype=float).reshape(-1)
-            if static_amps_array is not None and equilibrium_amps_array is not None
-            else None
-        )
-        static_js = np.asarray(vtknp.vtk_to_numpy(static_js_array), dtype=float)
-        equilibrium_js = np.asarray(vtknp.vtk_to_numpy(equilibrium_js_array), dtype=float)
+        eq_data = equilibrium_mesh.GetPointData() if location == "node" else equilibrium_mesh.GetCellData()
+        model_data = model_mesh.GetPointData() if location == "node" else model_mesh.GetCellData()
+        eq_array = ApecAlgorithm._require_array(eq_data, array_name)
+        model_array = ApecAlgorithm._require_array(model_data, array_name)
 
-        src_nodes = np.asarray(node_slices[:, 0], dtype=np.int64)
-        dst_nodes = np.asarray(node_slices[:, 1:], dtype=np.int64)
-        src_elems = np.asarray(elem_slices[:, 0], dtype=np.int64)
-        dst_elems = np.asarray(elem_slices[:, 1:], dtype=np.int64)
-        if static_amps is not None and equilibrium_amps is not None:
-            toroidal_node_count = dst_nodes.shape[1]
-            if toroidal_node_count <= 0:
-                raise ValueError("Toroidal node map has no target node columns.")
+        eq_np = vtknp.vtk_to_numpy(eq_array)
+        model_np = vtknp.vtk_to_numpy(model_array)
 
-            flat_dst_nodes = dst_nodes.reshape(-1)
-            valid_node_mask = flat_dst_nodes >= 0
-            flat_dst_nodes = flat_dst_nodes[valid_node_mask]
-            projected_amps = np.broadcast_to(
-                equilibrium_amps[src_nodes, np.newaxis] / float(toroidal_node_count),
-                dst_nodes.shape,
-            ).reshape(-1)[valid_node_mask]
+        flat_dst = dst_ids.reshape(-1)
+        valid = flat_dst >= 0
+        flat_dst = flat_dst[valid]
+        if flat_dst.size == 0:
+            return
 
-            static_amps[np.unique(flat_dst_nodes)] = 0.0
-            np.add.at(static_amps, flat_dst_nodes, projected_amps)
-            static_amps_array.Modified()
+        if eq_np.ndim == 1:
+            projected = np.broadcast_to(eq_np[src_ids, np.newaxis], dst_ids.shape).reshape(-1)[valid]
+            model_np[flat_dst] = projected
+            model_array.Modified()
+            return
 
-        projected_js = equilibrium_js[src_elems]
-        static_mesh_is_3d = static_mesh.GetMaxSpatialDimension() > 2
-        if static_mesh_is_3d:
-            projected_js = projected_js[:, [0, 2, 1]]
+        n_components = eq_np.shape[1]
+        if component is None:
+            for comp in range(n_components):
+                self.toroidal_projection(array_name, location, component=comp)
+            return
+        if component < 0 or component >= n_components:
+            raise ValueError(f"Invalid component index {component} for array '{array_name}'.")
 
-        if static_mesh_is_3d:
-            flat_dst_elems = dst_elems.reshape(-1)
-            local_js = np.broadcast_to(
-                projected_js[:, np.newaxis, :],
-                (*dst_elems.shape, 3),
-            ).reshape(-1, 3)
-            elem_positions = ModelEdit._get_positions(static_mesh, "elem")
-            static_js[flat_dst_elems] = cylindrical.vector_components_to_global(
-                local_js,
-                elem_positions[flat_dst_elems],
-            )
-            selection_mask = np.zeros(static_mesh.GetNumberOfCells(), dtype=bool)
-            selection_mask[flat_dst_elems] = True
-            Selector.apply_boolean_selection_mask(
-                selection_mask,
-                static_mesh.GetCellData(),
-                "elem",
-                "s",
-            )
-        else:
-            static_js[dst_elems] = projected_js[:, np.newaxis, :]
+        projected = np.broadcast_to(eq_np[src_ids, component][:, np.newaxis], dst_ids.shape).reshape(-1)[valid]
+        model_np[flat_dst, component] = projected
+        model_array.Modified()
 
-        static_js_array.Modified()
+    def _swap_projected_js_components_on_model_slices(self) -> None:
+        """Swap projected model Js components on mapped destination element ids.
+
+        Applies [0, 2, 1] component reordering only for 3D static meshes.
+        """
+        model_mesh = self.apec.model.mesh
+        static_mesh_is_3d = model_mesh.GetMaxSpatialDimension() > 2
+        if not static_mesh_is_3d:
+            return
+
+        self._set_toroidal_slices()
+
+        mapping = self._toroidal_slices_elems
+        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
+
+        model_data = model_mesh.GetCellData()
+        model_array = ApecAlgorithm._require_array(model_data, "Js")
+
+        model_np = vtknp.vtk_to_numpy(model_array)
+        if model_np.ndim != 2 or model_np.shape[1] < 3:
+            raise ValueError("Expected vector Js array with at least 3 components.")
+
+        flat_dst = dst_ids.reshape(-1)
+        valid = flat_dst >= 0
+        if not np.any(valid):
+            return
+
+        dst = flat_dst[valid]
+        model_np[dst, :] = model_np[dst][:, [0, 2, 1]]
+        Selector.select(model_mesh, "ID", np.unique(dst), type="elem")
+        ModelEdit.map_vector_field_to_global_components(model_mesh, "Js", YAxisCylindricalCoordinateSystem(), "elem", True)
+        model_array.Modified()
 
     def _append_iteration_diagnostics(
         self,
@@ -1975,7 +1767,7 @@ class ApecAlgorithm:
         write_header = (not os.path.exists(csv_path)) or os.path.getsize(csv_path) == 0
         row_df.to_csv(csv_path, mode="a", header=write_header, index=False)
 
-    def _calculate_poloidal_flux(self) -> None:
+    def calculate_poloidal_flux(self) -> None:
         """Update Ae/PSI/PSIe fields from current vector-potential solution arrays.
 
         Returns:
@@ -1991,6 +1783,84 @@ class ApecAlgorithm:
             coordinate_system=YAxisCylindricalCoordinateSystem(),
         )
 
+    def _run_picard_loop(
+        self,
+        *,
+        solve_label: str,
+        equilibrium_flag: bool,
+    ) -> bool:
+        """Shared Picard-loop runner for equilibrium/evolution solves.
+
+        Args:
+            solve_label: Human-readable solve label for logs/errors.
+            include_control_currents: Whether to run control-current update.
+
+        Returns:
+            bool: True when convergence is reached.
+        """
+        max_picard_iterations = max(
+            1, int(self.input_parameters["max_picard_iterations"])
+        )
+        self.status["converged"] = False
+
+        if self._first_absolute_iteration:
+            self._set_toroidal_slices()
+            self._cache_halo_boundary_graph()
+
+        for iteration in range(max_picard_iterations):
+            self.status["picard_iteration"] = iteration + 1
+            LOGGER.info(
+                "%s Picard iteration %d/%d.",
+                solve_label,
+                self.status["picard_iteration"],
+                max_picard_iterations,
+            )
+
+            if not self._first_absolute_iteration:
+                self._compute_psi_derivatives()
+                self.find_separatrix()
+                self.compute_jplasma_gradshafranov()
+                if equilibrium_flag:
+                    self.control_currents()
+            else:
+                self.check_convergence()
+
+            self.toroidal_projection("Js", "elem")
+            self._swap_projected_js_components_on_model_slices()
+            self.toroidal_projection("AMPS", "node")
+            self.apec.solve()
+            self.calculate_poloidal_flux()
+            self.toroidal_average("PSI", location="node")
+            self.toroidal_average("PSIe", "elem")
+
+            converged = self.check_convergence()
+            if not equilibrium_flag and self._first_absolute_iteration:
+                converged = True
+            self._append_iteration_diagnostics(converged)
+            self._first_absolute_iteration = False
+            if converged:
+                self.status["converged"] = True
+                LOGGER.info(
+                    "%s solve converged at iteration %d (flux_norm=%s).",
+                    solve_label,
+                    self.status["picard_iteration"],
+                    self.status["flux_norm"],
+                )
+                return True
+
+        self.status["converged"] = False
+        LOGGER.error(
+            "%s solve did not converge after %d iterations (last flux_norm=%s).",
+            solve_label,
+            max_picard_iterations,
+            self.status["flux_norm"],
+        )
+        raise RuntimeError(
+            f"{solve_label} solve did not converge after "
+            f"{max_picard_iterations} Picard iterations "
+            f"(last flux metric: {self.status['flux_norm']})."
+        )
+
     def equilibrium_solve(self) -> bool:
         """Run the equilibrium Picard loop until convergence or iteration limit.
 
@@ -2003,53 +1873,10 @@ class ApecAlgorithm:
 
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-        self.equilibrium_mesh = self.apec.model.mesh
-        if self._first_absolute_iteration:
-            self._cache_halo_boundary_graph()
-        max_picard_iterations = max(
-            1, int(self.input_parameters["max_picard_iterations"])
-        )
-        self.status["converged"] = False
-
-        for iteration in range(max_picard_iterations):
-            self.status["picard_iteration"] = iteration + 1
-            LOGGER.info(
-                "Equilibrium Picard iteration %d/%d.",
-                self.status["picard_iteration"],
-                max_picard_iterations,
-            )
-
-            if not self._first_absolute_iteration:
-                self.find_separatrix()
-                self.compute_jplasma_gradshafranov()
-                self.control_currents()
-
-            self.apec.solve()
-            self._calculate_poloidal_flux()
-
-            converged = self.check_convergence()
-            # self.apec.write_output()
-            self._append_iteration_diagnostics(converged)
-            if converged:
-                self.status["converged"] = True
-                LOGGER.info(
-                    "Equilibrium solve converged at iteration %d (flux_norm=%s).",
-                    self.status["picard_iteration"],
-                    self.status["flux_norm"],
-                )
-                return True
-            self._first_absolute_iteration = False
-
-        self.status["converged"] = False
-        LOGGER.error(
-            "Equilibrium solve did not converge after %d iterations (last flux_norm=%s).",
-            max_picard_iterations,
-            self.status["flux_norm"],
-        )
-        raise RuntimeError(
-            "Equilibrium solve did not converge after "
-            f"{max_picard_iterations} Picard iterations "
-            f"(last flux metric: {self.status['flux_norm']})."
+        self.vacuum_chamber_mesh = self.apec.model.mesh
+        return self._run_picard_loop(
+            solve_label="Equilibrium",
+            equilibrium_flag=True,
         )
 
     def evolution_solve(self) -> bool:
@@ -2062,71 +1889,9 @@ class ApecAlgorithm:
         if self.apec.solver is None:
             raise RuntimeError("No solver session available. Call load_model_into_solver() before evolution_solve().")
 
-        equilibrium_mesh = self._require_equilibrium_mesh()
-
         if self._first_absolute_iteration:
             self._clear_diagnostics_file()
-            Selector.select(equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-            Selector.nsle(equilibrium_mesh, mode="s")
-            Selector.select_all(self.apec.model.mesh)
-            self._set_toroidal_slices()
-            self._cache_halo_boundary_graph()
-
-        max_picard_iterations = max(
-            1, int(self.input_parameters["max_picard_iterations"])
-        )
-
-        for iteration in range(max_picard_iterations):
-            self.status["picard_iteration"] = iteration + 1
-            LOGGER.info(
-                "Evolution Picard iteration %d/%d.",
-                self.status["picard_iteration"],
-                max_picard_iterations,
-            )
-
-            if not self._first_absolute_iteration:
-                self._toroidal_average()
-                self.find_separatrix()
-                self.compute_jplasma_gradshafranov()
-
-                self._toroidal_projection_current()
-                self.apec.solve()
-                self._calculate_poloidal_flux()
-                # self.apec.write_output()
-
-                self._toroidal_average(psi_only=True)
-
-                converged = self.check_convergence()
-                self._append_iteration_diagnostics(
-                    converged,
-                )
-                if converged:
-                    self.status["converged"] = True
-                    LOGGER.info(
-                        "Evolution solve converged at iteration %d (flux_norm=%s).",
-                        self.status["picard_iteration"],
-                        self.status["flux_norm"],
-                    )
-                    return True
-            else:
-                self._toroidal_projection_current()
-                self.apec.solve()
-                self._calculate_poloidal_flux()
-                # self.apec.write_output()
-                self.check_convergence()
-                self._first_absolute_iteration = False
-                self.status["converged"] = True
-                LOGGER.info("Evolution solve completed initial absolute iteration.")
-                return True
-
-        self.status["converged"] = False
-        LOGGER.error(
-            "Evolution solve did not converge after %d iterations (last flux_norm=%s).",
-            max_picard_iterations,
-            self.status["flux_norm"],
-        )
-        raise RuntimeError(
-            "Evolution solve did not converge after "
-            f"{max_picard_iterations} Picard iterations "
-            f"(last flux metric: {self.status['flux_norm']})."
+        return self._run_picard_loop(
+            solve_label="Evolution",
+            equilibrium_flag=False,
         )

@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from apec_m.model_edit import ModelEdit
+from apec_m.apec_m_model import APEC_M_Model
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
@@ -11,7 +11,7 @@ apec = APEC_M()
 
 apec_evolution_mesh = "ITER_2D_APEC_evol_coils"
 
-evol_filepath = os.path.join(os.getcwd(),"tests", apec_evolution_mesh, apec_evolution_mesh + ".vtu")
+evol_filepath = apec_evolution_mesh + ".vtu"
 # Read the output of the equilibrium analysis
 static_mesh_filepath = os.path.join(
     os.getcwd(),
@@ -23,7 +23,8 @@ static_mesh_filepath = os.path.join(
 
 
 apec.read_model(evol_filepath)
-apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, reset_arrays=False)
+output_apec_equilibrium = APEC_M_Model.read_model(static_mesh_filepath)
+apec.algorithm.vacuum_chamber_mesh = output_apec_equilibrium.mesh
 
 apec.model.read_excel("input_template.xlsx")
 
@@ -32,13 +33,8 @@ Selector.select_all(apec.model.mesh)
 Selector.nsel_ext(apec.model.mesh)
 Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
-# 1. Build source->destination element map in VACUUM_CHAMBER using toroidal slices
-# Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "VACUUM_CHAMBER", 1, type="elem", mode="s")
-# Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "COILS", 1, type="elem", mode="a")
-# Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-
 # 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] through map ids
-jt_z_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Js"))
+jt_z_array = vtknp.vtk_to_numpy(output_apec_equilibrium.mesh.GetCellData().GetArray("Js"))
 js_array = vtknp.vtk_to_numpy(apec.model.mesh.GetCellData().GetArray("Js"))
 
 js_array[:] = jt_z_array
@@ -56,12 +52,12 @@ for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
     n_turns = apec.model.constants[mask]["TURNS"].values[0]
     resistance = apec.model.constants[mask]["R"].values[0]
     Selector.select(
-        apec.algorithm.equilibrium_mesh, comp, 1, type="elem", mode="s"
+        output_apec_equilibrium.mesh, comp, 1, type="elem", mode="s"
     )
     selection_mask = vtknp.vtk_to_numpy(
-        apec.algorithm.equilibrium_mesh.GetCellData().GetArray("selection_cell")
+        output_apec_equilibrium.mesh.GetCellData().GetArray("selection_cell")
     )
-    jt_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Jt"))
+    jt_array = vtknp.vtk_to_numpy(output_apec_equilibrium.mesh.GetCellData().GetArray("Jt"))
     jt_z = jt_array[selection_mask == 1, 2][0]
     cs = apec.model.constants[mask]["CS"].values[0]
     current = cs * jt_z
@@ -80,12 +76,12 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
     n_turns = apec.model.constants[mask]["TURNS"].values[0]
     resistance = apec.model.constants[mask]["R"].values[0]
     Selector.select(
-        apec.algorithm.equilibrium_mesh, comp, 1, type="elem", mode="s"
+        output_apec_equilibrium.mesh, comp, 1, type="elem", mode="s"
     )
     selection_mask = vtknp.vtk_to_numpy(
-        apec.algorithm.equilibrium_mesh.GetCellData().GetArray("selection_cell")
+        output_apec_equilibrium.mesh.GetCellData().GetArray("selection_cell")
     )
-    jt_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Jt"))
+    jt_array = vtknp.vtk_to_numpy(output_apec_equilibrium.mesh.GetCellData().GetArray("Jt"))
     jt_z = jt_array[selection_mask == 1, 2][0]
     cs = apec.model.constants[mask]["CS"].values[0]
     current = cs * jt_z

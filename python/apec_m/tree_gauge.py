@@ -21,15 +21,15 @@
 #           independently fixed to zero. Non-slave tree points are zeroed as
 #           before.
 #
+#   [CHG-4] Tree construction uses a weighted multi-source shortest-path tree
+#           (Dijkstra) on the non-conducting corner-node graph, with edge
+#           cost = length * (1 + aspect_ratio_alpha * penalty).
+#
 # Carried over from the previous revision:
 #
-#   [FIX-3] BFS root selection is true multi-source: ALL start-surface seeds
-#           belonging to a connected component act as simultaneous roots.
-#           This means you can freely pass point ids from several different
-#           physical surfaces (e.g. multiple PEC boundaries bounding one air
-#           region) in a single `start_surface_point_ids` set — each will
-#           anchor its own local branch of the tree rather than only the
-#           first-encountered one winning, which keeps tree paths short.
+#   [FIX-3] Root selection is true multi-source: all start-surface seeds in
+#           a connected component act as simultaneous roots for that
+#           component; components with no seed fall back to an arbitrary root.
 #
 #   [FIX-4] Diagnostics: `info` reports connected-component count and
 #           validates the spanning-forest identity
@@ -61,7 +61,7 @@
 #   tree_arr, cotree_arr, info = build_tree_cotree_for_midside_edges(
 #       ugrid,
 #       non_conducting_point_ids={...},
-#       start_surface_point_ids={...},          # can span multiple surfaces
+#       start_surface_point_ids={...},          # multi-source seeds
 #       periodic_point_coupling=periodic_map,   # corner + midside ids mixed
 #   )
 #   ugrid.GetPointData().AddArray(tree_arr)
@@ -69,9 +69,9 @@
 #
 # (c) Provide as-is; tailor as needed for your mesh conventions.
 
-from collections import deque
 from typing import Dict, Iterable, Mapping, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
+import heapq
 import numpy as np
 import vtk
 import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
@@ -269,6 +269,7 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
+        aspect_ratio_alpha: float = 0.25,
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
         periodic_slave_name: str = "PERIODIC_SLAVE",
@@ -282,19 +283,20 @@ class TreeGauge:
             non_conducting_point_ids: Point ids for non-conducting regions where gauge tree constraints are built.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: Point ids used as BFS roots (boundary-first traversal).
+            start_surface_point_ids: Multi-source seeds for the weighted
+                shortest-path (Dijkstra) builder.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
-                You can freely combine point ids from several distinct physical
-                surfaces here (e.g. two different PEC boundaries bounding the
-                same air region) — every seed that lands in a given connected
-                component acts as a simultaneous root for that component, so
-                using multiple surfaces only shortens the resulting tree, it
-                never conflicts. If omitted, defaults to currently selected nodes.
+                Components with no seed fall back to an arbitrary local root.
             periodic_point_coupling: [CHG-2] Unified periodic coupling input
                 containing BOTH corner and midside slave->master pairs mixed
                 together. Accepts a dict-like mapping, an (N, 2) ndarray, or a
                 CP_* PointData array name (grouped by matching CP value,
                 corner and midside groups kept separate automatically).
+            aspect_ratio_alpha: Weight of the aspect-ratio penalty in
+                weighted shortest-path traversal. Edge weight is
+                length * (1 + alpha * penalty), where penalty is the
+                average of max(0, aspect_ratio - 1) over cells incident
+                to that edge.
             tree_name: Name for the tree output array (PointData).
             cotree_name: Name for the cotree output array (PointData).
             periodic_slave_name: Name for a PointData array marking
@@ -350,9 +352,19 @@ class TreeGauge:
         cotree_np = np.zeros(npts, dtype=np.int32)
         periodic_slave_np = np.zeros(npts, dtype=np.int32)
 
+        points_data = ugrid.GetPoints()
+        if points_data is None:
+            raise ValueError("Mesh has no points data.")
+        points_np = vtknp.vtk_to_numpy(points_data.GetData())
+
+        if aspect_ratio_alpha < 0.0:
+            raise ValueError("aspect_ratio_alpha must be >= 0.")
+
         edge_map: Dict[int, Tuple[int, int]] = {}
         raw_edge_map: Dict[int, Tuple[int, int]] = {}
         canonical_to_raw_mids: Dict[int, Set[int]] = {}
+        edge_penalty_accum: Dict[int, float] = {}
+        edge_penalty_count: Dict[int, int] = {}
         unknown_cell_types: Dict[int, int] = {}
 
         for ci in range(ugrid.GetNumberOfCells()):
@@ -363,6 +375,23 @@ class TreeGauge:
                 continue
             corner_pairs, mid_locals = EDGE_TABLES[ctype]
             ids = cell.GetPointIds()
+
+            # Cell-local aspect-ratio proxy from corner-edge lengths.
+            # This works uniformly for the supported quadratic cell families.
+            local_lengths: list[float] = []
+            for v0_local, v1_local in corner_pairs:
+                p0 = points_np[ids.GetId(v0_local)]
+                p1 = points_np[ids.GetId(v1_local)]
+                local_lengths.append(float(np.linalg.norm(p0 - p1)))
+            if local_lengths:
+                min_len = min(local_lengths)
+                max_len = max(local_lengths)
+                eps = 1.0e-12
+                aspect_ratio = max_len / max(min_len, eps)
+                cell_penalty = max(0.0, aspect_ratio - 1.0)
+            else:
+                cell_penalty = 0.0
+
             for (v0_local, v1_local), mid_local in zip(corner_pairs, mid_locals):
                 v0 = ids.GetId(v0_local)
                 v1 = ids.GetId(v1_local)
@@ -372,6 +401,8 @@ class TreeGauge:
                 mid = TreeGauge._canonical_id(raw_mid, slave_to_master)
 
                 canonical_to_raw_mids.setdefault(mid, set()).add(raw_mid)
+                edge_penalty_accum[mid] = edge_penalty_accum.get(mid, 0.0) + cell_penalty
+                edge_penalty_count[mid] = edge_penalty_count.get(mid, 0) + 1
 
                 if mid not in edge_map:
                     edge_map[mid] = (v0, v1)
@@ -414,80 +445,71 @@ class TreeGauge:
             if (a in raw_non_conducting) and (b in raw_non_conducting)
         )
 
-        adjacency: Dict[int, list[Tuple[int, int]]] = {}
+        adjacency: Dict[int, list[Tuple[int, int, float]]] = {}
         for mid, (a, b) in eligible_edges.items():
-            adjacency.setdefault(a, []).append((b, mid))
-            adjacency.setdefault(b, []).append((a, mid))
+            length = float(np.linalg.norm(points_np[a] - points_np[b]))
+            if (not np.isfinite(length)) or (length <= 0.0):
+                # Keep graph connected even for degenerate edges.
+                length = 1.0e-12
+            penalty_count = edge_penalty_count.get(mid, 0)
+            penalty = (
+                edge_penalty_accum.get(mid, 0.0) / float(penalty_count)
+                if penalty_count > 0
+                else 0.0
+            )
+            weight = length * (1.0 + aspect_ratio_alpha * penalty)
+            adjacency.setdefault(int(a), []).append((int(b), int(mid), weight))
+            adjacency.setdefault(int(b), []).append((int(a), int(mid), weight))
 
         edge_state: Dict[int, int] = {}  # 1=tree, 2=cotree
-        visited: Set[int] = set()
-        queue: deque[int] = deque()
+        num_components = 0
+        remaining_nodes: Set[int] = set(adjacency.keys())
 
-        # Union-Find over graph nodes. Each seed starts as its OWN singleton
-        # set (they are NOT pre-merged with each other) so that an edge
-        # directly bridging two still-separate seed-rooted fragments is
-        # correctly recognized as a genuine tree edge instead of always
-        # being discarded as a "revisit". See dsu_bug note in repo memory.
-        dsu_parent: Dict[int, int] = {}
+        while remaining_nodes:
+            num_components += 1
+            root = min(remaining_nodes)
 
-        def dsu_find(x: int) -> int:
-            dsu_parent.setdefault(x, x)
-            while dsu_parent[x] != x:
-                dsu_parent[x] = dsu_parent[dsu_parent[x]]
-                x = dsu_parent[x]
-            return x
+            stack = [root]
+            component_nodes: Set[int] = {root}
+            while stack:
+                cur = stack.pop()
+                for nbr, _mid, _w in adjacency.get(cur, []):
+                    if nbr not in component_nodes:
+                        component_nodes.add(nbr)
+                        stack.append(nbr)
+            remaining_nodes.difference_update(component_nodes)
 
-        def dsu_union(a: int, b: int) -> bool:
-            ra, rb = dsu_find(a), dsu_find(b)
-            if ra == rb:
-                return False
-            dsu_parent[rb] = ra
-            return True
+            component_seeds = sorted(n for n in component_nodes if n in start_surface)
+            if not component_seeds:
+                component_seeds = [root]
 
-        # True multi-source BFS: all seeds belonging to the same connected
-        # component act as simultaneous roots. Pass point ids from as many
-        # distinct physical surfaces as you like in start_surface_point_ids;
-        # each becomes its own local root within its component, so the tree
-        # stays shallow instead of only the first-encountered seed winning.
-        def run_multi_source_bfs(seeds: Iterable[int]) -> None:
-            local_seeds = [s for s in seeds if s not in visited]
-            if not local_seeds:
-                return
-            for s in local_seeds:
-                visited.add(s)
-                dsu_find(s)
-                if s in adjacency:
-                    queue.append(s)
-            while queue:
-                node = queue.popleft()
-                for nbr, mid in adjacency.get(node, []):
-                    if mid in edge_state:
-                        continue
-                    if nbr not in visited:
-                        edge_state[mid] = 1
-                        visited.add(nbr)
-                        dsu_union(node, nbr)
-                        queue.append(nbr)
-                    else:
-                        # nbr already visited: this bridges two distinct
-                        # multi-source fragments (tree edge, merges them) or
-                        # closes a real cycle within one fragment (cotree).
-                        # Without this DSU check every seed-adjacent edge
-                        # would be miscounted as a cycle, undercounting the
-                        # tree by (#seeds - #true_components) edges.
-                        if dsu_union(node, nbr):
-                            edge_state[mid] = 1
-                        else:
-                            edge_state[mid] = 2
+            dist: Dict[int, float] = {n: float("inf") for n in component_nodes}
+            parent: Dict[int, Tuple[int, int]] = {}
+            heap: list[Tuple[float, int]] = []
+            for seed in component_seeds:
+                dist[seed] = 0.0
+                heapq.heappush(heap, (0.0, seed))
 
-        # Primary pass: all boundary/reference seeds fire together.
-        run_multi_source_bfs(s for s in sorted(start_surface) if s in non_conducting)
+            tol = 1.0e-14
+            while heap:
+                dcur, node = heapq.heappop(heap)
+                if dcur > dist[node] + tol:
+                    continue
 
-        # Any remaining components (no start-surface seed reached them) get
-        # an arbitrary single root each.
-        for node in sorted(adjacency.keys()):
-            if node not in visited:
-                run_multi_source_bfs([node])
+                for nbr, mid, weight in adjacency.get(node, []):
+                    nd = dcur + weight
+                    if nd < dist[nbr] - tol:
+                        dist[nbr] = nd
+                        parent[nbr] = (node, mid)
+                        heapq.heappush(heap, (nd, nbr))
+                    elif abs(nd - dist[nbr]) <= tol and nbr in parent:
+                        old_parent_node, old_mid = parent[nbr]
+                        if (mid < old_mid) or (mid == old_mid and node < old_parent_node):
+                            parent[nbr] = (node, mid)
+
+            component_tree_mids = {mid for _node, mid in parent.values()}
+            for mid in component_tree_mids:
+                edge_state[mid] = 1
 
         for mid in eligible_edges:
             if mid not in edge_state:
@@ -522,40 +544,48 @@ class TreeGauge:
 
         num_edges_after_periodic_collapse = len(eligible_edges)
 
-        # Spanning-forest identity check: for each connected component,
-        # #tree_edges_in_component == #nodes_in_component - 1. Count
-        # connected components directly (cheap, same complexity as the BFS
-        # already performed).
-        num_components = 0
-        visited_for_count: Set[int] = set()
-        for node in adjacency.keys():
-            if node in visited_for_count:
-                continue
-            num_components += 1
-            stack = [node]
-            visited_for_count.add(node)
-            while stack:
-                cur = stack.pop()
-                for nbr, _mid in adjacency.get(cur, []):
-                    if nbr not in visited_for_count:
-                        visited_for_count.add(nbr)
-                        stack.append(nbr)
+        # Spanning-forest identity check for multi-source Dijkstra:
+        # in each connected component, every seed is a root, so
+        # #tree_edges_in_component == #nodes_in_component - #roots_in_component.
+        # With no seeds in a component we inject one fallback root.
 
         num_tree_canonical = sum(1 for s in edge_state.values() if s == 1)
         num_nodes_in_graph = len(adjacency)
-        expected_tree = num_nodes_in_graph - num_components if num_nodes_in_graph else 0
+        num_roots_total = 0
+        remaining_nodes_for_roots: Set[int] = set(adjacency.keys())
+        while remaining_nodes_for_roots:
+            root = min(remaining_nodes_for_roots)
+            stack = [root]
+            component_nodes: Set[int] = {root}
+            while stack:
+                cur = stack.pop()
+                for nbr, _mid, _w in adjacency.get(cur, []):
+                    if nbr not in component_nodes:
+                        component_nodes.add(nbr)
+                        stack.append(nbr)
+            remaining_nodes_for_roots.difference_update(component_nodes)
+
+            roots_in_component = sum(1 for n in component_nodes if n in start_surface)
+            num_roots_total += roots_in_component if roots_in_component > 0 else 1
+
+        expected_tree = num_nodes_in_graph - num_roots_total if num_nodes_in_graph else 0
         tree_identity_ok = (num_tree_canonical == expected_tree)
         if not tree_identity_ok:
             LOGGER.error(
                 "Tree-cotree identity check FAILED: got %d tree edges, expected "
-                "%d (= %d nodes - %d components). This indicates a bug in the "
-                "gauge graph construction (e.g. wrong non-conducting/PEC "
-                "classification or a periodic-mapping error) — do not trust "
-                "this gauge until resolved.",
-                num_tree_canonical, expected_tree, num_nodes_in_graph, num_components,
+                "%d (= %d nodes - %d roots across %d components). This indicates "
+                "a bug in the gauge graph construction (e.g. wrong "
+                "non-conducting/PEC classification or a periodic-mapping error) "
+                "— do not trust this gauge until resolved.",
+                num_tree_canonical,
+                expected_tree,
+                num_nodes_in_graph,
+                num_roots_total,
+                num_components,
             )
 
         info = {
+            "tree_build_algorithm": "multi_source_weighted_dijkstra",
             "num_points": npts,
             "num_cells": ugrid.GetNumberOfCells(),
             "num_edges": num_edges_before_periodic_collapse,
@@ -566,9 +596,11 @@ class TreeGauge:
             "skipped_unknown_cells": sum(unknown_cell_types.values()),
             "num_periodic_couplings": len(slave_to_master),
             "num_components": num_components,
+            "num_roots": num_roots_total,
             "num_tree_canonical": num_tree_canonical,
             "expected_tree_canonical": expected_tree,
             "tree_identity_ok": tree_identity_ok,
+            "aspect_ratio_alpha": float(aspect_ratio_alpha),
         }
         return tree_arr, cotree_arr, info
 
@@ -578,6 +610,7 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
+        aspect_ratio_alpha: float = 0.25,
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
         periodic_slave_name: str = "PERIODIC_SLAVE",
@@ -590,6 +623,7 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_point_ids,
             start_surface_point_ids=start_surface_point_ids,
             periodic_point_coupling=periodic_point_coupling,
+            aspect_ratio_alpha=aspect_ratio_alpha,
             tree_name=tree_name,
             cotree_name=cotree_name,
             periodic_slave_name=periodic_slave_name,
@@ -606,6 +640,7 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
+        aspect_ratio_alpha: float = 0.25,
         array_name: str = "_Az",
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
@@ -630,12 +665,16 @@ class TreeGauge:
             non_conducting_point_ids: Point ids where tree constraints are computed.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
                 If omitted, defaults to nodes attached to currently selected elements (Selector.nsle).
-            start_surface_point_ids: BFS root point ids; may span multiple surfaces.
+            start_surface_point_ids: Multi-source seeds for the weighted
+                shortest-path (Dijkstra) builder.
                 Mixed corner+midside inputs are accepted; midside ids are ignored.
-                If omitted, defaults to currently selected nodes.
+                Components with no seed fall back to an arbitrary local root.
             periodic_point_coupling: Unified periodic coupling (corner and
                 midside pairs mixed) as dict-like, ndarray (N,2), or CP_*
                 PointData array name.
+            aspect_ratio_alpha: Weight of aspect-ratio penalty in the
+                weighted shortest-path edge cost, where
+                edge_cost = length * (1 + alpha * penalty).
             periodic_slave_name: Name of the PointData array marking
                 periodic-slave midside nodes.
 
@@ -659,7 +698,8 @@ class TreeGauge:
         )
 
         LOGGER.info(
-            "Tree gauge input: non-conducting points=%d, start-surface points=%d",
+            "Tree gauge input: non-conducting points=%d, start-surface points=%d "
+            "(used as multi-source seeds for weighted Dijkstra)",
             -1 if non_conducting_points is None else len(non_conducting_points),
             -1 if start_surface_points is None else len(start_surface_points),
         )
@@ -669,6 +709,7 @@ class TreeGauge:
             non_conducting_point_ids=non_conducting_points,
             start_surface_point_ids=start_surface_points,
             periodic_point_coupling=periodic_point_coupling,
+            aspect_ratio_alpha=aspect_ratio_alpha,
             tree_name=tree_name,
             cotree_name=cotree_name,
             periodic_slave_name=periodic_slave_name,

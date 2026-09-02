@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
 from numbers import Real
 
 if __package__ in (None, ""):
@@ -61,17 +60,7 @@ def start_apec_for_paraview(num_threads: int = 1) -> APEC_M:
     setup_paraview_console()
     log_paraview_init(LOGGER)
     apec = APEC_M(num_threads=num_threads)
-
-    # Keep ParaView workflows isolated from the console's launch directory.
-    session_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    paraview_workdir = os.path.join(
-        os.path.expanduser("~"),
-        ".apec_m",
-        "paraview",
-        f"session_{session_tag}_{os.getpid()}",
-    )
-    apec.working_directory = paraview_workdir
-    log_paraview_working_directory(LOGGER, apec.working_directory)
+    log_paraview_working_directory(LOGGER, os.getcwd())
     return apec
 
 

@@ -2,6 +2,7 @@ from apec_m import APEC_M
 import numpy as np
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
+from apec_m.apec_m_model import APEC_M_Model
 from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
 import pandas as pd
@@ -32,7 +33,8 @@ extr_angle = 2.0
 
 # # Read the evolution mesh
 apec.read_model(filepath)
-apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
+output_apec_equilibrium = APEC_M_Model.read_model(output_eq_mesh_filepath)
+apec.algorithm.vacuum_chamber_mesh = output_apec_equilibrium.mesh
 
 apec.model.read_excel("input_template.xlsx")
 
@@ -52,6 +54,7 @@ Selector.set_value_on_selection(apec.model.mesh, "_Az", 0.0)
 TreeGauge.tree_gauge(
     apec.model.mesh,
     periodic_point_coupling="CP_0",
+    aspect_ratio_alpha=0.0
 )
 
 # Ground Vacuum Vessel
@@ -68,8 +71,8 @@ Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 1, type="e
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
 for coil in coils:
-    Selector.select(apec.algorithm.equilibrium_mesh, coil, 1, type="elem", mode="s")
-    js_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Js", 2, type="elem")[0]
+    Selector.select(output_apec_equilibrium.mesh, coil, 1, type="elem", mode="s")
+    js_z = Selector.get_selection_values(output_apec_equilibrium.mesh, "Js", 2, type="elem")[0]
     Selector.select(apec.model.mesh, coil, 1, type="elem", mode="s")
     Selector.set_value_on_selection(apec.model.mesh, "Js", js_z, 1, type="elem")
 

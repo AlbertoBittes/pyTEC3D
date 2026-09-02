@@ -1,5 +1,4 @@
 from apec_m import APEC_M
-from apec_m.model_edit import ModelEdit
 from apec_m.selector import Selector
 import os
 

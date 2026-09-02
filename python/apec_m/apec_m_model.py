@@ -1,7 +1,8 @@
 import copy
 import os
+import re
 from os import PathLike
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Dict, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -50,8 +51,8 @@ class APEC_M_Model:
         if mesh_name is not None and not isinstance(mesh_name, str):
             raise TypeError("mesh_name must be a str or None.")
 
-        self._mesh: Optional[vtk.vtkUnstructuredGrid] = mesh
-        self._mesh_name: Optional[str] = mesh_name
+        self._mesh: Optional[vtk.vtkUnstructuredGrid] = None
+        self._mesh_name: Optional[str] = mesh_name if mesh_name is not None else "model"
 
         self.element_types: pd.DataFrame = pd.DataFrame(
             columns=list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
@@ -69,6 +70,8 @@ class APEC_M_Model:
         self.solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self.coordinate_systems: Dict[int, Any] = {}
         self.bh_curves: Dict[int, np.ndarray] = {}
+        if mesh is not None:
+            self.mesh = mesh
 
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
@@ -78,7 +81,10 @@ class APEC_M_Model:
 
     @mesh.setter
     def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
-        raise AttributeError("Direct mesh assignment is not allowed. Use read_model().")
+        if not isinstance(value, vtk.vtkUnstructuredGrid):
+            raise TypeError("mesh must be a vtk.vtkUnstructuredGrid.")
+
+        self._mesh = value
 
     @staticmethod
     def _table_rows_array_name(table_name: str) -> str:
@@ -95,6 +101,27 @@ class APEC_M_Model:
     @staticmethod
     def _solver_setting_array_name(key: str) -> str:
         return f"{FIELD_PREFIX}SOLVER_SETTING_{key}"
+
+    @staticmethod
+    def _time_step_array_name(key: str) -> str:
+        return f"{FIELD_PREFIX}TIME_STEP_{key}"
+
+    @staticmethod
+    def _coord_system_array_name(cs_id: int) -> str:
+        return f"{FIELD_PREFIX}COORD_SYSTEM_{int(cs_id)}"
+
+    @staticmethod
+    def _bh_curve_array_name(material_id: int) -> str:
+        return f"{FIELD_PREFIX}BH_CURVE_{int(material_id)}"
+
+    @staticmethod
+    def _field_array_name_to_id(name: str, prefix: str) -> Optional[int]:
+        if not isinstance(name, str):
+            return None
+        match = re.fullmatch(re.escape(prefix) + r"(-?\d+)", name)
+        if match is None:
+            return None
+        return int(match.group(1))
 
     @staticmethod
     def _remove_prefixed_field_arrays(field_data: vtk.vtkFieldData) -> None:
@@ -157,6 +184,59 @@ class APEC_M_Model:
         if arr.GetNumberOfComponents() > 1:
             return out.reshape(-1, arr.GetNumberOfComponents())
         return out
+
+    def _write_scalar_dict(
+        self,
+        field_data: vtk.vtkFieldData,
+        values: Dict[str, Any],
+        defaults: Dict[str, Any],
+        type_map: Dict[str, Any],
+        name_builder: Callable[[str], str],
+    ) -> None:
+        for key, key_type in type_map.items():
+            name = name_builder(key)
+            value = values.get(key, defaults[key])
+            if key_type is str:
+                self._add_string_array(field_data, name, [str(value)])
+            elif key_type is int:
+                self._add_int_array(field_data, name, np.array([int(value)], dtype=np.int64))
+            elif key_type is bool:
+                self._add_int_array(field_data, name, np.array([1 if bool(value) else 0], dtype=np.int64))
+            else:
+                self._add_double_array(field_data, name, np.array([float(value)], dtype=float))
+
+    def _read_scalar_dict(
+        self,
+        field_data: vtk.vtkFieldData,
+        defaults: Dict[str, Any],
+        type_map: Dict[str, Any],
+        name_builder: Callable[[str], str],
+    ) -> tuple[Dict[str, Any], bool]:
+        parsed: Dict[str, Any] = copy.deepcopy(defaults)
+        found_any = False
+        for key, key_type in type_map.items():
+            name = name_builder(key)
+            if key_type is str:
+                value = self._read_string_array(field_data, name)
+                if value and len(value) > 0:
+                    parsed[key] = value[0]
+                    found_any = True
+                continue
+
+            value = self._read_numeric_array(field_data, name)
+            if value is None or value.size == 0:
+                continue
+
+            raw = value.reshape(-1)[0]
+            if key_type is int:
+                parsed[key] = int(raw)
+            elif key_type is bool:
+                parsed[key] = bool(int(raw))
+            else:
+                parsed[key] = float(raw)
+            found_any = True
+
+        return parsed, found_any
 
     @staticmethod
     def _cast_dataframe(df: pd.DataFrame, type_map: Dict[str, Any]) -> pd.DataFrame:
@@ -242,103 +322,103 @@ class APEC_M_Model:
         except Exception:
             COORDINATE_CLASS_TO_ID = {}
 
-        ids = []
-        class_ids = []
-        origins = []
-
         for cs_id, cs_obj in self.coordinate_systems.items():
             class_name = cs_obj.__class__.__name__
             class_id = COORDINATE_CLASS_TO_ID.get(class_name)
             if class_id is None:
                 continue
             origin = getattr(cs_obj, "origin", None)
-            if origin is None:
+            local_to_global = getattr(cs_obj, "local_to_global_cart", None)
+            if origin is None or local_to_global is None:
                 continue
 
-            ids.append(int(cs_id))
-            class_ids.append(int(class_id))
-            origins.append(np.asarray(origin, dtype=float).reshape(3))
-
-        self._add_int_array(field_data, f"{FIELD_PREFIX}COORD_IDS", np.asarray(ids, dtype=np.int64))
-        self._add_int_array(field_data, f"{FIELD_PREFIX}COORD_CLASS_IDS", np.asarray(class_ids, dtype=np.int64))
-        if len(origins) == 0:
-            self._add_double_array(field_data, f"{FIELD_PREFIX}COORD_ORIGIN", np.empty((0, 3), dtype=float), n_components=3)
-        else:
-            self._add_double_array(field_data, f"{FIELD_PREFIX}COORD_ORIGIN", np.asarray(origins, dtype=float), n_components=3)
+            origin_np = np.asarray(origin, dtype=float).reshape(3)
+            matrix_np = np.asarray(local_to_global, dtype=float).reshape(9)
+            packed = np.concatenate(([float(class_id)], origin_np, matrix_np), dtype=float)
+            self._add_double_array(
+                field_data,
+                self._coord_system_array_name(int(cs_id)),
+                packed.reshape(1, -1),
+                n_components=13,
+            )
 
     def _read_coordinate_systems(self, field_data: vtk.vtkFieldData) -> Dict[int, Any]:
         try:
-            from .coordinate_system import coordinate_class_from_id
+            from .coordinate_system import CoordinateSystem, coordinate_class_from_id
         except Exception:
             return {}
 
-        ids = self._read_numeric_array(field_data, f"{FIELD_PREFIX}COORD_IDS")
-        class_ids = self._read_numeric_array(field_data, f"{FIELD_PREFIX}COORD_CLASS_IDS")
-        origins = self._read_numeric_array(field_data, f"{FIELD_PREFIX}COORD_ORIGIN")
-
-        if ids is None or class_ids is None or origins is None:
-            return {}
-
-        ids = ids.reshape(-1)
-        class_ids = class_ids.reshape(-1)
-        origins = origins.reshape(-1, 3)
-        n_rows = min(len(ids), len(class_ids), len(origins))
-
         out: Dict[int, Any] = {}
-        for i in range(n_rows):
-            cls = coordinate_class_from_id(int(class_ids[i]))
-            if cls is None:
+        coord_prefix = f"{FIELD_PREFIX}COORD_SYSTEM_"
+        for i in range(field_data.GetNumberOfArrays()):
+            arr = field_data.GetAbstractArray(i)
+            if arr is None:
                 continue
+            name = arr.GetName()
+            cs_id = self._field_array_name_to_id(name, coord_prefix)
+            if cs_id is None:
+                continue
+
+            values = self._read_numeric_array(field_data, name)
+            if values is None or values.size < 13:
+                continue
+
+            row = values.reshape(-1, 13)[0]
+            class_id = int(round(float(row[0])))
+            origin = np.asarray(row[1:4], dtype=float)
+            matrix = np.asarray(row[4:13], dtype=float).reshape(3, 3)
+
+            cls = coordinate_class_from_id(class_id)
+            if cls is not None:
+                try:
+                    out[cs_id] = cls(origin=origin, local_to_global_cart=matrix)
+                    continue
+                except Exception:
+                    pass
+
             try:
-                out[int(ids[i])] = cls(origin=origins[i])
+                cs_type = {1: "cartesian", 2: "cylindrical", 3: "cylindrical", 4: "cylindrical", 5: "cylindrical", 6: "spherical"}.get(class_id, "cartesian")
+                out[cs_id] = CoordinateSystem(origin=origin, local_to_global_cart=matrix, cs_type=cs_type)
             except Exception:
                 continue
 
         return out
 
     def _write_bh_curves(self, field_data: vtk.vtkFieldData) -> None:
-        material_ids = []
-        point_idx = []
-        hb_values = []
-
         for material_id, curve in self.bh_curves.items():
             curve_np = np.asarray(curve, dtype=float)
             if curve_np.ndim != 2 or curve_np.shape[1] != 2:
                 continue
-            for idx in range(curve_np.shape[0]):
-                material_ids.append(int(material_id))
-                point_idx.append(int(idx))
-                hb_values.append(curve_np[idx])
-
-        self._add_int_array(field_data, f"{FIELD_PREFIX}BH_MATERIAL_ID", np.asarray(material_ids, dtype=np.int64))
-        self._add_int_array(field_data, f"{FIELD_PREFIX}BH_POINT_INDEX", np.asarray(point_idx, dtype=np.int64))
-        if len(hb_values) == 0:
-            self._add_double_array(field_data, f"{FIELD_PREFIX}BH_HB", np.empty((0, 2), dtype=float), n_components=2)
-        else:
-            self._add_double_array(field_data, f"{FIELD_PREFIX}BH_HB", np.asarray(hb_values, dtype=float), n_components=2)
+            self._add_double_array(
+                field_data,
+                self._bh_curve_array_name(int(material_id)),
+                curve_np,
+                n_components=2,
+            )
 
     def _read_bh_curves(self, field_data: vtk.vtkFieldData) -> Dict[int, np.ndarray]:
-        material_ids = self._read_numeric_array(field_data, f"{FIELD_PREFIX}BH_MATERIAL_ID")
-        point_idx = self._read_numeric_array(field_data, f"{FIELD_PREFIX}BH_POINT_INDEX")
-        hb_values = self._read_numeric_array(field_data, f"{FIELD_PREFIX}BH_HB")
-
-        if material_ids is None or point_idx is None or hb_values is None:
-            return {}
-
-        material_ids = material_ids.reshape(-1)
-        point_idx = point_idx.reshape(-1)
-        hb_values = hb_values.reshape(-1, 2)
-
-        n_rows = min(len(material_ids), len(point_idx), len(hb_values))
-        grouped: Dict[int, list[tuple[int, np.ndarray]]] = {}
-        for i in range(n_rows):
-            mat_id = int(material_ids[i])
-            grouped.setdefault(mat_id, []).append((int(point_idx[i]), hb_values[i]))
-
         out: Dict[int, np.ndarray] = {}
-        for mat_id, pairs in grouped.items():
-            pairs.sort(key=lambda p: p[0])
-            out[mat_id] = np.asarray([p[1] for p in pairs], dtype=float)
+        bh_prefix = f"{FIELD_PREFIX}BH_CURVE_"
+        for i in range(field_data.GetNumberOfArrays()):
+            arr = field_data.GetAbstractArray(i)
+            if arr is None:
+                continue
+            name = arr.GetName()
+            material_id = self._field_array_name_to_id(name, bh_prefix)
+            if material_id is None:
+                continue
+
+            values = self._read_numeric_array(field_data, name)
+            if values is None:
+                continue
+
+            curve = np.asarray(values, dtype=float)
+            if curve.size == 0:
+                out[material_id] = np.empty((0, 2), dtype=float)
+                continue
+            if curve.size % 2 != 0:
+                continue
+            out[material_id] = curve.reshape(-1, 2)
 
         return out
 
@@ -355,29 +435,27 @@ class APEC_M_Model:
             df = getattr(self, table_name)
             self._write_dataframe_table(field_data, table_name, df, type_map)
 
-        time_step_keys = list(DEFAULT_TIME_PARAMETERS_TYPES.keys())
-        time_step_values = np.array(
-            [float(self.time_step.get(key, DEFAULT_TIME_PARAMETERS[key])) for key in time_step_keys],
-            dtype=float,
-        ).reshape(1, -1)
-        self._add_double_array(
-            field_data,
-            f"{FIELD_PREFIX}TIME_STEP",
-            time_step_values,
-            n_components=len(time_step_keys),
-        )
-
-        for key, key_type in DEFAULT_SOLVER_SETTINGS_TYPES.items():
-            name = self._solver_setting_array_name(key)
-            value = self.solver_settings.get(key, DEFAULT_SOLVER_SETTINGS[key])
-            if key_type is str:
-                self._add_string_array(field_data, name, [str(value)])
-            elif key_type is int:
-                self._add_int_array(field_data, name, np.array([int(value)], dtype=np.int64))
-            elif key_type is bool:
-                self._add_int_array(field_data, name, np.array([1 if bool(value) else 0], dtype=np.int64))
-            else:
-                self._add_double_array(field_data, name, np.array([float(value)], dtype=float))
+        for attr_name, defaults, type_map, name_builder in (
+            (
+                "time_step",
+                DEFAULT_TIME_PARAMETERS,
+                DEFAULT_TIME_PARAMETERS_TYPES,
+                self._time_step_array_name,
+            ),
+            (
+                "solver_settings",
+                DEFAULT_SOLVER_SETTINGS,
+                DEFAULT_SOLVER_SETTINGS_TYPES,
+                self._solver_setting_array_name,
+            ),
+        ):
+            self._write_scalar_dict(
+                field_data,
+                values=getattr(self, attr_name),
+                defaults=defaults,
+                type_map=type_map,
+                name_builder=name_builder,
+            )
 
         self._write_coordinate_systems(field_data)
         self._write_bh_curves(field_data)
@@ -395,32 +473,28 @@ class APEC_M_Model:
         for table_name, type_map in TABLE_SPECS.items():
             setattr(self, table_name, self._read_dataframe_table(field_data, table_name, type_map))
 
-        time_step_array = self._read_numeric_array(field_data, f"{FIELD_PREFIX}TIME_STEP")
-        if time_step_array is not None and time_step_array.size >= len(DEFAULT_TIME_PARAMETERS_TYPES):
-            values = time_step_array.reshape(-1)
-            self.time_step = {
-                "time": float(values[0]),
-                "transient_effects": bool(round(values[1])),
-                "theta": float(values[2]),
-            }
-
-        for key, key_type in DEFAULT_SOLVER_SETTINGS_TYPES.items():
-            name = self._solver_setting_array_name(key)
-            if key_type is str:
-                value = self._read_string_array(field_data, name)
-                if value and len(value) > 0:
-                    self.solver_settings[key] = value[0]
-            else:
-                value = self._read_numeric_array(field_data, name)
-                if value is None or value.size == 0:
-                    continue
-                raw = value.reshape(-1)[0]
-                if key_type is int:
-                    self.solver_settings[key] = int(raw)
-                elif key_type is bool:
-                    self.solver_settings[key] = bool(int(raw))
-                else:
-                    self.solver_settings[key] = float(raw)
+        for attr_name, defaults, type_map, name_builder in (
+            (
+                "time_step",
+                DEFAULT_TIME_PARAMETERS,
+                DEFAULT_TIME_PARAMETERS_TYPES,
+                self._time_step_array_name,
+            ),
+            (
+                "solver_settings",
+                DEFAULT_SOLVER_SETTINGS,
+                DEFAULT_SOLVER_SETTINGS_TYPES,
+                self._solver_setting_array_name,
+            ),
+        ):
+            parsed_values, found_values = self._read_scalar_dict(
+                field_data,
+                defaults=defaults,
+                type_map=type_map,
+                name_builder=name_builder,
+            )
+            if found_values:
+                setattr(self, attr_name, parsed_values)
 
         self.coordinate_systems = self._read_coordinate_systems(field_data)
         self.bh_curves = self._read_bh_curves(field_data)

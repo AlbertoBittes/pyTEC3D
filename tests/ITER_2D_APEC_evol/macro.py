@@ -1,5 +1,5 @@
 from apec_m import APEC_M
-from apec_m.model_edit import ModelEdit
+from apec_m.apec_m_model import APEC_M_Model
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector
@@ -24,7 +24,8 @@ static_mesh_filepath = os.path.join(
 
 
 apec.read_model(evol_filepath)
-apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(static_mesh_filepath, reset_arrays=False)
+output_apec_equilibrium = APEC_M_Model.read_model(static_mesh_filepath)
+apec.algorithm.vacuum_chamber_mesh = output_apec_equilibrium.mesh
 
 apec.model.read_excel("input_template.xlsx")
 
@@ -36,13 +37,8 @@ Selector.select_all(apec.model.mesh)
 Selector.nsel_ext(apec.model.mesh)
 Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
-# 1. Build source->destination element map in VACUUM_CHAMBER using toroidal slices
-# Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "VACUUM_CHAMBER", 1, type="elem", mode="s")
-# Selector.select(apec.get_mesh(apec_evolution_mesh_notrans), "COILS", 1, type="elem", mode="a")
-# Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-
 # 2. Transfer Jt_z from source (equilibrium output) to destination Js[:,2] through map ids
-jt_z_array = vtknp.vtk_to_numpy(apec.algorithm.equilibrium_mesh.GetCellData().GetArray("Jt"))
+jt_z_array = vtknp.vtk_to_numpy(output_apec_equilibrium.mesh.GetCellData().GetArray("Jt"))
 js_array = vtknp.vtk_to_numpy(apec.model.mesh.GetCellData().GetArray("Js"))
 
 js_array[:] = jt_z_array
@@ -57,10 +53,6 @@ apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["n_slices"] = 1
-
-# Save the toroidal projection maps to files
-# np.savetxt("toroidal_slices_nodes.txt", apec.algorithm.input_parameters["toroidal_slices_nodes"].astype(int), fmt="%d")
-# np.savetxt("toroidal_slices_elems.txt", apec.algorithm.input_parameters["toroidal_slices_elems"].astype(int), fmt="%d")
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))

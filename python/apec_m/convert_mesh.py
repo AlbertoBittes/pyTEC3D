@@ -2,12 +2,30 @@ import os
 import sys
 import numpy as np
 from ansys.mapdl import reader as pymapdl_reader
+import vtk
 
 from .logging_utils import get_logger
 from .validation_utils import ensure_pathlike
 
 
 LOGGER = get_logger("apec_m.convert_mesh")
+
+
+def _remove_l2_norm_range_info_keys(grid) -> None:
+    """Strip L2_NORM_RANGE info keys from data arrays before VTU serialization."""
+    key = vtk.vtkDataArray.L2_NORM_RANGE()
+
+    for data_getter in (grid.GetPointData, grid.GetCellData, grid.GetFieldData):
+        data = data_getter()
+        if data is None:
+            continue
+        for idx in range(data.GetNumberOfArrays()):
+            arr = data.GetArray(idx)
+            if arr is None:
+                continue
+            info = arr.GetInformation()
+            if info is not None and info.Has(key):
+                info.Remove(key)
 
 
 def convert_mesh_from_cdb(file_path):
@@ -41,10 +59,11 @@ def convert_mesh_from_cdb(file_path):
     if archive is None:
         raise ValueError("Failed to read the mesh file.")
 
-    if getattr(archive, "grid", None) is None:
+    grid = archive.grid
+    if grid is None:
         raise ValueError("Converted archive does not contain a valid grid.")
 
-    if not hasattr(archive.grid, "cell_data") or not hasattr(archive.grid, "point_data"):
+    if not hasattr(grid, "cell_data") or not hasattr(grid, "point_data"):
         raise ValueError("Converted grid is missing required cell_data/point_data attributes.")
 
     # Normalize selected ANSYS cell-data names to the names used elsewhere by APEC-M.
@@ -53,43 +72,44 @@ def convert_mesh_from_cdb(file_path):
         "ansys_material_type": "MATERIAL",
         "ansys_real_constant": "CONSTANT",
     }.items():
-        if old_name in archive.grid.cell_data:
-            archive.grid.cell_data[new_name] = archive.grid.cell_data[old_name]
-            del archive.grid.cell_data[old_name]
+        if old_name in grid.cell_data:
+            grid.cell_data[new_name] = grid.cell_data[old_name]
+            del grid.cell_data[old_name]
 
     array_to_add = "COORDINATE_SYSTEM"
-    if array_to_add not in archive.grid.cell_data:
+    if array_to_add not in grid.cell_data:
         LOGGER.info("Adding missing cell data array '%s' with default value 0.", array_to_add)
-        archive.grid.cell_data[array_to_add] = np.zeros(archive.grid.n_cells, dtype=np.int32)
+        grid.cell_data[array_to_add] = np.zeros(grid.n_cells, dtype=np.int32)
     array_to_add_point = "CP_0"
-    if array_to_add_point not in archive.grid.point_data:
+    if array_to_add_point not in grid.point_data:
         LOGGER.info("Adding missing point data array '%s' with default value 0.", array_to_add_point)
-        archive.grid.point_data[array_to_add_point] = np.zeros(archive.grid.n_points, dtype=np.int32)
+        grid.point_data[array_to_add_point] = np.zeros(grid.n_points, dtype=np.int32)
 
     # Remove specified arrays if they exist in the grid
     # Check and remove from cell data
     for array_name in ["ansys_elem_type_num"]:
-        if array_name in archive.grid.cell_data:
-            del archive.grid.cell_data[array_name]
+        if array_name in grid.cell_data:
+            del grid.cell_data[array_name]
 
     # Check and remove from point data
     for array_name in ["VTKorigID"]:
-        if array_name in archive.grid.point_data:
-            del archive.grid.point_data[array_name]
+        if array_name in grid.point_data:
+            del grid.point_data[array_name]
 
     # Save the modified grid to a .vtu file
     output_file = os.path.join(
         os.path.dirname(file_path),
         os.path.splitext(os.path.basename(file_path))[0] + ".vtu",
     )
-    archive.grid.save(output_file, binary=True)
+    _remove_l2_norm_range_info_keys(grid)
+    grid.save(output_file, binary=True)
 
     # Print overview of data read from cdb
     LOGGER.info(
         "Processed mesh saved to '%s' (points=%s cells=%s).",
         output_file,
-        archive.grid.n_points,
-        archive.grid.n_cells,
+        grid.n_points,
+        grid.n_cells,
     )
 
 

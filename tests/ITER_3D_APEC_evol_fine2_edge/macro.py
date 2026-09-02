@@ -32,7 +32,7 @@ extr_angle = 1.0
 
 # # Read the evolution mesh
 apec.read_model(filepath)
-apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
+apec.algorithm.vacuum_chamber_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
 apec.model.read_excel("input_template.xlsx")
 
@@ -68,8 +68,8 @@ Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 1, type="e
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
 for coil in coils:
-    Selector.select(apec.algorithm.equilibrium_mesh, coil, 1, type="elem", mode="s")
-    js_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Js", 2, type="elem")[0]
+    Selector.select(apec.algorithm.vacuum_chamber_mesh, coil, 1, type="elem", mode="s")
+    js_z = Selector.get_selection_values(apec.algorithm.vacuum_chamber_mesh, "Js", 2, type="elem")[0]
     Selector.select(apec.model.mesh, coil, 1, type="elem", mode="s")
     Selector.set_value_on_selection(apec.model.mesh, "Js", js_z, 1, type="elem")
 

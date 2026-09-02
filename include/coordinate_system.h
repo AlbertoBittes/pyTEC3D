@@ -17,6 +17,7 @@ namespace apec_m
 
         const std::string &type() const noexcept;
         void origin_raw(double *origin_out) const noexcept;
+        void local_to_global_cart_raw(double *matrix_out) const noexcept;
         void axis_direction_raw(double *axis_out) const noexcept;
 
         virtual void to_local_raw(
@@ -110,7 +111,8 @@ namespace apec_m
             const double *origin = nullptr,
             const double *nxax = nullptr,
             const double *nxypl = nullptr,
-            const double *angles_deg = nullptr);
+            const double *angles_deg = nullptr,
+            const double *local_to_global_cart = nullptr);
 
         static CartesianCoordinateSystem from_angles(
             const double *origin,
@@ -129,7 +131,8 @@ namespace apec_m
             const double *origin = nullptr,
             const double *nxax = nullptr,
             const double *nxypl = nullptr,
-            const double *angles_deg = nullptr);
+            const double *angles_deg = nullptr,
+            const double *local_to_global_cart = nullptr);
 
         static CylindricalCoordinateSystem from_angles(
             const double *origin,
@@ -167,21 +170,27 @@ namespace apec_m
     class XAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
     {
     public:
-        explicit XAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+        explicit XAxisCylindricalCoordinateSystem(
+            const double *origin = nullptr,
+            const double *local_to_global_cart = nullptr);
     };
 
     // Rotation axis (local Z) aligned with global Y.
     class YAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
     {
     public:
-        explicit YAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+        explicit YAxisCylindricalCoordinateSystem(
+            const double *origin = nullptr,
+            const double *local_to_global_cart = nullptr);
     };
 
     // Rotation axis (local Z) aligned with global Z (ANSYS APDL LOCAL default).
     class ZAxisCylindricalCoordinateSystem : public CylindricalCoordinateSystem
     {
     public:
-        explicit ZAxisCylindricalCoordinateSystem(const double *origin = nullptr);
+        explicit ZAxisCylindricalCoordinateSystem(
+            const double *origin = nullptr,
+            const double *local_to_global_cart = nullptr);
     };
 
     class SphericalCoordinateSystem : public CoordinateSystem
@@ -191,7 +200,8 @@ namespace apec_m
             const double *origin = nullptr,
             const double *nxax = nullptr,
             const double *nxypl = nullptr,
-            const double *angles_deg = nullptr);
+            const double *angles_deg = nullptr,
+            const double *local_to_global_cart = nullptr);
 
         static SphericalCoordinateSystem from_angles(
             const double *origin,

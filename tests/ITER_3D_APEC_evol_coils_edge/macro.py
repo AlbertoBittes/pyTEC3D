@@ -32,7 +32,7 @@ extr_angle = 2.0
 
 # # Read the evolution mesh
 apec.read_model(filepath)
-apec.algorithm.equilibrium_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
+apec.algorithm.vacuum_chamber_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
 apec.model.read_excel("input_template.xlsx")
 
@@ -61,9 +61,9 @@ for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
     n_turns = apec.model.constants[mask]["TURNS"].values[0]
     resistance = apec.model.constants[mask]["R"].values[0]
     Selector.select(
-        apec.algorithm.equilibrium_mesh, comp, 1, type="elem", mode="s"
+        apec.algorithm.vacuum_chamber_mesh, comp, 1, type="elem", mode="s"
     )
-    jt_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Jt", 2, type="elem")[0]
+    jt_z = Selector.get_selection_values(apec.algorithm.vacuum_chamber_mesh, "Jt", 2, type="elem")[0]
     cs = apec.model.constants[mask]["CS"].values[0]
     current = cs * jt_z
     voltage = resistance * current / n_turns
@@ -78,8 +78,8 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
     mask = apec.model.constants["CONSTANTS_ID"] == 1 + k
     n_turns = apec.model.constants[mask]["TURNS"].values[0]
     resistance = apec.model.constants[mask]["R"].values[0]
-    Selector.select(apec.algorithm.equilibrium_mesh, comp, 1, type="elem", mode="s")
-    jt_z = Selector.get_selection_values(apec.algorithm.equilibrium_mesh, "Jt", 2, type="elem")[0]
+    Selector.select(apec.algorithm.vacuum_chamber_mesh, comp, 1, type="elem", mode="s")
+    jt_z = Selector.get_selection_values(apec.algorithm.vacuum_chamber_mesh, "Jt", 2, type="elem")[0]
     cs = apec.model.constants[mask]["CS"].values[0]
     current = cs * jt_z
     voltage = resistance * current / n_turns

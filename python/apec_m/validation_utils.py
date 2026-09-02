@@ -197,7 +197,7 @@ def validate_solver_settings(settings: dict[str, Any]) -> None:
     - ``max_linear_iterations``: integer ≥ 1.
 
     Args:
-        settings: Dictionary of solver settings (typically ``apec.model.solver_settings``).
+        settings: Dictionary of solver settings (typically ``model.solver_settings``).
 
     Returns:
         None
@@ -301,18 +301,18 @@ _VTK_QUADRATIC_CELL_TYPES: np.ndarray = np.array(sorted([
 ]), dtype=np.int32)
 
 
-def validate_apec_model(apec: Any) -> None:
+def validate_apec_model(model: Any) -> None:
     """Perform a comprehensive consistency check on a loaded APEC model.
 
     Validates the ``element_types``, ``dof_couplings``, ``materials``, and
     ``constants`` DataFrames against each other and against the VTK mesh stored
-    in *apec*.  All constraint violations are collected before raising so that
+    in *model*.  All constraint violations are collected before raising so that
     a single call reports every problem found.  Unused identifiers are emitted
     as log warnings rather than errors.
 
     Args:
-        apec: ``APEC_M`` instance whose mesh and metadata DataFrames are to
-            be validated.
+        model: ``APEC_M_Model`` instance whose mesh and metadata DataFrames are
+            to be validated.
 
     Returns:
         None
@@ -332,17 +332,17 @@ def validate_apec_model(apec: Any) -> None:
     _log = get_logger("apec_m.validation")
     errors: list[str] = []
 
-    mesh = apec.model.mesh
+    mesh = model.mesh
     if mesh is None:
         raise ValueError("No mesh loaded; call read_mesh() before validating.")
 
-    et = apec.model.element_types
-    mat = apec.model.materials
-    const = apec.model.constants
-    dof = apec.model.dof_couplings
+    et = model.element_types
+    mat = model.materials
+    const = model.constants
+    dof = model.dof_couplings
 
     # ── solver settings ─────────────────────────────────────────────────────
-    validate_solver_settings(apec.model.solver_settings)
+    validate_solver_settings(model.solver_settings)
 
     n_cells: int = mesh.GetNumberOfCells()
     cell_data = mesh.GetCellData()
@@ -382,15 +382,15 @@ def validate_apec_model(apec: Any) -> None:
             np.unique(coordinate_system_ids[coordinate_system_ids > 0]).astype(int).tolist()
         )
         if used_cs_ids:
-            coordinate_systems = getattr(apec.model, "coordinate_systems", None)
+            coordinate_systems = getattr(model, "coordinate_systems", None)
             if coordinate_systems is None:
                 errors.append(
                     "COORDINATE_SYSTEM: found values > 0 in mesh but"
-                    " apec.model.coordinate_systems is missing or None."
+                    " model.coordinate_systems is missing or None."
                 )
             elif not isinstance(coordinate_systems, dict):
                 errors.append(
-                    "apec.model.coordinate_systems must be a dict mapping integer IDs"
+                    "model.coordinate_systems must be a dict mapping integer IDs"
                     f" to coordinate-system objects; got {type(coordinate_systems).__name__}."
                 )
             else:
@@ -403,13 +403,13 @@ def validate_apec_model(apec: Any) -> None:
                 if missing_cs:
                     errors.append(
                         "COORDINATE_SYSTEM: positive IDs used by mesh are not present"
-                        f" in apec.model.coordinate_systems: {missing_cs}."
+                        f" in model.coordinate_systems: {missing_cs}."
                     )
 
     # ========================================================================
     # 0. bh_curves dictionary
     # ========================================================================
-    bh_curves = getattr(apec.model, "bh_curves", {})
+    bh_curves = getattr(model, "bh_curves", {})
     if bh_curves is None:
         bh_curves = {}
 

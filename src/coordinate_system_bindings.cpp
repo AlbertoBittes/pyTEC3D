@@ -82,6 +82,31 @@ namespace
         return storage;
     }
 
+    const libMesh::Real *optional_matrix3_ptr(const py::object &obj, libMesh::Real *storage)
+    {
+        if (obj.is_none())
+            return nullptr;
+
+        const auto arr = py::cast<py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast>>(obj);
+        if (arr.ndim() == 1)
+        {
+            if (arr.shape(0) != 9)
+                throw std::invalid_argument("local_to_global_cart must have shape (3, 3) or (9,).");
+            for (int i = 0; i < 9; ++i)
+                storage[i] = arr.data()[i];
+            return storage;
+        }
+
+        if (arr.ndim() != 2 || arr.shape(0) != 3 || arr.shape(1) != 3)
+            throw std::invalid_argument("local_to_global_cart must have shape (3, 3) or (9,).");
+
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                storage[i * 3 + j] = arr.data()[i * 3 + j];
+
+        return storage;
+    }
+
     const libMesh::Real *required_point3_ptr(
         const py::array_t<libMesh::Real, py::array::c_style | py::array::forcecast> &arr,
         const std::string &arg_name,
@@ -104,12 +129,27 @@ void bind_coordinate_system(py::module_ &module)
     py::class_<apec_m::CoordinateSystem, std::shared_ptr<apec_m::CoordinateSystem>> coord(module, "CoordinateSystem");
 
     coord
+        .def(py::init([](const py::object &origin, const py::object &local_to_global_cart, const std::string &cs_type)
+                      {
+                          libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
+                          const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
+                          return apec_m::CoordinateSystem(o_ptr, m_ptr, cs_type); }),
+             "origin"_a = py::none(),
+             "local_to_global_cart"_a = py::none(),
+             "cs_type"_a = "cartesian")
         .def_property_readonly("type", &apec_m::CoordinateSystem::type)
         .def_property_readonly("origin", [](const apec_m::CoordinateSystem &self)
                                {
                                    libMesh::Real out[3] = {0.0, 0.0, 0.0};
                                    self.origin_raw(out);
                                    return point3_out_from_raw(out); })
+        .def_property_readonly("local_to_global_cart", [](const apec_m::CoordinateSystem &self)
+                               {
+                                   libMesh::Real out[9] = {0.0};
+                                   self.local_to_global_cart_raw(out);
+                                   return matrix3_out_from_raw(out); })
         .def("axis_direction", [](const apec_m::CoordinateSystem &self)
              {
                  libMesh::Real out[3] = {0.0, 0.0, 0.0};
@@ -171,6 +211,7 @@ void bind_coordinate_system(py::module_ &module)
         .def(py::init([](const py::object &origin,
                          const py::object &nxax,
                          const py::object &nxypl,
+                         const py::object &local_to_global_cart,
                          const py::object &thxy_deg,
                          const py::object &thyz_deg,
                          const py::object &thzx_deg)
@@ -178,9 +219,11 @@ void bind_coordinate_system(py::module_ &module)
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
                           libMesh::Real x[3] = {0.0, 0.0, 0.0};
                           libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
                           const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
                           const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
 
                           libMesh::Real angles[3] = {0.0, 0.0, 0.0};
                           const bool has_xy = !thxy_deg.is_none();
@@ -190,6 +233,8 @@ void bind_coordinate_system(py::module_ &module)
                           const bool all = has_xy && has_yz && has_zx;
                           if (any && !all)
                               throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          if (m_ptr && (x_ptr || p_ptr || any))
+                              throw std::invalid_argument("local_to_global_cart cannot be combined with nxax/nxypl/angles.");
                           const libMesh::Real *angles_ptr = nullptr;
                           if (all)
                           {
@@ -199,10 +244,11 @@ void bind_coordinate_system(py::module_ &module)
                               angles_ptr = angles;
                           }
 
-                          return apec_m::CartesianCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+                          return apec_m::CartesianCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr, m_ptr); }),
              "origin"_a = py::none(),
              "nxax"_a = py::none(),
              "nxypl"_a = py::none(),
+             "local_to_global_cart"_a = py::none(),
              "thxy_deg"_a = py::none(),
              "thyz_deg"_a = py::none(),
              "thzx_deg"_a = py::none())
@@ -227,6 +273,7 @@ void bind_coordinate_system(py::module_ &module)
         .def(py::init([](const py::object &origin,
                          const py::object &nxax,
                          const py::object &nxypl,
+                         const py::object &local_to_global_cart,
                          const py::object &thxy_deg,
                          const py::object &thyz_deg,
                          const py::object &thzx_deg)
@@ -234,9 +281,11 @@ void bind_coordinate_system(py::module_ &module)
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
                           libMesh::Real x[3] = {0.0, 0.0, 0.0};
                           libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
                           const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
                           const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
 
                           libMesh::Real angles[3] = {0.0, 0.0, 0.0};
                           const bool has_xy = !thxy_deg.is_none();
@@ -246,6 +295,8 @@ void bind_coordinate_system(py::module_ &module)
                           const bool all = has_xy && has_yz && has_zx;
                           if (any && !all)
                               throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          if (m_ptr && (x_ptr || p_ptr || any))
+                              throw std::invalid_argument("local_to_global_cart cannot be combined with nxax/nxypl/angles.");
                           const libMesh::Real *angles_ptr = nullptr;
                           if (all)
                           {
@@ -255,10 +306,11 @@ void bind_coordinate_system(py::module_ &module)
                               angles_ptr = angles;
                           }
 
-                          return apec_m::CylindricalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+                          return apec_m::CylindricalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr, m_ptr); }),
              "origin"_a = py::none(),
              "nxax"_a = py::none(),
              "nxypl"_a = py::none(),
+             "local_to_global_cart"_a = py::none(),
              "thxy_deg"_a = py::none(),
              "thyz_deg"_a = py::none(),
              "thzx_deg"_a = py::none())
@@ -280,33 +332,43 @@ void bind_coordinate_system(py::module_ &module)
                             required_point3_ptr(nxypl, "nxypl", p)); }, "origin"_a, "nxax"_a, "nxypl"_a);
 
     py::class_<apec_m::XAxisCylindricalCoordinateSystem, apec_m::CylindricalCoordinateSystem, std::shared_ptr<apec_m::XAxisCylindricalCoordinateSystem>>(module, "XAxisCylindricalCoordinateSystem")
-        .def(py::init([](const py::object &origin)
+        .def(py::init([](const py::object &origin, const py::object &local_to_global_cart)
                       {
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
-                          return apec_m::XAxisCylindricalCoordinateSystem(o_ptr); }),
-             "origin"_a = py::none());
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
+                          return apec_m::XAxisCylindricalCoordinateSystem(o_ptr, m_ptr); }),
+             "origin"_a = py::none(),
+             "local_to_global_cart"_a = py::none());
 
     py::class_<apec_m::YAxisCylindricalCoordinateSystem, apec_m::CylindricalCoordinateSystem, std::shared_ptr<apec_m::YAxisCylindricalCoordinateSystem>>(module, "YAxisCylindricalCoordinateSystem")
-        .def(py::init([](const py::object &origin)
+        .def(py::init([](const py::object &origin, const py::object &local_to_global_cart)
                       {
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
-                          return apec_m::YAxisCylindricalCoordinateSystem(o_ptr); }),
-             "origin"_a = py::none());
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
+                          return apec_m::YAxisCylindricalCoordinateSystem(o_ptr, m_ptr); }),
+             "origin"_a = py::none(),
+             "local_to_global_cart"_a = py::none());
 
     py::class_<apec_m::ZAxisCylindricalCoordinateSystem, apec_m::CylindricalCoordinateSystem, std::shared_ptr<apec_m::ZAxisCylindricalCoordinateSystem>>(module, "ZAxisCylindricalCoordinateSystem")
-        .def(py::init([](const py::object &origin)
+        .def(py::init([](const py::object &origin, const py::object &local_to_global_cart)
                       {
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
-                          return apec_m::ZAxisCylindricalCoordinateSystem(o_ptr); }),
-             "origin"_a = py::none());
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
+                          return apec_m::ZAxisCylindricalCoordinateSystem(o_ptr, m_ptr); }),
+             "origin"_a = py::none(),
+             "local_to_global_cart"_a = py::none());
 
     py::class_<apec_m::SphericalCoordinateSystem, apec_m::CoordinateSystem, std::shared_ptr<apec_m::SphericalCoordinateSystem>>(module, "SphericalCoordinateSystem")
         .def(py::init([](const py::object &origin,
                          const py::object &nxax,
                          const py::object &nxypl,
+                         const py::object &local_to_global_cart,
                          const py::object &thxy_deg,
                          const py::object &thyz_deg,
                          const py::object &thzx_deg)
@@ -314,9 +376,11 @@ void bind_coordinate_system(py::module_ &module)
                           libMesh::Real o[3] = {0.0, 0.0, 0.0};
                           libMesh::Real x[3] = {0.0, 0.0, 0.0};
                           libMesh::Real p[3] = {0.0, 0.0, 0.0};
+                          libMesh::Real m[9] = {0.0};
                           const libMesh::Real *o_ptr = optional_point3_ptr(origin, o);
                           const libMesh::Real *x_ptr = optional_point3_ptr(nxax, x);
                           const libMesh::Real *p_ptr = optional_point3_ptr(nxypl, p);
+                          const libMesh::Real *m_ptr = optional_matrix3_ptr(local_to_global_cart, m);
 
                           libMesh::Real angles[3] = {0.0, 0.0, 0.0};
                           const bool has_xy = !thxy_deg.is_none();
@@ -326,6 +390,8 @@ void bind_coordinate_system(py::module_ &module)
                           const bool all = has_xy && has_yz && has_zx;
                           if (any && !all)
                               throw std::invalid_argument("thxy_deg, thyz_deg and thzx_deg must all be provided together.");
+                          if (m_ptr && (x_ptr || p_ptr || any))
+                              throw std::invalid_argument("local_to_global_cart cannot be combined with nxax/nxypl/angles.");
                           const libMesh::Real *angles_ptr = nullptr;
                           if (all)
                           {
@@ -335,10 +401,11 @@ void bind_coordinate_system(py::module_ &module)
                               angles_ptr = angles;
                           }
 
-                          return apec_m::SphericalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr); }),
+                          return apec_m::SphericalCoordinateSystem(o_ptr, x_ptr, p_ptr, angles_ptr, m_ptr); }),
              "origin"_a = py::none(),
              "nxax"_a = py::none(),
              "nxypl"_a = py::none(),
+             "local_to_global_cart"_a = py::none(),
              "thxy_deg"_a = py::none(),
              "thyz_deg"_a = py::none(),
              "thzx_deg"_a = py::none())
