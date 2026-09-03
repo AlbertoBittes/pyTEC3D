@@ -79,6 +79,9 @@ void ElementTypesFactory::load_from_python(const py::object &element_types_attri
 // ---------------------------------------------------------------------------
 ElementType *ElementTypesFactory::get_element_type(libMesh::subdomain_id_type element_id)
 {
+    if (!element_types_map)
+        apec::logging::error_and_abort("ElementTypesFactory::get_element_type called before factory initialization.");
+
     auto it = element_types_map->find(element_id);
     if (it != element_types_map->end())
         return it->second.get();

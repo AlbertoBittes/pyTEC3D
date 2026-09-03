@@ -15,9 +15,6 @@
 #include <libmesh/petsc_linear_solver.h>
 #include "apec_m_equation_systems.h"
 #include "apec_m_system.h"
-#include "element_builder.h"
-#include "element_types_factory.h"
-#include "solver_configuration.h"
 #include "apec_m_logging.h"
 
 BinaryReader::BinaryReader() = default;
@@ -26,8 +23,6 @@ BinaryReader::InputStreamPtr BinaryReader::open_input_stream(const std::filesyst
 {
     apec::logging::trace("Opening binary file for read: {}", filepath.string());
     auto stream = std::make_unique<std::ifstream>(filepath, std::ios::binary);
-    if (!stream->is_open())
-        apec::logging::error_and_abort("BinaryReader: failed to open file for reading '" + filepath.string() + "'.");
     return stream;
 }
 
@@ -39,8 +34,6 @@ BinaryReader::OutputStreamPtr BinaryReader::open_output_stream(const std::filesy
 
     apec::logging::trace("Opening binary file for write: {}", filepath.string());
     auto stream = std::make_unique<std::ofstream>(filepath, std::ios::binary | std::ios::trunc);
-    if (!stream->is_open())
-        apec::logging::error_and_abort("BinaryReader: failed to open file for writing '" + filepath.string() + "'.");
     return stream;
 }
 
@@ -66,11 +59,11 @@ std::vector<BinaryReader::OutputStreamPtr> BinaryReader::open_output_streams(
     return streams;
 }
 
-void BinaryReader::write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set)
+void BinaryReader::write_element_matrices(
+    std::ofstream &outFile,
+    unsigned int elem_id,
+    const std::vector<libMesh::DenseMatrix<libMesh::Number>> &elem_matrices_vector)
 {
-    auto &elem_matrices_vector = builder.matrices[matrices_set];
-
-    const unsigned int elem_id = builder.elem_data.elem ? builder.elem_data.elem->id() : 0;
     outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
 
     const unsigned int num_containers = static_cast<unsigned int>(elem_matrices_vector.size());
@@ -88,20 +81,24 @@ void BinaryReader::write_element_matrices(ElementBuilder &builder, std::ofstream
     }
 }
 
-void BinaryReader::read_element_matrices(ElementBuilder &builder, std::ifstream &inFile, unsigned int matrices_set)
+bool BinaryReader::read_element_matrices(
+    std::ifstream &inFile,
+    unsigned int &elem_id,
+    std::vector<libMesh::DenseMatrix<libMesh::Number>> &elem_matrices_vector)
 {
-    auto &elem_matrices_vector = builder.matrices[matrices_set];
-
-    unsigned int elem_id = 0;
-    inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
+    if (!inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id)))
+        return false;
 
     unsigned int num_containers = 0;
-    inFile.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers));
+    if (!inFile.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers)))
+        return false;
+
     elem_matrices_vector.resize(num_containers);
 
     for (auto &elem_matrix : elem_matrices_vector)
     {
-        unsigned int rows = 0, cols = 0;
+        unsigned int rows = 0;
+        unsigned int cols = 0;
         inFile.read(reinterpret_cast<char *>(&rows), sizeof(rows));
         inFile.read(reinterpret_cast<char *>(&cols), sizeof(cols));
 
@@ -109,13 +106,15 @@ void BinaryReader::read_element_matrices(ElementBuilder &builder, std::ifstream 
         auto &values = elem_matrix.get_values();
         inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
+
+    return static_cast<bool>(inFile);
 }
 
-void BinaryReader::write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set)
+void BinaryReader::write_element_vectors(
+    std::ofstream &outFile,
+    unsigned int elem_id,
+    const std::vector<libMesh::DenseVector<libMesh::Number>> &elem_vectors_vector)
 {
-    auto &elem_vectors_vector = builder.vectors[vectors_set];
-
-    const unsigned int elem_id = builder.elem_data.elem ? builder.elem_data.elem->id() : 0;
     outFile.write(reinterpret_cast<const char *>(&elem_id), sizeof(elem_id));
 
     const unsigned int num_containers = static_cast<unsigned int>(elem_vectors_vector.size());
@@ -131,15 +130,17 @@ void BinaryReader::write_element_vectors(ElementBuilder &builder, std::ofstream 
     }
 }
 
-void BinaryReader::read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set)
+bool BinaryReader::read_element_vectors(
+    std::ifstream &inFile,
+    unsigned int &elem_id,
+    std::vector<libMesh::DenseVector<libMesh::Number>> &elem_vectors_vector)
 {
-    auto &elem_vectors_vector = builder.vectors[vectors_set];
-
-    unsigned int elem_id = 0;
-    inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id));
+    if (!inFile.read(reinterpret_cast<char *>(&elem_id), sizeof(elem_id)))
+        return false;
 
     unsigned int num_containers = 0;
-    inFile.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers));
+    if (!inFile.read(reinterpret_cast<char *>(&num_containers), sizeof(num_containers)))
+        return false;
     elem_vectors_vector.resize(num_containers);
 
     for (auto &elem_vector : elem_vectors_vector)
@@ -151,4 +152,6 @@ void BinaryReader::read_element_vectors(ElementBuilder &builder, std::ifstream &
         auto &values = elem_vector.get_values();
         inFile.read(reinterpret_cast<char *>(values.data()), values.size() * sizeof(libMesh::Number));
     }
+
+    return static_cast<bool>(inFile);
 }

@@ -16,12 +16,10 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
-#include <unordered_set>
 
 #include <libmesh/libmesh.h>
-
-class ElementBuilder;
-class ApecMEquationSystems;
+#include <libmesh/dense_matrix.h>
+#include <libmesh/dense_vector.h>
 
 /** @brief Unused file-mode tag reserved for future streaming extensions. */
 enum class FileMode
@@ -69,17 +67,25 @@ public:
         streams.clear();
     }
 
-    /** @brief Serialises one element's matrices for @p matrices_set to a binary stream. */
-    static void write_element_matrices(ElementBuilder &builder, std::ofstream &outFile, unsigned int matrices_set);
+    /** @brief Serialises one element's matrices from an explicit matrix container. */
+    static void write_element_matrices(std::ofstream &outFile,
+                                       unsigned int elem_id,
+                                       const std::vector<libMesh::DenseMatrix<libMesh::Number>> &elem_matrices_vector);
 
-    /** @brief Deserialises one element's matrices for @p matrices_set from a binary stream. */
-    static void read_element_matrices(ElementBuilder &builder, std::ifstream &inFile, unsigned int matrices_set);
+    /** @brief Deserialises one element-matrix record from a binary stream. */
+    static bool read_element_matrices(std::ifstream &inFile,
+                                      unsigned int &elem_id,
+                                      std::vector<libMesh::DenseMatrix<libMesh::Number>> &elem_matrices_vector);
 
-    /** @brief Serialises one element's vectors for @p vectors_set to a binary stream. */
-    static void write_element_vectors(ElementBuilder &builder, std::ofstream &outFile, unsigned int vectors_set);
+    /** @brief Serialises one element's vectors from an explicit vector container. */
+    static void write_element_vectors(std::ofstream &outFile,
+                                      unsigned int elem_id,
+                                      const std::vector<libMesh::DenseVector<libMesh::Number>> &elem_vectors_vector);
 
-    /** @brief Deserialises one element's vectors for @p vectors_set from a binary stream. */
-    static void read_element_vectors(ElementBuilder &builder, std::ifstream &inFile, unsigned int vectors_set);
+    /** @brief Deserialises one element-vector record from a binary stream. */
+    static bool read_element_vectors(std::ifstream &inFile,
+                                     unsigned int &elem_id,
+                                     std::vector<libMesh::DenseVector<libMesh::Number>> &elem_vectors_vector);
 };
 
 #endif // BINARY_READER_H

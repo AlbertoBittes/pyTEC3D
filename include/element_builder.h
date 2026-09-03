@@ -45,7 +45,7 @@ namespace apec_m
 /** @brief Per-element context bundle populated by set_element_data(). */
 struct ElemData
 {
-    libMesh::Elem *elem = nullptr;                               ///< Pointer to the active element.
+    const libMesh::Elem *elem = nullptr;                         ///< Pointer to the active element.
     ElementType *element_type = nullptr;                         ///< Pointer to the element-type descriptor.
     unsigned int material_num = 0;                               ///< Material ID (from VTK MATERIAL cell array).
     unsigned int real_constant_num = 0;                          ///< Real-constant ID (from VTK CONSTANT cell array).
@@ -96,8 +96,7 @@ enum ConstantColumnIndex : unsigned int
  *
  * Constructed once per assembly pass.  Call set_element_data() before any
  * build_*() method.  Owns the DenseMatrix / DenseVector storage organised
- * by MatricesSet and VectorsSet.  BinaryReader serialises the populated
- * containers to @c .emat files.
+ * by MatricesSet and VectorsSet.
  */
 class BinaryReader;
 
@@ -148,10 +147,7 @@ public:
     void prepare_element_matrix_building();
 
     /** @brief Populates the ElemData context for element @p elem. */
-    void set_element_data(libMesh::Elem *elem);
-
-    /** @brief Returns a mutable reference to the active element context. */
-    ElemData &get_elem_data();
+    void set_element_data(const libMesh::Elem *elem);
 
     /** @brief Returns a const reference to the active element context. */
     const ElemData &get_elem_data() const;
@@ -210,31 +206,14 @@ public:
     /** @brief Returns the number of DOFs for the active element. */
     unsigned int get_n_dofs() const { return n_dofs; }
 
-    /** @brief Clears per-variable maps that assign loaded nodal DOFs to canonical injector elements. */
-    void clear_nodal_load_injector_map() { nodal_load_injector_elem_by_dof_by_variable.clear(); }
-
-    /** @brief Iterates local active elements, updating internal element context before invoking @p build_fn. */
-    template <typename BuildFn>
-    void run_for_elements(const libMesh::MeshBase &mesh, BuildFn &&build_fn)
-    {
-        for (const auto &elem : mesh.active_local_element_ptr_range())
-        {
-            this->set_element_data(elem);
-            build_fn(elem);
-        }
-    }
-
-    /** @brief Computes and writes all element data needed by subsequent system assembly. */
-    void write_element_data();
-
-    /** @brief Computes and writes linear element matrices (DOF, nodal, and element solution matrices). */
-    void write_element_matrices();
-
-    /** @brief Computes and writes element RHS vectors. */
-    void write_element_rhs();
-
     /** @brief Constructs the builder and caches material/constant data from the Python model. */
     ElementBuilder(ApecMEquationSystems *equation_systems);
+
+    /** @brief Shares canonical nodal-load injector ownership data with this builder instance. */
+    void set_nodal_load_map(const NodalLoadInjectorElemByVarMap *map)
+    {
+        nodal_load_map_ = map;
+    }
 
 private:
     friend class BinaryReader;
@@ -256,9 +235,11 @@ private:
     // Slot 0: element RHS vectors (Fe).
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors; ///< Per-element vector containers (by VectorsSet).
 
-    ElemData elem_data;                                                                                                                          ///< Context for the element currently being processed.
-    unsigned int n_dofs = 0;                                                                                                                     ///< Number of DOFs on the active element.
-    std::unordered_map<std::string, std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type>> nodal_load_injector_elem_by_dof_by_variable; ///< Canonical injector element ID for each loaded nodal DOF, grouped by DOF variable label.
+    ElemData elem_data;      ///< Context for the element currently being processed.
+    unsigned int n_dofs = 0; ///< Number of DOFs on the active element.
+    const std::unordered_map<std::string,
+                             std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type>> *
+        nodal_load_map_ = nullptr; ///< Canonical injector element ownership map.
 
     ApecMEquationSystems *equation_systems_ = nullptr;       ///< Owning equation-systems container.
     libMesh::ImplicitSystem *dof_solution_system_ = nullptr; ///< DOF solution system reference.
@@ -277,9 +258,6 @@ private:
     const std::unordered_map<libMesh::dof_id_type, std::shared_ptr<apec_m::CoordinateSystem>> *coordinate_systems_ = nullptr; ///< Non-owning pointer to coordinate-system objects keyed by positive ID.
     const BHCurveMaterialsMap *bh_curves_ = nullptr;                                                                          ///< Non-owning pointer to equation-systems-owned BH curves map.
 
-    void build_nodal_load_injector_map(const libMesh::MeshBase &mesh,
-                                       const std::string &dof_variable_name,
-                                       const std::string &nodal_load_array_name);
     bool should_inject_nodal_load_dof(const std::string &dof_variable_name,
                                       libMesh::dof_id_type dof_id) const;
 

@@ -4,9 +4,9 @@
  *        dispatch to formulation-specific builders, and solution post-processing.
  */
 #include "element_builder.h"
-#include "binary_reader.h"
 #include "coordinate_system.h"
 #include <libmesh/dof_map.h>
+#include <libmesh/elem_range.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/fe.h>
 #include <libmesh/petsc_linear_solver.h>
@@ -26,15 +26,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
-
-namespace
-{
-    std::filesystem::path get_emat_folderpath_from_solver()
-    {
-        return std::filesystem::current_path() / "emat";
-    }
-}
 
 using libMesh::DenseVector;
 using libMesh::dof_id_type;
@@ -68,142 +61,29 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
     coordinate_system_cell_array_ = vtk_grid_->GetCellData()->GetArray("COORDINATE_SYSTEM");
 
     element_types_factory_ = equation_systems_->get_element_types_factory().get();
+    if (!element_types_factory_)
+        apec::logging::error_and_abort("ElementBuilder: element types factory is not available.");
+
     bh_curves_ = &equation_systems_->get_bh_curves();
     materials_rows_ = &equation_systems_->get_material_rows();
     constants_rows_ = &equation_systems_->get_constant_rows();
     coordinate_systems_ = &equation_systems_->get_coordinate_systems();
 }
 
-void ElementBuilder::write_element_data()
-{
-    this->write_element_matrices();
-    this->write_element_rhs();
-}
-
-void ElementBuilder::write_element_matrices()
-{
-    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
-    const auto &comm = mesh.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    const std::vector<std::string> filenames = {
-        "mtrx_" + rank_str + ".emat",
-        "nodal_sol_mtrx_" + rank_str + ".emat",
-        "element_sol_mtrx_" + rank_str + ".emat"};
-
-    const bool emat_files_exist = std::all_of(filenames.begin(), filenames.end(), [&](const std::string &filename)
-                                              { return std::filesystem::exists(emat_folderpath / filename); });
-
-    if (!emat_files_exist)
-    {
-        apec::logging::info("Computing element matrices for current time-step");
-
-        auto streams = reader.open_output_streams(emat_folderpath, filenames);
-        auto &mtrx_output_file = *streams[0];
-        auto &nodal_sol_mtrx_output_file = *streams[1];
-        auto &element_sol_mtrx_output_file = *streams[2];
-
-        this->run_for_elements(mesh, [&](const libMesh::Elem *)
-                               {
-                                   this->build_element();
-
-                                   BinaryReader::write_element_matrices(*this, mtrx_output_file, ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES);
-                                   BinaryReader::write_element_matrices(*this, nodal_sol_mtrx_output_file, ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES);
-                                   BinaryReader::write_element_matrices(*this, element_sol_mtrx_output_file, ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES); });
-
-        reader.close_file_streams(streams);
-    }
-    else
-        apec::logging::info("Reusing element matrices from previous time step");
-}
-
-void ElementBuilder::build_nodal_load_injector_map(const libMesh::MeshBase &mesh,
-                                                   const std::string &dof_variable_name,
-                                                   const std::string &nodal_load_array_name)
-{
-    if (!dof_solution_system_->has_variable(dof_variable_name))
-        return;
-
-    vtkDataArray *load_array = vtk_grid_->GetPointData()->GetArray(nodal_load_array_name.c_str());
-    if (!load_array)
-        return;
-
-    const unsigned int dof_var_num = dof_solution_system_->variable_number(dof_variable_name);
-    const unsigned int sys_num = dof_solution_system_->number();
-    const auto &dof_var = dof_solution_system_->variable(dof_var_num);
-
-    std::map<dof_id_type, dof_id_type> local_injector_elem_by_dof;
-
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        if (!dof_var.active_on_subdomain(elem->subdomain_id()))
-            continue;
-
-        for (unsigned int i = 0; i < elem->n_nodes(); ++i)
-        {
-            const auto &node = elem->node_ref(i);
-            const auto node_id = static_cast<vtkIdType>(node.id());
-            const Real load_value = load_array->GetComponent(node_id, 0);
-            if (load_value == 0.0)
-                continue;
-
-            const dof_id_type dof_id = node.dof_number(sys_num, dof_var_num, 0);
-            local_injector_elem_by_dof.emplace(dof_id, static_cast<dof_id_type>(elem->id()));
-        }
-    }
-
-    auto global_injector_elem_by_dof = local_injector_elem_by_dof;
-    mesh.comm().set_union(global_injector_elem_by_dof);
-    auto &injector_elem_by_dof = nodal_load_injector_elem_by_dof_by_variable[dof_variable_name];
-    for (const auto &entry : global_injector_elem_by_dof)
-        injector_elem_by_dof[entry.first] = entry.second;
-}
-
 bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variable_name,
                                                   dof_id_type dof_id) const
 {
-    const auto var_it = nodal_load_injector_elem_by_dof_by_variable.find(dof_variable_name);
-    if (var_it == nodal_load_injector_elem_by_dof_by_variable.end())
+    if (!nodal_load_map_ || !elem_data.elem)
+        return false;
+
+    const auto var_it = nodal_load_map_->find(dof_variable_name);
+    if (var_it == nodal_load_map_->end())
         return false;
 
     const auto &injector_elem_by_dof = var_it->second;
     const auto dof_it = injector_elem_by_dof.find(dof_id);
     return (dof_it != injector_elem_by_dof.end()) &&
            (dof_it->second == static_cast<dof_id_type>(elem_data.elem->id()));
-}
-
-void ElementBuilder::write_element_rhs()
-{
-    const libMesh::MeshBase &mesh = equation_systems_->get_mesh();
-    const auto &comm = mesh.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
-    auto streams_out = reader.open_output_streams(emat_folderpath, out_filenames);
-    auto &rhs_output_file = *streams_out[0];
-
-    apec::logging::info("Calculating elements RHS");
-
-    this->clear_nodal_load_injector_map();
-    const auto dof_nodal_load_map =
-        VariablesMap::get_dof_variable_nodal_load_map_for_system(*dof_solution_system_);
-    for (const auto &entry : dof_nodal_load_map)
-        this->build_nodal_load_injector_map(mesh, entry.first, entry.second);
-
-    this->run_for_elements(mesh, [&](const libMesh::Elem *)
-                           {
-                               this->build_element_rhs();
-                               BinaryReader::write_element_vectors(*this, rhs_output_file, ElementBuilder::VectorsSet::RHS_VECTORS); });
-
-    reader.close_file_streams(streams_out);
 }
 
 //
@@ -253,7 +133,7 @@ void ElementBuilder::prepare_element_matrix_building()
 // Element-data setup
 // ---------------------------------------------------------------------------
 
-void ElementBuilder::set_element_data(Elem *elem)
+void ElementBuilder::set_element_data(const Elem *elem)
 {
     elem_data.element_type = element_types_factory_->get_element_type(elem->subdomain_id());
 
@@ -273,11 +153,6 @@ void ElementBuilder::set_element_data(Elem *elem)
     std::vector<dof_id_type> dof_indices;
     dof_solution_dof_map_->dof_indices(elem, dof_indices);
     this->n_dofs = static_cast<unsigned int>(dof_indices.size());
-}
-
-ElemData &ElementBuilder::get_elem_data()
-{
-    return elem_data;
 }
 
 const ElemData &ElementBuilder::get_elem_data() const
@@ -530,6 +405,8 @@ std::vector<DenseVector<Number>> ElementBuilder::get_variables_solution(const Nu
 void ElementBuilder::append_and_write_solution(System &system,
                                                const std::vector<DenseVector<Number>> &ordered_vectors)
 {
+    static std::mutex solution_write_mutex;
+
     DenseVector<Number> values;
     for (const auto &vec : ordered_vectors)
     {
@@ -542,6 +419,8 @@ void ElementBuilder::append_and_write_solution(System &system,
     std::vector<dof_id_type> dof_indices;
     DofMap *dof_map = &system.get_dof_map();
     dof_map->dof_indices(elem_data.elem, dof_indices);
+
+    std::lock_guard<std::mutex> lock(solution_write_mutex);
 
     for (unsigned int i = 0; i < dof_indices.size() && i < values.size(); i++)
     {

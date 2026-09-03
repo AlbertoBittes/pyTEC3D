@@ -51,6 +51,9 @@ Selector.select_pos(
     apec.model.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
 )
 Selector.set_value_on_selection(apec.model.mesh, "_Az", 0.0)
+Selector.select_pos(
+    apec.model.mesh, 0, (20 - 0.1, 20 + 0.1), coordinate_system=SphericalCoordinateSystem()
+)
 TreeGauge.tree_gauge(
     apec.model.mesh,
     periodic_point_coupling="CP_0",

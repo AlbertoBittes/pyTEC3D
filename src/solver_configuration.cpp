@@ -22,6 +22,9 @@
 #include "solver_configuration.h"
 #include "apec_m_logging.h"
 
+#include <libmesh/libmesh.h>
+
+#include <cstdlib>
 #include <string>
 
 namespace
@@ -32,6 +35,8 @@ namespace
 void PetscSolverConfiguration::configure_solver()
 {
     PetscErrorCode ierr = 0;
+    const auto comm = _petsc_linear_solver->comm().get();
+    const int n_threads = std::max(1, static_cast<int>(libMesh::n_threads()));
 
     // Read settings from the Python solver_settings dict.
     std::string ksp_type_str = KSPPREONLY;
@@ -57,62 +62,56 @@ void PetscSolverConfiguration::configure_solver()
         ierr = KSPSetTolerances(_petsc_linear_solver->ksp(),
                                 rtol, abstol, PETSC_DEFAULT,
                                 static_cast<PetscInt>(maxits));
-        CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+        CHKERRABORT(comm, ierr);
     }
+
+    // Keep BLAS/OpenMP backends consistent with the libMesh thread count.
+    const std::string thread_count_str = std::to_string(n_threads);
+    (void)setenv("OMP_NUM_THREADS", thread_count_str.c_str(), 1);
 
     // Enable PETSc performance logging so that -log_view output is available.
     ierr = PetscLogDefaultBegin();
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     // Set KSP and PC types from settings.
     ierr = KSPSetType(_petsc_linear_solver->ksp(), ksp_type_str.c_str());
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver->ksp(), PETSC_FALSE);
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     ierr = PCSetType(_petsc_linear_solver->pc(), pc_type_str.c_str());
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-
-    // For direct factorisations (lu / cholesky) use MUMPS as the parallel backend.
-    if (pc_type_str == PCLU || pc_type_str == PCCHOLESKY)
-    {
-        ierr = PCFactorSetMatSolverType(_petsc_linear_solver->pc(), MATSOLVERMUMPS);
-        CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
-    }
-
-    // Re-apply command-line -ksp_* options last so they can override everything
-    // set above (libMesh called KSPSetFromOptions before configure_solver()).
-    ierr = KSPSetFromOptions(_petsc_linear_solver->ksp());
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     // Enable convergence and solution monitoring via PETSc options.
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = PetscOptionsSetValue(NULL, "-ksp_view", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = PetscOptionsSetValue(NULL, "-ksp_converged_reason", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = PetscOptionsSetValue(NULL, "-log_view", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_true_residual", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor_solution", "");
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
+    ierr = PetscOptionsSetValue(NULL, "-mat_mumps_icntl_4", "2");
+    CHKERRABORT(comm, ierr);
 
     const KSP ksp = _petsc_linear_solver->ksp();
     const PC pc = _petsc_linear_solver->pc();
 
     KSPType ksp_type = nullptr;
     ierr = KSPGetType(ksp, &ksp_type);
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     PCType pc_type = nullptr;
     ierr = PCGetType(pc, &pc_type);
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     MatSolverType mat_solver_type = nullptr;
     ierr = PCFactorGetMatSolverType(pc, &mat_solver_type);
-    CHKERRABORT(_petsc_linear_solver->comm().get(), ierr);
+    CHKERRABORT(comm, ierr);
 
     const std::string ksp_name = ksp_type ? std::string(ksp_type) : std::string("unknown");
     const std::string pc_name = pc_type ? std::string(pc_type) : std::string("unknown");

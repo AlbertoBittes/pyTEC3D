@@ -3,7 +3,7 @@ from apec_m.selector import Selector
 import os
 import vtk.util.numpy_support as vtknp
 
-apec = APEC_M()
+apec = APEC_M(4)
 
 filename = "coil_2D_avolt"
 
