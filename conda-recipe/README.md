@@ -1,105 +1,157 @@
-# APEC-M local conda build
+# APEC-M Conda Packaging
 
-This repository uses a local conda recipe to build `apec_m` from source.
+This repository uses `conda-build` as the primary distribution flow.
 
-## Supported modes
+## Current Scope
+- Linux only
+- Single solver-focused conda recipe:
+	- `apec-m` (builds and installs `apec_m_core.apec_m_solver`, `apec_m_coordinate`, `apec_m`, and `apec_m_mesh_converter`)
+- Python suite is pip-distributed:
+	- `apec-m-coordinate`
+	- `apec-m-mesh-converter`
+	- `apec-m-python` (depends on both)
 
-There are two install modes:
+## Source Of Truth
+- Full recipe: `conda-recipe/recipes/apec-m`
+- Solver build implementation reused by full recipe: `conda-recipe/recipes/apec-m-core/build.sh`
 
-- `copy` (default): package files are installed into the environment (normal conda package flow).
-- `editable`: package points to your working tree (`pip install -e .`) for local debugging.
-
-There are three libMesh link methods:
-
-- `opt`
-- `dbg`
-- `devel`
-
-
-## Difference between 1), 2), and 3)
-
-1. `conda build` package build (`copy` mode):
-- conda creates an isolated build environment and installs dependencies from `meta.yaml`
-- runs `conda-recipe/recipe/build.sh` inside that build environment
-- produces a conda package (`apec_m`) to install with `conda install --use-local`
-- install is non-editable (files are installed into the target environment)
-
-2. local `build.sh` non-editable (`copy` mode):
-- you run `conda-recipe/recipe/build.sh` directly in your currently activated environment
-- you must pre-install build dependencies in that environment
-- does not produce a conda package; it installs directly into that environment
-- install is non-editable (copied into environment)
-
-3. local `build.sh` editable (`editable` mode):
-- same as 2) for dependency responsibility (you pre-install them)
-- does not produce a conda package
-- uses `pip install -e .`, so Python imports point to your repo working tree
-- intended for active development/debugging
-
-In short:
-- use 1) for reproducible packaging/distribution
-- use 2) for quick local non-editable installation
-- use 3) for local development with live code edits
-
-
-## 1) Conda package build (`copy` mode, recommended)
-
-If you are starting from a clean machine, create/activate an environment with `git` first, then clone APEC-M and build from the repository root:
+## Build Release Artifacts Once (Maintainer)
+From repository root:
 
 ```bash
-conda create -n apec-m -c conda-forge python=3.12 conda-build compilers git -y
+conda create -n apec-m-build -c conda-forge python=3.12 conda-build boa compilers git conda-index -y
+conda activate apec-m-build
+export APEC_M_LIBMESH_METHOD=opt
+conda mambabuild conda-recipe/recipes/apec-m -c conda-forge --python 3.12
+```
+
+## Experimental: Build Solver With MSYS2 + pacman (Windows)
+
+This is an experimental native build flow for the solver on Windows using MSYS2.
+It does not produce a conda package.
+
+Open the MSYS2 UCRT64 shell and run:
+
+```bash
+pacman -Syu --noconfirm
+pacman -S --needed --noconfirm \
+	git make pkgconf autoconf automake libtool \
+	mingw-w64-ucrt-x86_64-toolchain \
+	mingw-w64-ucrt-x86_64-cmake \
+	mingw-w64-ucrt-x86_64-ninja \
+	mingw-w64-ucrt-x86_64-openmpi \
+	mingw-w64-ucrt-x86_64-petsc \
+	mingw-w64-ucrt-x86_64-vtk \
+	mingw-w64-ucrt-x86_64-boost \
+	mingw-w64-ucrt-x86_64-spdlog \
+	mingw-w64-ucrt-x86_64-python \
+	mingw-w64-ucrt-x86_64-python-pip \
+	mingw-w64-ucrt-x86_64-pybind11
+
+cd /path/to/APEC-M
+export PREFIX=/ucrt64
+export PATH=/ucrt64/bin:$PATH
+export APEC_M_LIBMESH_METHOD=opt
+
+bash conda-recipe/recipes/apec-m-core/build.sh
+```
+
+Quick check:
+
+```bash
+python -c "import apec_m_core.apec_m_solver"
+```
+
+Collect generated artifacts into a distributable folder and index it:
+
+```bash
+mkdir -p conda-release/linux-64 conda-release/noarch
+cp -a "$CONDA_PREFIX/conda-bld/linux-64"/apec-m*.tar.bz2 conda-release/linux-64/
+cp -a "$CONDA_PREFIX/conda-bld/linux-64"/apec-m*.conda conda-release/linux-64/ 2>/dev/null || true
+cp -a "$CONDA_PREFIX/conda-bld/noarch"/apec-m*.tar.bz2 conda-release/noarch/ 2>/dev/null || true
+cp -a "$CONDA_PREFIX/conda-bld/noarch"/apec-m*.conda conda-release/noarch/ 2>/dev/null || true
+conda index conda-release
+```
+
+## Install From Release Artifacts (Users)
+
+Users do not build anything. They only install from the provided artifact folder:
+
+```bash
+conda create -n apec-m -c conda-forge python=3.12 -y
 conda activate apec-m
-
-git clone https://github.com/AlbertoBittes/APEC-M.git
-cd APEC-M
-
-export APEC_M_LIBMESH_METHOD=opt   # or dbg / devel
-export APEC_M_INSTALL_MODE=copy
-conda build conda-recipe/recipe
-conda install --use-local -y apec_m
+conda install -y -c conda-forge -c file://$PWD/conda-release apec-m
 ```
 
-Notes:
-- this recipe currently uses a local source path (`source: path: ../..`), so `conda build` must be run from inside a local APEC-M clone.
-- `APEC_M_INSTALL_MODE` must stay `copy` for `conda build`.
-- `editable` is intentionally blocked during `conda build`.
+## End-User Guide: From GitHub Tarball To Install
 
-## 2) Local non-editable build via `build.sh` (`copy` mode)
-
-Use this if you want to run the same script outside `conda build`.
+### One-command install (copy/paste)
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 spdlog mpi4py pip -y
-conda activate apec-m-dev
+set -euo pipefail
+ARCHIVE=/tmp/conda-release.tar.gz
+DEST=$HOME/apec-release
 
-git clone https://github.com/AlbertoBittes/APEC-M.git
-cd APEC-M
+curl -fL https://github.com/AlbertoBittes/APEC-M/releases/latest/download/conda-release.tar.gz -o "$ARCHIVE"
+rm -rf "$DEST/conda-release"
+mkdir -p "$DEST"
+tar -xzf "$ARCHIVE" -C "$DEST"
 
-export APEC_M_LIBMESH_METHOD=opt   # or dbg / devel
-export APEC_M_INSTALL_MODE=copy
-bash conda-recipe/recipe/build.sh
+conda create -n apec-m -c conda-forge python=3.12 -y
+conda activate apec-m
+conda install -y -c conda-forge -c "file://$DEST/conda-release" apec-m
 ```
 
-## 3) Local editable debug build via `build.sh` (`editable` mode)
+This requires the GitHub release asset to be named exactly `conda-release.tar.gz`.
+
+### 1. Download the release artifact from GitHub
+
+- Open the project Releases page.
+- Download the packaged local channel archive (example name: `conda-release.tar.gz`).
+
+### 2. Extract the archive
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 spdlog mpi4py pip -y
-conda activate apec-m-dev
-
-git clone https://github.com/AlbertoBittes/APEC-M.git
-cd APEC-M
-
-export APEC_M_LIBMESH_METHOD=dbg   # typical for debugging
-export APEC_M_INSTALL_MODE=editable
-bash conda-recipe/recipe/build.sh
+mkdir -p "$HOME/apec-release"
+tar -xzf /path/to/conda-release.tar.gz -C "$HOME/apec-release"
 ```
 
-This installs `apec_m` as editable (`pip install -e .`), so Python imports follow your local repo changes.
+After extraction, you should have a local channel root like:
 
-## What `build.sh` does
+- `$HOME/apec-release/conda-release/linux-64`
+- `$HOME/apec-release/conda-release/noarch`
 
-1. clones and builds `libmesh` from source into the target prefix
-2. compiles `apec_m_solver` with CMake/Ninja, linking selected `libmesh_<method>` + `timpi_<method>`
-3. installs Python API (`copy` or `editable` mode)
-4. installs `ansys-mapdl-reader==0.55.2` via pip
-5. vendors `openpyxl` into `python/apec_m/local_packages` for ParaView-side usage
+### 3. Create a clean environment
+
+```bash
+conda create -n apec-m -c conda-forge python=3.12 -y
+conda activate apec-m
+```
+
+### 4. Install APEC-M from the extracted artifacts
+
+```bash
+conda install -y -c conda-forge -c file://$HOME/apec-release/conda-release apec-m
+```
+
+### 5. Optional: pip-only Python suite (no solver)
+
+```bash
+python -m pip install apec-m-python
+```
+
+Use this only if you want Python modules without the conda solver package.
+
+### 6. Quick verification
+
+```bash
+python -c "import apec_m"
+python -c "import apec_m_coordinate"
+python -c "import apec_m_mesh_converter"
+python -c "import apec_m_core.apec_m_solver"
+```
+
+### Notes
+- If `mambabuild` is not available, replace each `conda mambabuild` with `conda build`.
+- Keep all produced `apec-m*` artifacts together in `conda-release` before running `conda index`.
+- If the artifact folder is shared on another machine, replace `$PWD/conda-release` with that absolute path.

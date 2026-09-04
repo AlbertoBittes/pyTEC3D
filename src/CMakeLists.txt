@@ -22,6 +22,18 @@ option(APEC_M_ENABLE_VALGRIND_SMOKE "Add a valgrind smoke target for module impo
 if(APEC_M_BUILD_PYBIND_MODULE)
   set(PYBIND11_FINDPYTHON ON)
   find_package(pybind11 CONFIG REQUIRED)
+
+  set(APEC_M_PYTHON_SITEARCH "" CACHE PATH "Absolute path to Python site-packages (platlib) for installing extension modules.")
+  if(NOT APEC_M_PYTHON_SITEARCH)
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib'))"
+      OUTPUT_VARIABLE APEC_M_PYTHON_SITEARCH
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
+  if(NOT APEC_M_PYTHON_SITEARCH)
+    message(FATAL_ERROR "Could not determine Python site-packages path. Set -DAPEC_M_PYTHON_SITEARCH=/path/to/site-packages")
+  endif()
 endif()
 
 find_package(VTK REQUIRED
@@ -68,11 +80,18 @@ find_library(TIMPI_LIB
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
+set(SOLVER_EXCLUDED_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_bindings.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_module.cpp"
+)
+list(REMOVE_ITEM SOURCES ${SOLVER_EXCLUDED_SOURCES})
 get_filename_component(APEC_M_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 set(APEC_M_INCLUDE_DIRS
   "${LIBMESH_DIR}/include"
   "${APEC_M_REPO_ROOT}/include"
+  "${APEC_M_REPO_ROOT}/include/apec_m_solver"
   ${PETSC_INCLUDE_DIRS}
 )
 
@@ -101,7 +120,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   set_target_properties(apec_m_solver PROPERTIES
     PREFIX ""
     OUTPUT_NAME "apec_m_solver"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_core"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN/../../../;$ORIGIN/../lib"
   )
@@ -126,6 +145,14 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       ${APEC_M_LINK_LIBS}
   )
 
+  install(TARGETS apec_m_solver
+    LIBRARY DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
+    RUNTIME DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
+  )
+  install(FILES "${APEC_M_REPO_ROOT}/python/apec_m_core/__init__.py"
+    DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
+  )
+
   if(APEC_M_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(apec_m_solver PRIVATE -fno-omit-frame-pointer -fsanitize=address,undefined)
     target_link_options(apec_m_solver PRIVATE -fsanitize=address,undefined)
@@ -135,7 +162,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
     enable_testing()
     add_test(
       NAME apec_m_solver_import_smoke
-      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m.apec_m_solver as mod; print(mod.__doc__)"
+      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m_core.apec_m_solver as mod; print(mod.__doc__)"
     )
   endif()
 
@@ -145,7 +172,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       add_custom_target(valgrind_solver_smoke
         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_SOURCE_DIR}/../python
           ${VALGRIND_EXECUTABLE} --error-exitcode=1 --leak-check=full
-          ${Python3_EXECUTABLE} -c "import apec_m.apec_m_solver"
+          ${Python3_EXECUTABLE} -c "import apec_m_core.apec_m_solver"
         DEPENDS apec_m_solver
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Running valgrind smoke check for apec_m_solver import")
@@ -163,5 +190,34 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       VTK::FiltersCore
       VTK::IOXML
       VTK::WrappingPythonCore
+  )
+
+  add_library(apec_m_coordinate_system MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_bindings.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_module.cpp"
+  )
+  set_target_properties(apec_m_coordinate_system PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "apec_m_coordinate_system"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_coordinate"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "$ORIGIN"
+  )
+
+  target_include_directories(apec_m_coordinate_system
+    PRIVATE
+      "${APEC_M_REPO_ROOT}/include"
+  )
+
+  target_compile_definitions(apec_m_coordinate_system PRIVATE
+    APEC_M_ENABLE_PYBIND
+    APEC_M_VERSION=${PROJECT_VERSION}
+    APEC_M_BUILD_TYPE="$<CONFIG>"
+  )
+
+  target_link_libraries(apec_m_coordinate_system
+    PRIVATE
+      pybind11::module
   )
 endif()

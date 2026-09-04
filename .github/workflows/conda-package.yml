@@ -1,0 +1,95 @@
+name: conda-package
+
+'on':
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload built conda artifacts to Anaconda"
+        required: false
+        default: "false"
+      channel:
+        description: "Anaconda channel (owner/org) to upload to"
+        required: false
+        default: ""
+      label:
+        description: "Anaconda label to upload to"
+        required: false
+        default: "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      APEC_M_LIBMESH_METHOD: opt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          channels: conda-forge
+          channel-priority: strict
+          activate-environment: build
+          auto-update-conda: true
+          python-version: "3.12"
+
+      - name: Install build tooling
+        shell: bash -l {0}
+        run: |
+          conda install -y conda-build anaconda-client boa conda-index
+
+      - name: Build conda package
+        shell: bash -l {0}
+        run: |
+          conda mambabuild conda-recipe/recipes/apec-m -c conda-forge --python 3.12 --output-folder conda-dist
+
+      - name: List produced packages
+        shell: bash -l {0}
+        run: |
+          find conda-dist -type f \( -name "*.conda" -o -name "*.tar.bz2" \) -print
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: conda-linux-py3.12
+          path: |
+            conda-dist/**/*.conda
+            conda-dist/**/*.tar.bz2
+
+      - name: Publish to Anaconda channel
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
+        shell: bash -l {0}
+        env:
+          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_API_TOKEN }}
+          ANACONDA_CHANNEL: ${{ inputs.channel }}
+          ANACONDA_LABEL: ${{ inputs.label }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ -z "${ANACONDA_API_TOKEN:-}" ]; then
+            echo "ANACONDA_API_TOKEN is not set" >&2
+            exit 1
+          fi
+          if [ -z "${ANACONDA_CHANNEL:-}" ]; then
+            ANACONDA_CHANNEL="${REPO_OWNER}"
+          fi
+          if [ -z "${ANACONDA_LABEL:-}" ]; then
+            echo "ANACONDA_LABEL is not set" >&2
+            exit 1
+          fi
+          shopt -s nullglob globstar
+          files=(conda-dist/**/*.conda conda-dist/**/*.tar.bz2)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No conda artifacts were found to upload" >&2
+            exit 1
+          fi
+          anaconda -t "${ANACONDA_API_TOKEN}" upload \
+            --user "${ANACONDA_CHANNEL}" \
+            --label "${ANACONDA_LABEL}" \
+            --skip-existing \
+            "${files[@]}"

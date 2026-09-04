@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apec-m-python"
+version = "0.1.0"
+description = "Python API for APEC-M workflows"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+authors = [
+  { name = "PlasmaArc contributors" }
+]
+dependencies = [
+  "apec-m-coordinate",
+  "apec-m-mesh-converter",
+  "numpy",
+  "pandas",
+  "openpyxl",
+  "mpi4py",
+  "vtk>=9.5"
+]
+
+[tool.setuptools]
+package-dir = { "" = ".." }
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["apec_m"]
+exclude = ["apec_m.tests*"]

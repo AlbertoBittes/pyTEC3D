@@ -1,0 +1,20 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11", "numpy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "apec-m-coordinate"
+version = "0.1.0"
+description = "Standalone coordinate-system package for APEC-M"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+authors = [
+  { name = "PlasmaArc contributors" }
+]
+dependencies = [
+  "numpy"
+]
+
+[tool.scikit-build]
+wheel.packages = []
+

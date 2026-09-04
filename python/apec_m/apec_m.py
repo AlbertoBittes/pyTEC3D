@@ -253,12 +253,11 @@ class APEC_M:
 
     @staticmethod
     def _require_solver_module() -> Any:
-        package_name = __package__ or "apec_m"
         try:
-            return importlib.import_module(f"{package_name}.apec_m_solver")
+            return importlib.import_module("apec_m_core.apec_m_solver")
         except ImportError as exc:
             raise ImportError(
-                "Could not import the C++ solver module 'apec_m.apec_m_solver'. "
+                "Could not import the C++ solver module 'apec_m_core.apec_m_solver'. "
                 "Build/install the pybind11 extension before launching the solver."
             ) from exc
 

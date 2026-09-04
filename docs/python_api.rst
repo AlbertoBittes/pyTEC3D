@@ -27,7 +27,6 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    apec_m.ansys_helper
    apec_m.apec_m_paraview
    apec_m.constants
-   apec_m.convert_mesh
    apec_m.coordinate_system
    apec_m.excel
    apec_m.model_edit

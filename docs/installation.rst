@@ -3,44 +3,66 @@ Installation
 
 Requirements
 ------------
-- Python 3.9 or newer
-- C++ toolchain for building/running the solver (e.g., GCC/Clang and CMake)
-- Recommended: a virtual environment for the Python tools
+- Linux
+- conda
 
-Install the Python API
-----------------------
+Install from conda channel
+--------------------------
 
-From a cloned repository:
-
-.. code-block:: bash
-
-   python -m venv .venv
-   source .venv/bin/activate  # on Windows use .venv\\Scripts\\activate
-   pip install --upgrade pip
-   pip install -e .
-
-This installs the command-line entry points defined in ``pyproject.toml`` (e.g., ``apec`` and ``convert_mesh``).
-
-Install the C++ solver
-----------------------
-
-The solver sources live under ``src/`` with accompanying headers in ``include/``.
-
-Basic build outline (fill in with your project-specific steps):
+Create a clean environment and install ``apec-m``:
 
 .. code-block:: bash
 
-   mkdir -p build
-   cd build
-   cmake ..
-   cmake --build .
+   conda create -n apec-m -c <your-channel> -c conda-forge python=3.12 apec-m -y
+   conda activate apec-m
 
-If you have specific compiler flags, third-party libraries, or environment modules, document them here. Replace this section with the authoritative build/run recipe your team uses.
+Install from local build artifacts
+----------------------------------
+
+If you built the package locally with ``conda mambabuild``:
+
+.. code-block:: bash
+
+   conda create -n apec-m -c conda-forge python=3.12 -y
+   conda activate apec-m
+   conda install --use-local -y apec-m
+
+Install partial stacks from conda
+---------------------------------
+
+Coordinate package only:
+
+.. code-block:: bash
+
+   conda install -c <your-channel> -c conda-forge apec-m-coordinate
+
+Python API package (depends on ``apec-m-coordinate``):
+
+.. code-block:: bash
+
+   conda install -c <your-channel> -c conda-forge apec-m-python
+
+Conda package build (developers)
+--------------------------------
+
+From repository root:
+
+.. code-block:: bash
+
+   conda create -n apec-m-build -c conda-forge python=3.12 conda-build boa compilers git -y
+   conda activate apec-m-build
+   export APEC_M_LIBMESH_METHOD=opt
+   conda mambabuild conda-recipe/recipes/apec-m-coordinate -c conda-forge --output-folder conda-dist
+   conda index conda-dist
+   conda mambabuild conda-recipe/recipes/apec-m-python -c conda-forge -c file://$PWD/conda-dist --output-folder conda-dist
+   conda index conda-dist
+   conda mambabuild conda-recipe/recipes/apec-m-core -c conda-forge -c file://$PWD/conda-dist --output-folder conda-dist
+   conda index conda-dist
+   conda mambabuild conda-recipe/recipes/apec-m -c conda-forge -c file://$PWD/conda-dist --output-folder conda-dist
 
 Optional dependencies
 ---------------------
 - ``vtk`` is required for mesh IO and visualization helpers.
 - ``pandas`` and ``numpy`` power tabular and numeric processing.
-- ``ansys-mapdl-reader`` enables ANSYS interoperability.
 
 When building on Read the Docs, these heavy dependencies are mocked so documentation builds quickly. They are still required for full runtime functionality.

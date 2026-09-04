@@ -1,48 +1,73 @@
 # APEC-M
-A new code for electromagnetic simulation of plasma equilibria and disruptions
+A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
 
-## Local conda recipe install (from source)
+## Supported Platform
+- Linux only (current packaging target)
+
+## Installation Model
+APEC-M uses two distribution paths:
+- conda package `apec-m`: full package with solver (`apec_m_core.apec_m_solver`) + Python modules (`apec_m`, `apec_m_coordinate`, `apec_m_mesh_converter`)
+- pip Python suite:
+  - `apec-m-mesh-converter`
+  - `apec-m-python` (depends on `apec-m-coordinate` and `apec-m-mesh-converter`)
+
+## Install Solver (Conda)
 
 ```bash
-conda create -n apec-m -c conda-forge python=3.12 conda-build compilers -y
+conda create -n apec-m -c conda-forge python=3.12 -y
 conda activate apec-m
-git clone https://github.com/AlbertoBittes/PlasmaArc.git
-cd PlasmaArc
-export APEC_M_LIBMESH_METHOD=opt   # opt|dbg|devel
-conda build conda-recipe/recipe
-conda install --use-local -y apec_m
+conda install -y -c <your-channel> -c conda-forge apec-m
 ```
 
-The conda recipe performs all required steps:
-
-1. installs the build/runtime dependencies in the conda build environment
-2. clones and builds `libmesh` with the required configuration
-3. compiles the `apec_m_solver` pybind module
-4. installs Python API modules plus the compiled solver module
-5. installs `openpyxl` in the conda environment
-6. vendors `openpyxl` into `python/apec_m/local_packages` during recipe build for ParaView-side script usage
-
-After install, `apec_m` and `apec_m.apec_m_solver` are immediately importable in the target conda environment.
-
-## Editable vs non-editable
-
-- `conda build` flow is non-editable (`copy` mode) and produces a relocatable package.
-- For local editable debugging, run:
+If using locally built conda artifacts:
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 compilers cmake ninja pkg-config git petsc "vtk>=9.5" pybind11 mpi4py pip -y
-conda activate apec-m-dev
-cd PlasmaArc
-export APEC_M_LIBMESH_METHOD=dbg
-export APEC_M_INSTALL_MODE=editable
-bash conda-recipe/recipe/build.sh
+conda create -n apec-m -c conda-forge python=3.12 -y
+conda activate apec-m
+conda install --use-local -y apec-m
 ```
 
-This uses `pip install -e .` so imports track your working tree.
+## Install Python Suite With Pip (No Solver)
+For pip-only usage (without conda solver), install the full Python suite:
+
+```bash
+python -m pip install apec-m-python
+```
+
+Install components independently:
+
+```bash
+python -m pip install apec-m-coordinate
+python -m pip install apec-m-mesh-converter
+```
+
+Local source installs for development:
+
+```bash
+python -m pip install ./python/apec_m_coordinate_project
+python -m pip install ./python/apec_m_mesh_converter_project
+python -m pip install ./python/apec_m_python_project
+```
+
+## What Gets Installed
+Conda `apec-m` installs:
+- `apec_m_core.apec_m_solver`
+- `apec_m_coordinate`
+- `apec_m`
+- `apec_m_mesh_converter`
+- solver-native runtime dependencies from conda recipe
+
+Pip `apec-m-python` installs:
+- `apec_m`
+- `apec-m-coordinate`
+- `apec-m-mesh-converter`
+
+## Build And Release Model
+- Conda recipe source of truth: `conda-recipe/recipes/apec-m/meta.yaml`
+- Solver build script: `conda-recipe/recipes/apec-m-core/build.sh`
+- CI workflow: `.github/workflows/conda-package.yml`
 
 ## Notes
-
-```bash
-conda activate apec-m
-```
-Use your installed environment (for example `apec-m`) to run scripts/tests.
+- Solver distribution is conda-first.
+- Python suite distribution is pip-first.
+- Windows packaging is currently disabled.
