@@ -10,7 +10,7 @@ import vtk
 
 from .selector import Selector
 from .model_edit import ModelEdit
-from apec_m_coordinate import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
+from apec_m_coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
 from .logging_utils import get_logger
 from .constants import (
     DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS,

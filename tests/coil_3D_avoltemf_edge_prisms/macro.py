@@ -1,7 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
-from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import YAxisCylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
 import os
 import vtk

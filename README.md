@@ -1,73 +1,86 @@
 # APEC-M
+
 A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
 
-## Supported Platform
-- Linux only (current packaging target)
+## Supported platform
 
-## Installation Model
-APEC-M uses two distribution paths:
-- conda package `apec-m`: full package with solver (`apec_m_core.apec_m_solver`) + Python modules (`apec_m`, `apec_m_coordinate`, `apec_m_mesh_converter`)
-- pip Python suite:
-  - `apec-m-mesh-converter`
-  - `apec-m-python` (depends on `apec-m-coordinate` and `apec-m-mesh-converter`)
+- Linux
+- Python 3.12 only
 
-## Install Solver (Conda)
+## Project structure
+
+- `python/apec_m`: main Python API
+- `python/apec_m_coordinate_system`: coordinate helpers
+- `python/apec_m_solver`: compiled solver extension location
+- `python/apec_m_mesh_converter`: mesh conversion package
+
+## Quick start (local workflow)
+
+1. Clone and enter the repository.
+
+  ```bash
+  git clone <your-repo-url>
+  cd PlasmaArc
+  ```
+
+2. Create a Python 3.12 development environment.
+
+  ```bash
+ conda create -n apec-m -c conda-forge \
+                        python=3.12 \
+                        compilers \
+                        git \
+                        cmake \
+                        ninja \
+                        pkg-config \
+                        openmpi \
+                        petsc \
+                        vtk \
+                        pybind11 \
+                        spdlog \
+                        numpy \
+                        pandas \
+                        openpyxl \
+                        mpi4py \
+                        pip \
+                        -y
+  conda activate apec-m
+  ./scripts/build.sh
+  ```
+
+2. Install the Python packages from this repository.
+
+  Editable install (recommended for development):
+
+  ```bash
+  python -m pip install -e .
+  ```
+
+  Fixed install:
+
+  ```bash
+  python -m pip install .
+  ```
+
+  You can also do this during build by setting `APEC_M_PIP_INSTALL_MODE`:
+
+  ```bash
+  APEC_M_PIP_INSTALL_MODE=editable ./scripts/build.sh
+  # or
+  APEC_M_PIP_INSTALL_MODE=fixed ./scripts/build.sh
+  ```
+
+The root pip install includes `apec_m`, `apec_m_coordinate_system`, and `apec_m_mesh_converter`.
+Core solver is built locally into `python/apec_m_solver` and imported as `apec_m_solver.apec_m_solver`.
+
+## Sanity checks
 
 ```bash
-conda create -n apec-m -c conda-forge python=3.12 -y
-conda activate apec-m
-conda install -y -c <your-channel> -c conda-forge apec-m
+python -c "import apec_m_solver.apec_m_solver"
+python -c "from apec_m import APEC_M; APEC_M()"
 ```
 
-If using locally built conda artifacts:
+## No conda-build packaging path
 
-```bash
-conda create -n apec-m -c conda-forge python=3.12 -y
-conda activate apec-m
-conda install --use-local -y apec-m
-```
-
-## Install Python Suite With Pip (No Solver)
-For pip-only usage (without conda solver), install the full Python suite:
-
-```bash
-python -m pip install apec-m-python
-```
-
-Install components independently:
-
-```bash
-python -m pip install apec-m-coordinate
-python -m pip install apec-m-mesh-converter
-```
-
-Local source installs for development:
-
-```bash
-python -m pip install ./python/apec_m_coordinate_project
-python -m pip install ./python/apec_m_mesh_converter_project
-python -m pip install ./python/apec_m_python_project
-```
-
-## What Gets Installed
-Conda `apec-m` installs:
-- `apec_m_core.apec_m_solver`
-- `apec_m_coordinate`
-- `apec_m`
-- `apec_m_mesh_converter`
-- solver-native runtime dependencies from conda recipe
-
-Pip `apec-m-python` installs:
-- `apec_m`
-- `apec-m-coordinate`
-- `apec-m-mesh-converter`
-
-## Build And Release Model
-- Conda recipe source of truth: `conda-recipe/recipes/apec-m/meta.yaml`
-- Solver build script: `conda-recipe/recipes/apec-m-core/build.sh`
-- CI workflow: `.github/workflows/conda-package.yml`
-
-## Notes
-- Solver distribution is conda-first.
-- Python suite distribution is pip-first.
-- Windows packaging is currently disabled.
+This repository now uses only the local development/build flow above.
+Conda recipe build/distribution files are intentionally removed from the active workflow.

@@ -2,17 +2,18 @@
 set -exuo pipefail
 
 SRC_DIR=${SRC_DIR:-$PWD}
-if [ ! -d "${SRC_DIR}/src" ] || [ ! -f "${SRC_DIR}/python/apec_m_core/__init__.py" ]; then
+if [ ! -d "${SRC_DIR}/src" ] || [ ! -f "${SRC_DIR}/python/apec_m_solver/__init__.py" ]; then
   echo "ERROR: SRC_DIR='${SRC_DIR}' is not the project root."
-  echo "Expected '${SRC_DIR}/src' and '${SRC_DIR}/python/apec_m_core/__init__.py'."
+  echo "Expected '${SRC_DIR}/src' and '${SRC_DIR}/python/apec_m_solver/__init__.py'."
   echo "Run from the repository root or set SRC_DIR explicitly."
   exit 1
 fi
 SRC_DIR="$(cd "${SRC_DIR}" && pwd)"
-RECIPE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -z "${RECIPE_DIR}" ] || [ ! -f "${RECIPE_DIR}/fe_interface_new.C" ] || [ ! -f "${RECIPE_DIR}/fe_nedelec_one_new.C" ] || [ ! -f "${RECIPE_DIR}/fe_nedelec_one_shape_3D_new.C" ]; then
-  echo "ERROR: Could not resolve recipe directory with override files."
-  echo "Resolved RECIPE_DIR='${RECIPE_DIR}'"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATCH_DIR="${SCRIPT_DIR}/libmesh_patches"
+if [ -z "${PATCH_DIR}" ] || [ ! -f "${PATCH_DIR}/fe_interface_new.C" ] || [ ! -f "${PATCH_DIR}/fe_nedelec_one_new.C" ] || [ ! -f "${PATCH_DIR}/fe_nedelec_one_shape_3D_new.C" ]; then
+  echo "ERROR: Could not resolve patch directory with override files."
+  echo "Resolved PATCH_DIR='${PATCH_DIR}'"
   exit 1
 fi
 PREFIX=${PREFIX:-${CONDA_PREFIX:-}}
@@ -105,12 +106,12 @@ rm -f \
   "${LIBMESH_PREFIX}/lib"/libtimpi_*.so.* \
   "${LIBMESH_PREFIX}/lib/pkgconfig"/libmesh*.pc \
   "${LIBMESH_PREFIX}/lib/pkgconfig"/timpi*.pc \
-  "${SRC_DIR}/python/apec_m_core"/apec_m_solver*.so \
-  "${SRC_DIR}/python/apec_m_core"/apec_m_solver*.pyd \
-  "${SRC_DIR}/python/apec_m_core"/apec_m_solver*.dylib
+  "${SRC_DIR}/python/apec_m_solver"/apec_m_solver*.so \
+  "${SRC_DIR}/python/apec_m_solver"/apec_m_solver*.pyd \
+  "${SRC_DIR}/python/apec_m_solver"/apec_m_solver*.dylib
 
 if [ "${APEC_M_LIBMESH_METHOD}" = "dbg" ]; then
-  # Conda toolchain activation may inject -DNDEBUG/-D_FORTIFY_SOURCE; sanitize for dbg builds.
+  # Toolchains may inject -DNDEBUG/-D_FORTIFY_SOURCE; sanitize for dbg builds.
   for flag_var in CFLAGS CPPFLAGS CXXFLAGS; do
     current_val="$(eval "printf '%s' \"\${${flag_var}}\"")"
     current_val="$(printf '%s' "${current_val}" | sed -E 's/(^|[[:space:]])-DNDEBUG(=[^[:space:]]*)?([[:space:]]|$)/ /g')"
@@ -126,17 +127,14 @@ git clone --depth 1 --branch master https://github.com/libMesh/libmesh.git "${LI
 pushd "${LIBMESH_SRC_DIR}"
 git submodule update --init --recursive
 
-# # Replace selected libMesh FE sources with recipe-maintained overrides.
-cp -f "${RECIPE_DIR}/fe_interface_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_interface.C"
-cp -f "${RECIPE_DIR}/fe_nedelec_one_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one.C"
-cp -f "${RECIPE_DIR}/fe_nedelec_one_shape_3D_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one_shape_3D.C"
-
-#!/usr/bin/env bash
-set -e
+# # Replace selected libMesh FE sources with local override files.
+cp -f "${PATCH_DIR}/fe_interface_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_interface.C"
+cp -f "${PATCH_DIR}/fe_nedelec_one_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one.C"
+cp -f "${PATCH_DIR}/fe_nedelec_one_shape_3D_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one_shape_3D.C"
 
 PYRAMID13_SRC="${LIBMESH_SRC_DIR}/src/geom/cell_pyramid13.C"
 
-python3 -c "
+"${PYTHON}" -c "
 import sys, re
 
 file_path = sys.argv[1]
@@ -208,12 +206,9 @@ with open(file_path, 'w') as f:
 print(f'Successfully patched Pyramid13::connectivity in {file_path}')
 " "${PYRAMID13_SRC}"
 
-#!/usr/bin/env bash
-set -e
-
 LAGRANGE_3D_SRC="${LIBMESH_SRC_DIR}/src/fe/fe_lagrange_shape_3D.C"
 
-python3 -c "
+"${PYTHON}" -c "
 import sys, re
 
 file_path = sys.argv[1]
@@ -274,14 +269,10 @@ popd
 popd
 
 # 2. Build the apec_m_solver pybind module with CMake
-SP_DIR="${SP_DIR:-$(${PYTHON} - <<'PY'
-import sysconfig
-print(sysconfig.get_path('platlib'))
-PY
-)}"
+SP_DIR="${SP_DIR:-${SRC_DIR}/python}"
 
 if [ -z "${SP_DIR}" ] || [ ! -d "${SP_DIR}" ]; then
-  echo "ERROR: Could not resolve site-packages directory. SP_DIR='${SP_DIR}'"
+  echo "ERROR: Could not resolve local python package directory. SP_DIR='${SP_DIR}'"
   exit 1
 fi
 
@@ -305,15 +296,15 @@ cmake --install .
 
 shopt -s nullglob
 installed_solver_modules=(
-  "${SP_DIR}/apec_m_core/apec_m_solver"*.so
-  "${SP_DIR}/apec_m_core/apec_m_solver"*.pyd
-  "${SP_DIR}/apec_m_core/apec_m_solver"*.dylib
+  "${SP_DIR}/apec_m_solver/apec_m_solver"*.so
+  "${SP_DIR}/apec_m_solver/apec_m_solver"*.pyd
+  "${SP_DIR}/apec_m_solver/apec_m_solver"*.dylib
 )
 if [ "${#installed_solver_modules[@]}" -eq 0 ]; then
-  echo "ERROR: cmake --install did not place apec_m_solver under ${SP_DIR}/apec_m_core."
+  echo "ERROR: cmake --install did not place apec_m_solver under ${SP_DIR}/apec_m_solver."
   exit 1
 fi
 shopt -u nullglob
 popd
 
-echo "Installed apec_m_core package into ${SP_DIR}/apec_m_core"
+echo "Installed local solver module into ${SP_DIR}/apec_m_solver"

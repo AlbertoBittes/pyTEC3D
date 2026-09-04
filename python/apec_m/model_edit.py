@@ -16,7 +16,7 @@ LOGGER = get_logger("apec_m.model_edit")
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
     import vtkmodules.vtkCommonDataModel as vtk_dm  # type: ignore[import-not-found]
-    from apec_m_coordinate import CoordinateSystem
+    from apec_m_coordinate_system import CoordinateSystem
 
 
 class ModelEdit:

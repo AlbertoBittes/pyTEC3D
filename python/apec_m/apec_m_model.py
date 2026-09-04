@@ -318,7 +318,7 @@ class APEC_M_Model:
 
     def _write_coordinate_systems(self, field_data: vtk.vtkFieldData) -> None:
         try:
-            from apec_m_coordinate.coordinate_system import COORDINATE_CLASS_TO_ID
+            from apec_m_coordinate_system.coordinate_system import COORDINATE_CLASS_TO_ID
         except Exception:
             COORDINATE_CLASS_TO_ID = {}
 
@@ -344,7 +344,7 @@ class APEC_M_Model:
 
     def _read_coordinate_systems(self, field_data: vtk.vtkFieldData) -> Dict[int, Any]:
         try:
-            from apec_m_coordinate.coordinate_system import CoordinateSystem, coordinate_class_from_id
+            from apec_m_coordinate_system.coordinate_system import CoordinateSystem, coordinate_class_from_id
         except Exception:
             return {}
 

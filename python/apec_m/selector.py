@@ -11,7 +11,7 @@ from .validation_utils import ensure_vtk_unstructured_grid
 LOGGER = get_logger("apec_m.selector")
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
-    from apec_m_coordinate import CoordinateSystem
+    from apec_m_coordinate_system import CoordinateSystem
 
 
 class Selector:

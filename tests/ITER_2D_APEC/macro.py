@@ -1,7 +1,7 @@
 from apec_m import APEC_M
 from apec_m.selector import Selector
 import os
-from apec_m.coordinate_system import YAxisCylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import YAxisCylindricalCoordinateSystem
 
 # from convert_mesh import convert_mesh_from_cdb
 

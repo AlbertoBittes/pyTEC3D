@@ -1,9 +1,9 @@
 from apec_m import APEC_M
 import os
-from apec_m.coordinate_system import CylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import CylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
 from apec_m.selector import Selector
-from apec_m.coordinate_system import ZAxisCylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import ZAxisCylindricalCoordinateSystem
 import vtk.util.numpy_support as vtknp
 
 

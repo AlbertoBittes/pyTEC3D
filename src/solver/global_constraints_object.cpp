@@ -13,7 +13,7 @@
 #include "apec_m_solver/apec_m_equation_systems.h"
 #include "apec_m_solver/apec_m_model.h"
 #include "apec_m_solver/augment_sparsity_on_nodes.h"
-#include "apec_m_coordinate/coordinate_system.h"
+#include "apec_m_coordinate_system/coordinate_system.h"
 
 #include "apec_m_solver/variables_map.h"
 #include <libmesh/dof_map.h>

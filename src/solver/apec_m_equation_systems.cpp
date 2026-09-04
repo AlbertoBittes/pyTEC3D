@@ -6,7 +6,7 @@
 #include "apec_m_solver/element_builder.h"
 #include "apec_m_solver/apec_m_system.h"
 #include "apec_m_solver/apec_m_model.h"
-#include "apec_m_coordinate/coordinate_system.h"
+#include "apec_m_coordinate_system/coordinate_system.h"
 #include "apec_m_solver/element_types_factory.h"
 #include "apec_m_solver/vtkio_updated.h"
 #include "apec_m_solver/apec_m_logging.h"

@@ -1,62 +1,53 @@
-# APEC-M Developer Settings
+# APEC-M Developer Guide
 
-This guide is for local development (editable workflow), not package publishing.
+This guide is the only supported build workflow: local development with Python 3.12 and local solver compilation.
 
-## Supported Platform
-- Linux
-
-## 1) Create Developer Environment
+## 1) Create environment (Python 3.12)
 
 ```bash
-conda create -n apec-m-dev -c conda-forge python=3.12 conda-build boa compilers git cmake ninja pkg-config openmpi petsc vtk pybind11 spdlog -y
+./scripts/create_dev_env.sh apec-m-dev
 conda activate apec-m-dev
 ```
 
-## 2) Core Developer Variables
+## 2) Enable local modules (editable-by-source)
 
 ```bash
-export APEC_M_LIBMESH_METHOD=opt
-export PREFIX="$CONDA_PREFIX"
-export LIBMESH_DIR="$CONDA_PREFIX"
+source ./scripts/activate_local_python.sh
 ```
 
-Optional for debug builds:
+This exposes local modules directly from `python/`:
+- `apec_m`
+- `apec_m_coordinate_system`
+- `apec_m_solver`
+
+## 3) Build native dependencies and solver
+
+```bash
+./scripts/build_solver_local.sh
+```
+
+Default build method is optimized (`opt`).
+
+For debug symbols:
 
 ```bash
 export APEC_M_LIBMESH_METHOD=dbg
+./scripts/build_solver_local.sh
 ```
 
-## 3) Initial Local Build (Conda Recipe Flow)
+## 4) Mesh converter package (separate pip package)
 
-Run from repository root:
+Mesh conversion remains separate because of `ansys-mapdl-reader`.
+
+Install editable:
 
 ```bash
-conda mambabuild conda-recipe/recipes/apec-m-coordinate -c conda-forge
-conda mambabuild conda-recipe/recipes/apec-m-python -c conda-forge --use-local
-conda mambabuild conda-recipe/recipes/apec-m-core -c conda-forge --use-local
-conda mambabuild conda-recipe/recipes/apec-m -c conda-forge --use-local
-conda install -y -c conda-forge --use-local apec-m
+python -m pip install -e ./python/apec_m_mesh_converter_project
 ```
 
-If `mambabuild` is unavailable, replace `conda mambabuild` with `conda build`.
+## 5) Fast rebuild loop for solver-only C++ changes
 
-## 4) Editable Python Development
-
-Use source directly:
-
-```bash
-export PYTHONPATH="$PWD/python:$PYTHONPATH"
-```
-
-Or install editable Python API package:
-
-```bash
-python -m pip install -e python/apec_m_python_project
-```
-
-## 5) Fast C++ Rebuild Loop (No Full Recipe Rebuild)
-
-After editing C++ sources, rebuild solver module in place:
+After a full initial run of `scripts/build_solver_local.sh`, rebuild with CMake:
 
 ```bash
 cmake -S src -B build/apec_m -G Ninja \
@@ -64,27 +55,21 @@ cmake -S src -B build/apec_m -G Ninja \
   -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
   -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
   -DLIBMESH_DIR="$CONDA_PREFIX" \
-  -DLIBMESH_METHOD="$APEC_M_LIBMESH_METHOD" \
+  -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD:-dbg}" \
+  -DAPEC_M_PYTHON_SITEARCH="$PWD/python" \
   -DAPEC_M_BUILD_PYBIND_MODULE=ON
 cmake --build build/apec_m -j
-```
-
-If needed, install the rebuilt module into the active environment:
-
-```bash
 cmake --install build/apec_m
 ```
 
-## 6) Quick Sanity Checks
+## 6) Sanity checks
 
 ```bash
-python -c "import apec_m_core.apec_m_solver"
+python -c "import apec_m_solver.apec_m_solver"
 python -c "from apec_m import APEC_M; APEC_M()"
 ```
 
-## 7) When To Rebuild Full Core Recipe
+## 7) Notes
 
-Run full `apec-m-core` recipe build again if you changed:
-- libMesh patch logic in `conda-recipe/recipes/apec-m-core/build.sh`
-- core packaging metadata
-- toolchain/dependency assumptions
+- Use Python 3.12 across this project.
+- Conda-build recipe packaging is removed from the active developer workflow.

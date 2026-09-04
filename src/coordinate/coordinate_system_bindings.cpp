@@ -1,4 +1,4 @@
-#include "apec_m_coordinate/coordinate_system.h"
+#include "apec_m_coordinate_system/coordinate_system.h"
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>

@@ -1,10 +1,10 @@
 from apec_m import APEC_M
 import os
 import numpy as np
-from apec_m.coordinate_system import CylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import CylindricalCoordinateSystem
 from apec_m.tree_gauge import TreeGauge
 from apec_m.selector import Selector
-from apec_m.coordinate_system import XAxisCylindricalCoordinateSystem
+from apec_m_coordinate_system.coordinate_system import XAxisCylindricalCoordinateSystem
 import vtk.util.numpy_support as vtknp
 
 

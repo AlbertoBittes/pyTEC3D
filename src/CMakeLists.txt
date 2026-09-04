@@ -81,7 +81,6 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
 set(SOLVER_EXCLUDED_SOURCES
-  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_bindings.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_module.cpp"
 )
@@ -120,7 +119,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   set_target_properties(apec_m_solver PROPERTIES
     PREFIX ""
     OUTPUT_NAME "apec_m_solver"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_core"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_solver"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN/../../../;$ORIGIN/../lib"
   )
@@ -146,11 +145,11 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   )
 
   install(TARGETS apec_m_solver
-    LIBRARY DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
-    RUNTIME DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
+    LIBRARY DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
+    RUNTIME DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
   )
-  install(FILES "${APEC_M_REPO_ROOT}/python/apec_m_core/__init__.py"
-    DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_core"
+  install(FILES "${APEC_M_REPO_ROOT}/python/apec_m_solver/__init__.py"
+    DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
   )
 
   if(APEC_M_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -162,7 +161,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
     enable_testing()
     add_test(
       NAME apec_m_solver_import_smoke
-      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m_core.apec_m_solver as mod; print(mod.__doc__)"
+      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m_solver.apec_m_solver as mod; print(mod.__doc__)"
     )
   endif()
 
@@ -172,7 +171,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       add_custom_target(valgrind_solver_smoke
         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_SOURCE_DIR}/../python
           ${VALGRIND_EXECUTABLE} --error-exitcode=1 --leak-check=full
-          ${Python3_EXECUTABLE} -c "import apec_m_core.apec_m_solver"
+          ${Python3_EXECUTABLE} -c "import apec_m_solver.apec_m_solver"
         DEPENDS apec_m_solver
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Running valgrind smoke check for apec_m_solver import")
@@ -200,7 +199,7 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   set_target_properties(apec_m_coordinate_system PROPERTIES
     PREFIX ""
     OUTPUT_NAME "apec_m_coordinate_system"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_coordinate"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_coordinate_system"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN"
   )

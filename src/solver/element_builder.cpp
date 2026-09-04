@@ -4,7 +4,7 @@
  *        dispatch to formulation-specific builders, and solution post-processing.
  */
 #include "apec_m_solver/element_builder.h"
-#include "apec_m_coordinate/coordinate_system.h"
+#include "apec_m_coordinate_system/coordinate_system.h"
 #include <libmesh/dof_map.h>
 #include <libmesh/elem_range.h>
 #include <libmesh/numeric_vector.h>
