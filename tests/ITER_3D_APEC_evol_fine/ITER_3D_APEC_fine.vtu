@@ -3,10 +3,10 @@
   <UnstructuredGrid>
     <FieldData>
       <Array type="String" Name="_PYVISTA_BITARRAY_POINT_" NumberOfTuples="3" format="binary">
-        AQAAAACAAABJAAAALAAAAA==eF7zcw2PD3N0Dg31jXf2cPR1cg2Kd/IP9XNxDIpkIFLcz9/FNZgBABrjFQ4=
+        AQAAAACAAABJAAAALwAAAA==eF7zcw2PD3N0Dg31jXf2cPR1cg2Kd/IP9XNxDIpkQBP383dxDUYXhCsGABmKFQ4=
       </Array>
       <Array type="String" Name="_PYVISTA_BITARRAY_CELL_" NumberOfTuples="17" format="binary">
-        AQAAAACAAACKAAAAXQAAAA==eF5tizESgCAMBPMlQO1jxJGZIEwgtPz/Fwq2NntX7DYk1djpwrh7gXxSN5N2cgNKgQtQMQyZsUR8v2VoXmog5E7prpLGfp7TGS6T6wgVBI/wo9pPdaNieACj0CMs
+        AQAAAACAAACKAAAAXgAAAA==eF5ljEEOgCAMBPslRL3XipGkCCmUK///hYIHD546md1tRVINjU4MmxNIBzULgrtHbhSvIrFfz3lEK1A2Cp+YITHmgI+feJilow40vc1QnRRPv3+U7buYOircxKQjLA==
       </Array>
     </FieldData>
     <Piece NumberOfPoints="373826" NumberOfCells="356680">

@@ -17,7 +17,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 output_eq_mesh_filepath = os.path.join(
     os.getcwd(),
     "..",
-    "ITER_2D_APEC",
+    "ITER_2D_APEC_fine",
     "output",
     apec_equilibrium_output_filename + ".vtu",
 )
