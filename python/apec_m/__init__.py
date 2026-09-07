@@ -1,33 +1,22 @@
 """APEC-M Python package."""
 
-from importlib import import_module
-
-from .apec_m import APEC_M
 from .apec_m_model import APEC_M_Model
-from .apec_algorithm import ApecAlgorithm
-
-_PARAVIEW_EXPORTS = {
-    "plot",
-    "setup_paraview_console",
-    "start_apec_for_paraview",
-}
+from .excel import Excel
+from .logging_utils import configure_logging, get_logger
+from .model_edit import ModelEdit
+from .selector import Selector
+from .tree_gauge import TreeGauge
+from .validation_utils import validate_apec_model, validate_pre_solve_inputs, validate_solver_settings
 
 __all__ = [
-    "APEC_M",
     "APEC_M_Model",
-    "ApecAlgorithm",
-    "plot",
-    "setup_paraview_console",
-    "start_apec_for_paraview",
+    "Excel",
+    "ModelEdit",
+    "Selector",
+    "TreeGauge",
+    "configure_logging",
+    "get_logger",
+    "validate_apec_model",
+    "validate_pre_solve_inputs",
+    "validate_solver_settings",
 ]
-
-
-def __getattr__(name: str):
-    if name in _PARAVIEW_EXPORTS:
-        module = import_module(".apec_m_paraview", __name__)
-        return getattr(module, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def __dir__():
-    return sorted(set(globals().keys()) | _PARAVIEW_EXPORTS)

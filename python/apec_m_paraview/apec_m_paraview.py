@@ -11,31 +11,23 @@ from __future__ import annotations
 import os
 import sys
 from numbers import Real
+from typing import Any
 
-if __package__ in (None, ""):
-    _THIS_FILE = os.path.abspath(__file__)
-    _PACKAGE_DIR = os.path.dirname(_THIS_FILE)
-    _PACKAGE_PARENT = os.path.dirname(_PACKAGE_DIR)
-    if _PACKAGE_PARENT not in sys.path:
-        sys.path.insert(0, _PACKAGE_PARENT)
+# When loaded directly as a plugin file, ensure the top-level python/ root is importable.
+_THIS_FILE = os.path.abspath(__file__)
+_PACKAGE_DIR = os.path.dirname(_THIS_FILE)
+_PACKAGE_PARENT = os.path.dirname(_PACKAGE_DIR)
+if _PACKAGE_PARENT not in sys.path:
+    sys.path.insert(0, _PACKAGE_PARENT)
 
-    from apec_m.apec_m import APEC_M  # type: ignore[import-not-found]
-    from apec_m.logging_utils import (  # type: ignore[import-not-found]
-        get_logger,
-        log_paraview_console_package_root,
-        log_paraview_init,
-        log_paraview_working_directory,
-    )
-    from apec_m.selector import Selector  # type: ignore[import-not-found]
-else:
-    from .apec_m import APEC_M
-    from .logging_utils import (
-        get_logger,
-        log_paraview_console_package_root,
-        log_paraview_init,
-        log_paraview_working_directory,
-    )
-    from .selector import Selector
+from apec_m_solver.apec_m import APEC_M  # type: ignore[import-not-found]
+from apec_m.logging_utils import (  # type: ignore[import-not-found]
+    get_logger,
+    log_paraview_console_package_root,
+    log_paraview_init,
+    log_paraview_working_directory,
+)
+from apec_m.selector import Selector  # type: ignore[import-not-found]
 
 import numpy as np
 import vtk
@@ -78,18 +70,89 @@ def plot(mesh: vtk.vtkUnstructuredGrid) -> None:
     Render()
 
 
+vtkDataArraySelection: Any
+VTKPythonAlgorithmBase: Any
+smdomain: Any
+smproperty: Any
+smproxy: Any
+
 try:
-    from vtkmodules.vtkCommonCore import vtkDataArraySelection
-    from vtkmodules.util.vtkAlgorithm import VTKPythonAlgorithmBase
-    from paraview.util.vtkAlgorithm import smdomain, smproperty, smproxy  # type: ignore[import-not-found]
-except Exception as exc:  # pragma: no cover
-    raise ImportError(
-        "apec_m_paraview plugin classes require ParaView Python modules. "
-        "Load this module inside ParaView (Plugin Manager or pvpython)."
-    ) from exc
+    from vtkmodules.vtkCommonCore import vtkDataArraySelection as _vtkDataArraySelection
+    from vtkmodules.util.vtkAlgorithm import VTKPythonAlgorithmBase as _VTKPythonAlgorithmBase
+    from paraview.util.vtkAlgorithm import smdomain as _smdomain, smproperty as _smproperty, smproxy as _smproxy  # type: ignore[import-not-found]
+    vtkDataArraySelection = _vtkDataArraySelection
+    VTKPythonAlgorithmBase = _VTKPythonAlgorithmBase
+    smdomain = _smdomain
+    smproperty = _smproperty
+    smproxy = _smproxy
+    _PARAVIEW_PLUGIN_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _PARAVIEW_PLUGIN_AVAILABLE = False
+
+    class _NoOpDecoratorNamespace:
+        @staticmethod
+        def _identity(*args, **kwargs):
+            def _wrap(obj):
+                return obj
+
+            return _wrap
+
+        filter = _identity
+        input = _identity
+        datatype = _identity
+        xml = _identity
+        intvector = _identity
+        stringvector = _identity
+        dataarrayselection = _identity
+        doublevector = _identity
+        intrange = _identity
+        doublerange = _identity
+
+    class _FallbackVTKPythonAlgorithmBase:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def Modified(self):
+            pass
+
+        @staticmethod
+        def INPUT_REQUIRED_DATA_TYPE():
+            return None
+
+        @staticmethod
+        def INPUT_IS_OPTIONAL():
+            return None
+
+    class _FallbackDataArraySelection:
+        def AddObserver(self, *args, **kwargs):
+            return None
+
+        def AddArray(self, *args, **kwargs):
+            return None
+
+        def Modified(self):
+            return None
+
+        def ArrayIsEnabled(self, *args, **kwargs):
+            return True
+
+    VTKPythonAlgorithmBase = _FallbackVTKPythonAlgorithmBase
+    vtkDataArraySelection = _FallbackDataArraySelection
+    smdomain = _NoOpDecoratorNamespace()
+    smproperty = _NoOpDecoratorNamespace()
+    smproxy = _NoOpDecoratorNamespace()
 
 
 def _create_modified_callback(anobject):
+    """
+     create modified callback.
+    
+    Args:
+        anobject (Any): Description.
+    
+    Returns:
+        Any: Description.
+    """
     import weakref
 
     weakref_obj = weakref.ref(anobject)
@@ -109,11 +172,28 @@ def _create_modified_callback(anobject):
 @smproperty.input(name="Extracted Selection", port_index=1)
 @smdomain.datatype(dataTypes=["vtkDataSet"], composite_data_supported=False)
 class SelectExtractedData(VTKPythonAlgorithmBase):
+    """SelectExtractedData class."""
     def __init__(self):
+        """
+        Special method `__init__`.
+        
+        Returns:
+            Any: Description.
+        """
         self.__mode = "s"
         VTKPythonAlgorithmBase.__init__(self, nInputPorts=2, nOutputPorts=1)
 
     def FillInputPortInformation(self, port, info):
+        """
+        Fillinputportinformation.
+        
+        Args:
+            port (Any): Description.
+            info (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         if port == 0:
             info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
         elif port == 1:
@@ -122,6 +202,20 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
         return 1
 
     def RequestData(self, request, inInfo, outInfo):
+        """
+        Requestdata.
+        
+        Args:
+            request (Any): Description.
+            inInfo (Any): Description.
+            outInfo (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            ValueError: If an error condition is met.
+        """
         input_data = vtk.vtkUnstructuredGrid.GetData(inInfo[0])
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
@@ -166,6 +260,15 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
         </IntVectorProperty>
     """)
     def SetMode(self, mode):
+        """
+        Setmode.
+        
+        Args:
+            mode (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         self.__mode = Selector.mode_label(int(mode))
         self.Modified()
 
@@ -174,7 +277,14 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
 @smproperty.input(name="Input", port_index=0)
 @smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
 class Select(VTKPythonAlgorithmBase):
+    """Select class."""
     def __init__(self):
+        """
+        Special method `__init__`.
+        
+        Returns:
+            Any: Description.
+        """
         self.__array_name = ""
         self.__type = "node"
         self.__mode = "s"
@@ -183,11 +293,33 @@ class Select(VTKPythonAlgorithmBase):
         VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1)
 
     def FillInputPortInformation(self, port, info):
+        """
+        Fillinputportinformation.
+        
+        Args:
+            port (Any): Description.
+            info (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
         return 1
 
     @staticmethod
     def _parse_values(text: str):
+        """
+         parse values.
+        
+        Args:
+            text (str): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            ValueError: If an error condition is met.
+        """
         text = text.strip()
         if not text:
             raise ValueError("The 'Values' field is empty.")
@@ -204,6 +336,20 @@ class Select(VTKPythonAlgorithmBase):
         return float(text)
 
     def RequestData(self, request, inInfo, outInfo):
+        """
+        Requestdata.
+        
+        Args:
+            request (Any): Description.
+            inInfo (Any): Description.
+            outInfo (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            ValueError: If an error condition is met.
+        """
         input_data = vtk.vtkUnstructuredGrid.GetData(inInfo[0])
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
@@ -243,6 +389,15 @@ class Select(VTKPythonAlgorithmBase):
         </StringVectorProperty>
     """)
     def SetArrayName(self, name):
+        """
+        Setarrayname.
+        
+        Args:
+            name (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         self.__array_name = name
         self.Modified()
 
@@ -258,6 +413,15 @@ class Select(VTKPythonAlgorithmBase):
         </IntVectorProperty>
     """)
     def SetSelectionType(self, value):
+        """
+        Setselectiontype.
+        
+        Args:
+            value (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         self.__type = Selector.type_label(int(value))
         self.Modified()
 
@@ -275,12 +439,34 @@ class Select(VTKPythonAlgorithmBase):
         </IntVectorProperty>
     """)
     def SetMode(self, value):
+        """
+        Setmode.
+        
+        Args:
+            value (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         self.__mode = Selector.mode_label(int(value))
         self.Modified()
 
     @smproperty.intvector(name="Component", default_values=0)
     @smdomain.intrange(min=-1, max=2)
     def SetComponent(self, component):
+        """
+        Setcomponent.
+        
+        Args:
+            component (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+            ValueError: If an error condition is met.
+        """
         if not isinstance(component, int):
             raise TypeError("component must be an integer.")
         if component < -1 or component > 2:
@@ -290,6 +476,15 @@ class Select(VTKPythonAlgorithmBase):
 
     @smproperty.stringvector(name="Values", default_values="0")
     def SetValues(self, text):
+        """
+        Setvalues.
+        
+        Args:
+            text (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         self.__values_text = text
         self.Modified()
 
@@ -298,7 +493,14 @@ class Select(VTKPythonAlgorithmBase):
 @smproperty.input(name="Input", port_index=0)
 @smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
 class SetValueOnSelection(VTKPythonAlgorithmBase):
+    """SetValueOnSelection class."""
     def __init__(self):
+        """
+        Special method `__init__`.
+        
+        Returns:
+            Any: Description.
+        """
         self.__component = 0
         self.__value = 0.0
         self.__array_names = []
@@ -307,10 +509,31 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1)
 
     def FillInputPortInformation(self, port, info):
+        """
+        Fillinputportinformation.
+        
+        Args:
+            port (Any): Description.
+            info (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
         return 1
 
     def RequestInformation(self, request, inInfo, outInfo):  # pyright: ignore[reportIncompatibleMethodOverride]
+        """
+        Requestinformation.
+        
+        Args:
+            request (Any): Description.
+            inInfo (Any): Description.
+            outInfo (Any): Description.
+        
+        Returns:
+            Any: Description.
+        """
         input_data = vtk.vtkUnstructuredGrid.GetData(inInfo[0])
         if input_data is None:
             LOGGER.error("SetValueOnSelection received no input grid on port 0.")
@@ -333,6 +556,20 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         return 1
 
     def RequestData(self, request, inInfo, outInfo):
+        """
+        Requestdata.
+        
+        Args:
+            request (Any): Description.
+            inInfo (Any): Description.
+            outInfo (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            ValueError: If an error condition is met.
+        """
         input_data = vtk.vtkUnstructuredGrid.GetData(inInfo[0])
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
@@ -367,15 +604,40 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         return 1
 
     def _get_array_selection(self):
+        """
+         get array selection.
+        
+        Returns:
+            Any: Description.
+        """
         return self.__arrayselection
 
     @smproperty.dataarrayselection(name="Arrays")
     def GetDataArraySelection(self):
+        """
+        Getdataarrayselection.
+        
+        Returns:
+            Any: Description.
+        """
         return self._get_array_selection()
 
     @smproperty.intvector(name="Component", default_values=0)
     @smdomain.intrange(min=0, max=2)
     def SetComponent(self, component):
+        """
+        Setcomponent.
+        
+        Args:
+            component (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+            ValueError: If an error condition is met.
+        """
         if not isinstance(component, int):
             raise TypeError("component must be an integer.")
         if component < 0 or component > 2:
@@ -386,6 +648,19 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
     @smproperty.doublevector(name="Value", default_values=0.0)
     @smdomain.doublerange()
     def SetValue(self, value):
+        """
+        Setvalue.
+        
+        Args:
+            value (Any): Description.
+        
+        Returns:
+            Any: Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+            ValueError: If an error condition is met.
+        """
         if not isinstance(value, Real):
             raise TypeError("value must be a real scalar.")
         if not np.isfinite(float(value)):

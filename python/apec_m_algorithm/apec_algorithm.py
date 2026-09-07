@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import vtk
 
-from .selector import Selector
-from .model_edit import ModelEdit
+from apec_m.selector import Selector
+from apec_m.model_edit import ModelEdit
 from apec_m_coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
-from .logging_utils import get_logger
-from .constants import (
+from apec_m.logging_utils import get_logger
+from apec_m.constants import (
     DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS,
     DEFAULT_APEC_ALGORITHM_STATUS,
 )
@@ -20,7 +20,7 @@ from .constants import (
 import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
-    from .apec_m import APEC_M
+    from apec_m_solver.apec_m import APEC_M
 
 
 LOGGER = get_logger("apec_m.algorithm")

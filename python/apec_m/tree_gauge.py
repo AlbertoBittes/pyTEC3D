@@ -136,6 +136,8 @@ EDGE_TABLES: Dict[int, Tuple[Sequence[Tuple[int, int]], Sequence[int]]] = {
 # Core builder
 # ------------------------------
 class TreeGauge:
+    """Build and apply tree/cotree gauges on VTK meshes."""
+
     @staticmethod
     def _canonical_id(point_id: int, slave_to_master: Dict[int, int]) -> int:
         """Follow slave->master links until a canonical point id is reached.
@@ -301,6 +303,19 @@ class TreeGauge:
         slave_to_master: Dict[int, int],
         cache: Dict[int, int],
     ) -> np.ndarray:
+        """Map point ids to canonical masters using periodic slave-to-master links.
+
+        Args:
+            ids: Point ids to canonicalize.
+            slave_to_master: Mapping from slave ids to their direct masters.
+            cache: Mutable memoization map of id -> canonical id.
+
+        Returns:
+            np.ndarray: Canonicalized ids with dtype int64.
+
+        Raises:
+            ValueError: If a cycle is detected in slave_to_master links.
+        """
         if ids.size == 0 or not slave_to_master:
             return ids.astype(np.int64, copy=False)
 

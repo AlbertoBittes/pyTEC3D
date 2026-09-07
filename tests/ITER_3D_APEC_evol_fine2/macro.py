@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 import vtk.util.numpy_support as vtknp
 import numpy as np
 from apec_m.selector import Selector

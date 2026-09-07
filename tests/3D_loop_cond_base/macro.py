@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 from apec_m.selector import Selector
 import os
 
@@ -11,6 +11,8 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 apec.read_model(filepath)
 
 apec.model.read_excel("input_template.xlsx")
+
+apec.save_model()
 
 apec.load_model_into_solver()
 
@@ -52,5 +54,3 @@ for i in range(1, 3):
     Selector.set_value_on_selection(apec.model.mesh, "Js", b / i, 1, type="elem")
     apec.solve()
     apec.write_output()
-
-apec.save_model()

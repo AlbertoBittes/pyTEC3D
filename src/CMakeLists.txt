@@ -14,35 +14,15 @@ pkg_check_modules(PETSC QUIET IMPORTED_TARGET PETSc)
 if(NOT PETSC_FOUND)
   pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET petsc)
 endif()
-option(APEC_M_BUILD_PYBIND_MODULE "Build the Python solver extension module (pybind11)." ON)
-option(APEC_M_ENABLE_SANITIZERS "Enable AddressSanitizer+UBSan for debug checks." OFF)
-option(APEC_M_ENABLE_IMPORT_TEST "Enable Python import smoke test for the solver module." ON)
-option(APEC_M_ENABLE_VALGRIND_SMOKE "Add a valgrind smoke target for module import." OFF)
 
-if(APEC_M_BUILD_PYBIND_MODULE)
-  set(PYBIND11_FINDPYTHON ON)
-  find_package(pybind11 CONFIG REQUIRED)
-
-  set(APEC_M_PYTHON_SITEARCH "" CACHE PATH "Absolute path to Python site-packages (platlib) for installing extension modules.")
-  if(NOT APEC_M_PYTHON_SITEARCH)
-    execute_process(
-      COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib'))"
-      OUTPUT_VARIABLE APEC_M_PYTHON_SITEARCH
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-  endif()
-  if(NOT APEC_M_PYTHON_SITEARCH)
-    message(FATAL_ERROR "Could not determine Python site-packages path. Set -DAPEC_M_PYTHON_SITEARCH=/path/to/site-packages")
-  endif()
-endif()
+set(PYBIND11_FINDPYTHON ON)
+find_package(pybind11 CONFIG REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
 
 find_package(VTK REQUIRED
   COMPONENTS
     CommonCore
     CommonDataModel
-    CommonExecutionModel
-    FiltersCore
-    IOXML
     WrappingPythonCore
 )
 
@@ -68,35 +48,27 @@ message(STATUS "Using libMesh method: ${LIBMESH_METHOD}")
 
 find_library(LIBMESH_LIB
   NAMES mesh_${LIBMESH_METHOD}
-  HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
+  HINTS "${LIBMESH_DIR}/lib"
   REQUIRED
 )
 find_library(TIMPI_LIB
   NAMES timpi_${LIBMESH_METHOD}
-  HINTS "${LIBMESH_DIR}/lib" "${LIBMESH_DIR}/lib64"
+  HINTS "${LIBMESH_DIR}/lib"
   REQUIRED
 )
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
-set(SOLVER_EXCLUDED_SOURCES
-  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_bindings.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_module.cpp"
-)
-list(REMOVE_ITEM SOURCES ${SOLVER_EXCLUDED_SOURCES})
 get_filename_component(APEC_M_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 set(APEC_M_INCLUDE_DIRS
   "${LIBMESH_DIR}/include"
   "${APEC_M_REPO_ROOT}/include"
+  "${APEC_M_REPO_ROOT}/include/apec_m_coordinate_system"
   "${APEC_M_REPO_ROOT}/include/apec_m_solver"
   ${PETSC_INCLUDE_DIRS}
 )
-
-if(EXISTS "${APEC_M_REPO_ROOT}/include/dependencies")
-  list(APPEND APEC_M_INCLUDE_DIRS "${APEC_M_REPO_ROOT}/include/dependencies")
-endif()
 
 set(APEC_M_LINK_LIBS
   spdlog::spdlog_header_only
@@ -108,14 +80,10 @@ set(APEC_M_LINK_LIBS
   OpenMP::OpenMP_CXX
   VTK::CommonCore
   VTK::CommonDataModel
-  VTK::CommonExecutionModel
-  VTK::FiltersCore
-  VTK::IOXML
   VTK::WrappingPythonCore
 )
 
-if(APEC_M_BUILD_PYBIND_MODULE)
-  add_library(apec_m_solver MODULE ${SOURCES})
+add_library(apec_m_solver MODULE ${SOURCES})
   set_target_properties(apec_m_solver PROPERTIES
     PREFIX ""
     OUTPUT_NAME "apec_m_solver"
@@ -129,7 +97,6 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   )
 
   target_compile_definitions(apec_m_solver PRIVATE
-    APEC_M_ENABLE_PYBIND
     APEC_M_VERSION=${PROJECT_VERSION}
     APEC_M_BUILD_TYPE="$<CONFIG>"
   )
@@ -144,57 +111,18 @@ if(APEC_M_BUILD_PYBIND_MODULE)
       ${APEC_M_LINK_LIBS}
   )
 
-  install(TARGETS apec_m_solver
-    LIBRARY DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
-    RUNTIME DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
-  )
-  install(FILES "${APEC_M_REPO_ROOT}/python/apec_m_solver/__init__.py"
-    DESTINATION "${APEC_M_PYTHON_SITEARCH}/apec_m_solver"
-  )
-
-  if(APEC_M_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(apec_m_solver PRIVATE -fno-omit-frame-pointer -fsanitize=address,undefined)
-    target_link_options(apec_m_solver PRIVATE -fsanitize=address,undefined)
-  endif()
-
-  if(APEC_M_ENABLE_IMPORT_TEST)
-    enable_testing()
-    add_test(
-      NAME apec_m_solver_import_smoke
-      COMMAND ${Python3_EXECUTABLE} -c "import sys; sys.path.insert(0, r'${CMAKE_SOURCE_DIR}/../python'); import apec_m_solver.apec_m_solver as mod; print(mod.__doc__)"
-    )
-  endif()
-
-  if(APEC_M_ENABLE_VALGRIND_SMOKE)
-    find_program(VALGRIND_EXECUTABLE valgrind)
-    if(VALGRIND_EXECUTABLE)
-      add_custom_target(valgrind_solver_smoke
-        COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_SOURCE_DIR}/../python
-          ${VALGRIND_EXECUTABLE} --error-exitcode=1 --leak-check=full
-          ${Python3_EXECUTABLE} -c "import apec_m_solver.apec_m_solver"
-        DEPENDS apec_m_solver
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Running valgrind smoke check for apec_m_solver import")
-    else()
-      message(WARNING "APEC_M_ENABLE_VALGRIND_SMOKE is ON but valgrind was not found.")
-    endif()
-  endif()
-
   vtk_module_autoinit(
     TARGETS apec_m_solver
     MODULES
       VTK::CommonCore
       VTK::CommonDataModel
-      VTK::CommonExecutionModel
-      VTK::FiltersCore
-      VTK::IOXML
       VTK::WrappingPythonCore
   )
 
   add_library(apec_m_coordinate_system MODULE
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_bindings.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate/coordinate_system_module.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system_bindings.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system_module.cpp"
   )
   set_target_properties(apec_m_coordinate_system PROPERTIES
     PREFIX ""
@@ -210,7 +138,6 @@ if(APEC_M_BUILD_PYBIND_MODULE)
   )
 
   target_compile_definitions(apec_m_coordinate_system PRIVATE
-    APEC_M_ENABLE_PYBIND
     APEC_M_VERSION=${PROJECT_VERSION}
     APEC_M_BUILD_TYPE="$<CONFIG>"
   )
@@ -219,4 +146,5 @@ if(APEC_M_BUILD_PYBIND_MODULE)
     PRIVATE
       pybind11::module
   )
-endif()
+
+

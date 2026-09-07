@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 from apec_m.tree_gauge import TreeGauge
 from apec_m.selector import Selector
 import os

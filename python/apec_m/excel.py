@@ -23,6 +23,8 @@ if TYPE_CHECKING:  # pragma: no cover - used only for type hints
 
 
 class Excel:
+    """Excel helpers for reading and writing APEC-M tabular data."""
+
     @staticmethod
     def write_excel_cell_point_data(
         mesh: "vtk.vtkUnstructuredGrid",

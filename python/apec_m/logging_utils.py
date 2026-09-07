@@ -20,10 +20,23 @@ class _CppLikeFormatter(logging.Formatter):
     }
 
     def __init__(self, use_color: bool) -> None:
+        """Create a formatter that optionally colorizes the level prefix.
+
+        Args:
+            use_color: Whether to emit ANSI color codes for log level labels.
+        """
         super().__init__()
         self._use_color = bool(use_color)
 
     def format(self, record: logging.LogRecord) -> str:
+        """Render one record in timestamped C++-like log format.
+
+        Args:
+            record: Logging record to format.
+
+        Returns:
+            str: Fully rendered log message.
+        """
         level = record.levelname.lower()
         message = record.getMessage()
         ts = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")

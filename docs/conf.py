@@ -22,15 +22,22 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 autosummary_generate = True
+autosummary_generate_overwrite = True
 autosummary_imported_members = True
+suppress_warnings = ["autodoc.mocked_object"]
 
 # Mock heavy optional dependencies to keep RTD builds light
 autodoc_mock_imports = [
     "numpy",
     "pandas",
+    "openpyxl",
+    "mpi4py",
     "vtk",
     "vtkmodules",
     "vtk.util",
+    "apec_m_coordinate_system",
+    "apec_m_coordinate_system.apec_m_coordinate_system",
+    "apec_m_solver.apec_m_solver",
     "ansys",
     "ansys.mapdl",
     "ansys.mapdl.reader",

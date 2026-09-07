@@ -18,6 +18,7 @@
 #include <libmesh/system.h>
 
 #include "apec_m_solver/fe_parent_object.h"
+#include "apec_m_solver/apec_m_visibility.h"
 
 #include <map>
 #include <memory>
@@ -39,7 +40,7 @@ class ApecMDOFSystem;
  * before scatter-adding them into the global system.
  */
 template <typename ImplSystem>
-class GlobalConstraintsObject
+class APEC_M_HIDDEN GlobalConstraintsObject
     : public libMesh::System::Constraint,
       public FEParentObjectBase<ApecMDOFSystem<ImplSystem>>
 {

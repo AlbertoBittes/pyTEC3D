@@ -5,19 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "apec-m"
 version = "0.1.0"
-description = "APEC-M Python API, coordinate helpers, and mesh converter"
+description = "APEC-M Python API"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-authors = [
-  { name = "PlasmaArc contributors" }
-]
+authors = [{ name = "Alberto Bittesnich" }]
 dependencies = [
   "numpy",
   "pandas",
   "openpyxl",
   "mpi4py",
-#   "pyvista>=0.44",
-#   "ansys-mapdl-reader"
+  #   "pyvista>=0.44",
+  #   "ansys-mapdl-reader"
 ]
 
 [tool.setuptools]
@@ -29,17 +27,26 @@ where = ["python"]
 include = [
   "apec_m",
   "apec_m.*",
+  "apec_m_algorithm",
+  "apec_m_algorithm.*",
+  "apec_m_paraview",
+  "apec_m_paraview.*",
   "apec_m_coordinate_system",
   "apec_m_coordinate_system.*",
-  "apec_m_mesh_converter",
-  "apec_m_mesh_converter.*",
+  #   "apec_m_mesh_converter",
+  #   "apec_m_mesh_converter.*",
   "apec_m_solver",
-  "apec_m_solver.*"
+  "apec_m_solver.*",
 ]
 
 [tool.setuptools.package-data]
 apec_m_solver = [
   "apec_m_solver*.so",
   "apec_m_solver*.pyd",
-  "apec_m_solver*.dylib"
+  "apec_m_solver*.dylib",
+]
+apec_m_coordinate_system = [
+  "apec_m_coordinate_system*.so",
+  "apec_m_coordinate_system*.pyd",
+  "apec_m_coordinate_system*.dylib",
 ]

@@ -39,9 +39,9 @@ DEFAULT_SOLVER_SETTINGS_TYPES = {
 
 # Default time parameters
 DEFAULT_TIME_PARAMETERS = {
-    "time": 0.0,
+    "time": 1.0,
     "transient_effects": True,
-    "theta": 1,
+    "theta": 1.0,
 }
 
 # Add a dictionary with the name of the time parameter and its type
@@ -69,7 +69,6 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "plasma_current": 0.0,
     "beta_p": 0.0,
     "AF0": 5.3 * 6.2,
-    "print_full_output": 0,
     "equilibrium_mesh": "",
     "static_mesh": "",
     "evolution_mesh": "",

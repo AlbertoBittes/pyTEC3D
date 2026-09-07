@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 from apec_m.selector import Selector
 import os
 
@@ -35,7 +35,6 @@ apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["plasma_current"] = 15e6
 apec.algorithm.input_parameters["beta_p"] = 6.8216e-001
-apec.algorithm.input_parameters["print_full_output"] = 0
 
 i_CS3U = -4.8204e06
 i_CS2U = -4.0480e06
@@ -66,9 +65,9 @@ Selector.select_all(apec.model.mesh)
 Selector.nsel_ext(apec.model.mesh)
 Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
+apec.model.time_step["time"] = 1.0
 apec.model.time_step["theta"] = 0.5
 apec.model.time_step["transient_effects"] = 0
-apec.model.time_step["time_step_number"] = 1
 
 Selector.select(apec.model.mesh, "CS3L", 1, type="elem")
 Selector.set_value_on_selection(apec.model.mesh, "Js", i_CS3L / a_CS, 2, type="elem")

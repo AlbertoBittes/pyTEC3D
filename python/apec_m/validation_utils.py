@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import math
 from os import PathLike
 from typing import Any, Iterable, Optional, Sequence, Union
 
@@ -135,12 +137,63 @@ def ensure_in_options(value: Any, arg_name: str, options: Sequence[Any]) -> Any:
     return value
 
 
+def validate_required_arrays_present(mesh: Any) -> None:
+    """Ensure required VTK point/cell arrays are present with expected shapes."""
+    ensure_vtk_unstructured_grid(mesh, arg_name="mesh")
+
+    from .constants import VTK_ARRAYS_TO_INIT
+
+    errors: list[str] = []
+    cell_data = mesh.GetCellData()
+    point_data = mesh.GetPointData()
+
+    n_cells = mesh.GetNumberOfCells()
+    n_points = mesh.GetNumberOfPoints()
+
+    for required in ("TYPE", "MATERIAL", "CONSTANT", "COORDINATE_SYSTEM"):
+        arr = cell_data.GetArray(required) if cell_data is not None else None
+        if arr is None:
+            errors.append(f"CellData array '{required}' is required but was not found.")
+
+    angles = point_data.GetArray("angles") if point_data is not None else None
+    if angles is None:
+        errors.append("PointData array 'angles' is required but was not found.")
+
+    for name, info in VTK_ARRAYS_TO_INIT.items():
+        loc = info["location"]
+        data_obj = point_data if loc == "node" else cell_data
+        arr = data_obj.GetArray(name) if data_obj is not None else None
+        if arr is None:
+            errors.append(f"{loc} data array '{name}' is required but was not found.")
+            continue
+
+        expected_components = int(info["components"])
+        if arr.GetNumberOfComponents() != expected_components:
+            errors.append(
+                f"{loc} data array '{name}' must have {expected_components} component(s),"
+                f" got {arr.GetNumberOfComponents()}."
+            )
+
+        expected_tuples = n_points if loc == "node" else n_cells
+        if arr.GetNumberOfTuples() != expected_tuples:
+            errors.append(
+                f"{loc} data array '{name}' must have {expected_tuples} tuple(s),"
+                f" got {arr.GetNumberOfTuples()}."
+            )
+
+    if errors:
+        raise ValueError(
+            "Loaded mesh is missing required arrays or has invalid array shapes:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
 # ---------------------------------------------------------------------------
 # Solver-settings validation
 # ---------------------------------------------------------------------------
 
 #: Vacuum permeability [H/m], used as the BH-curve saturation-slope reference.
-_MU0: float = 4.0 * np.pi * 1e-7
+_MU0: float = 4.0 * math.pi * 1e-7
 
 #: KSP types supported by PETSc / APEC-M (direct and iterative).
 _VALID_KSP_TYPES: frozenset[str] = frozenset({
@@ -336,6 +389,10 @@ def validate_apec_model(model: Any) -> None:
     if mesh is None:
         raise ValueError("No mesh loaded; call read_mesh() before validating.")
 
+    # Keep this helper centralized so mesh-load and full model validation
+    # enforce the exact same array contract.
+    validate_required_arrays_present(mesh)
+
     et = model.element_types
     mat = model.materials
     const = model.constants
@@ -346,6 +403,7 @@ def validate_apec_model(model: Any) -> None:
 
     n_cells: int = mesh.GetNumberOfCells()
     cell_data = mesh.GetCellData()
+    point_data = mesh.GetPointData()
 
     # ── per-cell VTK type classification ────────────────────────────────────
     vtk_ct = np.asarray(vtknp.vtk_to_numpy(mesh.GetCellTypesArray()), dtype=np.int32)
@@ -353,13 +411,8 @@ def validate_apec_model(model: Any) -> None:
     is_3d = np.isin(vtk_ct, _VTK_3D_CELL_TYPES)
     is_quad = np.isin(vtk_ct, _VTK_QUADRATIC_CELL_TYPES)
 
-    def _get_int_array(name: str) -> Optional[np.ndarray]:
+    def _get_int_array(name: str) -> np.ndarray:
         arr = cell_data.GetArray(name)
-        if arr is None:
-            _log.warning(
-                "CellData array '%s' not found; related checks skipped.", name
-            )
-            return None
         return np.asarray(vtknp.vtk_to_numpy(arr), dtype=np.int32)
 
     type_ids = _get_int_array("TYPE")
@@ -370,7 +423,7 @@ def validate_apec_model(model: Any) -> None:
     # ========================================================================
     # 0a. COORDINATE_SYSTEM cell-data array and coordinate_systems attribute
     # ========================================================================
-    if coordinate_system_ids is not None:
+    if coordinate_system_ids.size > 0:
         bad_cs = sorted(np.unique(coordinate_system_ids[coordinate_system_ids < 0]).astype(int).tolist())
         if bad_cs:
             errors.append(
@@ -416,9 +469,7 @@ def validate_apec_model(model: Any) -> None:
     if not isinstance(bh_curves, dict):
         errors.append(f"bh_curves must be a dict, got {type(bh_curves).__name__}.")
     else:
-        material_ids_in_grid: set[int] = set()
-        if mat_ids is not None:
-            material_ids_in_grid = set(np.unique(mat_ids).astype(int).tolist())
+        material_ids_in_grid: set[int] = set(np.unique(mat_ids).astype(int).tolist()) if mat_ids.size > 0 else set()
 
         for material_id_raw, curve_values in bh_curves.items():
             if isinstance(material_id_raw, bool) or not isinstance(material_id_raw, (int, np.integer)):
@@ -513,10 +564,23 @@ def validate_apec_model(model: Any) -> None:
     req_et = list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
     miss_et = set(req_et) - set(et.columns)
     et_ok = not bool(miss_et)
+    if et.empty:
+        errors.append("element_types cannot be empty.")
     if miss_et:
         errors.append(f"element_types missing columns: {sorted(miss_et)}.")
 
     if et_ok and not et.empty:
+        # Required columns cannot contain null/empty values.
+        for col, col_type in ELEMENT_TYPES_COLUMNS_TYPES.items():
+            if col not in et.columns:
+                continue
+            col_values = et[col]
+            if col_values.isna().any():
+                errors.append(f"element_types: column '{col}' contains empty/NaN values.")
+                continue
+            if col_type is str and col_values.astype(str).str.strip().eq("").any():
+                errors.append(f"element_types: column '{col}' contains empty strings.")
+
         # TYPE_ID must be a positive integer
         bad = et.loc[~(et["TYPE_ID"] > 0), "TYPE_ID"].tolist()
         if bad:
@@ -564,6 +628,20 @@ def validate_apec_model(model: Any) -> None:
                 f"element_types: OPTION3 must be 0 or 1;"
                 f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'OPTION3')}."
             )
+        else:
+            # OPTION3 must be globally consistent across all TYPE_ID rows.
+            option3_values = et["OPTION3"].astype(int)
+            option3_unique = sorted(option3_values.unique().tolist())
+            if len(option3_unique) > 1:
+                option3_detail = {
+                    int(value): et.loc[option3_values == value, "TYPE_ID"].astype(int).tolist()
+                    for value in option3_unique
+                }
+                errors.append(
+                    "element_types: OPTION3 cannot contain distinct values; "
+                    "it must be globally all 0 or all 1. "
+                    f"Found values {option3_unique} with TYPE_ID groups: {option3_detail}."
+                )
 
         # OPTION4 ∈ {0, 1}
         mask = ~et["OPTION4"].isin((0, 1))
@@ -656,63 +734,93 @@ def validate_apec_model(model: Any) -> None:
                         f"element_types TYPE_ID={tid}: OPTION3 must be 0 for 3D cells,"
                         f" got {opt3}."
                     )
-                if elem_type == 2 and any_lin:
-                    errors.append(
-                        f"element_types TYPE_ID={tid}: ELEMENT_TYPE=2 requires all cells"
-                        " to be quadratic; linear VTK cells found."
-                    )
-                if elem_type in (0, 1):
-                    if any_quad and any_lin:
-                        errors.append(
-                            f"element_types TYPE_ID={tid}: cells mix linear and quadratic"
-                            " VTK types (OPTION2 must be uniform)."
-                        )
-                    elif any_quad and opt2 != 2:
-                        errors.append(
-                            f"element_types TYPE_ID={tid}: quadratic cells require OPTION2=2,"
-                            f" got {opt2}."
-                        )
-                    elif any_lin and opt2 != 1:
-                        errors.append(
-                            f"element_types TYPE_ID={tid}: linear cells require OPTION2=1,"
-                            f" got {opt2}."
-                        )
 
     # ========================================================================
     # 2. dof_couplings DataFrame
     # ========================================================================
-    if not dof.empty:
-        req_dof = list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
-        miss_dof = set(req_dof) - set(dof.columns)
-        if miss_dof:
-            errors.append(f"dof_couplings missing columns: {sorted(miss_dof)}.")
-        else:
-            _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
-            mask_vars = ~dof["VARIABLE"].isin(_valid_vars)
-            if mask_vars.any():
-                bad_pairs_var = list(zip(
-                    dof.loc[mask_vars, "CP_ID"].tolist(),
-                    dof.loc[mask_vars, "VARIABLE"].tolist(),
-                ))
-                errors.append(
-                    f"dof_couplings: VARIABLE must be one of {sorted(_valid_vars)};"
-                    f" bad (CP_ID, value) pairs: {bad_pairs_var}."
-                )
-            bad_cp = dof.loc[~(dof["CP_ID"] > 0), "CP_ID"].tolist()
-            if bad_cp:
-                errors.append(
-                    f"dof_couplings: CP_ID must be integer > 0; bad values: {bad_cp}."
-                )
+    req_dof = list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
+    miss_dof = set(req_dof) - set(dof.columns)
+    dof_has_rows = not dof.empty
+    dof_schema_ok = not bool(miss_dof)
+    if dof_has_rows and not dof_schema_ok:
+        errors.append(f"dof_couplings missing columns: {sorted(miss_dof)}.")
+    elif dof_has_rows and dof_schema_ok:
+        for col, col_type in DOF_COUPLINGS_COLUMNS_TYPES.items():
+            col_values = dof[col]
+            if col_values.isna().any():
+                errors.append(f"dof_couplings: column '{col}' contains empty/NaN values.")
+                continue
+            if col_type is str and col_values.astype(str).str.strip().eq("").any():
+                errors.append(f"dof_couplings: column '{col}' contains empty strings.")
+
+        _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
+        mask_vars = ~dof["VARIABLE"].isin(_valid_vars)
+        if mask_vars.any():
+            bad_pairs_var = list(zip(
+                dof.loc[mask_vars, "CP_ID"].tolist(),
+                dof.loc[mask_vars, "VARIABLE"].tolist(),
+            ))
+            errors.append(
+                f"dof_couplings: VARIABLE must be one of {sorted(_valid_vars)};"
+                f" bad (CP_ID, value) pairs: {bad_pairs_var}."
+            )
+        bad_cp = dof.loc[~(dof["CP_ID"] > 0), "CP_ID"].tolist()
+        if bad_cp:
+            errors.append(
+                f"dof_couplings: CP_ID must be integer > 0; bad values: {bad_cp}."
+            )
+
+    # CP_xx arrays: all values > 0 must exist in dof_couplings CP_ID.
+    cp_ids_defined: set[int] = set()
+    if dof_has_rows and dof_schema_ok and "CP_ID" in dof.columns:
+        cp_ids_defined = {
+            int(v)
+            for v in dof["CP_ID"].dropna().tolist()
+            if isinstance(v, (int, float, np.integer, np.floating))
+        }
+
+    cp_name = re.compile(r"^CP_(\d+)$")
+    cp_ids_in_mesh: set[int] = set()
+    if point_data is not None:
+        for i in range(point_data.GetNumberOfArrays()):
+            arr = point_data.GetArray(i)
+            if arr is None:
+                continue
+            name = arr.GetName()
+            if not isinstance(name, str) or cp_name.fullmatch(name) is None:
+                continue
+            vals = np.asarray(vtknp.vtk_to_numpy(arr), dtype=float).reshape(-1)
+            pos = vals[np.isfinite(vals) & (vals > 0.0)]
+            if pos.size > 0:
+                cp_ids_in_mesh.update(np.unique(pos.astype(int)).tolist())
+
+    if dof_has_rows and dof_schema_ok and cp_ids_in_mesh:
+        missing_cp_ids = sorted(cp_ids_in_mesh - cp_ids_defined)
+        if missing_cp_ids:
+            errors.append(
+                "CP_xx arrays contain positive coupling IDs not found in dof_couplings CP_ID:"
+                f" {missing_cp_ids}."
+            )
 
     # ========================================================================
     # 3. materials DataFrame
     # ========================================================================
+    req_mat = list(MATERIALS_COLUMNS_TYPES.keys())
+    miss_mat = set(req_mat) - set(mat.columns)
+    if mat.empty:
+        errors.append("materials cannot be empty.")
     if not mat.empty:
-        req_mat = list(MATERIALS_COLUMNS_TYPES.keys())
-        miss_mat = set(req_mat) - set(mat.columns)
         if miss_mat:
             errors.append(f"materials missing columns: {sorted(miss_mat)}.")
         else:
+            for col, col_type in MATERIALS_COLUMNS_TYPES.items():
+                col_values = mat[col]
+                if col_values.isna().any():
+                    errors.append(f"materials: column '{col}' contains empty/NaN values.")
+                    continue
+                if col_type is str and col_values.astype(str).str.strip().eq("").any():
+                    errors.append(f"materials: column '{col}' contains empty strings.")
+
             bad_mid = mat.loc[~(mat["MATERIAL_ID"] > 0), "MATERIAL_ID"].tolist()
             if bad_mid:
                 errors.append(
@@ -756,7 +864,7 @@ def validate_apec_model(model: Any) -> None:
                         f" bad (MATERIAL_ID, value) pairs: {preview}{suffix}."
                     )
 
-            if mat_ids is not None:
+            if mat_ids.size > 0:
                 mat_id_set: set[int] = set(mat["MATERIAL_ID"].astype(int))
                 mesh_mat_set: set[int] = set(np.unique(mat_ids).tolist())
                 miss_m = mesh_mat_set - mat_id_set
@@ -774,12 +882,22 @@ def validate_apec_model(model: Any) -> None:
     # ========================================================================
     # 4. constants DataFrame
     # ========================================================================
+    req_const = list(CONSTANTS_COLUMNS_TYPES.keys())
+    miss_const = set(req_const) - set(const.columns)
+    if const.empty:
+        errors.append("constants cannot be empty.")
     if not const.empty:
-        req_const = list(CONSTANTS_COLUMNS_TYPES.keys())
-        miss_const = set(req_const) - set(const.columns)
         if miss_const:
             errors.append(f"constants missing columns: {sorted(miss_const)}.")
         else:
+            for col, col_type in CONSTANTS_COLUMNS_TYPES.items():
+                col_values = const[col]
+                if col_values.isna().any():
+                    errors.append(f"constants: column '{col}' contains empty/NaN values.")
+                    continue
+                if col_type is str and col_values.astype(str).str.strip().eq("").any():
+                    errors.append(f"constants: column '{col}' contains empty strings.")
+
             bad_cid = const.loc[~(const["CONSTANTS_ID"] > 0), "CONSTANTS_ID"].tolist()
             if bad_cid:
                 errors.append(
@@ -815,8 +933,8 @@ def validate_apec_model(model: Any) -> None:
 
             # ── cross-validate constants against mesh ────────────────────────
             if (
-                const_ids is not None
-                and type_ids is not None
+                const_ids.size > 0
+                and type_ids.size > 0
                 and et_ok
                 and not et.empty
             ):
@@ -977,3 +1095,73 @@ def validate_apec_model(model: Any) -> None:
     _log.info("Validated element types:\n%s", _format_df_for_log(et))
     _log.info("Validated materials:\n%s", _format_df_for_log(mat))
     _log.info("Validated real constants:\n%s", _format_df_for_log(const))
+
+
+def validate_pre_solve_inputs(model: Any) -> None:
+    """Validate runtime inputs right before solve and emit actionable warnings.
+
+    This check is intended to run on every solve call so users get immediate
+    feedback if loads/BCs/time-step settings would lead to a no-op or unstable
+    run setup.
+    """
+    from .logging_utils import get_logger
+
+    import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
+
+    _log = get_logger("apec_m.validation")
+    mesh = model.mesh
+
+    if mesh is None:
+        raise ValueError("No mesh loaded; call read_mesh() before solving.")
+
+    point_data = mesh.GetPointData()
+    cell_data = mesh.GetCellData()
+
+    errors: list[str] = []
+
+    def _get_array_values(data_obj: Any, name: str) -> np.ndarray:
+        arr = data_obj.GetArray(name) if data_obj is not None else None
+        if arr is None:
+            errors.append(f"Required array '{name}' was not found before solve.")
+            return np.empty((0,), dtype=float)
+        return np.asarray(vtknp.vtk_to_numpy(arr), dtype=float)
+
+    # 1) Loads check: Js (elem), AMPS/CURR (node)
+    js = _get_array_values(cell_data, "Js")
+    amps = _get_array_values(point_data, "AMPS")
+    curr = _get_array_values(point_data, "CURR")
+    if js.size > 0 and amps.size > 0 and curr.size > 0:
+        if np.all(np.nan_to_num(js, nan=0.0) == 0.0) and np.all(np.nan_to_num(amps, nan=0.0) == 0.0) and np.all(np.nan_to_num(curr, nan=0.0) == 0.0):
+            _log.warning(
+                "No loads detected: arrays Js, AMPS, and CURR are all zero."
+            )
+
+    # 2) Boundary conditions check: all BC arrays all-NaN
+    bc_names = ["_A", "_Az", "_VOLT", "_V", "_EMF"]
+    bc_arrays = [_get_array_values(point_data, name) for name in bc_names]
+    if all(arr.size > 0 for arr in bc_arrays):
+        if all(np.all(np.isnan(arr)) for arr in bc_arrays):
+            _log.warning(
+                "No boundary conditions detected: arrays _A, _Az, _VOLT, _V, and _EMF are all NaN."
+            )
+
+    # 3) Time-step constraints
+    time_step = getattr(model, "time_step", {})
+    if not isinstance(time_step, dict):
+        errors.append("time_step must be a dictionary with keys 'time' and 'theta'.")
+    else:
+        t = time_step.get("time")
+        th = time_step.get("theta")
+
+        if not isinstance(t, (int, float)) or not np.isfinite(t) or float(t) <= 0.0:
+            errors.append(f"time_step['time'] must be a finite value > 0, got {t!r}.")
+
+        if not isinstance(th, (int, float)) or not np.isfinite(th) or not (0.0 <= float(th) <= 1.0):
+            errors.append(
+                f"time_step['theta'] must be a finite value in [0, 1], got {th!r}."
+            )
+
+    if errors:
+        raise ValueError(
+            "Invalid pre-solve inputs:\n" + "\n".join(f"  - {e}" for e in errors)
+        )

@@ -198,7 +198,7 @@ Geometry reduction and the THK (out-of-plane measure)
 Let the 2D computational domain be :math:`\Omega \subset \mathbb{R}^2`.
 
 Planar (2D "plane")
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^
 
 A 3D prismatic body is represented by extruding :math:`\Omega` in the out-of-plane direction
 with thickness
@@ -217,7 +217,7 @@ All volume integrals become
 PLANE233 explicitly supports THK as thickness for the plane option. [1]_
 
 Axisymmetric (2D r-z)
-^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
 
 A 3D body is formed by revolving the meridian :math:`\Omega \subset \{(r,z): r \ge 0\}`.
 PLANE233 allows modeling a fraction :math:`f = \mathrm{THK}` of the full :math:`360^\circ`. [1]_
@@ -808,7 +808,7 @@ and charge conservation in conducting regions:
    = \nabla\cdot\mathbf{J}_s
 
 Gauge / uniqueness
-^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
 
 The :math:`\mathbf{A}` formulation needs a gauge constraint to eliminate non-uniqueness.
 
@@ -991,7 +991,7 @@ Let :math:`g` index Gauss points with weights :math:`\omega_g`, Jacobian determi
 evaluated at Gauss points. The 3D MQS form is written (no dielectric/displacement current).
 
 SOLID236 (edge-based) element matrices
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Core magnetic stiffness
 ^^^^^^^^^^^^^^^^^^^^^^^

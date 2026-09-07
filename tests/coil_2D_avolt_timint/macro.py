@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
 import os
@@ -7,7 +7,7 @@ import vtk.util.numpy_support as vtknp
 
 apec = APEC_M()
 
-filename = "coil_2D_av_timint"
+filename = "coil_2D_avolt_timint"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
@@ -40,7 +40,7 @@ for i in range(1, 3):
     else:
         Selector.select(apec.model.mesh, "ID", master_node)
         Selector.set_value_on_selection(apec.model.mesh, "CURR", 0)
-        Selector.set_value_on_selection(apec.model.mesh, "_V", 10000)
+        Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 10000)
     apec.solve()
     apec.write_output()
 

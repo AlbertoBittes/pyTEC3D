@@ -1,13 +1,8 @@
-from apec_m import APEC_M
+from apec_m_solver.apec_m import APEC_M
 from apec_m.selector import Selector
 import os
-from apec_m_coordinate_system.coordinate_system import YAxisCylindricalCoordinateSystem
-
-# from convert_mesh import convert_mesh_from_cdb
 
 apec = APEC_M()
-
-aplasma = 0
 
 filename = "ITER_2D_APEC"
 
@@ -35,7 +30,6 @@ apec.algorithm.input_parameters["alpha_mp"] = 1.0001
 apec.algorithm.input_parameters["alpha_np"] = 0.83197
 apec.algorithm.input_parameters["plasma_current"] = 15e6
 apec.algorithm.input_parameters["beta_p"] = 6.8216e-001
-apec.algorithm.input_parameters["print_full_output"] = 0
 
 i_CS3U = -4.8204e06
 i_CS2U = -4.0480e06
@@ -67,9 +61,9 @@ Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 0, type="e
 Selector.nsel_ext(apec.model.mesh)
 Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
 
+apec.model.time_step["time"] = 1.0
 apec.model.time_step["theta"] = 0.5
-apec.model.time_step["transient_effects"] = 0
-apec.model.time_step["time_step_number"] = 1
+apec.model.time_step["transient_effects"] = False
 
 Selector.select(apec.model.mesh, "CS3L", 1, type="elem")
 Selector.set_value_on_selection(apec.model.mesh, "Js", i_CS3L / a_CS, 2, type="elem")
@@ -100,10 +94,11 @@ Selector.set_value_on_selection(apec.model.mesh, "Js", i_PF6 / a_PF6, 2, type="e
 Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(apec.model.mesh, "Js", 15e6 / a_plasma, 2, type="elem")
 
+apec.save_model()
+
 apec.load_model_into_solver()
 
 apec.algorithm.equilibrium_solve()
 
 apec.write_output()
 
-apec.save_model()

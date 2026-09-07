@@ -6,6 +6,18 @@ import vtk
 
 
 def _normalize_path(path_value):
+    """Validate and normalize a user-provided filesystem path.
+
+    Args:
+        path_value: Candidate path as str or os.PathLike.
+
+    Returns:
+        str: Normalized path string.
+
+    Raises:
+        TypeError: If path_value is not path-like.
+        ValueError: If the normalized path is empty.
+    """
     if not isinstance(path_value, (str, os.PathLike)):
         raise TypeError("file_path must be a string or os.PathLike")
     normalized = os.fspath(path_value)
@@ -15,6 +27,11 @@ def _normalize_path(path_value):
 
 
 def _remove_l2_norm_range_info_keys(grid):
+    """Remove VTK L2 norm metadata keys before writing the output mesh.
+
+    Args:
+        grid: PyVista/VTK grid to sanitize.
+    """
     key = vtk.vtkDataArray.L2_NORM_RANGE()
     for data_getter in (grid.GetPointData, grid.GetCellData, grid.GetFieldData):
         data = data_getter()
@@ -30,6 +47,16 @@ def _remove_l2_norm_range_info_keys(grid):
 
 
 def convert_mesh_from_cdb(file_path):
+    """Convert an ANSYS CDB mesh into a cleaned VTU mesh next to the input file.
+
+    Args:
+        file_path: Path to a .cdb file.
+
+    Raises:
+        FileNotFoundError: If the input file does not exist.
+        ValueError: If the file extension is unsupported or conversion data is invalid.
+        ImportError: If ansys-mapdl-reader is not installed.
+    """
     file_path = _normalize_path(file_path)
     print(f"Starting CDB->VTU conversion for '{file_path}'")
 

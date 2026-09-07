@@ -743,6 +743,7 @@ void ApecMNonLinearSystem::post_init()
     auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
     if (!solver_parent || !newton_solver)
         apec::logging::error_and_abort("ApecMNonLinearSystem::post_init: solver parent or Newton solver not available.");
+    newton_solver->require_residual_reduction = false;
 
     auto *newton_petsc_solver =
         dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(&newton_solver->get_linear_solver());

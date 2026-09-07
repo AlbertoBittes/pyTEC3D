@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 import os
 import numpy as np
 from apec_m_coordinate_system.coordinate_system import CylindricalCoordinateSystem

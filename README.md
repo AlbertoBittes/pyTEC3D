@@ -5,13 +5,15 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 ## Supported platform
 
 - Linux
-- Python 3.12 only
+- Python 3.12
 
 ## Project structure
 
 - `python/apec_m`: main Python API
-- `python/apec_m_coordinate_system`: coordinate helpers
+- `python/apec_m_coordinate_system`: coordinate_system helpers
 - `python/apec_m_solver`: compiled solver extension location
+- `python/apec_m_paraview`: ParaView support module
+- `python/apec_m_algorithm`: APEC algorith module
 - `python/apec_m_mesh_converter`: mesh conversion package
 
 ## Quick start (local workflow)
@@ -46,41 +48,26 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
                         -y
   conda activate apec-m
   ./scripts/build.sh
+  python -m pip install .
   ```
 
-2. Install the Python packages from this repository.
-
-  Editable install (recommended for development):
+  Editable install:
 
   ```bash
   python -m pip install -e .
   ```
 
-  Fixed install:
+## Fast rebuild loop for solver-only C++ changes
 
-  ```bash
-  python -m pip install .
-  ```
-
-  You can also do this during build by setting `APEC_M_PIP_INSTALL_MODE`:
-
-  ```bash
-  APEC_M_PIP_INSTALL_MODE=editable ./scripts/build.sh
-  # or
-  APEC_M_PIP_INSTALL_MODE=fixed ./scripts/build.sh
-  ```
-
-The root pip install includes `apec_m`, `apec_m_coordinate_system`, and `apec_m_mesh_converter`.
-Core solver is built locally into `python/apec_m_solver` and imported as `apec_m_solver.apec_m_solver`.
-
-## Sanity checks
+After a full initial run of `scripts/build.sh`, rebuild with CMake:
 
 ```bash
-python -c "import apec_m_solver.apec_m_solver"
-python -c "from apec_m import APEC_M; APEC_M()"
+cmake -S src -B build/apec_m -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
+  -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
+  -DLIBMESH_DIR="$CONDA_PREFIX" \
+  -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD:-opt}"
+
+cmake --build build/apec_m -j
 ```
-
-## No conda-build packaging path
-
-This repository now uses only the local development/build flow above.
-Conda recipe build/distribution files are intentionally removed from the active workflow.

@@ -56,9 +56,17 @@ ElementBuilder::ElementBuilder(ApecMEquationSystems *equation_systems)
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
     vtk_grid_ = equation_systems_->get_parent_object()->get_active_vtk_grid();
+    if (!vtk_grid_)
+        apec::logging::error_and_abort("ElementBuilder: active VTK grid is not available.");
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
+    if (!material_cell_array_)
+        apec::logging::error_and_abort("ElementBuilder: MATERIAL array is not available in the active VTK grid.");
     real_constant_cell_array_ = vtk_grid_->GetCellData()->GetArray("CONSTANT");
+    if (!real_constant_cell_array_)
+        apec::logging::error_and_abort("ElementBuilder: CONSTANT array is not available in the active VTK grid.");
     coordinate_system_cell_array_ = vtk_grid_->GetCellData()->GetArray("COORDINATE_SYSTEM");
+    if (!coordinate_system_cell_array_)
+        apec::logging::error_and_abort("ElementBuilder: COORDINATE_SYSTEM array is not available in the active VTK grid.");
 
     element_types_factory_ = equation_systems_->get_element_types_factory().get();
     if (!element_types_factory_)

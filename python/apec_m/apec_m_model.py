@@ -46,6 +46,16 @@ class APEC_M_Model:
         mesh: Optional[vtk.vtkUnstructuredGrid] = None,
         mesh_name: Optional[str] = None,
     ) -> None:
+        """
+        Special method `__init__`.
+        
+        Args:
+            mesh (Optional[vtk.vtkUnstructuredGrid]): Description.
+            mesh_name (Optional[str]): Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+        """
         if mesh is not None and not isinstance(mesh, vtk.vtkUnstructuredGrid):
             raise TypeError("mesh must be a vtk.vtkUnstructuredGrid or None.")
         if mesh_name is not None and not isinstance(mesh_name, str):
@@ -75,12 +85,30 @@ class APEC_M_Model:
 
     @property
     def mesh(self) -> vtk.vtkUnstructuredGrid:
+        """
+        Mesh.
+        
+        Returns:
+            vtk.vtkUnstructuredGrid: Description.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
         return self._mesh
 
     @mesh.setter
     def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
+        """
+        Mesh.
+        
+        Args:
+            value (vtk.vtkUnstructuredGrid): Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+        """
         if not isinstance(value, vtk.vtkUnstructuredGrid):
             raise TypeError("mesh must be a vtk.vtkUnstructuredGrid.")
 
@@ -88,34 +116,108 @@ class APEC_M_Model:
 
     @staticmethod
     def _table_rows_array_name(table_name: str) -> str:
+        """
+         table rows array name.
+        
+        Args:
+            table_name (str): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}TABLE_{table_name.upper()}_ROWS"
 
     @staticmethod
     def _table_column_array_name(table_name: str, column_name: str) -> str:
+        """
+         table column array name.
+        
+        Args:
+            table_name (str): Description.
+            column_name (str): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}TABLE_{table_name.upper()}_{column_name}"
 
     @staticmethod
     def _meta_array_name(key: str) -> str:
+        """
+         meta array name.
+        
+        Args:
+            key (str): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}META_{key}"
 
     @staticmethod
     def _solver_setting_array_name(key: str) -> str:
+        """
+         solver setting array name.
+        
+        Args:
+            key (str): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}SOLVER_SETTING_{key}"
 
     @staticmethod
     def _time_step_array_name(key: str) -> str:
+        """
+         time step array name.
+        
+        Args:
+            key (str): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}TIME_STEP_{key}"
 
     @staticmethod
     def _coord_system_array_name(cs_id: int) -> str:
+        """
+         coord system array name.
+        
+        Args:
+            cs_id (int): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}COORD_SYSTEM_{int(cs_id)}"
 
     @staticmethod
     def _bh_curve_array_name(material_id: int) -> str:
+        """
+         bh curve array name.
+        
+        Args:
+            material_id (int): Description.
+        
+        Returns:
+            str: Description.
+        """
         return f"{FIELD_PREFIX}BH_CURVE_{int(material_id)}"
 
     @staticmethod
     def _field_array_name_to_id(name: str, prefix: str) -> Optional[int]:
+        """
+         field array name to id.
+        
+        Args:
+            name (str): Description.
+            prefix (str): Description.
+        
+        Returns:
+            Optional[int]: Description.
+        """
         if not isinstance(name, str):
             return None
         match = re.fullmatch(re.escape(prefix) + r"(-?\d+)", name)
@@ -125,6 +227,12 @@ class APEC_M_Model:
 
     @staticmethod
     def _remove_prefixed_field_arrays(field_data: vtk.vtkFieldData) -> None:
+        """
+         remove prefixed field arrays.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+        """
         names = []
         for i in range(field_data.GetNumberOfArrays()):
             arr = field_data.GetAbstractArray(i)
@@ -138,6 +246,14 @@ class APEC_M_Model:
 
     @staticmethod
     def _add_string_array(field_data: vtk.vtkFieldData, name: str, values: Sequence[str]) -> None:
+        """
+         add string array.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            name (str): Description.
+            values (Sequence[str]): Description.
+        """
         arr = vtk.vtkStringArray()
         arr.SetName(name)
         arr.SetNumberOfValues(len(values))
@@ -147,6 +263,14 @@ class APEC_M_Model:
 
     @staticmethod
     def _add_int_array(field_data: vtk.vtkFieldData, name: str, values: np.ndarray) -> None:
+        """
+         add int array.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            name (str): Description.
+            values (np.ndarray): Description.
+        """
         int_values = np.asarray(values, dtype=np.int64)
         vtk_arr = vtknp.numpy_to_vtk(int_values, deep=True, array_type=vtk.VTK_LONG_LONG)
         vtk_arr.SetName(name)
@@ -160,6 +284,15 @@ class APEC_M_Model:
         values: np.ndarray,
         n_components: int = 1,
     ) -> None:
+        """
+         add double array.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            name (str): Description.
+            values (np.ndarray): Description.
+            n_components (int): Description.
+        """
         np_values = np.asarray(values, dtype=float)
         if n_components > 1:
             np_values = np_values.reshape(-1, n_components)
@@ -170,6 +303,16 @@ class APEC_M_Model:
 
     @staticmethod
     def _read_string_array(field_data: vtk.vtkFieldData, name: str) -> Optional[list[str]]:
+        """
+         read string array.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            name (str): Description.
+        
+        Returns:
+            Optional[list[str]]: Description.
+        """
         arr = vtk.vtkStringArray.SafeDownCast(field_data.GetAbstractArray(name))
         if arr is None:
             return None
@@ -177,6 +320,16 @@ class APEC_M_Model:
 
     @staticmethod
     def _read_numeric_array(field_data: vtk.vtkFieldData, name: str) -> Optional[np.ndarray]:
+        """
+         read numeric array.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            name (str): Description.
+        
+        Returns:
+            Optional[np.ndarray]: Description.
+        """
         arr = field_data.GetArray(name)
         if arr is None:
             return None
@@ -193,6 +346,16 @@ class APEC_M_Model:
         type_map: Dict[str, Any],
         name_builder: Callable[[str], str],
     ) -> None:
+        """
+         write scalar dict.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            values (Dict[str, Any]): Description.
+            defaults (Dict[str, Any]): Description.
+            type_map (Dict[str, Any]): Description.
+            name_builder (Callable[[str], str]): Description.
+        """
         for key, key_type in type_map.items():
             name = name_builder(key)
             value = values.get(key, defaults[key])
@@ -212,6 +375,18 @@ class APEC_M_Model:
         type_map: Dict[str, Any],
         name_builder: Callable[[str], str],
     ) -> tuple[Dict[str, Any], bool]:
+        """
+         read scalar dict.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            defaults (Dict[str, Any]): Description.
+            type_map (Dict[str, Any]): Description.
+            name_builder (Callable[[str], str]): Description.
+        
+        Returns:
+            tuple[Dict[str, Any], bool]: Description.
+        """
         parsed: Dict[str, Any] = copy.deepcopy(defaults)
         found_any = False
         for key, key_type in type_map.items():
@@ -240,6 +415,16 @@ class APEC_M_Model:
 
     @staticmethod
     def _cast_dataframe(df: pd.DataFrame, type_map: Dict[str, Any]) -> pd.DataFrame:
+        """
+         cast dataframe.
+        
+        Args:
+            df (pd.DataFrame): Description.
+            type_map (Dict[str, Any]): Description.
+        
+        Returns:
+            pd.DataFrame: Description.
+        """
         out = df.copy()
         for column, column_type in type_map.items():
             if column not in out.columns:
@@ -261,6 +446,15 @@ class APEC_M_Model:
         df: pd.DataFrame,
         type_map: Dict[str, Any],
     ) -> None:
+        """
+         write dataframe table.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            table_name (str): Description.
+            df (pd.DataFrame): Description.
+            type_map (Dict[str, Any]): Description.
+        """
         work_df = df.copy()
         for col in type_map.keys():
             if col not in work_df.columns:
@@ -291,6 +485,17 @@ class APEC_M_Model:
         table_name: str,
         type_map: Dict[str, Any],
     ) -> pd.DataFrame:
+        """
+         read dataframe table.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+            table_name (str): Description.
+            type_map (Dict[str, Any]): Description.
+        
+        Returns:
+            pd.DataFrame: Description.
+        """
         rows_arr = self._read_numeric_array(field_data, self._table_rows_array_name(table_name))
         if rows_arr is None or rows_arr.size == 0:
             return pd.DataFrame(columns=list(type_map.keys()))
@@ -317,6 +522,12 @@ class APEC_M_Model:
         return self._cast_dataframe(pd.DataFrame(data), type_map)
 
     def _write_coordinate_systems(self, field_data: vtk.vtkFieldData) -> None:
+        """
+         write coordinate systems.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+        """
         try:
             from apec_m_coordinate_system.coordinate_system import COORDINATE_CLASS_TO_ID
         except Exception:
@@ -343,6 +554,15 @@ class APEC_M_Model:
             )
 
     def _read_coordinate_systems(self, field_data: vtk.vtkFieldData) -> Dict[int, Any]:
+        """
+         read coordinate systems.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+        
+        Returns:
+            Dict[int, Any]: Description.
+        """
         try:
             from apec_m_coordinate_system.coordinate_system import CoordinateSystem, coordinate_class_from_id
         except Exception:
@@ -385,6 +605,12 @@ class APEC_M_Model:
         return out
 
     def _write_bh_curves(self, field_data: vtk.vtkFieldData) -> None:
+        """
+         write bh curves.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+        """
         for material_id, curve in self.bh_curves.items():
             curve_np = np.asarray(curve, dtype=float)
             if curve_np.ndim != 2 or curve_np.shape[1] != 2:
@@ -397,6 +623,15 @@ class APEC_M_Model:
             )
 
     def _read_bh_curves(self, field_data: vtk.vtkFieldData) -> Dict[int, np.ndarray]:
+        """
+         read bh curves.
+        
+        Args:
+            field_data (vtk.vtkFieldData): Description.
+        
+        Returns:
+            Dict[int, np.ndarray]: Description.
+        """
         out: Dict[int, np.ndarray] = {}
         bh_prefix = f"{FIELD_PREFIX}BH_CURVE_"
         for i in range(field_data.GetNumberOfArrays()):
@@ -423,6 +658,12 @@ class APEC_M_Model:
         return out
 
     def _write_model_field_data(self) -> None:
+        """
+         write model field data.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
 
@@ -461,6 +702,12 @@ class APEC_M_Model:
         self._write_bh_curves(field_data)
 
     def _read_model_field_data(self) -> None:
+        """
+         read model field data.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
 
@@ -505,6 +752,16 @@ class APEC_M_Model:
         vtk_file_path: Union[str, PathLike[str]],
         reset_arrays: bool = False,
     ) -> "APEC_M_Model":
+        """
+        Read model.
+        
+        Args:
+            vtk_file_path (Union[str, PathLike[str]]): Description.
+            reset_arrays (bool): Description.
+        
+        Returns:
+            'APEC_M_Model': Description.
+        """
         absolute_path = os.path.abspath(os.fspath(vtk_file_path))
         loaded_mesh = ModelEdit.read_mesh(absolute_path, reset_arrays=reset_arrays)
         resolved_name = os.path.splitext(os.path.basename(absolute_path))[0]
@@ -516,6 +773,16 @@ class APEC_M_Model:
         mesh: vtk.vtkUnstructuredGrid,
         mesh_name: Optional[str] = None,
     ) -> "APEC_M_Model":
+        """
+        From grid.
+        
+        Args:
+            mesh (vtk.vtkUnstructuredGrid): Description.
+            mesh_name (Optional[str]): Description.
+        
+        Returns:
+            'APEC_M_Model': Description.
+        """
         model = cls(mesh=mesh, mesh_name=mesh_name)
         model._read_model_field_data()
         return model
@@ -525,6 +792,16 @@ class APEC_M_Model:
         excel_file_path: Union[str, PathLike[str]],
         data_to_read: Sequence[str] = tuple(DEFAULT_COLUMNS_ATTRIBUTES_TYPES.keys()),
     ) -> None:
+        """
+        Read excel.
+        
+        Args:
+            excel_file_path (Union[str, PathLike[str]]): Description.
+            data_to_read (Sequence[str]): Description.
+        
+        Raises:
+            TypeError: If an error condition is met.
+        """
         if not isinstance(data_to_read, Sequence):
             raise TypeError("data_to_read must be a sequence of sheet names.")
 
@@ -540,6 +817,17 @@ class APEC_M_Model:
         excel_file: Union[str, PathLike[str]],
         sheet_name: str,
     ) -> None:
+        """
+        Read excel sheet.
+        
+        Args:
+            excel_file (Union[str, PathLike[str]]): Description.
+            sheet_name (str): Description.
+        
+        Raises:
+            ValueError: If an error condition is met.
+            RuntimeError: If an error condition is met.
+        """
         if sheet_name not in SHEET_PROCESSING_MAP:
             raise ValueError(
                 f"Invalid sheet name '{sheet_name}'. Must be one of {list(SHEET_PROCESSING_MAP.keys())}."
@@ -563,7 +851,17 @@ class APEC_M_Model:
         func = getattr(Excel, method_name)
         func(self.mesh, excel_file, sheet_name, data_type)
 
-    def _save_model(self, output_file: Union[str, PathLike[str]], binary: bool = True) -> None:
+    def save_model(self, output_file: Union[str, PathLike[str]], binary: bool = True) -> None:
+        """
+        Save model.
+        
+        Args:
+            output_file (Union[str, PathLike[str]]): Description.
+            binary (bool): Description.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self._mesh is None:
             raise RuntimeError("No mesh is loaded.")
         self._write_model_field_data()

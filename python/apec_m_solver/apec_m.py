@@ -12,16 +12,16 @@ import vtk
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_PACKAGES_PATH = os.path.join(CURRENT_DIR, "local_packages")
 
-from .logging_utils import (
+from apec_m.logging_utils import (
     get_logger,
     log_mesh_summary_info,
     log_python_stdio_redirect,
     log_solver_runtime_shutdown_failure,
     log_solver_shutdown_import_error,
 )
-from .apec_algorithm import ApecAlgorithm
-from .apec_m_model import APEC_M_Model
-from .model_edit import ModelEdit
+from apec_m_algorithm.apec_algorithm import ApecAlgorithm
+from apec_m.apec_m_model import APEC_M_Model
+from apec_m.model_edit import ModelEdit
 
 LOGGER = get_logger("apec_m.APEC_M")
 
@@ -29,6 +29,14 @@ class APEC_M:
     """APEC solver/session manager that owns runtime/session and a Python model."""
 
     def __init__(self, num_threads: int = 1) -> None:
+        """Initialize a solver/session manager with an empty model.
+
+        Args:
+            num_threads: Number of threads used by the C++ solver backend.
+
+        Raises:
+            ValueError: If num_threads is not a positive integer.
+        """
         if isinstance(num_threads, bool) or int(num_threads) < 1:
             raise ValueError("num_threads must be a positive integer.")
 
@@ -45,6 +53,7 @@ class APEC_M:
 
     @staticmethod
     def _world_rank() -> int:
+        """Return MPI rank for COMM_WORLD, or 0 when mpi4py is unavailable."""
         try:
             from mpi4py import MPI
         except ImportError:
@@ -52,6 +61,9 @@ class APEC_M:
         return MPI.COMM_WORLD.Get_rank()
 
     def _configure_python_output_root_only(self) -> None:
+        """
+         configure python output root only.
+        """
         rank = self._world_rank()
         if rank == 0:
             return
@@ -64,24 +76,29 @@ class APEC_M:
 
     @property
     def num_threads(self) -> int:
+        """Thread count configured for solver session creation."""
         return self._num_threads
 
     @property
     def solver(self) -> Optional[Any]:
+        """Current active solver session, if one has been created."""
         return self._solver_session
 
     @property
     def mesh_filepath(self) -> Optional[str]:
+        """Absolute path of the currently loaded mesh file, if known."""
         return self._mesh_filepath
 
     @mesh_filepath.setter
     def mesh_filepath(self, value: Optional[str]) -> None:
+        """Store mesh file path as an absolute path or clear it with None."""
         if value is None:
             self._mesh_filepath = None
             return
         self._mesh_filepath = os.path.abspath(os.fspath(value))
 
     def __del__(self) -> None:
+        """Best-effort resource cleanup during garbage collection."""
         try:
             self.close()
         except Exception as exc:
@@ -93,9 +110,15 @@ class APEC_M:
             LOGGER.debug("Exception while closing null output stream in __del__: %s", exc)
 
     def _cleanup_at_exit(self) -> None:
+        """
+         cleanup at exit.
+        """
         self.close()
 
     def _close_solver_session(self) -> None:
+        """
+         close solver session.
+        """
         if self._solver_session is None:
             return
 
@@ -108,6 +131,9 @@ class APEC_M:
             gc.collect()
 
     def _shutdown_solver_runtime(self) -> None:
+        """
+         shutdown solver runtime.
+        """
         try:
             solver_module = self._require_solver_module()
         except Exception as exc:
@@ -123,6 +149,9 @@ class APEC_M:
                 raise
 
     def close(self) -> None:
+        """
+        Close.
+        """
         if self._closed:
             return
 
@@ -139,6 +168,19 @@ class APEC_M:
         num_threads: int = 1,
         mesh_name: Optional[str] = None,
     ) -> "APEC_M":
+        """Create an APEC_M instance directly from a VTK grid.
+
+        Args:
+            mesh: Input unstructured grid.
+            num_threads: Solver thread count.
+            mesh_name: Optional logical mesh name used in outputs.
+
+        Returns:
+            APEC_M: Initialized instance with model loaded from mesh.
+
+        Raises:
+            TypeError: If mesh is not a vtk.vtkUnstructuredGrid.
+        """
         if not isinstance(mesh, vtk.vtkUnstructuredGrid):
             raise TypeError("mesh must be a vtk.vtkUnstructuredGrid.")
 
@@ -160,6 +202,15 @@ class APEC_M:
         vtk_file_path: Union[str, PathLike[str]],
         reset_arrays: bool = True,
     ) -> None:
+        """Load a VTU model file into this instance and reset runtime outputs.
+
+        Args:
+            vtk_file_path: Path to the mesh/model file to load.
+            reset_arrays: Whether to reinitialize required VTK arrays on load.
+
+        Raises:
+            TypeError: If reset_arrays is not a bool.
+        """
         if not isinstance(reset_arrays, bool):
             raise TypeError("reset_arrays must be a bool.")
 
@@ -210,6 +261,14 @@ class APEC_M:
         self,
         output_file: Optional[Union[str, PathLike[str]]] = None,
     ) -> None:
+        """Persist the current model to a VTU file from rank 0 only.
+
+        Args:
+            output_file: Optional output path. Defaults to <mesh_name>.vtu in cwd.
+
+        Raises:
+            ValueError: If no mesh is loaded and no output path can be inferred.
+        """
         if self._world_rank() != 0:
             return
 
@@ -222,10 +281,16 @@ class APEC_M:
         else:
             output_file = os.path.abspath(os.fspath(output_file))
 
-        self.model._save_model(output_file, binary=True)
+        self.model.save_model(output_file, binary=True)
         LOGGER.info("Model saved to %s.", output_file)
 
     def write_output(self) -> None:
+        """
+        Write output.
+        
+        Raises:
+            ValueError: If an error condition is met.
+        """
         if self.model._mesh_name is None:
             raise ValueError("No mesh is loaded. Load a mesh before writing output.")
 
@@ -253,6 +318,11 @@ class APEC_M:
 
     @staticmethod
     def _require_solver_module() -> Any:
+        """Import and return the compiled pybind solver extension module.
+
+        Raises:
+            ImportError: If the extension cannot be imported.
+        """
         try:
             return importlib.import_module("apec_m_solver.apec_m_solver")
         except ImportError as exc:
@@ -262,11 +332,28 @@ class APEC_M:
             ) from exc
 
     def validate(self) -> None:
-        from .validation_utils import validate_apec_model
+        """
+        Validate.
+        """
+        from apec_m.validation_utils import validate_apec_model
 
         validate_apec_model(self.model)
 
+    def validate_pre_solve(self) -> None:
+        """
+        Validate pre solve.
+        """
+        from apec_m.validation_utils import validate_pre_solve_inputs
+
+        validate_pre_solve_inputs(self.model)
+
     def load_model_into_solver(self) -> None:
+        """
+        Load model into solver.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self._closed:
             raise RuntimeError("This APEC_M instance is closed and cannot create a new solver session.")
 
@@ -278,6 +365,14 @@ class APEC_M:
         LOGGER.info("Solver session created.")
 
     def _load_model_into_solver(self) -> Any:
+        """Create a fresh backend solver and load the current model into it.
+
+        Returns:
+            Any: Backend solver object exposed by the pybind module.
+
+        Raises:
+            RuntimeError: If no mesh is loaded in the current model.
+        """
         solver_module = self._require_solver_module()
 
         if self.model._mesh is None:
@@ -290,6 +385,12 @@ class APEC_M:
         return solver
 
     def solve(self) -> None:
+        """
+        Solve.
+        
+        Raises:
+            RuntimeError: If an error condition is met.
+        """
         if self.model._mesh is None:
             raise RuntimeError("No mesh is loaded.")
 
@@ -299,6 +400,7 @@ class APEC_M:
         if not hasattr(self._solver_session, "solve"):
             raise RuntimeError("Loaded solver session does not expose a solve() method.")
 
+        self.validate_pre_solve()
         LOGGER.info("Starting solver session solve().")
         self._solver_session.solve()
         LOGGER.info("Solver session solve() completed.")

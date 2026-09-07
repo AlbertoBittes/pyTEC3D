@@ -44,4 +44,12 @@ COORDINATE_ID_TO_CLASS = {
 
 
 def coordinate_class_from_id(class_id: int):
+    """Resolve a registered coordinate-system class from its numeric id.
+
+    Args:
+        class_id: Integer identifier stored in mesh metadata.
+
+    Returns:
+        type | None: Coordinate-system class when known, otherwise None.
+    """
     return COORDINATE_ID_TO_CLASS.get(int(class_id))

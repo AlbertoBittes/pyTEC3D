@@ -15,15 +15,32 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 
 class Selector:
+    """Selection and value-edit operations for VTK point/cell data arrays."""
     MODE_LABELS = {0: "s", 1: "a", 2: "r", 3: "u"}
     TYPE_LABELS = {0: "node", 1: "elem"}
 
     @staticmethod
     def mode_label(value: int) -> str:
+        """Map numeric mode codes to selection mode characters.
+
+        Args:
+            value: Integer mode code used by ParaView filter properties.
+
+        Returns:
+            str: One of "s", "a", "r", or "u".
+        """
         return Selector.MODE_LABELS.get(int(value), "s")
 
     @staticmethod
     def type_label(value: int) -> str:
+        """Map numeric selection type to node/element labels.
+
+        Args:
+            value: Integer type code where 0=node and 1=element.
+
+        Returns:
+            str: "node" or "elem".
+        """
         return Selector.TYPE_LABELS.get(int(value), "node")
 
     @staticmethod

@@ -8,7 +8,7 @@ Usage
 
 .. code-block:: python
 
-   from apec_m import APEC_M
+   from apec_m_solver import APEC_M
 
    api = APEC_M()
    api.read_model("mesh.vtu")
@@ -23,12 +23,17 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    :toctree: generated
    :recursive:
 
-   apec_m.apec_m
-   apec_m.ansys_helper
-   apec_m.apec_m_paraview
+   apec_m
+   apec_m.apec_m_model
    apec_m.constants
+   apec_m.logging_utils
    apec_m_coordinate_system.coordinate_system
    apec_m.excel
    apec_m.model_edit
    apec_m.selector
    apec_m.tree_gauge
+   apec_m.validation_utils
+   apec_m_solver.apec_m
+   apec_m_algorithm.apec_algorithm
+   apec_m_paraview.apec_m_paraview
+   apec_m_mesh_converter.mesh_converter

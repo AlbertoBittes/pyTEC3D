@@ -1,4 +1,4 @@
-from apec_m import APEC_M
+from apec_m_solver import APEC_M
 from apec_m.selector import Selector
 from apec_m.model_edit import ModelEdit
 import os
@@ -7,7 +7,7 @@ import vtk.util.numpy_support as vtknp
 
 apec = APEC_M()
 
-filename = "coil_2D_avoltemf"
+filename = "coil_2D_avoltemf_ferr"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 

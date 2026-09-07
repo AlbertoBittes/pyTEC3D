@@ -9,7 +9,11 @@ import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
 from .constants import VTK_ARRAYS_TO_INIT
 from .logging_utils import get_logger
-from .validation_utils import ensure_pathlike, ensure_vtk_unstructured_grid
+from .validation_utils import (
+    ensure_pathlike,
+    ensure_vtk_unstructured_grid,
+    validate_required_arrays_present,
+)
 
 
 LOGGER = get_logger("apec_m.model_edit")
@@ -20,6 +24,8 @@ if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
 
 
 class ModelEdit:
+    """Mesh editing and geometry/array transformation utilities."""
+
     @staticmethod
     def _get_positions(
         mesh: "vtk.vtkUnstructuredGrid",
@@ -754,6 +760,8 @@ class ModelEdit:
             Selector.ensure_selection_arrays(mesh)
             TreeGauge.add_midside_nodes_mask_array(mesh)
             ModelEdit.reset_vtk_arrays_to_default(mesh)
+
+        validate_required_arrays_present(mesh)
 
         LOGGER.info("VTK unstructured grid loaded from '%s'.", path)
 

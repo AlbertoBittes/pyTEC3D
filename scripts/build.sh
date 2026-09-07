@@ -23,7 +23,8 @@ if [ -z "${PREFIX}" ]; then
 fi
 export PREFIX
 
-LIBMESH_PREFIX=${LIBMESH_PREFIX:-${PREFIX}}
+LIBMESH_PREFIX=${LIBMESH_PREFIX:-${SRC_DIR}/build/libmesh_prefix}
+mkdir -p "${LIBMESH_PREFIX}"
 LIBMESH_SRC_DIR=${SRC_DIR}/libmesh
 PYTHON=${PYTHON:-python}
 if [ -z "${CPU_COUNT:-}" ]; then
@@ -288,23 +289,32 @@ cmake "${SRC_DIR}/src" \
     -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
     -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD}" \
     -DLIBMESH_LIB:FILEPATH="${LIBMESH_LIB}" \
-    -DTIMPI_LIB:FILEPATH="${TIMPI_LIB}" \
-    -DAPEC_M_PYTHON_SITEARCH="${SP_DIR}" \
-    -DAPEC_M_BUILD_PYBIND_MODULE=ON
+    -DTIMPI_LIB:FILEPATH="${TIMPI_LIB}"
 ninja -j"${CPU_COUNT}"
-cmake --install .
 
 shopt -s nullglob
 installed_solver_modules=(
-  "${SP_DIR}/apec_m_solver/apec_m_solver"*.so
-  "${SP_DIR}/apec_m_solver/apec_m_solver"*.pyd
-  "${SP_DIR}/apec_m_solver/apec_m_solver"*.dylib
+  "${SRC_DIR}/python/apec_m_solver/apec_m_solver"*.so
+  "${SRC_DIR}/python/apec_m_solver/apec_m_solver"*.pyd
+  "${SRC_DIR}/python/apec_m_solver/apec_m_solver"*.dylib
 )
 if [ "${#installed_solver_modules[@]}" -eq 0 ]; then
-  echo "ERROR: cmake --install did not place apec_m_solver under ${SP_DIR}/apec_m_solver."
+  echo "ERROR: Build did not produce apec_m_solver under ${SRC_DIR}/python/apec_m_solver."
+  exit 1
+fi
+
+installed_coordinate_modules=(
+  "${SRC_DIR}/python/apec_m_coordinate_system/apec_m_coordinate_system"*.so
+  "${SRC_DIR}/python/apec_m_coordinate_system/apec_m_coordinate_system"*.pyd
+  "${SRC_DIR}/python/apec_m_coordinate_system/apec_m_coordinate_system"*.dylib
+)
+if [ "${#installed_coordinate_modules[@]}" -eq 0 ]; then
+  echo "ERROR: Build did not produce apec_m_coordinate_system under ${SRC_DIR}/python/apec_m_coordinate_system."
   exit 1
 fi
 shopt -u nullglob
 popd
 
-echo "Installed local solver module into ${SP_DIR}/apec_m_solver"
+echo "Built local solver module in ${SRC_DIR}/python/apec_m_solver"
+echo "Built local coordinate module in ${SRC_DIR}/python/apec_m_coordinate_system"
+echo "libMesh installed in ${LIBMESH_PREFIX}"
