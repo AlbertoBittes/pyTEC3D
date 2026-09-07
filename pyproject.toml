@@ -33,8 +33,8 @@ include = [
   "apec_m_paraview.*",
   "apec_m_coordinate_system",
   "apec_m_coordinate_system.*",
-  #   "apec_m_mesh_converter",
-  #   "apec_m_mesh_converter.*",
+  "apec_m_mesh_converter",
+  "apec_m_mesh_converter.*",
   "apec_m_solver",
   "apec_m_solver.*",
 ]
