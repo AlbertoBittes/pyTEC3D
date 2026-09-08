@@ -28,6 +28,7 @@
 #include <libmesh/petsc_matrix.h>
 #include <libmesh/newton_solver.h>
 #include <libmesh/nonlinear_solver.h>
+#include <libmesh/wrapped_petsc.h>
 #include <pybind11/pybind11.h>
 
 #include "apec_m_solver/global_constraints_object.h"
@@ -257,6 +258,22 @@ public:
     void release_subset_solve();
 
     void delete_rows_cols_constrained_dofs() override;
+
+private:
+    void clear_reduced_solve_cache();
+
+    std::vector<unsigned int> reduced_subset_dofs_cache_;
+    libMesh::WrappedPetsc<IS> reduced_subset_is_;
+    libMesh::WrappedPetsc<VecScatter> reduced_scatter_;
+    libMesh::WrappedPetsc<Mat> reduced_submat_;
+    libMesh::WrappedPetsc<Mat> reduced_subprecond_;
+    libMesh::WrappedPetsc<Vec> reduced_subrhs_;
+    libMesh::WrappedPetsc<Vec> reduced_subsolution_;
+
+    Mat reduced_parent_mat_cache_ = nullptr;
+    Mat reduced_parent_precond_mat_cache_ = nullptr;
+    Vec reduced_parent_rhs_vec_cache_ = nullptr;
+    bool reduced_cache_ready_ = false;
 };
 
 class APEC_M_HIDDEN ApecMNonLinearSystem : public ApecMDOFSystem<libMesh::NonlinearImplicitSystem>

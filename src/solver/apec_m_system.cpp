@@ -26,15 +26,21 @@
 #include "apec_m_solver/variables_map.h"
 
 #include "libmesh/libmesh.h"
+#include "libmesh/libmesh_common.h"
 #include "libmesh/elem_range.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/petsc_matrix.h" // for libMesh::PetscMatrix
+#include "libmesh/petsc_macro.h"
+#include "libmesh/petsc_vector.h"  // for libMesh::PetscVector
+#include "libmesh/wrapped_petsc.h" // for WrappedPetsc
 
 #include <petscmat.h> // for MatResetHash
 
 #include <vtkPointData.h>
 #include <vtkDataArray.h>
 #include <vtkUnstructuredGrid.h>
+
+using libMesh::libmesh_ignore;
 
 namespace
 {
@@ -392,14 +398,31 @@ void ApecMLinearSystem::release_subset_solve()
         subset_solve_holder_.reset();
         this->_subset = nullptr;
     }
+
+    clear_reduced_solve_cache();
+}
+
+void ApecMLinearSystem::clear_reduced_solve_cache()
+{
+    reduced_subset_dofs_cache_.clear();
+    reduced_subset_is_.reset_to_zero();
+    reduced_scatter_.reset_to_zero();
+    reduced_submat_.reset_to_zero();
+    reduced_subprecond_.reset_to_zero();
+    reduced_subrhs_.reset_to_zero();
+    reduced_subsolution_.reset_to_zero();
+    reduced_parent_mat_cache_ = nullptr;
+    reduced_parent_precond_mat_cache_ = nullptr;
+    reduced_parent_rhs_vec_cache_ = nullptr;
+    reduced_cache_ready_ = false;
 }
 
 void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
     apec::logging::info("Removing constrained DOFs from system matrix and RHS");
-    // this->release_subset_solve();
+    this->release_subset_solve();
     subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
-    // this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
 }
 
 void ApecMNonLinearSystem::delete_rows_cols_constrained_dofs()
@@ -414,7 +437,125 @@ void ApecMNonLinearSystem::delete_rows_cols_constrained_dofs()
 
 void ApecMLinearSystem::solve()
 {
-    libMesh::TransientSystem<libMesh::LinearImplicitSystem>::solve();
+    if (this->assemble_before_solve)
+        // Assemble the linear system
+        this->assemble();
+
+    // Get the user-specified linear solver tolerance
+    const auto [maxits, tol] = this->get_linear_solve_parameters();
+
+    // Solve the linear system.  Several cases:
+    std::pair<unsigned int, libMesh::Real> rval = std::make_pair(0, 0.0);
+
+    auto *matrix = static_cast<libMesh::PetscMatrixBase<libMesh::Number> *>(this->matrix);
+    auto *precond = static_cast<libMesh::PetscMatrixBase<libMesh::Number> *>(this->request_matrix("Preconditioner"));
+    auto *solution = static_cast<libMesh::PetscVector<libMesh::Number> *>(this->solution.get());
+    auto *rhs = static_cast<libMesh::PetscVector<libMesh::Number> *>(this->rhs);
+
+    if (!precond)
+        precond = matrix;
+
+    matrix->close();
+
+    if (precond != matrix)
+        precond->close();
+    solution->close();
+    rhs->close();
+
+    const auto &subset_dofs = subset_solve_holder_->dof_ids();
+    if (subset_dofs.empty())
+        apec::logging::error_and_abort("ApecMLinearSystem::solve: subset solve requested with empty subset dof list.");
+
+    const Mat parent_mat = matrix->mat();
+    const Mat parent_precond_mat = precond->mat();
+    const bool allow_reuse = linear_solver->get_same_preconditioner();
+
+    if (!allow_reuse)
+    {
+        clear_reduced_solve_cache();
+
+        linear_solver->clear();
+        if (this->prefix_with_name())
+            linear_solver->init(this->prefix().c_str());
+        else
+            linear_solver->init();
+        linear_solver->init_systems(*this);
+
+        PetscInt *petsc_dofs = nullptr;
+        LibmeshPetscCall(PetscMalloc(subset_dofs.size() * sizeof(PetscInt), &petsc_dofs));
+        for (std::size_t i = 0; i < subset_dofs.size(); ++i)
+            petsc_dofs[i] = static_cast<PetscInt>(subset_dofs[i]);
+
+        LibmeshPetscCall(ISCreateGeneral(this->comm().get(),
+                                         static_cast<PetscInt>(subset_dofs.size()),
+                                         petsc_dofs,
+                                         PETSC_OWN_POINTER,
+                                         reduced_subset_is_.get()));
+
+        PetscInt subset_local_size = 0;
+        LibmeshPetscCall(ISGetLocalSize(reduced_subset_is_, &subset_local_size));
+
+        LibmeshPetscCall(VecCreate(this->comm().get(), reduced_subrhs_.get()));
+        LibmeshPetscCall(VecSetSizes(reduced_subrhs_, subset_local_size, PETSC_DECIDE));
+        LibmeshPetscCall(VecSetFromOptions(reduced_subrhs_));
+
+        LibmeshPetscCall(VecCreate(this->comm().get(), reduced_subsolution_.get()));
+        LibmeshPetscCall(VecSetSizes(reduced_subsolution_, subset_local_size, PETSC_DECIDE));
+        LibmeshPetscCall(VecSetFromOptions(reduced_subsolution_));
+
+        LibmeshPetscCall(VecScatterCreate(rhs->vec(),
+                                          reduced_subset_is_,
+                                          reduced_subrhs_,
+                                          nullptr,
+                                          reduced_scatter_.get()));
+
+        LibmeshPetscCall(LibMeshCreateSubMatrix(parent_mat,
+                                                reduced_subset_is_,
+                                                reduced_subset_is_,
+                                                MAT_INITIAL_MATRIX,
+                                                reduced_submat_.get()));
+
+        LibmeshPetscCall(LibMeshCreateSubMatrix(parent_mat,
+                                                reduced_subset_is_,
+                                                reduced_subset_is_,
+                                                MAT_INITIAL_MATRIX,
+                                                reduced_subprecond_.get()));
+        // reduced_subprecond_ = reduced_submat_;
+
+        reduced_subset_dofs_cache_ = subset_dofs;
+        reduced_parent_mat_cache_ = parent_mat;
+        reduced_parent_precond_mat_cache_ = parent_precond_mat;
+        reduced_parent_rhs_vec_cache_ = rhs->vec();
+        reduced_cache_ready_ = true;
+    }
+
+    VecScatterBeginEnd(this->comm(), reduced_scatter_, rhs->vec(), reduced_subrhs_, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterBeginEnd(this->comm(), reduced_scatter_, solution->vec(), reduced_subsolution_, INSERT_VALUES, SCATTER_FORWARD);
+
+    libMesh::PetscMatrix<libMesh::Number> submat_wrapper(reduced_submat_, this->comm());
+    libMesh::PetscVector<libMesh::Number> subrhs_wrapper(reduced_subrhs_, this->comm());
+    libMesh::PetscVector<libMesh::Number> subsolution_wrapper(reduced_subsolution_, this->comm());
+
+    libMesh::PetscMatrix<libMesh::Number> subprecond_wrapper(reduced_subprecond_, this->comm());
+    rval = linear_solver->solve(submat_wrapper,
+                                subprecond_wrapper,
+                                subsolution_wrapper,
+                                subrhs_wrapper,
+                                tol,
+                                maxits);
+
+    LibmeshPetscCall(VecZeroEntries(solution->vec()));
+    VecScatterBeginEnd(this->comm(), reduced_scatter_, reduced_subsolution_, solution->vec(), INSERT_VALUES, SCATTER_REVERSE);
+    solution->close();
+
+    // Store the number of linear iterations required to
+    // solve and the final residual.
+    _n_linear_iterations = rval.first;
+    _final_linear_residual = rval.second;
+
+    // Update the system after the solve
+    this->update();
+
     this->get_dof_map().enforce_constraints_exactly(*this);
     this->update();
     this->compute_solution_time_derivative();
