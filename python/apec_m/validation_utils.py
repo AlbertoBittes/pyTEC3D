@@ -1165,3 +1165,6 @@ def validate_pre_solve_inputs(model: Any) -> None:
         raise ValueError(
             "Invalid pre-solve inputs:\n" + "\n".join(f"  - {e}" for e in errors)
         )
+
+    validate_required_arrays_present(mesh)
+

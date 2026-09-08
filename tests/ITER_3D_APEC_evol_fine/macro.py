@@ -25,7 +25,7 @@ output_eq_mesh_filepath = os.path.join(
 eps = 1e-1
 theta_eps = 1e-3
 max_rad = 100.0
-extr_angle = 20.0
+extr_angle = -20.0
 
 # # Read the evolution mesh
 apec.read_model(filepath)
@@ -62,7 +62,7 @@ apec.model.dof_couplings = pd.concat([apec.model.dof_couplings, ModelEdit.period
 Selector.select_pos(apec.model.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(apec.model.mesh, "angles", extr_angle, 2)
 
-Selector.select(apec.model.mesh, "ID", 16170)
+Selector.select(apec.model.mesh, "ID", 57733)
 Selector.set_value_on_selection(apec.model.mesh, "_V", 0)
 
 Selector.select(apec.model.mesh, "VACUUM_CHAMBER", 1, type="elem")
@@ -90,7 +90,7 @@ apec.algorithm.input_parameters["AF0"] = 5.3 * 6.2
 apec.algorithm.input_parameters["halo_delta1"] = 0.04
 apec.algorithm.input_parameters["halo_delta2"] = 0
 apec.algorithm.input_parameters["t0_halo"] = 0.38
-apec.algorithm.input_parameters["extrusion_angle"] = extr_angle
+apec.algorithm.input_parameters["extrusion_angle"] = -extr_angle
 apec.algorithm.input_parameters["n_toroidal_divisions"] = 20
 
 # Read the numpy arrays of time, current and beta from file
@@ -102,6 +102,7 @@ betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
+
 apec.model.time_step["theta"] = 1.0
 
 apec.load_model_into_solver()

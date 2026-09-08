@@ -12,7 +12,6 @@ from .logging_utils import get_logger
 from .validation_utils import (
     ensure_pathlike,
     ensure_vtk_unstructured_grid,
-    validate_required_arrays_present,
 )
 
 
@@ -760,8 +759,6 @@ class ModelEdit:
             Selector.ensure_selection_arrays(mesh)
             TreeGauge.add_midside_nodes_mask_array(mesh)
             ModelEdit.reset_vtk_arrays_to_default(mesh)
-
-        validate_required_arrays_present(mesh)
 
         LOGGER.info("VTK unstructured grid loaded from '%s'.", path)
 
