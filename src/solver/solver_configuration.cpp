@@ -78,9 +78,15 @@ void PetscSolverConfiguration::configure_solver()
     CHKERRABORT(comm, ierr);
     ierr = KSPSetInitialGuessNonzero(_petsc_linear_solver->ksp(), PETSC_FALSE);
     CHKERRABORT(comm, ierr);
-
     ierr = PCSetType(_petsc_linear_solver->pc(), pc_type_str.c_str());
     CHKERRABORT(comm, ierr);
+
+    // Enforce MUMPS for direct factorizations regardless of external options.
+    if (pc_type_str == PCLU || pc_type_str == PCCHOLESKY)
+    {
+        ierr = PCFactorSetMatSolverType(_petsc_linear_solver->pc(), MATSOLVERMUMPS);
+        CHKERRABORT(comm, ierr);
+    }
 
     // Enable convergence and solution monitoring via PETSc options.
     ierr = PetscOptionsSetValue(NULL, "-ksp_monitor", "");

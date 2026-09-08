@@ -28,6 +28,9 @@
 #include "libmesh/libmesh.h"
 #include "libmesh/elem_range.h"
 #include "libmesh/numeric_vector.h"
+#include "libmesh/petsc_matrix.h" // for libMesh::PetscMatrix
+
+#include <petscmat.h> // for MatResetHash
 
 #include <vtkPointData.h>
 #include <vtkDataArray.h>
@@ -394,9 +397,9 @@ void ApecMLinearSystem::release_subset_solve()
 void ApecMLinearSystem::delete_rows_cols_constrained_dofs()
 {
     apec::logging::info("Removing constrained DOFs from system matrix and RHS");
-    this->release_subset_solve();
+    // this->release_subset_solve();
     subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
-    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+    // this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
 }
 
 void ApecMNonLinearSystem::delete_rows_cols_constrained_dofs()
@@ -454,6 +457,10 @@ void ApecMLinearSystem::assemble_system()
     {
         matrix.zero();
         solver->reuse_preconditioner(false);
+
+        auto &petsc_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(matrix);
+        PetscErrorCode ierr = MatResetHash(petsc_matrix.mat());
+        CHKERRABORT(this->comm().get(), ierr);
     }
     else
         solver->reuse_preconditioner(true);
@@ -558,8 +565,18 @@ void ApecMNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool ass
     if (assemble_jacobian)
     {
         if (update_matrix)
+        {
             linear_matrix.zero();
+
+            auto &petsc_linear_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(linear_matrix);
+            PetscErrorCode ierr = MatResetHash(petsc_linear_matrix.mat());
+            CHKERRABORT(this->comm().get(), ierr);
+        }
         matrix.zero();
+
+        auto &petsc_matrix = static_cast<libMesh::PetscMatrix<libMesh::Number> &>(matrix);
+        PetscErrorCode ierr = MatResetHash(petsc_matrix.mat());
+        CHKERRABORT(this->comm().get(), ierr);
     }
     if (assemble_residual)
         system.rhs->zero();
