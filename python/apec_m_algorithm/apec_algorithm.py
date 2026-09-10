@@ -188,26 +188,22 @@ class ApecAlgorithm:
         """
         Build a toroidal projection map from a 2D input mesh to a target mesh.
 
-        The first column stores source IDs; remaining columns store matched target IDs.
-        For 3D targets this returns one column per toroidal station.
-
-        Args:
-            input_mesh: 2D unstructured grid used to generate a surface of revolution.
-            target_mesh: Target unstructured grid (typically 3D).
-            location: "node" to map point IDs or "elem" to map cell IDs.
-            tolerance: Absolute tolerance for matching radii and axial coordinates.
-            extrusion_angle: Total toroidal extrusion angle in degrees.
-            n_divisions: Number of toroidal element divisions.
-            coordinate_system: Cylindrical coordinate system used for local coordinates.
-            n_slices: Backward-compatible alias for n_divisions.
-
-        Returns:
-            np.ndarray: Integer map with shape (num_input, 1 + num_matches).
+        The first column stores source IDs; remaining columns store matched target
+        IDs. For 3D targets this returns one column per toroidal station.
         """
-        if location not in ["node", "elem"]:
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy
+
+        # ------------------------------------------------------------------
+        # Validation
+        # ------------------------------------------------------------------
+
+        if location not in ("node", "elem"):
             raise ValueError("location must be 'node' or 'elem'.")
+
         if tolerance <= 0:
             raise ValueError("tolerance must be positive.")
+
         if extrusion_angle <= 0:
             raise ValueError("extrusion_angle must be positive.")
 
@@ -219,23 +215,42 @@ class ApecAlgorithm:
 
         if coordinate_system is None:
             coordinate_system = YAxisCylindricalCoordinateSystem()
-        assert coordinate_system is not None
+
         if coordinate_system.type != "cylindrical":
             raise ValueError(
                 "coordinate_system must be cylindrical for toroidal projection."
             )
 
+        # ------------------------------------------------------------------
+        # Determine target dimensionality / number of matches
+        # ------------------------------------------------------------------
+
         target_is_3d = target_mesh.GetMaxSpatialDimension() > 2
+
         if target_is_3d:
             if n_divisions is None:
-                raise ValueError("n_divisions must be provided for 3D target meshes.")
+                raise ValueError(
+                    "n_divisions must be provided for 3D target meshes."
+                )
+
             try:
                 n_divisions = int(n_divisions)
             except (TypeError, ValueError) as exc:
-                raise ValueError("n_divisions must be a positive integer.") from exc
+                raise ValueError(
+                    "n_divisions must be a positive integer."
+                ) from exc
+
             if n_divisions <= 0:
-                raise ValueError("n_divisions must be a positive integer.")
-            num_matches = n_divisions + 1 if location == "node" else n_divisions
+                raise ValueError(
+                    "n_divisions must be a positive integer."
+                )
+
+            num_matches = (
+                n_divisions + 1
+                if location == "node"
+                else n_divisions
+            )
+
             if location == "node":
                 expected_theta = np.linspace(
                     0.0,
@@ -245,15 +260,17 @@ class ApecAlgorithm:
                 )
             else:
                 step = float(extrusion_angle) / float(n_divisions)
-                expected_theta = (np.arange(n_divisions, dtype=float) + 0.5) * step
-        else:
-            if input_mesh.GetMaxSpatialDimension() > 2:
-                raise ValueError("2D target meshes can only be mapped from 2D input meshes.")
-            num_matches = 1
-            expected_theta = np.zeros((1,), dtype=float)
+                expected_theta = (
+                    np.arange(n_divisions, dtype=float) + 0.5
+                ) * step
 
-        def angular_distance(theta: np.ndarray, expected: float) -> np.ndarray:
-            return np.abs((theta - expected + 180.0) % 360.0 - 180.0)
+        else:
+            num_matches = 1
+            expected_theta = np.zeros(1, dtype=float)
+
+        # ------------------------------------------------------------------
+        # Convert coordinates
+        # ------------------------------------------------------------------
 
         input_local, input_ids = ModelEdit.to_local_coordinates(
             input_mesh,
@@ -261,6 +278,7 @@ class ApecAlgorithm:
             location=location,
             selected_only=True,
         )
+
         target_local, target_ids = ModelEdit.to_local_coordinates(
             target_mesh,
             coordinate_system,
@@ -269,84 +287,286 @@ class ApecAlgorithm:
         )
 
         if input_local.size == 0:
-            return np.empty((0, 1 + num_matches), dtype=np.int64)
-
-        input_radius = input_local[:, 0]
-        input_axial = input_local[:, 2]
-        target_radius = target_local[:, 0]
-        target_theta = target_local[:, 1]
-        target_axial = target_local[:, 2]
-
-        target_count = target_radius.shape[0]
-        if target_count == 0:
-            raise ValueError("Target mesh has no points/cells to map.")
-        if num_matches > target_count:
-            raise ValueError(
-                "Number of requested toroidal matches cannot exceed the number of "
-                "available target points/cells."
+            return np.empty(
+                (0, 1 + num_matches),
+                dtype=np.int64,
             )
 
-        num_input = input_radius.shape[0]
-        tolerance_current = tolerance
-        counts = np.empty(num_input, dtype=int)
+        if target_local.size == 0:
+            raise ValueError(
+                "Target mesh has no points/cells to map."
+            )
 
+        input_radius = np.asarray(input_local[:, 0], dtype=float)
+        input_axial = np.asarray(input_local[:, 2], dtype=float)
+
+        target_radius = np.asarray(target_local[:, 0], dtype=float)
+        target_theta = np.asarray(target_local[:, 1], dtype=float)
+        target_axial = np.asarray(target_local[:, 2], dtype=float)
+
+        target_ids = np.asarray(target_ids)
+
+        target_count = target_radius.size
+
+        if num_matches > target_count:
+            raise ValueError(
+                "Number of requested toroidal matches cannot exceed the "
+                "number of available target points/cells."
+            )
+
+        num_input = input_radius.size
+
+        # ------------------------------------------------------------------
+        # Build a VTK point locator in (R, 0, Z) space.
+        #
+        # We only care about R and Z for the spatial search. Theta is used
+        # later to select the individual toroidal stations.
+        #
+        # Construct the vtkPoints directly from NumPy -- no Python loop.
+        # ------------------------------------------------------------------
+
+        rz_points = np.empty(
+            (target_count, 3),
+            dtype=np.float64,
+        )
+
+        rz_points[:, 0] = target_radius
+        rz_points[:, 1] = 0.0
+        rz_points[:, 2] = target_axial
+
+        vtk_rz_points = vtknp.numpy_to_vtk(
+            rz_points,
+            deep=True,
+        )
+
+        points = vtk.vtkPoints()
+        points.SetData(vtk_rz_points)
+
+        locator_mesh = vtk.vtkPolyData()
+        locator_mesh.SetPoints(points)
+
+        locator = vtk.vtkStaticPointLocator()
+        locator.SetDataSet(locator_mesh)
+        locator.AutomaticOn()
+        locator.BuildLocator()
+
+        # rz_points is no longer needed after BuildLocator().
+        del rz_points
+        del vtk_rz_points
+        del points
+        del locator_mesh
+
+        # ------------------------------------------------------------------
+        # Angular distance
+        # ------------------------------------------------------------------
+
+        def angular_distance(
+            theta: np.ndarray,
+            expected: float,
+        ) -> np.ndarray:
+            return np.abs(
+                (theta - expected + 180.0) % 360.0 - 180.0
+            )
+
+        # ------------------------------------------------------------------
+        # Output
+        # ------------------------------------------------------------------
+
+        mapping = np.full(
+            (num_input, 1 + num_matches),
+            -1,
+            dtype=np.int64,
+        )
+
+        mapping[:, 0] = input_ids.astype(
+            np.int64,
+            copy=False,
+        )
+
+        # Points on the cylindrical axis have no meaningful theta.
         axis_mask = input_radius <= tolerance
-        required_counts = np.where(axis_mask, 1, num_matches)
+
+        # ------------------------------------------------------------------
+        # Adaptive tolerance search
+        #
+        # candidate_lists[i] contains only target indices spatially close to
+        # input i. This replaces the original full target-array scan.
+        # ------------------------------------------------------------------
+
+        required_counts = np.where(
+            axis_mask,
+            1,
+            num_matches,
+        )
+
+        candidate_lists = [None] * num_input
+        counts = np.zeros(
+            num_input,
+            dtype=np.int32,
+        )
+
+        tolerance_current = float(tolerance)
 
         max_iterations = 50
+
         for _ in range(max_iterations):
-            for input_id in range(num_input):
-                dr = np.abs(target_radius - input_radius[input_id])
-                dz = np.abs(target_axial - input_axial[input_id])
-                mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-                counts[input_id] = int(np.count_nonzero(mask))
-            if np.all(counts >= required_counts):
+
+            all_satisfied = True
+
+            for input_idx in range(num_input):
+
+                # Do not repeat a query if this input already has enough
+                # candidates from the previous tolerance.
+                current_count = counts[input_idx]
+
+                if current_count >= required_counts[input_idx]:
+                    continue
+
+                query_point = (
+                    float(input_radius[input_idx]),
+                    0.0,
+                    float(input_axial[input_idx]),
+                )
+
+                vtk_ids = vtk.vtkIdList()
+
+                locator.FindPointsWithinRadius(
+                    tolerance_current,
+                    query_point,
+                    vtk_ids,
+                )
+
+                n_candidates = vtk_ids.GetNumberOfIds()
+
+                if n_candidates == 0:
+                    candidate_lists[input_idx] = np.empty(
+                        0,
+                        dtype=np.int64,
+                    )
+                    counts[input_idx] = 0
+
+                    all_satisfied = False
+                    continue
+
+                # Convert vtkIdList -> NumPy only for the small candidate set.
+                candidates = np.fromiter(
+                    (
+                        vtk_ids.GetId(j)
+                        for j in range(n_candidates)
+                    ),
+                    dtype=np.int64,
+                    count=n_candidates,
+                )
+
+                candidate_lists[input_idx] = candidates
+                counts[input_idx] = n_candidates
+
+                if n_candidates < required_counts[input_idx]:
+                    all_satisfied = False
+
+            if all_satisfied:
                 break
+
             tolerance_current *= 2.0
+
         else:
             raise ValueError(
                 "Toroidal projection map did not converge within the "
                 "tolerance expansion limit."
             )
 
-        mapping = np.full((num_input, 1 + num_matches), -1, dtype=np.int64)
-        mapping[:, 0] = input_ids.astype(np.int64, copy=False)
-        for row_idx in range(num_input):
-            dr = np.abs(target_radius - input_radius[row_idx])
-            dz = np.abs(target_axial - input_axial[row_idx])
-            mask = (dr <= tolerance_current) & (dz <= tolerance_current)
-            candidate_idx = np.where(mask)[0]
-            if candidate_idx.size == 0:
+        # ------------------------------------------------------------------
+        # Final theta matching
+        # ------------------------------------------------------------------
+
+        tolerance_scale = max(
+            tolerance_current,
+            np.finfo(np.float64).eps,
+        )
+
+        for input_idx in range(num_input):
+
+            candidate_idx = candidate_lists[input_idx]
+
+            if candidate_idx is None or candidate_idx.size == 0:
                 continue
-            candidate_ids = target_ids[candidate_idx]
-            if axis_mask[row_idx]:
-                trimmed = np.full(
-                    (num_matches,),
-                    candidate_ids[0],
-                    dtype=candidate_ids.dtype,
+
+            candidate_target_ids = target_ids[candidate_idx]
+
+            # --------------------------------------------------------------
+            # Axis point:
+            #
+            # Theta is undefined, therefore all toroidal positions map to
+            # the same target ID.
+            # --------------------------------------------------------------
+
+            if axis_mask[input_idx]:
+                mapping[input_idx, 1:] = int(
+                    candidate_target_ids[0]
                 )
-            else:
-                trimmed = np.empty((num_matches,), dtype=candidate_ids.dtype)
-                used = np.zeros(candidate_idx.size, dtype=bool)
-                poloidal_dist = np.hypot(dr[candidate_idx], dz[candidate_idx])
-                for theta_idx, theta_value in enumerate(expected_theta):
-                    theta_dist = angular_distance(
-                        target_theta[candidate_idx],
-                        theta_value,
-                    )
-                    score = theta_dist + poloidal_dist / max(
-                        tolerance_current,
-                        np.finfo(float).eps,
-                    )
-                    if np.any(~used):
-                        score = np.where(used, np.inf, score)
-                    pick = int(np.argmin(score))
-                    trimmed[theta_idx] = candidate_ids[pick]
-                    used[pick] = True
-            mapping[row_idx, 1 : 1 + trimmed.size] = trimmed[:num_matches].astype(
-                np.int64,
-                copy=False,
+                continue
+
+            # --------------------------------------------------------------
+            # Non-axis point
+            # --------------------------------------------------------------
+
+            candidate_theta = target_theta[candidate_idx]
+
+            # Small number of candidates, so these operations are cheap.
+            dr = (
+                target_radius[candidate_idx]
+                - input_radius[input_idx]
             )
+
+            dz = (
+                target_axial[candidate_idx]
+                - input_axial[input_idx]
+            )
+
+            poloidal_dist = np.hypot(
+                dr,
+                dz,
+            )
+
+            used = np.zeros(
+                candidate_idx.size,
+                dtype=bool,
+            )
+
+            result = np.empty(
+                num_matches,
+                dtype=np.int64,
+            )
+
+            for theta_idx, theta_value in enumerate(expected_theta):
+
+                theta_dist = angular_distance(
+                    candidate_theta,
+                    theta_value,
+                )
+
+                # Preserve the original scoring behavior:
+                #
+                # angular mismatch + normalized R/Z mismatch
+                score = (
+                    theta_dist
+                    + poloidal_dist / tolerance_scale
+                )
+
+                score[used] = np.inf
+
+                pick = int(np.argmin(score))
+
+                result[theta_idx] = int(
+                    candidate_target_ids[pick]
+                )
+
+                used[pick] = True
+
+            mapping[
+                input_idx,
+                1 : 1 + num_matches,
+            ] = result
 
         return mapping
 

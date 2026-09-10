@@ -192,7 +192,7 @@ void ApecMEquationSystems::solve_equation_systems(const pybind11::dict &time_ste
     auto &system = get_dof_solution_system();
 
     system.init_time_step(time_step);
-    system.write_element_data();
+    system.write_element_matrices();
 
     this->solve();
 }

@@ -253,13 +253,6 @@ bool ApecMDOFSystem<ImplicitSys>::check_update_element_matrices()
 }
 
 template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_data()
-{
-    this->write_element_matrices();
-    this->write_element_rhs();
-}
-
-template <typename ImplicitSys>
 void ApecMDOFSystem<ImplicitSys>::write_element_matrices()
 {
     auto &equation_systems = this->typed_equation_systems();
@@ -319,43 +312,6 @@ void ApecMDOFSystem<ImplicitSys>::write_element_matrices()
     }
 
     reader.close_file_streams(streams);
-}
-
-template <typename ImplicitSys>
-void ApecMDOFSystem<ImplicitSys>::write_element_rhs()
-{
-    auto &equation_systems = this->typed_equation_systems();
-    const libMesh::MeshBase &mesh = equation_systems.get_mesh();
-    const auto &comm = mesh.comm();
-
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-
-    const std::vector<std::string> out_filenames = {"rhs_" + rank_str + ".emat"};
-    auto streams_out = reader.open_output_streams(emat_folderpath, out_filenames);
-    auto &rhs_output_file = *streams_out[0];
-
-    apec::logging::info("Calculating elements RHS");
-
-    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
-
-    ElementBuilder builder(&equation_systems);
-    builder.set_nodal_load_map(nodal_load_map);
-    for (const auto &elem : mesh.active_local_element_ptr_range())
-    {
-        builder.set_element_data(elem);
-        builder.build_element_rhs();
-
-        const unsigned int elem_id = static_cast<unsigned int>(elem->id());
-        BinaryReader::write_element_vectors(
-            rhs_output_file,
-            elem_id,
-            builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS]);
-    }
-
-    reader.close_file_streams(streams_out);
 }
 
 template <typename ImplicitSys>
@@ -615,17 +571,17 @@ void ApecMLinearSystem::assemble_system()
 
     BinaryReader reader;
     const std::filesystem::path mtrx_filepath = emat_folderpath / ("mtrx_" + rank_str + ".emat");
-    const std::filesystem::path rhs_filepath = emat_folderpath / ("rhs_" + rank_str + ".emat");
 
     auto streams = reader.open_input_streams(emat_folderpath,
-                                             {"mtrx_" + rank_str + ".emat",
-                                              "rhs_" + rank_str + ".emat"});
+                                             {"mtrx_" + rank_str + ".emat"});
     auto &mtrx_input_file = *streams[0];
-    auto &rhs_input_file = *streams[1];
 
     apec::logging::info("Building global matrix and RHS");
 
+    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
+
     ElementBuilder builder(&this->typed_equation_systems());
+    builder.set_nodal_load_map(nodal_load_map);
     std::vector<libMesh::dof_id_type> dof_indices;
     std::vector<libMesh::Real> old_solution_values;
     std::vector<libMesh::Real> old_time_derivative_values;
@@ -639,9 +595,7 @@ void ApecMLinearSystem::assemble_system()
         BinaryReader::read_element_matrices(mtrx_input_file,
                                             elem_id,
                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        BinaryReader::read_element_vectors(rhs_input_file,
-                                           elem_id,
-                                           builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS]);
+        builder.build_element_rhs();
 
         auto &Ke = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &Ce = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
@@ -724,13 +678,10 @@ void ApecMNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool ass
 
     BinaryReader reader;
     const std::filesystem::path mtrx_filepath = emat_folderpath / ("mtrx_" + rank_str + ".emat");
-    const std::filesystem::path rhs_filepath = emat_folderpath / ("rhs_" + rank_str + ".emat");
 
     auto streams = reader.open_input_streams(emat_folderpath,
-                                             {"mtrx_" + rank_str + ".emat",
-                                              "rhs_" + rank_str + ".emat"});
+                                             {"mtrx_" + rank_str + ".emat"});
     auto &mtrx_input_file = *streams[0];
-    auto &rhs_input_file = *streams[1];
 
     if (assemble_jacobian && assemble_residual)
         apec::logging::info("Building global Jacobian and residual");
@@ -739,7 +690,10 @@ void ApecMNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool ass
     else
         apec::logging::info("Building global residual");
 
+    const auto *nodal_load_map = this->ensure_nodal_load_injector_map();
+
     ElementBuilder builder(&this->typed_equation_systems());
+    builder.set_nodal_load_map(nodal_load_map);
     std::vector<libMesh::dof_id_type> dof_indices;
     std::vector<libMesh::Real> current_solution_values;
     std::vector<libMesh::Real> old_solution_values;
@@ -754,9 +708,7 @@ void ApecMNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool ass
         BinaryReader::read_element_matrices(mtrx_input_file,
                                             elem_id,
                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        BinaryReader::read_element_vectors(rhs_input_file,
-                                           elem_id,
-                                           builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS]);
+        builder.build_element_rhs();
 
         auto &linear_ke_base = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
         auto &ce = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];

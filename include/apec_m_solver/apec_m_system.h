@@ -82,7 +82,7 @@ public:
     virtual void compute_solution_time_derivative() = 0;
     virtual bool check_update_system_matrix() = 0;
     virtual bool check_update_element_matrices() = 0;
-    virtual void write_element_data() = 0;
+    virtual void write_element_matrices() = 0;
     virtual libMesh::PetscLinearSolver<libMesh::Number> *get_petsc_solver() const = 0;
     virtual const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() = 0;
 };
@@ -206,7 +206,7 @@ public:
 
     virtual bool check_update_system_matrix() override;
     bool check_update_element_matrices() override;
-    void write_element_data() override;
+    void write_element_matrices() override;
 
     std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> get_global_constraints_object() const
     {
@@ -225,9 +225,6 @@ public:
     const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() override;
 
 protected:
-    void write_element_matrices();
-    void write_element_rhs();
-
     std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object;
     std::unique_ptr<libMesh::SolverConfiguration> solver_config_copy_;
     std::shared_ptr<libMesh::SystemSubset> subset_solve_holder_;
