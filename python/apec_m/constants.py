@@ -59,7 +59,6 @@ DEFAULT_APEC_ALGORITHM_INPUT_PARAMETERS = {
     "R0": 0.0,
     "max_picard_iterations": 1,
     "tolerance_value": 1e-6,
-    "tolerance": 1e-6,
     "bradx_value": 0.0,
     "brady_value": 0.0,
     "bverx_value": 0.0,
