@@ -187,7 +187,7 @@ alls
         time,i*0.0001
         timint,on
         autots,off
-        nsub,4 
+        nsub,1 
     *endif
     alls
     ! bfedele,all

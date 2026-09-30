@@ -11,7 +11,7 @@ fi
 SRC_DIR="$(cd "${SRC_DIR}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_DIR="${SCRIPT_DIR}/libmesh_patches"
-if [ -z "${PATCH_DIR}" ] || [ ! -f "${PATCH_DIR}/fe_interface_new.C" ] || [ ! -f "${PATCH_DIR}/fe_nedelec_one_new.C" ] || [ ! -f "${PATCH_DIR}/fe_nedelec_one_shape_3D_new.C" ]; then
+if [ -z "${PATCH_DIR}" ]; then
   echo "ERROR: Could not resolve patch directory with override files."
   echo "Resolved PATCH_DIR='${PATCH_DIR}'"
   exit 1
@@ -128,111 +128,29 @@ git clone --depth 1 --branch master https://github.com/libMesh/libmesh.git "${LI
 pushd "${LIBMESH_SRC_DIR}"
 git submodule update --init --recursive
 
-# # Replace selected libMesh FE sources with local override files.
-cp -f "${PATCH_DIR}/fe_interface_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_interface.C"
-cp -f "${PATCH_DIR}/fe_nedelec_one_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one.C"
-cp -f "${PATCH_DIR}/fe_nedelec_one_shape_3D_new.C" "${LIBMESH_SRC_DIR}/src/fe/fe_nedelec_one_shape_3D.C"
+# # Patch libMesh Nedelec FE sources.
+NEDELEC_PATCH_SCRIPT="${PATCH_DIR}/patch_nedelec_prism_pyramid.py"
+if [ ! -f "${NEDELEC_PATCH_SCRIPT}" ]; then
+  echo "ERROR: Could not find patch script '${NEDELEC_PATCH_SCRIPT}'."
+  exit 1
+fi
+"${PYTHON}" "${NEDELEC_PATCH_SCRIPT}" "${LIBMESH_SRC_DIR}"
 
 PYRAMID13_SRC="${LIBMESH_SRC_DIR}/src/geom/cell_pyramid13.C"
-
-"${PYTHON}" -c "
-import sys, re
-
-file_path = sys.argv[1]
-
-with open(file_path, 'r') as f:
-    content = f.read()
-
-# Define the updated connectivity function
-new_func = '''void Pyramid13::connectivity(const unsigned int sc,
-                           const IOPackage iop,
-                           std::vector< dof_id_type > & conn) const
-{
-  libmesh_assert(_nodes);
-  libmesh_assert_less (sc, this->n_sub_elem());
-  libmesh_assert_not_equal_to (iop, INVALID_IO_PACKAGE);
-
-  switch (iop)
-    {
-    case TECPLOT:
-      {
-        // TODO
-        libmesh_not_implemented();
-      }
-
-    case VTK:
-      {
-        switch (sc)
-          {
-          case 0:
-            // libMesh and VTK node orderings match perfectly for Pyramid13.
-            conn.resize(13);
-            conn[0]  = this->node_id(0);
-            conn[1]  = this->node_id(1);
-            conn[2]  = this->node_id(2);
-            conn[3]  = this->node_id(3);
-            conn[4]  = this->node_id(4);
-            conn[5]  = this->node_id(5);
-            conn[6]  = this->node_id(6);
-            conn[7]  = this->node_id(7);
-            conn[8]  = this->node_id(8);
-            conn[9]  = this->node_id(9);
-            conn[10] = this->node_id(10);
-            conn[11] = this->node_id(11);
-            conn[12] = this->node_id(12);
-            return;
-
-          default:
-            libmesh_error_msg(\"Unknown sc = \" << sc);
-          }
-      }
-
-    default:
-      libmesh_error_msg(\"Unsupported IO package \" << iop);
-    }
-}'''
-
-# Regex to find and replace the void Pyramid13::connectivity method definition
-pattern = r'void\s+Pyramid13::connectivity\s*\([\s\S]*?^\}'
-
-if not re.search(pattern, content, re.MULTILINE):
-    print('Error: Could not locate Pyramid13::connectivity function in target file.', file=sys.stderr)
-    sys.exit(1)
-
-new_content = re.sub(pattern, new_func, content, flags=re.MULTILINE)
-
-with open(file_path, 'w') as f:
-    f.write(new_content)
-
-print(f'Successfully patched Pyramid13::connectivity in {file_path}')
-" "${PYRAMID13_SRC}"
+PYRAMID13_PATCH_SCRIPT="${PATCH_DIR}/cell_pyramid13_patch.py"
+if [ ! -f "${PYRAMID13_PATCH_SCRIPT}" ]; then
+  echo "ERROR: Could not find patch script '${PYRAMID13_PATCH_SCRIPT}'."
+  exit 1
+fi
+"${PYTHON}" "${PYRAMID13_PATCH_SCRIPT}" "${PYRAMID13_SRC}"
 
 LAGRANGE_3D_SRC="${LIBMESH_SRC_DIR}/src/fe/fe_lagrange_shape_3D.C"
-
-"${PYTHON}" -c "
-import sys, re
-
-file_path = sys.argv[1]
-
-with open(file_path, 'r') as f:
-    content = f.read()
-
-# Target specifically the second-order pyramid block using its unique 13-node assertion anchor
-pattern = r'(libmesh_assert_less\s*\(\s*i\s*,\s*13\s*\)\s*;\s*const\s+Real\s+xi\s*=\s*p\(0\)\s*;\s*const\s+Real\s+eta\s*=\s*p\(1\)\s*;\s*)const\s+Real\s+zeta\s*=\s*p\(2\)\s*;'
-
-replacement = r'\1const Real zeta = (p(2) > 1.0 - 1.e-6) ? (1.0 - 1.e-6) : p(2);'
-
-if not re.search(pattern, content):
-    print('Error: Could not locate second-order pyramid (PYRAMID13) block in target file.', file=sys.stderr)
-    sys.exit(1)
-
-new_content, count = re.subn(pattern, replacement, content)
-
-with open(file_path, 'w') as f:
-    f.write(new_content)
-
-print(f'Successfully patched {count} instance(s) in second-order pyramid block of {file_path}')
-" "${LAGRANGE_3D_SRC}"
+LAGRANGE_3D_PATCH_SCRIPT="${PATCH_DIR}/lagrange3D_shape_pyramid_patch.py"
+if [ ! -f "${LAGRANGE_3D_PATCH_SCRIPT}" ]; then
+  echo "ERROR: Could not find patch script '${LAGRANGE_3D_PATCH_SCRIPT}'."
+  exit 1
+fi
+"${PYTHON}" "${LAGRANGE_3D_PATCH_SCRIPT}" "${LAGRANGE_3D_SRC}"
 
 mkdir build
 pushd build

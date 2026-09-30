@@ -1,6 +1,8 @@
 from apec_m_solver import APEC_M
 from apec_m.apec_m_model import APEC_M_Model
+from apec_m.model_edit import ModelEdit
 import vtk.util.numpy_support as vtknp
+import vtk
 import numpy as np
 from apec_m.selector import Selector
 import os
@@ -29,6 +31,9 @@ apec.algorithm.vacuum_chamber_mesh = output_apec_equilibrium.mesh
 
 apec.model.read_excel("input_template.xlsx")
 
+ModelEdit.add_array(apec.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
+
+apec.save_model()
 # Write loads and BCs and save the static mesh
 apec.load_model_into_solver()
 
@@ -68,12 +73,10 @@ for step_idx in range(len(time_steps)):
     apec.model.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
         apec.model.time_step["transient_effects"] = False
-        apec.model.time_step["time"] = 1e-10
+        apec.model.time_step["time"] = 0.0
     else:
         apec.model.time_step["transient_effects"] = True
     apec.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     apec.algorithm.input_parameters["beta_p"] = betas[step_idx]
     apec.algorithm.evolution_solve()
     apec.write_output()
-
-apec.save_model()

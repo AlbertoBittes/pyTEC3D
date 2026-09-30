@@ -1,3 +1,22 @@
+# This example shows how to setup a 2D axisymmetric transient analysis for a passive
+# conductive 3D current loop on top an identical active current source.
+# The cross-section of the coils is modelled and the axisymmetric assumption is applied.
+# The simulation includes far-field, symmetry, and voltage boundary conditions,
+# as well as transient analysis with imposed current on a circuit coupled solid conductor
+# (AMPS) on the coil master node.
+#
+# element types:
+# - 21: 2D axisymmetric plane element for the surrounding air (ELEMENT TYPE = 1 (2D axisymmetric nodal), OPTION1 = 0 (Air), OPTION2 = 2 (2nd Order))
+# - 23: 2D axisymmetric plane element for the active coil elements (ELEMENT TYPE = 1 (2D axisymmetric nodal), OPTION1 = 5 (Circuit Coupled Solid Conductor), OPTION2 = 2 (2nd Order))
+# - 24: 2D axisymmetric plane element for the passive coil elements (ELEMENT TYPE = 1 (2D axisymmetric nodal), OPTION1 = 4 (Passive Solid Conductor), OPTION2 = 2 (2nd Order))
+#
+# materials:
+# - 21: mu_r (x,y,z) = 1, rho (x,y,z) = - for the surrounding air (not used)
+# - 23: mu_r (x,y,z) = 1, rho (x,y,z) = - for the active coil elements (not used)
+# - 24: mu_r (x,y,z) = 1, rho (x,y,z) = 1e-9 [Ohm m] for the passive coil elements
+
+
+
 from apec_m_solver import APEC_M
 from apec_m.selector import Selector
 import os

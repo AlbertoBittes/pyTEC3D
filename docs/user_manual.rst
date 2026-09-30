@@ -67,8 +67,30 @@ Current required arrays are:
 - CURR (node, 1)
 - Js (elem, 3)
 
-Coordinate System Rules
+Coordinate System
 -----------------------
+
+The coordinate system is used to define a transormation of coordinate from a global
+cartesian coordinate system to a user-defined one, to help with many mathematical operations during analysis setup.
+E.g. in tokamak simulations, the user can define a cylindrical coordinate system to simplify the definition of loads and boundary conditions.
+
+The user can define a new coordinate system in the ``coordinate_systems`` dictionary of the model object.
+To define a new coordinate system, the user must create a new entry in the ``coordinate_systems`` dictionary,
+by instantiating a ``CoordinateSystem`` object with the appropriate type, orientation and position (see next).
+A coordinate system is identified by a unique ID in the dictionary, which must be an integer greater than 0.
+By default, coordinate system 0 is assumed to be the global cartesian coordinate system, and it is not present in the dictionary.
+
+
+
+Elemental vector/tensor fields associated to the element are transformed from the global coordinate system
+to the local coordinate system associated to the element defined by the user.
+This includes:
+- Material properties: mu, rho, M
+- Elemental loads: Js
+- Real constants: T
+
+A coordinate system can be:
+- Cartesian (Assumed as the defualt, if an element has ``COORDINATE_SYSTEM = 0`` it is assumed to be in the global Cartesian coordinate system)
 
 - COORDINATE_SYSTEM values in mesh cells must be ``>= 0``.
 - If any cell uses ``COORDINATE_SYSTEM > 0``:
@@ -216,7 +238,7 @@ Summary Rules:
 - RHO_* and M_* values must be finite and ``>= 0``.
 - Every mesh MATERIAL value must exist in MATERIAL_ID.
 
-constants
+Constants
 ~~~~~~~~~
 
 Required columns:

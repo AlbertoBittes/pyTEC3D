@@ -8,18 +8,21 @@
 
    .. autosummary::
    
-      import_module
-      plot
-      setup_paraview_console
-      start_apec_for_paraview
+      configure_logging
+      get_logger
+      validate_apec_model
+      validate_pre_solve_inputs
+      validate_solver_settings
    
    .. rubric:: Classes
 
    .. autosummary::
    
       APEC_M_Model
-      Any
-      ApecAlgorithm
+      Excel
+      ModelEdit
+      Selector
+      TreeGauge
    
 .. rubric:: Modules
 

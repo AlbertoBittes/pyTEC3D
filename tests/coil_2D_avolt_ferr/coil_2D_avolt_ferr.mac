@@ -86,12 +86,12 @@ tintp,,,,0.5
    *if,i,eq,1,then
       f,master_node,amps,100
       autots,off
-      nsub,4
+      nsub,1
     *else
       fdele,all
       d,master_node,volt,10000
       autots,off
-      nsub,4
+      nsub,1
     *endif
     alls
 

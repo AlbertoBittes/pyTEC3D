@@ -126,19 +126,19 @@ timint,on
 kbc,0
 outres,all,all
 pivcheck,on,every
-tintp,,,,0.5
+tintp,,,,1.0
 
 *do,i,1,2
     time, i*0.00001
    *if,i,eq,1,then
       d,master_node,curr,100
       autots,off
-      nsub,4
+      nsub,1
     *else
       ddele,master_node,curr
       f,master_node,vltg,10000
       autots,off
-      nsub,4
+      nsub,1
     *endif
     alls
 

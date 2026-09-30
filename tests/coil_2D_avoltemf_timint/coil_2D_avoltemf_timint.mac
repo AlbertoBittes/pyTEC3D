@@ -1,5 +1,5 @@
 /clear
-/filname,coil_2D_avoltemf
+/filname,coil_2D_avoltemf_timint
 /prep7
 
 size = 1
@@ -74,19 +74,19 @@ timint,on
 kbc,0
 outres,all,all
 pivcheck,on,every
-! tintp,,,,1
+tintp,,,,1.0
 
 *do,i,1,2
     time, i*0.00001
    *if,i,eq,1,then
       f,master_node,amps,100
       autots,off
-      nsub,4
+      nsub,1
     *else
       fdele,all
       d,master_node,volt,10000
       autots,off
-      nsub,4
+      nsub,1
     *endif
     alls
 
