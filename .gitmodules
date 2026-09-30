@@ -1,0 +1,3 @@
+[submodule "libmesh"]
+	path = libmesh
+	url = https://github.com/libMesh/libmesh.git
