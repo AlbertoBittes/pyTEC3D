@@ -18,12 +18,12 @@ Clone Repository
 Project Structure
 -----------------
 
-- ``python/apec_m``: main Python API
-- ``python/apec_m_coordinate_system``: coordinate_system helpers
-- ``python/apec_m_solver``: compiled solver extension location
-- ``python/apec_m_paraview``: ParaView support module
-- ``python/apec_m_algorithm``: APEC algorithm module
-- ``python/apec_m_mesh_converter``: mesh conversion package
+- ``python/pytec3d``: main Python API
+- ``python/pytec3d_coordinate_system``: coordinate_system helpers
+- ``python/pytec3d_solver``: compiled solver extension location
+- ``python/pytec3d_paraview``: ParaView support module
+- ``python/pytec3d_algorithm``: pyTEC3D algorithm module
+- ``python/pytec3d_mesh_converter``: mesh conversion package
 
 Quick Start (Local Workflow)
 ----------------------------
@@ -39,7 +39,7 @@ Quick Start (Local Workflow)
 
 .. code-block:: bash
 
-   conda create -n apec-m -c conda-forge \
+   conda create -n pytec3d -c conda-forge \
      python=3.12 \
      compilers \
      git \
@@ -57,8 +57,8 @@ Quick Start (Local Workflow)
      mpi4py \
      pip \
      -y
-   conda activate apec-m
-   ./scripts/build.sh
+   conda activate pytec3d
+   ./build.sh
    python -m pip install .
 
 Editable install:
@@ -70,28 +70,28 @@ Editable install:
 Fast Rebuild Loop for Solver-Only C++ Changes
 ----------------------------------------------
 
-After a full initial run of ``scripts/build.sh``, rebuild with CMake:
+After a full initial run of ``./build.sh``, rebuild with CMake:
 
 .. code-block:: bash
 
-   cmake -S src -B build/apec_m -G Ninja \
+   cmake -S src -B build/pytec3d -G Ninja \
      -DCMAKE_BUILD_TYPE=Debug \
      -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
      -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
      -DLIBMESH_DIR="$CONDA_PREFIX" \
-     -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD:-dbg}" \
-     -DAPEC_M_PYTHON_SITEARCH="$PWD/python" \
-     -DAPEC_M_BUILD_PYBIND_MODULE=ON
-   cmake --build build/apec_m -j
-   cmake --install build/apec_m
+     -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD:-dbg}" \
+     -DpyTEC3D_PYTHON_SITEARCH="$PWD/python" \
+     -DpyTEC3D_BUILD_PYBIND_MODULE=ON
+   cmake --build build/pytec3d -j
+   cmake --install build/pytec3d
 
 Sanity checks
 -------------
 
 .. code-block:: bash
 
-   python -c "import apec_m_solver.apec_m_solver"
-   python -c "from apec_m_solver import APEC_M; APEC_M()"
+   python -c "import pytec3d_solver.pytec3d_solver"
+   python -c "from pytec3d_solver import pyTEC3D; pyTEC3D()"
 
 Optional dependencies
 ---------------------

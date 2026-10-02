@@ -43,7 +43,7 @@ def run_solver(case_dir, analysis_name, nproc, output_dir, macro_filename="input
     if not os.path.isfile(macro_path):
         raise FileNotFoundError(f"Missing macro file: {macro_path}")
 
-    exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bin/apec_m"))
+    exe_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bin/pytec3d"))
 
     cmd = []
     if nproc > 1:

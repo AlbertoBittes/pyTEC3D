@@ -22,6 +22,7 @@
 *.a
 *.la
 *.lo
+.deps
 
 # Shared objects (inc. Windows DLLs)
 *.dll
@@ -61,13 +62,14 @@ dkms.conf
 simulations
 utils/__pycache__
 debug
-python/apec_m/__pycache__/
+python/pytec3d/__pycache__/
 tests/__pycache__/
 .pytest_cache/
 docs/_build/
 build
+**/__pytec3d__/
 
-python/apec_m/local_packages/*
+python/pytec3d/local_packages/*
 *.egg-info/
 **/emat_files/
 **/emat_files/*
@@ -75,18 +77,17 @@ python/apec_m/local_packages/*
 **/output/*
 **/temp/
 **/temp/*
-**/_apec_/
-**/_apec_/*
+**/_pytec3d_/
+**/_pytec3d_/*
 **/__apec__/
 **/__apec__/*
+**/__pycache__/
+**/__pycache__/*
 
 # Ignore emat, input, output, temp subfolders anywhere under tests/
 tests/**/emat/
 tests/**/output/
 tests/**/temp/
-
-# Generated test binaries
-tests/**/*.bin
 
 # Sphinx generated docs
 docs/generated/

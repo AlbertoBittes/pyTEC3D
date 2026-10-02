@@ -1,4 +1,4 @@
-# APEC-M
+# pyTEC3D
 
 A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
 
@@ -9,12 +9,12 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 
 ## Project structure
 
-- `python/apec_m`: main Python API
-- `python/apec_m_coordinate_system`: coordinate_system helpers
-- `python/apec_m_solver`: compiled solver extension location
-- `python/apec_m_paraview`: ParaView support module
-- `python/apec_m_algorithm`: APEC algorith module
-- `python/apec_m_mesh_converter`: mesh conversion package
+- `python/pytec3d`: main Python API
+- `python/pytec3d_coordinate_system`: coordinate_system helpers
+- `python/pytec3d_solver`: compiled solver extension location
+- `python/pytec3d_paraview`: ParaView support module
+- `python/pytec3d_algorithm`: pyTEC3D algorith module
+- `python/pytec3d_mesh_converter`: mesh conversion package
 
 ## Quick start (local workflow)
 
@@ -28,7 +28,7 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 2. Create a Python 3.12 development environment.
 
   ```bash
- conda create -n apec-m -c conda-forge \
+ conda create -n pytec3d -c conda-forge \
                         python=3.12 \
                         compilers \
                         git \
@@ -46,8 +46,8 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
                         mpi4py \
                         pip \
                         -y
-  conda activate apec-m
-  ./scripts/build.sh
+  conda activate pytec3d
+  ./build.sh
   python -m pip install .
   ```
 
@@ -59,15 +59,25 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 
 ## Fast rebuild loop for solver-only C++ changes
 
-After a full initial run of `scripts/build.sh`, rebuild with CMake:
+After a full initial run of `build.sh`, rebuild with CMake:
 
 ```bash
-cmake -S src -B build/apec_m -G Ninja \
+cmake -S src -B build/pytec3d -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
   -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
   -DLIBMESH_DIR="$CONDA_PREFIX" \
-  -DLIBMESH_METHOD="${APEC_M_LIBMESH_METHOD:-opt}"
+  -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD:-opt}"
 
-cmake --build build/apec_m -j
+cmake --build build/pytec3d -j
 ```
+
+## Extension output location
+
+The compiled extension modules are written to the Python package tree (default: `python/`), not kept as import targets in `build/`.
+
+- `pytec3d_solver` extension output: `python/pytec3d_solver`
+- `pytec3d_coordinate_system` extension output: `python/pytec3d_coordinate_system`
+
+This keeps imports consistent for both regular installs and editable installs (`pip install -e .`).
+If needed, override the package root during build with `PYTEC3D_PYTHON_PACKAGE_ROOT=/path/to/python_packages`.

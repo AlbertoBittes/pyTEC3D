@@ -2,8 +2,8 @@ import os
 import sys
 from datetime import datetime
 
-project = "APEC-M"
-author = "APEC-M Team"
+project = "pyTEC3D"
+author = "pyTEC3D Team"
 release = "0.1.0"
 version = release
 
@@ -35,9 +35,8 @@ autodoc_mock_imports = [
     "vtk",
     "vtkmodules",
     "vtk.util",
-    "apec_m_coordinate_system",
-    "apec_m_coordinate_system.apec_m_coordinate_system",
-    "apec_m_solver.apec_m_solver",
+    "pytec3d.coordinate_system",
+    "pytec3d.solver._pytec3d_solver",
     "ansys",
     "ansys.mapdl",
     "ansys.mapdl.reader",

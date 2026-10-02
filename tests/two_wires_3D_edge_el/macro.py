@@ -1,53 +1,53 @@
-from apec_m_solver import APEC_M
-from apec_m.tree_gauge import TreeGauge
-from apec_m.selector import Selector
+from pytec3d_solver.solver import pyTEC3DSolver
+from pytec3d.tree_gauge import TreeGauge
+from pytec3d.selector import Selector
 import os
 
-apec = APEC_M()
+pytec3d = pyTEC3DSolver()
 
 filename = "two_wires_3D_edge_el"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_model(filepath)
+pytec3d.read_model(filepath)
 
-apec.model.read_excel("input_template.xlsx")
+pytec3d.model.read_excel("input_template.xlsx")
 
-Selector.select_pos(apec.model.mesh, 0, (0.499, 0.50001))
-Selector.select_pos(apec.model.mesh, 0, (-0.501, -0.49999), mode="a")
-Selector.select(apec.model.mesh, "MidsideNodes", 1, mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "_Az", 0, 0)
+Selector.select_pos(pytec3d.model.mesh, 0, (0.499, 0.50001))
+Selector.select_pos(pytec3d.model.mesh, 0, (-0.501, -0.49999), mode="a")
+Selector.select(pytec3d.model.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0, 0)
 
-Selector.select_pos(apec.model.mesh, 1, (0.499, 0.50001))
-Selector.select_pos(apec.model.mesh, 1, (-0.501, -0.49999), mode="a")
-Selector.select(apec.model.mesh, "MidsideNodes", 1, mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "_Az", 0, 0)
+Selector.select_pos(pytec3d.model.mesh, 1, (0.499, 0.50001))
+Selector.select_pos(pytec3d.model.mesh, 1, (-0.501, -0.49999), mode="a")
+Selector.select(pytec3d.model.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0, 0)
 
-Selector.select_pos(apec.model.mesh, 2, (0.499, 0.50001))
-Selector.select_pos(apec.model.mesh, 2, (-0.501, -0.49999), mode="a")
-Selector.select(apec.model.mesh, "MidsideNodes", 1, mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "_Az", 0, 0)
+Selector.select_pos(pytec3d.model.mesh, 2, (0.499, 0.50001))
+Selector.select_pos(pytec3d.model.mesh, 2, (-0.501, -0.49999), mode="a")
+Selector.select(pytec3d.model.mesh, "MidsideNodes", 1, mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0, 0)
 
-Selector.select(apec.model.mesh, "LOWER_FACE_ROD", 1)
-Selector.select(apec.model.mesh, "MidsideNodes", 0, mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 0)
+Selector.select(pytec3d.model.mesh, "LOWER_FACE_ROD", 1)
+Selector.select(pytec3d.model.mesh, "MidsideNodes", 0, mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 
-Selector.select(apec.model.mesh, "UPPER_FACE_ROD", 1)
-Selector.select(apec.model.mesh, "MidsideNodes", 0, mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 0)
+Selector.select(pytec3d.model.mesh, "UPPER_FACE_ROD", 1)
+Selector.select(pytec3d.model.mesh, "MidsideNodes", 0, mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 
-TreeGauge.tree_gauge(apec.model.mesh)
+TreeGauge.tree_gauge(pytec3d.model.mesh)
 
-Selector.select(apec.model.mesh, "MATERIAL", 23, type="elem")
-Selector.set_value_on_selection(apec.model.mesh, "Js", 1, 2, type="elem")
+Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
+Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 1, 2, type="elem")
 
-apec.model.time_step["time"] = 1e-3
-apec.model.time_step["theta"] = 0.5
-apec.model.time_step["transient_effects"] = 1
+pytec3d.model.time_step["time"] = 1e-3
+pytec3d.model.time_step["theta"] = 0.5
+pytec3d.model.time_step["transient_effects"] = 1
 
-apec.load_model_into_solver()
+pytec3d.load_model_into_solver()
 
-apec.solve()
-apec.write_output()
+pytec3d.solve()
+pytec3d.write_output()
 
-apec.save_model()
+pytec3d.save_model()

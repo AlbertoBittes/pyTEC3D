@@ -7,7 +7,7 @@ Use it as a checklist before loading a model into the solver and before solve.
 Validation Philosophy
 ---------------------
 
-APEC-M validation has two stages:
+pyTEC3D validation has two stages:
 
 1. Model validation (structure and consistency): validates mesh arrays,
 	 metadata tables, and cross-references.

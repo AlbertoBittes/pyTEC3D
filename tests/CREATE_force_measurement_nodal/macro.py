@@ -1,22 +1,22 @@
-from apec_m_solver import APEC_M
+from pytec3d_solver.solver import pyTEC3DSolver
 import os
-from apec_m_coordinate_system.coordinate_system import CylindricalCoordinateSystem
-from apec_m.tree_gauge import TreeGauge
-from apec_m.selector import Selector
-from apec_m_coordinate_system.coordinate_system import ZAxisCylindricalCoordinateSystem
+from pytec3d.coordinate_system import CylindricalCoordinateSystem
+from pytec3d.tree_gauge import TreeGauge
+from pytec3d.selector import Selector
+from pytec3d.coordinate_system import ZAxisCylindricalCoordinateSystem
 import vtk.util.numpy_support as vtknp
 
-apec = APEC_M()
+pytec3d = pyTEC3DSolver()
 
 filename = "CREATE_force_measurement_nodal"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_model(filepath)
+pytec3d.read_model(filepath)
 
-apec.model.read_excel("input_template.xlsx")
+pytec3d.model.read_excel("input_template.xlsx")
 
-# apec.model.bh_curves[1] = [
+# pytec3d.model.bh_curves[1] = [
 #     [0.0, 0.0],
 #     [98.3939940905, 0.0136155688067],
 #     [146.889262617, 0.0213264689263],
@@ -47,7 +47,7 @@ apec.model.read_excel("input_template.xlsx")
 #     [8303.31592013, 2.11657067391],
 # ]
 
-apec.model.bh_curves[2] = [
+pytec3d.model.bh_curves[2] = [
     [0.0, 0.0],
     [100.0, 0.31],
     [200.0, 0.62],
@@ -81,7 +81,7 @@ apec.model.bh_curves[2] = [
     [2337890.865, 5],
 ]
 
-apec.model.bh_curves[3] = [
+pytec3d.model.bh_curves[3] = [
     [0.0, 0.0],
     [156.167232069, 0.239888044992],
     [210.113464193, 0.316039547109],
@@ -106,56 +106,56 @@ apec.model.bh_curves[3] = [
 ]
 
 # Coupling for stranded coils
-Selector.select(apec.model.mesh, "TYPE", 3, type="elem")
-Selector.nsle(apec.model.mesh)
-Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
+Selector.select(pytec3d.model.mesh, "TYPE", 3, type="elem")
+Selector.nsle(pytec3d.model.mesh)
+Selector.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
 master_node = vtknp.vtk_to_numpy(
-    apec.model.mesh.GetPointData().GetArray("selection_point")
+    pytec3d.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
 xc0, yc0, zc0 = 0.01786, 0.012965, 0.04555
 xc1, yc1, zc1 = 0.01786, 0.050605, 0.04555
 
-apec.model.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
+pytec3d.model.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
     origin=[xc0, yc0, zc0],
 )
-apec.model.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
+pytec3d.model.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
     origin=[xc1, yc1, zc1],
 )
 
-Selector.select(apec.model.mesh, "CONSTANT", 2, type="elem")
-Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 91, type="elem")
+Selector.select(pytec3d.model.mesh, "CONSTANT", 2, type="elem")
+Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 91, type="elem")
 
-Selector.select(apec.model.mesh, "CONSTANT", 4, type="elem")
-Selector.set_value_on_selection(apec.model.mesh, "COORDINATE_SYSTEM", 92, type="elem")
+Selector.select(pytec3d.model.mesh, "CONSTANT", 4, type="elem")
+Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, type="elem")
 
 # Az: Symmetry BCs + Far field + Tree Gauging
-Selector.select_pos(apec.model.mesh, 0, (-1e-6, 1e-6))
-# Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
+Selector.select_pos(pytec3d.model.mesh, 0, (-1e-6, 1e-6))
+# Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select_pos(apec.model.mesh, 1, (-1e-6, 1e-6))
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 1)
+Selector.select_pos(pytec3d.model.mesh, 1, (-1e-6, 1e-6))
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
 
-Selector.select_all(apec.model.mesh)
-Selector.nsel_ext(apec.model.mesh)
-Selector.select_pos(apec.model.mesh, 1, (-1e-6, 1e-6), mode="u")
-Selector.select_pos(apec.model.mesh, 0, (-1e-6, 1e-6), mode="u")
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
+Selector.select_all(pytec3d.model.mesh)
+Selector.nsel_ext(pytec3d.model.mesh)
+Selector.select_pos(pytec3d.model.mesh, 1, (-1e-6, 1e-6), mode="u")
+Selector.select_pos(pytec3d.model.mesh, 0, (-1e-6, 1e-6), mode="u")
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-apec.load_model_into_solver()
+pytec3d.load_model_into_solver()
 
-apec.model.time_step["time"] = 0.00001
-apec.model.time_step["transient_effects"] = False
+pytec3d.model.time_step["time"] = 0.00001
+pytec3d.model.time_step["transient_effects"] = False
 
-Selector.select(apec.model.mesh, "ID", master_node)
-Selector.set_value_on_selection(apec.model.mesh, "AMPS", 5)
+Selector.select(pytec3d.model.mesh, "ID", master_node)
+Selector.set_value_on_selection(pytec3d.model.mesh, "AMPS", 5)
 
-apec.solve()
-apec.write_output()
+pytec3d.solve()
+pytec3d.write_output()
 
-apec.save_model()
+pytec3d.save_model()

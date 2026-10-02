@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(ApecM VERSION 1.0 LANGUAGES CXX)
+project(pyTEC3D VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# --- Dependencies ----------------------------------------------------------------
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
@@ -26,7 +27,9 @@ find_package(VTK REQUIRED
     WrappingPythonCore
 )
 
-set(LIBMESH_DIR "${LIBMESH_DIR}" CACHE PATH "Path to the libMesh installation.")
+# --- libMesh -----------------------------------------------------------------------
+# LIBMESH_DIR is the install prefix (contains include/ and lib/).
+set(LIBMESH_DIR "" CACHE PATH "Path to the libMesh installation prefix.")
 if(NOT LIBMESH_DIR AND DEFINED ENV{LIBMESH_DIR})
   set(LIBMESH_DIR "$ENV{LIBMESH_DIR}")
 endif()
@@ -34,43 +37,67 @@ if(NOT LIBMESH_DIR)
   message(FATAL_ERROR "LIBMESH_DIR must be provided (e.g., -DLIBMESH_DIR=/path/to/libmesh).")
 endif()
 
-set(LIBMESH_METHOD "$ENV{APEC_M_LIBMESH_METHOD}" CACHE STRING "libMesh method to link against: opt, dbg, devel")
+set(LIBMESH_METHOD "$ENV{pyTEC3D_LIBMESH_METHOD}" CACHE STRING "libMesh method to link against: opt, dbg, devel")
 if(NOT LIBMESH_METHOD)
   set(LIBMESH_METHOD "opt")
 endif()
 string(TOLOWER "${LIBMESH_METHOD}" LIBMESH_METHOD)
-if(NOT LIBMESH_METHOD STREQUAL "opt" AND
-   NOT LIBMESH_METHOD STREQUAL "dbg" AND
-   NOT LIBMESH_METHOD STREQUAL "devel")
+if(NOT LIBMESH_METHOD MATCHES "^(opt|dbg|devel)$")
   message(FATAL_ERROR "Invalid LIBMESH_METHOD='${LIBMESH_METHOD}'. Allowed: opt, dbg, devel.")
 endif()
 message(STATUS "Using libMesh method: ${LIBMESH_METHOD}")
 
+# NO_DEFAULT_PATH: never silently pick up a different libMesh from the env.
 find_library(LIBMESH_LIB
   NAMES mesh_${LIBMESH_METHOD}
-  HINTS "${LIBMESH_DIR}/lib"
+  PATHS "${LIBMESH_DIR}/lib"
+  NO_DEFAULT_PATH
   REQUIRED
 )
 find_library(TIMPI_LIB
   NAMES timpi_${LIBMESH_METHOD}
-  HINTS "${LIBMESH_DIR}/lib"
+  PATHS "${LIBMESH_DIR}/lib"
+  NO_DEFAULT_PATH
   REQUIRED
 )
 
+# --- Sources / output location --------------------------------------------------
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
-get_filename_component(APEC_M_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+get_filename_component(pyTEC3D_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
-set(APEC_M_INCLUDE_DIRS
+set(PYTEC3D_PYTHON_PACKAGE_ROOT "${pyTEC3D_REPO_ROOT}/src" CACHE PATH
+  "Root directory that contains pytec3d_* Python packages for extension module output")
+set(PYTEC3D_SOLVER_PACKAGE_DIR "${PYTEC3D_PYTHON_PACKAGE_ROOT}/pytec3d_solver")
+
+# --- Runtime library search path (RPATH) ----------------------------------------
+# The module is copied as-is by pip (no relinking), so the RPATH must be baked in
+# at build time. Absolute paths: libMesh/TIMPI install dirs + the env's lib/
+# (PETSc, VTK, MPI, ...). Works for `pip install -e .` and `pip install .` on the
+# machine that built libMesh. For relocatable wheels, bundle the libs and use
+# auditwheel instead.
+get_filename_component(LIBMESH_LIB_DIR "${LIBMESH_LIB}" DIRECTORY)
+get_filename_component(TIMPI_LIB_DIR   "${TIMPI_LIB}"   DIRECTORY)
+
+set(PYTEC3D_RUNTIME_PREFIX "$ENV{CONDA_PREFIX}" CACHE PATH
+  "Env prefix whose lib/ holds PETSc/VTK/MPI at runtime")
+
+set(PYTEC3D_RPATH "${LIBMESH_LIB_DIR}" "${TIMPI_LIB_DIR}")
+if(PYTEC3D_RUNTIME_PREFIX)
+  list(APPEND PYTEC3D_RPATH "${PYTEC3D_RUNTIME_PREFIX}/lib")
+endif()
+list(REMOVE_DUPLICATES PYTEC3D_RPATH)
+message(STATUS "Module RPATH: ${PYTEC3D_RPATH}")
+
+# --- Target ----------------------------------------------------------------------
+set(pyTEC3D_INCLUDE_DIRS
   "${LIBMESH_DIR}/include"
-  "${APEC_M_REPO_ROOT}/include"
-  "${APEC_M_REPO_ROOT}/include/apec_m_coordinate_system"
-  "${APEC_M_REPO_ROOT}/include/apec_m_solver"
+  "${pyTEC3D_REPO_ROOT}/include"
   ${PETSC_INCLUDE_DIRS}
 )
 
-set(APEC_M_LINK_LIBS
+set(pyTEC3D_LINK_LIBS
   spdlog::spdlog_header_only
   ${LIBMESH_LIB}
   ${TIMPI_LIB}
@@ -83,68 +110,42 @@ set(APEC_M_LINK_LIBS
   VTK::WrappingPythonCore
 )
 
-add_library(apec_m_solver MODULE ${SOURCES})
-  set_target_properties(apec_m_solver PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "apec_m_solver"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_solver"
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN/../../../;$ORIGIN/../lib"
-  )
+add_library(pytec3d_solver MODULE ${SOURCES})
 
-  target_include_directories(apec_m_solver
-    PRIVATE ${APEC_M_INCLUDE_DIRS}
-  )
+set_target_properties(pytec3d_solver PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "pytec3d_solver"
+  LIBRARY_OUTPUT_DIRECTORY "${PYTEC3D_SOLVER_PACKAGE_DIR}"
+  BUILD_WITH_INSTALL_RPATH TRUE
+  INSTALL_RPATH "${PYTEC3D_RPATH}"
+)
 
-  target_compile_definitions(apec_m_solver PRIVATE
-    APEC_M_VERSION=${PROJECT_VERSION}
-    APEC_M_BUILD_TYPE="$<CONFIG>"
-  )
+# DT_RPATH (not DT_RUNPATH) so the search path also applies to transitive deps.
+if(UNIX AND NOT APPLE)
+  target_link_options(pytec3d_solver PRIVATE "LINKER:--disable-new-dtags")
+endif()
 
-  if(PETSC_CFLAGS_OTHER)
-    target_compile_options(apec_m_solver PRIVATE ${PETSC_CFLAGS_OTHER})
-  endif()
+target_include_directories(pytec3d_solver PRIVATE ${pyTEC3D_INCLUDE_DIRS})
 
-  target_link_libraries(apec_m_solver
-    PRIVATE
-      pybind11::module
-      ${APEC_M_LINK_LIBS}
-  )
+target_compile_definitions(pytec3d_solver PRIVATE
+  pyTEC3D_VERSION=${PROJECT_VERSION}
+  pyTEC3D_BUILD_TYPE="$<CONFIG>"
+)
 
-  vtk_module_autoinit(
-    TARGETS apec_m_solver
-    MODULES
-      VTK::CommonCore
-      VTK::CommonDataModel
-      VTK::WrappingPythonCore
-  )
+if(PETSC_CFLAGS_OTHER)
+  target_compile_options(pytec3d_solver PRIVATE ${PETSC_CFLAGS_OTHER})
+endif()
 
-  add_library(apec_m_coordinate_system MODULE
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system_bindings.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/coordinate_system/coordinate_system_module.cpp"
-  )
-  set_target_properties(apec_m_coordinate_system PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "apec_m_coordinate_system"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/../python/apec_m_coordinate_system"
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN"
-  )
+target_link_libraries(pytec3d_solver
+  PRIVATE
+    pybind11::module
+    ${pyTEC3D_LINK_LIBS}
+)
 
-  target_include_directories(apec_m_coordinate_system
-    PRIVATE
-      "${APEC_M_REPO_ROOT}/include"
-  )
-
-  target_compile_definitions(apec_m_coordinate_system PRIVATE
-    APEC_M_VERSION=${PROJECT_VERSION}
-    APEC_M_BUILD_TYPE="$<CONFIG>"
-  )
-
-  target_link_libraries(apec_m_coordinate_system
-    PRIVATE
-      pybind11::module
-  )
-
-
+vtk_module_autoinit(
+  TARGETS pytec3d_solver
+  MODULES
+    VTK::CommonCore
+    VTK::CommonDataModel
+    VTK::WrappingPythonCore
+)

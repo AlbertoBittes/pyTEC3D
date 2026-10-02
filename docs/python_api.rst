@@ -8,9 +8,9 @@ Usage
 
 .. code-block:: python
 
-   from apec_m_solver import APEC_M
+   from pytec3d_solver import pyTEC3D
 
-   api = APEC_M()
+   api = pyTEC3D()
    api.read_model("mesh.vtu")
    api.save_model()
 
@@ -23,17 +23,17 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    :toctree: generated
    :recursive:
 
-   apec_m
-   apec_m.apec_m_model
-   apec_m.constants
-   apec_m.logging_utils
-   apec_m_coordinate_system.coordinate_system
-   apec_m.excel
-   apec_m.model_edit
-   apec_m.selector
-   apec_m.tree_gauge
-   apec_m.validation_utils
-   apec_m_solver.apec_m
-   apec_m_algorithm.apec_algorithm
-   apec_m_paraview.apec_m_paraview
-   apec_m_mesh_converter.mesh_converter
+   pytec3d
+   pytec3d.pytec3d_model
+   pytec3d.constants
+   pytec3d.logging_utils
+   pytec3d_coordinate_system.coordinate_system
+   pytec3d.excel
+   pytec3d.model_edit
+   pytec3d.selector
+   pytec3d.tree_gauge
+   pytec3d.validation_utils
+   pytec3d_solver.pytec3d
+   pytec3d_algorithm.pytec3d_algorithm
+   pytec3d_paraview.pytec3d_paraview
+   pytec3d_mesh_converter.mesh_converter

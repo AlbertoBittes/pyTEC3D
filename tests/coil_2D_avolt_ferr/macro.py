@@ -1,32 +1,32 @@
-from apec_m_solver import APEC_M
-from apec_m.selector import Selector
-from apec_m.model_edit import ModelEdit
+from pytec3d_solver.solver import pyTEC3DSolver
+from pytec3d.selector import Selector
+from pytec3d.model_edit import ModelEdit
 import os
 import vtk.util.numpy_support as vtknp
 import vtk
 
-apec = APEC_M()
+pytec3d = pyTEC3DSolver()
 
 filename = "coil_2D_avolt_ferr"
 
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
-apec.read_model(filepath)
+pytec3d.read_model(filepath)
 
-apec.model.read_excel("input_template.xlsx")
+pytec3d.model.read_excel("input_template.xlsx")
 
-ModelEdit.add_array(apec.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
+ModelEdit.add_array(pytec3d.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
 
-Selector.select_all(apec.model.mesh)
-Selector.select_pos(apec.model.mesh, 0, (0.4, 0.6), type="elem")
-Selector.select_pos(apec.model.mesh, 1, (-0.6, 0.6), type="elem", mode="r")
-Selector.inv(apec.model.mesh)
-Selector.select_pos(apec.model.mesh, 0, (0.25, 0.75), type="elem", mode="r")
-Selector.select_pos(apec.model.mesh, 1, (-0.75, 0.75), type="elem", mode="r")
-Selector.set_value_on_selection(apec.model.mesh, "MATERIAL", 26, type="elem")
-Selector.set_value_on_selection(apec.model.mesh, "TYPE", 26, type="elem")
+Selector.select_all(pytec3d.model.mesh)
+Selector.select_pos(pytec3d.model.mesh, 0, (0.4, 0.6), type="elem")
+Selector.select_pos(pytec3d.model.mesh, 1, (-0.6, 0.6), type="elem", mode="r")
+Selector.inv(pytec3d.model.mesh)
+Selector.select_pos(pytec3d.model.mesh, 0, (0.25, 0.75), type="elem", mode="r")
+Selector.select_pos(pytec3d.model.mesh, 1, (-0.75, 0.75), type="elem", mode="r")
+Selector.set_value_on_selection(pytec3d.model.mesh, "MATERIAL", 26, type="elem")
+Selector.set_value_on_selection(pytec3d.model.mesh, "TYPE", 26, type="elem")
 
-apec.model.bh_curves[26] = [
+pytec3d.model.bh_curves[26] = [
     [0.0, 0.0],
     [100.0, 0.371974867],
     [200.0, 0.743949735],
@@ -58,31 +58,31 @@ apec.model.bh_curves[26] = [
 ]
 
 
-Selector.select_all(apec.model.mesh)
-Selector.nsel_ext(apec.model.mesh)
-Selector.set_value_on_selection(apec.model.mesh, "_A", 0, 2)
+Selector.select_all(pytec3d.model.mesh)
+Selector.nsel_ext(pytec3d.model.mesh)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select(apec.model.mesh, "MATERIAL", 23, type="elem")
-Selector.nsle(apec.model.mesh)
-Selector.set_value_on_selection(apec.model.mesh, "CP_0", 1)
+Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
+Selector.nsle(pytec3d.model.mesh)
+Selector.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
-master_node = vtknp.vtk_to_numpy(apec.model.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
+master_node = vtknp.vtk_to_numpy(pytec3d.model.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
-apec.load_model_into_solver()
+pytec3d.load_model_into_solver()
 
-Selector.select_all(apec.model.mesh)
-apec.model.time_step["theta"] = 0.5
+Selector.select_all(pytec3d.model.mesh)
+pytec3d.model.time_step["theta"] = 0.5
 
 for i in range(1, 3):
-    apec.model.time_step["time"] = i * 1e-5
+    pytec3d.model.time_step["time"] = i * 1e-5
     if i == 1:
-        Selector.select(apec.model.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.model.mesh, "CURR", 30000)
+        Selector.select(pytec3d.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 30000)
     else:
-        Selector.select(apec.model.mesh, "ID", master_node)
-        Selector.set_value_on_selection(apec.model.mesh, "CURR", 0)
-        Selector.set_value_on_selection(apec.model.mesh, "_VOLT", 0.232874)
-    apec.solve()
-    apec.write_output()
+        Selector.select(pytec3d.model.mesh, "ID", master_node)
+        Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 0)
+        Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0.232874)
+    pytec3d.solve()
+    pytec3d.write_output()
 
-apec.save_model()
+pytec3d.save_model()

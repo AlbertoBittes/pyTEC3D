@@ -4,16 +4,16 @@ Getting Started
 Why --code name--?
 -------------
 Plasma disruptions can induce high electromagnetic loads on tokamak components,
-making accurate plasma modelling crucial for design. APEC ([ref] + link to repo) is a FEM code developed at Fusion for Energy,
+making accurate plasma modelling crucial for design. pyTEC3D ([ref] + link to repo) is a FEM code developed at Fusion for Energy,
 based on ANSYS APDL, to simulate plasma equilibrium and evolution.
 The main difference with other codes, which solve completely axisymmetric problems,
-is that APEC allows direct coupling of the axisymmetric plasma equilibrium equations
+is that pyTEC3D allows direct coupling of the axisymmetric plasma equilibrium equations
 with the full 3D eddy currents equations in the passive structures.
-While leveraging ANSYS features, APEC's dependence on ANSYS introduces performance issues,
+While leveraging ANSYS features, pyTEC3D's dependence on ANSYS introduces performance issues,
 including iteration restarts and repeated matrix factorization, limiting scalability for large models.
 Additionally, reliance on costly HPC licenses restricts its usability with large models.
 --code name-- aims to address these challenges as an independent, free, scalable, and customizable code
-able to replicate APEC's algorithm and overcome its limitations.
+able to replicate pyTEC3D's algorithm and overcome its limitations.
 
 
 What is --code name--?
@@ -48,7 +48,7 @@ Project links
 
 What you get
 ------------
-- Geometry and mesh preparation helpers for APEC/PlasmaArc workflows
+- Geometry and mesh preparation helpers for pyTEC3D/PlasmaArc workflows
 - IO bridges for VTK, Excel, ANSYS, and ParaView integration
 - A C++ solver configured via input files generated from the Python API
 
