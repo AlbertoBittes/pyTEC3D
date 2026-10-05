@@ -21,8 +21,11 @@
 #include <libmesh/enum_fe_family.h>
 #include <libmesh/enum_order.h>
 
+#include <set>
+
+#include <libmesh/id_types.h>
+
 #include "pytec3d_system.h"
-#include "element_types.h"
 
 namespace libMesh
 {
@@ -30,8 +33,12 @@ namespace libMesh
     class EquationSystems;
 }
 
-class ElementType;
-enum PhysicalRegionEnum : unsigned int;
+namespace pytec3d
+{
+    class ElementTypeInstance;
+}
+
+class ElementTypesFactory;
 
 enum class GlobalVariableName
 {
@@ -83,6 +90,8 @@ enum class APIVariableName
     UNKNOWN // Fallback for invalid strings
 };
 
+using VariableToElementIdsMapType = std::map<GlobalVariableName, std::set<libMesh::subdomain_id_type>>;
+
 struct VariableInfo
 {
     GlobalVariableName global_name;
@@ -126,28 +135,22 @@ public:
         std::map<std::string, std::vector<VectorComponent>> &vector_variables);
     static std::vector<std::string> get_global_labels_for_label(const std::string &label);
 
-    static VariableToElementIdsMapType associate_variables_with_element_IDs(
-        const ElementTypesMap &element_types_map,
-        pyTEC3DSystemBase::SystemType system_type);
+    /** @brief One libMesh scalar (or H(curl)) variable of a system, as resolved from an element type. */
+    struct SystemVariable
+    {
+        GlobalVariableName key;
+        libMesh::FEFamily family;
+        libMesh::Order order;
+        std::string variable; ///< Name of the element type variable it belongs to (A for A_x, A_y, A_z).
+    };
 
-    static std::vector<GlobalVariableName> get_variables_for_element(const ElementType &element);
-    static std::vector<GlobalVariableName> get_active_variables_for_element(const ElementType &element,
+    /** @brief libMesh variables the element type contributes to @p system_type, in the element DOF order. */
+    static std::vector<SystemVariable> get_system_variables_for_element(const pytec3d::ElementTypeInstance &element,
+                                                                        pyTEC3DSystemBase::SystemType system_type);
+
+    /** @brief For every variable of @p system_type, the subdomains whose element type contains it. */
+    static VariableToElementIdsMapType associate_variables_with_element_IDs(const ElementTypesFactory &factory,
                                                                             pyTEC3DSystemBase::SystemType system_type);
-    static std::vector<APIVariableName> get_api_variables_for_element(const ElementType &element,
-                                                                      pyTEC3DSystemBase::SystemType system_type);
-    static pyTEC3DSystemBase::SystemType get_variable_system_type(const ElementType &element,
-                                                                  GlobalVariableName variable);
-
-    static libMesh::FEFamily get_variable_fe_family(const ElementType &element,
-                                                    GlobalVariableName variable);
-    static libMesh::Order get_variable_order(const ElementType &element,
-                                             GlobalVariableName variable);
-    static unsigned int get_variable_physical_components(const ElementType &element,
-                                                         GlobalVariableName variable);
-    static bool is_variable_scalar(const ElementType &element,
-                                   GlobalVariableName variable);
-    static bool is_variable_vector(const ElementType &element,
-                                   GlobalVariableName variable);
 
     static PhysicalComponentsInfo get_variable_components_for_system(const libMesh::System &system,
                                                                      GlobalVariableName variable);
@@ -156,13 +159,6 @@ public:
 
     static std::vector<GlobalVariableName> get_system_variables(const libMesh::System &system);
     static std::map<std::string, std::string> get_dof_variable_nodal_load_map_for_system(const libMesh::System &system);
-
-private:
-    static std::vector<GlobalVariableName> add_av_variables();
-    static std::vector<GlobalVariableName> add_av3d_variables();
-    static std::vector<GlobalVariableName> add_av3dnodal_variables(const std::vector<unsigned int> &OPTIONs);
-    static std::vector<GlobalVariableName> add_av3dedge_variables(const std::vector<unsigned int> &OPTIONs);
-    static std::vector<GlobalVariableName> add_av2dnodal_variables(const std::vector<unsigned int> &OPTIONs);
 };
 
 #endif // VARIABLES_MAP_H

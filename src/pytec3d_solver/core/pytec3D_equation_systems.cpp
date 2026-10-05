@@ -75,9 +75,10 @@ namespace
     }
 }
 
-void pyTEC3DEquationSystems::load_model_data(py::object pytec3d_object)
+void pyTEC3DEquationSystems::load_model_data(py::object pytec3d_object,
+                                             const std::shared_ptr<const pytec3d::ElementTypeRegistry> &registry)
 {
-    element_types_factory_ = std::make_shared<ElementTypesFactory>(pytec3d_object.attr("element_types"));
+    element_types_factory_ = std::make_shared<ElementTypesFactory>(pytec3d_object.attr("element_types"), registry);
 
     bh_curves_ = parse_bh_curves_from_pytec3d(pytec3d_object);
 

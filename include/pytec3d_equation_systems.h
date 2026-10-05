@@ -30,6 +30,11 @@ class pyTEC3DSystemBase;
 class pyTEC3DModel;
 class pyTEC3DDOFSystemBase;
 
+namespace pytec3d
+{
+    class ElementTypeRegistry;
+}
+
 /**
  * @brief Manages all libMesh solution systems for one pyTEC3D simulation.
  *
@@ -48,8 +53,9 @@ public:
     using PropertyRowsMap = std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>>;
     using RotationMap = std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>>;
 
-    /** @brief Parses and caches model metadata shared across systems/builders. */
-    void load_model_data(pybind11::object pytec3d_object);
+    /** @brief Parses and caches model metadata shared across systems/builders; @p registry must outlive the element types. */
+    void load_model_data(pybind11::object pytec3d_object,
+                         const std::shared_ptr<const pytec3d::ElementTypeRegistry> &registry);
 
     /** @brief Updates time-step state and decides whether this solve advances time. */
     void prepare_time_step_solve(const pybind11::dict &time_step);

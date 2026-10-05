@@ -7,7 +7,8 @@
  * return the variable sets required by each element type and physical-region option.
  */
 #include "variables_map.h"
-#include "element_types.h"
+#include "element_type_instance.h"
+#include "element_types_factory.h"
 #include "logging.h"
 #include <libmesh/equation_systems.h>
 #include <libmesh/system.h>
@@ -20,6 +21,7 @@ using libMesh::L2_LAGRANGE_VEC;
 using libMesh::LAGRANGE;
 using libMesh::LAGRANGE_VEC;
 using libMesh::MONOMIAL;
+using libMesh::MONOMIAL_VEC;
 using libMesh::NEDELEC_ONE;
 using libMesh::Order;
 using libMesh::subdomain_id_type;
@@ -189,220 +191,100 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
     return labels;
 }
 
+namespace
+{
+    struct LibMeshVariable
+    {
+        std::string label;
+        FEFamily family;
+    };
+
+    FEFamily scalar_family(FEFamily vector_family)
+    {
+        switch (vector_family)
+        {
+        case LAGRANGE_VEC:
+            return LAGRANGE;
+        case L2_LAGRANGE_VEC:
+            return L2_LAGRANGE;
+        case MONOMIAL_VEC:
+            return MONOMIAL;
+        default:
+            pytec3d::logging::error_and_abort("VariablesMap: FE family has no component-wise scalar family.");
+        }
+    }
+
+    // One libMesh scalar variable per component, except for H(curl) fields that are a single variable.
+    std::vector<LibMeshVariable> libmesh_variables(const pytec3d::VariableSpec &spec)
+    {
+        static const char *const suffixes[3] = {"_x", "_y", "_z"};
+        std::vector<LibMeshVariable> out;
+
+        if (spec.vector_fe && (spec.family == NEDELEC_ONE))
+        {
+            out.push_back({"Az", spec.family});
+            return out;
+        }
+        if (spec.vector_fe)
+        {
+            for (unsigned int component : spec.active_components)
+                out.push_back({spec.name + suffixes[component], scalar_family(spec.family)});
+            return out;
+        }
+        if (spec.physical_vector)
+        {
+            out.push_back({spec.name + suffixes[spec.active_components.at(0)], spec.family});
+            return out;
+        }
+        out.push_back({spec.name, spec.family});
+        return out;
+    }
+
+    pytec3d::FieldKind field_kind_for(pyTEC3DSystemBase::SystemType system_type)
+    {
+        switch (system_type)
+        {
+        case pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM:
+            return pytec3d::FieldKind::Dof;
+        case pyTEC3DSystemBase::NODAL_SOLUTION:
+            return pytec3d::FieldKind::Nodal;
+        case pyTEC3DSystemBase::ELEMENT_SOLUTION:
+            return pytec3d::FieldKind::Element;
+        default:
+            pytec3d::logging::error_and_abort("VariablesMap: unknown system type.");
+        }
+    }
+} // namespace
+
+std::vector<VariablesMap::SystemVariable> VariablesMap::get_system_variables_for_element(
+    const pytec3d::ElementTypeInstance &element,
+    pyTEC3DSystemBase::SystemType system_type)
+{
+    std::vector<SystemVariable> out;
+    const pytec3d::FieldKind kind = field_kind_for(system_type);
+    for (const pytec3d::VariableSpec &spec : element.variables())
+    {
+        if (spec.kind != kind)
+            continue;
+        for (const LibMeshVariable &variable : libmesh_variables(spec))
+        {
+            const auto key = get_key_by_predicate_one([&variable](const VariableInfo &info)
+                                                      { return info.global_label == variable.label; });
+            out.push_back({key, variable.family, spec.order, spec.name});
+        }
+    }
+    return out;
+}
+
 VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
-    const ElementTypesMap &element_types_map,
+    const ElementTypesFactory &factory,
     pyTEC3DSystemBase::SystemType system_type)
 {
     VariableToElementIdsMapType variable_to_element_ids;
-    for (const auto &pair : element_types_map)
-    {
-        subdomain_id_type element_id = pair.first;
-        const auto &element_type = pair.second;
-        if (!element_type)
-            continue;
-
-        const auto vars = VariablesMap::get_variables_for_element(*element_type);
-        for (const auto &var : vars)
-        {
-            if (VariablesMap::get_variable_system_type(*element_type, var) == system_type)
-                variable_to_element_ids[var].insert(element_id);
-        }
-    }
+    for (const auto &pair : factory.entries())
+        for (const SystemVariable &variable : get_system_variables_for_element(*pair.second.type, system_type))
+            variable_to_element_ids[variable.key].insert(pair.first);
     return variable_to_element_ids;
-}
-
-std::vector<GlobalVariableName> VariablesMap::get_variables_for_element(const ElementType &element)
-{
-    std::vector<GlobalVariableName> vars;
-    const auto &OPTIONs = element.get_OPTIONs();
-    auto type = static_cast<ElementTypeEnum>(OPTIONs.at(0));
-
-    switch (type)
-    {
-    case ElementTypeEnum::AV3DNODAL:
-        vars = add_av3d_variables();
-        {
-            auto extra = add_av3dnodal_variables(OPTIONs);
-            vars.insert(vars.end(), extra.begin(), extra.end());
-        }
-        break;
-    case ElementTypeEnum::AV3DEDGE:
-        vars = add_av3d_variables();
-        {
-            auto extra = add_av3dedge_variables(OPTIONs);
-            vars.insert(vars.end(), extra.begin(), extra.end());
-        }
-        break;
-    case ElementTypeEnum::AV2DNODAL:
-        vars = add_av_variables();
-        {
-            auto extra = add_av2dnodal_variables(OPTIONs);
-            vars.insert(vars.end(), extra.begin(), extra.end());
-        }
-        break;
-    default:
-        pytec3d::logging::error_and_abort("VariablesMap: unsupported element type.");
-    }
-    return vars;
-}
-
-std::vector<GlobalVariableName> VariablesMap::get_active_variables_for_element(const ElementType &element,
-                                                                               pyTEC3DSystemBase::SystemType system_type)
-{
-    std::vector<GlobalVariableName> active_vars;
-    auto vars = get_variables_for_element(element);
-    for (const auto &var : vars)
-    {
-        if (get_variable_system_type(element, var) == system_type)
-            active_vars.push_back(var);
-    }
-    std::sort(active_vars.begin(), active_vars.end(),
-              [](GlobalVariableName lhs, GlobalVariableName rhs)
-              {
-                  return static_cast<unsigned int>(lhs) < static_cast<unsigned int>(rhs);
-              });
-    return active_vars;
-}
-
-std::vector<APIVariableName> VariablesMap::get_api_variables_for_element(const ElementType &element,
-                                                                         pyTEC3DSystemBase::SystemType system_type)
-{
-    auto vars = get_active_variables_for_element(element, system_type);
-    std::vector<APIVariableName> api_vars;
-    api_vars.reserve(vars.size());
-    for (const auto &var : vars)
-    {
-        auto api_name = get_info_by_key(var).api_name;
-        if (std::find(api_vars.begin(), api_vars.end(), api_name) == api_vars.end())
-            api_vars.push_back(api_name);
-    }
-    return api_vars;
-}
-
-pyTEC3DSystemBase::SystemType VariablesMap::get_variable_system_type(const ElementType &element,
-                                                                     GlobalVariableName variable)
-{
-    switch (variable)
-    {
-    case GlobalVariableName::A_x:
-    case GlobalVariableName::A_y:
-    case GlobalVariableName::A_z:
-        // if (static_cast<ElementTypeEnum>(element.get_OPTIONs().at(0)) == ElementTypeEnum::AV3DEDGE)
-        //     return pyTEC3DSystemBase::NODAL_SOLUTION;
-        return pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM;
-    case GlobalVariableName::Az:
-    case GlobalVariableName::V:
-    case GlobalVariableName::VOLT:
-    case GlobalVariableName::EMF:
-        return pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM;
-    case GlobalVariableName::B_x:
-    case GlobalVariableName::B_y:
-    case GlobalVariableName::B_z:
-    case GlobalVariableName::H_x:
-    case GlobalVariableName::H_y:
-    case GlobalVariableName::H_z:
-        return pyTEC3DSystemBase::NODAL_SOLUTION;
-    case GlobalVariableName::Be_x:
-    case GlobalVariableName::Be_y:
-    case GlobalVariableName::Be_z:
-    case GlobalVariableName::He_x:
-    case GlobalVariableName::He_y:
-    case GlobalVariableName::He_z:
-    case GlobalVariableName::Jt_x:
-    case GlobalVariableName::Jt_y:
-    case GlobalVariableName::Jt_z:
-        return pyTEC3DSystemBase::ELEMENT_SOLUTION;
-    default:
-        pytec3d::logging::error_and_abort("VariablesMap: missing system type for variable.");
-    }
-}
-
-std::vector<GlobalVariableName> VariablesMap::add_av_variables()
-{
-    return {GlobalVariableName::B_x,
-            GlobalVariableName::B_y,
-            GlobalVariableName::H_x,
-            GlobalVariableName::H_y,
-            GlobalVariableName::Jt_z,
-            GlobalVariableName::Be_x,
-            GlobalVariableName::Be_y,
-            GlobalVariableName::He_x,
-            GlobalVariableName::He_y};
-}
-
-std::vector<GlobalVariableName> VariablesMap::add_av3d_variables()
-{
-    auto vars = add_av_variables();
-    vars.insert(vars.end(), {GlobalVariableName::B_z,
-                             GlobalVariableName::H_z,
-                             GlobalVariableName::Jt_x,
-                             GlobalVariableName::Jt_y,
-                             GlobalVariableName::Be_z,
-                             GlobalVariableName::He_z});
-    return vars;
-}
-
-std::vector<GlobalVariableName> VariablesMap::add_av3dnodal_variables(const std::vector<unsigned int> &OPTIONs)
-{
-    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
-    std::vector<GlobalVariableName> vars = {GlobalVariableName::A_x,
-                                            GlobalVariableName::A_y,
-                                            GlobalVariableName::A_z};
-
-    switch (physical_region)
-    {
-    case SHORT_CIRCUIT_CONDUCTOR:
-    case SOLID_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::V});
-        break;
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
-        vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    default:
-        break;
-    }
-    return vars;
-}
-
-std::vector<GlobalVariableName> VariablesMap::add_av3dedge_variables(const std::vector<unsigned int> &OPTIONs)
-{
-    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
-    std::vector<GlobalVariableName> vars = {GlobalVariableName::Az};
-
-    switch (physical_region)
-    {
-    case SHORT_CIRCUIT_CONDUCTOR:
-    case SOLID_CONDUCTOR:
-        vars.insert(vars.end(), {GlobalVariableName::V});
-        break;
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
-        vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    default:
-        break;
-    }
-    return vars;
-}
-
-std::vector<GlobalVariableName> VariablesMap::add_av2dnodal_variables(const std::vector<unsigned int> &OPTIONs)
-{
-    std::vector<GlobalVariableName> vars = {GlobalVariableName::A_z};
-    const PhysicalRegionEnum physical_region = static_cast<PhysicalRegionEnum>(OPTIONs[1]);
-
-    switch (physical_region)
-    {
-    case SOLID_CONDUCTOR:
-    case STRANDED_COIL:
-        vars.insert(vars.end(), {GlobalVariableName::VOLT});
-        if (physical_region == STRANDED_COIL)
-            vars.insert(vars.end(), {GlobalVariableName::EMF});
-        break;
-    default:
-        break;
-    }
-    return vars;
 }
 
 std::vector<GlobalVariableName> VariablesMap::get_system_variables(const System &system)
@@ -440,103 +322,6 @@ std::map<std::string, std::string> VariablesMap::get_dof_variable_nodal_load_map
         system_map.emplace(it->first, it->second);
     }
     return system_map;
-}
-
-FEFamily VariablesMap::get_variable_fe_family(const ElementType &,
-                                              GlobalVariableName variable)
-{
-    switch (variable)
-    {
-    case GlobalVariableName::A_x:
-    case GlobalVariableName::A_y:
-    case GlobalVariableName::A_z:
-    case GlobalVariableName::V:
-    case GlobalVariableName::VOLT:
-    case GlobalVariableName::EMF:
-        return LAGRANGE;
-    case GlobalVariableName::Az:
-        return NEDELEC_ONE;
-    case GlobalVariableName::Jt_x:
-    case GlobalVariableName::Jt_y:
-    case GlobalVariableName::Jt_z:
-    case GlobalVariableName::Be_x:
-    case GlobalVariableName::Be_y:
-    case GlobalVariableName::Be_z:
-    case GlobalVariableName::He_x:
-    case GlobalVariableName::He_y:
-    case GlobalVariableName::He_z:
-        return MONOMIAL;
-    case GlobalVariableName::B_x:
-    case GlobalVariableName::B_y:
-    case GlobalVariableName::B_z:
-    case GlobalVariableName::H_x:
-    case GlobalVariableName::H_y:
-    case GlobalVariableName::H_z:
-        return L2_LAGRANGE;
-    default:
-        pytec3d::logging::error_and_abort("VariablesMap: missing FE family for variable.");
-    }
-}
-
-Order VariablesMap::get_variable_order(const ElementType &element,
-                                       GlobalVariableName variable)
-{
-    Order order = FIRST;
-    switch (variable)
-    {
-    case GlobalVariableName::Jt_x:
-    case GlobalVariableName::Jt_y:
-    case GlobalVariableName::Jt_z:
-    case GlobalVariableName::Be_x:
-    case GlobalVariableName::Be_y:
-    case GlobalVariableName::Be_z:
-    case GlobalVariableName::He_x:
-    case GlobalVariableName::He_y:
-    case GlobalVariableName::He_z:
-        order = CONSTANT;
-        break;
-    default:
-        order = FIRST;
-        break;
-    }
-
-    const auto &OPTIONs = element.get_OPTIONs();
-    FEFamily family = get_variable_fe_family(element, variable);
-    if (OPTIONs.size() > 2)
-    {
-        auto OPTION_order = static_cast<Order>(OPTIONs[2]);
-        if (OPTION_order != FIRST &&
-            (family == LAGRANGE || family == L2_LAGRANGE || family == LAGRANGE_VEC || family == L2_LAGRANGE_VEC))
-        {
-            order = OPTION_order;
-        }
-    }
-    return order;
-}
-
-unsigned int VariablesMap::get_variable_physical_components(const ElementType &element,
-                                                            GlobalVariableName variable)
-{
-    const std::string &label = get_info_by_key(variable).global_label;
-    if (!has_vector_suffix(label))
-        return 1;
-
-    std::string base_label = label.substr(0, label.size() - 2);
-    const auto vars = get_variables_for_element(element);
-
-    return count_label_components(base_label, vars);
-}
-
-bool VariablesMap::is_variable_scalar(const ElementType &element,
-                                      GlobalVariableName variable)
-{
-    return get_variable_physical_components(element, variable) == 1;
-}
-
-bool VariablesMap::is_variable_vector(const ElementType &element,
-                                      GlobalVariableName variable)
-{
-    return !is_variable_scalar(element, variable);
 }
 
 VariablesMap::PhysicalComponentsInfo VariablesMap::get_variable_components_for_system(const System &system,

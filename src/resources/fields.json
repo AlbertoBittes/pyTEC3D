@@ -1,0 +1,38 @@
+{
+    "A": {
+        "vector": true
+    },
+    "V": {
+        "vector": false
+    },
+    "VOLT": {
+        "vector": false
+    },
+    "EMF": {
+        "vector": false
+    },
+    "B": {
+        "vector": true
+    },
+    "H": {
+        "vector": true
+    },
+    "Be": {
+        "vector": true
+    },
+    "He": {
+        "vector": true
+    },
+    "Jt": {
+        "vector": true
+    },
+    "AMPS": {
+        "vector": false
+    },
+    "CURR": {
+        "vector": false
+    },
+    "Js": {
+        "vector": true
+    }
+}

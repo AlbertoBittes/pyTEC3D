@@ -1,0 +1,11 @@
+{
+    "domains": [
+        "NON_CONDUCTING",
+        "SOFT_MAGNETIC",
+        "HARD_MAGNETIC",
+        "STRANDED_CONDUCTOR",
+        "CIRCUIT_COUPLED_CONDUCTOR",
+        "SOLID_CONDUCTOR",
+        "STRANDED_COIL"
+    ]
+}

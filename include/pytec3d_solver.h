@@ -12,6 +12,11 @@
 
 class pyTEC3DModel;
 
+namespace pytec3d
+{
+    class ElementTypeRegistry;
+}
+
 namespace libMesh
 {
     class LibMeshInit;
@@ -54,7 +59,11 @@ public:
     /** @brief Returns true if load_model() has completed successfully. */
     bool is_loaded() const;
 
+    /** @brief Base element types, fields and domains loaded from the JSON definitions. */
+    const pytec3d::ElementTypeRegistry &element_type_registry() const { return *element_type_registry_; }
+
 private:
+    std::shared_ptr<const pytec3d::ElementTypeRegistry> element_type_registry_;
     int argc = 0;
     char **argv = nullptr;
     std::shared_ptr<libMesh::LibMeshInit> libmesh_init;

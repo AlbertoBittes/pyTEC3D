@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PETSC QUIET IMPORTED_TARGET PETSc)
 if(NOT PETSC_FOUND)
@@ -67,6 +68,19 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 get_filename_component(pyTEC3D_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
+# JSON definitions are compiled into the module so no runtime file lookup is needed.
+set(PYTEC3D_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+foreach(_res element_types fields domains)
+  string(TOUPPER "${_res}" _res_var)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PYTEC3D_RESOURCE_DIR}/${_res}.json")
+  file(READ "${PYTEC3D_RESOURCE_DIR}/${_res}.json" PYTEC3D_${_res_var}_JSON)
+endforeach()
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/pytec3d_solver/core/embedded_resources.cpp.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/embedded_resources.cpp"
+  @ONLY)
+list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/embedded_resources.cpp")
+
 set(PYTEC3D_PYTHON_PACKAGE_ROOT "${pyTEC3D_REPO_ROOT}/src" CACHE PATH
   "Root directory that contains pytec3d_* Python packages for extension module output")
 set(PYTEC3D_SOLVER_PACKAGE_DIR "${PYTEC3D_PYTHON_PACKAGE_ROOT}/pytec3d_solver")
@@ -99,6 +113,7 @@ set(pyTEC3D_INCLUDE_DIRS
 
 set(pyTEC3D_LINK_LIBS
   spdlog::spdlog_header_only
+  nlohmann_json::nlohmann_json
   ${LIBMESH_LIB}
   ${TIMPI_LIB}
   PkgConfig::PETSC

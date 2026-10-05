@@ -90,7 +90,6 @@ public:
 
 #include "variables_map.h"
 #include "pytec3d_equation_systems.h"
-#include "element_types.h"
 
 template <typename SysLike>
 class pyTEC3DSystem

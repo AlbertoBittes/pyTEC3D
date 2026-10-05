@@ -265,10 +265,7 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
 
     BinaryReader reader;
 
-    const std::vector<std::string> filenames = {
-        "mtrx_" + rank_str + ".emat",
-        "nodal_sol_mtrx_" + rank_str + ".emat",
-        "element_sol_mtrx_" + rank_str + ".emat"};
+    const std::vector<std::string> filenames = {"mtrx_" + rank_str + ".emat"};
 
     const bool emat_files_exist = std::all_of(
         filenames.begin(),
@@ -288,8 +285,6 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
 
     auto streams = reader.open_output_streams(emat_folderpath, filenames);
     auto &mtrx_output_file = *streams[0];
-    auto &nodal_sol_mtrx_output_file = *streams[1];
-    auto &element_sol_mtrx_output_file = *streams[2];
 
     ElementBuilder builder(&equation_systems);
     for (const auto &elem : mesh.active_local_element_ptr_range())
@@ -297,19 +292,10 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
         builder.set_element_data(elem);
         builder.build_element();
 
-        const unsigned int elem_id = static_cast<unsigned int>(elem->id());
         BinaryReader::write_element_matrices(
             mtrx_output_file,
-            elem_id,
+            static_cast<unsigned int>(elem->id()),
             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
-        BinaryReader::write_element_matrices(
-            nodal_sol_mtrx_output_file,
-            elem_id,
-            builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
-        BinaryReader::write_element_matrices(
-            element_sol_mtrx_output_file,
-            elem_id,
-            builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
     }
 
     reader.close_file_streams(streams);
@@ -869,31 +855,13 @@ void pyTEC3DNodalSolutionSystem::assemble_system()
     auto &eq_sys = this->typed_equation_systems();
 
     const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-    const auto &comm = mesh.comm();
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-    const std::vector<std::string> inp_filenames = {"nodal_sol_mtrx_" + rank_str + ".emat"};
-    const std::filesystem::path nodal_mtrx_filepath = emat_folderpath / inp_filenames[0];
-
-    auto inp_streams = reader.open_input_streams(emat_folderpath, inp_filenames);
-    auto &nodal_solution_mtrx_input_file = *inp_streams[0];
 
     ElementBuilder builder(&eq_sys);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(
-            nodal_solution_mtrx_input_file,
-            elem_id,
-            builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
-
         builder.set_element_data(elem);
         builder.build_nodal_solution();
     }
-
-    reader.close_file_streams(inp_streams);
 
     this->solution->close();
     pytec3d::logging::info("Nodal solution updated");
@@ -906,31 +874,13 @@ void pyTEC3DElementSolutionSystem::assemble_system()
     auto &eq_sys = this->typed_equation_systems();
 
     const libMesh::MeshBase &mesh = eq_sys.get_mesh();
-    const auto &comm = mesh.comm();
-    const std::string rank_str = std::to_string(comm.rank());
-    const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
-
-    BinaryReader reader;
-    const std::vector<std::string> inp_filenames = {"element_sol_mtrx_" + rank_str + ".emat"};
-    const std::filesystem::path element_mtrx_filepath = emat_folderpath / inp_filenames[0];
-
-    auto inp_streams = reader.open_input_streams(emat_folderpath, inp_filenames);
-    auto &element_solution_mtrx_input_file = *inp_streams[0];
 
     ElementBuilder builder(&eq_sys);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
-        unsigned int elem_id = 0;
-        BinaryReader::read_element_matrices(
-            element_solution_mtrx_input_file,
-            elem_id,
-            builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
-
         builder.set_element_data(elem);
         builder.build_element_solution();
     }
-
-    reader.close_file_streams(inp_streams);
 
     this->solution->close();
     pytec3d::logging::info("Element solution updated");
@@ -943,11 +893,11 @@ void pyTEC3DSystem<SysType>::init_variables()
     auto element_types_collector = equation_systems.get_element_types_factory();
     const auto type = pyTEC3DSystemBase::system_type_from_name(this->name());
 
-    if (!element_types_collector || !element_types_collector->get_element_types_map())
-        pytec3d::logging::error_and_abort("Element types map not available for system variables.");
+    if (!element_types_collector)
+        pytec3d::logging::error_and_abort("Element types are not available for system variables.");
 
     auto vars_to_subdomain_ids = VariablesMap::associate_variables_with_element_IDs(
-        *element_types_collector->get_element_types_map(),
+        *element_types_collector,
         type);
 
     std::set<libMesh::subdomain_id_type> mesh_subdomain_ids;
@@ -967,14 +917,16 @@ void pyTEC3DSystem<SysType>::init_variables()
         if (subdomain_ids.empty())
             continue;
 
-        auto elem_type = element_types_collector->get_element_type(*subdomain_ids.begin());
-        auto fe_family = VariablesMap::get_variable_fe_family(*elem_type, pair.first);
-        auto order = VariablesMap::get_variable_order(*elem_type, pair.first);
+        const auto &element_type = *element_types_collector->get(*subdomain_ids.begin()).type;
+        const auto system_variables = VariablesMap::get_system_variables_for_element(element_type, type);
+        const auto variable = std::find_if(system_variables.begin(), system_variables.end(),
+                                           [&pair](const VariablesMap::SystemVariable &v)
+                                           { return v.key == pair.first; });
 
         this->add_variable(
             variable_string,
-            order,
-            fe_family,
+            variable->order,
+            variable->family,
             &subdomain_ids);
     }
 }

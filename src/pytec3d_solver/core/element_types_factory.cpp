@@ -1,115 +1,77 @@
 /**
  * @file element_types_factory.cpp
- * @brief ElementTypesFactory: Python DataFrame parsing, element-type registry, and factory dispatch.
+ * @brief ElementTypesFactory: maps the Python element_types DataFrame onto registry element types.
  */
 #include "element_types_factory.h"
-#include "logging.h"
 
-#include <algorithm>
-#include <cmath>
-#include <regex>
 #include <string>
-#include <vector>
 
-#include <pybind11/stl.h>
+#include "logging.h"
 
 namespace py = pybind11;
 
 namespace
 {
-    unsigned int parse_option_column_index(const std::string &name)
+    // ELEMENT_TYPE: 0 = 2D nodal, 1 = 3D nodal, 2 = 3D edge. Other formulations are other registry types.
+    std::string base_type_name(unsigned int element_number)
     {
-        std::smatch match;
-        if (std::regex_search(name, match, std::regex(R"(\d+)")))
-            return static_cast<unsigned int>(std::stoul(match.str()));
-        return 0;
+        switch (element_number)
+        {
+        case 0:
+            return "AV2D_nodal";
+        case 1:
+            return "AV3D_nodal";
+        case 2:
+            return "AV3D_edge";
+        default:
+            pytec3d::logging::error_and_abort("Unknown ELEMENT_TYPE " + std::to_string(element_number) + ".");
+        }
     }
-}
 
-void ElementTypesFactory::load_from_python(const py::object &element_types_attribute)
+    unsigned int read_uint(const py::object &row, const char *column)
+    {
+        return static_cast<unsigned int>(py::cast<int>(row.attr("__getitem__")(column)));
+    }
+} // namespace
+
+ElementTypesFactory::ElementTypesFactory(const py::object &element_types_attribute,
+                                         std::shared_ptr<const pytec3d::ElementTypeRegistry> registry)
+    : registry_(std::move(registry))
 {
-    if (!element_types_map)
-        element_types_map = std::make_shared<ElementTypesMap>();
-    element_types_map->clear();
-
+    if (!registry_)
+        pytec3d::logging::error_and_abort("ElementTypesFactory: element type registry is not available.");
     if (element_types_attribute.is_none())
         return;
 
-    py::object dataframe = element_types_attribute;
+    const py::object iloc = element_types_attribute.attr("iloc");
+    const std::size_t count = py::len(element_types_attribute);
 
-    std::vector<std::string> OPTION_columns;
-    for (const py::handle &name_obj : dataframe.attr("columns"))
+    for (std::size_t i = 0; i < count; ++i)
     {
-        const std::string name = py::cast<std::string>(name_obj);
-        if (name.rfind("OPTION", 0) == 0)
-            OPTION_columns.push_back(name);
-    }
+        const py::object row = iloc.attr("__getitem__")(py::int_(i));
+        const unsigned int subdomain = read_uint(row, "TYPE_ID");
 
-    std::sort(OPTION_columns.begin(), OPTION_columns.end(), [](const std::string &a, const std::string &b)
-              { return parse_option_column_index(a) < parse_option_column_index(b); });
+        pytec3d::ElementOptions options;
+        options.type = base_type_name(read_uint(row, "ELEMENT_TYPE"));
+        options.domain = read_uint(row, "OPTION1");
+        options.order = read_uint(row, "OPTION2");
+        options.axisymmetric = read_uint(row, "OPTION3") != 0;
 
-    const py::object dataframe_iloc = dataframe.attr("iloc");
-    const std::size_t count = py::len(dataframe);
+        if (!registry_->has_type(options.type))
+            pytec3d::logging::error_and_abort("TYPE_ID " + std::to_string(subdomain) + ": element type '" + options.type +
+                                              "' is not defined in element_types.json.");
 
-    for (std::size_t row = 0; row < count; ++row)
-    {
-        const py::object row_data = dataframe_iloc.attr("__getitem__")(py::int_(row));
-        const int ansys_type = py::cast<int>(row_data.attr("__getitem__")("TYPE_ID"));
-        const unsigned int element_number =
-            static_cast<unsigned int>(py::cast<int>(row_data.attr("__getitem__")("ELEMENT_TYPE")));
-
-        std::vector<unsigned int> OPTIONs;
-        OPTIONs.reserve(1 + OPTION_columns.size());
-        OPTIONs.push_back(element_number);
-
-        for (const auto &column_name : OPTION_columns)
-        {
-            OPTIONs.push_back(
-                static_cast<unsigned int>(py::cast<int>(row_data.attr("__getitem__")(column_name))));
-        }
-
-        (*element_types_map)[ansys_type] = create_element_type(
-            static_cast<ElementTypeEnum>(element_number),
-            OPTIONs);
+        Entry entry;
+        entry.type = std::make_unique<pytec3d::ElementTypeInstance>(*registry_, options);
+        entry.kernels = std::make_unique<pytec3d::ElementKernels>(*entry.type);
+        entries_[static_cast<libMesh::subdomain_id_type>(subdomain)] = std::move(entry);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Element-type lookup
-// ---------------------------------------------------------------------------
-ElementType *ElementTypesFactory::get_element_type(libMesh::subdomain_id_type element_id)
+const ElementTypesFactory::Entry &ElementTypesFactory::get(libMesh::subdomain_id_type subdomain_id) const
 {
-    if (!element_types_map)
-        pytec3d::logging::error_and_abort("ElementTypesFactory::get_element_type called before factory initialization.");
-
-    auto it = element_types_map->find(element_id);
-    if (it != element_types_map->end())
-        return it->second.get();
-    pytec3d::logging::error_and_abort("Element type not found for subdomain ID: " + std::to_string(element_id));
-}
-
-// ---------------------------------------------------------------------------
-// Manual element-type insertion
-// ---------------------------------------------------------------------------
-void ElementTypesFactory::add_element_type(libMesh::subdomain_id_type element_id, std::unique_ptr<ElementType> element_type)
-{
-    (*element_types_map)[element_id] = std::move(element_type);
-}
-
-// ---------------------------------------------------------------------------
-// Factory: create element-type instance by enum
-// ---------------------------------------------------------------------------
-std::unique_ptr<ElementType> ElementTypesFactory::create_element_type(ElementTypeEnum type, const std::vector<unsigned int> &OPTIONs)
-{
-    switch (type)
-    {
-    case ElementTypeEnum::AV3DNODAL:
-        return std::make_unique<AV3DNODALType>(OPTIONs);
-    case ElementTypeEnum::AV3DEDGE:
-        return std::make_unique<AV3DEDGEType>(OPTIONs);
-    case ElementTypeEnum::AV2DNODAL:
-        return std::make_unique<AV2DNODALType>(OPTIONs);
-    default:
-        pytec3d::logging::error_and_abort("Unknown element type");
-    }
+    const auto it = entries_.find(subdomain_id);
+    if (it == entries_.end())
+        pytec3d::logging::error_and_abort("Element type not found for subdomain ID: " + std::to_string(subdomain_id));
+    return it->second;
 }

@@ -33,7 +33,6 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "element_types.h"
 // Forward declarations
 class vtkUnstructuredGrid;
 
