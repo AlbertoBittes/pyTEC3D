@@ -15,7 +15,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_all(pytec3d.model.mesh)
 Selector.nsel_ext(pytec3d.model.mesh, "s")
@@ -23,23 +23,23 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 pytec3d.load_model_into_solver()
 
-pytec3d.model.time_step["theta"] = 0.5
+pytec3d.time_step["theta"] = 0.5
 
 for i in range(1, 7):
-    pytec3d.model.time_step["time_step_number"] = i
+    pytec3d.time_step["time_step_number"] = i
     if i == 1:
-        pytec3d.model.time_step["transient_effects"] = 0
-        pytec3d.model.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 0
+        pytec3d.time_step["time"] = i * 0.0001
     elif i == 5:
-        pytec3d.model.time_step["transient_effects"] = 1
-        pytec3d.model.time_step["time"] = i * 0.0001
-        pytec3d.model.time_step["theta"] = 0.85
+        pytec3d.time_step["transient_effects"] = 1
+        pytec3d.time_step["time"] = i * 0.0001
+        pytec3d.time_step["theta"] = 0.85
     elif i == 6:
-        pytec3d.model.time_step["transient_effects"] = 0
-        pytec3d.model.time_step["time"] = i * 0.001
+        pytec3d.time_step["transient_effects"] = 0
+        pytec3d.time_step["time"] = i * 0.001
     else:
-        pytec3d.model.time_step["transient_effects"] = 1
-        pytec3d.model.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 1
+        pytec3d.time_step["time"] = i * 0.0001
 
     Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
     Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 1 / i, 2, type="elem")

@@ -10,8 +10,6 @@
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <set>
-#include <unordered_map>
 
 #include <libmesh/fe_interface.h>
 #include <libmesh/quadrature_gauss.h>
@@ -19,13 +17,16 @@
 
 #include "embedded_resources.h"
 #include "logging.h"
-#include "parameter_columns.h"
 
 namespace pytec3d
 {
     namespace
     {
         using json = nlohmann::ordered_json;
+        using registry::Domain;
+        using registry::FieldId;
+        using registry::LawId;
+        using registry::ParameterId;
 
         [[noreturn]] void fail(const std::string &message)
         {
@@ -86,22 +87,22 @@ namespace pytec3d
                                { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
         }
 
-        std::vector<unsigned int> read_domains(const json &definition, const std::string &context, const std::vector<std::string> &domains)
+        std::vector<Domain> read_domains(const json &definition, const std::string &context)
         {
-            std::vector<unsigned int> out;
+            std::vector<Domain> out;
             if (!definition.is_object() || !definition.contains("domain"))
                 return out;
             for (const std::string &name : read_string_list(definition["domain"], context + " domain"))
             {
-                const auto it = std::find(domains.begin(), domains.end(), name);
-                if (it == domains.end())
-                    fail(context + ": unknown domain '" + name + "'.");
-                out.push_back(static_cast<unsigned int>(it - domains.begin()));
+                const auto domain = registry::parse_Domain(name);
+                if (!domain)
+                    fail(context + ": unknown domain '" + name + "' (see domains.json).");
+                out.push_back(*domain);
             }
             return out;
         }
 
-        // ---- expressions -------------------------------------------------------------------------------------
+        // ---- operands ----------------------------------------------------------------------------------------
 
         struct OperandText
         {
@@ -155,147 +156,11 @@ namespace pytec3d
 
         // ---- parameters --------------------------------------------------------------------------------------
 
-        struct ParameterKey
-        {
-            std::string name; ///< Without suffix.
-            ParameterType type = ParameterType::Scalar;
-            std::string text; ///< As written: "nu[][]", "Js[]", "amps()", "turns".
-        };
-
-        // "name", "name[]", "name[][]" or "name()".
-        ParameterKey split_key(const std::string &expression, const std::string &context)
-        {
-            const std::string text = strip_spaces(expression);
-            std::size_t end = 0;
-            while (end < text.size() && (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '_'))
-                ++end;
-
-            ParameterKey key;
-            key.name = text.substr(0, end);
-            key.text = text;
-            const std::string suffix = text.substr(end);
-            if (suffix.empty())
-                key.type = ParameterType::Scalar;
-            else if (suffix == "[]")
-                key.type = ParameterType::Vector;
-            else if (suffix == "[][]")
-                key.type = ParameterType::Tensor;
-            else if (suffix == "()")
-                key.type = ParameterType::Unknown;
-            else
-                fail(context + ": invalid parameter '" + expression + "'.");
-            if (!is_identifier(key.name))
-                fail(context + ": invalid parameter name '" + expression + "'.");
-            return key;
-        }
-
-        std::string lowercase(std::string text)
-        {
-            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            return text;
-        }
-
-        struct CatalogEntry
-        {
-            const char *name; ///< Lowercase.
-            ParameterType type;
-            std::vector<unsigned int> columns;
-        };
-
-        const std::vector<CatalogEntry> &material_catalog()
-        {
-            static const std::vector<CatalogEntry> catalog = {
-                {"mur", ParameterType::Vector, {MAT_MUR_X, MAT_MUR_Y, MAT_MUR_Z}},
-                {"relative_permeability", ParameterType::Vector, {MAT_MUR_X, MAT_MUR_Y, MAT_MUR_Z}},
-                {"rho", ParameterType::Vector, {MAT_RHO_X, MAT_RHO_Y, MAT_RHO_Z}},
-                {"resistivity", ParameterType::Vector, {MAT_RHO_X, MAT_RHO_Y, MAT_RHO_Z}},
-                {"m", ParameterType::Vector, {MAT_M_X, MAT_M_Y, MAT_M_Z}},
-                {"magnetization", ParameterType::Vector, {MAT_M_X, MAT_M_Y, MAT_M_Z}},
-            };
-            return catalog;
-        }
-
-        const std::vector<CatalogEntry> &constant_catalog()
-        {
-            static const std::vector<CatalogEntry> catalog = {
-                {"thk", ParameterType::Scalar, {CONST_THK}},
-                {"thickness", ParameterType::Scalar, {CONST_THK}},
-                {"cs", ParameterType::Scalar, {CONST_CS}},
-                {"cross_section", ParameterType::Scalar, {CONST_CS}},
-                {"turns", ParameterType::Scalar, {CONST_TURNS}},
-                {"vol", ParameterType::Scalar, {CONST_VOL}},
-                {"volume", ParameterType::Scalar, {CONST_VOL}},
-                {"rad", ParameterType::Scalar, {CONST_RAD}},
-                {"radius", ParameterType::Scalar, {CONST_RAD}},
-                {"r", ParameterType::Scalar, {CONST_R}},
-                {"resistance", ParameterType::Scalar, {CONST_R}},
-                {"s", ParameterType::Scalar, {CONST_S}},
-                {"symmetry", ParameterType::Scalar, {CONST_S}},
-                {"t", ParameterType::Vector, {CONST_T_X, CONST_T_Y, CONST_T_Z}},
-                {"current_direction", ParameterType::Vector, {CONST_T_X, CONST_T_Y, CONST_T_Z}},
-            };
-            return catalog;
-        }
-
-        bool is_builtin_name(const std::string &name)
-        {
-            for (const char *builtin : {"pi", "mu0", "dimension", "axisymmetric", "ex", "ey", "ez"})
-                if (name == builtin)
-                    return true;
-            return false;
-        }
-
-        // "mat.mur[]", "rc.turns", "me.Js[]", "mn.AMPS()": the grid and model data that parameters read.
-        ParameterDefinition parse_declaration(const std::string &declaration)
-        {
-            const std::string context = "parameter '" + declaration + "'";
-            const std::string text = strip_spaces(declaration);
-            const std::size_t dot = text.find('.');
-            if (dot == std::string::npos)
-                fail(context + " must start with mat., rc., me. or mn.");
-
-            const std::string prefix = text.substr(0, dot);
-            const ParameterKey key = split_key(text.substr(dot + 1), context);
-
-            ParameterDefinition definition;
-            definition.name = key.text;
-            definition.type = key.type;
-
-            if (prefix == "mat" || prefix == "rc")
-            {
-                if (key.type == ParameterType::Unknown)
-                    fail(context + ": a " + (prefix == "mat" ? "material" : "real-constant") + " parameter has a fixed type.");
-                const auto &catalog = prefix == "mat" ? material_catalog() : constant_catalog();
-                const std::string wanted = lowercase(key.name);
-                const auto entry = std::find_if(catalog.begin(), catalog.end(), [&wanted](const CatalogEntry &e) { return wanted == e.name; });
-                if (entry == catalog.end())
-                    fail(context + ": unknown " + (prefix == "mat" ? "material" : "real constant") + " '" + key.name + "'.");
-                if (entry->type != key.type)
-                    fail(context + ": '" + key.name + "' is a " + type_name(entry->type) + ", write it " +
-                         (entry->type == ParameterType::Vector ? "with []" : "without a suffix") + ".");
-                definition.source = prefix == "mat" ? ParameterSource::Material : ParameterSource::Constant;
-                definition.columns = entry->columns;
-            }
-            else if (prefix == "me" || prefix == "mn")
-            {
-                definition.source = prefix == "me" ? ParameterSource::Cell : ParameterSource::Point;
-                definition.array = key.name;
-                if (definition.source == ParameterSource::Point && key.type != ParameterType::Unknown && key.type != ParameterType::Scalar)
-                    fail(context + ": point data is a scalar array per node.");
-            }
-            else
-                fail(context + ": unknown source '" + prefix + "' (expected mat, rc, me or mn).");
-            return definition;
-        }
-
-        // What a kernel can name: parameters, laws and, for nodal loads, point data.
+        // What a kernel can name: the parameters of the registry and the laws of the element type.
         struct ParameterTable
         {
             const std::vector<ParameterDefinition> &parameters;
-            const std::unordered_map<std::string, unsigned int> &index;
-            const std::vector<NonlinearLaw> &laws;
-            const std::unordered_map<std::string, unsigned int> &law_index;
-            const std::map<std::string, std::string> &point_arrays; ///< "AMPS()" -> array name.
+            const std::vector<std::optional<NonlinearLaw>> &laws;
         };
 
         // "-nu[][]", "BH()", "turns": an optional sign and a parameter or law; empty is 1.
@@ -311,31 +176,30 @@ namespace pytec3d
                 out.sign = text[0] == '-' ? -1.0 : 1.0;
                 text.erase(0, 1);
             }
-            out.name = text;
 
             if (text.size() > 2 && text.compare(text.size() - 2, 2, "()") == 0)
             {
-                const auto law = table.law_index.find(text.substr(0, text.size() - 2));
-                if (law != table.law_index.end())
+                if (const auto law = registry::parse_LawId(text.substr(0, text.size() - 2)))
                 {
+                    if (!table.laws[static_cast<std::size_t>(*law)])
+                        fail(context + ": the element type does not define the law '" + text + "'.");
                     out.kind = ParameterKind::Law;
-                    out.index = law->second;
+                    out.index = static_cast<unsigned int>(*law);
                     out.type = ParameterType::Tensor;
                     return out;
                 }
             }
 
-            const auto it = table.index.find(text);
-            if (it != table.index.end())
-            {
-                out.kind = ParameterKind::Parameter;
-                out.index = it->second;
-                out.type = table.parameters[it->second].type;
-                return out;
-            }
-            if (table.point_arrays.count(text))
+            const auto id = registry::parse_parameter(text);
+            if (!id)
+                fail(context + ": unknown parameter '" + text + "'.");
+            const registry::ParameterInfo &info = registry::info(*id);
+            if (info.source == ParameterSource::Point)
                 fail(context + ": '" + text + "' is point data; it can only be the nodal_loads of a dof field.");
-            fail(context + ": unknown parameter '" + text + "'.");
+            out.kind = ParameterKind::Parameter;
+            out.index = static_cast<unsigned int>(*id);
+            out.type = info.type;
+            return out;
         }
 
         // ---- fields ------------------------------------------------------------------------------------------
@@ -379,17 +243,18 @@ namespace pytec3d
         std::vector<LibMeshVariable> libmesh_variables(const Field &field)
         {
             static const char *const suffixes[3] = {"_x", "_y", "_z"};
+            const std::string name(field.name());
             std::vector<LibMeshVariable> out;
 
             if (field.vector_output && field.family == libMesh::NEDELEC_ONE)
-                out.push_back({field.name + "z", field.family, field.order});
+                out.push_back({name + "z", field.family, field.order});
             else if (field.vector_output)
                 for (unsigned int component : field.active_components)
-                    out.push_back({field.name + suffixes[component], scalar_family(field.family), field.order});
+                    out.push_back({name + suffixes[component], scalar_family(field.family), field.order});
             else if (field.physical_vector)
-                out.push_back({field.name + suffixes[field.active_components.at(0)], field.family, field.order});
+                out.push_back({name + suffixes[field.active_components.at(0)], field.family, field.order});
             else
-                out.push_back({field.name, field.family, field.order});
+                out.push_back({name, field.family, field.order});
             return out;
         }
 
@@ -398,23 +263,20 @@ namespace pytec3d
                           const json &definition,
                           FieldKind kind,
                           unsigned int dimension,
-                          const ElementTypeOptions &options,
-                          const std::map<std::string, bool> &field_is_vector,
-                          const std::vector<std::string> &domains,
-                          const std::map<std::string, std::string> &point_arrays)
+                          const ElementTypeOptions &options)
         {
             const std::string context = "element type '" + type_name + "', field '" + name + "'";
 
-            const auto vector_it = field_is_vector.find(name);
-            if (vector_it == field_is_vector.end())
+            const auto id = registry::parse_FieldId(name);
+            if (!id)
                 fail(context + " is not declared in fields.json.");
             if (!definition.is_object())
                 fail(context + " must be an object.");
 
             Field field;
-            field.name = name;
+            field.id = *id;
             field.kind = kind;
-            field.physical_vector = vector_it->second;
+            field.physical_vector = registry::is_vector(*id);
 
             std::vector<unsigned int> requested;
             if (definition.contains("active_components"))
@@ -466,12 +328,12 @@ namespace pytec3d
                 if (kind != FieldKind::Dof || !definition["nodal_loads"].is_string())
                     fail(context + ": 'nodal_loads' is a string and only applies to dof fields.");
                 const std::string key = strip_spaces(definition["nodal_loads"].get<std::string>());
-                const auto point = point_arrays.find(key);
-                if (point == point_arrays.end())
+                const auto parameter = registry::parse_parameter(key);
+                if (!parameter || registry::info(*parameter).source != ParameterSource::Point)
                     fail(context + ": nodal_loads '" + key + "' is not a point-data (mn.) parameter.");
-                field.nodal_loads = point->second;
+                field.nodal_loads = registry::info(*parameter).array;
             }
-            field.domains = read_domains(definition, context, domains);
+            field.domains = read_domains(definition, context);
             field.libmesh_variables = libmesh_variables(field);
             return field;
         }
@@ -481,10 +343,7 @@ namespace pytec3d
                                         const char *section,
                                         FieldKind kind,
                                         unsigned int dimension,
-                                        const ElementTypeOptions &options,
-                                        const std::map<std::string, bool> &field_is_vector,
-                                        const std::vector<std::string> &domains,
-                                        const std::map<std::string, std::string> &point_arrays)
+                                        const ElementTypeOptions &options)
         {
             std::vector<Field> out;
             if (!type_json.contains(section))
@@ -495,7 +354,7 @@ namespace pytec3d
             out.reserve(fields.size());
             for (auto it = fields.begin(); it != fields.end(); ++it)
             {
-                Field field = parse_field(type_name, it.key(), it.value(), kind, dimension, options, field_is_vector, domains, point_arrays);
+                Field field = parse_field(type_name, it.key(), it.value(), kind, dimension, options);
                 field.index = static_cast<unsigned int>(out.size());
                 out.push_back(std::move(field));
             }
@@ -506,8 +365,11 @@ namespace pytec3d
 
         const Field *find_by_name(const std::vector<Field> &fields, const std::string &name)
         {
+            const auto id = registry::parse_FieldId(name);
+            if (!id)
+                return nullptr;
             for (const Field &field : fields)
-                if (field.name == name)
+                if (field.id == *id)
                     return &field;
             return nullptr;
         }
@@ -546,7 +408,6 @@ namespace pytec3d
         std::vector<DofKernel> parse_dof_kernels(const std::string &type_name,
                                                  const json &type_json,
                                                  const std::vector<Field> &dof_fields,
-                                                 const std::vector<std::string> &domains,
                                                  const ParameterTable &table,
                                                  const NablaFactory &nabla_of)
         {
@@ -571,7 +432,7 @@ namespace pytec3d
                 if (kernel.has_trial)
                     kernel.trial = make_operand(read_string(definition, "trial", context, true), dof_fields, context + " trial", true, nabla_of);
                 kernel.parameter = parse_parameter(read_string(definition, "coeff", context, false), context, table);
-                kernel.domains = read_domains(definition, context, domains);
+                kernel.domains = read_domains(definition, context);
 
                 const ParameterRef &parameter = kernel.parameter;
                 if (kernel.has_trial && parameter.type == ParameterType::Vector)
@@ -590,7 +451,6 @@ namespace pytec3d
                                                      const char *section,
                                                      const std::vector<Field> &fields,
                                                      const std::vector<Field> &dof_fields,
-                                                     const std::vector<std::string> &domains,
                                                      const ParameterTable &table,
                                                      const NablaFactory &nabla_of)
         {
@@ -622,7 +482,7 @@ namespace pytec3d
                         kernel.field = field;
                         kernel.trial = make_operand(read_string(definition, "trial", term_context, true), dof_fields, term_context + " trial", true, nabla_of);
                         kernel.parameter = parse_parameter(read_string(definition, "coeff", term_context, false), term_context, table);
-                        kernel.domains = read_domains(definition, term_context, domains);
+                        kernel.domains = read_domains(definition, term_context);
                         if (kernel.parameter.type == ParameterType::Vector)
                             fail(term_context + ": a field parameter is a scalar or a tensor.");
                         if (kernel.parameter.kind == ParameterKind::Law && kernel.trial.time_derivative)
@@ -637,7 +497,7 @@ namespace pytec3d
                 const bool has_term = std::any_of(out.begin(), out.end(), [&field](const FieldKernel &k)
                                                   { return k.field == &field; });
                 if (!has_term)
-                    fail("element type '" + type_name + "': field '" + field.name + "' has no kernel in '" + section + "'.");
+                    fail("element type '" + type_name + "': field '" + std::string(field.name()) + "' has no kernel in '" + section + "'.");
             }
             return out;
         }
@@ -645,156 +505,63 @@ namespace pytec3d
 
     ElementTypeParser ElementTypeParser::from_embedded()
     {
-        return from_strings(resources::ELEMENT_TYPES_JSON, resources::FIELDS_JSON, resources::DOMAINS_JSON);
+        return from_string(resources::ELEMENT_TYPES_JSON);
     }
 
-    ElementTypeParser ElementTypeParser::from_strings(const std::string &element_types_json,
-                                                      const std::string &fields_json,
-                                                      const std::string &domains_json)
+    ElementTypeParser ElementTypeParser::from_string(const std::string &element_types_json)
     {
         ElementTypeParser parser;
-
-        const json domains = parse_json(domains_json, "domains.json");
-        if (!domains.is_object() || !domains.contains("domains"))
-            fail("domains.json must contain a 'domains' array.");
-        parser.domains_ = read_string_list(domains["domains"], "domains.json 'domains'");
-
-        const json fields = parse_json(fields_json, "fields.json");
-        if (!fields.is_object())
-            fail("fields.json must be an object.");
-        for (auto it = fields.begin(); it != fields.end(); ++it)
-        {
-            if (!it.value().is_object() || !it.value().contains("vector") || !it.value()["vector"].is_boolean())
-                fail("fields.json: field '" + it.key() + "' needs a boolean 'vector' entry.");
-            parser.field_is_vector_[it.key()] = it.value()["vector"].get<bool>();
-        }
-
         parser.element_types_json_ = parse_json(element_types_json, "element_types.json");
         const json &root = parser.element_types_json_;
         if (!root.is_object() || !root.contains("element_types") || !root["element_types"].is_object())
             fail("element_types.json must contain an 'element_types' object.");
-
-        std::set<std::string> names;
-        const auto claim = [&names](const std::string &key, const std::string &context)
-        {
-            if (is_builtin_name(key) || !names.insert(key).second)
-                fail(context + ": '" + key + "' is already defined or reserved.");
-        };
-
-        if (root.contains("parameters"))
-            for (const std::string &declaration : read_string_list(root["parameters"], "element_types.json 'parameters'"))
-            {
-                ParameterDefinition definition = parse_declaration(declaration);
-                claim(definition.name, "parameter '" + declaration + "'");
-                parser.declarations_.push_back(std::move(definition));
-            }
-
-        if (root.contains("expressions"))
-        {
-            if (!root["expressions"].is_object())
-                fail("element_types.json: 'expressions' must be an object.");
-            for (auto it = root["expressions"].begin(); it != root["expressions"].end(); ++it)
-            {
-                const std::string context = "expression '" + it.key() + "'";
-                const ParameterKey key = split_key(it.key(), context);
-                if (key.type == ParameterType::Unknown)
-                    fail(context + ": an expression is a scalar, a vector[] or a tensor[][].");
-                if (!it.value().is_string())
-                    fail(context + " must be a string.");
-                claim(key.text, context);
-                parser.expressions_.emplace_back(key.text, it.value().get<std::string>());
-            }
-        }
         return parser;
     }
 
-    bool ElementTypeParser::has_type(const std::string &name) const
+    std::unique_ptr<ElementType> ElementTypeParser::build(registry::ElementTypeId id, const ElementTypeOptions &options) const
     {
-        return element_types_json_["element_types"].contains(name);
-    }
-
-    std::vector<std::string> ElementTypeParser::type_names() const
-    {
-        std::vector<std::string> names;
-        for (auto it = element_types_json_["element_types"].begin(); it != element_types_json_["element_types"].end(); ++it)
-            names.push_back(it.key());
-        return names;
-    }
-
-    unsigned int ElementTypeParser::domain_index(const std::string &name) const
-    {
-        const auto it = std::find(domains_.begin(), domains_.end(), name);
-        if (it == domains_.end())
-            fail("unknown domain '" + name + "'.");
-        return static_cast<unsigned int>(it - domains_.begin());
-    }
-
-    const std::string &ElementTypeParser::domain_name(unsigned int index) const
-    {
-        if (index >= domains_.size())
-            fail("domain index " + std::to_string(index) + " out of range.");
-        return domains_[index];
-    }
-
-    std::unique_ptr<ElementType> ElementTypeParser::build(const std::string &name, const ElementTypeOptions &options) const
-    {
-        if (!has_type(name))
-            fail("unknown element type '" + name + "'.");
+        const std::string name(registry::name(id));
         const json &type_json = element_types_json_["element_types"][name];
         const std::string context = "element type '" + name + "'";
 
-        if (!type_json.contains("dimension") || !type_json["dimension"].is_number_unsigned())
-            fail(context + " needs an unsigned 'dimension'.");
-        const unsigned int dimension = type_json["dimension"].get<unsigned int>();
-        if (dimension != 2 && dimension != 3)
-            fail(context + ": dimension must be 2 or 3.");
+        const unsigned int dimension = registry::dimension(id);
         if (options.order < static_cast<unsigned int>(libMesh::FIRST))
             fail(context + ": order must be >= 1.");
         if (options.axisymmetric && dimension != 2)
             fail(context + ": axisymmetric requires a 2D element type.");
 
         std::unique_ptr<ElementType> type(new ElementType());
-        type->name_ = name;
+        type->id_ = id;
         type->dimension_ = dimension;
         type->options_ = options;
-        type->domains_ = domains_;
 
-        // Parameters: the declared ones, then the expressions that build on them in order.
-        type->parameters_ = declarations_;
-        std::unordered_map<std::string, unsigned int> index;
-        std::map<std::string, std::string> point_arrays;
-        for (unsigned int i = 0; i < type->parameters_.size(); ++i)
+        // Parameters: every one of the registry; the expressions are compiled for this dimension, in order, each
+        // one building on the parameters before it.
+        type->parameters_.resize(registry::kNumParameterId);
+        for (std::size_t i = 0; i < type->parameters_.size(); ++i)
         {
-            const ParameterDefinition &definition = type->parameters_[i];
-            if (definition.source == ParameterSource::Point)
-                point_arrays[definition.name] = definition.array;
-            else
-                index[definition.name] = i;
-        }
-        for (const auto &[key, text] : expressions_)
-        {
-            const std::string expression_context = "element type '" + name + "', expression '" + key + "'";
+            ParameterDefinition &definition = type->parameters_[i];
+            definition.id = static_cast<ParameterId>(i);
+            const registry::ParameterInfo &info = definition.info();
+            if (info.source != ParameterSource::Expression)
+                continue;
+
+            const std::string expression_context = context + ", expression '" + std::string(info.key) + "'";
             const Expression::Resolver resolve = [&](const std::string &parameter) -> std::optional<unsigned int>
             {
-                const auto it = index.find(parameter);
-                if (it != index.end())
-                    return it->second;
-                if (point_arrays.count(parameter))
+                const auto found = registry::parse_parameter(parameter);
+                if (!found || static_cast<std::size_t>(*found) >= i)
+                    return std::nullopt;
+                if (registry::info(*found).source == ParameterSource::Point)
                     fail(expression_context + ": '" + parameter + "' is point data and cannot be used in expressions.");
-                return std::nullopt;
+                return static_cast<unsigned int>(*found);
             };
-
-            ParameterDefinition definition;
-            definition.name = key;
-            definition.type = split_key(key, expression_context).type;
-            definition.source = ParameterSource::Expression;
-            definition.expression = std::make_shared<const Expression>(Expression::parse(text, expression_context, resolve, dimension, options.axisymmetric));
-            index[key] = static_cast<unsigned int>(type->parameters_.size());
-            type->parameters_.push_back(std::move(definition));
+            definition.expression = std::make_shared<const Expression>(
+                Expression::parse(std::string(info.expression), expression_context, resolve, dimension, options.axisymmetric));
         }
 
         // Nonlinear laws: used in kernels as "name()".
-        std::unordered_map<std::string, unsigned int> law_index;
+        type->laws_.assign(registry::kNumLawId, std::nullopt);
         if (type_json.contains("nonlinear_laws"))
         {
             const json &laws = type_json["nonlinear_laws"];
@@ -804,33 +571,29 @@ namespace pytec3d
             {
                 const std::string law_context = context + ", law '" + it.key() + "'";
                 const json &definition = it.value();
-                if (!is_identifier(it.key()) || !definition.is_object())
-                    fail(law_context + " must be an object with an identifier as name.");
-                if (index.count(it.key() + "()") || point_arrays.count(it.key() + "()"))
-                    fail(law_context + ": a parameter has the same name.");
+                if (!definition.is_object())
+                    fail(law_context + " must be an object.");
+                const auto law_id = registry::parse_LawId(it.key());
+                if (!law_id)
+                    fail(law_context + " is not in the registry.");
 
                 NonlinearLaw law;
-                law.name = it.key();
-                if (read_string(definition, "type", law_context, true) != "bh_curve")
-                    fail(law_context + ": the only law type is 'bh_curve'.");
-                law.type = LawType::BHCurve;
-
+                law.id = *law_id;
                 const std::string linear = strip_spaces(read_string(definition, "linear", law_context, true));
-                const auto linear_it = index.find(linear);
-                if (linear_it == index.end() || type->parameters_[linear_it->second].type != ParameterType::Tensor)
+                const auto linear_id = registry::parse_parameter(linear);
+                if (!linear_id || registry::info(*linear_id).source == ParameterSource::Point ||
+                    registry::info(*linear_id).type != ParameterType::Tensor)
                     fail(law_context + ": 'linear' must be a tensor parameter.");
-                law.linear = linear_it->second;
-
-                law_index[law.name] = static_cast<unsigned int>(type->laws_.size());
-                type->laws_.push_back(std::move(law));
+                law.linear = *linear_id;
+                type->laws_[static_cast<std::size_t>(*law_id)] = law;
             }
         }
 
-        const ParameterTable table{type->parameters_, index, type->laws_, law_index, point_arrays};
+        const ParameterTable table{type->parameters_, type->laws_};
 
-        type->dof_fields_ = parse_fields(name, type_json, "dof_fields", FieldKind::Dof, dimension, options, field_is_vector_, domains_, point_arrays);
-        type->nodal_fields_ = parse_fields(name, type_json, "nodal_fields", FieldKind::Nodal, dimension, options, field_is_vector_, domains_, point_arrays);
-        type->element_fields_ = parse_fields(name, type_json, "element_fields", FieldKind::Element, dimension, options, field_is_vector_, domains_, point_arrays);
+        type->dof_fields_ = parse_fields(name, type_json, "dof_fields", FieldKind::Dof, dimension, options);
+        type->nodal_fields_ = parse_fields(name, type_json, "nodal_fields", FieldKind::Nodal, dimension, options);
+        type->element_fields_ = parse_fields(name, type_json, "element_fields", FieldKind::Element, dimension, options);
 
         // One quadrature rule and one FE per (family, order), shared by every field using it.
         unsigned int highest_order = static_cast<unsigned int>(libMesh::FIRST);
@@ -868,9 +631,9 @@ namespace pytec3d
             for (const Field &field : *fields)
                 nabla_of(field, NablaOperator::Identity);
 
-        type->dof_kernels_ = parse_dof_kernels(name, type_json, type->dof_fields_, domains_, table, nabla_of);
-        type->nodal_kernels_ = parse_field_kernels(name, type_json, "nodal_kernels", type->nodal_fields_, type->dof_fields_, domains_, table, nabla_of);
-        type->element_kernels_ = parse_field_kernels(name, type_json, "element_kernels", type->element_fields_, type->dof_fields_, domains_, table, nabla_of);
+        type->dof_kernels_ = parse_dof_kernels(name, type_json, type->dof_fields_, table, nabla_of);
+        type->nodal_kernels_ = parse_field_kernels(name, type_json, "nodal_kernels", type->nodal_fields_, type->dof_fields_, table, nabla_of);
+        type->element_kernels_ = parse_field_kernels(name, type_json, "element_kernels", type->element_fields_, type->dof_fields_, table, nabla_of);
 
         type->geometry_fe_ = libMesh::FEBase::build(dimension, libMesh::FEType(libMesh::FIRST, libMesh::LAGRANGE));
         type->geometry_fe_->attach_quadrature_rule(type->quadrature_.get());
@@ -878,10 +641,11 @@ namespace pytec3d
         type->geometry_fe_->get_xyz();
 
         // The FEs to reinit in each domain, each once.
-        type->fes_by_domain_.resize(domains_.size());
-        for (unsigned int domain = 0; domain < domains_.size(); ++domain)
+        type->fes_by_domain_.resize(registry::kNumDomain);
+        for (std::size_t index = 0; index < registry::kNumDomain; ++index)
         {
-            std::vector<libMesh::FEAbstract *> &active = type->fes_by_domain_[domain];
+            const Domain domain = static_cast<Domain>(index);
+            std::vector<libMesh::FEAbstract *> &active = type->fes_by_domain_[index];
             for (const std::vector<Field> *fields : {&type->dof_fields_, &type->nodal_fields_})
                 for (const Field &field : *fields)
                     if (field.active_in(domain) && std::find(active.begin(), active.end(), field.fe) == active.end())

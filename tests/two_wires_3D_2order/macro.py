@@ -10,7 +10,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_pos(pytec3d.model.mesh, 0, (0.499, 0.50001))
 Selector.select_pos(pytec3d.model.mesh, 0, (-0.501, -0.49999), mode="a")
@@ -37,9 +37,9 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 Selector.select(pytec3d.model.mesh, "TYPE", 23, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 1, 2, type="elem")
 
-pytec3d.model.time_step["time"] = 1e-3
-pytec3d.model.time_step["theta"] = 0.5
-pytec3d.model.time_step["transient_effects"] = 1
+pytec3d.time_step["time"] = 1e-3
+pytec3d.time_step["theta"] = 0.5
+pytec3d.time_step["transient_effects"] = 1
 pytec3d.save_model()
 pytec3d.load_model_into_solver()
 

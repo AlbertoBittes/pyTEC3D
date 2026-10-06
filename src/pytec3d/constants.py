@@ -1,23 +1,6 @@
 import vtk
 import numpy as np
 
-# Global variable list, index is the number
-VARIABLES_GLOBAL_LIST = [
-    "A",
-    "Az",
-    "V",
-    "VOLT",
-    "EMF",
-    "B",
-    "H",
-    "Be",
-    "He",
-    "Jt",
-    "AMPS",
-    "CURR",
-    "Js",
-]
-
 # Default solver settings
 DEFAULT_SOLVER_SETTINGS = {
     "ksp_type": "preonly",
@@ -28,27 +11,11 @@ DEFAULT_SOLVER_SETTINGS = {
 }
 
 
-# Add a dictionary with the name of the setting and its type
-DEFAULT_SOLVER_SETTINGS_TYPES = {
-    "ksp_type": str,
-    "pc_type": str,
-    "initial_linear_tolerance": float,
-    "max_linear_iterations": int,
-    "minimum_linear_tolerance": float,
-}
-
 # Default time parameters
 DEFAULT_TIME_PARAMETERS = {
     "time": 1.0,
     "transient_effects": True,
     "theta": 1.0,
-}
-
-# Add a dictionary with the name of the time parameter and its type
-DEFAULT_TIME_PARAMETERS_TYPES = {
-    "time": float,
-    "transient_effects": bool,
-    "theta": float,
 }
 
 # Default pyTEC3D algorithm parameters/status
@@ -118,101 +85,7 @@ DEFAULT_pyTEC3D_ALGORITHM_STATUS = {
     "converged": False,
 }
 
-# Assign types to materials columns
-MATERIALS_COLUMNS_TYPES = {
-    "MATERIAL_ID": int,
-    "MUR_X": float,
-    "MUR_Y": float,
-    "MUR_Z": float,
-    "RHO_X": float,
-    "RHO_Y": float,
-    "RHO_Z": float,
-    "M_X": float,
-    "M_Y": float,
-    "M_Z": float,
-}
-
-# Assign types to DOF coupling columns
-DOF_COUPLINGS_COLUMNS_TYPES = {
-    "CP_ID": int,
-    "VARIABLE": str,
-}
-
-# Assign types to real constants columns
-CONSTANTS_COLUMNS_TYPES = {
-    "CONSTANTS_ID": int,
-    "THK": float,
-    "CS": float,
-    "TURNS": float,
-    "VOL": float,
-    "RAD": float,
-    "T_X": float,
-    "T_Y": float,
-    "T_Z": float,
-    "R": float,
-    "S": float,
-    "V_X": float,
-    "V_Y": float,
-    "V_Z": float,
-    "OMEGA_X": float,
-    "OMEGA_Y": float,
-    "OMEGA_Z": float,
-    "LOC_X": float,
-    "LOC_Y": float,
-    "LOC_Z": float,
-}
-
-# Assign types to element types columns
-ELEMENT_TYPES_COLUMNS_TYPES = {
-    "TYPE_ID": int,
-    "ELEMENT_TYPE": int,
-    "OPTION1": int,
-    "OPTION2": int,
-    "OPTION3": int,
-    "OPTION4": int,
-    "OPTION5": int,
-}
-
-
-# Assign types to loads and boundary conditions columns
-CELL_POINT_DATA_COLUMNS_TYPES = {
-    "VTK_ID": int,
-    "LABEL": str,
-    "COMPONENT": int,
-    "VALUE": float,
-}
-
-DEFAULT_COLUMNS_ATTRIBUTES_TYPES = {
-    "element_types": ELEMENT_TYPES_COLUMNS_TYPES,
-    "materials": MATERIALS_COLUMNS_TYPES,
-    "constants": CONSTANTS_COLUMNS_TYPES,
-    "solver_settings": DEFAULT_SOLVER_SETTINGS_TYPES,
-    "time_step": DEFAULT_TIME_PARAMETERS_TYPES,
-    "node": CELL_POINT_DATA_COLUMNS_TYPES,
-    "elem": CELL_POINT_DATA_COLUMNS_TYPES,
-    "dof_couplings": DOF_COUPLINGS_COLUMNS_TYPES,
-}
-
-# Define the mapping of sheet names to processing methods
-SHEET_PROCESSING_MAP = {
-    "element_types": "read_excel_df",
-    "materials": "read_excel_df",
-    "constants": "read_excel_df",
-    "solver_settings": "read_excel_dict",
-    "time_step": "read_excel_dict",
-    "pytec3d_settings": "read_excel_dict",
-    "node": ("update_vtk_grid_from_excel", "node"),
-    "elem": ("update_vtk_grid_from_excel", "elem"),
-    "dof_couplings": "read_excel_df",
-}
-
 VTK_ARRAYS_TO_INIT = {
-    "angles": {
-        "location": "node",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
     "A": {
         "location": "node",
         "components": 3,

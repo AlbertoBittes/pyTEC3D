@@ -32,12 +32,12 @@ extr_angle = 2.0
 pytec3d.read_model(filepath)
 pytec3d.algorithm.vacuum_chamber_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select(pytec3d.model.mesh, "COILS", 1, type="elem", mode="s")
 Selector.set_value_on_selection(pytec3d.model.mesh, "TYPE", 35, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
-pytec3d.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
 
 Selector.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type="elem")
@@ -45,7 +45,7 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type
 ModelEdit.remove_array(pytec3d.model.mesh, "CP_0")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select(pytec3d.model.mesh, "COILS", 1, type="elem")
-pytec3d.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
 for k, comp in enumerate(["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L"]):
@@ -87,7 +87,7 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
 ModelEdit.remove_array(pytec3d.model.mesh, "CP_1")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_1", dtype=vtk.VTK_INT)
 Selector.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-pytec3d.model.dof_couplings = pd.concat([pytec3d.model.dof_couplings, ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_1", variables=("A", "V"))])
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_1", variables=("A", "V")))
 
 # rotate angles
 Selector.select_pos(pytec3d.model.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
@@ -136,16 +136,16 @@ betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 
 pytec3d.load_model_into_solver()
 for step_idx in range(len(time_steps)):
-    pytec3d.model.time_step["time"] = time_steps[step_idx]
+    pytec3d.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        pytec3d.model.time_step["transient_effects"] = False
-        pytec3d.model.time_step["time"] = 1e-10
+        pytec3d.time_step["transient_effects"] = False
+        pytec3d.time_step["time"] = 1e-10
     else:
-        pytec3d.model.time_step["transient_effects"] = True
+        pytec3d.time_step["transient_effects"] = True
     pytec3d.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     pytec3d.algorithm.input_parameters["beta_p"] = betas[step_idx]
     pytec3d.algorithm.evolution_solve()

@@ -29,7 +29,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 pytec3d.read_model(filepath)
 
 # 3. Read the Excel file for new element types, material properties, real constants, solver settings etc.
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 # 4. Save the mesh and the model data read from the Excel file to .vtu
 pytec3d.save_model()
@@ -67,14 +67,14 @@ b = 2**0.5 / 2
 # 6. Transient analysis: loop over the number of desired time-steps
 for i in range(1, 3):
     # Set the current time for this time-step
-    pytec3d.model.time_step["time"] = i * 0.0001
+    pytec3d.time_step["time"] = i * 0.0001
     # Set the transient effects flag
     # initial time-step is static to establish the initial conditions
     if i == 1:
-        pytec3d.model.time_step["transient_effects"] = 0
+        pytec3d.time_step["transient_effects"] = 0
     # subsequent time-steps have transient effects
     else:
-        pytec3d.model.time_step["transient_effects"] = 1
+        pytec3d.time_step["transient_effects"] = 1
 
     # 7. Loads: impose a fixed source current Js on the active coil elements
     Selector.select(pytec3d.model.mesh, "COIL_NOCOND_1", 1, type="elem")

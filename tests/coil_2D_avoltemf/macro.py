@@ -11,7 +11,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_all(pytec3d.model.mesh)
 Selector.nsel_ext(pytec3d.model.mesh)
@@ -31,11 +31,11 @@ Selector.select(pytec3d.model.mesh, "ID", master_node_ground)
 Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 
 pytec3d.load_model_into_solver()
-pytec3d.model.time_step["theta"] = 0.5
+pytec3d.time_step["theta"] = 0.5
 
 Selector.select_all(pytec3d.model.mesh)
 for i in range(1, 3):
-    pytec3d.model.time_step["time"] = i * 0.00001
+    pytec3d.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(pytec3d.model.mesh, "ID", master_node)
         Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 100)

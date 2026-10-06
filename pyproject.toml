@@ -12,7 +12,6 @@ authors = [{ name = "Alberto Bittesnich" }]
 dependencies = [
   "numpy",
   "pandas",
-  "openpyxl",
   # Install mpi4py from conda (same MPI as libMesh/PETSc), then use
   # `pip install --no-deps`. If it is already present, pip leaves it alone.
   "mpi4py",

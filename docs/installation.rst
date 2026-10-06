@@ -53,7 +53,6 @@ Quick Start (Local Workflow)
      spdlog \
      numpy \
      pandas \
-     openpyxl \
      mpi4py \
      pip \
      -y

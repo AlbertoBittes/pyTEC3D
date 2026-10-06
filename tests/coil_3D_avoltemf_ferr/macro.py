@@ -16,7 +16,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 size = 1
 coil = 0.2
@@ -35,7 +35,7 @@ Selector.select_pos(pytec3d.model.mesh, 2, (-0.75, 0.75), type="elem", mode="r",
 Selector.set_value_on_selection(pytec3d.model.mesh, "MATERIAL", 26, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "TYPE", 26, type="elem")
 
-pytec3d.model.bh_curves[26] = [
+pytec3d.model.set_bh_curve(26, [
     [0.0, 0.0],
     [100.0, 0.371974867],
     [200.0, 0.743949735],
@@ -64,7 +64,7 @@ pytec3d.model.bh_curves[26] = [
     [17528.87526, 2.386338652],
     [18959.20013, 2.408834349],
     [20396.79471, 2.434974089],
-]
+])
 
 Selector.select_pos(
     pytec3d.model.mesh,
@@ -100,7 +100,8 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 # Coupling for stranded coils
 Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
-pytec3d.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem()
+)
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 Selector.nsle(pytec3d.model.mesh)
 Selector.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
@@ -113,18 +114,13 @@ master_node = vtknp.vtk_to_numpy(
 Selector.select_pos(
     pytec3d.model.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-pytec3d.model.dof_couplings = pd.concat(
-    [
-        pytec3d.model.dof_couplings,
-        ModelEdit.periodic_boundaries(
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(
             pytec3d.model.mesh,
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
             variables=("A", "V"),
-        ),
-    ]
-)
+        ))
 
 Selector.select_pos(
     pytec3d.model.mesh,
@@ -140,10 +136,10 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_V", 0)
 pytec3d.load_model_into_solver()
 
 Selector.select_all(pytec3d.model.mesh)
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 
 for i in range(1, 3):
-    pytec3d.model.time_step["time"] = i * 1e5
+    pytec3d.time_step["time"] = i * 1e5
     if i == 1:
         Selector.select(pytec3d.model.mesh, "ID", master_node)
         Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 15)

@@ -3,8 +3,10 @@
  * @brief Values of the parameters of an element type on one element.
  *
  * The kernels take plain values; this is where they come from. A parameter (element_types.json) is read
- * from the material row (mat.), the real-constants row (rc.) or a cell-data array of the grid (me.), or is
- * an expression of other parameters. Values are computed when first used and kept for the element.
+ * from the material (mat.), the real constants (rc.) or a cell-data array of the grid (me.), or is an
+ * expression of other parameters. Values are computed when first used and kept for the element, so a
+ * property that no kernel of the element's domain needs may stay undefined; one that is needed and
+ * undefined aborts with the element type, domain and material or constants it is missing from.
  *
  * A nonlinear law (BH) stands in a kernel where a parameter would. On an element without a BH curve it is
  * its linear parameter (a tensor); on an element with one it is applied to the trial value by the
@@ -20,6 +22,7 @@
 
 #include "element_type.h"
 #include "expression.h"
+#include "model_data.h"
 #include "parameter_value.h"
 
 class BHCurve;
@@ -32,8 +35,11 @@ namespace pytec3d
     public:
         struct Inputs
         {
-            const std::vector<libMesh::Real> *material = nullptr;                                      ///< Material row (parameter_columns.h).
-            const std::vector<libMesh::Real> *constants = nullptr;                                     ///< Real-constants row.
+            const MaterialRow *material = nullptr;                                                     ///< Null when the model does not define the material.
+            const ConstantRow *constants = nullptr;                                                    ///< Null when the model does not define the constants.
+            unsigned int material_id = 0;
+            unsigned int constants_id = 0;
+            registry::Domain domain = registry::Domain::COUNT;
             libMesh::TensorValue<libMesh::Real> rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; ///< Local to global axes.
             vtkCellData *cell_data = nullptr;
             vtkIdType element_id = 0;
@@ -56,8 +62,8 @@ namespace pytec3d
 
     private:
         ParameterValue compute(const ParameterDefinition &definition);
-        ParameterValue read_row(const std::vector<libMesh::Real> *row, const ParameterDefinition &definition) const;
-        ParameterValue read_cell(const ParameterDefinition &definition) const;
+        ParameterValue read_cell(const registry::ParameterInfo &info) const;
+        [[noreturn]] void undefined(const registry::ParameterInfo &info, const char *what, unsigned int id, bool row_exists) const;
 
         const ElementType &type_;
         Inputs inputs_;

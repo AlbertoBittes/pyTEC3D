@@ -10,10 +10,10 @@
  *  - Parameters are written with their type suffix: name, name[], name[][], name().
  *  - Constants: pi, mu0, dimension (2 or 3), axisymmetric (0 or 1), ex, ey, ez (unit vectors).
  *  - Functions: abs(s) sqrt(s) cbrt(s) det(T) diag(v) outer(a, b) dot(a, b)
- *               inv(s|v)     reciprocal, element by element for a vector
- *               invpos(s|v)  reciprocal where positive and finite, else 0
+ *               inv(s|v|T)     reciprocal, element by element for a vector; inverse of a tensor
+ *               invpos(s|v|T)  reciprocal where positive and finite, else 0 (a tensor: per entry if diagonal)
  *               global(v|T)  from the element's local axes to global axes
- *               select(c, a, b)  a if c is not zero, else b (both are evaluated)
+ *               select(c, a, b)  a if c is not zero, else b (only the one taken is evaluated)
  */
 #pragma once
 

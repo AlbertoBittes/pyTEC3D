@@ -32,10 +32,16 @@ public:
     pyTEC3DModel() = default;
     ~pyTEC3DModel();
 
+    /**
+     * @brief Imports the grid and the model data of the Python model, distributes mesh and DOFs.
+     * @param solver_settings dict of the Python solver (KSP/PC types and tolerances), read at every solve.
+     */
     void load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> &libmesh_init,
                           const std::shared_ptr<const pytec3d::ElementTypeParser> &parser,
-                          pybind11::object pytec3dodel_object);
-    void solve();
+                          pybind11::object pytec3dmodel_object,
+                          pybind11::object solver_settings);
+    /** @brief Solves the time step described by the dict of the Python solver (time, theta, transient_effects). */
+    void solve(const pybind11::dict &time_step);
     void write_system_to_vtk_grid(const std::string &system_name);
     void clear();
 

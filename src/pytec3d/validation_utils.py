@@ -155,10 +155,6 @@ def validate_required_arrays_present(mesh: Any) -> None:
         if arr is None:
             errors.append(f"CellData array '{required}' is required but was not found.")
 
-    angles = point_data.GetArray("angles") if point_data is not None else None
-    if angles is None:
-        errors.append("PointData array 'angles' is required but was not found.")
-
     for name, info in VTK_ARRAYS_TO_INIT.items():
         loc = info["location"]
         data_obj = point_data if loc == "node" else cell_data
@@ -250,7 +246,7 @@ def validate_solver_settings(settings: dict[str, Any]) -> None:
     - ``max_linear_iterations``: integer ≥ 1.
 
     Args:
-        settings: Dictionary of solver settings (typically ``model.solver_settings``).
+        settings: Dictionary of solver settings (typically ``solver.solver_settings``).
 
     Returns:
         None
@@ -354,18 +350,75 @@ _VTK_QUADRATIC_CELL_TYPES: np.ndarray = np.array(sorted([
 ]), dtype=np.int32)
 
 
+def _solver_registries() -> dict[str, Any]:
+    """Domains, fields, element types, material properties and real constants compiled into the solver."""
+    import importlib
+
+    try:
+        module = importlib.import_module("pytec3d_solver.pytec3d_solver")
+    except ImportError as exc:
+        raise ImportError(
+            "Could not import the C++ solver module 'pytec3d_solver.pytec3d_solver', which holds the"
+            " registries the model data is validated against. Build the extension first."
+        ) from exc
+    return module.registries()
+
+
+def _section_entries(data: Any, section: str, errors: list[str]) -> dict[int, Any]:
+    """Return ``data[section]`` keyed by int id; ids that are not positive integers are reported."""
+    entries = data.get(section, {})
+    if not isinstance(entries, dict):
+        errors.append(f"data['{section}'] must be an object, got {type(entries).__name__}.")
+        return {}
+    out: dict[int, Any] = {}
+    for key, value in entries.items():
+        try:
+            entry_id = int(key)
+            valid = entry_id > 0 and str(entry_id) == str(key).strip()
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            errors.append(f"{section}: the id {key!r} must be a positive integer.")
+            continue
+        if entry_id in out:
+            errors.append(f"{section}: the id {entry_id} is given more than once.")
+            continue
+        out[entry_id] = value
+    return out
+
+
+def _check_value_shape(value: Any, value_type: str, label: str, errors: list[str]) -> Optional[np.ndarray]:
+    """Check a number, a 3-vector (a number stands for equal components) or a 3x3 tensor; return it as an array."""
+    shapes = {"scalar": [()], "vector": [(), (3,)], "tensor": [(3, 3)]}[value_type]
+    try:
+        arr = np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        errors.append(f"{label}: must be numeric.")
+        return None
+    if arr.shape not in shapes:
+        expected = {"scalar": "a number", "vector": "a number or 3 numbers", "tensor": "a 3x3 array"}[value_type]
+        errors.append(f"{label}: must be {expected}, got shape {arr.shape}.")
+        return None
+    if not np.all(np.isfinite(arr)):
+        errors.append(f"{label}: must be finite.")
+        return None
+    return arr
+
+
 def validate_pytec3dodel(model: Any) -> None:
     """Perform a comprehensive consistency check on a loaded pyTEC3D model.
 
-    Validates the ``element_types``, ``dof_couplings``, ``materials``, and
-    ``constants`` DataFrames against each other and against the VTK mesh stored
-    in *model*.  All constraint violations are collected before raising so that
-    a single call reports every problem found.  Unused identifiers are emitted
-    as log warnings rather than errors.
+    Validates ``model.data`` (``element_types``, ``materials``, ``constants``, ``dof_couplings``,
+    ``bh_curves``, ``coordinate_systems``) against the registries compiled into the solver and
+    against the VTK mesh stored in *model*. All violations are collected before raising so that a
+    single call reports every problem found. Unused identifiers are emitted as log warnings.
+
+    A material property or real constant may be left undefined. Which ones a kernel needs depends
+    on the element type and domain; the solver checks that when the model is loaded. Here, the values
+    that are defined are checked, and the real constants a stranded coil always needs.
 
     Args:
-        model: ``pyTEC3D_Model`` instance whose mesh and metadata DataFrames are
-            to be validated.
+        model: ``pyTEC3D_Model`` instance whose mesh and data are to be validated.
 
     Returns:
         None
@@ -374,13 +427,8 @@ def validate_pytec3dodel(model: Any) -> None:
         ValueError: When one or more consistency constraints are violated.
     """
     import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
+    from .coordinate_system import coordinate_system_from_dict
     from .logging_utils import get_logger
-    from .constants import (
-        ELEMENT_TYPES_COLUMNS_TYPES,
-        MATERIALS_COLUMNS_TYPES,
-        CONSTANTS_COLUMNS_TYPES,
-        DOF_COUPLINGS_COLUMNS_TYPES,
-    )
 
     _log = get_logger("pytec3d.validation")
     errors: list[str] = []
@@ -393,27 +441,25 @@ def validate_pytec3dodel(model: Any) -> None:
     # enforce the exact same array contract.
     validate_required_arrays_present(mesh)
 
-    et = model.element_types
-    mat = model.materials
-    const = model.constants
-    dof = model.dof_couplings
+    registries = _solver_registries()
+    domains: list[str] = list(registries["domains"])
+    element_type_names: list[str] = list(registries["element_types"])
+    element_type_dimensions: list[int] = [int(d) for d in registries["element_types"].values()]
+    material_properties: dict[str, str] = dict(registries["material_properties"])
+    real_constants: dict[str, str] = dict(registries["real_constants"])
 
-    # ── solver settings ─────────────────────────────────────────────────────
-    validate_solver_settings(model.solver_settings)
-
-    n_cells: int = mesh.GetNumberOfCells()
-    cell_data = mesh.GetCellData()
+    data = model.data
     point_data = mesh.GetPointData()
+    cell_data = mesh.GetCellData()
 
     # ── per-cell VTK type classification ────────────────────────────────────
     vtk_ct = np.asarray(vtknp.vtk_to_numpy(mesh.GetCellTypesArray()), dtype=np.int32)
     is_2d = np.isin(vtk_ct, _VTK_2D_CELL_TYPES)
     is_3d = np.isin(vtk_ct, _VTK_3D_CELL_TYPES)
-    is_quad = np.isin(vtk_ct, _VTK_QUADRATIC_CELL_TYPES)
 
     def _get_int_array(name: str) -> np.ndarray:
         arr = cell_data.GetArray(name)
-        return np.asarray(vtknp.vtk_to_numpy(arr), dtype=np.int32)
+        return np.asarray(vtknp.vtk_to_numpy(arr), dtype=np.int64).reshape(-1)
 
     type_ids = _get_int_array("TYPE")
     mat_ids = _get_int_array("MATERIAL")
@@ -421,364 +467,244 @@ def validate_pytec3dodel(model: Any) -> None:
     coordinate_system_ids = _get_int_array("COORDINATE_SYSTEM")
 
     # ========================================================================
-    # 0a. COORDINATE_SYSTEM cell-data array and coordinate_systems attribute
+    # 1. coordinate_systems
     # ========================================================================
+    coordinate_systems = _section_entries(data, "coordinate_systems", errors)
+    for cs_id, spec in coordinate_systems.items():
+        try:
+            coordinate_system_from_dict(spec)
+        except (ValueError, TypeError) as exc:
+            errors.append(f"coordinate_systems[{cs_id}]: {exc}")
+
     if coordinate_system_ids.size > 0:
-        bad_cs = sorted(np.unique(coordinate_system_ids[coordinate_system_ids < 0]).astype(int).tolist())
+        bad_cs = sorted(np.unique(coordinate_system_ids[coordinate_system_ids < 0]).tolist())
         if bad_cs:
-            errors.append(
-                "COORDINATE_SYSTEM: values must be >= 0;"
-                f" found invalid values: {bad_cs}."
-            )
-
-        used_cs_ids: set[int] = set(
-            np.unique(coordinate_system_ids[coordinate_system_ids > 0]).astype(int).tolist()
+            errors.append(f"COORDINATE_SYSTEM: values must be >= 0; found invalid values: {bad_cs}.")
+        missing_cs = sorted(
+            set(np.unique(coordinate_system_ids[coordinate_system_ids > 0]).tolist()) - set(coordinate_systems)
         )
-        if used_cs_ids:
-            coordinate_systems = getattr(model, "coordinate_systems", None)
-            if coordinate_systems is None:
-                errors.append(
-                    "COORDINATE_SYSTEM: found values > 0 in mesh but"
-                    " model.coordinate_systems is missing or None."
-                )
-            elif not isinstance(coordinate_systems, dict):
-                errors.append(
-                    "model.coordinate_systems must be a dict mapping integer IDs"
-                    f" to coordinate-system objects; got {type(coordinate_systems).__name__}."
-                )
-            else:
-                available_cs_ids: set[int] = {
-                    int(k)
-                    for k in coordinate_systems.keys()
-                    if isinstance(k, (int, np.integer)) and not isinstance(k, bool) and int(k) > 0
-                }
-                missing_cs = sorted(used_cs_ids - available_cs_ids)
-                if missing_cs:
-                    errors.append(
-                        "COORDINATE_SYSTEM: positive IDs used by mesh are not present"
-                        f" in model.coordinate_systems: {missing_cs}."
-                    )
+        if missing_cs:
+            errors.append(
+                "COORDINATE_SYSTEM: positive IDs used by the mesh are not defined in"
+                f" data['coordinate_systems']: {missing_cs}."
+            )
 
     # ========================================================================
-    # 0. bh_curves dictionary
+    # 2. materials
     # ========================================================================
-    bh_curves = getattr(model, "bh_curves", {})
-    if bh_curves is None:
-        bh_curves = {}
-
-    if not isinstance(bh_curves, dict):
-        errors.append(f"bh_curves must be a dict, got {type(bh_curves).__name__}.")
-    else:
-        material_ids_in_grid: set[int] = set(np.unique(mat_ids).astype(int).tolist()) if mat_ids.size > 0 else set()
-
-        for material_id_raw, curve_values in bh_curves.items():
-            if isinstance(material_id_raw, bool) or not isinstance(material_id_raw, (int, np.integer)):
-                errors.append(
-                    "bh_curves: material key must be an integer material ID; "
-                    f"got key={material_id_raw!r} ({type(material_id_raw).__name__})."
-                )
+    materials = _section_entries(data, "materials", errors)
+    for material_id, material in materials.items():
+        if not isinstance(material, dict):
+            errors.append(f"materials[{material_id}]: must be an object of material properties.")
+            continue
+        for name, value in material.items():
+            label = f"materials[{material_id}].{name}"
+            if name not in material_properties:
+                errors.append(f"{label}: unknown material property; known: {sorted(material_properties)}.")
                 continue
-
-            material_id = int(material_id_raw)
-            if material_id <= 0:
-                errors.append(f"bh_curves: material key must be > 0, got {material_id}.")
+            arr = _check_value_shape(value, material_properties[name], label, errors)
+            if arr is None:
                 continue
+            # mur and rho are tensors; their diagonal is what has a sign.
+            diagonal = np.diagonal(arr) if arr.ndim == 2 else arr.reshape(-1)
+            if name == "mur" and not np.all(diagonal > 0.0):
+                errors.append(f"{label}: the diagonal must be positive.")
+            if name == "rho" and not np.all(diagonal >= 0.0):
+                errors.append(f"{label}: the diagonal must be non-negative.")
 
-            if material_ids_in_grid and material_id not in material_ids_in_grid:
-                errors.append(
-                    f"bh_curves: material ID {material_id} is not present in mesh MATERIAL cell values."
-                )
+    if mat_ids.size > 0:
+        mesh_materials = set(np.unique(mat_ids).tolist())
+        missing_m = sorted(mesh_materials - set(materials))
+        if missing_m:
+            errors.append(f"materials: cell MATERIAL values absent from data['materials']: {missing_m}.")
+        unused_m = sorted(set(materials) - mesh_materials)
+        if unused_m:
+            _log.warning("materials: ids not used by any cell: %s.", unused_m)
 
-            try:
-                curve = np.asarray(curve_values, dtype=float)
-            except Exception:
-                errors.append(
-                    f"bh_curves[{material_id}]: could not be converted to a float NumPy array."
-                )
-                continue
+    # ========================================================================
+    # 3. bh_curves
+    # ========================================================================
+    bh_curves = _section_entries(data, "bh_curves", errors)
+    mesh_material_set = set(np.unique(mat_ids).tolist()) if mat_ids.size > 0 else set()
+    for material_id, curve in bh_curves.items():
+        label = f"bh_curves[{material_id}]"
+        if mesh_material_set and material_id not in mesh_material_set:
+            errors.append(f"{label}: material ID {material_id} is not present in mesh MATERIAL cell values.")
+        if not isinstance(curve, dict) or set(curve) != {"H", "B"}:
+            errors.append(f"{label}: must be an object with the arrays 'H' and 'B'.")
+            continue
+        try:
+            h_values = np.asarray(curve["H"], dtype=float)
+            b_values = np.asarray(curve["B"], dtype=float)
+        except (TypeError, ValueError):
+            errors.append(f"{label}: 'H' and 'B' must be numeric arrays.")
+            continue
+        if h_values.ndim != 1 or b_values.shape != h_values.shape or h_values.size < 2:
+            errors.append(f"{label}: 'H' and 'B' must be 1D arrays of the same length >= 2.")
+            continue
+        if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
+            errors.append(f"{label}: H and B values must be finite.")
+            continue
 
-            if curve.ndim != 2 or curve.shape[1] != 2 or curve.shape[0] < 2:
-                errors.append(
-                    f"bh_curves[{material_id}]: expected shape (N, 2) with N >= 2 and columns [H, B], got {curve.shape}."
-                )
-                continue
+        if h_values[0] != 0.0:
+            errors.append(f"{label}: H must start at 0.0, got {h_values[0]!r}.")
+        if b_values[0] != 0.0:
+            errors.append(f"{label}: B must start at 0.0, got {b_values[0]!r}.")
+        if np.any(h_values < 0.0) or np.any(b_values < 0.0):
+            errors.append(f"{label}: H and B values must be non-negative.")
 
-            h_values = curve[:, 0]
-            b_values = curve[:, 1]
+        dh = np.diff(h_values)
+        db = np.diff(b_values)
+        if np.any(dh <= 0.0):
+            errors.append(f"{label}: H values must be strictly monotonic increasing.")
+        if np.any(db <= 0.0):
+            errors.append(f"{label}: B values must be strictly monotonic increasing.")
+            continue
 
-            if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
-                errors.append(f"bh_curves[{material_id}]: H and B values must be finite.")
-                continue
+        # The C++ solver floors the extrapolated slope beyond b_values[-1] at
+        # 1/mu0 (vacuum permeability). If the curve's own last segment is far
+        # softer than that, dH/dB will visibly kink right at the last point.
+        last_slope = dh[-1] / db[-1]
+        if last_slope < 0.5 / _MU0:
+            _log.warning(
+                "%s: last segment slope (dH/dB=%.3g) is well below "
+                "vacuum reluctivity (1/mu0=%.3g); extrapolation beyond B=%.4g will "
+                "show a slope discontinuity there. Consider extending the table so "
+                "it saturates toward the vacuum slope.",
+                label, last_slope, 1.0 / _MU0, b_values[-1],
+            )
 
-            if h_values[0] != 0.0:
-                errors.append(f"bh_curves[{material_id}]: H must start at 0.0, got {h_values[0]!r}.")
-            if b_values[0] != 0.0:
-                errors.append(f"bh_curves[{material_id}]: B must start at 0.0, got {b_values[0]!r}.")
-
-            if np.any(h_values < 0.0) or np.any(b_values < 0.0):
-                errors.append(f"bh_curves[{material_id}]: H and B values must be non-negative.")
-
-            dh = np.diff(h_values)
-            db = np.diff(b_values)
-            if np.any(dh <= 0.0):
-                errors.append(f"bh_curves[{material_id}]: H values must be strictly monotonic increasing.")
-            if np.any(db <= 0.0):
-                errors.append(f"bh_curves[{material_id}]: B values must be strictly monotonic increasing.")
-                continue
-
-            # The C++ solver floors the extrapolated slope beyond b_values[-1] at
-            # 1/mu0 (vacuum permeability). If the curve's own last segment is far
-            # softer than that, dH/dB will visibly kink right at the last point.
-            last_slope = dh[-1] / db[-1]
-            if last_slope < 0.5 / _MU0:
-                _log.warning(
-                    "bh_curves[%d]: last segment slope (dH/dB=%.3g) is well below "
-                    "vacuum reluctivity (1/mu0=%.3g); extrapolation beyond B=%.4g will "
-                    "show a slope discontinuity there. Consider extending the table so "
-                    "it saturates toward the vacuum slope.",
-                    material_id, last_slope, 1.0 / _MU0, b_values[-1],
-                )
-
-        # MUR is ignored by the solver for materials with a bh_curve (nonlinear
+        # mur is ignored by the solver for materials with a bh_curve (nonlinear
         # elements always use the B-H table instead of a constant permeability),
-        # so a MUR != 1 on those materials likely indicates an unintended input.
-        if not mat.empty and {"MATERIAL_ID", "MUR_X", "MUR_Y", "MUR_Z"}.issubset(mat.columns):
-            bh_material_ids = {
-                int(mid) for mid in bh_curves.keys()
-                if not isinstance(mid, bool) and isinstance(mid, (int, np.integer))
-            }
-            for mid in sorted(bh_material_ids):
-                for _, row in mat.loc[mat["MATERIAL_ID"] == mid].iterrows():
-                    mur = (float(row["MUR_X"]), float(row["MUR_Y"]), float(row["MUR_Z"]))
-                    if any(abs(m - 1.0) > 1e-9 for m in mur):
-                        _log.warning(
-                            "materials: MATERIAL_ID=%d has a bh_curve defined, so "
-                            "MUR_X/Y/Z=%s is ignored by the solver (nonlinear elements "
-                            "use the B-H table only).",
-                            mid, mur,
-                        )
-
-    # ========================================================================
-    # 1. element_types DataFrame
-    # ========================================================================
-    req_et = list(ELEMENT_TYPES_COLUMNS_TYPES.keys())
-    miss_et = set(req_et) - set(et.columns)
-    et_ok = not bool(miss_et)
-    if et.empty:
-        errors.append("element_types cannot be empty.")
-    if miss_et:
-        errors.append(f"element_types missing columns: {sorted(miss_et)}.")
-
-    if et_ok and not et.empty:
-        # Required columns cannot contain null/empty values.
-        for col, col_type in ELEMENT_TYPES_COLUMNS_TYPES.items():
-            if col not in et.columns:
-                continue
-            col_values = et[col]
-            if col_values.isna().any():
-                errors.append(f"element_types: column '{col}' contains empty/NaN values.")
-                continue
-            if col_type is str and col_values.astype(str).str.strip().eq("").any():
-                errors.append(f"element_types: column '{col}' contains empty strings.")
-
-        # TYPE_ID must be a positive integer
-        bad = et.loc[~(et["TYPE_ID"] > 0), "TYPE_ID"].tolist()
-        if bad:
-            errors.append(f"element_types: TYPE_ID must be > 0; bad values: {bad}.")
-
-        # No duplicate TYPE_IDs
-        dups = et.loc[et["TYPE_ID"].duplicated(keep=False), "TYPE_ID"].unique().tolist()
-        if dups:
-            errors.append(f"element_types: duplicate TYPE_ID values: {dups}.")
-
-        def _et_pairs(mask: Any, col: str) -> list:
-            return list(zip(
-                et.loc[mask, "TYPE_ID"].astype(int).tolist(),
-                et.loc[mask, col].tolist(),
-            ))
-
-        # ELEMENT_TYPE ∈ {0, 1, 2}
-        mask = ~et["ELEMENT_TYPE"].isin((0, 1, 2))
-        if mask.any():
-            errors.append(
-                f"element_types: ELEMENT_TYPE must be 0, 1 or 2;"
-                f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'ELEMENT_TYPE')}."
-            )
-
-        # OPTION1 ∈ [0, 6]
-        mask = ~et["OPTION1"].between(0, 6)
-        if mask.any():
-            errors.append(
-                f"element_types: OPTION1 must be in [0, 6];"
-                f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'OPTION1')}."
-            )
-
-        # OPTION2 ∈ {1, 2}
-        mask = ~et["OPTION2"].isin((1, 2))
-        if mask.any():
-            errors.append(
-                f"element_types: OPTION2 must be 1 or 2;"
-                f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'OPTION2')}."
-            )
-
-        # OPTION3 ∈ {0, 1}
-        mask = ~et["OPTION3"].isin((0, 1))
-        if mask.any():
-            errors.append(
-                f"element_types: OPTION3 must be 0 or 1;"
-                f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'OPTION3')}."
-            )
-        else:
-            # OPTION3 must be globally consistent across all TYPE_ID rows.
-            option3_values = et["OPTION3"].astype(int)
-            option3_unique = sorted(option3_values.unique().tolist())
-            if len(option3_unique) > 1:
-                option3_detail = {
-                    int(value): et.loc[option3_values == value, "TYPE_ID"].astype(int).tolist()
-                    for value in option3_unique
-                }
-                errors.append(
-                    "element_types: OPTION3 cannot contain distinct values; "
-                    "it must be globally all 0 or all 1. "
-                    f"Found values {option3_unique} with TYPE_ID groups: {option3_detail}."
-                )
-
-        # OPTION4 ∈ {0, 1}
-        mask = ~et["OPTION4"].isin((0, 1))
-        if mask.any():
-            errors.append(
-                f"element_types: OPTION4 must be 0 or 1;"
-                f" bad (TYPE_ID, value) pairs: {_et_pairs(mask, 'OPTION4')}."
-            )
-
-        # ── cross-validate against mesh ──────────────────────────────────────
-        if type_ids is not None:
-            et_id_set: set[int] = set(et["TYPE_ID"].astype(int))
-            mesh_type_set: set[int] = set(np.unique(type_ids).tolist())
-
-            miss_t = mesh_type_set - et_id_set
-            if miss_t:
-                errors.append(
-                    f"element_types: cell TYPE values absent from TYPE_ID: {sorted(miss_t)}."
-                )
-
-            unused_t = et_id_set - mesh_type_set
-            if unused_t:
+        # so a mur != 1 on those materials likely indicates an unintended input.
+        material = materials.get(material_id)
+        if isinstance(material, dict) and "mur" in material:
+            mur = np.asarray(material["mur"], dtype=float)
+            if mur.shape != (3, 3) or np.any(np.abs(mur - np.eye(3)) > 1e-9):
                 _log.warning(
-                    "element_types: TYPE_IDs not used by any cell: %s.", sorted(unused_t)
+                    "materials[%d]: a bh_curve is defined, so mur=%s is ignored by the solver"
+                    " (nonlinear elements use the B-H table only).",
+                    material_id, mur.tolist(),
                 )
 
-            # All TYPE_IDs used by cells must share the same ELEMENT_TYPE value.
-            # Only the TYPE_IDs that are actually defined in element_types matter here.
-            active_tids = mesh_type_set & et_id_set
-            if active_tids:
-                active_et_vals = (
-                    et.loc[et["TYPE_ID"].isin(active_tids), ["TYPE_ID", "ELEMENT_TYPE"]]
-                    .set_index("TYPE_ID")["ELEMENT_TYPE"]
-                    .astype(int)
-                )
-                unique_et_vals = active_et_vals.unique().tolist()
-                if len(unique_et_vals) > 1:
-                    detail = {
-                        int(tid): int(active_et_vals[tid]) for tid in active_et_vals.index
-                    }
-                    errors.append(
-                        f"element_types: all cells in the mesh must share the same"
-                        f" ELEMENT_TYPE value, but found multiple: {sorted(unique_et_vals)}."
-                        f" TYPE_ID → ELEMENT_TYPE mapping: {detail}."
-                    )
+    # ========================================================================
+    # 4. element_types
+    # ========================================================================
+    element_types = _section_entries(data, "element_types", errors)
+    if not element_types:
+        errors.append("element_types cannot be empty.")
 
-            # Build column lookup: type_id → {ELEMENT_TYPE, OPTION2, OPTION3}
-            et_lut: dict[int, dict[str, int]] = (
-                et.set_index("TYPE_ID")[["ELEMENT_TYPE", "OPTION2", "OPTION3"]]
-                .astype(int)
-                .to_dict(orient="index")
+    def _registry_index(value: Any, names: list[str]) -> Optional[int]:
+        """Index in a registry of a name or of an integer index; None when invalid."""
+        if isinstance(value, str):
+            return names.index(value) if value in names else None
+        if isinstance(value, (int, np.integer)) and not isinstance(value, bool) and 0 <= int(value) < len(names):
+            return int(value)
+        return None
+
+    resolved: dict[int, dict[str, int]] = {}
+    for type_id, entry in element_types.items():
+        label = f"element_types[{type_id}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{label}: must be an object.")
+            continue
+        unknown = sorted(set(entry) - {"element_type", "option1", "option2", "option3", "option4", "option5"})
+        if unknown:
+            errors.append(f"{label}: unknown keys {unknown}.")
+        missing = [key for key in ("element_type", "option1") if key not in entry]
+        if missing:
+            errors.append(f"{label}: missing keys {missing}.")
+            continue
+
+        element_type = _registry_index(entry["element_type"], element_type_names)
+        domain = _registry_index(entry["option1"], domains)
+        if element_type is None:
+            errors.append(
+                f"{label}: element_type must be an index below {len(element_type_names)} or one of"
+                f" {element_type_names}; got {entry['element_type']!r}."
+            )
+        if domain is None:
+            errors.append(
+                f"{label}: option1 (domain) must be an index below {len(domains)} or one of"
+                f" {domains}; got {entry['option1']!r}."
+            )
+        order = entry.get("option2", 1)
+        if order not in (1, 2) or isinstance(order, bool):
+            errors.append(f"{label}: option2 (FE order) must be 1 or 2; got {order!r}.")
+        axisymmetric = entry.get("option3", 0)
+        if axisymmetric not in (0, 1):
+            errors.append(f"{label}: option3 (axisymmetric) must be 0 or 1; got {axisymmetric!r}.")
+        if entry.get("option4", 0) not in (0, 1):
+            errors.append(f"{label}: option4 must be 0 or 1; got {entry.get('option4')!r}.")
+        if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
+            resolved[type_id] = {
+                "element_type": element_type,
+                "domain": domain,
+                "order": int(order),
+                "axisymmetric": int(axisymmetric),
+            }
+
+    if resolved:
+        axisymmetric_values = sorted({spec["axisymmetric"] for spec in resolved.values()})
+        if len(axisymmetric_values) > 1:
+            errors.append(
+                "element_types: option3 (axisymmetric) cannot contain distinct values; "
+                "it must be globally all 0 or all 1."
+                f" Found: { {i: spec['axisymmetric'] for i, spec in resolved.items()} }."
             )
 
-            # Sort cells by type_id for slice-based groupby – O(n log n) total
-            et_sort = np.argsort(type_ids, kind="stable")
-            s_tid = type_ids[et_sort]
-            s_is2d = is_2d[et_sort]
-            s_is3d = is_3d[et_sort]
-            s_isq = is_quad[et_sort]
+    mesh_type_set = set(np.unique(type_ids).tolist()) if type_ids.size > 0 else set()
+    missing_t = sorted(mesh_type_set - set(element_types))
+    if missing_t:
+        errors.append(f"element_types: cell TYPE values absent from data['element_types']: {missing_t}.")
+    unused_t = sorted(set(element_types) - mesh_type_set)
+    if unused_t:
+        _log.warning("element_types: TYPE ids not used by any cell: %s.", unused_t)
 
-            u_tids, et_g_start = np.unique(s_tid, return_index=True)
-            et_g_end = np.append(et_g_start[1:], len(s_tid))
+    active_types = sorted(mesh_type_set & set(resolved))
+    if active_types:
+        used_element_types = {resolved[t]["element_type"] for t in active_types}
+        if len(used_element_types) > 1:
+            errors.append(
+                "element_types: all cells in the mesh must share the same element_type,"
+                f" but found: { {t: element_type_names[resolved[t]['element_type']] for t in active_types} }."
+            )
 
-            for idx in range(len(u_tids)):
-                tid = int(u_tids[idx])
-                if tid not in et_id_set:
-                    continue
-                sl = slice(int(et_g_start[idx]), int(et_g_end[idx]))
-                row = et_lut[tid]
-                elem_type = row["ELEMENT_TYPE"]
-                opt2 = row["OPTION2"]
-                opt3 = row["OPTION3"]
-                any_2d = bool(np.any(s_is2d[sl]))
-                any_3d = bool(np.any(s_is3d[sl]))
-                any_quad = bool(np.any(s_isq[sl]))
-                any_lin = bool(np.any(~s_isq[sl]))
-
-                if any_2d and elem_type != 0:
-                    errors.append(
-                        f"element_types TYPE_ID={tid}: 2D cells require ELEMENT_TYPE=0,"
-                        f" got {elem_type}."
-                    )
-                if any_3d and elem_type not in (1, 2):
-                    errors.append(
-                        f"element_types TYPE_ID={tid}: 3D cells require ELEMENT_TYPE 1 or 2,"
-                        f" got {elem_type}."
-                    )
-                if any_3d and opt3 != 0:
-                    errors.append(
-                        f"element_types TYPE_ID={tid}: OPTION3 must be 0 for 3D cells,"
-                        f" got {opt3}."
-                    )
+    coil_domain = domains.index("STRANDED_COIL") if "STRANDED_COIL" in domains else -1
+    cell_is_coil = np.zeros(type_ids.shape, dtype=bool)
+    cell_coil_dimension = np.zeros(type_ids.shape, dtype=np.int8)
+    cell_coil_axisymmetric = np.zeros(type_ids.shape, dtype=bool)
+    for type_id in active_types:
+        spec = resolved[type_id]
+        mask = type_ids == type_id
+        dimension = element_type_dimensions[spec["element_type"]]
+        if bool(np.any(is_2d[mask])) and dimension != 2:
+            errors.append(f"element_types[{type_id}]: 2D cells need a 2D element type, got {element_type_names[spec['element_type']]!r}.")
+        if bool(np.any(is_3d[mask])):
+            if dimension != 3:
+                errors.append(f"element_types[{type_id}]: 3D cells need a 3D element type, got {element_type_names[spec['element_type']]!r}.")
+            if spec["axisymmetric"] != 0:
+                errors.append(f"element_types[{type_id}]: option3 (axisymmetric) must be 0 for 3D cells.")
+        if spec["domain"] == coil_domain:
+            cell_is_coil |= mask
+            cell_coil_dimension[mask] = dimension
+            cell_coil_axisymmetric[mask] = bool(spec["axisymmetric"])
 
     # ========================================================================
-    # 2. dof_couplings DataFrame
+    # 5. dof_couplings
     # ========================================================================
-    req_dof = list(DOF_COUPLINGS_COLUMNS_TYPES.keys())
-    miss_dof = set(req_dof) - set(dof.columns)
-    dof_has_rows = not dof.empty
-    dof_schema_ok = not bool(miss_dof)
-    if dof_has_rows and not dof_schema_ok:
-        errors.append(f"dof_couplings missing columns: {sorted(miss_dof)}.")
-    elif dof_has_rows and dof_schema_ok:
-        for col, col_type in DOF_COUPLINGS_COLUMNS_TYPES.items():
-            col_values = dof[col]
-            if col_values.isna().any():
-                errors.append(f"dof_couplings: column '{col}' contains empty/NaN values.")
-                continue
-            if col_type is str and col_values.astype(str).str.strip().eq("").any():
-                errors.append(f"dof_couplings: column '{col}' contains empty strings.")
+    _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
+    dof_couplings = _section_entries(data, "dof_couplings", errors)
+    for cp_id, variables in dof_couplings.items():
+        label = f"dof_couplings[{cp_id}]"
+        if not isinstance(variables, (list, tuple)) or not variables:
+            errors.append(f"{label}: must be a non-empty list of variable names.")
+            continue
+        bad_vars = [v for v in variables if v not in _valid_vars]
+        if bad_vars:
+            errors.append(f"{label}: variables must be in {sorted(_valid_vars)}; got {bad_vars}.")
 
-        _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
-        mask_vars = ~dof["VARIABLE"].isin(_valid_vars)
-        if mask_vars.any():
-            bad_pairs_var = list(zip(
-                dof.loc[mask_vars, "CP_ID"].tolist(),
-                dof.loc[mask_vars, "VARIABLE"].tolist(),
-            ))
-            errors.append(
-                f"dof_couplings: VARIABLE must be one of {sorted(_valid_vars)};"
-                f" bad (CP_ID, value) pairs: {bad_pairs_var}."
-            )
-        bad_cp = dof.loc[~(dof["CP_ID"] > 0), "CP_ID"].tolist()
-        if bad_cp:
-            errors.append(
-                f"dof_couplings: CP_ID must be integer > 0; bad values: {bad_cp}."
-            )
-
-    # CP_xx arrays: all values > 0 must exist in dof_couplings CP_ID.
-    cp_ids_defined: set[int] = set()
-    if dof_has_rows and dof_schema_ok and "CP_ID" in dof.columns:
-        cp_ids_defined = {
-            int(v)
-            for v in dof["CP_ID"].dropna().tolist()
-            if isinstance(v, (int, float, np.integer, np.floating))
-        }
-
+    # CP_xx arrays: all values > 0 must exist in dof_couplings.
     cp_name = re.compile(r"^CP_(\d+)$")
     cp_ids_in_mesh: set[int] = set()
     if point_data is not None:
@@ -793,292 +719,70 @@ def validate_pytec3dodel(model: Any) -> None:
             pos = vals[np.isfinite(vals) & (vals > 0.0)]
             if pos.size > 0:
                 cp_ids_in_mesh.update(np.unique(pos.astype(int)).tolist())
-
-    if dof_has_rows and dof_schema_ok and cp_ids_in_mesh:
-        missing_cp_ids = sorted(cp_ids_in_mesh - cp_ids_defined)
+    if cp_ids_in_mesh:
+        missing_cp_ids = sorted(cp_ids_in_mesh - set(dof_couplings))
         if missing_cp_ids:
             errors.append(
-                "CP_xx arrays contain positive coupling IDs not found in dof_couplings CP_ID:"
+                "CP_xx arrays contain positive coupling IDs not found in data['dof_couplings']:"
                 f" {missing_cp_ids}."
             )
 
     # ========================================================================
-    # 3. materials DataFrame
+    # 6. constants
     # ========================================================================
-    req_mat = list(MATERIALS_COLUMNS_TYPES.keys())
-    miss_mat = set(req_mat) - set(mat.columns)
-    if mat.empty:
-        errors.append("materials cannot be empty.")
-    if not mat.empty:
-        if miss_mat:
-            errors.append(f"materials missing columns: {sorted(miss_mat)}.")
-        else:
-            for col, col_type in MATERIALS_COLUMNS_TYPES.items():
-                col_values = mat[col]
-                if col_values.isna().any():
-                    errors.append(f"materials: column '{col}' contains empty/NaN values.")
-                    continue
-                if col_type is str and col_values.astype(str).str.strip().eq("").any():
-                    errors.append(f"materials: column '{col}' contains empty strings.")
+    constants = _section_entries(data, "constants", errors)
+    constant_arrays: dict[int, dict[str, np.ndarray]] = {}
+    for constants_id, entry in constants.items():
+        if not isinstance(entry, dict):
+            errors.append(f"constants[{constants_id}]: must be an object of real constants.")
+            continue
+        arrays: dict[str, np.ndarray] = {}
+        for name, value in entry.items():
+            label = f"constants[{constants_id}].{name}"
+            if name not in real_constants:
+                errors.append(f"{label}: unknown real constant; known: {sorted(real_constants)}.")
+                continue
+            arr = _check_value_shape(value, real_constants[name], label, errors)
+            if arr is None:
+                continue
+            arrays[name] = arr
+            if name in ("turns", "cross_section", "volume", "radius", "resistance", "thickness") and not float(arr) > 0.0:
+                errors.append(f"{label}: must be > 0; got {float(arr)}.")
+            if name == "symmetry" and not float(arr) >= 1.0:
+                errors.append(f"{label}: must be >= 1; got {float(arr)}.")
+            if name == "T":
+                t = np.broadcast_to(arr, (3,))
+                if not np.all(np.abs(t) <= 1.0) or abs(float(np.linalg.norm(t)) - 1.0) > 1e-4:
+                    errors.append(f"{label}: must be a unit vector; got {t.tolist()}.")
+        constant_arrays[constants_id] = arrays
 
-            bad_mid = mat.loc[~(mat["MATERIAL_ID"] > 0), "MATERIAL_ID"].tolist()
-            if bad_mid:
-                errors.append(
-                    f"materials: MATERIAL_ID must be > 0; bad values: {bad_mid}."
-                )
+    if const_ids.size > 0:
+        mesh_constants = set(np.unique(const_ids).tolist())
+        unused_c = sorted(set(constants) - mesh_constants)
+        if unused_c:
+            _log.warning("constants: ids not used by any cell: %s.", unused_c)
+        absent_c = sorted(c for c in mesh_constants - set(constants) if c > 0)
+        if absent_c:
+            _log.warning("constants: cell CONSTANT values absent from data['constants']: %s.", absent_c)
 
-            dups_m = (
-                mat.loc[mat["MATERIAL_ID"].duplicated(keep=False), "MATERIAL_ID"]
-                .unique()
-                .tolist()
+    # Real constants a stranded coil always needs, by cell group.
+    coil_constants_ids = np.unique(const_ids[cell_is_coil]) if cell_is_coil.any() else np.empty((0,), dtype=np.int64)
+    for constants_id in coil_constants_ids.tolist():
+        group = cell_is_coil & (const_ids == constants_id)
+        dimension = int(cell_coil_dimension[group][0])
+        axisymmetric = bool(cell_coil_axisymmetric[group][0])
+        needed = ["turns", "cross_section", "resistance", "symmetry", "T"]
+        needed += ["volume"] if dimension == 3 else ["thickness"] + (["radius"] if axisymmetric else [])
+        arrays = constant_arrays.get(int(constants_id), {})
+        absent = [name for name in needed if name not in arrays]
+        if absent:
+            errors.append(
+                f"constants[{int(constants_id)}]: a stranded coil ({dimension}D) needs {absent}."
             )
-            if dups_m:
-                errors.append(f"materials: duplicate MATERIAL_ID values: {dups_m}.")
-
-            # Per-column bounds:
-            # - RHO_X/RHO_Y/RHO_Z and M_X/M_Y/M_Z allow zero (>= 0)
-            # - MUR must remain strictly positive (> 0)
-            # - other material columns keep strict positivity (> 0)
-            nonnegative_cols = {"RHO_X", "RHO_Y", "RHO_Z", "M_X", "M_Y", "M_Z"}
-            for col in req_mat:
-                if col == "MATERIAL_ID" or col not in mat.columns:
-                    continue
-                col_f = mat[col].astype(float)
-                if col in nonnegative_cols:
-                    bad_mask = ~(np.isfinite(col_f) & (col_f >= 0.0))
-                    rule_text = "a non-negative real number"
-                else:
-                    bad_mask = ~(np.isfinite(col_f) & (col_f > 0.0))
-                    rule_text = "a positive real number"
-                if bad_mask.any():
-                    bad_pairs = list(
-                        zip(
-                            mat.loc[bad_mask, "MATERIAL_ID"].astype(int).tolist(),
-                            mat.loc[bad_mask, col].tolist(),
-                        )
-                    )
-                    preview = bad_pairs[:5]
-                    suffix = "..." if len(bad_pairs) > 5 else ""
-                    errors.append(
-                        f"materials: '{col}' must be {rule_text};"
-                        f" bad (MATERIAL_ID, value) pairs: {preview}{suffix}."
-                    )
-
-            if mat_ids.size > 0:
-                mat_id_set: set[int] = set(mat["MATERIAL_ID"].astype(int))
-                mesh_mat_set: set[int] = set(np.unique(mat_ids).tolist())
-                miss_m = mesh_mat_set - mat_id_set
-                if miss_m:
-                    errors.append(
-                        f"materials: cell MATERIAL values absent from MATERIAL_ID:"
-                        f" {sorted(miss_m)}."
-                    )
-                unused_m = mat_id_set - mesh_mat_set
-                if unused_m:
-                    _log.warning(
-                        "materials: MATERIAL_IDs not used by any cell: %s.", sorted(unused_m)
-                    )
-
-    # ========================================================================
-    # 4. constants DataFrame
-    # ========================================================================
-    req_const = list(CONSTANTS_COLUMNS_TYPES.keys())
-    miss_const = set(req_const) - set(const.columns)
-    if const.empty:
-        errors.append("constants cannot be empty.")
-    if not const.empty:
-        if miss_const:
-            errors.append(f"constants missing columns: {sorted(miss_const)}.")
-        else:
-            for col, col_type in CONSTANTS_COLUMNS_TYPES.items():
-                col_values = const[col]
-                if col_values.isna().any():
-                    errors.append(f"constants: column '{col}' contains empty/NaN values.")
-                    continue
-                if col_type is str and col_values.astype(str).str.strip().eq("").any():
-                    errors.append(f"constants: column '{col}' contains empty strings.")
-
-            bad_cid = const.loc[~(const["CONSTANTS_ID"] > 0), "CONSTANTS_ID"].tolist()
-            if bad_cid:
-                errors.append(
-                    f"constants: CONSTANTS_ID must be > 0; bad values: {bad_cid}."
-                )
-
-            dups_c = (
-                const.loc[const["CONSTANTS_ID"].duplicated(keep=False), "CONSTANTS_ID"]
-                .unique()
-                .tolist()
-            )
-            if dups_c:
-                errors.append(f"constants: duplicate CONSTANTS_ID values: {dups_c}.")
-
-            # All float columns must contain finite values
-            float_cols_c = [c for c in req_const if c != "CONSTANTS_ID"]
-            for col in float_cols_c:
-                if col not in const.columns:
-                    continue
-                col_f = const[col].astype(float)
-                bad_mask_f = ~np.isfinite(col_f)
-                if bad_mask_f.any():
-                    bad_pairs_f = list(zip(
-                        const.loc[bad_mask_f, "CONSTANTS_ID"].astype(int).tolist(),
-                        const.loc[bad_mask_f, col].tolist(),
-                    ))
-                    preview = bad_pairs_f[:5]
-                    suffix = "..." if len(bad_pairs_f) > 5 else ""
-                    errors.append(
-                        f"constants: '{col}' contains non-finite values;"
-                        f" bad (CONSTANTS_ID, value) pairs: {preview}{suffix}."
-                    )
-
-            # ── cross-validate constants against mesh ────────────────────────
-            if (
-                const_ids.size > 0
-                and type_ids.size > 0
-                and et_ok
-                and not et.empty
-            ):
-                const_id_set: set[int] = set(const["CONSTANTS_ID"].astype(int))
-                mesh_const_set: set[int] = set(np.unique(const_ids).tolist())
-
-                miss_c = mesh_const_set - const_id_set
-                if miss_c:
-                    errors.append(
-                        f"constants: cell CONSTANT values absent from CONSTANTS_ID:"
-                        f" {sorted(miss_c)}."
-                    )
-
-                unused_c = const_id_set - mesh_const_set
-                if unused_c:
-                    _log.warning(
-                        "constants: CONSTANTS_IDs not used by any cell: %s.",
-                        sorted(unused_c),
-                    )
-
-                # Build cell-level attribute arrays from element_types lookup.
-                # Cells whose TYPE is not in element_types keep sentinel value -1
-                # and are excluded from context-specific checks.
-                et_dict: dict[int, tuple[int, int, int]] = {
-                    int(r["TYPE_ID"]): (
-                        int(r["ELEMENT_TYPE"]),
-                        int(r["OPTION1"]),
-                        int(r["OPTION3"]),
-                    )
-                    for _, r in et.iterrows()
-                }
-                cell_et = np.full(n_cells, -1, dtype=np.int8)
-                cell_opt1 = np.full(n_cells, -1, dtype=np.int8)
-                cell_opt3 = np.full(n_cells, -1, dtype=np.int8)
-                for tid_i, (etype_i, opt1_i, opt3_i) in et_dict.items():
-                    m = type_ids == tid_i
-                    cell_et[m] = etype_i
-                    cell_opt1[m] = opt1_i
-                    cell_opt3[m] = opt3_i
-
-                # Index constants table for O(1) row access
-                const_idx_df = const.set_index("CONSTANTS_ID")
-
-                # Sort cells by const_id for slice-based groupby – O(n log n) total
-                c_sort = np.argsort(const_ids, kind="stable")
-                s_cid = const_ids[c_sort]
-                s_is2d_c = is_2d[c_sort]
-                s_is3d_c = is_3d[c_sort]
-                s_et_c = cell_et[c_sort]
-                s_opt1_c = cell_opt1[c_sort]
-                s_opt3_c = cell_opt3[c_sort]
-
-                u_cids, c_g_start = np.unique(s_cid, return_index=True)
-                c_g_end = np.append(c_g_start[1:], len(s_cid))
-
-                for ci in range(len(u_cids)):
-                    cid = int(u_cids[ci])
-                    if cid not in const_id_set:
-                        continue
-                    sl = slice(int(c_g_start[ci]), int(c_g_end[ci]))
-                    g_is2d = s_is2d_c[sl]
-                    g_is3d = s_is3d_c[sl]
-                    g_et = s_et_c[sl]
-                    g_opt1 = s_opt1_c[sl]
-                    g_opt3 = s_opt3_c[sl]
-
-                    crow = const_idx_df.loc[cid]
-                    is_2d_t0 = g_is2d & (g_et == 0)
-                    is_3d_t12 = g_is3d & ((g_et == 1) | (g_et == 2))
-                    any_2d_t0 = bool(np.any(is_2d_t0))
-                    any_3d_t12 = bool(np.any(is_3d_t12))
-
-                    # THK – only relevant for 2D type-0 cells
-                    if any_2d_t0:
-                        thk = float(crow["THK"])
-                        if not (thk > 0.0):
-                            errors.append(
-                                f"constants CONSTANTS_ID={cid}: THK must be > 0"
-                                f" for 2D type-0 cells; got {thk}."
-                            )
-                        elif bool(np.any(is_2d_t0 & (g_opt3 == 1))) and thk > 1.0:
-                            errors.append(
-                                f"constants CONSTANTS_ID={cid}: THK must be <= 1"
-                                f" for OPTION3=1 cells; got {thk}."
-                            )
-
-                    # CS / TURNS / RAD / T_Z / R / S  (2D type-0, OPTION1=6)
-                    if any_2d_t0 and bool(np.any(is_2d_t0 & (g_opt1 == 6))):
-                        cs = float(crow["CS"])
-                        turns = float(crow["TURNS"])
-                        rad = float(crow["RAD"])
-                        t_z = float(crow["T_Z"])
-                        r = float(crow["R"])
-                        s = float(crow["S"])
-                        pfx = f"constants CONSTANTS_ID={cid} (2D OPTION1=6):"
-                        if not (cs > 0.0):
-                            errors.append(f"{pfx} CS must be > 0; got {cs}.")
-                        if not (turns > 0.0):
-                            errors.append(f"{pfx} TURNS must be > 0; got {turns}.")
-                        if not (rad > 0.0):
-                            errors.append(f"{pfx} RAD must be > 0; got {rad}.")
-                        if t_z not in (-1.0, 1.0):
-                            errors.append(f"{pfx} T_Z must be -1 or 1; got {t_z}.")
-                        if not (r > 0.0):
-                            errors.append(f"{pfx} R must be > 0; got {r}.")
-                        if not (s >= 1.0):
-                            errors.append(f"{pfx} S must be >= 1; got {s}.")
-
-                    # CS / TURNS / VOL / T_X / T_Y / T_Z / R / S (3D type-1/2, OPTION1=6)
-                    if any_3d_t12 and bool(np.any(is_3d_t12 & (g_opt1 == 6))):
-                        cs = float(crow["CS"])
-                        turns = float(crow["TURNS"])
-                        vol = float(crow["VOL"])
-                        t_x = float(crow["T_X"])
-                        t_y = float(crow["T_Y"])
-                        t_z = float(crow["T_Z"])
-                        r = float(crow["R"])
-                        s = float(crow["S"])
-                        pfx = f"constants CONSTANTS_ID={cid} (3D OPTION1=6):"
-                        if not (cs > 0.0):
-                            errors.append(f"{pfx} CS must be > 0; got {cs}.")
-                        if not (turns > 0.0):
-                            errors.append(f"{pfx} TURNS must be > 0; got {turns}.")
-                        if not (vol > 0.0):
-                            errors.append(f"{pfx} VOL must be > 0; got {vol}.")
-                        if not (r > 0.0):
-                            errors.append(f"{pfx} R must be > 0; got {r}.")
-                        if not (s >= 1.0):
-                            errors.append(f"{pfx} S must be >= 1; got {s}.")
-                        tx_ok = -1.0 <= t_x <= 1.0
-                        ty_ok = -1.0 <= t_y <= 1.0
-                        tz_ok = -1.0 <= t_z <= 1.0
-                        if not (tx_ok and ty_ok and tz_ok):
-                            errors.append(
-                                f"{pfx} T_X/T_Y/T_Z must each be in [-1, 1];"
-                                f" got ({t_x}, {t_y}, {t_z})."
-                            )
-                        else:
-                            norm = (t_x ** 2 + t_y ** 2 + t_z ** 2) ** 0.5
-                            if abs(norm - 1.0) > 1e-4:
-                                errors.append(
-                                    f"{pfx} (T_X, T_Y, T_Z) must form a unit vector"
-                                    f" (norm={norm:.6f}); got ({t_x}, {t_y}, {t_z})."
-                                )
+        elif dimension == 2 and abs(abs(float(np.broadcast_to(arrays["T"], (3,))[2])) - 1.0) > 1e-9:
+            errors.append(f"constants[{int(constants_id)}]: T must be (0, 0, -1) or (0, 0, 1) for a 2D coil.")
+        if axisymmetric and "thickness" in arrays and float(arrays["thickness"]) > 1.0:
+            errors.append(f"constants[{int(constants_id)}]: thickness must be <= 1 for axisymmetric cells.")
 
     if errors:
         raise ValueError(
@@ -1087,22 +791,20 @@ def validate_pytec3dodel(model: Any) -> None:
             )
         )
 
-    def _format_df_for_log(df: pd.DataFrame) -> str:
-        if df.empty:
-            return "<empty>"
-        return df.to_string(index=False)
-
-    _log.info("Validated element types:\n%s", _format_df_for_log(et))
-    _log.info("Validated materials:\n%s", _format_df_for_log(mat))
-    _log.info("Validated real constants:\n%s", _format_df_for_log(const))
+    _log.info("Validated model data: %d element types, %d materials, %d real constants.",
+              len(element_types), len(materials), len(constants))
 
 
-def validate_pre_solve_inputs(model: Any) -> None:
+def validate_pre_solve_inputs(model: Any, time_step: Any) -> None:
     """Validate runtime inputs right before solve and emit actionable warnings.
 
     This check is intended to run on every solve call so users get immediate
     feedback if loads/BCs/time-step settings would lead to a no-op or unstable
     run setup.
+
+    Args:
+        model: ``pyTEC3D_Model`` with the mesh to solve.
+        time_step: Time-step dict of the solver (``time``, ``theta``, ``transient_effects``).
     """
     from .logging_utils import get_logger
 
@@ -1146,7 +848,6 @@ def validate_pre_solve_inputs(model: Any) -> None:
             )
 
     # 3) Time-step constraints
-    time_step = getattr(model, "time_step", {})
     if not isinstance(time_step, dict):
         errors.append("time_step must be a dictionary with keys 'time' and 'theta'.")
     else:

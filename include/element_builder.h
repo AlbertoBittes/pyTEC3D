@@ -2,7 +2,7 @@
  * @file element_builder.h
  * @brief Per-element assembly: reinits the FEs, resizes the matrices and calls the kernels of the element type.
  *
- * ElementBuilder collects what the kernels need for one element (material and real-constant rows,
+ * ElementBuilder collects what the kernels need for one element (material and real constants,
  * local-to-global rotation, BH curve, VTK loads, local solution), finds where each field sits in the
  * element matrices (ElementType::element_indices) and calls the kernels of the element type. Results:
  *   - Stiffness (Ke) and time-derivative (Ce) matrices of the DOF system.
@@ -31,7 +31,7 @@
 #include "element_type.h"
 #include "element_types_factory.h"
 #include "fe_parent_object.h"
-#include "parameter_columns.h"
+#include "model_data.h"
 #include "variables_map.h"
 
 class pyTEC3DEquationSystems;
@@ -134,8 +134,8 @@ private:
     /** @brief Evaluates the nodal or element field kernels on the DOF solution and writes the result into @p system. */
     void build_fields(pytec3d::FieldKind kind, libMesh::System &system);
 
-    const std::vector<libMesh::Real> &material_row(libMesh::dof_id_type id) const;
-    const std::vector<libMesh::Real> &constant_row(libMesh::dof_id_type id) const;
+    /** @brief Out-of-plane thickness of the active 2D element; 1 when its real constants do not define it. */
+    libMesh::Real thickness() const;
 
     std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>> matrices; ///< By MatricesSet.
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors;  ///< By VectorsSet.
@@ -151,8 +151,7 @@ private:
     libMesh::DofMap *dof_solution_dof_map_ = nullptr;
 
     ElementTypesFactory *element_types_factory_ = nullptr;
-    const std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> *materials_rows_ = nullptr;
-    const std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>> *constants_rows_ = nullptr;
+    const pytec3d::ModelData *model_data_ = nullptr;
     vtkUnstructuredGrid *vtk_grid_ = nullptr;
     vtkDataArray *material_cell_array_ = nullptr;
     vtkDataArray *real_constant_cell_array_ = nullptr;

@@ -18,7 +18,9 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,9 +35,12 @@
 #include "expression.h"
 #include "nabla.h"
 #include "parameter_value.h"
+#include "registries.h"
 
 namespace pytec3d
 {
+    using registry::ParameterSource;
+
     struct ElementTypeOptions
     {
         unsigned int order = 1;    ///< FE order of the Lagrange families.
@@ -52,55 +57,49 @@ namespace pytec3d
         NablaOperator op() const { return nabla->op(); }
     };
 
-    /** @brief Where the value of a parameter comes from. */
-    enum class ParameterSource : unsigned char
-    {
-        Material,   ///< Column(s) of the material row.
-        Constant,   ///< Column(s) of the real-constants row.
-        Cell,       ///< Cell-data array of the grid, one tuple per element.
-        Point,      ///< Point-data array of the grid; only usable as the nodal load of a DOF field.
-        Expression, ///< Derived from other parameters.
-    };
-
-    /** @brief A named parameter: "nu[][]" tensor, "turns_density" scalar, "Js[]" vector, "AMPS()" array typed by the grid. */
+    /**
+     * @brief A parameter of an element type: what the registry says (registries.h) plus the compiled expression.
+     *
+     * ElementType::parameters() holds every parameter, indexed by registry::ParameterId.
+     */
     struct ParameterDefinition
     {
-        std::string name; ///< As written, with its type suffix.
-        ParameterType type = ParameterType::Scalar;
-        ParameterSource source = ParameterSource::Expression;
-        std::string array;                 ///< Grid array name for Cell and Point.
-        std::vector<unsigned int> columns; ///< Row columns for Material and Constant.
-        std::shared_ptr<const Expression> expression;
+        registry::ParameterId id = registry::ParameterId::COUNT;
+        std::shared_ptr<const Expression> expression; ///< Expression parameters only; depends on the dimension.
+
+        const registry::ParameterInfo &info() const { return registry::info(id); }
     };
 
     /** @brief A nonlinear law, e.g. BH: acts on the trial value of a kernel instead of multiplying it. */
-    enum class LawType : unsigned char
-    {
-        BHCurve, ///< H(B) of the BH curve of the element material.
-    };
-
     struct NonlinearLaw
     {
-        std::string name;      ///< Used in kernels as "name()".
-        LawType type = LawType::BHCurve;
-        unsigned int linear = 0; ///< Index of the tensor parameter the law reduces to when the element has no curve.
+        registry::LawId id = registry::LawId::COUNT;                 ///< Used in kernels as "name()".
+        registry::ParameterId linear = registry::ParameterId::COUNT; ///< Tensor parameter the law reduces to when the element has no curve.
     };
 
     enum class ParameterKind : unsigned char
     {
         One,       ///< No parameter: 1.
-        Parameter, ///< A ParameterDefinition.
-        Law,       ///< A NonlinearLaw.
+        Parameter, ///< A registry::ParameterId.
+        Law,       ///< A registry::LawId.
     };
 
     /** @brief How a kernel uses a parameter: "-nu[][]", "BH()". */
     struct ParameterRef
     {
         ParameterKind kind = ParameterKind::One;
-        unsigned int index = 0; ///< Into ElementType::parameters() or laws().
+        unsigned int index = 0; ///< registry::ParameterId or registry::LawId, by kind.
         ParameterType type = ParameterType::Scalar;
         libMesh::Real sign = 1.0;
-        std::string name;
+
+        registry::ParameterId parameter() const { return static_cast<registry::ParameterId>(index); }
+        registry::LawId law() const { return static_cast<registry::LawId>(index); }
+        std::string_view name() const
+        {
+            return kind == ParameterKind::Parameter ? registry::info(parameter()).key
+                   : kind == ParameterKind::Law     ? registry::name(law())
+                                                    : std::string_view("1");
+        }
     };
 
     /** @brief K/C block (with a trial) or right-hand-side source (without) on the DOF fields. */
@@ -111,7 +110,7 @@ namespace pytec3d
         OperandRef test;
         OperandRef trial;
         ParameterRef parameter;
-        std::vector<unsigned int> domains; ///< Empty means all.
+        std::vector<registry::Domain> domains; ///< Empty means all.
     };
 
     /** @brief A term of a nodal or element field: field += parameter * operator(DOF field). */
@@ -121,7 +120,7 @@ namespace pytec3d
         const Field *field = nullptr;
         OperandRef trial;
         ParameterRef parameter;
-        std::vector<unsigned int> domains; ///< Empty means all.
+        std::vector<registry::Domain> domains; ///< Empty means all.
     };
 
     class ElementType
@@ -130,30 +129,33 @@ namespace pytec3d
         ElementType(const ElementType &) = delete;
         ElementType &operator=(const ElementType &) = delete;
 
-        const std::string &name() const { return name_; }
+        registry::ElementTypeId id() const { return id_; }
+        std::string_view name() const { return registry::name(id_); }
         unsigned int dimension() const { return dimension_; }
         const ElementTypeOptions &options() const { return options_; }
-        const std::vector<std::string> &domains() const { return domains_; }
 
         const std::vector<Field> &fields(FieldKind kind) const;
-        const Field *find_field(FieldKind kind, const std::string &name) const;
+        const Field *find_field(FieldKind kind, registry::FieldId id) const;
 
         /** @brief The operator @p op bound to @p field; the parser creates Identity for every field with an FE. */
         const Nabla &nabla(const Field &field, NablaOperator op) const;
 
+        /** @brief Every parameter, indexed by registry::ParameterId. */
         const std::vector<ParameterDefinition> &parameters() const { return parameters_; }
-        const std::vector<NonlinearLaw> &laws() const { return laws_; }
+
+        /** @brief The law @p id of this element type. */
+        const NonlinearLaw &law(registry::LawId id) const;
 
         const std::vector<DofKernel> &dof_kernels() const { return dof_kernels_; }
         const std::vector<FieldKernel> &nodal_kernels() const { return nodal_kernels_; }
         const std::vector<FieldKernel> &element_kernels() const { return element_kernels_; }
 
         /** @brief True when every field of the kernel exists in @p domain and the kernel applies there. */
-        bool active(const DofKernel &kernel, unsigned int domain) const;
-        bool active(const FieldKernel &kernel, unsigned int domain) const;
+        bool active(const DofKernel &kernel, registry::Domain domain) const;
+        bool active(const FieldKernel &kernel, registry::Domain domain) const;
 
         /** @brief reinit()s once each FE used in @p domain, and the geometry FE, on @p elem. */
-        void reinit(const libMesh::Elem &elem, unsigned int domain) const;
+        void reinit(const libMesh::Elem &elem, registry::Domain domain) const;
 
         /** @brief JxW and quadrature points of the last reinit(). */
         const std::vector<libMesh::Real> &jxw() const { return geometry_fe_->get_JxW(); }
@@ -175,19 +177,18 @@ namespace pytec3d
         FieldIndices element_indices(const libMesh::System &system,
                                      const libMesh::Elem &elem,
                                      FieldKind kind,
-                                     unsigned int domain) const;
+                                     registry::Domain domain) const;
 
     private:
         friend class ElementTypeParser;
         ElementType() = default;
 
-        std::string name_;
+        registry::ElementTypeId id_ = registry::ElementTypeId::COUNT;
         unsigned int dimension_ = 0;
         ElementTypeOptions options_;
-        std::vector<std::string> domains_;
 
         std::vector<ParameterDefinition> parameters_;
-        std::vector<NonlinearLaw> laws_;
+        std::vector<std::optional<NonlinearLaw>> laws_; ///< By registry::LawId; empty for a law the type does not define.
 
         std::vector<Field> dof_fields_;
         std::vector<Field> nodal_fields_;

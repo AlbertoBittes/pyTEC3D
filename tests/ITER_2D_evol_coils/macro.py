@@ -26,7 +26,7 @@ pytec3d.read_model(evol_filepath)
 output_pytec3d_equilibrium = pyTEC3D_Model.read_model(static_mesh_filepath)
 pytec3d.algorithm.vacuum_chamber_mesh = output_pytec3d_equilibrium.mesh
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 # Now start the evolution analysis
 Selector.select_all(pytec3d.model.mesh)
@@ -108,16 +108,16 @@ pytec3d.save_model()
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 
 pytec3d.load_model_into_solver()
 for step_idx in range(len(time_steps)):
-    pytec3d.model.time_step["time"] = time_steps[step_idx]
+    pytec3d.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        pytec3d.model.time_step["transient_effects"] = False
-        pytec3d.model.time_step["time"] = 1e-10
+        pytec3d.time_step["transient_effects"] = False
+        pytec3d.time_step["time"] = 1e-10
     else:
-        pytec3d.model.time_step["transient_effects"] = True
+        pytec3d.time_step["transient_effects"] = True
     pytec3d.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     pytec3d.algorithm.input_parameters["beta_p"] = betas[step_idx]
     pytec3d.algorithm.evolution_solve()

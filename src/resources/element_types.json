@@ -1,7 +1,7 @@
 {
     "parameters": [
-        "mat.mur[]",
-        "mat.rho[]",
+        "mat.mur[][]",
+        "mat.rho[][]",
         "mat.M[]",
         "rc.thickness",
         "rc.cross_section",
@@ -16,8 +16,8 @@
         "mn.CURR()"
     ],
     "expressions": {
-        "nu[][]": "global(diag(inv(mu0 * mur[])))",
-        "sigma[][]": "global(diag(invpos(rho[])))",
+        "nu[][]": "global(inv(mu0 * mur[][]))",
+        "sigma[][]": "global(invpos(rho[][]))",
         "nu_gauge": "cbrt(abs(det(nu[][])))",
         "M_global[]": "global(M[])",
         "Js_global[]": "global(Js[])",
@@ -47,7 +47,7 @@
             "dof_kernels": {
                 "Kaa": {"trial": "curl(A)", "coeff": "BH()", "test": "curl(A)"},
                 "Fs": {"coeff": "Js_global[]", "test": "A"},
-                "Fm": {"coeff": "M_global[]", "test": "curl(A)"},
+                "Fm": {"coeff": "M_global[]", "test": "curl(A)", "domain": ["HARD_MAGNETIC"]},
                 "G": {"trial": "div(A)", "coeff": "nu_gauge", "test": "div(A)"},
                 "Caa": {"trial": "dt(A)", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                 "Cav": {"trial": "grad(dt(V))", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
@@ -78,7 +78,7 @@
                     {"trial": "curl(A)", "coeff": "BH()"}
                 ],
                 "Jt": [
-                    {"trial": "dt(A)", "coeff": "-sigma[][]"},
+                    {"trial": "dt(A)", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "grad(dt(V))", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "dt(VOLT)", "coeff": "coil_j[][]", "domain": ["STRANDED_COIL"]},
                     {"trial": "dt(EMF)", "coeff": "-coil_j[][]", "domain": ["STRANDED_COIL"]}
@@ -99,7 +99,7 @@
             "dof_kernels": {
                 "Kaa": {"trial": "curl(A)", "coeff": "BH()", "test": "curl(A)"},
                 "Fs": {"coeff": "Js_global[]", "test": "A"},
-                "Fm": {"coeff": "M_global[]", "test": "curl(A)"},
+                "Fm": {"coeff": "M_global[]", "test": "curl(A)", "domain": ["HARD_MAGNETIC"]},
                 "G": {"trial": "div(A)", "coeff": "nu_gauge", "test": "div(A)"},
                 "Caa": {"trial": "dt(A)", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                 "Cav": {"trial": "grad(dt(V))", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
@@ -130,7 +130,7 @@
                     {"trial": "curl(A)", "coeff": "BH()"}
                 ],
                 "Jt": [
-                    {"trial": "dt(A)", "coeff": "-sigma[][]"},
+                    {"trial": "dt(A)", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "grad(dt(V))", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "dt(VOLT)", "coeff": "coil_j[][]", "domain": ["STRANDED_COIL"]},
                     {"trial": "dt(EMF)", "coeff": "-coil_j[][]", "domain": ["STRANDED_COIL"]}
@@ -151,7 +151,7 @@
             "dof_kernels": {
                 "Kaa": {"trial": "curl(A)", "coeff": "BH()", "test": "curl(A)"},
                 "Fs": {"coeff": "Js_global[]", "test": "A"},
-                "Fm": {"coeff": "M_global[]", "test": "curl(A)"},
+                "Fm": {"coeff": "M_global[]", "test": "curl(A)", "domain": ["HARD_MAGNETIC"]},
                 "Caa": {"trial": "dt(A)", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                 "Cav": {"trial": "grad(dt(V))", "coeff": "sigma[][]", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                 "Cva": {"trial": "dt(A)", "coeff": "sigma[][]", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
@@ -181,7 +181,7 @@
                     {"trial": "curl(A)", "coeff": "BH()"}
                 ],
                 "Jt": [
-                    {"trial": "dt(A)", "coeff": "-sigma[][]"},
+                    {"trial": "dt(A)", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "grad(dt(V))", "coeff": "-sigma[][]", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
                     {"trial": "dt(VOLT)", "coeff": "coil_j[][]", "domain": ["STRANDED_COIL"]},
                     {"trial": "dt(EMF)", "coeff": "-coil_j[][]", "domain": ["STRANDED_COIL"]}

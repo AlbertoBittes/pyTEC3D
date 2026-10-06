@@ -6,6 +6,7 @@
 #include "element_builder.h"
 #include "pytec3d_system.h"
 #include "pytec3d_model.h"
+#include "element_parameters.h"
 #include "element_types_factory.h"
 #include "vtkio.h"
 #include "logging.h"
@@ -20,6 +21,7 @@
 #include <limits>
 #include <utility>
 #include <array>
+#include <set>
 #include <unordered_map>
 
 #include <libmesh/elem.h>
@@ -32,98 +34,80 @@
 
 namespace py = pybind11;
 
-namespace
+void pyTEC3DEquationSystems::load_model_data(const std::string &model_json,
+                                             py::object solver_settings,
+                                             const std::shared_ptr<const pytec3d::ElementTypeParser> &parser)
 {
-    BHCurveMaterialsMap parse_bh_curves_from_pytec3d(const py::object &pytec3d_object)
+    model_data_ = pytec3d::ModelData::parse(model_json);
+    solver_settings_ = std::move(solver_settings);
+    element_types_factory_ = std::make_shared<ElementTypesFactory>(model_data_, parser);
+
+    element_local_to_global_rotations_.clear();
+    node_local_to_global_rotations_.clear();
+}
+
+void pyTEC3DEquationSystems::validate_model_data() const
+{
+    vtkUnstructuredGrid *grid = this->get_parent_object()->get_active_vtk_grid();
+    vtkCellData *cell_data = grid ? grid->GetCellData() : nullptr;
+    vtkDataArray *types = cell_data ? cell_data->GetArray("TYPE") : nullptr;
+    vtkDataArray *materials = cell_data ? cell_data->GetArray("MATERIAL") : nullptr;
+    vtkDataArray *constants = cell_data ? cell_data->GetArray("CONSTANT") : nullptr;
+    if (!types || !materials || !constants)
+        pytec3d::logging::error_and_abort("The grid needs the cell arrays TYPE, MATERIAL and CONSTANT.");
+
+    using Key = std::array<unsigned int, 3>;
+    std::set<Key> checked;
+    for (vtkIdType cell = 0; cell < grid->GetNumberOfCells(); ++cell)
     {
-        if (!py::hasattr(pytec3d_object, "bh_curves"))
-            return {};
+        const Key key{static_cast<unsigned int>(types->GetComponent(cell, 0)),
+                      static_cast<unsigned int>(materials->GetComponent(cell, 0)),
+                      static_cast<unsigned int>(constants->GetComponent(cell, 0))};
+        if (!checked.insert(key).second)
+            continue;
 
-        py::object bh_object = pytec3d_object.attr("bh_curves");
-        if (bh_object.is_none())
-            return {};
+        const ElementTypesFactory::Entry &entry = element_types_factory_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
+        const pytec3d::ElementType &type = *entry.type;
 
-        BHCurveMaterialsMap curves;
-        const py::dict materials_dict = py::cast<py::dict>(bh_object);
-        for (const auto &material_item : materials_dict)
+        pytec3d::ElementParameterValues::Inputs inputs;
+        inputs.material = model_data_.material(key[1]);
+        inputs.constants = model_data_.constants(key[2]);
+        inputs.material_id = key[1];
+        inputs.constants_id = key[2];
+        inputs.domain = entry.domain;
+        inputs.cell_data = cell_data;
+        inputs.element_id = cell;
+        const auto curve = model_data_.bh_curves().find(key[1]);
+        if (curve != model_data_.bh_curves().end())
+            inputs.bh_curve = &curve->second;
+
+        // Evaluates what the builder will: a law on an element with a curve needs no linear parameter.
+        pytec3d::ElementParameterValues values(type, inputs);
+        const auto touch = [&values](const pytec3d::ParameterRef &parameter)
         {
-            const unsigned int material_id = py::cast<unsigned int>(material_item.first);
-            const auto curve_array = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(material_item.second);
-
-            if (curve_array.ndim() != 2 || curve_array.shape(1) != 2 || curve_array.shape(0) < 2)
-            {
-                pytec3d::logging::error_and_abort(
-                    "bh_curves[" + std::to_string(material_id) +
-                    "]: expected shape (N, 2) with N >= 2 and columns [H, B].");
-            }
-
-            const std::size_t n_values = static_cast<std::size_t>(curve_array.shape(0));
-            std::vector<double> h_values(n_values);
-            std::vector<double> b_values(n_values);
-
-            const auto unchecked = curve_array.unchecked<2>();
-            for (ssize_t i = 0; i < curve_array.shape(0); ++i)
-            {
-                h_values[static_cast<std::size_t>(i)] = unchecked(i, 0);
-                b_values[static_cast<std::size_t>(i)] = unchecked(i, 1);
-            }
-
-            curves.emplace(material_id, BHCurve(std::move(h_values), std::move(b_values)));
-        }
-
-        return curves;
+            if (!values.nonlinear(parameter))
+                values.value(parameter);
+        };
+        for (const pytec3d::DofKernel &kernel : type.dof_kernels())
+            if (type.active(kernel, entry.domain))
+                touch(kernel.parameter);
+        for (const pytec3d::FieldKernel &kernel : type.nodal_kernels())
+            if (type.active(kernel, entry.domain))
+                touch(kernel.parameter);
+        for (const pytec3d::FieldKernel &kernel : type.element_kernels())
+            if (type.active(kernel, entry.domain))
+                touch(kernel.parameter);
     }
 }
 
-void pyTEC3DEquationSystems::load_model_data(py::object pytec3d_object,
-                                             const std::shared_ptr<const pytec3d::ElementTypeParser> &parser)
+const pytec3d::ModelData &pyTEC3DEquationSystems::get_model_data() const
 {
-    element_types_factory_ = std::make_shared<ElementTypesFactory>(pytec3d_object.attr("element_types"), parser);
+    return model_data_;
+}
 
-    bh_curves_ = parse_bh_curves_from_pytec3d(pytec3d_object);
-
-    materials_rows_.clear();
-    constants_rows_.clear();
-    element_local_to_global_rotations_.clear();
-    node_local_to_global_rotations_.clear();
-
-    py::object materials_attribute = pytec3d_object.attr("materials");
-    py::object constants_attribute = pytec3d_object.attr("constants");
-
-    for (const py::handle row_obj : materials_attribute.attr("to_dict")("records"))
-    {
-        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
-        const libMesh::dof_id_type id = py::cast<libMesh::dof_id_type>(row["MATERIAL_ID"]);
-        auto &values = materials_rows_[id];
-        values.resize(MAT_NUM_COLS);
-        values[MAT_MUR_X] = py::cast<libMesh::Real>(row["MUR_X"]);
-        values[MAT_MUR_Y] = py::cast<libMesh::Real>(row["MUR_Y"]);
-        values[MAT_MUR_Z] = py::cast<libMesh::Real>(row["MUR_Z"]);
-        values[MAT_RHO_X] = py::cast<libMesh::Real>(row["RHO_X"]);
-        values[MAT_RHO_Y] = py::cast<libMesh::Real>(row["RHO_Y"]);
-        values[MAT_RHO_Z] = py::cast<libMesh::Real>(row["RHO_Z"]);
-        values[MAT_M_X] = py::cast<libMesh::Real>(row["M_X"]);
-        values[MAT_M_Y] = py::cast<libMesh::Real>(row["M_Y"]);
-        values[MAT_M_Z] = py::cast<libMesh::Real>(row["M_Z"]);
-    }
-
-    for (const py::handle row_obj : constants_attribute.attr("to_dict")("records"))
-    {
-        const py::dict row = py::reinterpret_borrow<py::dict>(row_obj);
-        const libMesh::dof_id_type id = py::cast<libMesh::dof_id_type>(row["CONSTANTS_ID"]);
-        auto &values = constants_rows_[id];
-        values.resize(CONST_NUM_COLS);
-        values[CONST_THK] = py::cast<libMesh::Real>(row["THK"]);
-        values[CONST_CS] = py::cast<libMesh::Real>(row["CS"]);
-        values[CONST_TURNS] = py::cast<libMesh::Real>(row["TURNS"]);
-        values[CONST_VOL] = py::cast<libMesh::Real>(row["VOL"]);
-        values[CONST_RAD] = py::cast<libMesh::Real>(row["RAD"]);
-        values[CONST_T_X] = py::cast<libMesh::Real>(row["T_X"]);
-        values[CONST_T_Y] = py::cast<libMesh::Real>(row["T_Y"]);
-        values[CONST_T_Z] = py::cast<libMesh::Real>(row["T_Z"]);
-        values[CONST_R] = py::cast<libMesh::Real>(row["R"]);
-        values[CONST_S] = py::cast<libMesh::Real>(row["S"]);
-    }
+const py::object &pyTEC3DEquationSystems::get_solver_settings() const
+{
+    return solver_settings_;
 }
 
 void pyTEC3DEquationSystems::build_rotation_caches(pybind11::object pytec3dmodel_object)
@@ -173,22 +157,11 @@ void pyTEC3DEquationSystems::build_rotation_caches(pybind11::object pytec3dmodel
 
     py::gil_scoped_acquire gil;
 
-    py::dict coordinate_systems_dict;
-    if (py::hasattr(pytec3dmodel_object, "coordinate_systems"))
-    {
-        py::object coordinate_systems_obj = pytec3dmodel_object.attr("coordinate_systems");
-        if (!coordinate_systems_obj.is_none())
-            coordinate_systems_dict = py::cast<py::dict>(coordinate_systems_obj);
-    }
-
     for (const auto &entry : centers_by_cs)
     {
         const auto cs_id = entry.first;
-        const auto dict_key = py::int_(cs_id);
-        if (!coordinate_systems_dict.contains(dict_key))
-            pytec3d::logging::error_and_abort("Missing coordinate_systems entry for id=" + std::to_string(cs_id));
-
-        py::object coordinate_system = coordinate_systems_dict[dict_key];
+        // The model builds the object from the attributes in model.data["coordinate_systems"].
+        py::object coordinate_system = pytec3dmodel_object.attr("coordinate_system")(py::int_(cs_id));
         const auto &centers = entry.second;
         const auto &elem_ids = elem_ids_by_cs[cs_id];
         const py::ssize_t n = static_cast<py::ssize_t>(centers.size());
@@ -456,27 +429,17 @@ const TimeStep *pyTEC3DEquationSystems::previous_time_step() const
 
 bool pyTEC3DEquationSystems::has_bh_curves() const
 {
-    return !bh_curves_.empty();
+    return !model_data_.bh_curves().empty();
 }
 
 const BHCurveMaterialsMap &pyTEC3DEquationSystems::get_bh_curves() const
 {
-    return bh_curves_;
+    return model_data_.bh_curves();
 }
 
 const std::shared_ptr<ElementTypesFactory> &pyTEC3DEquationSystems::get_element_types_factory() const
 {
     return element_types_factory_;
-}
-
-const pyTEC3DEquationSystems::PropertyRowsMap &pyTEC3DEquationSystems::get_material_rows() const
-{
-    return materials_rows_;
-}
-
-const pyTEC3DEquationSystems::PropertyRowsMap &pyTEC3DEquationSystems::get_constant_rows() const
-{
-    return constants_rows_;
 }
 
 const pyTEC3DEquationSystems::RotationMap &pyTEC3DEquationSystems::get_element_local_to_global_rotations() const

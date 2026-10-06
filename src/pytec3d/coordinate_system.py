@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Sequence, Type, TypeVar, cast
+from typing import Any, Mapping, Optional, Sequence, Type, TypeVar, cast
 from pytec3d.logging_utils import get_logger
 
 import numpy as np
@@ -148,6 +148,15 @@ class CoordinateSystem(ABC):
             np.ndarray: Origin vector.
         """
         return self._origin
+
+    @property
+    def local_to_global_cart(self) -> np.ndarray:
+        """Return the 3x3 local-to-global Cartesian rotation matrix.
+
+        Returns:
+            np.ndarray: Rotation matrix (a copy).
+        """
+        return self._local_to_global_cart.copy()
 
     def axis_direction(self) -> np.ndarray:
         """Return the global direction of the local z-axis.
@@ -1033,22 +1042,85 @@ class ZAxisCylindricalCoordinateSystem(CylindricalCoordinateSystem):
         )
 
 
-COORDINATE_CLASS_TO_ID = {
-    CartesianCoordinateSystem: 1,
-    CylindricalCoordinateSystem: 2,
-    XAxisCylindricalCoordinateSystem: 3,
-    YAxisCylindricalCoordinateSystem: 4,
-    ZAxisCylindricalCoordinateSystem: 5,
-    SphericalCoordinateSystem: 6,
+#: Names of the "type" attribute of a coordinate system in the model data JSON.
+COORDINATE_SYSTEM_TYPES = {
+    "cartesian": CartesianCoordinateSystem,
+    "cylindrical": CylindricalCoordinateSystem,
+    "x_axis_cylindrical": XAxisCylindricalCoordinateSystem,
+    "y_axis_cylindrical": YAxisCylindricalCoordinateSystem,
+    "z_axis_cylindrical": ZAxisCylindricalCoordinateSystem,
+    "spherical": SphericalCoordinateSystem,
 }
 
+_AXIS_CYLINDRICAL_TYPES = (
+    XAxisCylindricalCoordinateSystem,
+    YAxisCylindricalCoordinateSystem,
+    ZAxisCylindricalCoordinateSystem,
+)
 
-def coordinate_class_from_id(class_id: int):
+
+def coordinate_system_from_dict(spec: Mapping[str, Any]) -> CoordinateSystem:
+    """Build a coordinate system from its attributes in the model data JSON.
+
+    Attributes:
+        type: One of ``COORDINATE_SYSTEM_TYPES`` (required).
+        origin: Origin point, default (0, 0, 0).
+        matrix: 3x3 local-to-global rotation matrix, or
+        angles: [thxy, thyz, thzx] in degrees, or
+        points: {"nxax": [...], "nxypl": [...]} defining the local x axis and xy plane.
+            At most one of the three; none gives the default orientation of the type.
+            The x/y/z axis cylindrical types only take ``matrix``.
+
+    Args:
+        spec: Mapping with the attributes above.
+
+    Returns:
+        CoordinateSystem: Instance of the class named by ``type``.
+
+    Raises:
+        ValueError: On an unknown type or attribute, or an invalid combination.
+    """
+    if not isinstance(spec, Mapping):
+        raise ValueError(f"A coordinate system must be an object, got {type(spec).__name__}.")
+    unknown = set(spec) - {"type", "origin", "matrix", "angles", "points"}
+    if unknown:
+        raise ValueError(f"Unknown coordinate system attributes: {sorted(unknown)}.")
+
+    type_name = spec.get("type")
+    cls = COORDINATE_SYSTEM_TYPES.get(type_name)
+    if cls is None:
+        raise ValueError(
+            f"Coordinate system type must be one of {sorted(COORDINATE_SYSTEM_TYPES)}, got {type_name!r}."
+        )
+
+    orientations = [key for key in ("matrix", "angles", "points") if spec.get(key) is not None]
+    if len(orientations) > 1:
+        raise ValueError(f"Give one of matrix, angles or points, not {orientations}.")
+    if cls in _AXIS_CYLINDRICAL_TYPES and orientations not in ([], ["matrix"]):
+        raise ValueError(f"The type {type_name!r} has a fixed orientation; only 'matrix' is accepted.")
+
+    kwargs: dict[str, Any] = {}
+    if "origin" in spec:
+        kwargs["origin"] = spec["origin"]
+    if orientations == ["matrix"]:
+        kwargs["local_to_global_cart"] = np.asarray(spec["matrix"], dtype=float)
+    elif orientations == ["angles"]:
+        angles = spec["angles"]
+        if len(angles) != 3:
+            raise ValueError("angles must be [thxy, thyz, thzx] in degrees.")
+        kwargs.update(thxy_deg=angles[0], thyz_deg=angles[1], thzx_deg=angles[2])
+    elif orientations == ["points"]:
+        points = spec["points"]
+        if not isinstance(points, Mapping) or set(points) != {"nxax", "nxypl"}:
+            raise ValueError("points must be an object with 'nxax' and 'nxypl'.")
+        kwargs.update(nxax=points["nxax"], nxypl=points["nxypl"])
+    return cls(**kwargs)
+
+
+def coordinate_system_to_dict(coordinate_system: CoordinateSystem) -> dict[str, Any]:
+    """Return the model data JSON attributes (type, origin, matrix) of a coordinate system."""
     return {
-        1: CartesianCoordinateSystem,
-        2: CylindricalCoordinateSystem,
-        3: XAxisCylindricalCoordinateSystem,
-        4: YAxisCylindricalCoordinateSystem,
-        5: ZAxisCylindricalCoordinateSystem,
-        6: SphericalCoordinateSystem,
-    }.get(int(class_id))
+        "type": coordinate_system.type,
+        "origin": coordinate_system.origin.tolist(),
+        "matrix": coordinate_system.local_to_global_cart.tolist(),
+    }

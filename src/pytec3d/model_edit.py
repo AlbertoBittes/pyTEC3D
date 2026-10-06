@@ -1,6 +1,6 @@
 import os
 from os import PathLike
-from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -190,7 +190,7 @@ class ModelEdit:
         array_name: str = "CP_0",
         tolerance: float = 1e-6,
         variables: Optional[Sequence[str]] = None,
-    ) -> Optional[pd.DataFrame]:
+    ) -> Optional[Dict[int, list[str]]]:
         """
         Assign incremental pair IDs for selected points using a local-coordinate delta.
 
@@ -210,8 +210,8 @@ class ModelEdit:
             variables: Optional sequence of DOF variable names to couple.
 
         Returns:
-            Optional[pd.DataFrame]: DataFrame with columns ["CP_ID", "VARIABLE"] when
-                variables are provided, otherwise None.
+            Optional[Dict[int, list[str]]]: ``{cp_id: variables}`` for the new pairs when variables
+                are provided (pass it to ``pyTEC3D_Model.add_dof_couplings``), otherwise None.
         """
         from .selector import Selector
 
@@ -242,9 +242,7 @@ class ModelEdit:
         if local_coords.size == 0:
             if variables_list is None:
                 return None
-            return pd.DataFrame(columns=["CP_ID", "VARIABLE"]).astype(
-                {"CP_ID": int, "VARIABLE": str}
-            )
+            return {}
 
         local_coords = np.asarray(local_coords, dtype=float)
         if local_coords.ndim != 2 or local_coords.shape[1] < 3:
@@ -329,10 +327,7 @@ class ModelEdit:
         if variables_list is None:
             return None
 
-        rows = [(cp_id, var) for cp_id in new_cp_ids for var in variables_list]
-        return pd.DataFrame(rows, columns=["CP_ID", "VARIABLE"]).astype(
-            {"CP_ID": int, "VARIABLE": str}
-        )
+        return {cp_id: list(variables_list) for cp_id in new_cp_ids}
 
     @staticmethod
     def poloidal_flux(

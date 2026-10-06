@@ -18,11 +18,19 @@ namespace pytec3d
             logging::error_and_abort("ElementType: " + message);
         }
 
-        bool in_domains(const std::vector<unsigned int> &domains, unsigned int domain)
+        bool in_domains(const std::vector<registry::Domain> &domains, registry::Domain domain)
         {
             return domains.empty() || std::find(domains.begin(), domains.end(), domain) != domains.end();
         }
     } // namespace
+
+    const NonlinearLaw &ElementType::law(registry::LawId id) const
+    {
+        const std::optional<NonlinearLaw> &law = laws_.at(static_cast<std::size_t>(id));
+        if (!law)
+            fail("element type '" + std::string(name()) + "' does not define the law '" + std::string(registry::name(id)) + "'.");
+        return *law;
+    }
 
     const std::vector<Field> &ElementType::fields(FieldKind kind) const
     {
@@ -38,21 +46,21 @@ namespace pytec3d
         fail("unknown field kind.");
     }
 
-    const Field *ElementType::find_field(FieldKind kind, const std::string &name) const
+    const Field *ElementType::find_field(FieldKind kind, registry::FieldId id) const
     {
         for (const Field &field : fields(kind))
-            if (field.name == name)
+            if (field.id == id)
                 return &field;
         return nullptr;
     }
 
-    bool ElementType::active(const DofKernel &kernel, unsigned int domain) const
+    bool ElementType::active(const DofKernel &kernel, registry::Domain domain) const
     {
         return in_domains(kernel.domains, domain) && kernel.test.field().active_in(domain) &&
                (!kernel.has_trial || kernel.trial.field().active_in(domain));
     }
 
-    bool ElementType::active(const FieldKernel &kernel, unsigned int domain) const
+    bool ElementType::active(const FieldKernel &kernel, registry::Domain domain) const
     {
         return in_domains(kernel.domains, domain) && kernel.field->active_in(domain) && kernel.trial.field().active_in(domain);
     }
@@ -62,12 +70,12 @@ namespace pytec3d
         for (const Nabla &candidate : nablas_)
             if (&candidate.field() == &field && candidate.op() == op)
                 return candidate;
-        fail("no operator " + std::to_string(static_cast<int>(op)) + " for field '" + field.name + "'.");
+        fail("no operator " + std::to_string(static_cast<int>(op)) + " for field '" + std::string(field.name()) + "'.");
     }
 
-    void ElementType::reinit(const libMesh::Elem &elem, unsigned int domain) const
+    void ElementType::reinit(const libMesh::Elem &elem, registry::Domain domain) const
     {
-        for (libMesh::FEAbstract *fe : fes_by_domain_.at(domain))
+        for (libMesh::FEAbstract *fe : fes_by_domain_.at(static_cast<std::size_t>(domain)))
             fe->reinit(&elem);
         geometry_fe_->reinit(&elem);
     }
@@ -75,7 +83,7 @@ namespace pytec3d
     ElementType::FieldIndices ElementType::element_indices(const libMesh::System &system,
                                                            const libMesh::Elem &elem,
                                                            FieldKind kind,
-                                                           unsigned int domain) const
+                                                           registry::Domain domain) const
     {
         const libMesh::DofMap &dof_map = system.get_dof_map();
 
@@ -115,7 +123,7 @@ namespace pytec3d
                 for (std::size_t component = 0; component < n_components; ++component)
                 {
                     if (per_variable[component].size() != n_nodes)
-                        fail("the components of '" + field.name + "' have different DOF counts.");
+                        fail("the components of '" + std::string(field.name()) + "' have different DOF counts.");
                     for (std::size_t node = 0; node < n_nodes; ++node)
                         dofs[node * n_components + component] = per_variable[component][node];
                 }
@@ -126,7 +134,7 @@ namespace pytec3d
             {
                 const auto it = position.find(dof);
                 if (it == position.end())
-                    fail("a DOF of '" + field.name + "' is not a DOF of the element.");
+                    fail("a DOF of '" + std::string(field.name()) + "' is not a DOF of the element.");
                 columns.push_back(it->second);
             }
             covered += columns.size();

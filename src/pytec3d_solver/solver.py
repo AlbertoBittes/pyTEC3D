@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import re
@@ -6,7 +7,7 @@ import importlib
 import shutil
 import atexit
 from os import PathLike
-from typing import Any, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 import vtk
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,13 +21,21 @@ from pytec3d.logging_utils import (
     log_solver_shutdown_import_error,
 )
 from pytec3d.algorithm import pyTEC3DAlgorithm
+from pytec3d.constants import DEFAULT_SOLVER_SETTINGS, DEFAULT_TIME_PARAMETERS
 from pytec3d.model import pyTEC3D_Model
 from pytec3d.model_edit import ModelEdit
 
 LOGGER = get_logger("pytec3d.Solver")
 
 class pyTEC3DSolver:
-    """pyTEC3D session manager that owns runtime/session and a Python model."""
+    """pyTEC3D session manager that owns runtime/session, a Python model and the run settings.
+
+    Attributes:
+        time_step: Dict with ``time`` (end time of the step), ``theta`` (time integration parameter in
+            [0, 1]) and ``transient_effects`` (False for a static solve).
+        solver_settings: Dict with the PETSc ``ksp_type``, ``pc_type`` and the linear tolerances and
+            iteration limit. The solver reads it at every solve.
+    """
 
     def __init__(self, num_threads: int = 1) -> None:
         """Initialize a session manager with an empty model.
@@ -42,6 +51,8 @@ class pyTEC3DSolver:
 
         self._num_threads = int(num_threads)
         self.model: pyTEC3D_Model = pyTEC3D_Model()
+        self.time_step: Dict[str, Any] = copy.deepcopy(DEFAULT_TIME_PARAMETERS)
+        self._solver_settings: Dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self._mesh_filepath: Optional[str] = None
         self._solver_session: Optional[Any] = None
         self._null_output_stream = None
@@ -73,6 +84,17 @@ class pyTEC3DSolver:
         sys.stdout = self._null_output_stream
         sys.stderr = self._null_output_stream
         log_python_stdio_redirect(LOGGER, rank)
+
+    @property
+    def solver_settings(self) -> Dict[str, Any]:
+        """PETSc settings dict; the same object is shared with the C++ solver session."""
+        return self._solver_settings
+
+    @solver_settings.setter
+    def solver_settings(self, value: Mapping[str, Any]) -> None:
+        # Update in place: a loaded solver session holds this dict.
+        self._solver_settings.clear()
+        self._solver_settings.update(value)
 
     @property
     def num_threads(self) -> int:
@@ -335,8 +357,9 @@ class pyTEC3DSolver:
         """
         Validate.
         """
-        from pytec3d.validation_utils import validate_pytec3dodel
+        from pytec3d.validation_utils import validate_pytec3dodel, validate_solver_settings
 
+        validate_solver_settings(self._solver_settings)
         validate_pytec3dodel(self.model)
 
     def validate_pre_solve(self) -> None:
@@ -345,7 +368,7 @@ class pyTEC3DSolver:
         """
         from pytec3d.validation_utils import validate_pre_solve_inputs
 
-        validate_pre_solve_inputs(self.model)
+        validate_pre_solve_inputs(self.model, self.time_step)
 
     def load_model_into_solver(self) -> None:
         """
@@ -381,7 +404,7 @@ class pyTEC3DSolver:
         self._close_solver_session()
 
         solver = solver_module.pyTEC3DSolver(self._num_threads)
-        solver.load_model(self.model)
+        solver.load_model(self.model, self._solver_settings)
         return solver
 
     def solve(self) -> None:
@@ -402,7 +425,7 @@ class pyTEC3DSolver:
 
         self.validate_pre_solve()
         LOGGER.info("Starting solver session solve().")
-        self._solver_session.solve()
+        self._solver_session.solve(self.time_step)
         LOGGER.info("Solver session solve() completed.")
 
 

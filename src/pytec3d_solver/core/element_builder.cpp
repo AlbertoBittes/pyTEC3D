@@ -65,9 +65,8 @@ ElementBuilder::ElementBuilder(pyTEC3DEquationSystems *equation_systems)
     if (!element_types_factory_)
         pytec3d::logging::error_and_abort("ElementBuilder: element types factory is not available.");
 
-    bh_curves_ = &equation_systems_->get_bh_curves();
-    materials_rows_ = &equation_systems_->get_material_rows();
-    constants_rows_ = &equation_systems_->get_constant_rows();
+    model_data_ = &equation_systems_->get_model_data();
+    bh_curves_ = &model_data_->bh_curves();
     element_local_to_global_rotations_ = &equation_systems_->get_element_local_to_global_rotations();
 }
 
@@ -87,20 +86,11 @@ bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variabl
            (dof_it->second == static_cast<dof_id_type>(elem_data.elem->id()));
 }
 
-const std::vector<Real> &ElementBuilder::material_row(dof_id_type id) const
+Real ElementBuilder::thickness() const
 {
-    const auto it = materials_rows_->find(id);
-    if (it == materials_rows_->end())
-        pytec3d::logging::error_and_abort("ElementBuilder: material " + std::to_string(id) + " is not defined.");
-    return it->second;
-}
-
-const std::vector<Real> &ElementBuilder::constant_row(dof_id_type id) const
-{
-    const auto it = constants_rows_->find(id);
-    if (it == constants_rows_->end())
-        pytec3d::logging::error_and_abort("ElementBuilder: real constants " + std::to_string(id) + " are not defined.");
-    return it->second;
+    const pytec3d::ConstantRow *constants = model_data_->constants(elem_data.real_constant_num);
+    const pytec3d::ParameterValue *value = constants ? constants->find(pytec3d::registry::RealConstant::thickness) : nullptr;
+    return value ? value->scalar : 1.0;
 }
 
 void ElementBuilder::set_element_data(const libMesh::Elem *elem)
@@ -131,8 +121,11 @@ bool ElementBuilder::nonlinear_element() const
 pytec3d::ElementParameterValues::Inputs ElementBuilder::parameter_inputs() const
 {
     pytec3d::ElementParameterValues::Inputs inputs;
-    inputs.material = &material_row(elem_data.material_num);
-    inputs.constants = &constant_row(elem_data.real_constant_num);
+    inputs.material = model_data_->material(elem_data.material_num);
+    inputs.constants = model_data_->constants(elem_data.real_constant_num);
+    inputs.material_id = elem_data.material_num;
+    inputs.constants_id = elem_data.real_constant_num;
+    inputs.domain = elem_data.entry->domain;
     inputs.cell_data = vtk_grid_->GetCellData();
     inputs.element_id = static_cast<vtkIdType>(elem_data.elem->id());
 
@@ -172,7 +165,7 @@ namespace
         else if (value.type == ParameterType::Tensor)
             fn(value.tensor);
         else
-            fail("parameter '" + reference.name + "' is a " + pytec3d::type_name(value.type) + " and cannot sit between a test and a trial.");
+            fail("parameter '" + std::string(reference.name()) + "' is a " + pytec3d::type_name(value.type) + " and cannot sit between a test and a trial.");
     }
 
     // Calls fn with the scalar or vector value of a source parameter.
@@ -185,7 +178,7 @@ namespace
         else if (value.type == ParameterType::Vector)
             fn(value.vector);
         else
-            fail("parameter '" + reference.name + "' is a " + pytec3d::type_name(value.type) + " and cannot be a source.");
+            fail("parameter '" + std::string(reference.name()) + "' is a " + pytec3d::type_name(value.type) + " and cannot be a source.");
     }
 } // namespace
 
@@ -270,7 +263,7 @@ void ElementBuilder::build_element()
     const auto inputs = parameter_inputs();
     ElementParameterValues values(type, inputs);
 
-    Context context(entry, *elem_data.elem, constant_row(elem_data.real_constant_num)[CONST_THK]);
+    Context context(entry, *elem_data.elem, thickness());
     const auto indices = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, entry.domain);
     if (indices.n_dofs != n_dofs)
         fail("the fields cover " + std::to_string(indices.n_dofs) + " DOFs but the element has " + std::to_string(n_dofs) + ".");
@@ -304,7 +297,7 @@ void ElementBuilder::build_element_rhs()
     const auto inputs = parameter_inputs();
     ElementParameterValues values(type, inputs);
 
-    Context context(entry, *elem_data.elem, constant_row(elem_data.real_constant_num)[CONST_THK]);
+    Context context(entry, *elem_data.elem, thickness());
     const auto indices = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, entry.domain);
     DenseVector<Number> rhs(n_dofs);
 
@@ -322,9 +315,10 @@ void ElementBuilder::build_element_rhs()
     // Nodal loads are point values on the nodes, not integrals.
     for (const pytec3d::Field &field : type.fields(pytec3d::FieldKind::Dof))
     {
-        if (field.nodal_loads.empty() || !field.active_in(entry.domain))
+        if (!field.nodal_loads || !field.active_in(entry.domain))
             continue;
-        vtkDataArray *array = vtk_grid_->GetPointData()->GetArray(field.nodal_loads.c_str());
+        const std::string load_array(pytec3d::registry::name(*field.nodal_loads));
+        vtkDataArray *array = vtk_grid_->GetPointData()->GetArray(load_array.c_str());
         const std::string &label = field.libmesh_variables.front().label;
         if (!array || !dof_solution_system_->has_variable(label))
             continue;
@@ -335,7 +329,7 @@ void ElementBuilder::build_element_rhs()
         {
             const libMesh::Node &node = elem_data.elem->node_ref(i);
             const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), var_num, 0);
-            if (should_inject_nodal_load_dof(field.name, dof_id))
+            if (should_inject_nodal_load_dof(std::string(field.name()), dof_id))
                 rhs(ids[i]) += array->GetComponent(static_cast<vtkIdType>(node.id()), 0);
         }
     }
@@ -355,7 +349,7 @@ void ElementBuilder::build_element_tangent_stiffness_residual()
 
     if (inputs.bh_curve)
     {
-        Context context(entry, *elem_data.elem, constant_row(elem_data.real_constant_num)[CONST_THK]);
+        Context context(entry, *elem_data.elem, thickness());
         const auto indices = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, entry.domain);
         const DenseVector<Number> u = local_dof_vector(dof_solution_system_->current_local_solution.get());
 
@@ -364,7 +358,7 @@ void ElementBuilder::build_element_tangent_stiffness_residual()
             if (!kernel.has_trial || !type.active(kernel, entry.domain) || !values.nonlinear(kernel.parameter))
                 continue;
 
-            const auto law = [&](const Real *B, Real *H, Real (*J)[3])
+            const auto law = [&](const Real *B, Real *H, Real(*J)[3])
             { values.apply_law(kernel.parameter, B, H, J); };
             pytec3d::kernel::NonlinearBlock(law,
                                             context.operand(kernel.trial),
@@ -401,7 +395,7 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
     const auto inputs = parameter_inputs();
     ElementParameterValues values(type, inputs);
 
-    Context context(entry, *elem_data.elem, constant_row(elem_data.real_constant_num)[CONST_THK]);
+    Context context(entry, *elem_data.elem, thickness());
     const auto dof_indices = type.element_indices(*dof_solution_system_, *elem_data.elem, pytec3d::FieldKind::Dof, entry.domain);
     const auto field_indices = type.element_indices(system, *elem_data.elem, kind, entry.domain);
 
@@ -427,7 +421,7 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
 
         if (values.nonlinear(kernel.parameter))
         {
-            const auto law = [&](const Real *B, Real *H, Real (*J)[3])
+            const auto law = [&](const Real *B, Real *H, Real(*J)[3])
             { values.apply_law(kernel.parameter, B, H, J); };
             if (basis)
                 pytec3d::kernel::NonlinearNodalField(law, trial, *basis, context.weights(), trial_ids, field_ids, u, field_values);

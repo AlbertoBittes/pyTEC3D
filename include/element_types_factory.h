@@ -1,26 +1,25 @@
 /**
  * @file element_types_factory.h
- * @brief Per-subdomain element types built from the Python model description.
+ * @brief Per-subdomain element types built from the "element_types" section of the model data.
  *
- * Each row of the Python @c element_types DataFrame selects a type of element_types.json (ELEMENT_TYPE
- * picks the name), its physical region (OPTION1, an index of domains.json) and its options (OPTION2
- * order, OPTION3 axisymmetry). The factory has the parser build one ElementType per distinct (name,
- * options), shared by the subdomains that use it.
+ * Each TYPE id of the mesh selects an element type of element_types.json (element_type), its physical
+ * region (option1, a domain of domains.json) and its options (option2 order, option3 axisymmetry). The
+ * factory has the parser build one ElementType per distinct (type, options), shared by the subdomains that
+ * use it.
  */
 #ifndef ELEMENT_TYPES_FACTORY_H
 #define ELEMENT_TYPES_FACTORY_H
 
 #include <map>
 #include <memory>
-#include <string>
 #include <tuple>
 #include <unordered_map>
 
 #include <libmesh/id_types.h>
-#include <pybind11/pybind11.h>
 
 #include "element_type.h"
 #include "element_type_parser.h"
+#include "model_data.h"
 
 class ElementTypesFactory
 {
@@ -28,12 +27,12 @@ public:
     struct Entry
     {
         const pytec3d::ElementType *type = nullptr;
-        unsigned int domain = 0; ///< Physical region: index into the domains of the element type.
+        pytec3d::registry::Domain domain = pytec3d::registry::Domain::COUNT; ///< Physical region of the subdomain.
     };
     using EntriesMap = std::unordered_map<libMesh::subdomain_id_type, Entry>;
 
-    /** @brief Builds the entries from the Python @c element_types DataFrame; aborts on unknown types. */
-    ElementTypesFactory(const pybind11::object &element_types_attribute,
+    /** @brief Builds the entries from the model data; @p parser must outlive the factory. */
+    ElementTypesFactory(const pytec3d::ModelData &model_data,
                         std::shared_ptr<const pytec3d::ElementTypeParser> parser);
 
     const EntriesMap &entries() const { return entries_; }
@@ -42,7 +41,7 @@ public:
     const Entry &get(libMesh::subdomain_id_type subdomain_id) const;
 
 private:
-    using TypeKey = std::tuple<std::string, unsigned int, bool>;
+    using TypeKey = std::tuple<pytec3d::registry::ElementTypeId, unsigned int, bool>;
 
     std::shared_ptr<const pytec3d::ElementTypeParser> parser_;
     std::map<TypeKey, std::unique_ptr<pytec3d::ElementType>> types_;

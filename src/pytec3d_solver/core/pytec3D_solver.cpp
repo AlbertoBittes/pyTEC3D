@@ -7,6 +7,7 @@
 #include "element_type_parser.h"
 #include "logging.h"
 #include "pytec3d_model.h"
+#include "registries.h"
 
 #include <libmesh/libmesh.h>
 
@@ -264,7 +265,7 @@ void pyTEC3DSolver::shutdown_runtime()
     }
 }
 
-void pyTEC3DSolver::load_model(pybind11::object pytec3d_object)
+void pyTEC3DSolver::load_model(pybind11::object pytec3d_object, pybind11::object solver_settings)
 {
     try
     {
@@ -274,7 +275,7 @@ void pyTEC3DSolver::load_model(pybind11::object pytec3d_object)
         if (!model_)
             model_ = std::make_shared<pyTEC3DModel>();
 
-        model_->load_into_solver(libmesh_init, element_type_parser_, std::move(pytec3d_object));
+        model_->load_into_solver(libmesh_init, element_type_parser_, std::move(pytec3d_object), std::move(solver_settings));
         loaded = true;
     }
     catch (const std::exception &ex)
@@ -287,14 +288,14 @@ void pyTEC3DSolver::load_model(pybind11::object pytec3d_object)
     }
 }
 
-void pyTEC3DSolver::solve()
+void pyTEC3DSolver::solve(const pybind11::dict &time_step)
 {
     try
     {
         if (!loaded || !model_ || !model_->is_loaded())
             pytec3d::logging::error_and_abort("Solver has no loaded model. Call load_model() first.");
 
-        model_->solve();
+        model_->solve(time_step);
     }
     catch (const std::exception &ex)
     {
@@ -323,6 +324,38 @@ void pyTEC3DSolver::write_system_to_vtk_grid(const std::string &system_name)
     {
         log_unknown_and_rethrow("pyTEC3DSolver::write_system_to_vtk_grid failed");
     }
+}
+
+pybind11::dict pyTEC3DSolver::registries()
+{
+    namespace reg = pytec3d::registry;
+    pybind11::dict out;
+
+    pybind11::list domains;
+    for (const auto name : reg::kDomainNames)
+        domains.append(std::string(name));
+    out["domains"] = domains;
+
+    pybind11::dict fields;
+    for (std::size_t i = 0; i < reg::kNumFieldId; ++i)
+        fields[pybind11::str(std::string(reg::kFieldIdNames[i]))] = reg::kFieldIsVector[i] ? "vector" : "scalar";
+    out["fields"] = fields;
+
+    pybind11::dict element_types;
+    for (std::size_t i = 0; i < reg::kNumElementTypeId; ++i)
+        element_types[pybind11::str(std::string(reg::kElementTypeIdNames[i]))] = reg::kElementTypeDimensions[i];
+    out["element_types"] = element_types;
+
+    const auto types_of = [](const auto &names, const auto &types)
+    {
+        pybind11::dict result;
+        for (std::size_t i = 0; i < names.size(); ++i)
+            result[pybind11::str(std::string(names[i]))] = pytec3d::type_name(types[i]);
+        return result;
+    };
+    out["material_properties"] = types_of(reg::kMaterialPropertyNames, reg::kMaterialPropertyTypes);
+    out["real_constants"] = types_of(reg::kRealConstantNames, reg::kRealConstantTypes);
+    return out;
 }
 
 bool pyTEC3DSolver::is_loaded() const

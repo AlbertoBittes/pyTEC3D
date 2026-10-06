@@ -5,11 +5,15 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <libmesh/enum_fe_family.h>
 #include <libmesh/enum_order.h>
+
+#include "registries.h"
 
 namespace libMesh
 {
@@ -35,7 +39,7 @@ namespace pytec3d
 
     struct Field
     {
-        std::string name;
+        registry::FieldId id = registry::FieldId::COUNT;
         FieldKind kind = FieldKind::Dof;
         unsigned int index = 0; ///< Position among the fields of its kind.
 
@@ -45,13 +49,15 @@ namespace pytec3d
 
         libMesh::FEFamily family = libMesh::LAGRANGE;
         libMesh::Order order = libMesh::FIRST;
-        std::vector<unsigned int> domains; ///< Physical regions where the field exists; empty means all.
-        std::string nodal_loads;           ///< VTK point array that loads this DOF field, if any.
+        std::vector<registry::Domain> domains;     ///< Physical regions where the field exists; empty means all.
+        std::optional<registry::FieldId> nodal_loads; ///< VTK point array that loads this DOF field, if any.
 
         libMesh::FEAbstract *fe = nullptr; ///< Shared by all fields of the same family and order; null for element fields.
         std::vector<LibMeshVariable> libmesh_variables;
 
-        bool active_in(unsigned int domain) const
+        std::string_view name() const { return registry::name(id); }
+
+        bool active_in(registry::Domain domain) const
         {
             return domains.empty() || std::find(domains.begin(), domains.end(), domain) != domains.end();
         }

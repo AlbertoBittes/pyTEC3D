@@ -11,7 +11,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_pos(pytec3d.model.mesh, 0, (0.499, 0.50001))
 Selector.select_pos(pytec3d.model.mesh, 0, (-0.501, -0.49999), mode="a")
@@ -38,9 +38,9 @@ TreeGauge.tree_gauge(pytec3d.model.mesh)
 Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 1, 2, type="elem")
 
-pytec3d.model.time_step["time"] = 1e-3
-pytec3d.model.time_step["theta"] = 0.75
-pytec3d.model.time_step["transient_effects"] = 0
+pytec3d.time_step["time"] = 1e-3
+pytec3d.time_step["theta"] = 0.75
+pytec3d.time_step["transient_effects"] = 0
 
 pytec3d.load_model_into_solver()
 
@@ -50,9 +50,9 @@ pytec3d.write_output()
 Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 100, 2, type="elem")
 
-pytec3d.model.time_step["time"] = 2e-3
-pytec3d.model.time_step["theta"] = 0.75
-pytec3d.model.time_step["transient_effects"] = 1
+pytec3d.time_step["time"] = 2e-3
+pytec3d.time_step["theta"] = 0.75
+pytec3d.time_step["transient_effects"] = 1
 
 pytec3d.solve()
 pytec3d.write_output()
@@ -60,9 +60,9 @@ pytec3d.write_output()
 Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 0, 2, type="elem")
 
-pytec3d.model.time_step["time"] = 3e-3
-pytec3d.model.time_step["theta"] = 0.65
-pytec3d.model.time_step["transient_effects"] = 1
+pytec3d.time_step["time"] = 3e-3
+pytec3d.time_step["theta"] = 0.65
+pytec3d.time_step["transient_effects"] = 1
 
 pytec3d.solve()
 pytec3d.write_output()

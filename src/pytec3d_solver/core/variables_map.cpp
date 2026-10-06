@@ -211,7 +211,7 @@ namespace
 
 std::vector<VariablesMap::SystemVariable> VariablesMap::get_system_variables_for_element(
     const pytec3d::ElementType &element,
-    unsigned int domain,
+    pytec3d::registry::Domain domain,
     pyTEC3DSystemBase::SystemType system_type)
 {
     std::vector<SystemVariable> out;
@@ -223,7 +223,7 @@ std::vector<VariablesMap::SystemVariable> VariablesMap::get_system_variables_for
         {
             const auto key = get_key_by_predicate_one([&variable](const VariableInfo &info)
                                                       { return info.global_label == variable.label; });
-            out.push_back({key, variable.family, variable.order, field.name});
+            out.push_back({key, variable.family, variable.order, std::string(field.name())});
         }
     }
     return out;

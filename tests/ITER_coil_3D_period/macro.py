@@ -15,7 +15,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_pos(pytec3d.model.mesh, 1, (-90.0001, -89.999), coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(pytec3d.model.mesh, 0, (-0.0001, 0.0001), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem())
@@ -27,7 +27,7 @@ ModelEdit.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(pytec3d.model.mesh, 1, 0.0, coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(pytec3d.model.mesh,  0, (-0.0001, 0.0001), mode="u", coordinate_system=YAxisCylindricalCoordinateSystem())
 Selector.select_pos(pytec3d.model.mesh, 0, (0.999, 1.001), mode="u", coordinate_system=SphericalCoordinateSystem())
-pytec3d.model.dof_couplings = ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=-90.0, variables=("A", "VOLT"))
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=-90.0, variables=("A", "VOLT")))
 
 Selector.select(pytec3d.model.mesh, "TYPE", 24, type="elem")
 Selector.nsle(pytec3d.model.mesh, "r")
@@ -46,17 +46,17 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 pytec3d.load_model_into_solver()
 
-pytec3d.model.time_step["theta"] = 0.75
+pytec3d.time_step["theta"] = 0.75
 
 for i in range(1, 3):
     if i == 1:
-        pytec3d.model.time_step["time"] = i * 0.0001
-        pytec3d.model.time_step["transient_effects"] = 0  # TIMINT,OFF
-        pytec3d.model.time_step["theta"] = 1.0  # autots,off (keep as before)
+        pytec3d.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 0  # TIMINT,OFF
+        pytec3d.time_step["theta"] = 1.0  # autots,off (keep as before)
     else:
-        pytec3d.model.time_step["time"] = i * 0.0001
-        pytec3d.model.time_step["transient_effects"] = 1  # TIMINT,ON
-        pytec3d.model.time_step["theta"] = 1.0  # autots,off (default)
+        pytec3d.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 1  # TIMINT,ON
+        pytec3d.time_step["theta"] = 1.0  # autots,off (default)
 
     # select coil elements
     Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")

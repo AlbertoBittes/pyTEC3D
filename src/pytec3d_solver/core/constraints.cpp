@@ -118,13 +118,10 @@ void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
     if (!solver)
         return;
 
+    for (const pytec3d::DofCoupling &coupling : equation_systems.get_model_data().dof_couplings())
     {
-        py::gil_scoped_acquire gil;
-        py::object dof_couplings_df = solver->get_pytec3d_object().attr("dof_couplings");
-        _coupling_cp_id_values = py::cast<std::vector<int>>(
-            dof_couplings_df.attr("__getitem__")("CP_ID").attr("to_numpy")());
-        _coupling_variable_values = py::cast<std::vector<std::string>>(
-            dof_couplings_df.attr("__getitem__")("VARIABLE").attr("to_numpy")());
+        _coupling_cp_id_values.push_back(coupling.cp_id);
+        _coupling_variable_values.push_back(coupling.variable);
     }
 
     const std::size_t n_entries =

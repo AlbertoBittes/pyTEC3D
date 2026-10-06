@@ -515,7 +515,7 @@ void pyTEC3DLinearSystem::post_init()
     if (solver_parent && linear_solver)
     {
         this->solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
-            solver_parent->get_pytec3d_object().attr("solver_settings"),
+            equation_systems.get_solver_settings(),
             linear_solver);
         this->solver_config_copy_->configure_solver();
     }
@@ -843,7 +843,7 @@ void pyTEC3DNonLinearSystem::post_init()
     newton_solver->require_residual_reduction = false;
 
     this->nonlinear_solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
-        solver_parent->get_pytec3d_object().attr("solver_settings"),
+        equation_systems.get_solver_settings(),
         &newton_solver->get_linear_solver());
     this->nonlinear_solver_config_copy_->configure_solver();
 }

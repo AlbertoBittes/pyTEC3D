@@ -73,7 +73,7 @@ namespace pytec3d
 
     Nabla::Nabla(NablaOperator op, const Field &field, unsigned int dimension, bool axisymmetric) : field_(&field), op_(op)
     {
-        const std::string name = "'" + field.name + "'";
+        const std::string name = "'" + std::string(field.name()) + "'";
         if (!field.fe)
             fail("field " + name + " has no finite element.");
 

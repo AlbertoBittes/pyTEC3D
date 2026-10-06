@@ -28,7 +28,6 @@ The entries below are built with ``sphinx.ext.autosummary`` and ``autodoc``; cha
    pytec3d.constants
    pytec3d.logging_utils
    pytec3d_coordinate_system.coordinate_system
-   pytec3d.excel
    pytec3d.model_edit
    pytec3d.selector
    pytec3d.tree_gauge

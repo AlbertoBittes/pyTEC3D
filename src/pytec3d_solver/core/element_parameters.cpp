@@ -66,7 +66,7 @@ namespace pytec3d
         case ParameterKind::Parameter:
             return scaled(symbol(reference.index), reference.sign);
         case ParameterKind::Law:
-            return scaled(symbol(type_.laws().at(reference.index).linear), reference.sign);
+            return scaled(symbol(static_cast<unsigned int>(type_.law(reference.law()).linear)), reference.sign);
         }
         fail("unknown parameter kind.");
     }
@@ -78,11 +78,11 @@ namespace pytec3d
 
     void ElementParameterValues::apply_law(const ParameterRef &reference, const Real B[3], Real H[3], Real J[3][3]) const
     {
-        switch (type_.laws().at(reference.index).type)
+        switch (registry::kind(reference.law()))
         {
-        case LawType::BHCurve:
+        case registry::LawKind::BHCurve:
             if (!inputs_.bh_curve)
-                fail("law '" + reference.name + "' needs a BH curve on the element material.");
+                fail("law '" + std::string(reference.name()) + "' needs a BH curve on the element material.");
             evaluate_bh(*inputs_.bh_curve, B, type_.dimension(), H, J);
             break;
         }
@@ -107,21 +107,32 @@ namespace pytec3d
 
     ParameterValue ElementParameterValues::compute(const ParameterDefinition &definition)
     {
-        switch (definition.source)
+        const registry::ParameterInfo &info = definition.info();
+        switch (info.source)
         {
         case ParameterSource::Material:
-            return read_row(inputs_.material, definition);
+        {
+            const ParameterValue *value = inputs_.material ? inputs_.material->find(static_cast<registry::MaterialProperty>(info.property)) : nullptr;
+            if (!value)
+                undefined(info, "material", inputs_.material_id, inputs_.material != nullptr);
+            return *value;
+        }
         case ParameterSource::Constant:
-            return read_row(inputs_.constants, definition);
+        {
+            const ParameterValue *value = inputs_.constants ? inputs_.constants->find(static_cast<registry::RealConstant>(info.property)) : nullptr;
+            if (!value)
+                undefined(info, "real constants", inputs_.constants_id, inputs_.constants != nullptr);
+            return *value;
+        }
         case ParameterSource::Cell:
-            return read_cell(definition);
+            return read_cell(info);
         case ParameterSource::Point:
-            fail("'" + definition.name + "' is point data: it can only load a DOF field.");
+            fail("'" + std::string(info.key) + "' is point data: it can only load a DOF field.");
         case ParameterSource::Expression:
         {
             ParameterValue result = definition.expression->evaluate(*this);
-            if (result.type != definition.type)
-                fail("'" + definition.name + "' is defined as a " + type_name(definition.type) + " but its expression is a " +
+            if (result.type != info.type)
+                fail("'" + std::string(info.key) + "' is defined as a " + type_name(info.type) + " but its expression is a " +
                      type_name(result.type) + ".");
             return result;
         }
@@ -129,43 +140,25 @@ namespace pytec3d
         fail("unknown parameter source.");
     }
 
-    ParameterValue ElementParameterValues::read_row(const std::vector<Real> *row, const ParameterDefinition &definition) const
+    void ElementParameterValues::undefined(const registry::ParameterInfo &info, const char *what, unsigned int id, bool row_exists) const
     {
-        if (!row)
-            fail("'" + definition.name + "': the row is not available.");
-        for (unsigned int column : definition.columns)
-            if (column >= row->size())
-                fail("'" + definition.name + "': column " + std::to_string(column) + " is not in the row.");
-
-        ParameterValue out;
-        out.type = definition.type;
-        if (definition.type == ParameterType::Scalar)
-            out.scalar = (*row)[definition.columns.at(0)];
-        else
-            for (unsigned int c = 0; c < 3; ++c)
-                out.vector(c) = (*row)[definition.columns.at(c)];
-        return out;
+        const bool is_material = info.source == ParameterSource::Material;
+        const std::string_view property = is_material ? registry::name(static_cast<registry::MaterialProperty>(info.property))
+                                                      : registry::name(static_cast<registry::RealConstant>(info.property));
+        fail("'" + std::string(property) + "' is needed by element type " + std::string(type_.name()) + " in domain " +
+             std::string(registry::name(inputs_.domain)) + " but " + what + " " + std::to_string(id) +
+             (row_exists ? " does not define it." : " is not in the model data."));
     }
 
-    ParameterValue ElementParameterValues::read_cell(const ParameterDefinition &definition) const
+    ParameterValue ElementParameterValues::read_cell(const registry::ParameterInfo &info) const
     {
-        vtkDataArray *array = inputs_.cell_data ? inputs_.cell_data->GetArray(definition.array.c_str()) : nullptr;
+        const std::string array_name(registry::name(info.array));
+        vtkDataArray *array = inputs_.cell_data ? inputs_.cell_data->GetArray(array_name.c_str()) : nullptr;
         const unsigned int n = array ? static_cast<unsigned int>(array->GetNumberOfComponents()) : 0;
-
-        ParameterType type = definition.type;
-        if (type == ParameterType::Unknown)
-        {
-            if (!array)
-                fail("cell array '" + definition.array + "' is not in the grid, so the type of '" + definition.name + "' is unknown.");
-            if (n == 1)
-                type = ParameterType::Scalar;
-            else if (n == 3)
-                type = ParameterType::Vector;
-            else if (n == 9)
-                type = ParameterType::Tensor;
-            else
-                fail("cell array '" + definition.array + "' has " + std::to_string(n) + " components; expected 1, 3 or 9.");
-        }
+        const ParameterType type = info.type;
+        if (array && n != (type == ParameterType::Scalar ? 1u : 3u))
+            fail("cell array '" + array_name + "' has " + std::to_string(n) + " components; the " + type_name(type) + " needs " +
+                 (type == ParameterType::Scalar ? "1." : "3."));
 
         // A missing array reads as zero.
         ParameterValue out;
@@ -173,17 +166,11 @@ namespace pytec3d
         if (!array)
             return out;
 
-        const auto component = [&](unsigned int c)
-        { return c < n ? array->GetComponent(inputs_.element_id, static_cast<int>(c)) : 0.0; };
         if (type == ParameterType::Scalar)
-            out.scalar = component(0);
-        else if (type == ParameterType::Vector)
-            for (unsigned int c = 0; c < 3; ++c)
-                out.vector(c) = component(c);
+            out.scalar = array->GetComponent(inputs_.element_id, 0);
         else
-            for (unsigned int i = 0; i < 3; ++i)
-                for (unsigned int j = 0; j < 3; ++j)
-                    out.tensor(i, j) = component(3 * i + j);
+            for (unsigned int c = 0; c < 3; ++c)
+                out.vector(c) = array->GetComponent(inputs_.element_id, static_cast<int>(c));
         return out;
     }
 } // namespace pytec3d

@@ -20,7 +20,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 # pytec3d.model.bh_curves[1] = [
 #     [0.0, 0.0],
@@ -53,7 +53,7 @@ pytec3d.model.read_excel("input_template.xlsx")
 #     [8303.31592013, 2.11657067391],
 # ]
 
-pytec3d.model.bh_curves[2] = [
+pytec3d.model.set_bh_curve(2, [
     [0.0, 0.0],
     [100.0, 0.31],
     [200.0, 0.62],
@@ -85,9 +85,9 @@ pytec3d.model.bh_curves[2] = [
     [22468.45355, 2.055501175],
     [29881.25538, 2.099669587],
     [2337890.865, 5],
-]
+])
 
-pytec3d.model.bh_curves[3] = [
+pytec3d.model.set_bh_curve(3, [
     [0.0, 0.0],
     [156.167232069, 0.239888044992],
     [210.113464193, 0.316039547109],
@@ -109,7 +109,7 @@ pytec3d.model.bh_curves[3] = [
     [3637.99523776, 0.492120559561],
     [4264.282677, 0.494422134],
     [6131.085178, 0.499025282],
-]
+])
 
 # Coupling for stranded coils
 Selector.select(pytec3d.model.mesh, "TYPE", 3, type="elem")
@@ -123,10 +123,12 @@ master_node = vtknp.vtk_to_numpy(
 xc0, yc0, zc0 = 0.01786, 0.012965, 0.04555
 xc1, yc1, zc1 = 0.01786, 0.050605, 0.04555
 
-pytec3d.model.coordinate_systems[91] = ZAxisCylindricalCoordinateSystem(
+pytec3d.model.set_coordinate_system(91, ZAxisCylindricalCoordinateSystem(
+)
     origin=[xc0, yc0, zc0],
 )
-pytec3d.model.coordinate_systems[92] = ZAxisCylindricalCoordinateSystem(
+pytec3d.model.set_coordinate_system(92, ZAxisCylindricalCoordinateSystem(
+)
     origin=[xc1, yc1, zc1],
 )
 
@@ -145,8 +147,8 @@ TreeGauge.tree_gauge(pytec3d.model.mesh)
 
 pytec3d.load_model_into_solver()
 
-pytec3d.model.time_step["time"] = 0.00001
-pytec3d.model.time_step["transient_effects"] = False
+pytec3d.time_step["time"] = 0.00001
+pytec3d.time_step["transient_effects"] = False
 
 Selector.select(pytec3d.model.mesh, "ID", master_node)
 Selector.set_value_on_selection(pytec3d.model.mesh, "AMPS", 5)

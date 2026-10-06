@@ -1,0 +1,303 @@
+{
+  "element_types": {
+    "31": {
+      "element_type": 1,
+      "option1": 0,
+      "option2": 1,
+      "option3": 0,
+      "option4": 1
+    },
+    "33": {
+      "element_type": 1,
+      "option1": 3,
+      "option2": 1,
+      "option3": 0,
+      "option4": 1
+    },
+    "34": {
+      "element_type": 1,
+      "option1": 4,
+      "option2": 1,
+      "option3": 0,
+      "option4": 1
+    }
+  },
+  "materials": {
+    "21": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rho": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    "23": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rho": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    "24": {
+      "mur": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rho": [
+        [
+          8e-07,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          8e-07,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          8e-07
+        ]
+      ]
+    }
+  },
+  "constants": {
+    "1": {
+      "thickness": 1.0,
+      "cross_section": 0.9437519,
+      "turns": 249.0,
+      "radius": 3.94,
+      "resistance": 0.0162797144,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "2": {
+      "thickness": 1.0,
+      "cross_section": 0.41453946,
+      "turns": 116.0,
+      "radius": 8.29,
+      "resistance": 0.01688462455,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "3": {
+      "thickness": 1.0,
+      "cross_section": 0.66413094,
+      "turns": 186.0,
+      "radius": 12.0,
+      "resistance": 0.03926740844,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "4": {
+      "thickness": 1.0,
+      "cross_section": 0.60871516,
+      "turns": 170.0,
+      "radius": 12.0,
+      "resistance": 0.0356938854,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "5": {
+      "thickness": 1.0,
+      "cross_section": 0.7749625,
+      "turns": 217.0,
+      "radius": 8.39,
+      "resistance": 0.03198199512,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "6": {
+      "thickness": 1.0,
+      "cross_section": 1.7265925,
+      "turns": 460.0,
+      "radius": 4.33,
+      "resistance": 0.03318021032,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "10": {
+      "thickness": 1.0,
+      "cross_section": 28.6027095
+    },
+    "11": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "12": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "13": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "14": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "15": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "16": {
+      "thickness": 1.0,
+      "cross_section": 1.55608,
+      "turns": 553.0,
+      "radius": 1.7,
+      "resistance": 0.02094228464,
+      "symmetry": 1.0,
+      "T": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "20": {
+      "thickness": 1.0
+    }
+  },
+  "dof_couplings": {},
+  "bh_curves": {},
+  "coordinate_systems": {}
+}

@@ -48,7 +48,7 @@ namespace pytec3d
         void require_computed(const Data &data, const char *what, const Field &spec)
         {
             if (data.empty())
-                fail(std::string(what) + " of '" + spec.name + "' is not computed: request it and reinit() the FE first.");
+                fail(std::string(what) + " of '" + std::string(spec.name()) + "' is not computed: request it and reinit() the FE first.");
         }
 
         inline std::vector<unsigned int> iota_components(unsigned int n)
@@ -115,9 +115,9 @@ namespace pytec3d
         if constexpr (nabla_detail::is_vector_output<OutputType>)
         {
             if constexpr (Axisymmetric)
-                nabla_detail::fail("grad of vector variable '" + spec.name + "' is not supported on axisymmetric elements.");
+                nabla_detail::fail("grad of vector variable '" + std::string(spec.name()) + "' is not supported on axisymmetric elements.");
             if (spec.family != libMesh::LAGRANGE_VEC && spec.family != libMesh::L2_LAGRANGE_VEC)
-                nabla_detail::fail("grad of vector variable '" + spec.name + "' needs a Lagrange vector family.");
+                nabla_detail::fail("grad of vector variable '" + std::string(spec.name()) + "' needs a Lagrange vector family.");
 
             for (unsigned int qp = 0; qp < nq; ++qp)
             {
@@ -155,7 +155,7 @@ namespace pytec3d
         if constexpr (nabla_detail::is_vector_output<OutputType>)
         {
             if constexpr (Dim != 3)
-                nabla_detail::fail("curl of vector variable '" + spec.name + "' is only supported on 3D elements.");
+                nabla_detail::fail("curl of vector variable '" + std::string(spec.name()) + "' is only supported on 3D elements.");
             else
             {
                 const auto &phi = fe.get_phi();
@@ -181,7 +181,7 @@ namespace pytec3d
         {
             // The curl of a scalar is that of the out-of-plane vector f e_z of a 2D element.
             if constexpr (Dim != 2)
-                nabla_detail::fail("curl of scalar variable '" + spec.name + "' needs a 2D element.");
+                nabla_detail::fail("curl of scalar variable '" + std::string(spec.name()) + "' needs a 2D element.");
             else
             {
                 const auto &phi = fe.get_phi();
@@ -269,7 +269,7 @@ namespace pytec3d
         {
             // The divergence of the out-of-plane vector f e_z of a 2D element is zero.
             if constexpr (Dim != 2)
-                nabla_detail::fail("div of scalar variable '" + spec.name + "' needs a 2D element.");
+                nabla_detail::fail("div of scalar variable '" + std::string(spec.name()) + "' needs a 2D element.");
             else
                 for (libMesh::DenseMatrix<libMesh::Real> &m : out.values)
                     m.resize(1, n);

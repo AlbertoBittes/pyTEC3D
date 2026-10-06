@@ -54,16 +54,16 @@ a_PF6 = 1.72659250
 a_CS = 1.55608
 a_plasma = 28.6027095
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select_all(pytec3d.model.mesh)
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type="elem")
 Selector.nsel_ext(pytec3d.model.mesh)
 Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-pytec3d.model.time_step["time"] = 1.0
-pytec3d.model.time_step["theta"] = 0.5
-pytec3d.model.time_step["transient_effects"] = False
+pytec3d.time_step["time"] = 1.0
+pytec3d.time_step["theta"] = 0.5
+pytec3d.time_step["transient_effects"] = False
 
 Selector.select(pytec3d.model.mesh, "CS3L", 1, type="elem")
 Selector.set_value_on_selection(pytec3d.model.mesh, "Js", i_CS3L / a_CS, 2, type="elem")

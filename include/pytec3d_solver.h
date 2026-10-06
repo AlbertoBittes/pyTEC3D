@@ -36,8 +36,9 @@ public:
 
     /**
      * @brief Imports the model from a Python pyTEC3D model object, distributes mesh and DOFs.
+     * @param solver_settings dict with the PETSc settings of the Python solver, read at every solve.
      */
-    void load_model(pybind11::object pytec3d_object);
+    void load_model(pybind11::object pytec3d_object, pybind11::object solver_settings);
 
     /** @brief Releases all libMesh, PETSc, and VTK resources.  Idempotent. */
     void close();
@@ -50,8 +51,8 @@ public:
      */
     static void shutdown_runtime();
 
-    /** @brief Executes one time-step solve and writes results back to the VTK grid. */
-    void solve();
+    /** @brief Executes one time-step solve (dict with time, theta, transient_effects) and writes results back to the VTK grid. */
+    void solve(const pybind11::dict &time_step);
 
     /** @brief Localises a named system's solution onto the active VTK grid. */
     void write_system_to_vtk_grid(const std::string &system_name);
@@ -59,8 +60,8 @@ public:
     /** @brief Returns true if load_model() has completed successfully. */
     bool is_loaded() const;
 
-    /** @brief Base element types, fields and domains loaded from the JSON definitions. */
-    const pytec3d::ElementTypeParser &element_type_parser() const { return *element_type_parser_; }
+    /** @brief The registries compiled into the module, as a dict (domains, fields, element types, properties). */
+    static pybind11::dict registries();
 
 private:
     std::shared_ptr<const pytec3d::ElementTypeParser> element_type_parser_;

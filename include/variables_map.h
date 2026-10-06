@@ -26,6 +26,7 @@
 #include <libmesh/id_types.h>
 
 #include "pytec3d_system.h"
+#include "registries.h"
 
 namespace libMesh
 {
@@ -146,7 +147,7 @@ public:
 
     /** @brief libMesh variables the fields of the element type active in @p domain contribute to @p system_type. */
     static std::vector<SystemVariable> get_system_variables_for_element(const pytec3d::ElementType &element,
-                                                                        unsigned int domain,
+                                                                        pytec3d::registry::Domain domain,
                                                                         pyTEC3DSystemBase::SystemType system_type);
 
     /** @brief For every variable of @p system_type, the subdomains whose element type contains it. */

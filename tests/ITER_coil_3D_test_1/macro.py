@@ -13,7 +13,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 
 pytec3d.read_model(filepath)
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 Selector.select(pytec3d.model.mesh, "X_BOUND", 1)
 Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
@@ -40,18 +40,18 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 pytec3d.load_model_into_solver()
 
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 
 for i in range(1, 10):
-    pytec3d.model.time_step["time_step_number"] = i
+    pytec3d.time_step["time_step_number"] = i
     if i == 1:
-        pytec3d.model.time_step["time"] = i * 0.0001
-        pytec3d.model.time_step["transient_effects"] = 0  # TIMINT,OFF
-        pytec3d.model.time_step["theta"] = 1.0  # autots,off (keep as before)
+        pytec3d.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 0  # TIMINT,OFF
+        pytec3d.time_step["theta"] = 1.0  # autots,off (keep as before)
     else:
-        pytec3d.model.time_step["time"] = i * 0.0001
-        pytec3d.model.time_step["transient_effects"] = 1  # TIMINT,ON
-        pytec3d.model.time_step["theta"] = 1.0  # autots,off (default)
+        pytec3d.time_step["time"] = i * 0.0001
+        pytec3d.time_step["transient_effects"] = 1  # TIMINT,ON
+        pytec3d.time_step["theta"] = 1.0  # autots,off (default)
 
     # select coil elements
     Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")

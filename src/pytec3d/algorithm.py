@@ -550,7 +550,7 @@ class pyTEC3DAlgorithm:
             Dict[str, Any]: Row payload for CSV append.
         """
         row: Dict[str, Any] = {
-            "time": float(self.pytec3d.model.time_step["time"]),
+            "time": float(self.pytec3d.time_step["time"]),
             "picard_iteration": int(self.status["picard_iteration"]),
             "flux_metric": float(self.status["flux_norm"]),
             "flux_threshold": float(self.status["flux_tolerance"]),
@@ -1013,7 +1013,7 @@ class pyTEC3DAlgorithm:
         halo_requested = (
             is_limiter
             and halo_delta1 > 0.0
-            and self.pytec3d.model.time_step["time"] >= t0_halo
+            and self.pytec3d.time_step["time"] >= t0_halo
         )
 
         point_data = mesh.GetPointData()
@@ -1415,29 +1415,25 @@ class pyTEC3DAlgorithm:
 
         real_constant_array = pyTEC3DAlgorithm._require_array(cell_data, "CONSTANT")
         real_constant_ids = vtknp.vtk_to_numpy(real_constant_array)
-        constants_df = self.pytec3d.model.constants
-        id_col = "CONSTANTS_ID"
-        area_col = "CS"
-
-        # Keep old semantics for duplicate IDs: the last occurrence wins.
-        area_by_constant = constants_df.groupby(id_col, sort=False)[area_col].last()
-        selected_rc_ids = pd.Series(real_constant_ids[selected_ids], index=selected_ids)
-        selected_areas = selected_rc_ids.map(area_by_constant)
-        if selected_areas.isna().any():
-            missing_ids = np.unique(
-                selected_rc_ids[selected_areas.isna()].to_numpy(dtype=int)
-            )
+        selected_rc_ids = real_constant_ids[selected_ids].astype(int)
+        area_by_constant: Dict[int, float] = {}
+        missing_ids = []
+        for rc_id in np.unique(selected_rc_ids).tolist():
+            area = self.pytec3d.model.real_constant(rc_id, "cross_section")
+            if area is None:
+                missing_ids.append(rc_id)
+            else:
+                area_by_constant[rc_id] = float(area)
+        if missing_ids:
             raise ValueError(
-                f"Real constant IDs not found in constants table: {missing_ids.tolist()}."
+                f"Real constant IDs without 'cross_section' in model.data['constants']: {missing_ids}."
             )
-        selected_areas_np = selected_areas.to_numpy(dtype=float)
-        if np.any(np.abs(selected_areas_np) <= np.finfo(float).eps):
-            bad_ids = np.unique(
-                selected_rc_ids[np.abs(selected_areas_np) <= np.finfo(float).eps]
-                .to_numpy(dtype=int)
-            )
+        selected_areas_np = np.array([area_by_constant[i] for i in selected_rc_ids.tolist()], dtype=float)
+        invalid_area = np.abs(selected_areas_np) <= np.finfo(float).eps
+        if np.any(invalid_area):
+            bad_ids = np.unique(selected_rc_ids[invalid_area])
             raise ValueError(
-                f"Real constant IDs with invalid area (CS=0): {bad_ids.tolist()}."
+                f"Real constant IDs with invalid area (cross_section=0): {bad_ids.tolist()}."
             )
 
         base_js_z = self._old_control_current_density_base
@@ -1475,11 +1471,11 @@ class pyTEC3DAlgorithm:
             raise ValueError("halo_delta1 must be non-negative.")
         if (
             halo_delta1 > 0.0
-            and self.pytec3d.model.time_step["time"] >= t0_halo
+            and self.pytec3d.time_step["time"] >= t0_halo
             and self.status["separatrix_configuration"] == "limiter"
         ):
             halo_scale = halo_delta1 * (
-                1.0 + (self.pytec3d.model.time_step["time"] - t0_halo) * halo_delta2
+                1.0 + (self.pytec3d.time_step["time"] - t0_halo) * halo_delta2
             )
             self.status["psi_2_min"] = (
                 self.status["psi_min"]
@@ -1623,7 +1619,7 @@ class pyTEC3DAlgorithm:
             self.pytec3d.model.mesh.GetMaxSpatialDimension() > 2
             and self.status["separatrix_configuration"] == "limiter"
             and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
-            and self.pytec3d.model.time_step["time"]
+            and self.pytec3d.time_step["time"]
             >= float(self.input_parameters.get("t0_halo", 0.0))
             and float(self.status["psi_2_min"]) < float(self.status["psi_min"])
         )

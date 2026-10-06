@@ -36,13 +36,13 @@ pytec3d.read_model(filepath)
 output_pytec3d_equilibrium = pyTEC3D_Model.read_model(output_eq_mesh_filepath)
 pytec3d.algorithm.vacuum_chamber_mesh = output_pytec3d_equilibrium.mesh
 
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 # Cyclic periodic boundaries
 ModelEdit.remove_array(pytec3d.model.mesh, "CP_0")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-pytec3d.model.dof_couplings = pd.concat([pytec3d.model.dof_couplings, ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "V"))])
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "V")))
 
 # BCs: Outer boundary far field zero boundary conditions + Tree gauge
 Selector.select_all(pytec3d.model.mesh)
@@ -68,7 +68,7 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type
 
 # 1. Build source->destination element map using toroidal slices
 Selector.select(pytec3d.model.mesh, "COILS", 1, type="elem")
-pytec3d.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
@@ -99,18 +99,18 @@ betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
 time_steps = np.concatenate((time_steps[0:1], time_steps[1::5]))
 currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 
 pytec3d.save_model()
 
 pytec3d.load_model_into_solver()
 for step_idx in range(len(time_steps)):
-    pytec3d.model.time_step["time"] = time_steps[step_idx]
+    pytec3d.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:
-        pytec3d.model.time_step["transient_effects"] = False
-        pytec3d.model.time_step["time"] = 1e-10
+        pytec3d.time_step["transient_effects"] = False
+        pytec3d.time_step["time"] = 1e-10
     else:
-        pytec3d.model.time_step["transient_effects"] = True
+        pytec3d.time_step["transient_effects"] = True
     pytec3d.algorithm.input_parameters["plasma_current"] = currents[step_idx]
     pytec3d.algorithm.input_parameters["beta_p"] = betas[step_idx]
     pytec3d.algorithm.evolution_solve()

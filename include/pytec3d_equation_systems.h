@@ -11,6 +11,7 @@
 
 #include <unordered_map>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <vector>
 #include <array>
@@ -24,6 +25,7 @@
 #include "solver_configuration.h"
 #include "time_step.h"
 #include "bh_curve.h"
+#include "model_data.h"
 
 class ElementTypesFactory;
 class pyTEC3DSystemBase;
@@ -50,12 +52,30 @@ class pyTEC3DEquationSystems
 
 {
 public:
-    using PropertyRowsMap = std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>>;
     using RotationMap = std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>>;
 
-    /** @brief Parses and caches model metadata shared across systems/builders; @p parser must outlive the element types. */
-    void load_model_data(pybind11::object pytec3d_object,
+    /**
+     * @brief Parses the model data JSON (model.data) and builds the element types it selects.
+     * @p parser must outlive the element types. @p solver_settings is the dict of the Python solver, read at
+     * every solve.
+     */
+    void load_model_data(const std::string &model_json,
+                         pybind11::object solver_settings,
                          const std::shared_ptr<const pytec3d::ElementTypeParser> &parser);
+
+    /**
+     * @brief Dry run of the kernels on one element per (TYPE, MATERIAL, CONSTANT) combination of the mesh.
+     *
+     * Aborts, naming the element type, domain and material or constants, when a kernel active in the domain
+     * needs a material property or real constant the model data leaves undefined.
+     */
+    void validate_model_data() const;
+
+    /** @brief The model data of the loaded model. */
+    const pytec3d::ModelData &get_model_data() const;
+
+    /** @brief The solver_settings dict of the Python solver (none when it passed none). */
+    const pybind11::object &get_solver_settings() const;
 
     /** @brief Updates time-step state and decides whether this solve advances time. */
     void prepare_time_step_solve(const pybind11::dict &time_step);
@@ -93,17 +113,11 @@ public:
     /** @brief Returns true when material BH curves are available. */
     bool has_bh_curves() const;
 
-    /** @brief Returns parsed BH curves indexed by material and component. */
+    /** @brief Returns the BH curves of the model data, by material. */
     const BHCurveMaterialsMap &get_bh_curves() const;
 
     /** @brief Returns the element-types factory built from the model description. */
     const std::shared_ptr<ElementTypesFactory> &get_element_types_factory() const;
-
-    /** @brief Returns cached material rows indexed by material ID. */
-    const PropertyRowsMap &get_material_rows() const;
-
-    /** @brief Returns cached real-constant rows indexed by constants ID. */
-    const PropertyRowsMap &get_constant_rows() const;
 
     /** @brief Returns precomputed element-center local-to-global rotations keyed by element id. */
     const RotationMap &get_element_local_to_global_rotations() const;
@@ -125,9 +139,8 @@ private:
     std::unique_ptr<TimeStep> time_step_;
     std::unique_ptr<TimeStep> old_time_step_;
     std::shared_ptr<ElementTypesFactory> element_types_factory_;
-    BHCurveMaterialsMap bh_curves_;
-    PropertyRowsMap materials_rows_;
-    PropertyRowsMap constants_rows_;
+    pytec3d::ModelData model_data_;
+    pybind11::object solver_settings_;
     RotationMap element_local_to_global_rotations_;
     RotationMap node_local_to_global_rotations_;
 };

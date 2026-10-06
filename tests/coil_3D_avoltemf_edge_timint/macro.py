@@ -18,7 +18,7 @@ filepath = os.path.join(os.getcwd(), filename + ".vtu")
 pytec3d.read_model(filepath)
 Selector.select_all(pytec3d.model.mesh)
 Selector.set_value_on_selection(pytec3d.model.mesh, "CONSTANT", 1, type="elem")
-pytec3d.model.read_excel("input_template.xlsx")
+pytec3d.model.read_json("model_data.json")
 
 size = 1
 coil = 0.2
@@ -29,7 +29,8 @@ ModelEdit.remove_array(pytec3d.model.mesh, "CP_1")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_1", dtype=vtk.VTK_INT)
 
 Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
-pytec3d.model.coordinate_systems[1] = YAxisCylindricalCoordinateSystem()
+pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem()
+)
 Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
 
 
@@ -44,18 +45,13 @@ master_node = vtknp.vtk_to_numpy(
 Selector.select_pos(
     pytec3d.model.mesh, 1, (-tol, tol), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-pytec3d.model.dof_couplings = pd.concat(
-    [
-        pytec3d.model.dof_couplings,
-        ModelEdit.periodic_boundaries(
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(
             pytec3d.model.mesh,
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
             variables=("Az", "V"),
-        ),
-    ]
-)
+        ))
 
 Selector.select_all(pytec3d.model.mesh)
 Selector.select_pos(
@@ -96,10 +92,10 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "_V", 0.0)
 
 pytec3d.load_model_into_solver()
 
-pytec3d.model.time_step["theta"] = 1.0
+pytec3d.time_step["theta"] = 1.0
 pytec3d.save_model()
 for i in range(1, 3):
-    pytec3d.model.time_step["time"] = i * 0.00001
+    pytec3d.time_step["time"] = i * 0.00001
     if i == 1:
         Selector.select(pytec3d.model.mesh, "ID", master_node)
         Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 100)

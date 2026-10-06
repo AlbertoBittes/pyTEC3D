@@ -42,7 +42,6 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
                         spdlog \
                         numpy \
                         pandas \
-                        openpyxl \
                         mpi4py \
                         pip \
                         -y

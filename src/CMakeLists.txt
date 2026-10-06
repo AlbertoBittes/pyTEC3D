@@ -68,18 +68,35 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 get_filename_component(pyTEC3D_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
-# JSON definitions are compiled into the module so no runtime file lookup is needed.
+# The JSON registries are compiled into the module: fields, domains, element types, parameters and laws
+# become enums (registries.h, generated), the kernels of the element types are embedded as text. Editing any
+# of them means rebuilding the module. Only the model data JSON is read at run time.
 set(PYTEC3D_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
-foreach(_res element_types fields domains)
-  string(TOUPPER "${_res}" _res_var)
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PYTEC3D_RESOURCE_DIR}/${_res}.json")
-  file(READ "${PYTEC3D_RESOURCE_DIR}/${_res}.json" PYTEC3D_${_res_var}_JSON)
+set(PYTEC3D_REGISTRY_JSON
+  "${PYTEC3D_RESOURCE_DIR}/element_types.json"
+  "${PYTEC3D_RESOURCE_DIR}/fields.json"
+  "${PYTEC3D_RESOURCE_DIR}/domains.json")
+foreach(_json IN LISTS PYTEC3D_REGISTRY_JSON)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_json}")
 endforeach()
+file(READ "${PYTEC3D_RESOURCE_DIR}/element_types.json" PYTEC3D_ELEMENT_TYPES_JSON)
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/pytec3d_solver/core/embedded_resources.cpp.in"
   "${CMAKE_CURRENT_BINARY_DIR}/embedded_resources.cpp"
   @ONLY)
 list(APPEND SOURCES "${CMAKE_CURRENT_BINARY_DIR}/embedded_resources.cpp")
+
+set(PYTEC3D_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(PYTEC3D_REGISTRIES_HEADER "${PYTEC3D_GENERATED_DIR}/registries.h")
+add_custom_command(
+  OUTPUT "${PYTEC3D_REGISTRIES_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${PYTEC3D_GENERATED_DIR}"
+  COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_registries.py"
+          --resources "${PYTEC3D_RESOURCE_DIR}" --output "${PYTEC3D_REGISTRIES_HEADER}"
+  DEPENDS ${PYTEC3D_REGISTRY_JSON} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_registries.py"
+  COMMENT "Generating enums from the JSON registries"
+  VERBATIM)
+list(APPEND SOURCES "${PYTEC3D_REGISTRIES_HEADER}")
 
 set(PYTEC3D_PYTHON_PACKAGE_ROOT "${pyTEC3D_REPO_ROOT}/src" CACHE PATH
   "Root directory that contains pytec3d_* Python packages for extension module output")
@@ -108,6 +125,7 @@ message(STATUS "Module RPATH: ${PYTEC3D_RPATH}")
 set(pyTEC3D_INCLUDE_DIRS
   "${LIBMESH_DIR}/include"
   "${pyTEC3D_REPO_ROOT}/include"
+  "${PYTEC3D_GENERATED_DIR}"
   ${PETSC_INCLUDE_DIRS}
 )
 

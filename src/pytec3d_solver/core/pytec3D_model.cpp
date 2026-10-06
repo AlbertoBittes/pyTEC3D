@@ -49,7 +49,8 @@ pyTEC3DModel::~pyTEC3DModel()
 
 void pyTEC3DModel::load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> &libmesh_init,
                                     const std::shared_ptr<const pytec3d::ElementTypeParser> &parser,
-                                    py::object pytec3dmodel_object)
+                                    py::object pytec3dmodel_object,
+                                    py::object solver_settings)
 {
     if (!libmesh_init)
         pytec3d::logging::error_and_abort("Cannot load model without an initialized libMesh runtime.");
@@ -75,7 +76,8 @@ void pyTEC3DModel::load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> 
     pytec3d::logging::info("Adding physical variables to systems");
     equation_system = std::make_shared<pyTEC3DEquationSystems>(*mesh);
     equation_system->set_parent_object(this);
-    equation_system->load_model_data(pytec3d_object, parser);
+    equation_system->load_model_data(py::cast<std::string>(pytec3d_object.attr("data_json")()), std::move(solver_settings), parser);
+    equation_system->validate_model_data();
     equation_system->configure_systems();
     equation_system->initialize_systems();
 
@@ -97,15 +99,14 @@ void pyTEC3DModel::load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> 
     loaded = true;
 }
 
-void pyTEC3DModel::solve()
+void pyTEC3DModel::solve(const py::dict &time_step)
 {
     if (!loaded || !mesh || !equation_system || pytec3d_object.is_none())
         pytec3d::logging::error_and_abort("Solver model is not fully initialized. Call load_model() first.");
 
     pytec3d::logging::info("Starting system solve");
 
-    equation_system->solve_equation_systems(
-        py::cast<py::dict>(pytec3d_object.attr("time_step")));
+    equation_system->solve_equation_systems(time_step);
 
     write_system_to_vtk_grid(
         pyTEC3DSystemBase::system_name_from_type(pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM));

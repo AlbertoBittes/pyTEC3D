@@ -84,6 +84,44 @@ namespace pytec3d
                 return make_vector(Vec(f(value.vector(0)), f(value.vector(1)), f(value.vector(2))));
             fail(where, std::string(what) + " needs a scalar or a vector.");
         }
+
+        // Inverse of a 3x3 tensor by cofactors; a diagonal tensor inverts entry by entry.
+        // With positive_only a diagonal entry that is not positive and finite, or a full tensor with a
+        // non-positive determinant, gives 0.
+        Ten invert_tensor(const Ten &t, bool positive_only, const std::string &where)
+        {
+            const auto invert_entry = [&](Real x)
+            {
+                if (positive_only)
+                    return (x > 0.0 && std::isfinite(x)) ? 1.0 / x : 0.0;
+                return 1.0 / x;
+            };
+
+            bool diagonal = true;
+            for (unsigned int i = 0; i < 3; ++i)
+                for (unsigned int j = 0; j < 3; ++j)
+                    if (i != j && t(i, j) != 0.0)
+                        diagonal = false;
+            if (diagonal)
+                return Ten(invert_entry(t(0, 0)), 0.0, 0.0, 0.0, invert_entry(t(1, 1)), 0.0, 0.0, 0.0, invert_entry(t(2, 2)));
+
+            const Real det = t.det();
+            if (positive_only && !(det > 0.0 && std::isfinite(det)))
+                return Ten();
+            if (det == 0.0)
+                fail(where, "inv of a singular tensor.");
+            Ten out;
+            out(0, 0) = (t(1, 1) * t(2, 2) - t(1, 2) * t(2, 1)) / det;
+            out(0, 1) = (t(0, 2) * t(2, 1) - t(0, 1) * t(2, 2)) / det;
+            out(0, 2) = (t(0, 1) * t(1, 2) - t(0, 2) * t(1, 1)) / det;
+            out(1, 0) = (t(1, 2) * t(2, 0) - t(1, 0) * t(2, 2)) / det;
+            out(1, 1) = (t(0, 0) * t(2, 2) - t(0, 2) * t(2, 0)) / det;
+            out(1, 2) = (t(0, 2) * t(1, 0) - t(0, 0) * t(1, 2)) / det;
+            out(2, 0) = (t(1, 0) * t(2, 1) - t(1, 1) * t(2, 0)) / det;
+            out(2, 1) = (t(0, 1) * t(2, 0) - t(0, 0) * t(2, 1)) / det;
+            out(2, 2) = (t(0, 0) * t(1, 1) - t(0, 1) * t(1, 0)) / det;
+            return out;
+        }
     } // namespace
 
     // ---- parsing ---------------------------------------------------------------------------------------------
@@ -378,6 +416,14 @@ namespace pytec3d
             break;
         }
 
+        // select() evaluates the branch it takes only: the other one may use parameters the element does not define.
+        if (node.function == Function::Select)
+        {
+            const ParameterValue condition = evaluate_node(node.a, context);
+            require(where, "select condition", condition, ParameterType::Scalar);
+            return evaluate_node(condition.scalar != 0.0 ? node.b : node.c, context);
+        }
+
         const ParameterValue a = evaluate_node(node.a, context);
         const ParameterValue b = node.b >= 0 ? evaluate_node(node.b, context) : ParameterValue();
         const ParameterValue c = node.c >= 0 ? evaluate_node(node.c, context) : ParameterValue();
@@ -416,9 +462,13 @@ namespace pytec3d
             return scalar_value(a.vector(0) * b.vector(0) + a.vector(1) * b.vector(1) + a.vector(2) * b.vector(2));
         }
         case Function::Inv:
+            if (a.type == ParameterType::Tensor)
+                return make_tensor(invert_tensor(a.tensor, false, where));
             return elementwise(a, [](Real x)
                                { return 1.0 / x; }, "inv", where);
         case Function::Invpos:
+            if (a.type == ParameterType::Tensor)
+                return make_tensor(invert_tensor(a.tensor, true, where));
             return elementwise(a, [](Real x)
                                { return (x > 0.0 && std::isfinite(x)) ? 1.0 / x : 0.0; }, "invpos", where);
         case Function::Global:
@@ -431,10 +481,7 @@ namespace pytec3d
             fail(where, "global needs a vector or a tensor.");
         }
         case Function::Select:
-            require(where, "select condition", a, ParameterType::Scalar);
-            if (b.type != c.type)
-                type_error(where, "select", b.type, c.type);
-            return a.scalar != 0.0 ? b : c;
+            break; // Handled above.
         }
         fail(where, "unknown function.");
     }
