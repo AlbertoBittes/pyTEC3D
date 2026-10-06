@@ -1,6 +1,6 @@
 /**
  * @file element_types_factory.cpp
- * @brief ElementTypesFactory: maps the Python element_types DataFrame onto registry element types.
+ * @brief ElementTypesFactory: maps the Python element_types DataFrame onto element types.
  */
 #include "element_types_factory.h"
 
@@ -12,7 +12,7 @@ namespace py = pybind11;
 
 namespace
 {
-    // ELEMENT_TYPE: 0 = 2D nodal, 1 = 3D nodal, 2 = 3D edge. Other formulations are other registry types.
+    // ELEMENT_TYPE: 0 = 2D nodal, 1 = 3D nodal, 2 = 3D edge. Other formulations are other types of the JSON.
     std::string base_type_name(unsigned int element_number)
     {
         switch (element_number)
@@ -35,11 +35,11 @@ namespace
 } // namespace
 
 ElementTypesFactory::ElementTypesFactory(const py::object &element_types_attribute,
-                                         std::shared_ptr<const pytec3d::ElementTypeRegistry> registry)
-    : registry_(std::move(registry))
+                                         std::shared_ptr<const pytec3d::ElementTypeParser> parser)
+    : parser_(std::move(parser))
 {
-    if (!registry_)
-        pytec3d::logging::error_and_abort("ElementTypesFactory: element type registry is not available.");
+    if (!parser_)
+        pytec3d::logging::error_and_abort("ElementTypesFactory: element type parser is not available.");
     if (element_types_attribute.is_none())
         return;
 
@@ -50,21 +50,28 @@ ElementTypesFactory::ElementTypesFactory(const py::object &element_types_attribu
     {
         const py::object row = iloc.attr("__getitem__")(py::int_(i));
         const unsigned int subdomain = read_uint(row, "TYPE_ID");
+        const std::string name = base_type_name(read_uint(row, "ELEMENT_TYPE"));
 
-        pytec3d::ElementOptions options;
-        options.type = base_type_name(read_uint(row, "ELEMENT_TYPE"));
-        options.domain = read_uint(row, "OPTION1");
+        pytec3d::ElementTypeOptions options;
         options.order = read_uint(row, "OPTION2");
         options.axisymmetric = read_uint(row, "OPTION3") != 0;
 
-        if (!registry_->has_type(options.type))
-            pytec3d::logging::error_and_abort("TYPE_ID " + std::to_string(subdomain) + ": element type '" + options.type +
+        if (!parser_->has_type(name))
+            pytec3d::logging::error_and_abort("TYPE_ID " + std::to_string(subdomain) + ": element type '" + name +
                                               "' is not defined in element_types.json.");
 
+        const TypeKey key{name, options.order, options.axisymmetric};
+        auto type = types_.find(key);
+        if (type == types_.end())
+            type = types_.emplace(key, parser_->build(name, options)).first;
+
         Entry entry;
-        entry.type = std::make_unique<pytec3d::ElementTypeInstance>(*registry_, options);
-        entry.kernels = std::make_unique<pytec3d::ElementKernels>(*entry.type);
-        entries_[static_cast<libMesh::subdomain_id_type>(subdomain)] = std::move(entry);
+        entry.type = type->second.get();
+        entry.domain = read_uint(row, "OPTION1");
+        if (entry.domain >= entry.type->domains().size())
+            pytec3d::logging::error_and_abort("TYPE_ID " + std::to_string(subdomain) + ": OPTION1 " + std::to_string(entry.domain) +
+                                              " is not a domain of domains.json.");
+        entries_[static_cast<libMesh::subdomain_id_type>(subdomain)] = entry;
     }
 }
 

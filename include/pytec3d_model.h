@@ -18,7 +18,7 @@ class pyTEC3DEquationSystems;
 
 namespace pytec3d
 {
-    class ElementTypeRegistry;
+    class ElementTypeParser;
 }
 
 namespace libMesh
@@ -33,7 +33,7 @@ public:
     ~pyTEC3DModel();
 
     void load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> &libmesh_init,
-                          const std::shared_ptr<const pytec3d::ElementTypeRegistry> &registry,
+                          const std::shared_ptr<const pytec3d::ElementTypeParser> &parser,
                           pybind11::object pytec3dodel_object);
     void solve();
     void write_system_to_vtk_grid(const std::string &system_name);

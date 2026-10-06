@@ -1,16 +1,15 @@
 /**
  * @file element_builder.h
- * @brief Element-level data gathering on top of the kernel-driven ElementKernels.
+ * @brief Per-element assembly: reinits the FEs, resizes the matrices and calls the kernels of the element type.
  *
  * ElementBuilder collects what the kernels need for one element (material and real-constant rows,
- * local-to-global rotation, BH curve, VTK loads, local solution) and exposes the results as
- * per-element matrices and vectors:
+ * local-to-global rotation, BH curve, VTK loads, local solution), finds where each field sits in the
+ * element matrices (ElementType::element_indices) and calls the kernels of the element type. Results:
  *   - Stiffness (Ke) and time-derivative (Ce) matrices of the DOF system.
  *   - Source (RHS) vector, and the tangent matrix / residual of nonlinear (BH) elements.
  *   - Nodal and element post-processing fields, written to the solution systems.
  *
- * The kernels themselves, and the per-formulation definitions, live in element_kernels.h and
- * element_types.json.
+ * The kernels live in kernels.h, the element types in element_types.json (element_type.h).
  */
 #ifndef ELEMENT_BUILDER_H
 #define ELEMENT_BUILDER_H
@@ -28,9 +27,11 @@
 #include <libmesh/numeric_vector.h>
 
 #include "bh_curve.h"
-#include "element_kernels.h"
+#include "element_parameters.h"
+#include "element_type.h"
 #include "element_types_factory.h"
 #include "fe_parent_object.h"
+#include "parameter_columns.h"
 #include "variables_map.h"
 
 class pyTEC3DEquationSystems;
@@ -41,48 +42,10 @@ class vtkDataArray;
 struct ElemData
 {
     const libMesh::Elem *elem = nullptr;               ///< Active element.
-    const ElementTypesFactory::Entry *entry = nullptr; ///< Element type and kernels of the element's subdomain.
+    const ElementTypesFactory::Entry *entry = nullptr; ///< Element type and domain of the element's subdomain.
     unsigned int material_num = 0;                     ///< Material ID (from VTK MATERIAL cell array).
     unsigned int real_constant_num = 0;                ///< Real-constant ID (from VTK CONSTANT cell array).
     unsigned int coordinate_system_num = 0;            ///< Coordinate-system ID (from VTK COORDINATE_SYSTEM cell array).
-};
-
-/**
- * @brief Column indices into the cached material property row.
- * @details MUR_{X,Y,Z} = relative permeability; RHO_{X,Y,Z} = resistivity; M_{X,Y,Z} = magnetization.
- */
-enum MaterialColumnIndex : unsigned int
-{
-    MAT_MUR_X,
-    MAT_MUR_Y,
-    MAT_MUR_Z,
-    MAT_RHO_X,
-    MAT_RHO_Y,
-    MAT_RHO_Z,
-    MAT_M_X,
-    MAT_M_Y,
-    MAT_M_Z,
-    MAT_NUM_COLS
-};
-
-/**
- * @brief Column indices into the cached real-constants row.
- * @details THK = thickness; CS = cross section; TURNS = number of turns; VOL = coil volume;
- * RAD = coil radius; T_{X,Y,Z} = current-direction unit vector; R = resistance; S = symmetry factor.
- */
-enum ConstantColumnIndex : unsigned int
-{
-    CONST_THK = 0,
-    CONST_CS = 1,
-    CONST_TURNS = 2,
-    CONST_VOL = 3,
-    CONST_RAD = 4,
-    CONST_T_X = 5,
-    CONST_T_Y = 6,
-    CONST_T_Z = 7,
-    CONST_R = 8,
-    CONST_S = 9,
-    CONST_NUM_COLS = 10
 };
 
 /**
@@ -158,30 +121,18 @@ public:
     }
 
 private:
-    pytec3d::ElementParameters element_parameters() const;
-    pytec3d::ElementLoads element_loads() const;
+    class Context;
 
-    /** @brief Element matrix index of every shape function of each DOF variable, from the DOF system's DofMap. */
-    pytec3d::ElementDofs element_dofs() const;
-
-    /** @brief Global DOF of every shape function of @p spec in @p system on the active element, in shape-function order. */
-    std::vector<libMesh::dof_id_type> column_dofs(const libMesh::System &system,
-                                                  pyTEC3DSystemBase::SystemType system_type,
-                                                  const pytec3d::VariableSpec &spec) const;
-
-    /** @brief libMesh variables the active element type has in @p system_type (cached per subdomain). */
-    const std::vector<VariablesMap::SystemVariable> &system_variables(pyTEC3DSystemBase::SystemType system_type) const;
+    /** @brief Material, constants, rotation, grid data and BH curve of the active element. */
+    pytec3d::ElementParameterValues::Inputs parameter_inputs() const;
 
     /** @brief Values of @p solution on the DOFs of the active element, in element DOF order (zeros when null). */
     libMesh::DenseVector<libMesh::Number> local_dof_vector(const libMesh::NumericVector<libMesh::Number> *solution) const;
 
     bool should_inject_nodal_load_dof(const std::string &dof_variable_name, libMesh::dof_id_type dof_id) const;
 
-    /** @brief Writes @p fields (one vector per field of @p kind, in element-type order) into the solution of @p system. */
-    void write_fields(libMesh::System &system,
-                      pyTEC3DSystemBase::SystemType system_type,
-                      pytec3d::FieldKind kind,
-                      const std::vector<libMesh::DenseVector<libMesh::Number>> &fields);
+    /** @brief Evaluates the nodal or element field kernels on the DOF solution and writes the result into @p system. */
+    void build_fields(pytec3d::FieldKind kind, libMesh::System &system);
 
     const std::vector<libMesh::Real> &material_row(libMesh::dof_id_type id) const;
     const std::vector<libMesh::Real> &constant_row(libMesh::dof_id_type id) const;
@@ -190,7 +141,6 @@ private:
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors;  ///< By VectorsSet.
 
     ElemData elem_data;
-    mutable std::map<std::pair<libMesh::subdomain_id_type, int>, std::vector<VariablesMap::SystemVariable>> system_variables_cache_;
     unsigned int n_dofs = 0; ///< Number of DOFs on the active element.
     const NodalLoadInjectorElemByVarMap *nodal_load_map_ = nullptr;
 

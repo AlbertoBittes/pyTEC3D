@@ -7,7 +7,7 @@
  * return the variable sets required by each element type and physical-region option.
  */
 #include "variables_map.h"
-#include "element_type_instance.h"
+#include "element_type.h"
 #include "element_types_factory.h"
 #include "logging.h"
 #include <libmesh/equation_systems.h>
@@ -193,53 +193,6 @@ std::vector<std::string> VariablesMap::get_global_labels_for_label(const std::st
 
 namespace
 {
-    struct LibMeshVariable
-    {
-        std::string label;
-        FEFamily family;
-    };
-
-    FEFamily scalar_family(FEFamily vector_family)
-    {
-        switch (vector_family)
-        {
-        case LAGRANGE_VEC:
-            return LAGRANGE;
-        case L2_LAGRANGE_VEC:
-            return L2_LAGRANGE;
-        case MONOMIAL_VEC:
-            return MONOMIAL;
-        default:
-            pytec3d::logging::error_and_abort("VariablesMap: FE family has no component-wise scalar family.");
-        }
-    }
-
-    // One libMesh scalar variable per component, except for H(curl) fields that are a single variable.
-    std::vector<LibMeshVariable> libmesh_variables(const pytec3d::VariableSpec &spec)
-    {
-        static const char *const suffixes[3] = {"_x", "_y", "_z"};
-        std::vector<LibMeshVariable> out;
-
-        if (spec.vector_fe && (spec.family == NEDELEC_ONE))
-        {
-            out.push_back({"Az", spec.family});
-            return out;
-        }
-        if (spec.vector_fe)
-        {
-            for (unsigned int component : spec.active_components)
-                out.push_back({spec.name + suffixes[component], scalar_family(spec.family)});
-            return out;
-        }
-        if (spec.physical_vector)
-        {
-            out.push_back({spec.name + suffixes[spec.active_components.at(0)], spec.family});
-            return out;
-        }
-        out.push_back({spec.name, spec.family});
-        return out;
-    }
-
     pytec3d::FieldKind field_kind_for(pyTEC3DSystemBase::SystemType system_type)
     {
         switch (system_type)
@@ -257,20 +210,20 @@ namespace
 } // namespace
 
 std::vector<VariablesMap::SystemVariable> VariablesMap::get_system_variables_for_element(
-    const pytec3d::ElementTypeInstance &element,
+    const pytec3d::ElementType &element,
+    unsigned int domain,
     pyTEC3DSystemBase::SystemType system_type)
 {
     std::vector<SystemVariable> out;
-    const pytec3d::FieldKind kind = field_kind_for(system_type);
-    for (const pytec3d::VariableSpec &spec : element.variables())
+    for (const pytec3d::Field &field : element.fields(field_kind_for(system_type)))
     {
-        if (spec.kind != kind)
+        if (!field.active_in(domain))
             continue;
-        for (const LibMeshVariable &variable : libmesh_variables(spec))
+        for (const pytec3d::LibMeshVariable &variable : field.libmesh_variables)
         {
             const auto key = get_key_by_predicate_one([&variable](const VariableInfo &info)
                                                       { return info.global_label == variable.label; });
-            out.push_back({key, variable.family, spec.order, spec.name});
+            out.push_back({key, variable.family, variable.order, field.name});
         }
     }
     return out;
@@ -282,7 +235,7 @@ VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
 {
     VariableToElementIdsMapType variable_to_element_ids;
     for (const auto &pair : factory.entries())
-        for (const SystemVariable &variable : get_system_variables_for_element(*pair.second.type, system_type))
+        for (const SystemVariable &variable : get_system_variables_for_element(*pair.second.type, pair.second.domain, system_type))
             variable_to_element_ids[variable.key].insert(pair.first);
     return variable_to_element_ids;
 }

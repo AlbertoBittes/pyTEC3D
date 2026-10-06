@@ -32,7 +32,7 @@ class pyTEC3DDOFSystemBase;
 
 namespace pytec3d
 {
-    class ElementTypeRegistry;
+    class ElementTypeParser;
 }
 
 /**
@@ -53,9 +53,9 @@ public:
     using PropertyRowsMap = std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::Real>>;
     using RotationMap = std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>>;
 
-    /** @brief Parses and caches model metadata shared across systems/builders; @p registry must outlive the element types. */
+    /** @brief Parses and caches model metadata shared across systems/builders; @p parser must outlive the element types. */
     void load_model_data(pybind11::object pytec3d_object,
-                         const std::shared_ptr<const pytec3d::ElementTypeRegistry> &registry);
+                         const std::shared_ptr<const pytec3d::ElementTypeParser> &parser);
 
     /** @brief Updates time-step state and decides whether this solve advances time. */
     void prepare_time_step_solve(const pybind11::dict &time_step);

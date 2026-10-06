@@ -4,7 +4,7 @@
  */
 #include "pytec3d_solver.h"
 
-#include "element_type_registry.h"
+#include "element_type_parser.h"
 #include "logging.h"
 #include "pytec3d_model.h"
 
@@ -208,8 +208,8 @@ pyTEC3DSolver::pyTEC3DSolver(int num_threads_per_mpi_process)
 
     num_threads_per_mpi_process_ = num_threads_per_mpi_process;
     ensure_libmesh_initialized();
-    element_type_registry_ = std::make_shared<const pytec3d::ElementTypeRegistry>(
-        pytec3d::ElementTypeRegistry::from_embedded());
+    element_type_parser_ = std::make_shared<const pytec3d::ElementTypeParser>(
+        pytec3d::ElementTypeParser::from_embedded());
     closed_ = false;
     pytec3d::logging::info("Solver created successfully");
 }
@@ -274,7 +274,7 @@ void pyTEC3DSolver::load_model(pybind11::object pytec3d_object)
         if (!model_)
             model_ = std::make_shared<pyTEC3DModel>();
 
-        model_->load_into_solver(libmesh_init, element_type_registry_, std::move(pytec3d_object));
+        model_->load_into_solver(libmesh_init, element_type_parser_, std::move(pytec3d_object));
         loaded = true;
     }
     catch (const std::exception &ex)

@@ -35,7 +35,7 @@ namespace libMesh
 
 namespace pytec3d
 {
-    class ElementTypeInstance;
+    class ElementType;
 }
 
 class ElementTypesFactory;
@@ -144,8 +144,9 @@ public:
         std::string variable; ///< Name of the element type variable it belongs to (A for A_x, A_y, A_z).
     };
 
-    /** @brief libMesh variables the element type contributes to @p system_type, in the element DOF order. */
-    static std::vector<SystemVariable> get_system_variables_for_element(const pytec3d::ElementTypeInstance &element,
+    /** @brief libMesh variables the fields of the element type active in @p domain contribute to @p system_type. */
+    static std::vector<SystemVariable> get_system_variables_for_element(const pytec3d::ElementType &element,
+                                                                        unsigned int domain,
                                                                         pyTEC3DSystemBase::SystemType system_type);
 
     /** @brief For every variable of @p system_type, the subdomains whose element type contains it. */

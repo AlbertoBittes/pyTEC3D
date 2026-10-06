@@ -917,8 +917,8 @@ void pyTEC3DSystem<SysType>::init_variables()
         if (subdomain_ids.empty())
             continue;
 
-        const auto &element_type = *element_types_collector->get(*subdomain_ids.begin()).type;
-        const auto system_variables = VariablesMap::get_system_variables_for_element(element_type, type);
+        const auto &entry = element_types_collector->get(*subdomain_ids.begin());
+        const auto system_variables = VariablesMap::get_system_variables_for_element(*entry.type, entry.domain, type);
         const auto variable = std::find_if(system_variables.begin(), system_variables.end(),
                                            [&pair](const VariablesMap::SystemVariable &v)
                                            { return v.key == pair.first; });
