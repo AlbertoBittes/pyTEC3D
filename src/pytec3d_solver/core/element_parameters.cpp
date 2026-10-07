@@ -50,10 +50,20 @@ namespace pytec3d
                         J[k][l] += (dhdb - nu) * B[k] * B[l] / b_sq;
             }
         }
+        // A vector or tensor given in the axes of the element, in the global axes.
+        ParameterValue to_global(const ParameterValue &value, const libMesh::TensorValue<Real> &rotation)
+        {
+            ParameterValue out = value;
+            if (value.type == ParameterType::Vector)
+                out.vector = libMesh::VectorValue<Real>(rotation * value.vector);
+            else if (value.type == ParameterType::Tensor)
+                out.tensor = libMesh::TensorValue<Real>(rotation * value.tensor * rotation.transpose());
+            return out;
+        }
     } // namespace
 
     ElementParameterValues::ElementParameterValues(const ElementType &type, const Inputs &inputs)
-        : type_(type), inputs_(inputs), values_(type.parameters().size()), computed_(type.parameters().size(), 0)
+        : type_(type), inputs_(inputs), values_(registry::kNumParameterId), computed_(registry::kNumParameterId, 0)
     {
     }
 
@@ -64,9 +74,9 @@ namespace pytec3d
         case ParameterKind::One:
             return scalar_value(reference.sign);
         case ParameterKind::Parameter:
-            return scaled(symbol(reference.index), reference.sign);
+            return scaled(symbol(reference.parameter()), reference.sign);
         case ParameterKind::Law:
-            return scaled(symbol(static_cast<unsigned int>(type_.law(reference.law()).linear)), reference.sign);
+            return scaled(symbol(type_.law(reference.law()).linear), reference.sign);
         }
         fail("unknown parameter kind.");
     }
@@ -94,20 +104,24 @@ namespace pytec3d
         }
     }
 
-    const ParameterValue &ElementParameterValues::symbol(unsigned int index)
+    const ParameterValue &ElementParameterValues::symbol(registry::ParameterId id)
     {
+        const std::size_t index = static_cast<std::size_t>(id);
         if (!computed_.at(index))
         {
-            const ParameterValue computed = compute(type_.parameters()[index]);
+            if (!registry::defined(type_.id(), id, inputs_.domain))
+                fail("'" + std::string(registry::name(id)) + "' is not defined for element type " + std::string(type_.name()) +
+                     " in domain " + std::string(inputs_.domain == registry::Domain::COUNT ? "?" : registry::name(inputs_.domain)) + ".");
+            const ParameterValue computed = compute(id);
             values_[index] = computed;
             computed_[index] = 1;
         }
         return values_[index];
     }
 
-    ParameterValue ElementParameterValues::compute(const ParameterDefinition &definition)
+    ParameterValue ElementParameterValues::compute(registry::ParameterId id)
     {
-        const registry::ParameterInfo &info = definition.info();
+        const registry::ParameterInfo &info = registry::info(id);
         switch (info.source)
         {
         case ParameterSource::Material:
@@ -115,27 +129,21 @@ namespace pytec3d
             const ParameterValue *value = inputs_.material ? inputs_.material->find(static_cast<registry::MaterialProperty>(info.property)) : nullptr;
             if (!value)
                 undefined(info, "material", inputs_.material_id, inputs_.material != nullptr);
-            return *value;
+            return to_global(*value, inputs_.rotation);
         }
         case ParameterSource::Constant:
         {
             const ParameterValue *value = inputs_.constants ? inputs_.constants->find(static_cast<registry::RealConstant>(info.property)) : nullptr;
             if (!value)
                 undefined(info, "real constants", inputs_.constants_id, inputs_.constants != nullptr);
-            return *value;
+            return to_global(*value, inputs_.rotation);
         }
         case ParameterSource::Cell:
-            return read_cell(info);
+            return to_global(read_cell(info), inputs_.rotation);
         case ParameterSource::Point:
-            fail("'" + std::string(info.key) + "' is point data: it can only load a DOF field.");
+            fail("'" + std::string(registry::name(id)) + "' is point data: it can only load a DOF field.");
         case ParameterSource::Expression:
-        {
-            ParameterValue result = definition.expression->evaluate(*this);
-            if (result.type != info.type)
-                fail("'" + std::string(info.key) + "' is defined as a " + type_name(info.type) + " but its expression is a " +
-                     type_name(result.type) + ".");
-            return result;
-        }
+            return registry::evaluate_expression(type_.id(), id, *this);
         }
         fail("unknown parameter source.");
     }

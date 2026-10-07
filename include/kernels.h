@@ -15,7 +15,8 @@
  *
  * Operator rows are physical components (Nabla::Operand::components). A tensor parameter couples
  * component a of one side to component b of the other with C(a, b); a scalar parameter multiplies row
- * by row (Block) or component by component (fields).
+ * by row (Block) or component by component (fields). A vector parameter couples a scalar operand
+ * (Nabla::Operand::scalar) to a vector one: component a of the vector side gets C(a) times the scalar.
  */
 #pragma once
 
@@ -66,10 +67,10 @@ namespace pytec3d::kernel
         // V = parameter * operand, with one row per entry of row_components.
         template <typename Parameter>
         void apply_parameter(const Parameter &parameter,
-                               const Matrix &operand,
-                               const Components &operand_components,
-                               const Components &row_components,
-                               Matrix &V)
+                             const Matrix &operand,
+                             const Components &operand_components,
+                             const Components &row_components,
+                             Matrix &V)
         {
             V.resize(static_cast<unsigned int>(row_components.size()), operand.n());
             for (unsigned int r = 0; r < V.m(); ++r)
@@ -80,6 +81,8 @@ namespace pytec3d::kernel
                     {
                         if constexpr (is_tensor<Parameter>)
                             sum += parameter(row_components[r], operand_components[b]) * operand(b, j);
+                        else if constexpr (is_vector<Parameter>)
+                            sum += parameter(row_components[r]) * operand(b, j);
                         else if (operand_components[b] == row_components[r])
                             sum += parameter * operand(b, j);
                     }
@@ -98,7 +101,6 @@ namespace pytec3d::kernel
                const Ids &test_ids,
                Matrix &K)
     {
-        static_assert(!detail::is_vector<Parameter>, "a vector parameter needs a Source kernel.");
         if (test.values.size() != trial.values.size() || test.values.size() != weights.size())
             detail::fail("Block: test, trial and weights must have one entry per quadrature point.");
         if (test.values.empty())
@@ -112,6 +114,12 @@ namespace pytec3d::kernel
         {
             detail::check_physical(test.components, "Block: the test operator");
             detail::check_physical(trial.components, "Block: the trial operator");
+        }
+        else if constexpr (detail::is_vector<Parameter>)
+        {
+            if (test.scalar == trial.scalar)
+                detail::fail("Block: a vector parameter couples a scalar operand with a vector operand.");
+            detail::check_physical(test.scalar ? trial.components : test.components, "Block: the vector operand");
         }
         else if (rows_test != rows_trial)
             detail::fail("Block: a scalar parameter needs test and trial with the same number of rows.");
@@ -132,6 +140,14 @@ namespace pytec3d::kernel
                     if constexpr (detail::is_tensor<Parameter>)
                         for (unsigned int b = 0; b < rows_trial; ++b)
                             cu[a] += parameter(test.components[a], trial.components[b]) * U(b, j);
+                    else if constexpr (detail::is_vector<Parameter>)
+                    {
+                        if (trial.scalar)
+                            cu[a] = parameter(test.components[a]) * U(0, j);
+                        else
+                            for (unsigned int b = 0; b < rows_trial; ++b)
+                                cu[a] += parameter(trial.components[b]) * U(b, j);
+                    }
                     else
                         cu[a] = parameter * U(a, j);
                 }
@@ -197,7 +213,6 @@ namespace pytec3d::kernel
                     const Ids &field_ids,
                     Matrix &F)
     {
-        static_assert(!detail::is_vector<Parameter>, "a field parameter is a scalar or a tensor.");
         if (basis.values.size() != trial.values.size() || basis.values.size() != weights.size())
             detail::fail("NodalField: basis, trial and weights must have one entry per quadrature point.");
         if (basis.values.empty())
@@ -210,6 +225,12 @@ namespace pytec3d::kernel
         if constexpr (detail::is_tensor<Parameter>)
         {
             detail::check_physical(trial.components, "NodalField: the trial operator");
+            detail::check_physical(basis.components, "NodalField: the field");
+        }
+        else if constexpr (detail::is_vector<Parameter>)
+        {
+            if (!trial.scalar)
+                detail::fail("NodalField: a vector parameter needs a scalar trial.");
             detail::check_physical(basis.components, "NodalField: the field");
         }
 
@@ -262,7 +283,6 @@ namespace pytec3d::kernel
                       const Ids &field_ids,
                       Matrix &F)
     {
-        static_assert(!detail::is_vector<Parameter>, "a field parameter is a scalar or a tensor.");
         if (trial.values.empty())
             return;
         if (field_ids.size() != field_components.size() || trial.values[0].n() != trial_ids.size())
@@ -270,6 +290,12 @@ namespace pytec3d::kernel
         if constexpr (detail::is_tensor<Parameter>)
         {
             detail::check_physical(trial.components, "ElementField: the trial operator");
+            detail::check_physical(field_components, "ElementField: the field");
+        }
+        else if constexpr (detail::is_vector<Parameter>)
+        {
+            if (!trial.scalar)
+                detail::fail("ElementField: a vector parameter needs a scalar trial.");
             detail::check_physical(field_components, "ElementField: the field");
         }
 

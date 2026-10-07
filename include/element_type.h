@@ -32,7 +32,6 @@
 #include <libmesh/system.h>
 
 #include "element_field.h"
-#include "expression.h"
 #include "nabla.h"
 #include "parameter_value.h"
 #include "registries.h"
@@ -57,23 +56,10 @@ namespace pytec3d
         NablaOperator op() const { return nabla->op(); }
     };
 
-    /**
-     * @brief A parameter of an element type: what the registry says (registries.h) plus the compiled expression.
-     *
-     * ElementType::parameters() holds every parameter, indexed by registry::ParameterId.
-     */
-    struct ParameterDefinition
-    {
-        registry::ParameterId id = registry::ParameterId::COUNT;
-        std::shared_ptr<const Expression> expression; ///< Expression parameters only; depends on the dimension.
-
-        const registry::ParameterInfo &info() const { return registry::info(id); }
-    };
-
     /** @brief A nonlinear law, e.g. BH: acts on the trial value of a kernel instead of multiplying it. */
     struct NonlinearLaw
     {
-        registry::LawId id = registry::LawId::COUNT;                 ///< Used in kernels as "name()".
+        registry::LawId id = registry::LawId::COUNT;                 ///< Used in kernels by its name.
         registry::ParameterId linear = registry::ParameterId::COUNT; ///< Tensor parameter the law reduces to when the element has no curve.
     };
 
@@ -84,7 +70,7 @@ namespace pytec3d
         Law,       ///< A registry::LawId.
     };
 
-    /** @brief How a kernel uses a parameter: "-nu[][]", "BH()". */
+    /** @brief How a kernel uses a parameter: "-nu", "BH". */
     struct ParameterRef
     {
         ParameterKind kind = ParameterKind::One;
@@ -96,7 +82,7 @@ namespace pytec3d
         registry::LawId law() const { return static_cast<registry::LawId>(index); }
         std::string_view name() const
         {
-            return kind == ParameterKind::Parameter ? registry::info(parameter()).key
+            return kind == ParameterKind::Parameter ? registry::name(parameter())
                    : kind == ParameterKind::Law     ? registry::name(law())
                                                     : std::string_view("1");
         }
@@ -139,9 +125,6 @@ namespace pytec3d
 
         /** @brief The operator @p op bound to @p field; the parser creates Identity for every field with an FE. */
         const Nabla &nabla(const Field &field, NablaOperator op) const;
-
-        /** @brief Every parameter, indexed by registry::ParameterId. */
-        const std::vector<ParameterDefinition> &parameters() const { return parameters_; }
 
         /** @brief The law @p id of this element type. */
         const NonlinearLaw &law(registry::LawId id) const;
@@ -187,7 +170,6 @@ namespace pytec3d
         unsigned int dimension_ = 0;
         ElementTypeOptions options_;
 
-        std::vector<ParameterDefinition> parameters_;
         std::vector<std::optional<NonlinearLaw>> laws_; ///< By registry::LawId; empty for a law the type does not define.
 
         std::vector<Field> dof_fields_;

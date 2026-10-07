@@ -51,6 +51,7 @@ namespace pytec3d
         {
             QuadratureMatrices values;
             std::vector<unsigned int> components;
+            bool scalar = false; ///< A scalar quantity (one row, component x): a vector parameter couples it to a vector operand.
         };
 
         /** @brief An operator compiled for one output type, dimension and axisymmetry. */
@@ -70,6 +71,9 @@ namespace pytec3d
 
         NablaOperator op() const { return op_; }
         const Field &field() const { return *field_; }
+
+        /** @brief True when the output is a scalar quantity: the identity of a scalar field, or a divergence. */
+        bool scalar_valued() const;
 
         /** @brief The operator on the element the field's FE was last reinit()ed on. */
         Operand evaluate() const;

@@ -128,6 +128,13 @@ namespace pytec3d
 
     Nabla::Operand Nabla::evaluate() const
     {
-        return function_(*field_->fe, *field_);
+        Operand out = function_(*field_->fe, *field_);
+        out.scalar = scalar_valued();
+        return out;
+    }
+
+    bool Nabla::scalar_valued() const
+    {
+        return op_ == NablaOperator::Div || (op_ == NablaOperator::Identity && !field_->physical_vector);
     }
 } // namespace pytec3d

@@ -12,10 +12,9 @@ namespace pytec3d
 {
     enum class ParameterType : unsigned char
     {
-        Scalar, ///< "name"
-        Vector, ///< "name[]"
-        Tensor, ///< "name[][]"
-        Unknown ///< "name()": a grid array whose type is its number of components.
+        Scalar, ///< libMesh::Real
+        Vector, ///< libMesh::RealVectorValue
+        Tensor  ///< libMesh::RealTensorValue
     };
 
     struct ParameterValue
@@ -36,10 +35,8 @@ namespace pytec3d
             return "vector";
         case ParameterType::Tensor:
             return "tensor";
-        case ParameterType::Unknown:
-            break;
         }
-        return "array";
+        return "scalar";
     }
 
     inline ParameterValue scalar_value(libMesh::Real value)

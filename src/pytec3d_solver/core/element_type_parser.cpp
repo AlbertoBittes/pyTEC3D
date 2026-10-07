@@ -26,7 +26,6 @@ namespace pytec3d
         using registry::Domain;
         using registry::FieldId;
         using registry::LawId;
-        using registry::ParameterId;
 
         [[noreturn]] void fail(const std::string &message)
         {
@@ -156,14 +155,14 @@ namespace pytec3d
 
         // ---- parameters --------------------------------------------------------------------------------------
 
-        // What a kernel can name: the parameters of the registry and the laws of the element type.
+        // What a kernel can name besides the parameters of the registry: the laws of the element type.
         struct ParameterTable
         {
-            const std::vector<ParameterDefinition> &parameters;
+            registry::ElementTypeId type;
             const std::vector<std::optional<NonlinearLaw>> &laws;
         };
 
-        // "-nu[][]", "BH()", "turns": an optional sign and a parameter or law; empty is 1.
+        // "-nu", "BH", "turns": an optional sign and the name of a parameter or law; empty is 1.
         ParameterRef parse_parameter(const std::string &expression, const std::string &context, const ParameterTable &table)
         {
             ParameterRef out;
@@ -177,22 +176,21 @@ namespace pytec3d
                 text.erase(0, 1);
             }
 
-            if (text.size() > 2 && text.compare(text.size() - 2, 2, "()") == 0)
+            if (const auto law = registry::parse_LawId(text))
             {
-                if (const auto law = registry::parse_LawId(text.substr(0, text.size() - 2)))
-                {
-                    if (!table.laws[static_cast<std::size_t>(*law)])
-                        fail(context + ": the element type does not define the law '" + text + "'.");
-                    out.kind = ParameterKind::Law;
-                    out.index = static_cast<unsigned int>(*law);
-                    out.type = ParameterType::Tensor;
-                    return out;
-                }
+                if (!table.laws[static_cast<std::size_t>(*law)])
+                    fail(context + ": the element type does not define the law '" + text + "'.");
+                out.kind = ParameterKind::Law;
+                out.index = static_cast<unsigned int>(*law);
+                out.type = ParameterType::Tensor;
+                return out;
             }
 
-            const auto id = registry::parse_parameter(text);
+            const auto id = registry::parse_ParameterId(text);
             if (!id)
                 fail(context + ": unknown parameter '" + text + "'.");
+            if (!registry::defined(table.type, *id))
+                fail(context + ": the element type does not have the parameter '" + text + "'.");
             const registry::ParameterInfo &info = registry::info(*id);
             if (info.source == ParameterSource::Point)
                 fail(context + ": '" + text + "' is point data; it can only be the nodal_loads of a dof field.");
@@ -328,9 +326,11 @@ namespace pytec3d
                 if (kind != FieldKind::Dof || !definition["nodal_loads"].is_string())
                     fail(context + ": 'nodal_loads' is a string and only applies to dof fields.");
                 const std::string key = strip_spaces(definition["nodal_loads"].get<std::string>());
-                const auto parameter = registry::parse_parameter(key);
+                const auto parameter = registry::parse_ParameterId(key);
                 if (!parameter || registry::info(*parameter).source != ParameterSource::Point)
                     fail(context + ": nodal_loads '" + key + "' is not a point-data (mn.) parameter.");
+                if (!registry::defined(*registry::parse_ElementTypeId(type_name), *parameter))
+                    fail(context + ": the element type does not have the parameter '" + key + "'.");
                 field.nodal_loads = registry::info(*parameter).array;
             }
             field.domains = read_domains(definition, context);
@@ -435,8 +435,9 @@ namespace pytec3d
                 kernel.domains = read_domains(definition, context);
 
                 const ParameterRef &parameter = kernel.parameter;
-                if (kernel.has_trial && parameter.type == ParameterType::Vector)
-                    fail(context + ": a vector parameter needs a kernel without trial.");
+                if (kernel.has_trial && parameter.type == ParameterType::Vector &&
+                    kernel.test.nabla->scalar_valued() == kernel.trial.nabla->scalar_valued())
+                    fail(context + ": a vector parameter couples a scalar operand with a vector operand.");
                 if (!kernel.has_trial && parameter.type == ParameterType::Tensor)
                     fail(context + ": a kernel without trial needs a scalar or vector parameter.");
                 if (parameter.kind == ParameterKind::Law && (!kernel.has_trial || kernel.trial.time_derivative))
@@ -483,8 +484,8 @@ namespace pytec3d
                         kernel.trial = make_operand(read_string(definition, "trial", term_context, true), dof_fields, term_context + " trial", true, nabla_of);
                         kernel.parameter = parse_parameter(read_string(definition, "coeff", term_context, false), term_context, table);
                         kernel.domains = read_domains(definition, term_context);
-                        if (kernel.parameter.type == ParameterType::Vector)
-                            fail(term_context + ": a field parameter is a scalar or a tensor.");
+                        if (kernel.parameter.type == ParameterType::Vector && !kernel.trial.nabla->scalar_valued())
+                            fail(term_context + ": a vector parameter needs a scalar trial.");
                         if (kernel.parameter.kind == ParameterKind::Law && kernel.trial.time_derivative)
                             fail(term_context + ": a law needs a trial without dt().");
                         out.push_back(std::move(kernel));
@@ -500,6 +501,27 @@ namespace pytec3d
                     fail("element type '" + type_name + "': field '" + std::string(field.name()) + "' has no kernel in '" + section + "'.");
             }
             return out;
+        }
+
+        // A kernel needs its parameter (or the linear parameter of its law) in every domain where it is active.
+        template <typename Kernel>
+        void check_parameter_domains(const ElementType &type, const std::vector<Kernel> &kernels)
+        {
+            for (const Kernel &kernel : kernels)
+            {
+                const ParameterRef &reference = kernel.parameter;
+                if (reference.kind == ParameterKind::One)
+                    continue;
+                const registry::ParameterId id = reference.kind == ParameterKind::Law ? type.law(reference.law()).linear : reference.parameter();
+                for (std::size_t index = 0; index < registry::kNumDomain; ++index)
+                {
+                    const Domain domain = static_cast<Domain>(index);
+                    if (type.active(kernel, domain) && !registry::defined(type.id(), id, domain))
+                        fail("element type '" + std::string(type.name()) + "', kernel '" + kernel.name + "' is active in domain " +
+                             std::string(registry::name(domain)) + " where the parameter '" + std::string(registry::name(id)) +
+                             "' is not defined.");
+                }
+            }
         }
     } // namespace
 
@@ -535,32 +557,7 @@ namespace pytec3d
         type->dimension_ = dimension;
         type->options_ = options;
 
-        // Parameters: every one of the registry; the expressions are compiled for this dimension, in order, each
-        // one building on the parameters before it.
-        type->parameters_.resize(registry::kNumParameterId);
-        for (std::size_t i = 0; i < type->parameters_.size(); ++i)
-        {
-            ParameterDefinition &definition = type->parameters_[i];
-            definition.id = static_cast<ParameterId>(i);
-            const registry::ParameterInfo &info = definition.info();
-            if (info.source != ParameterSource::Expression)
-                continue;
-
-            const std::string expression_context = context + ", expression '" + std::string(info.key) + "'";
-            const Expression::Resolver resolve = [&](const std::string &parameter) -> std::optional<unsigned int>
-            {
-                const auto found = registry::parse_parameter(parameter);
-                if (!found || static_cast<std::size_t>(*found) >= i)
-                    return std::nullopt;
-                if (registry::info(*found).source == ParameterSource::Point)
-                    fail(expression_context + ": '" + parameter + "' is point data and cannot be used in expressions.");
-                return static_cast<unsigned int>(*found);
-            };
-            definition.expression = std::make_shared<const Expression>(
-                Expression::parse(std::string(info.expression), expression_context, resolve, dimension, options.axisymmetric));
-        }
-
-        // Nonlinear laws: used in kernels as "name()".
+        // Nonlinear laws: used in kernels by name, like a parameter.
         type->laws_.assign(registry::kNumLawId, std::nullopt);
         if (type_json.contains("nonlinear_laws"))
         {
@@ -580,7 +577,7 @@ namespace pytec3d
                 NonlinearLaw law;
                 law.id = *law_id;
                 const std::string linear = strip_spaces(read_string(definition, "linear", law_context, true));
-                const auto linear_id = registry::parse_parameter(linear);
+                const auto linear_id = registry::parse_ParameterId(linear);
                 if (!linear_id || registry::info(*linear_id).source == ParameterSource::Point ||
                     registry::info(*linear_id).type != ParameterType::Tensor)
                     fail(law_context + ": 'linear' must be a tensor parameter.");
@@ -589,7 +586,7 @@ namespace pytec3d
             }
         }
 
-        const ParameterTable table{type->parameters_, type->laws_};
+        const ParameterTable table{id, type->laws_};
 
         type->dof_fields_ = parse_fields(name, type_json, "dof_fields", FieldKind::Dof, dimension, options);
         type->nodal_fields_ = parse_fields(name, type_json, "nodal_fields", FieldKind::Nodal, dimension, options);
@@ -634,6 +631,9 @@ namespace pytec3d
         type->dof_kernels_ = parse_dof_kernels(name, type_json, type->dof_fields_, table, nabla_of);
         type->nodal_kernels_ = parse_field_kernels(name, type_json, "nodal_kernels", type->nodal_fields_, type->dof_fields_, table, nabla_of);
         type->element_kernels_ = parse_field_kernels(name, type_json, "element_kernels", type->element_fields_, type->dof_fields_, table, nabla_of);
+        check_parameter_domains(*type, type->dof_kernels_);
+        check_parameter_domains(*type, type->nodal_kernels_);
+        check_parameter_domains(*type, type->element_kernels_);
 
         type->geometry_fe_ = libMesh::FEBase::build(dimension, libMesh::FEType(libMesh::FIRST, libMesh::LAGRANGE));
         type->geometry_fe_->attach_quadrature_rule(type->quadrature_.get());

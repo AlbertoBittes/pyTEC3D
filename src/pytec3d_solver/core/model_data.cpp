@@ -92,8 +92,6 @@ namespace pytec3d
                         out.tensor(i, j) = finite_number(value[i][j], context + "[" + std::to_string(i) + "][" + std::to_string(j) + "]");
                 }
                 return out;
-            case ParameterType::Unknown:
-                break;
             }
             fail(context + ": unknown value type.");
         }

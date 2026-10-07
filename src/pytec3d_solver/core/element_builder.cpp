@@ -155,17 +155,17 @@ namespace
         pytec3d::logging::error_and_abort("ElementBuilder: " + message);
     }
 
-    // Calls fn with the scalar or tensor value of a parameter used between a test and a trial.
+    // Calls fn with the scalar, vector or tensor value of a parameter used between a test and a trial, or on a field.
     template <typename Fn>
     void with_matrix_parameter(ElementParameterValues &values, const pytec3d::ParameterRef &reference, Fn &&fn)
     {
         const pytec3d::ParameterValue value = values.value(reference);
         if (value.type == ParameterType::Scalar)
             fn(value.scalar);
-        else if (value.type == ParameterType::Tensor)
-            fn(value.tensor);
+        else if (value.type == ParameterType::Vector)
+            fn(value.vector);
         else
-            fail("parameter '" + std::string(reference.name()) + "' is a " + pytec3d::type_name(value.type) + " and cannot sit between a test and a trial.");
+            fn(value.tensor);
     }
 
     // Calls fn with the scalar or vector value of a source parameter.
@@ -230,6 +230,7 @@ private:
                 for (std::size_t qp = 0; qp < value.values.size(); ++qp)
                     value.values[qp].scale(-1.0 / length_[qp]);
                 value.components = {2};
+                value.scalar = false;
             }
             else
                 value = nabla.evaluate();
