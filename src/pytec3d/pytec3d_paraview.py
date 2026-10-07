@@ -6,11 +6,8 @@ This module serves two use-cases:
 2) Plugin file: load this file in ParaView's plugin manager to register filters.
 """
 
-from __future__ import annotations
-
 import os
 import sys
-from numbers import Real
 from typing import Any
 
 # When loaded directly as a plugin file, ensure the top-level python/ root is importable.
@@ -46,12 +43,11 @@ def setup_paraview_console() -> str:
     return package_parent
 
 
-def start_pytec3d_for_paraview(num_threads: int = 1):
+def start_pytec3d_for_paraview():
     """Create and return an pyTEC3D instance for ParaView console workflows."""
     setup_paraview_console()
     log_paraview_init(LOGGER)
     log_paraview_working_directory(LOGGER, os.getcwd())
-
 
 
 def plot(mesh: vtk.vtkUnstructuredGrid) -> None:
@@ -63,7 +59,7 @@ def plot(mesh: vtk.vtkUnstructuredGrid) -> None:
 
     producer = TrivialProducer()
     producer.GetClientSideObject().SetOutput(mesh)
-    RenameSource("pyTEC3Desh", producer)
+    RenameSource("Mesh", producer)
     Show(producer)
     Render()
 
@@ -76,8 +72,11 @@ smproxy: Any
 
 try:
     from vtkmodules.vtkCommonCore import vtkDataArraySelection as _vtkDataArraySelection
-    from vtkmodules.util.vtkAlgorithm import VTKPythonAlgorithmBase as _VTKPythonAlgorithmBase
+    from vtkmodules.util.vtkAlgorithm import (
+        VTKPythonAlgorithmBase as _VTKPythonAlgorithmBase,
+    )
     from paraview.util.vtkAlgorithm import smdomain as _smdomain, smproperty as _smproperty, smproxy as _smproxy  # type: ignore[import-not-found]
+
     vtkDataArraySelection = _vtkDataArraySelection
     VTKPythonAlgorithmBase = _VTKPythonAlgorithmBase
     smdomain = _smdomain
@@ -144,10 +143,10 @@ except Exception:  # pragma: no cover
 def _create_modified_callback(anobject):
     """
      create modified callback.
-    
+
     Args:
         anobject (Any): Description.
-    
+
     Returns:
         Any: Description.
     """
@@ -171,10 +170,11 @@ def _create_modified_callback(anobject):
 @smdomain.datatype(dataTypes=["vtkDataSet"], composite_data_supported=False)
 class SelectExtractedData(VTKPythonAlgorithmBase):
     """SelectExtractedData class."""
+
     def __init__(self):
         """
         Special method `__init__`.
-        
+
         Returns:
             Any: Description.
         """
@@ -184,11 +184,11 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
     def FillInputPortInformation(self, port, info):
         """
         Fillinputportinformation.
-        
+
         Args:
             port (Any): Description.
             info (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -202,15 +202,15 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
     def RequestData(self, request, inInfo, outInfo):
         """
         Requestdata.
-        
+
         Args:
             request (Any): Description.
             inInfo (Any): Description.
             outInfo (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             ValueError: If an error condition is met.
         """
@@ -218,30 +218,37 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
 
-        output = vtk.vtkUnstructuredGrid.GetData(outInfo)
-        output.ShallowCopy(input_data)
-        Selector.ensure_selection_arrays(output)
+        Selector.ensure_selection_arrays(input_data)
 
         extracted = vtk.vtkDataSet.GetData(inInfo[1])
         if extracted is None:
-            LOGGER.warning("SelectExtractedData: no dataset connected on port 1; selection unchanged.")
+            LOGGER.warning(
+                "SelectExtractedData: no dataset connected on port 1; selection unchanged."
+            )
             return 1
 
-        point_mask = np.zeros(output.GetNumberOfPoints(), dtype=bool)
+        point_mask = np.zeros(input_data.GetNumberOfPoints(), dtype=bool)
         point_ids_array = extracted.GetPointData().GetArray("vtkOriginalPointIds")
         if point_ids_array is not None:
             point_ids = vtknp.vtk_to_numpy(point_ids_array).astype(np.int64, copy=False)
             point_ids = point_ids[(point_ids >= 0) & (point_ids < point_mask.shape[0])]
             point_mask[point_ids] = True
-        Selector.apply_boolean_selection_mask(point_mask, output.GetPointData(), "node", self.__mode)
+        Selector.apply_boolean_selection_mask(
+            point_mask, input_data.GetPointData(), "node", self.__mode
+        )
 
-        cell_mask = np.zeros(output.GetNumberOfCells(), dtype=bool)
+        cell_mask = np.zeros(input_data.GetNumberOfCells(), dtype=bool)
         cell_ids_array = extracted.GetCellData().GetArray("vtkOriginalCellIds")
         if cell_ids_array is not None:
             cell_ids = vtknp.vtk_to_numpy(cell_ids_array).astype(np.int64, copy=False)
             cell_ids = cell_ids[(cell_ids >= 0) & (cell_ids < cell_mask.shape[0])]
             cell_mask[cell_ids] = True
-        Selector.apply_boolean_selection_mask(cell_mask, output.GetCellData(), "elem", self.__mode)
+        Selector.apply_boolean_selection_mask(
+            cell_mask, input_data.GetCellData(), "elem", self.__mode
+        )
+
+        input_data.Modified()
+
         return 1
 
     @smproperty.xml("""
@@ -260,10 +267,10 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
     def SetMode(self, mode):
         """
         Setmode.
-        
+
         Args:
             mode (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -276,10 +283,11 @@ class SelectExtractedData(VTKPythonAlgorithmBase):
 @smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
 class Select(VTKPythonAlgorithmBase):
     """Select class."""
+
     def __init__(self):
         """
         Special method `__init__`.
-        
+
         Returns:
             Any: Description.
         """
@@ -293,11 +301,11 @@ class Select(VTKPythonAlgorithmBase):
     def FillInputPortInformation(self, port, info):
         """
         Fillinputportinformation.
-        
+
         Args:
             port (Any): Description.
             info (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -308,13 +316,13 @@ class Select(VTKPythonAlgorithmBase):
     def _parse_values(text: str):
         """
          parse values.
-        
+
         Args:
             text (str): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             ValueError: If an error condition is met.
         """
@@ -336,15 +344,15 @@ class Select(VTKPythonAlgorithmBase):
     def RequestData(self, request, inInfo, outInfo):
         """
         Requestdata.
-        
+
         Args:
             request (Any): Description.
             inInfo (Any): Description.
             outInfo (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             ValueError: If an error condition is met.
         """
@@ -352,9 +360,7 @@ class Select(VTKPythonAlgorithmBase):
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
 
-        output = vtk.vtkUnstructuredGrid.GetData(outInfo)
-        output.ShallowCopy(input_data)
-        Selector.ensure_selection_arrays(output)
+        Selector.ensure_selection_arrays(input_data)
 
         if not self.__array_name:
             LOGGER.warning("Select: no array chosen; selection masks left unchanged.")
@@ -363,13 +369,16 @@ class Select(VTKPythonAlgorithmBase):
         value = self._parse_values(self.__values_text)
         component = "magnitude" if self.__component < 0 else self.__component
         Selector.select(
-            output,
+            input_data,
             self.__array_name,
             value,
             component=component,
             type=self.__type,
             mode=self.__mode,
         )
+
+        input_data.Modified()
+
         return 1
 
     @smproperty.xml("""
@@ -389,10 +398,10 @@ class Select(VTKPythonAlgorithmBase):
     def SetArrayName(self, name):
         """
         Setarrayname.
-        
+
         Args:
             name (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -413,10 +422,10 @@ class Select(VTKPythonAlgorithmBase):
     def SetSelectionType(self, value):
         """
         Setselectiontype.
-        
+
         Args:
             value (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -439,10 +448,10 @@ class Select(VTKPythonAlgorithmBase):
     def SetMode(self, value):
         """
         Setmode.
-        
+
         Args:
             value (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -454,13 +463,13 @@ class Select(VTKPythonAlgorithmBase):
     def SetComponent(self, component):
         """
         Setcomponent.
-        
+
         Args:
             component (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             TypeError: If an error condition is met.
             ValueError: If an error condition is met.
@@ -476,10 +485,10 @@ class Select(VTKPythonAlgorithmBase):
     def SetValues(self, text):
         """
         Setvalues.
-        
+
         Args:
             text (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -492,10 +501,11 @@ class Select(VTKPythonAlgorithmBase):
 @smdomain.datatype(dataTypes=["vtkUnstructuredGrid"], composite_data_supported=False)
 class SetValueOnSelection(VTKPythonAlgorithmBase):
     """SetValueOnSelection class."""
+
     def __init__(self):
         """
         Special method `__init__`.
-        
+
         Returns:
             Any: Description.
         """
@@ -503,32 +513,36 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         self.__value = 0.0
         self.__array_names = []
         self.__arrayselection = vtkDataArraySelection()
-        self.__arrayselection.AddObserver("ModifiedEvent", _create_modified_callback(self))
+        self.__arrayselection.AddObserver(
+            "ModifiedEvent", _create_modified_callback(self)
+        )
         VTKPythonAlgorithmBase.__init__(self, nInputPorts=1, nOutputPorts=1)
 
     def FillInputPortInformation(self, port, info):
         """
         Fillinputportinformation.
-        
+
         Args:
             port (Any): Description.
             info (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
         info.Set(self.INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid")
         return 1
 
-    def RequestInformation(self, request, inInfo, outInfo):  # pyright: ignore[reportIncompatibleMethodOverride]
+    def RequestInformation(
+        self, request, inInfo, outInfo
+    ):  # pyright: ignore[reportIncompatibleMethodOverride]
         """
         Requestinformation.
-        
+
         Args:
             request (Any): Description.
             inInfo (Any): Description.
             outInfo (Any): Description.
-        
+
         Returns:
             Any: Description.
         """
@@ -556,15 +570,15 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
     def RequestData(self, request, inInfo, outInfo):
         """
         Requestdata.
-        
+
         Args:
             request (Any): Description.
             inInfo (Any): Description.
             outInfo (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             ValueError: If an error condition is met.
         """
@@ -572,39 +586,39 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
         if input_data is None:
             raise ValueError("Input grid (port 0) is required.")
 
-        output = vtk.vtkUnstructuredGrid.GetData(outInfo)
-        output.ShallowCopy(input_data)
-        Selector.ensure_selection_arrays(output)
+        Selector.ensure_selection_arrays(input_data)
 
         self.__arrayselection.Modified()
         for array_name in self.__array_names:
             if not self.__arrayselection.ArrayIsEnabled(array_name):
                 continue
 
-            if output.GetPointData().GetArray(array_name) is not None:
+            if input_data.GetPointData().GetArray(array_name) is not None:
                 Selector.set_value_on_selection(
-                    output,
+                    input_data,
                     array_name,
                     self.__value,
                     component=self.__component,
                     type="node",
                 )
 
-            if output.GetCellData().GetArray(array_name) is not None:
+            if input_data.GetCellData().GetArray(array_name) is not None:
                 Selector.set_value_on_selection(
-                    output,
+                    input_data,
                     array_name,
                     self.__value,
                     component=self.__component,
                     type="elem",
                 )
 
+        input_data.Modified()
+
         return 1
 
     def _get_array_selection(self):
         """
          get array selection.
-        
+
         Returns:
             Any: Description.
         """
@@ -614,7 +628,7 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
     def GetDataArraySelection(self):
         """
         Getdataarrayselection.
-        
+
         Returns:
             Any: Description.
         """
@@ -625,13 +639,13 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
     def SetComponent(self, component):
         """
         Setcomponent.
-        
+
         Args:
             component (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             TypeError: If an error condition is met.
             ValueError: If an error condition is met.
@@ -648,18 +662,18 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
     def SetValue(self, value):
         """
         Setvalue.
-        
+
         Args:
             value (Any): Description.
-        
+
         Returns:
             Any: Description.
-        
+
         Raises:
             TypeError: If an error condition is met.
             ValueError: If an error condition is met.
         """
-        if not isinstance(value, Real):
+        if not isinstance(value, float):
             raise TypeError("value must be a real scalar.")
         if not np.isfinite(float(value)):
             raise ValueError("value must be finite.")
