@@ -274,6 +274,8 @@ namespace pytec3d::logging
         append_row("time", to_scientific_string(time_step.time));
         append_row("dt", to_scientific_string(time_step.dt));
         append_row("theta", to_scientific_string(time_step.theta));
+        append_row("beta", to_scientific_string(time_step.beta));
+        append_row("gamma", to_scientific_string(time_step.gamma));
         append_row("transient_effects", time_step.transient_effects ? "true" : "false");
         out << "+----------------------+----------------------+";
         return out.str();

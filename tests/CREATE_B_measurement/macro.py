@@ -139,7 +139,7 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, typ
 # Az: Symmetry BCs + Far field + Tree Gauging
 Selector.select_all(pytec3d.model.mesh)
 Selector.nsel_ext(pytec3d.model.mesh)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0.0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 TreeGauge.tree_gauge(pytec3d.model.mesh)
 
 # Symmetry BCs

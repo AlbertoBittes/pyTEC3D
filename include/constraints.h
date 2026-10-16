@@ -5,7 +5,7 @@
  * GlobalConstraintsObject derives from libMesh::System::Constraint and is invoked
  * automatically each time libMesh needs to rebuild the constraint map.  It merges
  * three constraint sources:
- *   -# Time-integration homogeneous constraints (static formulation, OPTION4==1).
+ *   -# Time-integration homogeneous constraints: on a static step, zero the DOFs whose fields have no row in K.
  *   -# Point/nodal Dirichlet constraints read from VTK point-data arrays.
  *   -# DOF-coupling (periodic boundary) constraints derived from CP_* arrays.
  */
@@ -94,7 +94,7 @@ private:
   std::unique_ptr<std::map<std::pair<libMesh::dof_id_type, libMesh::dof_id_type>, bool>> _edge_orientations_map = nullptr;
   std::vector<int> _coupling_cp_id_values;
   std::vector<std::string> _coupling_variable_values;
-  std::unordered_set<int> _az_coupling_cp_ids;
+  std::unordered_set<int> _edge_coupling_cp_ids;
   bool _has_constraint_cache = false;
 };
 

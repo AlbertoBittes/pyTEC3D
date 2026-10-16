@@ -1,44 +1,55 @@
 /**
  * @file element_type.h
- * @brief An element type: its fields, its kernels, and the finite elements that evaluate them.
+ * @brief An element type instantiated for its options: the libMesh FEs, quadrature and nablas of its spec.
  *
- * Built from element_types.json by ElementTypeParser. It holds
- *  - the fields: DOF fields (unknowns), nodal fields (L2-projected) and element fields (quadrature averages),
- *    each with the physical regions (domains) where it exists;
- *  - the kernels: DOF kernels (blocks of K and C, and sources), nodal kernels and element kernels, each tied
- *    to one or two fields and to the domains where it applies;
- *  - the FE objects. Fields of the same family and order point to the same FE, so reinit() runs once per FE;
- *  - the operators (Nabla) of the kernels, each bound to its field and FE.
+ * The formulation itself is the compiled spec (formulation_spec.h, generated from element_types.json). An
+ * ElementType adds what depends on the options of the model data (order, axisymmetry):
+ *  - the FEs, one per FESpec, at the order of the options (FIRST for NEDELEC_ONE), sharing one Gauss rule of
+ *    the highest default order among them;
+ *  - the nablas, bound to their FE;
+ *  - the libMesh variables of each field, with family and order.
+ * It reinit()s on an element only the FEs an operation needs, and tells where each field sits in the
+ * element vectors of a system. Evaluating the kernels is ElementEvaluator's job.
  *
- * It does not evaluate parameters (element_parameters.h), which are physics, nor assemble anything: the
- * element builder reinit()s the FEs, asks for the element matrix indices of the fields and calls the kernels.
+ * What an operation needs follows from the spec: the evaluations of the operation, their terms active in
+ * the domain (with or without the laws selected on the element), the kernels of those terms, the nablas of the
+ * kernels and, for a law variant, the terms of the law's input; the FEs are those of the nablas.
  */
 #pragma once
 
-#include <deque>
+#include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <optional>
-#include <string>
+#include <mutex>
 #include <string_view>
-#include <utility>
 #include <vector>
 
-#include <libmesh/dof_map.h>
 #include <libmesh/elem.h>
 #include <libmesh/fe.h>
 #include <libmesh/point.h>
 #include <libmesh/quadrature.h>
 #include <libmesh/system.h>
 
-#include "element_field.h"
+#include "formulation_spec.h"
 #include "nabla.h"
-#include "parameter_value.h"
 #include "registries.h"
 
 namespace pytec3d
 {
-    using registry::ParameterSource;
+    using formulation::FieldKind;
+    using formulation::FieldSpec;
+
+    /** @brief What is computed on an element. */
+    enum class Operation : unsigned char
+    {
+        Matrices,      ///< K, C, M and the operators of the static nodal and element fields (stored with them).
+        Rhs,           ///< Right-hand side.
+        Nonlinear,     ///< Jacobian and residual of the laws selected on an element.
+        NodalFields,   ///< L2 projections of the dynamic nodal fields, at output.
+        ElementFields, ///< Averages of the dynamic element fields, at output.
+        Parameters,    ///< Only the coefficients of the terms (model data checks): no FE.
+    };
 
     struct ElementTypeOptions
     {
@@ -46,116 +57,134 @@ namespace pytec3d
         bool axisymmetric = false; ///< 2D elements only.
     };
 
-    /** @brief An operator applied to a field, as written in a kernel: curl(A), dt(V), grad(dt(V)) ... */
-    struct OperandRef
+    /** @brief The libMesh variable of a field. */
+    struct LibMeshVariable
     {
-        const Nabla *nabla = nullptr; ///< Owned by the element type, one per (field, operator).
-        bool time_derivative = false; ///< dt(...): acts on the time derivative of the solution.
-
-        const Field &field() const { return nabla->field(); }
-        NablaOperator op() const { return nabla->op(); }
-    };
-
-    /** @brief A nonlinear law, e.g. BH: acts on the trial value of a kernel instead of multiplying it. */
-    struct NonlinearLaw
-    {
-        registry::LawId id = registry::LawId::COUNT;                 ///< Used in kernels by its name.
-        registry::ParameterId linear = registry::ParameterId::COUNT; ///< Tensor parameter the law reduces to when the element has no curve.
-    };
-
-    enum class ParameterKind : unsigned char
-    {
-        One,       ///< No parameter: 1.
-        Parameter, ///< A registry::ParameterId.
-        Law,       ///< A registry::LawId.
-    };
-
-    /** @brief How a kernel uses a parameter: "-nu", "BH". */
-    struct ParameterRef
-    {
-        ParameterKind kind = ParameterKind::One;
-        unsigned int index = 0; ///< registry::ParameterId or registry::LawId, by kind.
-        ParameterType type = ParameterType::Scalar;
-        libMesh::Real sign = 1.0;
-
-        registry::ParameterId parameter() const { return static_cast<registry::ParameterId>(index); }
-        registry::LawId law() const { return static_cast<registry::LawId>(index); }
-        std::string_view name() const
-        {
-            return kind == ParameterKind::Parameter ? registry::name(parameter())
-                   : kind == ParameterKind::Law     ? registry::name(law())
-                                                    : std::string_view("1");
-        }
-    };
-
-    /** @brief K/C block (with a trial) or right-hand-side source (without) on the DOF fields. */
-    struct DofKernel
-    {
-        std::string name;
-        bool has_trial = false;
-        OperandRef test;
-        OperandRef trial;
-        ParameterRef parameter;
-        std::vector<registry::Domain> domains; ///< Empty means all.
-    };
-
-    /** @brief A term of a nodal or element field: field += parameter * operator(DOF field). */
-    struct FieldKernel
-    {
-        std::string name;
-        const Field *field = nullptr;
-        OperandRef trial;
-        ParameterRef parameter;
-        std::vector<registry::Domain> domains; ///< Empty means all.
+        registry::VariableId id;
+        libMesh::FEFamily family;
+        libMesh::Order order;
     };
 
     class ElementType
     {
     public:
+        ElementType(registry::ElementTypeId id, const ElementTypeOptions &options);
         ElementType(const ElementType &) = delete;
         ElementType &operator=(const ElementType &) = delete;
 
-        registry::ElementTypeId id() const { return id_; }
-        std::string_view name() const { return registry::name(id_); }
-        unsigned int dimension() const { return dimension_; }
+        const formulation::ElementTypeSpec &spec() const { return *spec_; }
+        registry::ElementTypeId id() const { return spec_->id; }
+        std::string_view name() const { return registry::name(spec_->id); }
+        unsigned int dimension() const { return spec_->dimension; }
         const ElementTypeOptions &options() const { return options_; }
 
-        const std::vector<Field> &fields(FieldKind kind) const;
-        const Field *find_field(FieldKind kind, registry::FieldId id) const;
+        const FieldSpec &field(std::size_t index) const { return spec_->fields[index]; }
+        LibMeshVariable variable(const FieldSpec &field) const { return {field.variable, field.family, order(field.order)}; }
 
-        /** @brief The operator @p op bound to @p field; the parser creates Identity for every field with an FE. */
-        const Nabla &nabla(const Field &field, NablaOperator op) const;
+        static bool active(const FieldSpec &field, registry::Domain domain)
+        {
+            return (field.domains & registry::bit(domain)) != 0;
+        }
 
-        /** @brief The law @p id of this element type. */
-        const NonlinearLaw &law(registry::LawId id) const;
+        /** @brief True when the term applies in @p domain. */
+        static bool active(const formulation::TermSpec &term, registry::Domain domain)
+        {
+            return (term.domains & registry::bit(domain)) != 0;
+        }
 
-        const std::vector<DofKernel> &dof_kernels() const { return dof_kernels_; }
-        const std::vector<FieldKernel> &nodal_kernels() const { return nodal_kernels_; }
-        const std::vector<FieldKernel> &element_kernels() const { return element_kernels_; }
+        /**
+         * @brief True when a term is used on an element where the laws @p laws are selected: a law variant where its
+         * law is, any other term where no law replacing its coefficient is.
+         */
+        static bool selected(const formulation::TermSpec &term, registry::LawMask laws)
+        {
+            return term.law >= 0 ? (laws & registry::bit(static_cast<registry::LawId>(term.law))) != 0
+                                 : (term.replaced_by & laws) == 0;
+        }
 
-        /** @brief True when every field of the kernel exists in @p domain and the kernel applies there. */
-        bool active(const DofKernel &kernel, registry::Domain domain) const;
-        bool active(const FieldKernel &kernel, registry::Domain domain) const;
+        /**
+         * @brief True when @p operation computes @p term of @p evaluation on an element in @p domain where the laws
+         * @p laws are selected (selected()).
+         *
+         * Linear block and rhs terms go to Matrices and Rhs, the law terms (J, R) to Nonlinear. The terms of the
+         * static nodal and element fields belong to Matrices, those of the dynamic ones to NodalFields / ElementFields.
+         */
+        bool uses(const formulation::EvaluationSpec &evaluation,
+                  const formulation::TermSpec &term,
+                  Operation operation,
+                  registry::LawMask laws,
+                  registry::Domain domain) const;
 
-        /** @brief reinit()s once each FE used in @p domain, and the geometry FE, on @p elem. */
-        void reinit(const libMesh::Elem &elem, registry::Domain domain) const;
+        /**
+         * @brief True when the nodal or element field of @p evaluation depends on the solution through a law selected
+         * on the element (a law variant of its terms). Static fields are linear operators on the solution, computed
+         * once with the element matrices (field_operators); dynamic ones at every output.
+         */
+        bool dynamic(const formulation::EvaluationSpec &evaluation, registry::Domain domain, registry::LawMask laws) const;
 
-        /** @brief JxW and quadrature points of the last reinit(). */
-        const std::vector<libMesh::Real> &jxw() const { return geometry_fe_->get_JxW(); }
-        const std::vector<libMesh::Point> &xyz() const { return geometry_fe_->get_xyz(); }
+        /** @brief True when a field of @p kind is dynamic in @p domain. */
+        bool has_dynamic_fields(FieldKind kind, registry::Domain domain, registry::LawMask laws) const;
 
-        /** @brief Element matrix index of every shape function of every field of one kind. */
+        /** @brief The laws bound to the element type (those replacing one of its parameters). */
+        registry::LawMask laws() const { return laws_; }
+
+        /** @brief True when a law term has a dt() trial: the residual needs the velocity or acceleration. */
+        bool law_rates() const { return law_rates_; }
+
+        /**
+         * @brief The operators the static nodal or element fields can have in @p domain: bit k (k = 0, 1, 2) for
+         * F_k, the terms with k dt() on the trial, bit 3 for the constant (terms without trial). Known from the
+         * spec: the others are never allocated.
+         */
+        unsigned int field_operators(FieldKind kind, registry::Domain domain) const
+        {
+            return field_operators_[kind == FieldKind::Nodal ? 0 : 1][static_cast<std::size_t>(domain)];
+        }
+
+        const Nabla &nabla(std::size_t index) const { return nablas_[index]; }
+
+        /**
+         * @brief True when the DOF field @p field has a row in K in @p domain: it is the test of a block without dt()
+         * on the trial (linear, secant or tangent). A field without one only has C or M rows, which vanish on a
+         * static step.
+         */
+        bool has_stiffness(std::size_t field, registry::Domain domain) const;
+
+        /**
+         * @brief reinit()s on @p elem the FEs @p operation needs in @p domain.
+         * @return The FE that gives JxW and the quadrature points; null when the operation computes nothing there.
+         */
+        const libMesh::FEAbstract *reinit(const libMesh::Elem &elem, registry::Domain domain, Operation operation,
+                                          registry::LawMask laws) const;
+
+        /**
+         * @brief The positions of the values of one field in the element vector: the block of its variable, value i
+         * (shape function i) at start + i.
+         */
+        struct FieldRange
+        {
+            unsigned int start = 0;
+            unsigned int count = 0; ///< 0 for other kinds and inactive fields.
+
+            unsigned int size() const { return count; }
+            bool empty() const { return count == 0; }
+            unsigned int operator[](std::size_t i) const { return start + static_cast<unsigned int>(i); }
+        };
+
+        /** @brief Element vector position of every shape function of every field of one kind. */
         struct FieldIndices
         {
-            std::vector<std::vector<unsigned int>> field; ///< By field index; empty for a field not active in the domain.
-            unsigned int n_dofs = 0;                      ///< Size of the element matrices of the system.
+            std::vector<FieldRange> field; ///< By field index; empty for other kinds and inactive fields.
+            unsigned int n_dofs = 0;       ///< Size of the element vectors of the system.
         };
 
         /**
-         * @brief Where, in the element vectors of @p system, each shape function of each field of @p kind sits.
+         * @brief Where, in the element vectors of @p system, each value of each field of @p kind sits.
          *
-         * Follows the DofMap, so it holds for any variable and variable-group layout of the system. The
-         * fields are those of @p kind active in @p domain; their columns are in shape-function order.
+         * Follows the order of DofMap::dof_indices(): the variables active on the subdomain in system order,
+         * each with FEInterface::n_dofs() DOFs (node by node, then on the element), so positions are prefix sums
+         * of those counts, with no DOF lookup. The fields are those of @p kind active in @p domain; each is a
+         * FieldRange, the block of its variable. The variable numbers of the fields are looked up once per system.
          */
         FieldIndices element_indices(const libMesh::System &system,
                                      const libMesh::Elem &elem,
@@ -163,26 +192,23 @@ namespace pytec3d
                                      registry::Domain domain) const;
 
     private:
-        friend class ElementTypeParser;
-        ElementType() = default;
+        libMesh::Order order(formulation::OrderRule rule) const;
 
-        registry::ElementTypeId id_ = registry::ElementTypeId::COUNT;
-        unsigned int dimension_ = 0;
+        /** @brief Variable number in @p system of the variable of each field (by field index; libMesh::invalid_uint
+         * if not in the system); looked up once. */
+        const std::vector<unsigned int> &variable_numbers(const libMesh::System &system) const;
+
+        const formulation::ElementTypeSpec *spec_;
         ElementTypeOptions options_;
-
-        std::vector<std::optional<NonlinearLaw>> laws_; ///< By registry::LawId; empty for a law the type does not define.
-
-        std::vector<Field> dof_fields_;
-        std::vector<Field> nodal_fields_;
-        std::vector<Field> element_fields_;
-        std::vector<DofKernel> dof_kernels_;
-        std::vector<FieldKernel> nodal_kernels_;
-        std::vector<FieldKernel> element_kernels_;
-
-        std::deque<Nabla> nablas_; ///< Stable addresses: kernels point into it.
         std::unique_ptr<libMesh::QBase> quadrature_;
-        std::map<std::pair<int, int>, std::unique_ptr<libMesh::FEAbstract>> fes_; ///< By (family, order).
-        std::unique_ptr<libMesh::FEBase> geometry_fe_;
-        std::vector<std::vector<libMesh::FEAbstract *>> fes_by_domain_;
+        std::vector<std::unique_ptr<libMesh::FEAbstract>> fes_;
+        std::vector<Nabla> nablas_;
+        registry::LawMask laws_ = 0;
+        bool law_rates_ = false;
+        std::array<std::array<unsigned char, registry::kNumDomain>, 2> field_operators_{}; ///< Nodal, element; by domain.
+        /// The FEs to reinit, by domain, operation and whether laws are selected; the first gives the geometry.
+        std::vector<std::vector<libMesh::FEAbstract *>> needed_fes_;
+        mutable std::map<unsigned int, std::vector<unsigned int>> variable_numbers_; ///< By system number.
+        mutable std::mutex variable_numbers_mutex_;
     };
 } // namespace pytec3d

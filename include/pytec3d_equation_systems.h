@@ -24,18 +24,12 @@
 #include "fe_parent_object.h"
 #include "solver_configuration.h"
 #include "time_step.h"
-#include "bh_curve.h"
 #include "model_data.h"
 
 class ElementTypesFactory;
 class pyTEC3DSystemBase;
 class pyTEC3DModel;
 class pyTEC3DDOFSystemBase;
-
-namespace pytec3d
-{
-    class ElementTypeParser;
-}
 
 /**
  * @brief Manages all libMesh solution systems for one pyTEC3D simulation.
@@ -56,17 +50,14 @@ public:
 
     /**
      * @brief Parses the model data JSON (model.data) and builds the element types it selects.
-     * @p parser must outlive the element types. @p solver_settings is the dict of the Python solver, read at
-     * every solve.
+     * @p solver_settings is the dict of the Python solver, read at every solve.
      */
-    void load_model_data(const std::string &model_json,
-                         pybind11::object solver_settings,
-                         const std::shared_ptr<const pytec3d::ElementTypeParser> &parser);
+    void load_model_data(const std::string &model_json, pybind11::object solver_settings);
 
     /**
-     * @brief Dry run of the kernels on one element per (TYPE, MATERIAL, CONSTANT) combination of the mesh.
+     * @brief Dry run of the coefficients on one element per (TYPE, MATERIAL, CONSTANT) combination of the mesh.
      *
-     * Aborts, naming the element type, domain and material or constants, when a kernel active in the domain
+     * Aborts, naming the element type, domain and material or constants, when a term active in the domain
      * needs a material property or real constant the model data leaves undefined.
      */
     void validate_model_data() const;
@@ -110,11 +101,14 @@ public:
     /** @brief Returns the previous (already accepted) time-step state. */
     const TimeStep *previous_time_step() const;
 
-    /** @brief Returns true when material BH curves are available. */
-    bool has_bh_curves() const;
+    /** @brief True when a law is selected on an element of the grid: the DOF system is solved with Newton. */
+    bool has_nonlinear_elements() const;
 
-    /** @brief Returns the BH curves of the model data, by material. */
-    const BHCurveMaterialsMap &get_bh_curves() const;
+    /** @brief Highest time order of the element types of the model data: 0 static, 1, or 2. */
+    unsigned int time_order() const;
+
+    /** @brief Scheme of the current time step for the time order of the model (time_step.h). */
+    TimeScheme time_scheme() const;
 
     /** @brief Returns the element-types factory built from the model description. */
     const std::shared_ptr<ElementTypesFactory> &get_element_types_factory() const;

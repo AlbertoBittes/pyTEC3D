@@ -90,14 +90,14 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
 ModelEdit.remove_array(pytec3d.model.mesh, "CP_1")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_1", dtype=vtk.VTK_INT)
 Selector.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_1", variables=("Az", "V")))
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_1", variables=("A", "V")))
 
 # Far-field boundary conditions and tree gauge constraints
 Selector.select_all(pytec3d.model.mesh)
 Selector.select_pos(
     pytec3d.model.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
 )
-Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0.0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 TreeGauge.tree_gauge(
     pytec3d.model.mesh,
     periodic_point_coupling="CP_1",

@@ -12,11 +12,6 @@
 
 class pyTEC3DModel;
 
-namespace pytec3d
-{
-    class ElementTypeParser;
-}
-
 namespace libMesh
 {
     class LibMeshInit;
@@ -64,7 +59,6 @@ public:
     static pybind11::dict registries();
 
 private:
-    std::shared_ptr<const pytec3d::ElementTypeParser> element_type_parser_;
     int argc = 0;
     char **argv = nullptr;
     std::shared_ptr<libMesh::LibMeshInit> libmesh_init;

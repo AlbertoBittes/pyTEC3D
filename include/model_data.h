@@ -9,11 +9,20 @@
  *   "element_types":  { "<TYPE id>": { "element_type": 0 | "AV2D_nodal",       // index or name in element_types.json
  *                                      "option1": 6 | "STRANDED_COIL",         // domain: index or name in domains.json
  *                                      "option2": 1,                           // FE order (default 1)
- *                                      "option3": 0 } }                        // axisymmetric (default 0)
- *   "materials":      { "<MATERIAL id>": { "mur": [[1,0,0],[0,1,0],[0,0,1]], "rho": [[..]], "M": [0,0,0] } }   // "mat." parameters
- *   "constants":      { "<CONSTANT id>": { "thickness": 1.0, "T": [0, 0, 1], ... } }       // "rc." parameters
+ *                                      "option3": 0,                           // axisymmetric (default 0)
+ *                                      "law": "<me. law>" } }                  // nonlinear laws of source me (optional)
+ *   "materials":      { "<MATERIAL id>": { "mur": [[1,0,0],[0,1,0],[0,0,1]], "rho": [[..]], "M": [0,0,0],   // "mat." parameters
+ *                                          "law": "ferromagnetic" } }          // nonlinear laws of source mat (optional)
+ *   "constants":      { "<CONSTANT id>": { "thickness": 1.0, "T": [0, 0, 1], ..., "law": ... } }   // "rc." parameters
  *   "dof_couplings":  { "<CP id>": ["A", "VOLT"] }
- *   "bh_curves":      { "<MATERIAL id>": { "H": [0, ...], "B": [0, ...] } }
+ *   "bh_curves":      { "<MATERIAL id>": { "B": [0, ...], "H": [0, ...] } }   // the curves of the laws (CurveId)
+ *
+ * "law" is a law of laws.json (name or index) or an array of them; each must have the source of the row. The
+ * laws selected on an element are those of its TYPE, MATERIAL and CONSTANT rows that its element type has; they
+ * replace the parameters they say (see laws.json). A curve section, and the names of its x and y arrays, are
+ * those the laws declare; it is keyed by the ids of the rows of the laws' source, and every row selecting a law
+ * with a curve needs one. A formulation variant (e.g. time-integrated potentials) is an element type of its
+ * own, not an option.
  *
  * A material property or real constant is a number, a 3-vector or a 3x3 tensor as its type says (a number
  * stands for a vector with equal components). Any of them can be left out: it is only an error when a
@@ -28,7 +37,7 @@
 #include <string>
 #include <vector>
 
-#include "bh_curve.h"
+#include "curve.h"
 #include "parameter_value.h"
 #include "registries.h"
 
@@ -39,6 +48,8 @@ namespace pytec3d
     class PropertyRow
     {
     public:
+        registry::LawMask laws = 0; ///< Selected by the "law" key.
+
         const ParameterValue *find(Id id) const
         {
             const auto &value = values_[static_cast<std::size_t>(id)];
@@ -61,6 +72,7 @@ namespace pytec3d
         registry::Domain domain = registry::Domain::COUNT;
         unsigned int order = 1;
         bool axisymmetric = false;
+        registry::LawMask laws = 0; ///< Laws of source me selected by the "law" key.
     };
 
     struct DofCoupling
@@ -82,8 +94,12 @@ namespace pytec3d
         const MaterialRow *material(unsigned int id) const;
         const ConstantRow *constants(unsigned int id) const;
 
-        /** @brief By MATERIAL id. */
-        const BHCurveMaterialsMap &bh_curves() const { return bh_curves_; }
+        /** @brief The curve @p id of row @p row_id (of the source of the laws reading it); null when undefined. */
+        const CurveData *curve(registry::CurveId id, unsigned int row_id) const;
+
+        /** @brief The laws selected by the TYPE, MATERIAL and CONSTANT rows @p type_id, @p material_id, @p constants_id. */
+        registry::LawMask laws(unsigned int type_id, unsigned int material_id, unsigned int constants_id) const;
+
 
         const std::vector<DofCoupling> &dof_couplings() const { return dof_couplings_; }
 
@@ -91,7 +107,7 @@ namespace pytec3d
         std::map<unsigned int, ElementTypeSpec> element_types_;
         std::map<unsigned int, MaterialRow> materials_;
         std::map<unsigned int, ConstantRow> constants_;
-        BHCurveMaterialsMap bh_curves_;
+        std::array<std::map<unsigned int, CurveData>, registry::kNumCurveId> curves_; ///< By CurveId, then row id.
         std::vector<DofCoupling> dof_couplings_;
     };
 } // namespace pytec3d

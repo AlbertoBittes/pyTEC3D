@@ -1,0 +1,15 @@
+{
+    "laws": {
+        "ferromagnetic": {
+            "source": "mat",
+            "input": "B",
+            "curve": {"section": "bh_curves", "x": "B", "y": "H"},
+            "locals": {"b": "B.norm()", "nu_s": "b > 1e-14 ? curve.value(b) / b : curve.slope(0.0)"},
+            "replaces": {
+                "nu[][]": {"secant": "nu_s * I",
+                           "tangent": "nu_s * I + (b > 1e-14 ? (curve.slope(b) - nu_s) / (b * b) : 0.0) * outer_product(B, B)"},
+                "nu_gauge": {"secant": "nu_s"}
+            }
+        }
+    }
+}

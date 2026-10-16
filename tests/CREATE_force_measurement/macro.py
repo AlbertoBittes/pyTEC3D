@@ -142,7 +142,7 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, typ
 Selector.select_all(pytec3d.model.mesh)
 Selector.nsel_ext(pytec3d.model.mesh)
 Selector.select_pos(pytec3d.model.mesh, 1, (-1e-6, 1e-6), mode="u")
-Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0.0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 TreeGauge.tree_gauge(pytec3d.model.mesh)
 
 pytec3d.load_model_into_solver()

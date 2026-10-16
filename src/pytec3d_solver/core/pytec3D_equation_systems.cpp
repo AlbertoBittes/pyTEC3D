@@ -6,6 +6,7 @@
 #include "element_builder.h"
 #include "pytec3d_system.h"
 #include "pytec3d_model.h"
+#include "element_evaluator.h"
 #include "element_parameters.h"
 #include "element_types_factory.h"
 #include "vtkio.h"
@@ -34,13 +35,11 @@
 
 namespace py = pybind11;
 
-void pyTEC3DEquationSystems::load_model_data(const std::string &model_json,
-                                             py::object solver_settings,
-                                             const std::shared_ptr<const pytec3d::ElementTypeParser> &parser)
+void pyTEC3DEquationSystems::load_model_data(const std::string &model_json, py::object solver_settings)
 {
     model_data_ = pytec3d::ModelData::parse(model_json);
     solver_settings_ = std::move(solver_settings);
-    element_types_factory_ = std::make_shared<ElementTypesFactory>(model_data_, parser);
+    element_types_factory_ = std::make_shared<ElementTypesFactory>(model_data_);
 
     element_local_to_global_rotations_.clear();
     node_local_to_global_rotations_.clear();
@@ -77,26 +76,24 @@ void pyTEC3DEquationSystems::validate_model_data() const
         inputs.domain = entry.domain;
         inputs.cell_data = cell_data;
         inputs.element_id = cell;
-        const auto curve = model_data_.bh_curves().find(key[1]);
-        if (curve != model_data_.bh_curves().end())
-            inputs.bh_curve = &curve->second;
 
-        // Evaluates what the builder will: a law on an element with a curve needs no linear parameter.
+        // Builds what the assembly will on the first element of the combination, without a solution: a
+        // law on an element with a curve needs no linear parameter.
         pytec3d::ElementParameterValues values(type, inputs);
-        const auto touch = [&values](const pytec3d::ParameterRef &parameter)
-        {
-            if (!values.nonlinear(parameter))
-                values.value(parameter);
-        };
-        for (const pytec3d::DofKernel &kernel : type.dof_kernels())
-            if (type.active(kernel, entry.domain))
-                touch(kernel.parameter);
-        for (const pytec3d::FieldKernel &kernel : type.nodal_kernels())
-            if (type.active(kernel, entry.domain))
-                touch(kernel.parameter);
-        for (const pytec3d::FieldKernel &kernel : type.element_kernels())
-            if (type.active(kernel, entry.domain))
-                touch(kernel.parameter);
+        const libMesh::Elem *elem = this->get_mesh().query_elem_ptr(static_cast<libMesh::dof_id_type>(cell));
+        if (!elem)
+            continue;
+        pytec3d::ElementEvaluator::Inputs evaluator_inputs;
+        evaluator_inputs.type = &type;
+        evaluator_inputs.domain = entry.domain;
+        evaluator_inputs.laws = model_data_.laws(key[0], key[1], key[2]) & type.laws();
+        evaluator_inputs.elem = elem;
+        evaluator_inputs.parameters = &values;
+        evaluator_inputs.model_data = &model_data_;
+        evaluator_inputs.material_id = key[1];
+        evaluator_inputs.constants_id = key[2];
+        evaluator_inputs.type_id = key[0];
+        pytec3d::ElementEvaluator(evaluator_inputs).check_parameters();
     }
 }
 
@@ -246,12 +243,20 @@ void pyTEC3DEquationSystems::prepare_time_step_solve(const pybind11::dict &time_
     const libMesh::Real requested_time = pybind11::cast<libMesh::Real>(time_step_dict["time"]);
     const libMesh::Real requested_theta = pybind11::cast<libMesh::Real>(time_step_dict["theta"]);
     const bool requested_transient_effect = pybind11::cast<bool>(time_step_dict["transient_effects"]);
+    // Newmark parameters of second-order formulations: average acceleration when not given.
+    const TimeStep defaults;
+    const libMesh::Real requested_beta =
+        time_step_dict.contains("beta") ? pybind11::cast<libMesh::Real>(time_step_dict["beta"]) : defaults.beta;
+    const libMesh::Real requested_gamma =
+        time_step_dict.contains("gamma") ? pybind11::cast<libMesh::Real>(time_step_dict["gamma"]) : defaults.gamma;
 
     if (!time_step_)
     {
         time_step_ = std::make_unique<TimeStep>();
         time_step_->time = requested_time;
         time_step_->theta = requested_theta;
+        time_step_->beta = requested_beta;
+        time_step_->gamma = requested_gamma;
         time_step_->transient_effects = requested_transient_effect;
         time_step_->time_step_idx = 0;
         time_step_->dt = requested_time;
@@ -270,6 +275,8 @@ void pyTEC3DEquationSystems::prepare_time_step_solve(const pybind11::dict &time_
         time_step_ = std::make_unique<TimeStep>();
         time_step_->time = requested_time;
         time_step_->theta = requested_theta;
+        time_step_->beta = requested_beta;
+        time_step_->gamma = requested_gamma;
         time_step_->transient_effects = requested_transient_effect;
         time_step_->time_step_idx = old_time_step_->time_step_idx + 1;
         time_step_->dt = requested_time - current_time;
@@ -283,10 +290,12 @@ void pyTEC3DEquationSystems::prepare_time_step_solve(const pybind11::dict &time_
         const bool current_transient_effect = time_step_->transient_effects;
         const libMesh::Real theta_tol = std::numeric_limits<libMesh::Real>::epsilon() * std::abs(current_theta);
 
-        if (std::abs(requested_theta - current_theta) > theta_tol ||
-            requested_transient_effect != current_transient_effect)
+        const auto differs = [](libMesh::Real a, libMesh::Real b)
+        { return std::abs(a - b) > std::numeric_limits<libMesh::Real>::epsilon() * std::max(std::abs(a), std::abs(b)); };
+        if (std::abs(requested_theta - current_theta) > theta_tol || differs(requested_beta, time_step_->beta) ||
+            differs(requested_gamma, time_step_->gamma) || requested_transient_effect != current_transient_effect)
         {
-            pytec3d::logging::error_and_abort("pyTEC3DEquationSystems::prepare_time_step_solve: theta/transient_effects changed while time is unchanged.");
+            pytec3d::logging::error_and_abort("pyTEC3DEquationSystems::prepare_time_step_solve: theta/beta/gamma/transient_effects changed while time is unchanged.");
         }
 
         time_step_->time = requested_time;
@@ -312,7 +321,7 @@ void pyTEC3DEquationSystems::solve_equation_systems(const pybind11::dict &time_s
 
 void pyTEC3DEquationSystems::configure_systems()
 {
-    use_nonlinear_system_ = this->has_bh_curves();
+    use_nonlinear_system_ = this->has_nonlinear_elements();
 
     for (int i = 0; i < pyTEC3DSystemBase::NUM_SYSTEMS; ++i)
     {
@@ -427,14 +436,45 @@ const TimeStep *pyTEC3DEquationSystems::previous_time_step() const
     return old_time_step_.get();
 }
 
-bool pyTEC3DEquationSystems::has_bh_curves() const
+bool pyTEC3DEquationSystems::has_nonlinear_elements() const
 {
-    return !model_data_.bh_curves().empty();
+    if (!element_types_factory_)
+        return false;
+    vtkUnstructuredGrid *grid = this->get_parent_object()->get_active_vtk_grid();
+    vtkCellData *cell_data = grid ? grid->GetCellData() : nullptr;
+    vtkDataArray *types = cell_data ? cell_data->GetArray("TYPE") : nullptr;
+    vtkDataArray *materials = cell_data ? cell_data->GetArray("MATERIAL") : nullptr;
+    vtkDataArray *constants = cell_data ? cell_data->GetArray("CONSTANT") : nullptr;
+    if (!types || !materials || !constants)
+        return false;
+
+    // An element with a law selected (by its TYPE, MATERIAL or CONSTANT row) that its element type has.
+    using Key = std::array<unsigned int, 3>;
+    std::set<Key> checked;
+    for (vtkIdType cell = 0; cell < grid->GetNumberOfCells(); ++cell)
+    {
+        const Key key{static_cast<unsigned int>(types->GetComponent(cell, 0)),
+                      static_cast<unsigned int>(materials->GetComponent(cell, 0)),
+                      static_cast<unsigned int>(constants->GetComponent(cell, 0))};
+        if (!checked.insert(key).second)
+            continue;
+        const auto &entry = element_types_factory_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
+        if (model_data_.laws(key[0], key[1], key[2]) & entry.type->laws())
+            return true;
+    }
+    return false;
 }
 
-const BHCurveMaterialsMap &pyTEC3DEquationSystems::get_bh_curves() const
+unsigned int pyTEC3DEquationSystems::time_order() const
 {
-    return model_data_.bh_curves();
+    return element_types_factory_ ? element_types_factory_->time_order() : 0;
+}
+
+TimeScheme pyTEC3DEquationSystems::time_scheme() const
+{
+    if (!time_step_)
+        pytec3d::logging::error_and_abort("pyTEC3DEquationSystems::time_scheme: no time step.");
+    return TimeScheme::make(*time_step_, this->time_order());
 }
 
 const std::shared_ptr<ElementTypesFactory> &pyTEC3DEquationSystems::get_element_types_factory() const

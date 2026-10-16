@@ -1,25 +1,22 @@
 {
   "element_types": {
     "31": {
-      "element_type": 1,
+      "element_type": "AV3D_nodal_timint",
       "option1": 0,
       "option2": 1,
-      "option3": 0,
-      "option4": 1
+      "option3": 0
     },
     "33": {
-      "element_type": 1,
+      "element_type": "AV3D_nodal_timint",
       "option1": 3,
       "option2": 1,
-      "option3": 0,
-      "option4": 1
+      "option3": 0
     },
     "34": {
-      "element_type": 1,
+      "element_type": "AV3D_nodal_timint",
       "option1": 4,
       "option2": 1,
-      "option3": 0,
-      "option4": 1
+      "option3": 0
     }
   },
   "materials": {

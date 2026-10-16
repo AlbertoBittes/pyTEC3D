@@ -4,7 +4,6 @@
  */
 #include "pytec3d_solver.h"
 
-#include "element_type_parser.h"
 #include "logging.h"
 #include "pytec3d_model.h"
 #include "registries.h"
@@ -209,8 +208,6 @@ pyTEC3DSolver::pyTEC3DSolver(int num_threads_per_mpi_process)
 
     num_threads_per_mpi_process_ = num_threads_per_mpi_process;
     ensure_libmesh_initialized();
-    element_type_parser_ = std::make_shared<const pytec3d::ElementTypeParser>(
-        pytec3d::ElementTypeParser::from_embedded());
     closed_ = false;
     pytec3d::logging::info("Solver created successfully");
 }
@@ -275,7 +272,7 @@ void pyTEC3DSolver::load_model(pybind11::object pytec3d_object, pybind11::object
         if (!model_)
             model_ = std::make_shared<pyTEC3DModel>();
 
-        model_->load_into_solver(libmesh_init, element_type_parser_, std::move(pytec3d_object), std::move(solver_settings));
+        model_->load_into_solver(libmesh_init, std::move(pytec3d_object), std::move(solver_settings));
         loaded = true;
     }
     catch (const std::exception &ex)
@@ -355,6 +352,26 @@ pybind11::dict pyTEC3DSolver::registries()
     };
     out["material_properties"] = types_of(reg::kMaterialPropertyNames, reg::kMaterialPropertyTypes);
     out["real_constants"] = types_of(reg::kRealConstantNames, reg::kRealConstantTypes);
+
+    // law -> {"source": "materials" | "constants" | "element_types", "curve": [section, x, y] or None}
+    pybind11::dict laws;
+    for (std::size_t i = 0; i < reg::kNumLawId; ++i)
+    {
+        const reg::LawInfo &info = reg::kLaws[i];
+        pybind11::dict law;
+        law["source"] = info.source == reg::LawSource::Material   ? "materials"
+                        : info.source == reg::LawSource::Constant ? "constants"
+                                                                  : "element_types";
+        if (info.curve == reg::CurveId::COUNT)
+            law["curve"] = pybind11::none();
+        else
+        {
+            const reg::CurveSource &curve = reg::kCurveSources[static_cast<std::size_t>(info.curve)];
+            law["curve"] = pybind11::make_tuple(std::string(curve.section), std::string(curve.x), std::string(curve.y));
+        }
+        laws[pybind11::str(std::string(reg::kLawIdNames[i]))] = law;
+    }
+    out["laws"] = laws;
     return out;
 }
 

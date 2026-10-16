@@ -32,7 +32,8 @@ class pyTEC3DSolver:
 
     Attributes:
         time_step: Dict with ``time`` (end time of the step), ``theta`` (time integration parameter in
-            [0, 1]) and ``transient_effects`` (False for a static solve).
+            [0, 1], first-order formulations), ``beta`` and ``gamma`` (Newmark parameters, second-order
+            formulations) and ``transient_effects`` (False for a static solve).
         solver_settings: Dict with the PETSc ``ksp_type``, ``pc_type`` and the linear tolerances and
             iteration limit. The solver reads it at every solve.
     """
@@ -380,6 +381,7 @@ class pyTEC3DSolver:
         if self._closed:
             raise RuntimeError("This pyTEC3D instance is closed and cannot create a new solver session.")
 
+        self.model.update_grid()
         LOGGER.info("Validating model before creating solver session.")
         self.validate()
 

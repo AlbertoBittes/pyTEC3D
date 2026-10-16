@@ -42,30 +42,20 @@ The array ``angles`` must exist in point data.
 Required initialized arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-All arrays listed in ``VTK_ARRAYS_TO_INIT`` must exist in the expected
-location (node or elem), with expected tuple count and number of components.
+The arrays a model needs follow from its element types (``src/resources/element_types.json``, read by
+``pytec3d.element_library``). ``ModelEdit.update_grid`` (called when a model is read, when its model data is
+read, and before a solve) adds the missing ones:
 
-Current required arrays are:
+- TYPE, MATERIAL, CONSTANT (elem, default 1), COORDINATE_SYSTEM (elem, default 0), CP_0 (node, default 0);
+- cell_centroids and cell_volume, when not computed yet;
+- for each DOF field F: F (node) and its Dirichlet values _F (node, NaN where free); 3 components for a vector
+  field, 1 for a scalar;
+- for each nodal field: F (node); for each element field: F (elem); the same name can be both;
+- the nodal loads (``mn.`` parameters, node) and element loads (``me.`` parameters, elem).
 
-- angles (node, 3)
-- A (node, 3)
-- Az (node, 1)
-- VOLT (node, 1)
-- V (node, 1)
-- EMF (node, 1)
-- _A (node, 3)
-- _Az (node, 1)
-- _VOLT (node, 1)
-- _V (node, 1)
-- _EMF (node, 1)
-- B (node, 3)
-- H (node, 3)
-- Be (elem, 3)
-- He (elem, 3)
-- Jt (elem, 3)
-- AMPS (node, 1)
-- CURR (node, 1)
-- Js (elem, 3)
+With the current library: A, _A, V, _V, VOLT, _VOLT, EMF, _EMF, B, H (node and elem), Jt (elem), AMPS, CURR
+(node), Js (elem). The edge (NEDELEC_ONE) unknowns of A read their Dirichlet values from component 2 of _A on
+the midside nodes; DOF couplings name them A.
 
 Coordinate System
 -----------------------
@@ -182,14 +172,13 @@ To each element type, beyond the formulation, there are five options
 - OPTION3: 2D behavior mode. The available options are:
   - 0: Planar
   - 1: Axisymmetric
-- OPTION4: defines if a formulation with time integrated electric potentials is used. The available options are:
-  - 0: Formulation with non time integrated electric scalar potentials
-  - 1: Formulation with time integrated electric scalar potentials
-- OPTION5: reserved for future use.
+- LAW (optional): the nonlinear laws of source ``me`` selected on the cells of this TYPE (see
+  `Nonlinear laws`_). The formulation with time-integrated electric potentials is an element type of its own
+  (``*_timint``), not an option.
 
 Summary of required columns in ``element_types`` table:
 
-- TYPE_ID, ELEMENT_TYPE, OPTION1, OPTION2, OPTION3, OPTION4, OPTION5
+- TYPE_ID, ELEMENT_TYPE, OPTION1, OPTION2, OPTION3
 
 Summary of input rules:
 
@@ -198,7 +187,6 @@ Summary of input rules:
 - OPTION1 must be in ``[0, 6]``.
 - OPTION2 must be in ``{1, 2}``.
 - OPTION3 must be in ``{0, 1}``.
-- OPTION4 must be in ``{0, 1}``.
 
 Mesh compatibility rules:
 
@@ -234,9 +222,34 @@ Summary of required columns in ``materials`` table:
 Summary Rules:
 
 - MATERIAL_ID must be ``> 0`` and unique.
-- MUR_* values must be finite and ``> 0``.
-- RHO_* and M_* values must be finite and ``>= 0``.
+- Each property must be one of the material properties of the element types, with their shape (number,
+  3-vector or 3x3 tensor), and finite.
 - Every mesh MATERIAL value must exist in MATERIAL_ID.
+
+Which properties an element needs depends on its element type and domain: the solver checks that they are
+defined when the model is loaded.
+
+A material may also select nonlinear laws of source ``mat`` with its ``law`` key, e.g. ``"law": "ferromagnetic"``
+(see `Nonlinear laws`_).
+
+Nonlinear laws
+~~~~~~~~~~~~~~
+
+The nonlinear laws are defined in ``src/resources/laws.json`` and compiled into the solver. A law replaces one or
+more coefficients of the element types (e.g. ``ferromagnetic`` replaces the reluctivity ``nu`` and ``nu_gauge``)
+by values computed at each quadrature point from a field (``B``) and, optionally, a curve of the model data.
+
+A law is selected by the ``law`` key of the rows of its source:
+
+- ``mat``: the ``materials`` rows (the law follows the material);
+- ``rc``: the ``constants`` rows;
+- ``me``: the ``element_types`` rows (by TYPE).
+
+``law`` is a law name (or index) or a list of them. On a cell, the laws selected by its TYPE, MATERIAL and CONSTANT
+rows apply wherever its element type uses a coefficient they replace; elsewhere the coefficients are the linear
+material properties and real constants. A model with at least one such cell is solved with Newton's method. The
+curve of a law is keyed by the id of the row that selects it, e.g. ``bh_curves[<MATERIAL id>]`` for
+``ferromagnetic``, and every row selecting a law with a curve must have one.
 
 Constants
 ~~~~~~~~~
@@ -252,17 +265,8 @@ Rules:
 - All numeric constant fields must be finite.
 - Every mesh CONSTANT value must exist in CONSTANTS_ID.
 
-Context-specific rules (based on element type/option):
-
-- For 2D type-0 cells:
-	- THK must be ``> 0``.
-	- If OPTION3=1 then THK must be ``<= 1``.
-- For 2D type-0 with OPTION1=6:
-	- CS>0, TURNS>0, RAD>0, T_Z in {-1, 1}, R>0, S>=1.
-- For 3D type-1 or type-2 with OPTION1=6:
-	- CS>0, TURNS>0, VOL>0, R>0, S>=1.
-	- T_X, T_Y, T_Z each in [-1, 1].
-	- (T_X, T_Y, T_Z) must be unit norm (within tolerance).
+Which real constants an element needs depends on its element type and domain: the solver checks that they
+are defined when the model is loaded.
 
 dof_couplings
 ~~~~~~~~~~~~~
@@ -286,22 +290,17 @@ Point-data arrays matching ``CP_<xx>`` (for integer ``xx``) are scanned.
 - If a CP ID is used in mesh but not declared in ``dof_couplings``,
 	validation fails.
 
-BH Curve Rules
---------------
+Curves of the Laws
+------------------
 
-``bh_curves`` must be a dictionary from material ID to a numeric ``(N,2)``
-array of ``[H, B]`` pairs.
+The curve of a law (e.g. ``bh_curves`` for ``ferromagnetic``) is a section of the model data keyed by the id of
+the row selecting the law. Each curve is an object with the two arrays the law names (``B`` and ``H`` for
+``bh_curves``):
 
-Rules for each curve:
+- same length ``>= 2``, finite values;
+- the x array (``B``) strictly increasing.
 
-- Key must be integer material ID > 0.
-- Curve must be convertible to float array.
-- Shape must be ``(N, 2)`` with ``N >= 2``.
-- All values must be finite.
-- First point must be (0, 0).
-- H and B values must be non-negative and strictly increasing.
-
-Additional solver-consistency notes may be emitted as warnings.
+Beyond its last point a curve is extended along its last segment: give the table up to saturation.
 
 Pre-Solve Validation
 --------------------
@@ -313,7 +312,7 @@ Warnings
 
 1. If all values in Js, AMPS, and CURR are zero:
 	 warning that no loads are being applied.
-2. If all values in _A, _Az, _VOLT, _V, and _EMF are NaN:
+2. If all values in the Dirichlet arrays (_A, _V, _VOLT, _EMF, ...) are NaN:
 	 warning that no boundary conditions are applied.
 
 Errors
@@ -322,7 +321,8 @@ Errors
 ``time_step`` must satisfy:
 
 - ``time > 0``
-- ``0 <= theta <= 1``
+- ``0 <= theta <= 1`` (first-order formulations)
+- ``0 < beta <= 0.5`` and ``0 <= gamma <= 1`` (Newmark, second-order formulations; default 0.25 and 0.5)
 
 If not, pre-solve validation raises an error and solve is blocked.
 

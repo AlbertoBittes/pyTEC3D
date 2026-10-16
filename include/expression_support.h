@@ -23,23 +23,20 @@ namespace pytec3d::expression_support
     ParameterValue expression_value(const Value &value)
     {
         using T = std::decay_t<Value>;
-        ParameterValue out;
-        out.type = type;
         if constexpr (type == ParameterType::Scalar)
         {
             static_assert(std::is_arithmetic_v<T>, "the expression must give a scalar (Real)");
-            out.scalar = value;
+            return ParameterValue(static_cast<libMesh::Real>(value));
         }
         else if constexpr (type == ParameterType::Vector)
         {
             static_assert(std::is_base_of_v<libMesh::TypeVector<libMesh::Real>, T>, "the expression must give a vector (RealVectorValue)");
-            out.vector = libMesh::RealVectorValue(value);
+            return ParameterValue(libMesh::RealVectorValue(value));
         }
         else
         {
             static_assert(std::is_base_of_v<libMesh::TypeTensor<libMesh::Real>, T>, "the expression must give a tensor (RealTensorValue)");
-            out.tensor = libMesh::RealTensorValue(value);
+            return ParameterValue(libMesh::RealTensorValue(value));
         }
-        return out;
     }
 } // namespace pytec3d::expression_support

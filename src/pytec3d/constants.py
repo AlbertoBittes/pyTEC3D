@@ -11,11 +11,14 @@ DEFAULT_SOLVER_SETTINGS = {
 }
 
 
-# Default time parameters
+# Default time parameters: theta for first-order formulations, Newmark beta and gamma (average acceleration)
+# for second-order ones (the element types' "time_order").
 DEFAULT_TIME_PARAMETERS = {
     "time": 1.0,
     "transient_effects": True,
     "theta": 1.0,
+    "beta": 0.25,
+    "gamma": 0.5,
 }
 
 # Default pyTEC3D algorithm parameters/status
@@ -85,113 +88,4 @@ DEFAULT_pyTEC3D_ALGORITHM_STATUS = {
     "converged": False,
 }
 
-VTK_ARRAYS_TO_INIT = {
-    "A": {
-        "location": "node",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "Az": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "VOLT": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "V": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "EMF": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "_A": {
-        "location": "node",
-        "components": 3,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "_Az": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "_VOLT": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "_V": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "_EMF": {
-        "location": "node",
-        "components": 1,
-        "fill": np.nan,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "B": {
-        "location": "node",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "H": {
-        "location": "node",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "Be": {
-        "location": "elem",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "He": {
-        "location": "elem",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "Jt": {
-        "location": "elem",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "AMPS": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "CURR": {
-        "location": "node",
-        "components": 1,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-    "Js": {
-        "location": "elem",
-        "components": 3,
-        "fill": 0.0,
-        "dtype": vtk.VTK_DOUBLE,
-    },
-}
+# The grid arrays of a model follow from the element library (pytec3d.element_library.grid_arrays).

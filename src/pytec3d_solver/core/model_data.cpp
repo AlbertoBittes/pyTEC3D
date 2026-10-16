@@ -61,25 +61,24 @@ namespace pytec3d
 
         ParameterValue read_value(const json &value, ParameterType type, const std::string &context)
         {
-            ParameterValue out;
-            out.type = type;
+            ParameterValue out = ParameterValue::zero(type);
             switch (type)
             {
             case ParameterType::Scalar:
-                out.scalar = finite_number(value, context);
+                out.scalar() = finite_number(value, context);
                 return out;
             case ParameterType::Vector:
                 if (value.is_number())
                 {
                     const double number = finite_number(value, context);
                     for (unsigned int c = 0; c < 3; ++c)
-                        out.vector(c) = number;
+                        out.vector()(c) = number;
                     return out;
                 }
                 if (!value.is_array() || value.size() != 3)
                     fail(context + " must be a number or an array of 3 numbers.");
                 for (unsigned int c = 0; c < 3; ++c)
-                    out.vector(c) = finite_number(value[c], context + "[" + std::to_string(c) + "]");
+                    out.vector()(c) = finite_number(value[c], context + "[" + std::to_string(c) + "]");
                 return out;
             case ParameterType::Tensor:
                 if (!value.is_array() || value.size() != 3)
@@ -89,7 +88,7 @@ namespace pytec3d
                     if (!value[i].is_array() || value[i].size() != 3)
                         fail(context + " must be a 3x3 array.");
                     for (unsigned int j = 0; j < 3; ++j)
-                        out.tensor(i, j) = finite_number(value[i][j], context + "[" + std::to_string(i) + "][" + std::to_string(j) + "]");
+                        out.tensor()(i, j) = finite_number(value[i][j], context + "[" + std::to_string(i) + "][" + std::to_string(j) + "]");
                 }
                 return out;
             }
@@ -112,6 +111,29 @@ namespace pytec3d
             fail(context + ": expected a " + what + " name or an index below " + std::to_string(count) + ".");
         }
 
+        /** @brief The "law" key of a row of @p source: a law name or index, or an array of them. */
+        registry::LawMask read_laws(const json &value, registry::LawSource source, const char *section, const std::string &context)
+        {
+            registry::LawMask mask = 0;
+            const auto read_one = [&](const json &entry)
+            {
+                const auto law = read_registry_entry<registry::LawId>(
+                    entry, registry::kNumLawId, [](const std::string &n)
+                    { return registry::parse_LawId(n); },
+                    context, "law of laws.json");
+                if (registry::info(law).source != source)
+                    fail(context + ": law '" + std::string(registry::name(law)) + "' is not selected in '" + section +
+                         "' (see its source in laws.json).");
+                mask |= registry::bit(law);
+            };
+            if (value.is_array())
+                for (const json &entry : value)
+                    read_one(entry);
+            else
+                read_one(value);
+            return mask;
+        }
+
         bool read_flag(const json &value, const std::string &context)
         {
             if (value.is_boolean())
@@ -125,6 +147,7 @@ namespace pytec3d
         void read_property_rows(const json &root,
                                 const char *name,
                                 const char *what,
+                                registry::LawSource law_source,
                                 Parse parse,
                                 Type type_of,
                                 std::map<unsigned int, Row> &rows)
@@ -141,6 +164,11 @@ namespace pytec3d
                 Row row;
                 for (auto entry = it.value().begin(); entry != it.value().end(); ++entry)
                 {
+                    if (entry.key() == "law")
+                    {
+                        row.laws = read_laws(entry.value(), law_source, name, context + ".law");
+                        continue;
+                    }
                     const auto property = parse(entry.key());
                     if (!property)
                         fail(context + ": '" + entry.key() + "' is not a " + what + " (see the \"parameters\" of element_types.json).");
@@ -169,7 +197,7 @@ namespace pytec3d
 
         if (const json *types = section(root, "element_types"))
         {
-            static const std::set<std::string> known = {"element_type", "option1", "option2", "option3", "option4", "option5"};
+            static const std::set<std::string> known = {"element_type", "option1", "option2", "option3", "law"};
             for (auto it = types->begin(); it != types->end(); ++it)
             {
                 const std::string context = "element_types[" + it.key() + "]";
@@ -178,8 +206,13 @@ namespace pytec3d
                 if (!definition.is_object())
                     fail(context + " must be an object.");
                 for (auto entry = definition.begin(); entry != definition.end(); ++entry)
+                {
+                    if (entry.key() == "option4")
+                        fail(context + ": option4 was removed; a nonlinear law is selected by the \"law\" key of the "
+                                       "materials, constants or element_types rows of its source (laws.json).");
                     if (!known.count(entry.key()))
                         fail(context + ": unknown key '" + entry.key() + "'.");
+                }
                 for (const char *required : {"element_type", "option1"})
                     if (!definition.contains(required))
                         fail(context + " needs '" + required + "'.");
@@ -201,18 +234,21 @@ namespace pytec3d
                 }
                 if (definition.contains("option3"))
                     spec.axisymmetric = read_flag(definition["option3"], context + ".option3 (axisymmetric)");
+                if (definition.contains("law"))
+                    spec.laws = read_laws(definition["law"], registry::LawSource::Cell, "element_types", context + ".law");
+
                 data.element_types_.emplace(id, spec);
             }
         }
 
         read_property_rows(
-            root, "materials", "material property",
+            root, "materials", "material property", registry::LawSource::Material,
             [](const std::string &n)
             { return registry::parse_MaterialProperty(n); },
             [](registry::MaterialProperty p)
             { return registry::type(p); }, data.materials_);
         read_property_rows(
-            root, "constants", "real constant",
+            root, "constants", "real constant", registry::LawSource::Constant,
             [](const std::string &n)
             { return registry::parse_RealConstant(n); },
             [](registry::RealConstant p)
@@ -233,33 +269,83 @@ namespace pytec3d
                 }
             }
 
-        if (const json *curves = section(root, "bh_curves"))
+        for (std::size_t c = 0; c < registry::kNumCurveId; ++c)
+        {
+            const registry::CurveSource &source = registry::kCurveSources[c];
+            const std::string name(source.section), x_key(source.x), y_key(source.y);
+            const json *curves = section(root, name.c_str());
+            if (!curves)
+                continue;
             for (auto it = curves->begin(); it != curves->end(); ++it)
             {
-                const std::string context = "bh_curves[" + it.key() + "]";
-                const unsigned int id = parse_id(it.key(), "bh_curves");
+                const std::string context = name + "[" + it.key() + "]";
+                const unsigned int id = parse_id(it.key(), name);
                 const json &curve = it.value();
-                if (!curve.is_object() || !curve.contains("H") || !curve.contains("B") || !curve["H"].is_array() || !curve["B"].is_array())
-                    fail(context + " must be an object with the arrays 'H' and 'B'.");
-                if (curve["H"].size() != curve["B"].size() || curve["H"].size() < 2)
-                    fail(context + ": 'H' and 'B' must have the same length, at least 2.");
+                if (!curve.is_object() || !curve.contains(x_key) || !curve.contains(y_key) || !curve[x_key].is_array() ||
+                    !curve[y_key].is_array())
+                    fail(context + " must be an object with the arrays '" + x_key + "' and '" + y_key + "'.");
+                if (curve[x_key].size() != curve[y_key].size() || curve[x_key].size() < 2)
+                    fail(context + ": '" + x_key + "' and '" + y_key + "' must have the same length, at least 2.");
 
-                std::vector<libMesh::Real> h_values, b_values;
-                for (std::size_t i = 0; i < curve["H"].size(); ++i)
+                std::vector<libMesh::Real> x, y;
+                for (std::size_t i = 0; i < curve[x_key].size(); ++i)
                 {
-                    h_values.push_back(finite_number(curve["H"][i], context + ".H[" + std::to_string(i) + "]"));
-                    b_values.push_back(finite_number(curve["B"][i], context + ".B[" + std::to_string(i) + "]"));
+                    x.push_back(finite_number(curve[x_key][i], context + "." + x_key + "[" + std::to_string(i) + "]"));
+                    y.push_back(finite_number(curve[y_key][i], context + "." + y_key + "[" + std::to_string(i) + "]"));
+                    if (i > 0 && x[i] <= x[i - 1])
+                        fail(context + ": '" + x_key + "' must be strictly increasing.");
                 }
-                data.bh_curves_.emplace(id, BHCurve(std::move(h_values), std::move(b_values)));
+                data.curves_[c].emplace(id, CurveData(std::move(x), std::move(y)));
             }
+        }
+
+        // Every row selecting a law with a curve has one.
+        const auto check_curves = [&data](registry::LawMask laws, unsigned int id, const std::string &row)
+        {
+            for (std::size_t l = 0; l < registry::kNumLawId; ++l)
+            {
+                const auto law = static_cast<registry::LawId>(l);
+                const registry::CurveId curve = registry::info(law).curve;
+                if (!(laws & registry::bit(law)) || curve == registry::CurveId::COUNT || data.curve(curve, id))
+                    continue;
+                fail(row + " selects law '" + std::string(registry::name(law)) + "' but '" +
+                     std::string(registry::kCurveSources[static_cast<std::size_t>(curve)].section) + "' has no curve " +
+                     std::to_string(id) + ".");
+            }
+        };
+        for (const auto &[id, row] : data.materials_)
+            check_curves(row.laws, id, "materials[" + std::to_string(id) + "]");
+        for (const auto &[id, row] : data.constants_)
+            check_curves(row.laws, id, "constants[" + std::to_string(id) + "]");
+        for (const auto &[id, spec] : data.element_types_)
+            check_curves(spec.laws, id, "element_types[" + std::to_string(id) + "]");
 
         return data;
+    }
+
+    registry::LawMask ModelData::laws(unsigned int type_id, unsigned int material_id, unsigned int constants_id) const
+    {
+        registry::LawMask out = 0;
+        if (const auto it = element_types_.find(type_id); it != element_types_.end())
+            out |= it->second.laws;
+        if (const MaterialRow *row = material(material_id))
+            out |= row->laws;
+        if (const ConstantRow *row = constants(constants_id))
+            out |= row->laws;
+        return out;
     }
 
     const MaterialRow *ModelData::material(unsigned int id) const
     {
         const auto it = materials_.find(id);
         return it == materials_.end() ? nullptr : &it->second;
+    }
+
+    const CurveData *ModelData::curve(registry::CurveId id, unsigned int row_id) const
+    {
+        const auto &curves = curves_[static_cast<std::size_t>(id)];
+        const auto it = curves.find(row_id);
+        return it == curves.end() ? nullptr : &it->second;
     }
 
     const ConstantRow *ModelData::constants(unsigned int id) const

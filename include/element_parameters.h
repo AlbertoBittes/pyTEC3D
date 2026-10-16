@@ -11,9 +11,7 @@
  * undefined; one that is needed and undefined aborts with the element type, domain and material or
  * constants it is missing from. A parameter only exists in the domains its element type declares for it.
  *
- * A nonlinear law (BH) stands in a kernel where a parameter would. On an element without a BH curve it is
- * its linear parameter (a tensor); on an element with one it is applied to the trial value by the
- * nonlinear kernels, through apply_law().
+ * It is also the source of the parameters the nonlinear laws read (formulations.h, evaluate_law()).
  */
 #pragma once
 
@@ -28,7 +26,6 @@
 #include "model_data.h"
 #include "parameter_value.h"
 
-class BHCurve;
 class vtkCellData;
 
 namespace pytec3d
@@ -46,26 +43,17 @@ namespace pytec3d
             libMesh::TensorValue<libMesh::Real> rotation{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; ///< Element axes to global axes.
             vtkCellData *cell_data = nullptr;
             vtkIdType element_id = 0;
-            const BHCurve *bh_curve = nullptr; ///< Set for nonlinear elements.
         };
 
         ElementParameterValues(const ElementType &type, const Inputs &inputs);
 
-        /** @brief Value of @p reference with its sign; a law gives its linear parameter. */
-        ParameterValue value(const ParameterRef &reference);
-
-        /** @brief True when @p reference is a law and the element has a curve for it. */
-        bool nonlinear(const ParameterRef &reference) const;
-
-        /** @brief H and dH/dB of the law of @p reference at B, with its sign. Only for nonlinear(). */
-        void apply_law(const ParameterRef &reference, const libMesh::Real B[3], libMesh::Real H[3], libMesh::Real J[3][3]) const;
-
+        /** @brief Value of @p id on the element; aborts if the parameter does not exist in its domain or is undefined. */
         const ParameterValue &symbol(registry::ParameterId id);
 
         // What registry::evaluate_expression() reads.
-        const libMesh::Real &get_scalar(registry::ParameterId id) { return symbol(id).scalar; }
-        const libMesh::VectorValue<libMesh::Real> &get_vector(registry::ParameterId id) { return symbol(id).vector; }
-        const libMesh::TensorValue<libMesh::Real> &get_tensor(registry::ParameterId id) { return symbol(id).tensor; }
+        const libMesh::Real &get_scalar(registry::ParameterId id) { return symbol(id).scalar(); }
+        const libMesh::RealVectorValue &get_vector(registry::ParameterId id) { return symbol(id).vector(); }
+        const libMesh::RealTensorValue &get_tensor(registry::ParameterId id) { return symbol(id).tensor(); }
         unsigned int dimension() const { return type_.dimension(); }
         bool axisymmetric() const { return type_.options().axisymmetric; }
 

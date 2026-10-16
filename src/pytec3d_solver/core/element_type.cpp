@@ -1,12 +1,16 @@
 /**
  * @file element_type.cpp
- * @brief ElementType: field and kernel queries, FE reinit and element matrix indices.
+ * @brief ElementType: FEs, quadrature and nablas of a spec; reinit and element matrix indices.
  */
 #include "element_type.h"
 
 #include <algorithm>
-#include <unordered_map>
 
+#include <libmesh/dof_map.h>
+#include <libmesh/fe_interface.h>
+#include <libmesh/quadrature_gauss.h>
+
+#include "formulations.h"
 #include "logging.h"
 
 namespace pytec3d
@@ -18,66 +22,241 @@ namespace pytec3d
             logging::error_and_abort("ElementType: " + message);
         }
 
-        bool in_domains(const std::vector<registry::Domain> &domains, registry::Domain domain)
+        constexpr std::size_t kNumOperations = static_cast<std::size_t>(Operation::Parameters) + 1;
+
+        std::size_t needed_index(registry::Domain domain, Operation operation, bool nonlinear)
         {
-            return domains.empty() || std::find(domains.begin(), domains.end(), domain) != domains.end();
+            return (static_cast<std::size_t>(domain) * kNumOperations + static_cast<std::size_t>(operation)) * 2 + (nonlinear ? 1 : 0);
         }
     } // namespace
 
-    const NonlinearLaw &ElementType::law(registry::LawId id) const
+    bool ElementType::dynamic(const formulation::EvaluationSpec &evaluation, registry::Domain domain, registry::LawMask laws) const
     {
-        const std::optional<NonlinearLaw> &law = laws_.at(static_cast<std::size_t>(id));
-        if (!law)
-            fail("element type '" + std::string(name()) + "' does not define the law '" + std::string(registry::name(id)) + "'.");
-        return *law;
-    }
-
-    const std::vector<Field> &ElementType::fields(FieldKind kind) const
-    {
-        switch (kind)
+        if (laws == 0)
+            return false;
+        for (unsigned int t = evaluation.first_term; t < evaluation.first_term + evaluation.n_terms; ++t)
         {
-        case FieldKind::Dof:
-            return dof_fields_;
-        case FieldKind::Nodal:
-            return nodal_fields_;
-        case FieldKind::Element:
-            return element_fields_;
+            const formulation::TermSpec &term = spec_->terms[t];
+            if (term.law >= 0 && active(term, domain) && selected(term, laws))
+                return true;
         }
-        fail("unknown field kind.");
+        return false;
     }
 
-    const Field *ElementType::find_field(FieldKind kind, registry::FieldId id) const
+    bool ElementType::has_dynamic_fields(FieldKind kind, registry::Domain domain, registry::LawMask laws) const
     {
-        for (const Field &field : fields(kind))
-            if (field.id == id)
-                return &field;
-        return nullptr;
+        const auto wanted = kind == FieldKind::Nodal ? formulation::EvaluationKind::L2Projection : formulation::EvaluationKind::Average;
+        for (const formulation::EvaluationSpec &evaluation : spec_->evaluations)
+            if (evaluation.kind == wanted && active(spec_->fields[static_cast<std::size_t>(evaluation.field)], domain) &&
+                dynamic(evaluation, domain, laws))
+                return true;
+        return false;
     }
 
-    bool ElementType::active(const DofKernel &kernel, registry::Domain domain) const
+    bool ElementType::uses(const formulation::EvaluationSpec &evaluation,
+                           const formulation::TermSpec &term,
+                           Operation operation,
+                           registry::LawMask laws,
+                           registry::Domain domain) const
     {
-        return in_domains(kernel.domains, domain) && kernel.test.field().active_in(domain) &&
-               (!kernel.has_trial || kernel.trial.field().active_in(domain));
+        using formulation::EvaluationKind;
+        using formulation::Stage;
+        if (!active(term, domain) || !selected(term, laws))
+            return false;
+        const bool field = evaluation.kind == EvaluationKind::L2Projection || evaluation.kind == EvaluationKind::Average;
+        switch (operation)
+        {
+        case Operation::Matrices:
+            if (field)
+                return !dynamic(evaluation, domain, laws);
+            return evaluation.kind == EvaluationKind::Block && term.stage == Stage::Linear;
+        case Operation::Rhs:
+            return evaluation.kind == EvaluationKind::Rhs && term.stage == Stage::Linear;
+        case Operation::Nonlinear:
+            return term.stage == Stage::Tangent || term.stage == Stage::Residual;
+        case Operation::NodalFields:
+            return evaluation.kind == EvaluationKind::L2Projection && dynamic(evaluation, domain, laws);
+        case Operation::ElementFields:
+            return evaluation.kind == EvaluationKind::Average && dynamic(evaluation, domain, laws);
+        case Operation::Parameters:
+            // The law variants are evaluated from the solution; their parameters are read there.
+            return evaluation.kind != EvaluationKind::Quadrature && term.law < 0;
+        }
+        return false;
     }
 
-    bool ElementType::active(const FieldKernel &kernel, registry::Domain domain) const
+    ElementType::ElementType(registry::ElementTypeId id, const ElementTypeOptions &options)
+        : spec_(&formulation::spec(id)), options_(options)
     {
-        return in_domains(kernel.domains, domain) && kernel.field->active_in(domain) && kernel.trial.field().active_in(domain);
+        const std::string context = "element type '" + std::string(name()) + "'";
+        if (options.order < static_cast<unsigned int>(libMesh::FIRST))
+            fail(context + ": order must be >= 1.");
+        if (options.axisymmetric && dimension() != 2)
+            fail(context + ": axisymmetric requires a 2D element type.");
+        if (spec_->fes.empty())
+            fail(context + " has no finite element.");
+
+        // One Gauss rule for every FE, so that all the nablas share the quadrature points.
+        unsigned int quadrature_order = 0;
+        for (const formulation::FESpec &fe : spec_->fes)
+        {
+            const libMesh::FEType type(order(fe.order), fe.family);
+            quadrature_order = std::max(quadrature_order, static_cast<unsigned int>(type.default_quadrature_order()));
+        }
+        quadrature_ = std::make_unique<libMesh::QGauss>(dimension(), static_cast<libMesh::Order>(quadrature_order));
+
+        for (const formulation::FESpec &fe : spec_->fes)
+        {
+            fes_.push_back(libMesh::FEAbstract::build(dimension(), libMesh::FEType(order(fe.order), fe.family)));
+            fes_.back()->attach_quadrature_rule(quadrature_.get());
+        }
+        // Any of them can give the geometry of an operation.
+        for (auto &fe : fes_)
+        {
+            fe->get_JxW();
+            fe->get_xyz();
+        }
+
+        nablas_.reserve(spec_->nablas.size());
+        for (const formulation::NablaSpec &nabla : spec_->nablas)
+            nablas_.emplace_back(nabla, *fes_[nabla.fe], dimension(), options.axisymmetric);
+
+        for (const formulation::LawSpec &law : spec_->laws)
+            laws_ |= registry::bit(law.id);
+        for (const formulation::TermSpec &term : spec_->terms)
+            if (term.stage != formulation::Stage::Linear && term.trial_dt > 0)
+                law_rates_ = true;
+
+        // The operators of the static fields: the terms of the field evaluations without law.
+        for (const formulation::EvaluationSpec &evaluation : spec_->evaluations)
+        {
+            const bool nodal = evaluation.kind == formulation::EvaluationKind::L2Projection;
+            if (!nodal && evaluation.kind != formulation::EvaluationKind::Average)
+                continue;
+            for (std::size_t d = 0; d < registry::kNumDomain; ++d)
+                for (unsigned int t = evaluation.first_term; t < evaluation.first_term + evaluation.n_terms; ++t)
+                {
+                    const formulation::TermSpec &term = spec_->terms[t];
+                    if (active(term, static_cast<registry::Domain>(d)) && selected(term, 0))
+                        field_operators_[nodal ? 0 : 1][d] |= term.trial_field < 0 ? 8u : 1u << term.trial_dt;
+                }
+        }
+
+        // The FEs each operation needs: those of the nablas of the kernels of the terms it computes. With laws, those
+        // of every combination of them: the terms of the laws selected and the terms of the others.
+        needed_fes_.resize(registry::kNumDomain * kNumOperations * 2);
+        for (std::size_t d = 0; d < registry::kNumDomain; ++d)
+            for (std::size_t o = 0; o < kNumOperations; ++o)
+                for (const bool nonlinear : {false, true})
+                {
+                    const auto domain = static_cast<registry::Domain>(d);
+                    const auto operation = static_cast<Operation>(o);
+                    if (operation == Operation::Parameters)
+                        continue;
+                    std::vector<libMesh::FEAbstract *> &needed = needed_fes_[needed_index(domain, operation, nonlinear)];
+                    bool computes = false;
+                    const auto add_kernel = [&](std::size_t k)
+                    {
+                        for (const int nabla : {spec_->kernels[k].trial, spec_->kernels[k].test})
+                        {
+                            if (nabla < 0)
+                                continue;
+                            libMesh::FEAbstract *fe = fes_[spec_->nablas[static_cast<std::size_t>(nabla)].fe].get();
+                            if (std::find(needed.begin(), needed.end(), fe) == needed.end())
+                                needed.push_back(fe);
+                        }
+                    };
+                    for (const formulation::EvaluationSpec &evaluation : spec_->evaluations)
+                        for (unsigned int t = evaluation.first_term; t < evaluation.first_term + evaluation.n_terms; ++t)
+                        {
+                            const formulation::TermSpec &term = spec_->terms[t];
+                            if (!uses(evaluation, term, operation, 0, domain) &&
+                                !(nonlinear && uses(evaluation, term, operation, laws_, domain)))
+                                continue;
+                            computes = true;
+                            add_kernel(term.kernel);
+                            if (evaluation.mass_kernel >= 0)
+                                add_kernel(static_cast<std::size_t>(evaluation.mass_kernel));
+
+                            // A law output is computed from the law's input.
+                            const formulation::CoefficientSpec &c = spec_->kernels[term.kernel].coefficient;
+                            if (!nonlinear || c.kind != formulation::CoefficientKind::LawOutput)
+                                continue;
+                            const auto law_id = registry::info(static_cast<registry::LawOutputId>(c.index)).law;
+                            for (const formulation::LawSpec &law : spec_->laws)
+                            {
+                                if (law.id != law_id)
+                                    continue;
+                                const formulation::EvaluationSpec &input = spec_->evaluations[static_cast<std::size_t>(law.input)];
+                                for (unsigned int i = input.first_term; i < input.first_term + input.n_terms; ++i)
+                                    if (active(spec_->terms[i], domain))
+                                        add_kernel(spec_->terms[i].kernel);
+                            }
+                        }
+                    // Terms without nabla (a coefficient alone) still need the quadrature points.
+                    if (computes && needed.empty())
+                        needed.push_back(fes_.front().get());
+                }
     }
 
-    const Nabla &ElementType::nabla(const Field &field, NablaOperator op) const
+    libMesh::Order ElementType::order(formulation::OrderRule rule) const
     {
-        for (const Nabla &candidate : nablas_)
-            if (&candidate.field() == &field && candidate.op() == op)
-                return candidate;
-        fail("no operator " + std::to_string(static_cast<int>(op)) + " for field '" + std::string(field.name()) + "'.");
+        switch (rule)
+        {
+        case formulation::OrderRule::Option:
+            return static_cast<libMesh::Order>(options_.order);
+        case formulation::OrderRule::First:
+            return libMesh::FIRST;
+        case formulation::OrderRule::Constant:
+            return libMesh::CONSTANT;
+        }
+        fail("unknown order rule.");
     }
 
-    void ElementType::reinit(const libMesh::Elem &elem, registry::Domain domain) const
+
+    bool ElementType::has_stiffness(std::size_t field, registry::Domain domain) const
     {
-        for (libMesh::FEAbstract *fe : fes_by_domain_.at(static_cast<std::size_t>(domain)))
+        for (const formulation::EvaluationSpec &evaluation : spec_->evaluations)
+        {
+            if (evaluation.kind != formulation::EvaluationKind::Block)
+                continue;
+            for (unsigned int t = evaluation.first_term; t < evaluation.first_term + evaluation.n_terms; ++t)
+            {
+                const formulation::TermSpec &term = spec_->terms[t];
+                if (term.trial_dt == 0 && term.test_field == static_cast<int>(field) && active(term, domain))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    const libMesh::FEAbstract *ElementType::reinit(const libMesh::Elem &elem, registry::Domain domain, Operation operation,
+                                                   registry::LawMask laws) const
+    {
+        if (operation == Operation::Parameters)
+            return nullptr;
+        const auto &needed = needed_fes_.at(needed_index(domain, operation, laws != 0));
+        for (libMesh::FEAbstract *fe : needed)
             fe->reinit(&elem);
-        geometry_fe_->reinit(&elem);
+        return needed.empty() ? nullptr : needed.front();
+    }
+
+    const std::vector<unsigned int> &ElementType::variable_numbers(const libMesh::System &system) const
+    {
+        std::lock_guard<std::mutex> lock(variable_numbers_mutex_);
+        auto it = variable_numbers_.find(system.number());
+        if (it == variable_numbers_.end())
+        {
+            std::vector<unsigned int> numbers(spec_->fields.size(), libMesh::invalid_uint);
+            for (std::size_t index = 0; index < spec_->fields.size(); ++index)
+            {
+                const std::string label(registry::info(spec_->fields[index].variable).label);
+                if (system.has_variable(label))
+                    numbers[index] = system.variable_number(label);
+            }
+            it = variable_numbers_.emplace(system.number(), std::move(numbers)).first;
+        }
+        return it->second;
     }
 
     ElementType::FieldIndices ElementType::element_indices(const libMesh::System &system,
@@ -85,64 +264,41 @@ namespace pytec3d
                                                            FieldKind kind,
                                                            registry::Domain domain) const
     {
-        const libMesh::DofMap &dof_map = system.get_dof_map();
-
-        std::vector<libMesh::dof_id_type> element_dofs;
-        dof_map.dof_indices(&elem, element_dofs);
-        std::unordered_map<libMesh::dof_id_type, unsigned int> position;
-        for (unsigned int i = 0; i < element_dofs.size(); ++i)
-            position[element_dofs[i]] = i;
-
-        FieldIndices out;
-        out.n_dofs = static_cast<unsigned int>(element_dofs.size());
-        out.field.resize(fields(kind).size());
-
-        std::size_t covered = 0;
-        for (const Field &field : fields(kind))
+        // The element vector of the system: the variables active on the subdomain, in variable order, each a
+        // contiguous block. The buffer is reused across calls on the thread.
+        const unsigned int n_vars = system.n_vars();
+        thread_local std::vector<unsigned int> offset;
+        offset.assign(n_vars + 1, 0);
+        for (unsigned int v = 0; v < n_vars; ++v)
         {
-            if (!field.active_in(domain))
-                continue;
-
-            std::vector<std::vector<libMesh::dof_id_type>> per_variable;
-            for (const LibMeshVariable &variable : field.libmesh_variables)
-            {
-                std::vector<libMesh::dof_id_type> variable_dofs;
-                dof_map.dof_indices(&elem, variable_dofs, system.variable_number(variable.label));
-                per_variable.push_back(std::move(variable_dofs));
-            }
-
-            // One libMesh variable per component: the shape functions run node by node over the components.
-            std::vector<libMesh::dof_id_type> dofs;
-            if (per_variable.size() == 1)
-                dofs = per_variable.front();
-            else
-            {
-                const std::size_t n_components = per_variable.size();
-                const std::size_t n_nodes = per_variable.front().size();
-                dofs.resize(n_components * n_nodes);
-                for (std::size_t component = 0; component < n_components; ++component)
-                {
-                    if (per_variable[component].size() != n_nodes)
-                        fail("the components of '" + std::string(field.name()) + "' have different DOF counts.");
-                    for (std::size_t node = 0; node < n_nodes; ++node)
-                        dofs[node * n_components + component] = per_variable[component][node];
-                }
-            }
-
-            std::vector<unsigned int> &columns = out.field[field.index];
-            for (const libMesh::dof_id_type dof : dofs)
-            {
-                const auto it = position.find(dof);
-                if (it == position.end())
-                    fail("a DOF of '" + std::string(field.name()) + "' is not a DOF of the element.");
-                columns.push_back(it->second);
-            }
-            covered += columns.size();
+            const bool active_here = system.variable(v).active_on_subdomain(elem.subdomain_id());
+            offset[v + 1] = offset[v] + (active_here ? libMesh::FEInterface::n_dofs(system.variable_type(v), &elem) : 0);
         }
 
-        if (covered != element_dofs.size())
-            fail("the fields of kind active in the domain cover " + std::to_string(covered) + " of " +
-                 std::to_string(element_dofs.size()) + " element DOFs of system '" + system.name() + "'.");
+        FieldIndices out;
+        out.n_dofs = offset[n_vars];
+        out.field.resize(spec_->fields.size());
+
+        const auto &numbers = variable_numbers(system);
+        std::size_t covered = 0;
+        for (std::size_t index = 0; index < spec_->fields.size(); ++index)
+        {
+            const FieldSpec &field = spec_->fields[index];
+            if (field.kind != kind || !active(field, domain))
+                continue;
+            const unsigned int var = numbers[index];
+            if (var == libMesh::invalid_uint)
+                fail("the variable of '" + std::string(registry::name(field.id)) + "' is not in system '" + system.name() + "'.");
+
+            FieldRange &range = out.field[index];
+            range.start = offset[var];
+            range.count = offset[var + 1] - offset[var];
+            covered += range.count;
+        }
+
+        if (covered != out.n_dofs)
+            fail("the fields active in the domain cover " + std::to_string(covered) + " of " + std::to_string(out.n_dofs) +
+                 " element DOFs of system '" + system.name() + "'.");
         return out;
     }
 } // namespace pytec3d

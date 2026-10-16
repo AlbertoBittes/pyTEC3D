@@ -9,6 +9,10 @@
  */
 
 // Local includes
+#include <algorithm>
+#include <array>
+#include <numeric>
+
 #include "libmesh/libmesh_config.h"
 #include "libmesh/libmesh_common.h"
 #include "libmesh/mesh_base.h"
@@ -34,6 +38,7 @@
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
 #include "vtkDoubleArray.h"
+#include "vtkNew.h"
 #include "vtkDataSetAttributes.h"
 #include "vtkGenericCell.h"
 #include "vtkPointData.h"
@@ -122,22 +127,31 @@ namespace
         return name;
     }
 
+    /**
+     * @brief Where each array component is in the solution vector built by libMesh: per node, the variables in
+     * system order (nodal layout); per variable block, the variables sorted by name (element layout, as
+     * EquationSystems::build_parallel_elemental_solution_vector() orders them).
+     */
     GridWritePlan build_grid_write_plan(const System &system, const bool nodal_layout)
     {
         GridWritePlan plan;
 
         const MeshBase &mesh = system.get_mesh();
+        std::vector<unsigned int> variables(system.n_vars());
+        std::iota(variables.begin(), variables.end(), 0u);
+        if (!nodal_layout)
+            std::sort(variables.begin(), variables.end(), [&system](unsigned int a, unsigned int b)
+                      { return system.variable_name(a) < system.variable_name(b); });
+
         std::size_t running_offset = 0;
-        for (unsigned int var = 0; var < system.n_vars(); ++var)
+        for (const unsigned int var : variables)
         {
             const std::string &var_name = system.variable_name(var);
+            // A vector variable (nodal, or MONOMIAL_VEC element data) gives one value per component.
             unsigned int n_components = 1u;
-            if (nodal_layout)
-            {
-                const auto n_vec_dim = FEInterface::n_vec_dim(mesh, system.variable_type(var));
-                if (n_vec_dim > 1)
-                    n_components = cast_int<unsigned int>(n_vec_dim);
-            }
+            const auto n_vec_dim = FEInterface::n_vec_dim(mesh, system.variable_type(var));
+            if (n_vec_dim > 1)
+                n_components = cast_int<unsigned int>(n_vec_dim);
 
             const auto keys = VariablesMap::get_keys_by_predicate(
                 [&var_name](const VariableInfo &info)
@@ -150,7 +164,9 @@ namespace
             }
             else if (n_components > 1)
             {
-                const std::string base_name = strip_trailing_lowercase(var_name);
+                // The array of a vector variable is named by its api label (the field name).
+                const std::string base_name = keys.size() == 1 ? std::string(VariablesMap::get_info_by_key(keys.front()).api_label)
+                                                               : strip_trailing_lowercase(var_name);
                 if (base_name.empty())
                     pytec3d::logging::error_and_abort("VTKIO::build_grid_write_plan: cannot derive base name from vector variable '" + var_name + "'.");
 
@@ -179,8 +195,18 @@ namespace
             vtkDataArray *array =
                 vtkDataArray::SafeDownCast(data_attributes->GetArray(entry.target_array_name.c_str()));
             if (!array)
-                pytec3d::logging::error_and_abort("VTKIO::write_solution_to_grid: VTK array '" +
-                                                  entry.target_array_name + "' not found.");
+            {
+                // A field the grid has no array for yet: 3 components for a vector field, 1 for a scalar.
+                const auto field = pytec3d::registry::parse_FieldId(entry.target_array_name);
+                const int n_components = field && pytec3d::registry::is_vector(*field) ? 3 : static_cast<int>(entry.target_component) + 1;
+                vtkNew<vtkDoubleArray> created;
+                created->SetName(entry.target_array_name.c_str());
+                created->SetNumberOfComponents(n_components);
+                created->SetNumberOfTuples(n_tuples);
+                created->Fill(0.0);
+                data_attributes->AddArray(created);
+                array = created;
+            }
 
             for (vtkIdType tuple_id = 0; tuple_id < n_tuples; ++tuple_id)
             {
@@ -311,10 +337,18 @@ void VTKIO::write_system_grid(const std::string &system_name)
     }
     else
     {
+        // libMesh selects a vector variable by the names of its components, n_vec_dim of them.
+        static const std::array<const char *, 3> suffix = {"_x", "_y", "_z"};
         std::vector<std::string> var_names;
-        var_names.reserve(system.n_vars());
         for (unsigned int i = 0; i < system.n_vars(); ++i)
-            var_names.push_back(system.variable_name(i));
+        {
+            const libMesh::FEType &type = system.variable_type(i);
+            if (FEInterface::field_type(type) == libMesh::TYPE_VECTOR)
+                for (unsigned int c = 0; c < FEInterface::n_vec_dim(system.get_mesh(), type); ++c)
+                    var_names.push_back(system.variable_name(i) + suffix[c]);
+            else
+                var_names.push_back(system.variable_name(i));
+        }
         const auto write_plan = build_grid_write_plan(system, false);
 
         auto parallel_solution = _eq_sys->build_parallel_elemental_solution_vector(var_names);

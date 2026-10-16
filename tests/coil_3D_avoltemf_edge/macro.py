@@ -50,7 +50,7 @@ pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(
             YAxisCylindricalCoordinateSystem(),
             dy=extr_angle,
             array_name="CP_1",
-            variables=("Az", "V"),
+            variables=("A", "V"),
         ))
 
 Selector.select_all(pytec3d.model.mesh)
@@ -75,7 +75,7 @@ Selector.select_pos(
     mode="a",
     coordinate_system=YAxisCylindricalCoordinateSystem(),
 )
-Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 TreeGauge.tree_gauge(
     pytec3d.model.mesh,
     periodic_point_coupling="CP_1"

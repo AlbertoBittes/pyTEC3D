@@ -111,6 +111,48 @@ namespace
 
 }
 
+namespace
+{
+    /**
+     * @brief The time scheme on one element: Keff = K + c_v C + c_a M and rhs -= C h_v + M h_a.
+     *
+     * @p matrices are the element K, C and, for second-order element types, M; h_v and h_a come from the
+     * state at the start of the step (u_n, v_n, a_n) on the element DOFs.
+     */
+    libMesh::DenseMatrix<libMesh::Number> apply_time_scheme(const std::vector<libMesh::DenseMatrix<libMesh::Number>> &matrices,
+                                                            const TimeScheme &scheme,
+                                                            const libMesh::System &system,
+                                                            const libMesh::NumericVector<libMesh::Number> &old_solution,
+                                                            const std::vector<libMesh::dof_id_type> &dof_indices,
+                                                            libMesh::DenseVector<libMesh::Number> &rhs)
+    {
+        libMesh::DenseMatrix<libMesh::Number> keff = matrices[0];
+        if (!scheme.transient())
+            return keff;
+
+        std::vector<libMesh::Number> u_n, v_n, a_n;
+        old_solution.get(dof_indices, u_n);
+        system.get_vector(pyTEC3DSystemBase::kOldVelocity).get(dof_indices, v_n);
+        system.get_vector(pyTEC3DSystemBase::kOldAcceleration).get(dof_indices, a_n);
+
+        const auto add_term = [&](const libMesh::DenseMatrix<libMesh::Number> &matrix, libMesh::Real c,
+                                  libMesh::Real hu, libMesh::Real hv, libMesh::Real ha)
+        {
+            if (matrix.m() == 0 || (c == 0.0 && hu == 0.0 && hv == 0.0 && ha == 0.0))
+                return;
+            keff.add(c, matrix);
+            libMesh::DenseVector<libMesh::Number> history(static_cast<unsigned int>(dof_indices.size()));
+            for (unsigned int i = 0; i < history.size(); ++i)
+                history(i) = hu * u_n[i] + hv * v_n[i] + ha * a_n[i];
+            matrix.vector_mult_add(rhs, -1.0, history);
+        };
+        add_term(matrices[1], scheme.c_v, scheme.hu_v, scheme.hv_v, scheme.ha_v);
+        if (matrices.size() > 2)
+            add_term(matrices[2], scheme.c_a, scheme.hu_a, scheme.hv_a, scheme.ha_a);
+        return keff;
+    }
+} // namespace
+
 const std::map<pyTEC3DSystemBase::SystemType, std::string> pyTEC3DSystemBase::SYSTEM_INFO_MAP = {
     {pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM, "DOF Solution"},
     {pyTEC3DSystemBase::NODAL_SOLUTION, "Nodal Solution"},
@@ -152,8 +194,13 @@ void pyTEC3DDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_st
 
     if (time_step->updated)
     {
+        // The end of the previous step is the start of this one.
         *this->old_local_solution = *this->current_local_solution;
         this->old_local_solution->close();
+        this->get_vector(pyTEC3DSystemBase::kOldVelocity) = this->get_vector(pyTEC3DSystemBase::kVelocity);
+        this->get_vector(pyTEC3DSystemBase::kOldVelocity).close();
+        this->get_vector(pyTEC3DSystemBase::kOldAcceleration) = this->get_vector(pyTEC3DSystemBase::kAcceleration);
+        this->get_vector(pyTEC3DSystemBase::kOldAcceleration).close();
         pytec3d::logging::info("Advanced to new time step");
         pytec3d::logging::table_root(pytec3d::logging::format_time_step_table(*time_step));
     }
@@ -163,38 +210,29 @@ void pyTEC3DDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_st
 }
 
 template <typename ImplicitSys>
-void pyTEC3DDOFSystem<ImplicitSys>::compute_solution_time_derivative()
+void pyTEC3DDOFSystem<ImplicitSys>::update_time_derivatives()
 {
-    const auto *time_step = this->current_time_step();
-    if (!time_step)
-        pytec3d::logging::error_and_abort("pyTEC3DDOFSystem::compute_solution_time_derivative: time_step is null.");
-
-    const bool transient_effect = time_step->transient_effects;
-    const libMesh::Real dt = time_step->dt;
-    const libMesh::Real theta = time_step->theta;
-    libMesh::NumericVector<libMesh::Number> *time_derivative_vector = this->request_vector("solution_time_derivative");
-    if (!transient_effect)
+    // v = c_v u + hu_v u_n + hv_v v_n + ha_v a_n, a likewise (time_step.h); zero on a static step.
+    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
+    const auto &v_n = this->get_vector(pyTEC3DSystemBase::kOldVelocity);
+    const auto &a_n = this->get_vector(pyTEC3DSystemBase::kOldAcceleration);
+    const auto update = [&](libMesh::NumericVector<libMesh::Number> &x, libMesh::Real c, libMesh::Real hu, libMesh::Real hv,
+                            libMesh::Real ha)
     {
-        this->older_local_solution->zero();
-        time_derivative_vector->zero();
-    }
-    else
-    {
-        libMesh::Real theta_x_dt = theta * dt;
-        libMesh::Real theta_minus_1_dt = (theta - 1) * dt;
-
-        this->older_local_solution->scale(theta_minus_1_dt);
-        *this->older_local_solution += *this->current_local_solution;
-        *this->older_local_solution -= *this->old_local_solution;
-        this->older_local_solution->scale(1 / theta_x_dt);
-
-        time_derivative_vector->zero();
-        *time_derivative_vector += *this->current_local_solution;
-        *time_derivative_vector -= *this->old_local_solution;
-        time_derivative_vector->scale(1 / dt);
-    }
-    this->older_local_solution->close();
-    time_derivative_vector->close();
+        x.zero();
+        if (scheme.transient())
+        {
+            x.add(c, *this->current_local_solution);
+            x.add(hu, *this->old_local_solution);
+            x.add(hv, v_n);
+            x.add(ha, a_n);
+        }
+        x.close();
+    };
+    update(this->get_vector(pyTEC3DSystemBase::kVelocity), scheme.c_v, scheme.hu_v, scheme.hv_v, scheme.ha_v);
+    update(this->get_vector(pyTEC3DSystemBase::kAcceleration), scheme.c_a, scheme.hu_a, scheme.hv_a, scheme.ha_a);
+    const libMesh::Real rate = scheme.transient() ? 1.0 / this->current_time_step()->dt : 0.0;
+    update(this->get_vector(pyTEC3DSystemBase::kMeanVelocity), rate, -rate, 0.0, 0.0);
 }
 
 template <typename ImplicitSys>
@@ -221,9 +259,13 @@ bool pyTEC3DDOFSystem<ImplicitSys>::check_update_system_matrix()
         else
         {
             const bool dt_differs = std::abs(current_step->dt - old_step->dt) > std::numeric_limits<libMesh::Real>::epsilon();
-            const bool theta_differs = std::abs(current_step->theta - old_step->theta) > std::numeric_limits<libMesh::Real>::epsilon();
+            const auto differs = [](libMesh::Real a, libMesh::Real b)
+            { return std::abs(a - b) > std::numeric_limits<libMesh::Real>::epsilon(); };
+            const bool scheme_differs = differs(current_step->theta, old_step->theta) ||
+                                        differs(current_step->beta, old_step->beta) ||
+                                        differs(current_step->gamma, old_step->gamma);
             const bool transient_effect_differs = current_step->transient_effects != old_step->transient_effects;
-            if (dt_differs || theta_differs || transient_effect_differs)
+            if (dt_differs || scheme_differs || transient_effect_differs)
                 update_matrix = true;
         }
     }
@@ -265,7 +307,12 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
 
     BinaryReader reader;
 
-    const std::vector<std::string> filenames = {"mtrx_" + rank_str + ".emat"};
+    // K, C (M), and the operators of the static nodal and element fields, element by element in the order of the
+    // local elements, read back in the same order by the DOF, nodal and element systems.
+    const std::vector<std::string> filenames = {
+        "mtrx_" + rank_str + ".emat",
+        "nodal_sol_mtrx_" + rank_str + ".emat",
+        "element_sol_mtrx_" + rank_str + ".emat"};
 
     const bool emat_files_exist = std::all_of(
         filenames.begin(),
@@ -284,7 +331,6 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
     pytec3d::logging::info("Computing element matrices for current time-step");
 
     auto streams = reader.open_output_streams(emat_folderpath, filenames);
-    auto &mtrx_output_file = *streams[0];
 
     ElementBuilder builder(&equation_systems);
     for (const auto &elem : mesh.active_local_element_ptr_range())
@@ -292,10 +338,13 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
         builder.set_element_data(elem);
         builder.build_element();
 
-        BinaryReader::write_element_matrices(
-            mtrx_output_file,
-            static_cast<unsigned int>(elem->id()),
-            builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
+        const auto elem_id = static_cast<unsigned int>(elem->id());
+        BinaryReader::write_element_matrices(*streams[0], elem_id,
+                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
+        BinaryReader::write_element_matrices(*streams[1], elem_id,
+                                             builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
+        BinaryReader::write_element_matrices(*streams[2], elem_id,
+                                             builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
     }
 
     reader.close_file_streams(streams);
@@ -501,7 +550,7 @@ void pyTEC3DLinearSystem::solve()
 
     this->get_dof_map().enforce_constraints_exactly(*this);
     this->update();
-    this->compute_solution_time_derivative();
+    this->update_time_derivatives();
     pytec3d::logging::info("Finished linear system solve");
 }
 
@@ -549,10 +598,7 @@ void pyTEC3DLinearSystem::assemble_system()
     else
         solver->reuse_preconditioner(true);
 
-    const auto *time_step = this->current_time_step();
-    const libMesh::Real dt = time_step->dt;
-    const libMesh::Real theta = time_step->theta;
-    const bool transient_effect = time_step->transient_effects;
+    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
     const std::string rank_str = std::to_string(comm.rank());
 
@@ -570,8 +616,6 @@ void pyTEC3DLinearSystem::assemble_system()
     ElementBuilder builder(&this->typed_equation_systems());
     builder.set_nodal_load_map(nodal_load_map);
     std::vector<libMesh::dof_id_type> dof_indices;
-    std::vector<libMesh::Real> old_solution_values;
-    std::vector<libMesh::Real> old_time_derivative_values;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -584,28 +628,9 @@ void pyTEC3DLinearSystem::assemble_system()
                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
         builder.build_element_rhs();
 
-        auto &Ke = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
-        auto &Ce = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
-
-        if (transient_effect)
-        {
-            Ce.scale(1 / (dt * theta));
-            Ke += Ce;
-        }
-
         auto &rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
-
-        if (transient_effect)
-        {
-            system.old_local_solution->get(dof_indices, old_solution_values);
-            Ce.vector_mult_add(rhs, 1.0, old_solution_values);
-
-            if (theta != 1.0)
-            {
-                system.older_local_solution->get(dof_indices, old_time_derivative_values);
-                Ce.vector_mult_add(rhs, dt * (1.0 - theta), old_time_derivative_values);
-            }
-        }
+        auto Ke = apply_time_scheme(builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES],
+                                    scheme, system, *system.old_local_solution, dof_indices, rhs);
 
         if (update_matrix)
         {
@@ -636,10 +661,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
     const auto &comm = system.comm();
 
     const bool update_matrix = this->check_update_system_matrix();
-    const auto *time_step = this->current_time_step();
-    const libMesh::Real dt = time_step->dt;
-    const libMesh::Real theta = time_step->theta;
-    const bool transient_effect = time_step->transient_effects;
+    const TimeScheme scheme = this->typed_equation_systems().time_scheme();
 
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
     const std::string rank_str = std::to_string(comm.rank());
@@ -683,8 +705,6 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
     builder.set_nodal_load_map(nodal_load_map);
     std::vector<libMesh::dof_id_type> dof_indices;
     std::vector<libMesh::Real> current_solution_values;
-    std::vector<libMesh::Real> old_solution_values;
-    std::vector<libMesh::Real> old_time_derivative_values;
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
@@ -697,31 +717,12 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
                                             builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES]);
         builder.build_element_rhs();
 
-        auto &linear_ke_base = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][0];
-        auto &ce = builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES][1];
         auto &linear_rhs = builder.get_vectors()[ElementBuilder::VectorsSet::RHS_VECTORS][0];
-
-        auto linear_ke = linear_ke_base;
-        if (transient_effect)
-        {
-            ce.scale(1 / (dt * theta));
-            linear_ke += ce;
-        }
+        auto linear_ke = apply_time_scheme(builder.get_matrices()[ElementBuilder::MatricesSet::DOF_SOLUTION_MATRICES],
+                                           scheme, system, *system.old_local_solution, dof_indices, linear_rhs);
 
         system.current_local_solution->get(dof_indices, current_solution_values);
         linear_ke.vector_mult_add(linear_rhs, -1.0, current_solution_values);
-
-        if (transient_effect)
-        {
-            system.old_local_solution->get(dof_indices, old_solution_values);
-            ce.vector_mult_add(linear_rhs, 1.0, old_solution_values);
-
-            if (theta != 1.0)
-            {
-                system.older_local_solution->get(dof_indices, old_time_derivative_values);
-                ce.vector_mult_add(linear_rhs, dt * (1.0 - theta), old_time_derivative_values);
-            }
-        }
 
         // NewtonSolver solves J * du = r and then updates u <- u - du, so r
         // must be the true residual F(u), not -F(u).
@@ -730,7 +731,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
         const bool nonlinear_element = builder.nonlinear_element();
         if (nonlinear_element)
         {
-            builder.build_element_tangent_stiffness_residual();
+            builder.build_element_tangent_stiffness_residual(scheme);
             auto &tangent_ke = builder.get_matrices()[ElementBuilder::MatricesSet::TANGENT_STIFFNESS_MATRICES][0];
             auto &residual = builder.get_vectors()[ElementBuilder::VectorsSet::RESIDUAL_VECTORS][0];
 
@@ -827,7 +828,7 @@ void pyTEC3DNonLinearSystem::assemble_residual_only()
 void pyTEC3DNonLinearSystem::solve()
 {
     libMesh::NonlinearImplicitSystem::solve();
-    this->compute_solution_time_derivative();
+    this->update_time_derivatives();
     pytec3d::logging::info("Finished nonlinear system solve");
 }
 
@@ -856,12 +857,20 @@ void pyTEC3DNodalSolutionSystem::assemble_system()
 
     const libMesh::MeshBase &mesh = eq_sys.get_mesh();
 
+    BinaryReader reader;
+    const std::string rank_str = std::to_string(mesh.comm().rank());
+    auto streams = reader.open_input_streams(get_emat_folderpath_from_solver(), {"nodal_sol_mtrx_" + rank_str + ".emat"});
+
     ElementBuilder builder(&eq_sys);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         builder.set_element_data(elem);
+        unsigned int elem_id = 0;
+        BinaryReader::read_element_matrices(*streams[0], elem_id,
+                                            builder.get_matrices()[ElementBuilder::MatricesSet::NODAL_SOLUTION_MATRICES]);
         builder.build_nodal_solution();
     }
+    reader.close_file_streams(streams);
 
     this->solution->close();
     pytec3d::logging::info("Nodal solution updated");
@@ -875,12 +884,20 @@ void pyTEC3DElementSolutionSystem::assemble_system()
 
     const libMesh::MeshBase &mesh = eq_sys.get_mesh();
 
+    BinaryReader reader;
+    const std::string rank_str = std::to_string(mesh.comm().rank());
+    auto streams = reader.open_input_streams(get_emat_folderpath_from_solver(), {"element_sol_mtrx_" + rank_str + ".emat"});
+
     ElementBuilder builder(&eq_sys);
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         builder.set_element_data(elem);
+        unsigned int elem_id = 0;
+        BinaryReader::read_element_matrices(*streams[0], elem_id,
+                                            builder.get_matrices()[ElementBuilder::MatricesSet::ELEMENT_SOLUTION_MATRICES]);
         builder.build_element_solution();
     }
+    reader.close_file_streams(streams);
 
     this->solution->close();
     pytec3d::logging::info("Element solution updated");

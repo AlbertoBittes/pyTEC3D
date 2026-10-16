@@ -2,14 +2,14 @@
  * @file element_builder.h
  * @brief Per-element assembly: reinits the FEs, resizes the matrices and calls the kernels of the element type.
  *
- * ElementBuilder collects what the kernels need for one element (material and real constants,
- * local-to-global rotation, BH curve, VTK loads, local solution), finds where each field sits in the
- * element matrices (ElementType::element_indices) and calls the kernels of the element type. Results:
+ * ElementBuilder collects what an element needs (material and real constants, local-to-global rotation,
+ * curves, VTK loads, local solution), finds where each field sits in the element vectors of the systems
+ * (ElementType::element_indices) and has an ElementEvaluator run the evaluations of the element type:
  *   - Stiffness (Ke) and time-derivative (Ce) matrices of the DOF system.
- *   - Source (RHS) vector, and the tangent matrix / residual of nonlinear (BH) elements.
+ *   - Source (RHS) vector, and the tangent matrix / residual of the laws selected on the element.
  *   - Nodal and element post-processing fields, written to the solution systems.
  *
- * The kernels live in kernels.h, the element types in element_types.json (element_type.h).
+ * The formulations are those of element_types.json (formulations.h, generated).
  */
 #ifndef ELEMENT_BUILDER_H
 #define ELEMENT_BUILDER_H
@@ -26,12 +26,13 @@
 #include <libmesh/equation_systems.h>
 #include <libmesh/numeric_vector.h>
 
-#include "bh_curve.h"
+#include "element_evaluator.h"
 #include "element_parameters.h"
 #include "element_type.h"
 #include "element_types_factory.h"
 #include "fe_parent_object.h"
 #include "model_data.h"
+#include "time_step.h"
 #include "variables_map.h"
 
 class pyTEC3DEquationSystems;
@@ -46,6 +47,7 @@ struct ElemData
     unsigned int material_num = 0;                     ///< Material ID (from VTK MATERIAL cell array).
     unsigned int real_constant_num = 0;                ///< Real-constant ID (from VTK CONSTANT cell array).
     unsigned int coordinate_system_num = 0;            ///< Coordinate-system ID (from VTK COORDINATE_SYSTEM cell array).
+    pytec3d::registry::LawMask laws = 0;               ///< Laws selected by its TYPE, MATERIAL and CONSTANT rows.
 };
 
 /**
@@ -59,8 +61,10 @@ class ElementBuilder
 public:
     enum MatricesSet
     {
-        DOF_SOLUTION_MATRICES, ///< {Ke, Ce}
+        DOF_SOLUTION_MATRICES,      ///< {Ke, Ce} and Me for second-order element types
         TANGENT_STIFFNESS_MATRICES,
+        NODAL_SOLUTION_MATRICES,    ///< Static nodal fields: {F u, F du/dt, F d2u/dt2, constant (n x 1)}
+        ELEMENT_SOLUTION_MATRICES,  ///< Static element fields: same layout
         NUM_MATRICES_SETS
     };
 
@@ -87,7 +91,7 @@ public:
     /** @brief Returns the active element context. */
     const ElemData &get_elem_data() const;
 
-    /** @brief Returns true when the active element material has an associated BH curve. */
+    /** @brief True when laws are selected on the active element: it has a Jacobian and residual. */
     bool nonlinear_element() const;
 
     /** @brief Element matrix sets (indexed by MatricesSet). */
@@ -96,19 +100,21 @@ public:
     /** @brief Element vector sets (indexed by VectorsSet). */
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> &get_vectors() { return vectors; }
 
-    /** @brief Builds Ke and Ce of the active element. */
+    /** @brief Builds Ke, Ce, (second-order element types) Me and the operators of the static nodal and element fields. */
     void build_element();
 
     /** @brief Builds the source vector (element loads, nodal loads, magnetization). */
     void build_element_rhs();
 
-    /** @brief Builds the tangent matrix and residual of the BH kernels at the current solution. */
-    void build_element_tangent_stiffness_residual();
+    /** @brief Builds the tangent matrix and residual of the law terms at the current solution; @p scheme gives the
+     * velocity and acceleration of the law terms with dt() and the scaling of their Jacobian. */
+    void build_element_tangent_stiffness_residual(const TimeScheme &scheme);
 
-    /** @brief Computes the nodal fields of the active element from the current solution and writes them to the nodal system. */
+    /** @brief Nodal fields of the active element from the current solution (stored operators, read by the nodal system,
+     * plus the dynamic fields), written to the nodal system. */
     void build_nodal_solution();
 
-    /** @brief Computes the element fields of the active element from the current solution and writes them to the element system. */
+    /** @brief Element fields of the active element, as build_nodal_solution(), written to the element system. */
     void build_element_solution();
 
     /** @brief Number of DOFs of the active element. */
@@ -121,9 +127,7 @@ public:
     }
 
 private:
-    class Context;
-
-    /** @brief Material, constants, rotation, grid data and BH curve of the active element. */
+    /** @brief Material, constants, rotation and grid data of the active element. */
     pytec3d::ElementParameterValues::Inputs parameter_inputs() const;
 
     /** @brief Values of @p solution on the DOFs of the active element, in element DOF order (zeros when null). */
@@ -131,17 +135,21 @@ private:
 
     bool should_inject_nodal_load_dof(const std::string &dof_variable_name, libMesh::dof_id_type dof_id) const;
 
-    /** @brief Evaluates the nodal or element field kernels on the DOF solution and writes the result into @p system. */
+    /** @brief Evaluates the nodal or element fields on the DOF solution and writes the result into @p system. */
     void build_fields(pytec3d::FieldKind kind, libMesh::System &system);
 
-    /** @brief Out-of-plane thickness of the active 2D element; 1 when its real constants do not define it. */
-    libMesh::Real thickness() const;
+
+    /** @brief Inputs of an ElementEvaluator on the active element. */
+    pytec3d::ElementEvaluator::Inputs evaluator_inputs(pytec3d::Operation operation,
+                                                       pytec3d::ElementParameterValues &values,
+                                                       const pytec3d::ElementType::FieldIndices &dofs) const;
 
     std::vector<std::vector<libMesh::DenseMatrix<libMesh::Number>>> matrices; ///< By MatricesSet.
     std::vector<std::vector<libMesh::DenseVector<libMesh::Number>>> vectors;  ///< By VectorsSet.
 
     ElemData elem_data;
     unsigned int n_dofs = 0; ///< Number of DOFs on the active element.
+    std::vector<libMesh::dof_id_type> dof_indices_; ///< DOF system indices of the active element.
     const NodalLoadInjectorElemByVarMap *nodal_load_map_ = nullptr;
 
     pyTEC3DEquationSystems *equation_systems_ = nullptr;
@@ -157,7 +165,6 @@ private:
     vtkDataArray *real_constant_cell_array_ = nullptr;
     vtkDataArray *coordinate_system_cell_array_ = nullptr;
     const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *element_local_to_global_rotations_ = nullptr;
-    const BHCurveMaterialsMap *bh_curves_ = nullptr;
 };
 
 #endif // ELEMENT_BUILDER_H

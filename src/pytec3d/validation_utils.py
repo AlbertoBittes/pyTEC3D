@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import math
 from os import PathLike
 from typing import Any, Iterable, Optional, Sequence, Union
 
@@ -137,11 +136,11 @@ def ensure_in_options(value: Any, arg_name: str, options: Sequence[Any]) -> Any:
     return value
 
 
-def validate_required_arrays_present(mesh: Any) -> None:
-    """Ensure required VTK point/cell arrays are present with expected shapes."""
+def validate_required_arrays_present(mesh: Any, element_types: Optional[Sequence[Any]] = None) -> None:
+    """Ensure the arrays of the element types (all of the library when None) are present with expected shapes."""
     ensure_vtk_unstructured_grid(mesh, arg_name="mesh")
 
-    from .constants import VTK_ARRAYS_TO_INIT
+    from . import element_library
 
     errors: list[str] = []
     cell_data = mesh.GetCellData()
@@ -155,15 +154,15 @@ def validate_required_arrays_present(mesh: Any) -> None:
         if arr is None:
             errors.append(f"CellData array '{required}' is required but was not found.")
 
-    for name, info in VTK_ARRAYS_TO_INIT.items():
-        loc = info["location"]
+    for info in element_library.grid_arrays(element_types):
+        name, loc = info.name, info.location
         data_obj = point_data if loc == "node" else cell_data
         arr = data_obj.GetArray(name) if data_obj is not None else None
         if arr is None:
             errors.append(f"{loc} data array '{name}' is required but was not found.")
             continue
 
-        expected_components = int(info["components"])
+        expected_components = int(info.components)
         if arr.GetNumberOfComponents() != expected_components:
             errors.append(
                 f"{loc} data array '{name}' must have {expected_components} component(s),"
@@ -187,9 +186,6 @@ def validate_required_arrays_present(mesh: Any) -> None:
 # ---------------------------------------------------------------------------
 # Solver-settings validation
 # ---------------------------------------------------------------------------
-
-#: Vacuum permeability [H/m], used as the BH-curve saturation-slope reference.
-_MU0: float = 4.0 * math.pi * 1e-7
 
 #: KSP types supported by PETSc / pyTEC3D (direct and iterative).
 _VALID_KSP_TYPES: frozenset[str] = frozenset({
@@ -409,13 +405,13 @@ def validate_pytec3dodel(model: Any) -> None:
     """Perform a comprehensive consistency check on a loaded pyTEC3D model.
 
     Validates ``model.data`` (``element_types``, ``materials``, ``constants``, ``dof_couplings``,
-    ``bh_curves``, ``coordinate_systems``) against the registries compiled into the solver and
+    the curve sections of the laws, ``coordinate_systems``) against the registries compiled into the solver and
     against the VTK mesh stored in *model*. All violations are collected before raising so that a
     single call reports every problem found. Unused identifiers are emitted as log warnings.
 
-    A material property or real constant may be left undefined. Which ones a kernel needs depends
-    on the element type and domain; the solver checks that when the model is loaded. Here, the values
-    that are defined are checked, and the real constants a stranded coil always needs.
+    The checks do not depend on the element types: names and shapes against the registries, ids against
+    the mesh, laws and their curves. Which material properties and real constants a kernel needs depends on
+    the element type and domain; the solver checks that they are defined when the model is loaded.
 
     Args:
         model: ``pyTEC3D_Model`` instance whose mesh and data are to be validated.
@@ -439,7 +435,7 @@ def validate_pytec3dodel(model: Any) -> None:
 
     # Keep this helper centralized so mesh-load and full model validation
     # enforce the exact same array contract.
-    validate_required_arrays_present(mesh)
+    validate_required_arrays_present(mesh, model.element_type_names() or None)
 
     registries = _solver_registries()
     domains: list[str] = list(registries["domains"])
@@ -447,6 +443,28 @@ def validate_pytec3dodel(model: Any) -> None:
     element_type_dimensions: list[int] = [int(d) for d in registries["element_types"].values()]
     material_properties: dict[str, str] = dict(registries["material_properties"])
     real_constants: dict[str, str] = dict(registries["real_constants"])
+    laws: dict[str, dict] = dict(registries.get("laws", {}))
+    law_names = list(laws)
+    # (section, row id) -> laws it selects, for the curve checks of section 7.
+    selected_laws: dict[tuple[str, int], list[str]] = {}
+
+    def _read_laws(value: Any, section: str, row_id: int, label: str) -> None:
+        """The "law" key of a row: law names or indices of laws.json whose source is `section`."""
+        entries = value if isinstance(value, list) else [value]
+        names: list[str] = []
+        for entry in entries:
+            if isinstance(entry, str) and entry in laws:
+                name = entry
+            elif isinstance(entry, (int, np.integer)) and not isinstance(entry, bool) and 0 <= int(entry) < len(law_names):
+                name = law_names[int(entry)]
+            else:
+                errors.append(f"{label}: {entry!r} is not a law of laws.json; known: {law_names}.")
+                continue
+            if laws[name]["source"] != section:
+                errors.append(f"{label}: law '{name}' is selected in '{laws[name]['source']}', not in '{section}'.")
+                continue
+            names.append(name)
+        selected_laws[(section, row_id)] = names
 
     data = model.data
     point_data = mesh.GetPointData()
@@ -499,18 +517,13 @@ def validate_pytec3dodel(model: Any) -> None:
             continue
         for name, value in material.items():
             label = f"materials[{material_id}].{name}"
+            if name == "law":
+                _read_laws(value, "materials", material_id, label)
+                continue
             if name not in material_properties:
                 errors.append(f"{label}: unknown material property; known: {sorted(material_properties)}.")
                 continue
-            arr = _check_value_shape(value, material_properties[name], label, errors)
-            if arr is None:
-                continue
-            # mur and rho are tensors; their diagonal is what has a sign.
-            diagonal = np.diagonal(arr) if arr.ndim == 2 else arr.reshape(-1)
-            if name == "mur" and not np.all(diagonal > 0.0):
-                errors.append(f"{label}: the diagonal must be positive.")
-            if name == "rho" and not np.all(diagonal >= 0.0):
-                errors.append(f"{label}: the diagonal must be non-negative.")
+            _check_value_shape(value, material_properties[name], label, errors)
 
     if mat_ids.size > 0:
         mesh_materials = set(np.unique(mat_ids).tolist())
@@ -522,70 +535,27 @@ def validate_pytec3dodel(model: Any) -> None:
             _log.warning("materials: ids not used by any cell: %s.", unused_m)
 
     # ========================================================================
-    # 3. bh_curves
+    # 3. curves of the laws: each an object with its x and y arrays, x increasing
     # ========================================================================
-    bh_curves = _section_entries(data, "bh_curves", errors)
-    mesh_material_set = set(np.unique(mat_ids).tolist()) if mat_ids.size > 0 else set()
-    for material_id, curve in bh_curves.items():
-        label = f"bh_curves[{material_id}]"
-        if mesh_material_set and material_id not in mesh_material_set:
-            errors.append(f"{label}: material ID {material_id} is not present in mesh MATERIAL cell values.")
-        if not isinstance(curve, dict) or set(curve) != {"H", "B"}:
-            errors.append(f"{label}: must be an object with the arrays 'H' and 'B'.")
-            continue
-        try:
-            h_values = np.asarray(curve["H"], dtype=float)
-            b_values = np.asarray(curve["B"], dtype=float)
-        except (TypeError, ValueError):
-            errors.append(f"{label}: 'H' and 'B' must be numeric arrays.")
-            continue
-        if h_values.ndim != 1 or b_values.shape != h_values.shape or h_values.size < 2:
-            errors.append(f"{label}: 'H' and 'B' must be 1D arrays of the same length >= 2.")
-            continue
-        if not np.all(np.isfinite(h_values)) or not np.all(np.isfinite(b_values)):
-            errors.append(f"{label}: H and B values must be finite.")
-            continue
-
-        if h_values[0] != 0.0:
-            errors.append(f"{label}: H must start at 0.0, got {h_values[0]!r}.")
-        if b_values[0] != 0.0:
-            errors.append(f"{label}: B must start at 0.0, got {b_values[0]!r}.")
-        if np.any(h_values < 0.0) or np.any(b_values < 0.0):
-            errors.append(f"{label}: H and B values must be non-negative.")
-
-        dh = np.diff(h_values)
-        db = np.diff(b_values)
-        if np.any(dh <= 0.0):
-            errors.append(f"{label}: H values must be strictly monotonic increasing.")
-        if np.any(db <= 0.0):
-            errors.append(f"{label}: B values must be strictly monotonic increasing.")
-            continue
-
-        # The C++ solver floors the extrapolated slope beyond b_values[-1] at
-        # 1/mu0 (vacuum permeability). If the curve's own last segment is far
-        # softer than that, dH/dB will visibly kink right at the last point.
-        last_slope = dh[-1] / db[-1]
-        if last_slope < 0.5 / _MU0:
-            _log.warning(
-                "%s: last segment slope (dH/dB=%.3g) is well below "
-                "vacuum reluctivity (1/mu0=%.3g); extrapolation beyond B=%.4g will "
-                "show a slope discontinuity there. Consider extending the table so "
-                "it saturates toward the vacuum slope.",
-                label, last_slope, 1.0 / _MU0, b_values[-1],
-            )
-
-        # mur is ignored by the solver for materials with a bh_curve (nonlinear
-        # elements always use the B-H table instead of a constant permeability),
-        # so a mur != 1 on those materials likely indicates an unintended input.
-        material = materials.get(material_id)
-        if isinstance(material, dict) and "mur" in material:
-            mur = np.asarray(material["mur"], dtype=float)
-            if mur.shape != (3, 3) or np.any(np.abs(mur - np.eye(3)) > 1e-9):
-                _log.warning(
-                    "materials[%d]: a bh_curve is defined, so mur=%s is ignored by the solver"
-                    " (nonlinear elements use the B-H table only).",
-                    material_id, mur.tolist(),
-                )
+    curve_sections = {tuple(law["curve"]) for law in laws.values() if law.get("curve")}
+    for section, x_key, y_key in sorted(curve_sections):
+        for row_id, curve in _section_entries(data, section, errors).items():
+            label = f"{section}[{row_id}]"
+            if not isinstance(curve, dict) or set(curve) != {x_key, y_key}:
+                errors.append(f"{label}: must be an object with the arrays '{x_key}' and '{y_key}'.")
+                continue
+            try:
+                x_values = np.asarray(curve[x_key], dtype=float)
+                y_values = np.asarray(curve[y_key], dtype=float)
+            except (TypeError, ValueError):
+                errors.append(f"{label}: '{x_key}' and '{y_key}' must be numeric arrays.")
+                continue
+            if x_values.ndim != 1 or y_values.shape != x_values.shape or x_values.size < 2:
+                errors.append(f"{label}: '{x_key}' and '{y_key}' must be 1D arrays of the same length >= 2.")
+            elif not np.all(np.isfinite(x_values)) or not np.all(np.isfinite(y_values)):
+                errors.append(f"{label}: the values must be finite.")
+            elif np.any(np.diff(x_values) <= 0.0):
+                errors.append(f"{label}: '{x_key}' must be strictly increasing.")
 
     # ========================================================================
     # 4. element_types
@@ -608,9 +578,16 @@ def validate_pytec3dodel(model: Any) -> None:
         if not isinstance(entry, dict):
             errors.append(f"{label}: must be an object.")
             continue
-        unknown = sorted(set(entry) - {"element_type", "option1", "option2", "option3", "option4", "option5"})
+        if "option4" in entry:
+            errors.append(
+                f"{label}: option4 was removed; a nonlinear law is selected by the \"law\" key of the materials,"
+                " constants or element_types rows of its source (laws.json)."
+            )
+        unknown = sorted(set(entry) - {"element_type", "option1", "option2", "option3", "law", "option4"})
         if unknown:
             errors.append(f"{label}: unknown keys {unknown}.")
+        if "law" in entry:
+            _read_laws(entry["law"], "element_types", type_id, f"{label}.law")
         missing = [key for key in ("element_type", "option1") if key not in entry]
         if missing:
             errors.append(f"{label}: missing keys {missing}.")
@@ -634,8 +611,6 @@ def validate_pytec3dodel(model: Any) -> None:
         axisymmetric = entry.get("option3", 0)
         if axisymmetric not in (0, 1):
             errors.append(f"{label}: option3 (axisymmetric) must be 0 or 1; got {axisymmetric!r}.")
-        if entry.get("option4", 0) not in (0, 1):
-            errors.append(f"{label}: option4 must be 0 or 1; got {entry.get('option4')!r}.")
         if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
             resolved[type_id] = {
                 "element_type": element_type,
@@ -670,10 +645,6 @@ def validate_pytec3dodel(model: Any) -> None:
                 f" but found: { {t: element_type_names[resolved[t]['element_type']] for t in active_types} }."
             )
 
-    coil_domain = domains.index("STRANDED_COIL") if "STRANDED_COIL" in domains else -1
-    cell_is_coil = np.zeros(type_ids.shape, dtype=bool)
-    cell_coil_dimension = np.zeros(type_ids.shape, dtype=np.int8)
-    cell_coil_axisymmetric = np.zeros(type_ids.shape, dtype=bool)
     for type_id in active_types:
         spec = resolved[type_id]
         mask = type_ids == type_id
@@ -685,15 +656,13 @@ def validate_pytec3dodel(model: Any) -> None:
                 errors.append(f"element_types[{type_id}]: 3D cells need a 3D element type, got {element_type_names[spec['element_type']]!r}.")
             if spec["axisymmetric"] != 0:
                 errors.append(f"element_types[{type_id}]: option3 (axisymmetric) must be 0 for 3D cells.")
-        if spec["domain"] == coil_domain:
-            cell_is_coil |= mask
-            cell_coil_dimension[mask] = dimension
-            cell_coil_axisymmetric[mask] = bool(spec["axisymmetric"])
 
     # ========================================================================
     # 5. dof_couplings
     # ========================================================================
-    _valid_vars = {"A", "Az", "VOLT", "V", "EMF"}
+    from . import element_library
+
+    _valid_vars = set(element_library.dof_fields(model.element_type_names() or None))
     dof_couplings = _section_entries(data, "dof_couplings", errors)
     for cp_id, variables in dof_couplings.items():
         label = f"dof_couplings[{cp_id}]"
@@ -731,30 +700,19 @@ def validate_pytec3dodel(model: Any) -> None:
     # 6. constants
     # ========================================================================
     constants = _section_entries(data, "constants", errors)
-    constant_arrays: dict[int, dict[str, np.ndarray]] = {}
     for constants_id, entry in constants.items():
         if not isinstance(entry, dict):
             errors.append(f"constants[{constants_id}]: must be an object of real constants.")
             continue
-        arrays: dict[str, np.ndarray] = {}
         for name, value in entry.items():
             label = f"constants[{constants_id}].{name}"
+            if name == "law":
+                _read_laws(value, "constants", constants_id, label)
+                continue
             if name not in real_constants:
                 errors.append(f"{label}: unknown real constant; known: {sorted(real_constants)}.")
                 continue
-            arr = _check_value_shape(value, real_constants[name], label, errors)
-            if arr is None:
-                continue
-            arrays[name] = arr
-            if name in ("turns", "cross_section", "volume", "radius", "resistance", "thickness") and not float(arr) > 0.0:
-                errors.append(f"{label}: must be > 0; got {float(arr)}.")
-            if name == "symmetry" and not float(arr) >= 1.0:
-                errors.append(f"{label}: must be >= 1; got {float(arr)}.")
-            if name == "T":
-                t = np.broadcast_to(arr, (3,))
-                if not np.all(np.abs(t) <= 1.0) or abs(float(np.linalg.norm(t)) - 1.0) > 1e-4:
-                    errors.append(f"{label}: must be a unit vector; got {t.tolist()}.")
-        constant_arrays[constants_id] = arrays
+            _check_value_shape(value, real_constants[name], label, errors)
 
     if const_ids.size > 0:
         mesh_constants = set(np.unique(const_ids).tolist())
@@ -765,24 +723,20 @@ def validate_pytec3dodel(model: Any) -> None:
         if absent_c:
             _log.warning("constants: cell CONSTANT values absent from data['constants']: %s.", absent_c)
 
-    # Real constants a stranded coil always needs, by cell group.
-    coil_constants_ids = np.unique(const_ids[cell_is_coil]) if cell_is_coil.any() else np.empty((0,), dtype=np.int64)
-    for constants_id in coil_constants_ids.tolist():
-        group = cell_is_coil & (const_ids == constants_id)
-        dimension = int(cell_coil_dimension[group][0])
-        axisymmetric = bool(cell_coil_axisymmetric[group][0])
-        needed = ["turns", "cross_section", "resistance", "symmetry", "T"]
-        needed += ["volume"] if dimension == 3 else ["thickness"] + (["radius"] if axisymmetric else [])
-        arrays = constant_arrays.get(int(constants_id), {})
-        absent = [name for name in needed if name not in arrays]
-        if absent:
-            errors.append(
-                f"constants[{int(constants_id)}]: a stranded coil ({dimension}D) needs {absent}."
-            )
-        elif dimension == 2 and abs(abs(float(np.broadcast_to(arrays["T"], (3,))[2])) - 1.0) > 1e-9:
-            errors.append(f"constants[{int(constants_id)}]: T must be (0, 0, -1) or (0, 0, 1) for a 2D coil.")
-        if axisymmetric and "thickness" in arrays and float(arrays["thickness"]) > 1.0:
-            errors.append(f"constants[{int(constants_id)}]: thickness must be <= 1 for axisymmetric cells.")
+    # ========================================================================
+    # 7. every row selecting a law with a curve has one
+    # ========================================================================
+    for (section, row_id), names in selected_laws.items():
+        for name in names:
+            curve = laws[name].get("curve")
+            if not curve:
+                continue
+            curve_section = curve[0]
+            curves = data.get(curve_section) or {}
+            if str(row_id) not in {str(k) for k in curves}:
+                errors.append(
+                    f"{section}[{row_id}]: selects law '{name}', which needs data['{curve_section}'][{row_id}]."
+                )
 
     if errors:
         raise ValueError(
@@ -804,7 +758,7 @@ def validate_pre_solve_inputs(model: Any, time_step: Any) -> None:
 
     Args:
         model: ``pyTEC3D_Model`` with the mesh to solve.
-        time_step: Time-step dict of the solver (``time``, ``theta``, ``transient_effects``).
+        time_step: Time-step dict of the solver (``time``, ``theta``, ``beta``, ``gamma``, ``transient_effects``).
     """
     from .logging_utils import get_logger
 
@@ -828,23 +782,21 @@ def validate_pre_solve_inputs(model: Any, time_step: Any) -> None:
             return np.empty((0,), dtype=float)
         return np.asarray(vtknp.vtk_to_numpy(arr), dtype=float)
 
-    # 1) Loads check: Js (elem), AMPS/CURR (node)
-    js = _get_array_values(cell_data, "Js")
-    amps = _get_array_values(point_data, "AMPS")
-    curr = _get_array_values(point_data, "CURR")
-    if js.size > 0 and amps.size > 0 and curr.size > 0:
-        if np.all(np.nan_to_num(js, nan=0.0) == 0.0) and np.all(np.nan_to_num(amps, nan=0.0) == 0.0) and np.all(np.nan_to_num(curr, nan=0.0) == 0.0):
-            _log.warning(
-                "No loads detected: arrays Js, AMPS, and CURR are all zero."
-            )
+    from . import element_library
+
+    # 1) Loads check: the load arrays of the element types (me. cell, mn. point parameters) all zero
+    loads = element_library.load_arrays(model.element_type_names() or None)
+    load_values = [_get_array_values(cell_data if a.location == "elem" else point_data, a.name) for a in loads]
+    if loads and all(v.size > 0 for v in load_values) and all(np.all(np.nan_to_num(v, nan=0.0) == 0.0) for v in load_values):
+        _log.warning("No loads detected: arrays %s are all zero.", ", ".join(a.name for a in loads))
 
     # 2) Boundary conditions check: all BC arrays all-NaN
-    bc_names = ["_A", "_Az", "_VOLT", "_V", "_EMF"]
+    bc_names = ["_" + name for name in element_library.dof_fields(model.element_type_names() or None)]
     bc_arrays = [_get_array_values(point_data, name) for name in bc_names]
     if all(arr.size > 0 for arr in bc_arrays):
         if all(np.all(np.isnan(arr)) for arr in bc_arrays):
             _log.warning(
-                "No boundary conditions detected: arrays _A, _Az, _VOLT, _V, and _EMF are all NaN."
+                "No boundary conditions detected: arrays %s are all NaN.", ", ".join(bc_names)
             )
 
     # 3) Time-step constraints
@@ -862,10 +814,18 @@ def validate_pre_solve_inputs(model: Any, time_step: Any) -> None:
                 f"time_step['theta'] must be a finite value in [0, 1], got {th!r}."
             )
 
+        # Newmark parameters of second-order formulations.
+        beta = time_step.get("beta", 0.25)
+        gamma = time_step.get("gamma", 0.5)
+        if not isinstance(beta, (int, float)) or not np.isfinite(beta) or not (0.0 < float(beta) <= 0.5):
+            errors.append(f"time_step['beta'] must be a finite value in (0, 0.5], got {beta!r}.")
+        if not isinstance(gamma, (int, float)) or not np.isfinite(gamma) or not (0.0 <= float(gamma) <= 1.0):
+            errors.append(f"time_step['gamma'] must be a finite value in [0, 1], got {gamma!r}.")
+
     if errors:
         raise ValueError(
             "Invalid pre-solve inputs:\n" + "\n".join(f"  - {e}" for e in errors)
         )
 
-    validate_required_arrays_present(mesh)
+    validate_required_arrays_present(mesh, model.element_type_names() or None)
 

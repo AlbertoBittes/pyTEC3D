@@ -741,7 +741,8 @@ class TreeGauge:
         non_conducting_point_ids: Optional[Iterable[int]] = None,
         start_surface_point_ids: Optional[Iterable[int]] = None,
         periodic_point_coupling: Optional[object] = None,  # [CHG-2]
-        array_name: str = "_Az",
+        array_name: str = "_A",
+        component: int = 2,
         tree_name: str = "TREE",
         cotree_name: str = "COTREE",
         periodic_slave_name: str = "PERIODIC_SLAVE",
@@ -760,6 +761,8 @@ class TreeGauge:
         Args:
             ugrid: Target mesh to analyze and annotate.
             array_name: PointData array to be gauge-fixed (tree entries set to zero).
+            component: Component of a multi-component ``array_name`` that holds the edge values; the solver reads
+                the Dirichlet values of an H(curl) field F from component 2 of ``_F``.
             tree_name: Name for the output tree mask array.
             cotree_name: Name for the output cotree mask array.
             non_conducting_point_ids: Point ids where tree constraints are computed.
@@ -827,7 +830,10 @@ class TreeGauge:
                 periodic_slave_np = np.zeros_like(tree_np)
             # [CHG-3] Only zero tree points that are NOT periodic slaves.
             zero_mask = (tree_np == 1) & (periodic_slave_np == 0)
-            arr_np[zero_mask] = 0
+            if arr_np.ndim > 1:
+                arr_np[zero_mask, component] = 0
+            else:
+                arr_np[zero_mask] = 0
             arr.Modified()
 
         return info

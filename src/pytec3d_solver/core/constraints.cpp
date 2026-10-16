@@ -3,7 +3,8 @@
  * @brief GlobalConstraintsObject: time-integration pins, Dirichlet BCs, and DOF-coupling constraints.
  *
  * Merges three constraint sources each time libMesh calls constrain():
- *   1. Time-integration homogeneous pins (static formulation, OPTION4==1).
+ *   1. Time-integration homogeneous pins: on a static step, the DOFs whose fields have no row in K (only C or M,
+ *      as the element types say) are set to zero.
  *   2. Point/nodal Dirichlet BCs from VTK point-data arrays (with optional local-to-global rotation).
  *   3. DOF-coupling constraints from CP_* periodic-boundary node pairs.
  */
@@ -13,6 +14,7 @@
 #include "pytec3d_equation_systems.h"
 #include "pytec3d_model.h"
 #include "augment_sparsity_on_nodes.h"
+#include "element_types_factory.h"
 
 #include "variables_map.h"
 #include <libmesh/dof_map.h>
@@ -110,7 +112,7 @@ void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
 {
     _coupling_cp_id_values.clear();
     _coupling_variable_values.clear();
-    _az_coupling_cp_ids.clear();
+    _edge_coupling_cp_ids.clear();
 
     pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     auto &equation_systems = dof_system->get_pytec3d_equation_systems();
@@ -123,12 +125,6 @@ void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
         _coupling_cp_id_values.push_back(coupling.cp_id);
         _coupling_variable_values.push_back(coupling.variable);
     }
-
-    const std::size_t n_entries =
-        std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
-    for (std::size_t i = 0; i < n_entries; ++i)
-        if (_coupling_variable_values[i] == "Az")
-            _az_coupling_cp_ids.insert(_coupling_cp_id_values[i]);
 }
 
 template <typename ImplSystem>
@@ -146,19 +142,31 @@ GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
 
     DofMap &dof_map = system.get_dof_map();
     const MeshBase &mesh = system.get_equation_systems().get_mesh();
+    const auto &factory = dof_system->get_pytec3d_equation_systems().get_element_types_factory();
 
-    const std::array<std::string, 2> variable_labels = {"V", "EMF"};
+    // A DOF is pinned when no element around it gives its field a row in K: its equation would be empty.
+    std::unordered_set<dof_id_type> without_stiffness;
+    std::unordered_set<dof_id_type> with_stiffness;
     std::vector<dof_id_type> dof_indices;
-    for (const auto &label : variable_labels)
+    for (const auto *elem : mesh.active_element_ptr_range())
     {
-        if (!system.has_variable(label))
-            continue;
-
-        dof_indices.clear();
-        dof_map.local_variable_indices(dof_indices, mesh, system.variable_number(label));
-        for (const dof_id_type dof : dof_indices)
-            constraints.emplace(dof, ConstraintEntry{});
+        const ElementTypesFactory::Entry &entry = factory->get(elem->subdomain_id());
+        const pytec3d::ElementType &type = *entry.type;
+        for (std::size_t field = 0; field < type.spec().fields.size(); ++field)
+        {
+            const pytec3d::FieldSpec &spec = type.field(field);
+            if (spec.kind != pytec3d::FieldKind::Dof || !pytec3d::ElementType::active(spec, entry.domain))
+                continue;
+            auto &target = type.has_stiffness(field, entry.domain) ? with_stiffness : without_stiffness;
+            const std::string label(pytec3d::registry::info(spec.variable).label);
+            dof_map.dof_indices(elem, dof_indices, system.variable_number(label));
+            target.insert(dof_indices.begin(), dof_indices.end());
+        }
     }
+
+    for (const dof_id_type dof : without_stiffness)
+        if (!with_stiffness.count(dof) && dof >= dof_map.first_dof() && dof < dof_map.end_dof())
+            constraints.emplace(dof, ConstraintEntry{});
 
     return constraints;
 }
@@ -213,11 +221,13 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
             });
         const auto &var_info = VariablesMap::get_info_by_key(global_var);
 
-        vtkDataArray *array = nullptr;
-        std::string array_name = "_" + var_info.api_label;
-        array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
+        const std::string array_name = VariablesMap::constraint_array_name(system, var_num);
+        vtkDataArray *array = vtkDataArray::SafeDownCast(point_data->GetArray(array_name.c_str()));
 
-        scalar_arrays.push_back({var_num, array, var_info.component_index});
+        // An edge variable has one value per edge node, in a fixed component of its array.
+        const unsigned int component = VariablesMap::is_edge_variable(system, var_num) ? VariablesMap::edge_constraint_component
+                                                                                    : var_info.component_index;
+        scalar_arrays.push_back({var_num, array, component});
     }
 
     const Real tol = std::numeric_limits<Real>::epsilon();
@@ -270,7 +280,7 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
                     node_ptr->n_dofs(sys_num, component.var_number) == 0)
                     continue;
 
-                dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, 0);
+                dof_id_type dof = node_ptr->dof_number(sys_num, component.var_number, component.dof_component);
 
                 dofs[component.component_index] = dof;
                 values[component.component_index] =
@@ -486,7 +496,7 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
         for (const auto &scalar_entry : scalar_arrays)
         {
             const unsigned int sys_num = system.number();
-            if (scalar_entry.var_number == libMesh::invalid_uint ||
+            if (scalar_entry.var_number == libMesh::invalid_uint || !scalar_entry.array ||
                 scalar_entry.var_number >= node_ptr->n_vars(sys_num) ||
                 node_ptr->n_dofs(sys_num, scalar_entry.var_number) == 0)
                 continue;
@@ -542,13 +552,13 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
     const MeshBase &mesh = equation_systems.get_mesh();
     const unsigned int proc_id = mesh.comm().rank();
     const auto build_coupled_groups =
-        [&vector_variables](
+        [&vector_variables, &system](
             const std::string &variable,
             std::map<std::string, std::vector<VariablesMap::VectorComponent>> &coupled_vectors,
             std::unordered_set<std::string> &coupled_labels)
     {
         coupled_labels.clear();
-        for (const auto &label : VariablesMap::get_global_labels_for_label(variable))
+        for (const auto &label : VariablesMap::get_global_labels_for_label(system, variable))
             coupled_labels.insert(label);
 
         coupled_vectors.clear();
@@ -640,9 +650,9 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
                     }
 
                     dofs_first[component.component_index] =
-                        node_first->dof_number(sys_num, component.var_number, 0);
+                        node_first->dof_number(sys_num, component.var_number, component.dof_component);
                     dofs_second[component.component_index] =
-                        node_second->dof_number(sys_num, component.var_number, 0);
+                        node_second->dof_number(sys_num, component.var_number, component.dof_component);
                 }
 
                 for (unsigned int i = 0; i < 3; ++i)
@@ -698,7 +708,7 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 
                 ConstraintEntry constraint_entry;
                 bool same_edge_orientation = true;
-                if (label == "Az")
+                if (VariablesMap::is_edge_variable(system, var_num))
                 {
                     if (_edge_orientations_map)
                     {
@@ -725,7 +735,18 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 {
     pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
     System &system = *dof_system;
-    if (!system.has_variable("Az") || _az_coupling_cp_ids.empty())
+    // The CPs that couple an H(curl) variable: its DOFs carry an edge orientation.
+    _edge_coupling_cp_ids.clear();
+    const std::size_t n_entries = std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
+    for (std::size_t i = 0; i < n_entries; ++i)
+    {
+        if (_coupling_variable_values[i].empty())
+            continue;
+        for (const auto &label : VariablesMap::get_global_labels_for_label(system, _coupling_variable_values[i]))
+            if (VariablesMap::is_edge_variable(system, system.variable_number(label)))
+                _edge_coupling_cp_ids.insert(_coupling_cp_id_values[i]);
+    }
+    if (_edge_coupling_cp_ids.empty())
     {
         _edge_orientations_map.reset();
         return;
@@ -818,7 +839,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
                    : std::array<dof_id_type, 2>{c1, c0};
     };
 
-    for (const int cp_id : _az_coupling_cp_ids)
+    for (const int cp_id : _edge_coupling_cp_ids)
     {
         const auto cp_it = pairs_by_cp.find(cp_id);
         if (cp_it == pairs_by_cp.end())
@@ -875,7 +896,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
                 if (master_corner_cp_count == 0 && slave_corner_cp_count == 0)
                 {
                     std::ostringstream msg;
-                    msg << "Coupling constraint: unable to infer Az edge orientation because "
+                    msg << "Coupling constraint: unable to infer the edge orientation because "
                         << "no corner CP label was found for either edge in CP_ID="
                         << cp_id << " (master midside node " << pair.first
                         << ", slave midside node " << pair.second << ").";
@@ -917,7 +938,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
                 if (!direct_valid && !reversed_valid)
                 {
                     std::ostringstream msg;
-                    msg << "Coupling constraint: unable to infer Az edge orientation from CP tokens/coordinates for CP_ID="
+                    msg << "Coupling constraint: unable to infer the edge orientation from CP tokens/coordinates for CP_ID="
                         << cp_id << " (master midside node " << pair.first
                         << ", slave midside node " << pair.second
                         << "). If CP is missing on matched corners, the missing-CP corners must be the same node.";
@@ -939,7 +960,7 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
     if (!this->get_parent_object()->is_initialized())
         return;
 
-    if (this->get_parent_object()->has_variable("Az") &&
+    if (VariablesMap::has_edge_variable(*this->get_parent_object()) &&
         (_edge_orientations_map == nullptr || _edge_orientations_map->empty()))
         build_edge_orientations_map();
 

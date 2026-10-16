@@ -4,17 +4,13 @@
  */
 #include "element_types_factory.h"
 
+#include <algorithm>
 #include <string>
 
 #include "logging.h"
 
-ElementTypesFactory::ElementTypesFactory(const pytec3d::ModelData &model_data,
-                                         std::shared_ptr<const pytec3d::ElementTypeParser> parser)
-    : parser_(std::move(parser))
+ElementTypesFactory::ElementTypesFactory(const pytec3d::ModelData &model_data)
 {
-    if (!parser_)
-        pytec3d::logging::error_and_abort("ElementTypesFactory: element type parser is not available.");
-
     for (const auto &[subdomain, spec] : model_data.element_types())
     {
         pytec3d::ElementTypeOptions options;
@@ -24,13 +20,21 @@ ElementTypesFactory::ElementTypesFactory(const pytec3d::ModelData &model_data,
         const TypeKey key{spec.type, options.order, options.axisymmetric};
         auto type = types_.find(key);
         if (type == types_.end())
-            type = types_.emplace(key, parser_->build(spec.type, options)).first;
+            type = types_.emplace(key, std::make_unique<pytec3d::ElementType>(spec.type, options)).first;
 
         Entry entry;
         entry.type = type->second.get();
         entry.domain = spec.domain;
         entries_[static_cast<libMesh::subdomain_id_type>(subdomain)] = entry;
     }
+}
+
+unsigned int ElementTypesFactory::time_order() const
+{
+    unsigned int order = 0;
+    for (const auto &pair : entries_)
+        order = std::max(order, pair.second.type->spec().time_order);
+    return order;
 }
 
 const ElementTypesFactory::Entry &ElementTypesFactory::get(libMesh::subdomain_id_type subdomain_id) const

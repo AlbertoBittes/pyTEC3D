@@ -1,27 +1,38 @@
 /**
  * @file nabla.h
- * @brief Differential operators (identity, grad, curl, div) evaluated on a field's finite element.
+ * @brief Nabla: one differential operator (identity, grad, curl, div) applied to the shape functions of one FE.
  *
- * A Nabla object is one operator bound to one field: built once, it checks that the operator exists for the
- * field, asks the field's FE for the data it reads, and evaluates on whatever element the FE was last
- * reinit()ed on. Evaluating gives one dense matrix per quadrature point. Rows are the components of the operator output, columns are the shape
- * functions of the field in libMesh's order (for a vector field phi_x_1 phi_y_1 phi_z_1 ... phi_x_n
- * phi_y_n phi_z_n). Where a field sits in an element matrix, and every other piece of physics, is not
- * Nabla's concern.
+ * A Nabla follows what libMesh gives for its FE:
+ *  - scalar FE (FEBase):       phi Real, dphi RealGradient;
+ *  - vector FE (FEVectorBase): phi RealVectorValue, div_phi Real, curl_phi RealVectorValue, dphi RealTensorValue.
+ * Evaluated on the element the FE was last reinit()ed on, it gives a table [quadrature point][shape function]
+ * of Real, RealVectorValue or RealTensorValue (NablaSpec::output):
  *
- * Conventions:
- *  - 2D elements lie in the x-y plane; on them the curl of a scalar is that of the out-of-plane vector
- *    f e_z, and the divergence of a scalar is zero.
- *  - Axisymmetric elements use (x, y) = (r, z) and add the cylindrical terms to curl and div.
+ *   FE      operator  output  value
+ *   scalar  identity  Real    phi, or phi e_c for a scalar FE holding component c of a vector field
+ *   scalar  grad      Vector  dphi (the in-plane gradient on 2D elements); for an out-of-plane scalar of a 2D
+ *                             element (active component z: the z component of a 3D field over the out-of-plane
+ *                             length L, the declared length times 2 pi r if axisymmetric) -phi / L e_z
+ *   scalar  curl      Vector  curl(phi e_z) of a 2D element: (dphi/dy, -dphi/dx); axisymmetric, with (x, y) = (r, z),
+ *                             curl(phi e_theta) = (-dphi/dz, dphi/dr + phi / r)
+ *   vector  identity  Vector  phi
+ *   vector  curl      Vector  curl_phi (3D)
+ *   vector  div       Real    div_phi; axisymmetric adds phi_r / r
+ *   vector  grad      Tensor  dphi (not axisymmetric)
  *
- * The operators themselves are the function templates of nabla_operators.h.
+ * The shape functions are in libMesh's order: for a vector Lagrange FE, node by node and component by
+ * component within a node (shape i is the scalar shape i / dim on component i % dim), the order of the DOFs of a
+ * vector variable.
  */
 #pragma once
 
 #include <vector>
 
-#include <libmesh/dense_matrix.h>
 #include <libmesh/libmesh_common.h>
+#include <libmesh/tensor_value.h>
+#include <libmesh/vector_value.h>
+
+#include "formulation_spec.h"
 
 namespace libMesh
 {
@@ -30,57 +41,58 @@ namespace libMesh
 
 namespace pytec3d
 {
-    struct Field;
+    /** @brief Values [quadrature point][shape function]. */
+    template <typename T>
+    using QpDofTable = std::vector<std::vector<T>>;
 
-    enum class NablaOperator : unsigned char
+    /** @brief A table of one of the three value types. */
+    struct ValueTable
     {
-        Identity, ///< The field itself.
-        Grad,
-        Curl,
-        Div,
+        formulation::ValueType type = formulation::ValueType::Scalar;
+        QpDofTable<libMesh::Real> scalar;
+        QpDofTable<libMesh::RealVectorValue> vector;
+        QpDofTable<libMesh::RealTensorValue> tensor;
+
+        template <typename T>
+        const QpDofTable<T> &get() const;
+        template <typename T>
+        QpDofTable<T> &get();
+
+        /** @brief Number of shape functions (columns). */
+        std::size_t n_dofs() const;
     };
+
+    template <>
+    inline const QpDofTable<libMesh::Real> &ValueTable::get() const { return scalar; }
+    template <>
+    inline const QpDofTable<libMesh::RealVectorValue> &ValueTable::get() const { return vector; }
+    template <>
+    inline const QpDofTable<libMesh::RealTensorValue> &ValueTable::get() const { return tensor; }
+    template <>
+    inline QpDofTable<libMesh::Real> &ValueTable::get() { return scalar; }
+    template <>
+    inline QpDofTable<libMesh::RealVectorValue> &ValueTable::get() { return vector; }
+    template <>
+    inline QpDofTable<libMesh::RealTensorValue> &ValueTable::get() { return tensor; }
 
     class Nabla
     {
     public:
-        /** @brief One (rows x shape functions) matrix per quadrature point. */
-        using QuadratureMatrices = std::vector<libMesh::DenseMatrix<libMesh::Real>>;
+        /** @brief Binds @p spec to @p fe and requests from it the data the operator reads. */
+        Nabla(const formulation::NablaSpec &spec, libMesh::FEAbstract &fe, unsigned int dimension, bool axisymmetric);
 
-        /** @brief Operator matrices plus the physical component (0=x, 1=y, 2=z) each row stands for. */
-        struct Operand
-        {
-            QuadratureMatrices values;
-            std::vector<unsigned int> components;
-            bool scalar = false; ///< A scalar quantity (one row, component x): a vector parameter couples it to a vector operand.
-        };
-
-        /** @brief An operator compiled for one output type, dimension and axisymmetry. */
-        using Function = Operand (*)(libMesh::FEAbstract &fe, const Field &field);
+        const formulation::NablaSpec &spec() const { return *spec_; }
 
         /**
-         * @brief Binds @p op to @p field, whose FE must be attached; aborts if the operator does not exist for it.
-         *
-         * Output rows by operator:
-         *  - Identity: 1 for a scalar field, one per dimension for a vector field.
-         *  - Grad of a scalar: one row per dimension. Of a vector (Lagrange families, not axisymmetric): the
-         *    tensor flattened row-major, row = component * dimension + direction.
-         *  - Curl: 2 for a scalar in 2D, 3 for a vector in 3D.
-         *  - Div: 1 (zero for a scalar in 2D).
+         * @brief The table on the element the FE was last reinit()ed on.
+         * @param length Out-of-plane length at each quadrature point (2D elements; 1 on 3D ones).
          */
-        Nabla(NablaOperator op, const Field &field, unsigned int dimension, bool axisymmetric);
-
-        NablaOperator op() const { return op_; }
-        const Field &field() const { return *field_; }
-
-        /** @brief True when the output is a scalar quantity: the identity of a scalar field, or a divergence. */
-        bool scalar_valued() const;
-
-        /** @brief The operator on the element the field's FE was last reinit()ed on. */
-        Operand evaluate() const;
+        void evaluate(const std::vector<libMesh::Real> &length, ValueTable &out) const;
 
     private:
-        const Field *field_;
-        NablaOperator op_;
-        Function function_;
+        const formulation::NablaSpec *spec_;
+        libMesh::FEAbstract *fe_;
+        unsigned int dimension_;
+        bool axisymmetric_;
     };
 } // namespace pytec3d

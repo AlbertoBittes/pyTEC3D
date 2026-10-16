@@ -1,140 +1,216 @@
 /**
  * @file nabla.cpp
- * @brief Nabla: the compiled operator for each case, and the FE data each operator needs.
+ * @brief Nabla: the operators on the scalar and vector FEs.
  */
 #include "nabla.h"
 
-#include <libmesh/fe.h>
+#include <cmath>
+#include <string>
+#include <type_traits>
 
-#include "element_field.h"
+#include <libmesh/fe.h>
+#include <libmesh/fe_interface.h>
+
 #include "logging.h"
-#include "nabla_operators.h"
 
 namespace pytec3d
 {
     namespace
     {
+        using formulation::Operator;
+        using libMesh::Real;
+        using libMesh::RealTensorValue;
+        using libMesh::RealVectorValue;
+
         [[noreturn]] void fail(const std::string &message)
         {
             logging::error_and_abort("Nabla: " + message);
         }
 
-        template <typename OutputType, unsigned int Dim, bool Axisymmetric>
-        Nabla::Operand identity_function(libMesh::FEAbstract &fe, const Field &field)
+        template <typename T>
+        QpDofTable<T> &shaped(ValueTable &out, formulation::ValueType type, unsigned int nq, std::size_t n)
         {
-            return Identity<OutputType, Dim, Axisymmetric>(static_cast<libMesh::FEGenericBase<OutputType> &>(fe), field);
+            out.type = type;
+            QpDofTable<T> &table = out.get<T>();
+            table.assign(nq, std::vector<T>(n)); // Zero: some operators set one component only.
+            return table;
         }
 
-        template <typename OutputType, unsigned int Dim, bool Axisymmetric>
-        Nabla::Operand gradient_function(libMesh::FEAbstract &fe, const Field &field)
+        // Radius of a quadrature point of an axisymmetric element, (x, y) = (r, z).
+        Real radius(const libMesh::Point &p)
         {
-            return Gradient<OutputType, Dim, Axisymmetric>(static_cast<libMesh::FEGenericBase<OutputType> &>(fe), field);
+            return std::sqrt(p(0) * p(0) + p(2) * p(2));
         }
 
-        template <typename OutputType, unsigned int Dim, bool Axisymmetric>
-        Nabla::Operand curl_function(libMesh::FEAbstract &fe, const Field &field)
+        void evaluate_scalar(const formulation::NablaSpec &spec, libMesh::FEBase &fe, unsigned int dimension, bool axisymmetric,
+                             const std::vector<Real> &length, ValueTable &out)
         {
-            return Curl<OutputType, Dim, Axisymmetric>(static_cast<libMesh::FEGenericBase<OutputType> &>(fe), field);
-        }
+            const auto &phi = fe.get_phi();
+            const unsigned int nq = fe.n_quadrature_points();
+            const std::size_t n = phi.size();
 
-        template <typename OutputType, unsigned int Dim, bool Axisymmetric>
-        Nabla::Operand divergence_function(libMesh::FEAbstract &fe, const Field &field)
-        {
-            return Divergence<OutputType, Dim, Axisymmetric>(static_cast<libMesh::FEGenericBase<OutputType> &>(fe), field);
-        }
-
-        template <typename OutputType, unsigned int Dim, bool Axisymmetric>
-        Nabla::Function select(NablaOperator op)
-        {
-            switch (op)
+            switch (spec.op)
             {
-            case NablaOperator::Identity:
-                return &identity_function<OutputType, Dim, Axisymmetric>;
-            case NablaOperator::Grad:
-                return &gradient_function<OutputType, Dim, Axisymmetric>;
-            case NablaOperator::Curl:
-                return &curl_function<OutputType, Dim, Axisymmetric>;
-            case NablaOperator::Div:
-                return &divergence_function<OutputType, Dim, Axisymmetric>;
+            case Operator::Identity:
+                if (spec.component < 0)
+                {
+                    auto &table = shaped<Real>(out, spec.output, nq, n);
+                    for (unsigned int qp = 0; qp < nq; ++qp)
+                        for (std::size_t i = 0; i < n; ++i)
+                            table[qp][i] = phi[i][qp];
+                }
+                else
+                {
+                    auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                    for (unsigned int qp = 0; qp < nq; ++qp)
+                        for (std::size_t i = 0; i < n; ++i)
+                            table[qp][i](spec.component) = phi[i][qp];
+                }
+                return;
+            case Operator::Grad:
+            {
+                if (spec.out_of_plane)
+                {
+                    auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                    for (unsigned int qp = 0; qp < nq; ++qp)
+                        for (std::size_t i = 0; i < n; ++i)
+                            table[qp][i](2) = -phi[i][qp] / length[qp];
+                }
+                else
+                {
+                    auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                    const auto &dphi = fe.get_dphi();
+                    for (unsigned int qp = 0; qp < nq; ++qp)
+                        for (std::size_t i = 0; i < n; ++i)
+                            table[qp][i] = dphi[i][qp];
+                }
+                return;
+            }
+            case Operator::Curl:
+            {
+                const auto &dphi = fe.get_dphi();
+                const auto &xyz = fe.get_xyz();
+                const Real sign = axisymmetric ? -1.0 : 1.0;
+                auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                {
+                    const Real inv_r = axisymmetric ? 1.0 / radius(xyz[qp]) : 0.0;
+                    for (std::size_t i = 0; i < n; ++i)
+                    {
+                        table[qp][i](0) = sign * dphi[i][qp](1);
+                        table[qp][i](1) = -sign * (dphi[i][qp](0) + phi[i][qp] * inv_r);
+                    }
+                }
+                return;
+            }
+            case Operator::Div:
+                break;
+            }
+            fail("operator not defined on a scalar FE.");
+        }
+
+        void evaluate_vector(const formulation::NablaSpec &spec, libMesh::FEVectorBase &fe, bool axisymmetric, ValueTable &out)
+        {
+            const auto &phi = fe.get_phi();
+            const unsigned int nq = fe.n_quadrature_points();
+            const std::size_t n = phi.size();
+
+            switch (spec.op)
+            {
+            case Operator::Identity:
+            {
+                auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                    for (std::size_t i = 0; i < n; ++i)
+                        table[qp][i] = phi[i][qp];
+                return;
+            }
+            case Operator::Curl:
+            {
+                const auto &curl_phi = fe.get_curl_phi();
+                auto &table = shaped<RealVectorValue>(out, spec.output, nq, n);
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                    for (std::size_t i = 0; i < n; ++i)
+                        table[qp][i] = curl_phi[i][qp];
+                return;
+            }
+            case Operator::Div:
+            {
+                const auto &div_phi = fe.get_div_phi();
+                auto &table = shaped<Real>(out, spec.output, nq, n);
+                const auto &xyz = fe.get_xyz();
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                {
+                    // Axisymmetric (V_r, V_z): div V = dV_r/dr + V_r / r + dV_z/dz.
+                    const Real inv_r = axisymmetric ? 1.0 / radius(xyz[qp]) : 0.0;
+                    for (std::size_t i = 0; i < n; ++i)
+                        table[qp][i] = div_phi[i][qp] + phi[i][qp](0) * inv_r;
+                }
+                return;
+            }
+            case Operator::Grad:
+            {
+                const auto &dphi = fe.get_dphi();
+                auto &table = shaped<RealTensorValue>(out, spec.output, nq, n);
+                for (unsigned int qp = 0; qp < nq; ++qp)
+                    for (std::size_t i = 0; i < n; ++i)
+                        table[qp][i] = dphi[i][qp];
+                return;
+            }
             }
             fail("unknown operator.");
         }
-
-        template <typename OutputType>
-        Nabla::Function select_geometry(NablaOperator op, unsigned int dimension, bool axisymmetric)
-        {
-            if (dimension == 2)
-                return axisymmetric ? select<OutputType, 2, true>(op) : select<OutputType, 2, false>(op);
-            if (dimension == 3 && !axisymmetric)
-                return select<OutputType, 3, false>(op);
-            fail("operators exist for 2D (planar or axisymmetric) and 3D (planar) elements.");
-        }
     } // namespace
 
-    Nabla::Nabla(NablaOperator op, const Field &field, unsigned int dimension, bool axisymmetric) : field_(&field), op_(op)
+    std::size_t ValueTable::n_dofs() const
     {
-        const std::string name = "'" + std::string(field.name()) + "'";
-        if (!field.fe)
-            fail("field " + name + " has no finite element.");
-
-        const bool vector_output = field.vector_output;
-        switch (op)
+        switch (type)
         {
-        case NablaOperator::Identity:
-            break;
-        case NablaOperator::Grad:
-            if (vector_output && axisymmetric)
-                fail("grad of vector field " + name + " is not supported on axisymmetric elements.");
-            if (vector_output && field.family != libMesh::LAGRANGE_VEC && field.family != libMesh::L2_LAGRANGE_VEC)
-                fail("grad of vector field " + name + " needs a Lagrange vector family.");
-            break;
-        case NablaOperator::Curl:
-            if (vector_output && dimension != 3)
-                fail("curl of vector field " + name + " is only supported on 3D elements.");
-            if (!vector_output && dimension != 2)
-                fail("curl of scalar field " + name + " needs a 2D element.");
-            break;
-        case NablaOperator::Div:
-            if (!vector_output && dimension != 2)
-                fail("div of scalar field " + name + " needs a 2D element.");
-            break;
+        case formulation::ValueType::Scalar:
+            return scalar.empty() ? 0 : scalar.front().size();
+        case formulation::ValueType::Vector:
+            return vector.empty() ? 0 : vector.front().size();
+        case formulation::ValueType::Tensor:
+            return tensor.empty() ? 0 : tensor.front().size();
         }
+        return 0;
+    }
 
-        function_ = vector_output ? select_geometry<libMesh::RealGradient>(op, dimension, axisymmetric)
-                                  : select_geometry<libMesh::Real>(op, dimension, axisymmetric);
-
-        // Ask the FE for the data this operator reads; it computes them on every reinit().
-        if (vector_output)
+    Nabla::Nabla(const formulation::NablaSpec &spec, libMesh::FEAbstract &fe, unsigned int dimension, bool axisymmetric)
+        : spec_(&spec), fe_(&fe), dimension_(dimension), axisymmetric_(axisymmetric)
+    {
+        // The FE computes on reinit() only what was requested before.
+        const bool vector = libMesh::FEInterface::field_type(fe.get_fe_type().family) == libMesh::TYPE_VECTOR;
+        if (vector)
         {
-            auto &vector_fe = static_cast<libMesh::FEVectorBase &>(*field.fe);
+            auto &vector_fe = static_cast<libMesh::FEVectorBase &>(fe);
             vector_fe.get_phi();
-            if (op == NablaOperator::Grad)
-                vector_fe.get_dphi();
-            else if (op == NablaOperator::Curl)
+            if (spec.op == Operator::Curl)
                 vector_fe.get_curl_phi();
-            else if (op == NablaOperator::Div)
+            else if (spec.op == Operator::Div)
                 vector_fe.get_div_phi();
+            else if (spec.op == Operator::Grad)
+            {
+                if (axisymmetric)
+                    fail("grad of a vector field is not defined on axisymmetric elements.");
+                vector_fe.get_dphi();
+            }
         }
         else
         {
-            auto &scalar_fe = static_cast<libMesh::FEBase &>(*field.fe);
+            auto &scalar_fe = static_cast<libMesh::FEBase &>(fe);
             scalar_fe.get_phi();
-            if (op == NablaOperator::Grad || op == NablaOperator::Curl)
+            if (spec.op == Operator::Curl || (spec.op == Operator::Grad && !spec.out_of_plane))
                 scalar_fe.get_dphi();
         }
-        if (axisymmetric)
-            field.fe->get_xyz();
+        fe.get_xyz();
     }
 
-    Nabla::Operand Nabla::evaluate() const
+    void Nabla::evaluate(const std::vector<Real> &length, ValueTable &out) const
     {
-        Operand out = function_(*field_->fe, *field_);
-        out.scalar = scalar_valued();
-        return out;
-    }
-
-    bool Nabla::scalar_valued() const
-    {
-        return op_ == NablaOperator::Div || (op_ == NablaOperator::Identity && !field_->physical_vector);
+        if (libMesh::FEInterface::field_type(fe_->get_fe_type().family) == libMesh::TYPE_VECTOR)
+            evaluate_vector(*spec_, static_cast<libMesh::FEVectorBase &>(*fe_), axisymmetric_, out);
+        else
+            evaluate_scalar(*spec_, static_cast<libMesh::FEBase &>(*fe_), dimension_, axisymmetric_, length, out);
     }
 } // namespace pytec3d

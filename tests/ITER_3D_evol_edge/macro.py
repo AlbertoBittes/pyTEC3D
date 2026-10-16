@@ -42,7 +42,7 @@ pytec3d.model.read_json("model_data.json")
 ModelEdit.remove_array(pytec3d.model.mesh, "CP_0")
 ModelEdit.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
 Selector.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("Az", "V")))
+pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "V")))
 
 # BCs: Outer boundary far field zero boundary conditions + Tree gauge
 Selector.select_all(pytec3d.model.mesh)
@@ -50,7 +50,7 @@ Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type
 Selector.select_pos(
     pytec3d.model.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
 )
-Selector.set_value_on_selection(pytec3d.model.mesh, "_Az", 0.0)
+Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 Selector.select_pos(
     pytec3d.model.mesh, 0, (20 - 0.1, 20 + 0.1), coordinate_system=SphericalCoordinateSystem()
 )

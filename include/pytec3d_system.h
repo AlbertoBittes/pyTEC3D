@@ -69,6 +69,16 @@ public:
     virtual void post_init() = 0;
 
     static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
+
+    /// DOF system vectors of the time scheme (time_step.h): first and second time derivatives of the solution at
+    /// the end of the step, and at its start.
+    static constexpr const char *kVelocity = "solution_time_derivative";
+    static constexpr const char *kAcceleration = "solution_second_time_derivative";
+    static constexpr const char *kOldVelocity = "old_solution_time_derivative";
+    static constexpr const char *kOldAcceleration = "old_solution_second_time_derivative";
+    /// Mean rate of the solution over the step, (u - u_n) / dt: the dt() of the nodal and element fields of
+    /// first-order models (with theta < 1 the scheme velocity oscillates from step to step).
+    static constexpr const char *kMeanVelocity = "solution_mean_time_derivative";
     static const std::string &system_name_from_type(SystemType system_type);
     static SystemType system_type_from_name(const std::string &system_name);
 };
@@ -80,7 +90,8 @@ public:
 
     virtual void init_time_step(const pybind11::dict &time_step_dict) = 0;
     virtual void prepare_time_step_solve(const pybind11::dict &time_step_dict) = 0;
-    virtual void compute_solution_time_derivative() = 0;
+    /** @brief Computes the time derivatives of the solution at the end of the step from the time scheme. */
+    virtual void update_time_derivatives() = 0;
     virtual bool check_update_system_matrix() = 0;
     virtual bool check_update_element_matrices() = 0;
     virtual void write_element_matrices() = 0;
@@ -187,12 +198,15 @@ public:
     {
         global_constraints_object = std::make_shared<GlobalConstraintsObject<ImplicitSys>>(this);
         this->attach_constraint_object(*global_constraints_object);
-        this->add_vector("solution_time_derivative", true, libMesh::GHOSTED);
+        for (const char *name : {pyTEC3DSystemBase::kVelocity, pyTEC3DSystemBase::kAcceleration,
+                                 pyTEC3DSystemBase::kOldVelocity, pyTEC3DSystemBase::kOldAcceleration,
+                                 pyTEC3DSystemBase::kMeanVelocity})
+            this->add_vector(name, true, libMesh::GHOSTED);
     }
 
     void prepare_time_step_solve(const pybind11::dict &time_step_dict) override;
     void init_time_step(const pybind11::dict &time_step_dict) override;
-    void compute_solution_time_derivative() override;
+    void update_time_derivatives() override;
 
     void solve() override
     {

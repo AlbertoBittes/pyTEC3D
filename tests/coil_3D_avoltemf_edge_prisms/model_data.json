@@ -4,22 +4,19 @@
       "element_type": 2,
       "option1": 0,
       "option2": 2,
-      "option3": 0,
-      "option4": 0
+      "option3": 0
     },
     "23": {
       "element_type": 2,
       "option1": 6,
       "option2": 2,
-      "option3": 0,
-      "option4": 0
+      "option3": 0
     },
     "24": {
       "element_type": 2,
       "option1": 4,
       "option2": 2,
-      "option3": 0,
-      "option4": 0
+      "option3": 0
     }
   },
   "materials": {

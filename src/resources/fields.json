@@ -5,8 +5,6 @@
     "EMF": "scalar",
     "B": "vector",
     "H": "vector",
-    "Be": "vector",
-    "He": "vector",
     "Jt": "vector",
     "AMPS": "scalar",
     "CURR": "scalar",

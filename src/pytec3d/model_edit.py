@@ -7,7 +7,7 @@ import pandas as pd
 import vtk
 import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
 
-from .constants import VTK_ARRAYS_TO_INIT
+from . import element_library
 from .logging_utils import get_logger
 from .validation_utils import (
     ensure_pathlike,
@@ -742,18 +742,15 @@ class ModelEdit:
         if mesh.GetNumberOfCells() == 0:
             raise ValueError(f"Loaded mesh '{path}' has zero cells.")
 
-        ModelEdit.store_cell_centroids(mesh)
-        ModelEdit.store_cell_volumes(mesh)
+        ModelEdit.update_grid(mesh, reset=reset_arrays)
 
         if reset_arrays:
             # Avoid circular import at module load time
             from .selector import Selector
             from .tree_gauge import TreeGauge
 
-            ModelEdit.initialize_vtk_arrays(mesh)
             Selector.ensure_selection_arrays(mesh)
             TreeGauge.add_midside_nodes_mask_array(mesh)
-            ModelEdit.reset_vtk_arrays_to_default(mesh)
 
         LOGGER.info("VTK unstructured grid loaded from '%s'.", path)
 
@@ -870,95 +867,64 @@ class ModelEdit:
         if write_status != 1:
             raise IOError(f"Failed to write VTK mesh to '{output_path}'.")
 
-    @staticmethod
-    def initialize_vtk_arrays(
-        mesh: "vtk.vtkUnstructuredGrid",
-        arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> None:
-        """
-        Initializes required VTK arrays in cell/point data as specified in arrays_to_init.
-
-        Args:
-            mesh: The VTK unstructured grid to initialize arrays for.
-            arrays_to_init: Dictionary specifying arrays to initialize; defaults to VTK_ARRAYS_TO_INIT.
-
-        Returns:
-            None
-        """
-        ensure_vtk_unstructured_grid(mesh)
-        if arrays_to_init is None:
-            arrays_to_init = VTK_ARRAYS_TO_INIT
-
-        for name, info in arrays_to_init.items():
-            ModelEdit.add_array(
-                mesh,
-                name=name,
-                location=info["location"],
-                components=info["components"],
-                fill=info.get("fill", 0),
-                dtype=info.get("dtype", vtk.VTK_DOUBLE),
-            )
+    #: Cell arrays every model has, with their default value: the element type, material, real constants and
+    #: coordinate system ids of the cells.
+    MODEL_CELL_ARRAYS = {"TYPE": 1, "MATERIAL": 1, "CONSTANT": 1, "COORDINATE_SYSTEM": 0}
+    #: Point arrays every model has, with their default value: the first DOF coupling ids.
+    MODEL_POINT_ARRAYS = {"CP_0": 0}
 
     @staticmethod
-    def reset_vtk_arrays_to_default(
+    def update_grid(
         mesh: "vtk.vtkUnstructuredGrid",
-        arrays_to_init: Optional[Dict[str, Dict[str, Any]]] = None,
+        element_types: Optional[Sequence[Any]] = None,
+        reset: bool = False,
     ) -> None:
         """
-        Resets arrays specified in arrays_to_init to their default 'fill' values if present.
+        Adds to the grid the arrays a model needs and does not have yet.
+
+        * TYPE, MATERIAL, CONSTANT (default 1) and COORDINATE_SYSTEM (default 0) cell arrays, CP_0 point array
+          (default 0), integers;
+        * cell_centroids and cell_volume, when not computed yet;
+        * the arrays of the element types (element_library.grid_arrays): DOF fields and their Dirichlet arrays
+          (``_F``, NaN), nodal and element fields, nodal and element loads, all 0 otherwise.
 
         Args:
-            mesh: The VTK unstructured grid whose arrays will be reset.
-            arrays_to_init: Dictionary specifying arrays to reset; defaults to VTK_ARRAYS_TO_INIT.
-
-        Returns:
-            None
+            mesh: The VTK unstructured grid to update.
+            element_types: Element types (names or indices) whose arrays are needed; all of the library when None.
+            reset: When True, also set the arrays of the element types back to their default values.
         """
         ensure_vtk_unstructured_grid(mesh)
-        if arrays_to_init is None:
-            arrays_to_init = VTK_ARRAYS_TO_INIT
-
         cell_data = mesh.GetCellData()
         point_data = mesh.GetPointData()
 
-        for name, info in arrays_to_init.items():
-            data_obj = cell_data if info["location"] == "elem" else point_data
-            vtk_array = data_obj.GetArray(name)
-            if vtk_array is not None:
-                expected_components = max(1, info["components"])
-                expected_dtype = info.get("dtype", vtk.VTK_DOUBLE)
-                if (
-                    vtk_array.GetNumberOfComponents() != expected_components
-                    or (
-                        expected_dtype is not None
-                        and vtk_array.GetDataType() != expected_dtype
-                    )
-                ):
-                    ModelEdit.remove_array(
-                        mesh, name, location=info["location"]
-                    )
-                    ModelEdit.add_array(
-                        mesh,
-                        name=name,
-                        location=info["location"],
-                        components=expected_components,
-                        fill=info.get("fill", 0),
-                        dtype=expected_dtype,
-                        replace=True,
-                    )
-                    continue
-            if vtk_array is not None and "fill" in info:
-                num = (
-                    mesh.GetNumberOfCells()
-                    if info["location"] == "elem"
-                    else mesh.GetNumberOfPoints()
+        for name, default in ModelEdit.MODEL_CELL_ARRAYS.items():
+            if cell_data.GetArray(name) is None:
+                ModelEdit.add_array(mesh, name=name, location="elem", components=1, fill=default, dtype=vtk.VTK_INT)
+        for name, default in ModelEdit.MODEL_POINT_ARRAYS.items():
+            if point_data.GetArray(name) is None:
+                ModelEdit.add_array(mesh, name=name, location="node", components=1, fill=default, dtype=vtk.VTK_INT)
+
+        if cell_data.GetArray("cell_centroids") is None:
+            ModelEdit.store_cell_centroids(mesh)
+        if cell_data.GetArray("cell_volume") is None:
+            ModelEdit.store_cell_volumes(mesh)
+
+        for array in element_library.grid_arrays(element_types):
+            data_obj = cell_data if array.location == "elem" else point_data
+            existing = data_obj.GetArray(array.name)
+            wrong_shape = existing is not None and (
+                existing.GetNumberOfComponents() != array.components or existing.GetDataType() != vtk.VTK_DOUBLE
+            )
+            if existing is None or wrong_shape or reset:
+                ModelEdit.add_array(
+                    mesh,
+                    name=array.name,
+                    location=array.location,
+                    components=array.components,
+                    fill=array.fill,
+                    dtype=vtk.VTK_DOUBLE,
+                    replace=existing is not None,
                 )
-                shape = (num, info["components"]) if info["components"] > 1 else num
-                arr = np.full(shape, info["fill"])
-                # Overwrite the VTK array with the default values
-                vtk_np = vtknp.vtk_to_numpy(vtk_array)
-                vtk_np[:] = arr
-                vtk_array.Modified()
 
     @staticmethod
     def remove_array(

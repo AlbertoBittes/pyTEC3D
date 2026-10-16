@@ -48,7 +48,6 @@ pyTEC3DModel::~pyTEC3DModel()
 }
 
 void pyTEC3DModel::load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> &libmesh_init,
-                                    const std::shared_ptr<const pytec3d::ElementTypeParser> &parser,
                                     py::object pytec3dmodel_object,
                                     py::object solver_settings)
 {
@@ -76,7 +75,7 @@ void pyTEC3DModel::load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> 
     pytec3d::logging::info("Adding physical variables to systems");
     equation_system = std::make_shared<pyTEC3DEquationSystems>(*mesh);
     equation_system->set_parent_object(this);
-    equation_system->load_model_data(py::cast<std::string>(pytec3d_object.attr("data_json")()), std::move(solver_settings), parser);
+    equation_system->load_model_data(py::cast<std::string>(pytec3d_object.attr("data_json")()), std::move(solver_settings));
     equation_system->validate_model_data();
     equation_system->configure_systems();
     equation_system->initialize_systems();

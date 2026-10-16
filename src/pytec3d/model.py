@@ -11,6 +11,7 @@ from .coordinate_system import (
     coordinate_system_from_dict,
     coordinate_system_to_dict,
 )
+from . import element_library
 from .logging_utils import get_logger
 from .model_edit import ModelEdit
 
@@ -165,6 +166,28 @@ class pyTEC3D_Model:
         if unknown:
             LOGGER.warning("Model data sections not used by the solver: %s.", unknown)
         self.data = loaded
+        if self._mesh is not None:
+            self.update_grid()
+
+    def element_type_names(self) -> list:
+        """Names of the element types the model data uses (element_types section)."""
+        return [
+            element_library.element_type_name(entry["element_type"])
+            for entry in self._data.get("element_types", {}).values()
+            if isinstance(entry, Mapping) and "element_type" in entry
+        ]
+
+    def update_grid(self, reset: bool = False) -> None:
+        """Add to the mesh the arrays the model needs and does not have (ModelEdit.update_grid).
+
+        The arrays of the element types of the model data, or of every element type of the library while the
+        model data names none.
+
+        Args:
+            reset: When True, also set the arrays of the element types back to their default values.
+        """
+        names = self.element_type_names()
+        ModelEdit.update_grid(self.mesh, element_types=names or None, reset=reset)
 
     def write_json(self, json_file_path: Union[str, PathLike[str]]) -> None:
         """Write the model data to a JSON file.
@@ -349,6 +372,7 @@ class pyTEC3D_Model:
         """
         model = cls(mesh=mesh, mesh_name=mesh_name)
         model._read_model_field_data()
+        model.update_grid()
         return model
 
     def save_model(self, output_file: Union[str, PathLike[str]], binary: bool = True) -> None:

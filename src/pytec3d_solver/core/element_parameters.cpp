@@ -1,6 +1,6 @@
 /**
  * @file element_parameters.cpp
- * @brief ElementParameterValues: evaluation of the parameters and laws on one element.
+ * @brief ElementParameterValues: evaluation of the parameters on one element.
  */
 #include "element_parameters.h"
 
@@ -10,11 +10,12 @@
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 
-#include "bh_curve.h"
 #include "logging.h"
 
 namespace pytec3d
 {
+    using registry::ParameterSource;
+
     namespace
     {
         using libMesh::Real;
@@ -24,84 +25,25 @@ namespace pytec3d
             logging::error_and_abort("ElementParameterValues: " + message);
         }
 
-        // Isotropic H(B) and its Jacobian dH/dB from a BH curve.
-        void evaluate_bh(const BHCurve &curve, const Real B[3], unsigned int dim, Real H[3], Real J[3][3])
-        {
-            Real b_sq = 0.0;
-            for (unsigned int k = 0; k < dim; ++k)
-                b_sq += B[k] * B[k];
-            const Real b_mag = std::sqrt(b_sq);
-            const Real nu = curve.evaluate_reluctivity_from_b(b_mag);
-            const Real dhdb = curve.slope_h_vs_b(b_mag);
-
-            for (unsigned int k = 0; k < 3; ++k)
-            {
-                H[k] = 0.0;
-                for (unsigned int l = 0; l < 3; ++l)
-                    J[k][l] = 0.0;
-            }
-            constexpr Real kZeroB = 1e-14;
-            for (unsigned int k = 0; k < dim; ++k)
-            {
-                H[k] = nu * B[k];
-                J[k][k] += nu;
-                if (b_mag > kZeroB)
-                    for (unsigned int l = 0; l < dim; ++l)
-                        J[k][l] += (dhdb - nu) * B[k] * B[l] / b_sq;
-            }
-        }
         // A vector or tensor given in the axes of the element, in the global axes.
         ParameterValue to_global(const ParameterValue &value, const libMesh::TensorValue<Real> &rotation)
         {
-            ParameterValue out = value;
-            if (value.type == ParameterType::Vector)
-                out.vector = libMesh::VectorValue<Real>(rotation * value.vector);
-            else if (value.type == ParameterType::Tensor)
-                out.tensor = libMesh::TensorValue<Real>(rotation * value.tensor * rotation.transpose());
-            return out;
+            switch (value.type())
+            {
+            case ParameterType::Vector:
+                return ParameterValue(libMesh::RealVectorValue(rotation * value.vector()));
+            case ParameterType::Tensor:
+                return ParameterValue(libMesh::RealTensorValue(rotation * value.tensor() * rotation.transpose()));
+            case ParameterType::Scalar:
+                break;
+            }
+            return value;
         }
     } // namespace
 
     ElementParameterValues::ElementParameterValues(const ElementType &type, const Inputs &inputs)
         : type_(type), inputs_(inputs), values_(registry::kNumParameterId), computed_(registry::kNumParameterId, 0)
     {
-    }
-
-    ParameterValue ElementParameterValues::value(const ParameterRef &reference)
-    {
-        switch (reference.kind)
-        {
-        case ParameterKind::One:
-            return scalar_value(reference.sign);
-        case ParameterKind::Parameter:
-            return scaled(symbol(reference.parameter()), reference.sign);
-        case ParameterKind::Law:
-            return scaled(symbol(type_.law(reference.law()).linear), reference.sign);
-        }
-        fail("unknown parameter kind.");
-    }
-
-    bool ElementParameterValues::nonlinear(const ParameterRef &reference) const
-    {
-        return reference.kind == ParameterKind::Law && inputs_.bh_curve != nullptr;
-    }
-
-    void ElementParameterValues::apply_law(const ParameterRef &reference, const Real B[3], Real H[3], Real J[3][3]) const
-    {
-        switch (registry::kind(reference.law()))
-        {
-        case registry::LawKind::BHCurve:
-            if (!inputs_.bh_curve)
-                fail("law '" + std::string(reference.name()) + "' needs a BH curve on the element material.");
-            evaluate_bh(*inputs_.bh_curve, B, type_.dimension(), H, J);
-            break;
-        }
-        for (unsigned int k = 0; k < 3; ++k)
-        {
-            H[k] *= reference.sign;
-            for (unsigned int l = 0; l < 3; ++l)
-                J[k][l] *= reference.sign;
-        }
     }
 
     const ParameterValue &ElementParameterValues::symbol(registry::ParameterId id)
@@ -127,16 +69,20 @@ namespace pytec3d
         case ParameterSource::Material:
         {
             const ParameterValue *value = inputs_.material ? inputs_.material->find(static_cast<registry::MaterialProperty>(info.property)) : nullptr;
-            if (!value)
-                undefined(info, "material", inputs_.material_id, inputs_.material != nullptr);
-            return to_global(*value, inputs_.rotation);
+            if (value)
+                return to_global(*value, inputs_.rotation);
+            if (const auto fallback = registry::default_value(type_.id(), id))
+                return to_global(*fallback, inputs_.rotation);
+            undefined(info, "material", inputs_.material_id, inputs_.material != nullptr);
         }
         case ParameterSource::Constant:
         {
             const ParameterValue *value = inputs_.constants ? inputs_.constants->find(static_cast<registry::RealConstant>(info.property)) : nullptr;
-            if (!value)
-                undefined(info, "real constants", inputs_.constants_id, inputs_.constants != nullptr);
-            return to_global(*value, inputs_.rotation);
+            if (value)
+                return to_global(*value, inputs_.rotation);
+            if (const auto fallback = registry::default_value(type_.id(), id))
+                return to_global(*fallback, inputs_.rotation);
+            undefined(info, "real constants", inputs_.constants_id, inputs_.constants != nullptr);
         }
         case ParameterSource::Cell:
             return to_global(read_cell(info), inputs_.rotation);
@@ -169,16 +115,15 @@ namespace pytec3d
                  (type == ParameterType::Scalar ? "1." : "3."));
 
         // A missing array reads as zero.
-        ParameterValue out;
-        out.type = type;
+        ParameterValue out = ParameterValue::zero(type);
         if (!array)
             return out;
 
         if (type == ParameterType::Scalar)
-            out.scalar = array->GetComponent(inputs_.element_id, 0);
+            out.scalar() = array->GetComponent(inputs_.element_id, 0);
         else
             for (unsigned int c = 0; c < 3; ++c)
-                out.vector(c) = array->GetComponent(inputs_.element_id, static_cast<int>(c));
+                out.vector()(c) = array->GetComponent(inputs_.element_id, static_cast<int>(c));
         return out;
     }
 } // namespace pytec3d
