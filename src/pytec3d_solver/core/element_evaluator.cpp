@@ -512,17 +512,17 @@ namespace pytec3d
             void average(const ElementType::FieldRange &ids, Vector &values)
             {
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(spec.evaluations[E].field)];
-                const std::vector<Real> &w = mean_weights();
-                const std::vector<ParameterValue> points = point_values<E>();
                 ParameterValue mean = ParameterValue::zero(field.value);
-                for (std::size_t qp = 0; qp < nq_; ++qp)
-                    mean += points[qp].scaled(w[qp]);
+                for (const ParameterValue &point : point_values<E>())
+                    mean += point;
                 for (std::size_t c = 0; c < ids.size(); ++c)
                 {
+                    Real total;
                     if constexpr (field.value == ValueType::Vector)
-                        values(ids[c]) = mean.vector()(field.components[c]);
+                        total = mean.vector()(field.components[c]);
                     else
-                        values(ids[c]) = mean.scalar();
+                        total = mean.scalar();
+                    values(ids[c]) = total / static_cast<Real>(nq_);
                 }
             }
 
@@ -569,14 +569,14 @@ namespace pytec3d
                     return value;
             }
 
-            /** @brief Rows of an element field: the volume mean of each term (mean_weights()), by number of dt() on the trial. */
+            /** @brief Rows of an element field: the quadrature mean of each term, by number of dt() on the trial. */
             template <std::size_t E>
             void average_operator(const ElementType::FieldRange &ids, std::array<Matrix, 3> &F, Vector &f)
             {
                 constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
                 using Out = cpp_t<field.value>;
-                const std::vector<Real> &w = mean_weights();
+                const Real inverse_count = 1.0 / static_cast<Real>(nq_);
                 static_for<evaluation.n_terms>([&](auto i)
                                                {
                     constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
@@ -589,7 +589,7 @@ namespace pytec3d
                         if constexpr (term.trial_field < 0)
                         {
                             for (std::size_t qp = 0; qp < nq_; ++qp)
-                                f(ids[c]) += w[qp] * component_of(k.values[qp].template get<Out>(), component);
+                                f(ids[c]) += inverse_count * component_of(k.values[qp].template get<Out>(), component);
                         }
                         else
                         {
@@ -598,7 +598,7 @@ namespace pytec3d
                             Matrix &target = F[term.trial_dt];
                             for (std::size_t qp = 0; qp < nq_; ++qp)
                                 for (std::size_t j = 0; j < columns.size(); ++j)
-                                    target(ids[c], columns[j]) += w[qp] * component_of(table[qp][j], component);
+                                    target(ids[c], columns[j]) += inverse_count * component_of(table[qp][j], component);
                         }
                     } });
             }
@@ -669,24 +669,6 @@ namespace pytec3d
             }
 
             /**
-             * @brief Weights of the element mean of a field: w_q / sum of w, w the integration weights (JxW, times the
-             * out-of-plane length of 2D elements: the mean over the volume the element stands for).
-             */
-            const std::vector<Real> &mean_weights()
-            {
-                if (mean_weights_.size() != nq_)
-                {
-                    Real volume = 0.0;
-                    for (const Real w : weights_)
-                        volume += w;
-                    mean_weights_.resize(nq_);
-                    for (std::size_t qp = 0; qp < nq_; ++qp)
-                        mean_weights_[qp] = weights_[qp] / volume;
-                }
-                return mean_weights_;
-            }
-
-            /**
              * @brief The mass matrix of kernel @p K, factorized by its first solve (DenseMatrix keeps the factors): one
              * factorization per element for all the fields projected onto the same FE. A copy, since the kernel matrix
              * may also be a block term.
@@ -707,7 +689,6 @@ namespace pytec3d
             std::size_t nq_ = 0;
             std::vector<Real> weights_;
             std::vector<Real> length_;
-            std::vector<Real> mean_weights_;
             std::array<ValueTable, kNablas> tables_{};
             std::array<bool, kNablas> table_done_{};
             std::array<KernelResult, kKernels> kernels_{};

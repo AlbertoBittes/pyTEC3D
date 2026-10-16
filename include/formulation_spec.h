@@ -96,7 +96,7 @@ namespace pytec3d::formulation
         Rhs,          ///< Right-hand side (or residual): terms with a test and no trial.
         Quadrature,   ///< A field at the quadrature points, the input of a law: terms without test.
         L2Projection, ///< A nodal field: M^-1 * terms with the field's shape functions as test.
-        Average,      ///< An element field: mean over the element volume (JxW-weighted) of terms without test.
+        Average,      ///< An element field: mean over the quadrature points of terms without test.
     };
 
     struct FieldSpec

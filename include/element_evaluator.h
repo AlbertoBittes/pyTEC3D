@@ -17,7 +17,7 @@
  *   Rhs terms     Linear (F) -> right-hand side. Law variants: Residual -> residual (+= vector).
  *   Quadrature    a field at each quadrature point: sum of the terms' C * trial(u) (or C alone); a law input.
  *   L2Projection  M^-1 * sum of the terms' kernels (tested with the field) applied to u.
- *   Average       mean of the terms over the element volume (weights JxW L / volume), as Quadrature.
+ *   Average       mean over the quadrature points of the terms, as Quadrature.
  *
  * A nodal or element field is static where none of its terms is a law variant used on the element: it is then a
  * linear operator on the solution, F u + F_dt du/dt + ..., computed once with the element matrices

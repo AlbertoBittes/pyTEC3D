@@ -59,7 +59,7 @@ element_types.json, "element_types": { "<name>": {
   "nodal_kernels":   { "B": [kernel, ...] }   L2 projection onto the field: M^-1 * sum of test^T * coeff * trial(u),
                                               the test being the field's shape functions ("test" may name a nodal
                                               field with the same finite elements).
-  "element_kernels": { "Jt": [kernel, ...] }  mean over the element volume (JxW-weighted) of sum of coeff * trial(u).
+  "element_kernels": { "Jt": [kernel, ...] }  mean over the quadrature points of sum of coeff * trial(u).
       A kernel: {"trial": "grad(dt(V))", "coeff": "-sigma", "test": "A", "domain": [...]}. An operand is a DOF
       field with at most one of grad, curl, div and, for the trial, up to time_order dt(): in nodal and element
       kernels dt() and dt(dt()) mean the first and second time derivatives of the solution instead of the solution. A coefficient is an optional sign
