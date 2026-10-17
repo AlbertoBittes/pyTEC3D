@@ -12,8 +12,7 @@
  * (the midside nodes of the grid): its Dirichlet values are component 2 of _F on those nodes
  * (edge_constraint_component).
  */
-#ifndef VARIABLES_MAP_H
-#define VARIABLES_MAP_H
+#pragma once
 
 #include <functional>
 #include <map>
@@ -25,7 +24,7 @@
 #include <libmesh/enum_order.h>
 #include <libmesh/id_types.h>
 
-#include "pytec3d_system.h"
+#include "pytec3d_system_base.h"
 #include "registries.h"
 
 namespace libMesh
@@ -38,7 +37,7 @@ namespace pytec3d
     class ElementType;
 }
 
-class ElementTypesFactory;
+class ModelElementTypes;
 
 using GlobalVariableName = pytec3d::registry::VariableId;
 
@@ -101,7 +100,7 @@ public:
                                                                         pyTEC3DSystemBase::SystemType system_type);
 
     /** @brief For every variable of @p system_type, the subdomains whose element type contains it. */
-    static VariableToElementIdsMapType associate_variables_with_element_IDs(const ElementTypesFactory &factory,
+    static VariableToElementIdsMapType associate_variables_with_element_IDs(const ModelElementTypes &factory,
                                                                             pyTEC3DSystemBase::SystemType system_type);
 
     /** @brief The nodal vector fields of @p system with their components, by api label (vector and per-component
@@ -111,5 +110,3 @@ public:
     /** @brief Variable label -> point array of its nodal loads, for the variables of @p system that have one. */
     static std::map<std::string, std::string> get_dof_variable_nodal_load_map_for_system(const libMesh::System &system);
 };
-
-#endif // VARIABLES_MAP_H

@@ -29,7 +29,7 @@
         <DataArray type="UInt8" Name="Z_BOUND" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAACtAQAAEAAAAA==eJxjZKQCYBgFdAEAbCQARg==
         </DataArray>
-        <DataArray type="Float64" Name="angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="90">
+        <DataArray type="Float64" Name="node_angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="90">
           AQAAAACAAAA4KAAAZAAAAA==eJzt1LENhAAQA0GqpJ4vjdKIP9kUI2YqWPmkOw4A+KjfeT2d8EdP09P0ND1NT9PT9DQ9TU/T0/S0tZ41a/voaXqanrbWQ1u7lx6ATWv/cK1nzdo+et5lbR89TU8b7LkBVZpKiw==
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">

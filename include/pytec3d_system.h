@@ -1,106 +1,50 @@
 /**
  * @file pytec3d_system.h
  * @brief pyTEC3D solution system hierarchy.
+ *
+ * pyTEC3DSystem<SysLike> adds the pyTEC3DSystemBase interface to a libMesh system. The DOF system
+ * (pyTEC3DDOFSystem, linear or nonlinear) solves the time step; the nodal and element solution systems are explicit
+ * systems holding the fields computed from it. The templates are instantiated explicitly in pytec3d_system.cpp
+ * for the libMesh systems used here.
  */
-#ifndef pyTEC3D_SYSTEM_H
-#define pyTEC3D_SYSTEM_H
+#pragma once
 
-#include <cmath>
-#include <limits>
-#include <map>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
-#include <libmesh/equation_systems.h>
-#include <libmesh/transient_system.h>
-#include <libmesh/linear_implicit_system.h>
-#include <libmesh/nonlinear_implicit_system.h>
-#include <libmesh/implicit_system.h>
 #include <libmesh/explicit_system.h>
-#include <libmesh/system_subset.h>
-#include <libmesh/numeric_vector.h>
-#include <libmesh/sparse_matrix.h>
-#include <libmesh/dof_map.h>
-#include <libmesh/petsc_matrix.h>
-#include <libmesh/newton_solver.h>
-#include <libmesh/nonlinear_solver.h>
-#include <libmesh/wrapped_petsc.h>
+#include <libmesh/linear_implicit_system.h>
 #include <libmesh/linear_solver.h>
+#include <libmesh/nonlinear_implicit_system.h>
+#include <libmesh/sparse_matrix.h>
+#include <libmesh/system_subset.h>
+#include <libmesh/transient_system.h>
+#include <libmesh/wrapped_petsc.h>
 #include <petscksp.h>
-#include <pybind11/pybind11.h>
 
 #include "constraints.h"
+#include "pytec3d_system_base.h"
 #include "solver_configuration.h"
-#include "logging.h"
-#include "pytec3d_solver.h"
 #include "time_step.h"
-
-class ElementTypesFactory;
-class pyTEC3DEquationSystems;
-
-using NodalLoadInjectorElemByVarMap =
-    std::unordered_map<std::string,
-                       std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type>>;
-
-class pyTEC3DSystemBase
-{
-public:
-    enum SystemType
-    {
-        DOF_SOLUTION_SYSTEM = 0,
-        NODAL_SOLUTION,
-        ELEMENT_SOLUTION,
-        NUM_SYSTEMS
-    };
-
-    virtual ~pyTEC3DSystemBase() = default;
-    virtual bool is_nodal() const = 0;
-    virtual void assemble_system() = 0;
-    virtual pyTEC3DEquationSystems &get_pytec3d_equation_systems() = 0;
-    virtual const pyTEC3DEquationSystems &get_pytec3d_equation_systems() const = 0;
-    virtual const TimeStep *current_time_step() const = 0;
-    virtual const TimeStep *previous_time_step() const = 0;
-    virtual void solve() = 0;
-    virtual void init_variables() = 0;
-    virtual void post_init() = 0;
-
-    static const std::map<SystemType, std::string> SYSTEM_INFO_MAP;
-
-    /// DOF system vectors of the time scheme (time_step.h): first and second time derivatives of the solution at
-    /// the end of the step, and at its start.
-    static constexpr const char *kVelocity = "solution_time_derivative";
-    static constexpr const char *kAcceleration = "solution_second_time_derivative";
-    static constexpr const char *kOldVelocity = "old_solution_time_derivative";
-    static constexpr const char *kOldAcceleration = "old_solution_second_time_derivative";
-    /// Mean rate of the solution over the step, (u - u_n) / dt: the dt() of the nodal and element fields of
-    /// first-order models (with theta < 1 the scheme velocity oscillates from step to step).
-    static constexpr const char *kMeanVelocity = "solution_mean_time_derivative";
-    static const std::string &system_name_from_type(SystemType system_type);
-    static SystemType system_type_from_name(const std::string &system_name);
-};
 
 class pyTEC3DDOFSystemBase
 {
 public:
     virtual ~pyTEC3DDOFSystemBase() noexcept = default;
 
-    virtual void init_time_step(const pybind11::dict &time_step_dict) = 0;
-    virtual void prepare_time_step_solve(const pybind11::dict &time_step_dict) = 0;
+    virtual void init_time_step(const TimeStepInput &time_step) = 0;
+    virtual void prepare_time_step_solve(const TimeStepInput &time_step) = 0;
     /** @brief Computes the time derivatives of the solution at the end of the step from the time scheme. */
     virtual void update_time_derivatives() = 0;
     virtual bool check_update_system_matrix() = 0;
     virtual bool check_update_element_matrices() = 0;
+    /** @brief Computes and stores the element matrices of the local elements, once per model. */
     virtual void write_element_matrices() = 0;
     virtual libMesh::LinearSolver<libMesh::Number> *get_linear_solver() const = 0;
     virtual const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() = 0;
 };
-
-#include "variables_map.h"
-#include "pytec3d_equation_systems.h"
 
 template <typename SysLike>
 class pyTEC3DSystem
@@ -108,79 +52,27 @@ class pyTEC3DSystem
       public pyTEC3DSystemBase
 {
 public:
-    static_assert(std::is_base_of<libMesh::System, SysLike>::value,
-                  "SysLike must be System or its subclass");
-
-    pyTEC3DSystemBase::SystemType system_type = pyTEC3DSystemBase::NUM_SYSTEMS;
-    std::string system_name;
-
-    template <typename... Args>
-    pyTEC3DSystem(Args &&...args)
-        : SysLike(std::forward<Args>(args)...)
-    {
-        std::string sys_name = this->name();
-        const auto sys_type = pyTEC3DSystemBase::system_type_from_name(sys_name);
-        system_type = sys_type;
-        system_name = pyTEC3DSystemBase::system_name_from_type(sys_type);
-        this->attach_assemble_function(&pyTEC3DSystem<SysLike>::assemble_dispatch);
-    }
+    pyTEC3DSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number);
 
     void init_variables() override;
+    void solve() override;
+    bool is_nodal() const override;
+    void post_init() override;
+    void assemble_system() override = 0;
 
-    void solve() override
-    {
-        SysLike::solve();
-    }
-
-    inline bool is_nodal() const override
-    {
-        return system_type != pyTEC3DSystemBase::ELEMENT_SOLUTION;
-    }
-
-    virtual void post_init() override {}
-
-    virtual void assemble_system() override = 0;
-
-    pyTEC3DEquationSystems &get_pytec3d_equation_systems() override
-    {
-        return this->typed_equation_systems();
-    }
-
-    const pyTEC3DEquationSystems &get_pytec3d_equation_systems() const override
-    {
-        return this->typed_equation_systems();
-    }
-
-    const TimeStep *current_time_step() const override
-    {
-        return this->typed_equation_systems().current_time_step();
-    }
-
-    const TimeStep *previous_time_step() const override
-    {
-        return this->typed_equation_systems().previous_time_step();
-    }
+    pyTEC3DEquationSystems &get_pytec3d_equation_systems() override;
+    const pyTEC3DEquationSystems &get_pytec3d_equation_systems() const override;
+    const TimeStep *current_time_step() const override;
+    const TimeStep *previous_time_step() const override;
 
 protected:
-    pyTEC3DEquationSystems &typed_equation_systems()
-    {
-        return static_cast<pyTEC3DEquationSystems &>(this->get_equation_systems());
-    }
-
-    const pyTEC3DEquationSystems &typed_equation_systems() const
-    {
-        return static_cast<const pyTEC3DEquationSystems &>(this->get_equation_systems());
-    }
+    pyTEC3DEquationSystems &typed_equation_systems();
+    const pyTEC3DEquationSystems &typed_equation_systems() const;
 
 private:
-    static void assemble_dispatch(libMesh::EquationSystems &es, const std::string &name)
-    {
-        auto &sys = es.get_system(name);
-        auto *pytec3d_sys = dynamic_cast<pyTEC3DSystemBase *>(&sys);
-        if (!pytec3d_sys)
-            pytec3d::logging::error_and_abort("pyTEC3DSystem::assemble_dispatch: system is not an pyTEC3DSystemBase.");
-        pytec3d_sys->assemble_system();
-    }
+    static void assemble_dispatch(libMesh::EquationSystems &es, const std::string &name);
+
+    pyTEC3DSystemBase::SystemType system_type_ = pyTEC3DSystemBase::NUM_SYSTEMS;
 };
 
 template <typename ImplicitSys>
@@ -189,90 +81,48 @@ class pyTEC3DDOFSystem
       public pyTEC3DDOFSystemBase
 {
 public:
-    ~pyTEC3DDOFSystem() noexcept override = default;
+    pyTEC3DDOFSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number);
+    ~pyTEC3DDOFSystem() noexcept override;
 
-    template <typename... Args>
-    pyTEC3DDOFSystem(Args &&...args)
-        : pyTEC3DSystem<libMesh::TransientSystem<ImplicitSys>>(
-              std::forward<Args>(args)...)
-    {
-        global_constraints_object = std::make_shared<GlobalConstraintsObject<ImplicitSys>>(this);
-        this->attach_constraint_object(*global_constraints_object);
-        for (const char *name : {pyTEC3DSystemBase::kVelocity, pyTEC3DSystemBase::kAcceleration,
-                                 pyTEC3DSystemBase::kOldVelocity, pyTEC3DSystemBase::kOldAcceleration,
-                                 pyTEC3DSystemBase::kMeanVelocity})
-            this->add_vector(name, true, libMesh::GHOSTED);
-    }
-
-    void prepare_time_step_solve(const pybind11::dict &time_step_dict) override;
-    void init_time_step(const pybind11::dict &time_step_dict) override;
+    void prepare_time_step_solve(const TimeStepInput &time_step) override;
+    void init_time_step(const TimeStepInput &time_step) override;
     void update_time_derivatives() override;
 
-    void solve() override
-    {
-        libMesh::TransientSystem<ImplicitSys>::solve();
-    }
-
-    void init_variables() override
-    {
-        pyTEC3DSystem<libMesh::TransientSystem<ImplicitSys>>::init_variables();
-    }
-
+    void solve() override;
     void post_init() override;
 
-    virtual bool check_update_system_matrix() override;
+    bool check_update_system_matrix() override;
     bool check_update_element_matrices() override;
     void write_element_matrices() override;
 
-    std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> get_global_constraints_object() const
-    {
-        return global_constraints_object;
-    }
-
-    libMesh::LinearSolver<libMesh::Number> *get_linear_solver() const override
-    {
-        if (!this->linear_solver)
-            return nullptr;
-        return this->linear_solver.get();
-    }
+    GlobalConstraintsObject<ImplicitSys> *get_global_constraints_object() const;
+    libMesh::LinearSolver<libMesh::Number> *get_linear_solver() const override;
 
     virtual void delete_rows_cols_constrained_dofs() = 0;
 
     const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() override;
 
 protected:
-    std::shared_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object;
-    std::unique_ptr<libMesh::SolverConfiguration> solver_config_copy_;
-    std::shared_ptr<libMesh::SystemSubset> subset_solve_holder_;
-    std::shared_ptr<NodalLoadInjectorElemByVarMap> nodal_load_injector_map_;
+    std::unique_ptr<GlobalConstraintsObject<ImplicitSys>> global_constraints_object_;
+    std::unique_ptr<libMesh::SolverConfiguration> solver_config_;
+    std::unique_ptr<libMesh::SystemSubset> subset_solve_holder_;
+    std::unique_ptr<NodalLoadInjectorElemByVarMap> nodal_load_injector_map_;
+    bool element_matrices_written_ = false; ///< The element matrices of this model are in the emat files.
 };
 
 class pyTEC3DLinearSystem : public pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>
 {
 public:
-    ~pyTEC3DLinearSystem() noexcept override = default;
+    pyTEC3DLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number);
+    ~pyTEC3DLinearSystem() noexcept override;
 
-    template <typename... Args>
-    pyTEC3DLinearSystem(Args &&...args)
-        : pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>(std::forward<Args>(args)...)
-    {
-    }
-
-    void add_matrices() override
-    {
-        libMesh::ImplicitSystem::add_matrices();
-        this->get_system_matrix().use_hash_table(true);
-    }
-
+    void add_matrices() override;
     void assemble_system() override;
-
     void solve() override;
-
     void post_init() override;
+    void delete_rows_cols_constrained_dofs() override;
 
     void release_subset_solve();
-
-    void delete_rows_cols_constrained_dofs() override;
 
 private:
     void clear_reduced_solve_cache();
@@ -294,112 +144,48 @@ private:
 class pyTEC3DNonLinearSystem : public pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>
 {
 public:
-    ~pyTEC3DNonLinearSystem() noexcept override = default;
+    pyTEC3DNonLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number);
+    ~pyTEC3DNonLinearSystem() noexcept override;
 
-    template <typename... Args>
-    pyTEC3DNonLinearSystem(Args &&...args)
-        : pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>(std::forward<Args>(args)...)
-    {
-        diff_solver = std::make_unique<libMesh::NewtonSolver>(*this);
-        diff_solver->verbose = true;
-        auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(diff_solver.get());
-        if (!newton_solver)
-            pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem ctor: failed to create Newton solver.");
-        newton_solver->require_residual_reduction = true;
-        auto nonlinear_solver = this->nonlinear_solver.get();
-        nonlinear_solver->matvec = &pyTEC3DNonLinearSystem::matvec_callback;
-        nonlinear_solver->residual = &pyTEC3DNonLinearSystem::residual_callback;
-    }
-
-    void add_matrices() override
-    {
-        libMesh::ImplicitSystem::add_matrices();
-        this->get_system_matrix().use_hash_table(true);
-        this->add_matrix("linear_stiffness");
-        this->get_matrix("linear_stiffness").use_hash_table(true);
-    }
-
-    static void matvec_callback(const libMesh::NumericVector<libMesh::Number> &X,
-                                libMesh::NumericVector<libMesh::Number> *R,
-                                libMesh::SparseMatrix<libMesh::Number> *J,
-                                libMesh::NonlinearImplicitSystem &S)
-    {
-        (void)X;
-        auto *sys = dynamic_cast<pyTEC3DNonLinearSystem *>(&S);
-        if (!sys)
-            pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::matvec_callback: system is not pyTEC3DNonLinearSystem.");
-        if (R && J)
-        {
-            sys->assemble_system();
-            sys->residual_ready_from_matvec_ = true;
-        }
-        else if (J)
-        {
-            sys->assemble_jacobian_only();
-            sys->residual_ready_from_matvec_ = false;
-        }
-        else if (R)
-        {
-            sys->assemble_residual_only();
-            sys->residual_ready_from_matvec_ = false;
-        }
-    }
-
-    static void residual_callback(const libMesh::NumericVector<libMesh::Number> &X,
-                                  libMesh::NumericVector<libMesh::Number> &R,
-                                  libMesh::NonlinearImplicitSystem &S)
-    {
-        (void)X;
-        (void)R;
-        auto *sys = dynamic_cast<pyTEC3DNonLinearSystem *>(&S);
-        if (!sys)
-            pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::residual_callback: system is not pyTEC3DNonLinearSystem.");
-        if (sys->residual_ready_from_matvec_)
-        {
-            sys->residual_ready_from_matvec_ = false;
-            return;
-        }
-        sys->assemble_residual_only();
-    }
-
+    void add_matrices() override;
     void assemble_system() override;
     void assemble_jacobian_only();
     void assemble_residual_only();
 
     bool check_update_system_matrix() override;
-
     void solve() override;
-
     void post_init() override;
-
     void delete_rows_cols_constrained_dofs() override;
 
-protected:
+private:
+    /** @brief Newton callbacks of libMesh: assemble the Jacobian and / or the residual at the current solution. */
+    static void matvec_callback(const libMesh::NumericVector<libMesh::Number> &X,
+                                libMesh::NumericVector<libMesh::Number> *R,
+                                libMesh::SparseMatrix<libMesh::Number> *J,
+                                libMesh::NonlinearImplicitSystem &S);
+    static void residual_callback(const libMesh::NumericVector<libMesh::Number> &X,
+                                  libMesh::NumericVector<libMesh::Number> &R,
+                                  libMesh::NonlinearImplicitSystem &S);
+
     void assemble_system_impl(bool assemble_jacobian, bool assemble_residual);
+    /** @brief Adds the current iterate, of residual norm @p residual, to the Newton history of the step report. */
+    void record_newton_iterate(libMesh::Real residual);
+
     bool residual_ready_from_matvec_ = false;
-    std::unique_ptr<libMesh::SolverConfiguration> nonlinear_solver_config_copy_;
+    std::unique_ptr<libMesh::NumericVector<libMesh::Number>> previous_iterate_; ///< Of the Newton history.
+    libMesh::Real full_newton_step_ = -1.0; ///< Norm of the last full Newton step, set by the solver's monitor.
 };
 
 class pyTEC3DExplicitSystem : public pyTEC3DSystem<libMesh::ExplicitSystem>
 {
 public:
-    template <typename... Args>
-    pyTEC3DExplicitSystem(Args &&...args)
-        : pyTEC3DSystem<libMesh::ExplicitSystem>(
-              std::forward<Args>(args)...)
-    {
-        this->remove_vector("RHS");
-    }
+    pyTEC3DExplicitSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number);
 };
 
 class pyTEC3DNodalSolutionSystem : public pyTEC3DExplicitSystem
 {
 public:
-    template <typename... Args>
-    pyTEC3DNodalSolutionSystem(Args &&...args)
-        : pyTEC3DExplicitSystem(std::forward<Args>(args)...)
-    {
-    }
+    using pyTEC3DExplicitSystem::pyTEC3DExplicitSystem;
 
     void assemble_system() override;
 };
@@ -407,13 +193,7 @@ public:
 class pyTEC3DElementSolutionSystem : public pyTEC3DExplicitSystem
 {
 public:
-    template <typename... Args>
-    pyTEC3DElementSolutionSystem(Args &&...args)
-        : pyTEC3DExplicitSystem(std::forward<Args>(args)...)
-    {
-    }
+    using pyTEC3DExplicitSystem::pyTEC3DExplicitSystem;
 
     void assemble_system() override;
 };
-
-#endif // pyTEC3D_SYSTEM_H

@@ -1,48 +1,51 @@
+"""The pyTEC3D model: a mesh and its model data."""
+
+from __future__ import annotations
+
 import json
 import os
-from os import PathLike
-from typing import Any, Dict, Mapping, Optional, Sequence, Union
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import numpy as np
-import vtk
+from vtkmodules.util import numpy_support as vtknp
+from vtkmodules.vtkCommonCore import vtkStringArray
+from vtkmodules.vtkCommonDataModel import vtkFieldData, vtkPointLocator, vtkUnstructuredGrid
 
-from .coordinate_system import (
-    CoordinateSystem,
-    coordinate_system_from_dict,
-    coordinate_system_to_dict,
-)
-from . import element_library
-from .logging_utils import get_logger
-from .model_edit import ModelEdit
+from . import element_library, model_edit, selection, tree_gauge
+from . import mesh as meshes
+from ._logging import get_logger
+from ._typing import PathType
+from .coordinate_system import CoordinateSystem, coordinate_system_from_dict, coordinate_system_to_dict
+from .errors import ModelLockedError, SolverStateError
 
+LOGGER = get_logger("pytec3d.model")
 
-LOGGER = get_logger("pytec3d.pyTEC3D_Model")
-
+#: Prefix of the field-data arrays written by the model.
 FIELD_PREFIX = "pyTEC3D_"
-
-#: Name of the VTK field-data array holding the model data as JSON text.
+#: Field-data array holding the model data as JSON text.
 DATA_ARRAY_NAME = f"{FIELD_PREFIX}MODEL_DATA"
+#: Field-data array holding the model name.
+NAME_ARRAY_NAME = f"{FIELD_PREFIX}META_MESH_NAME"
 
-#: Sections of the model data. Every one is an object keyed by id (or a name for the coupling ids).
-DATA_SECTIONS = (
-    "element_types",
-    "materials",
-    "constants",
-    "dof_couplings",
-    "bh_curves",
-    "coordinate_systems",
-)
+#: Sections of the model data, each an object keyed by id.
+DATA_SECTIONS = ("element_types", "materials", "constants", "dof_couplings", "nonlinear_laws", "coordinate_systems")
 
 
-def empty_model_data() -> Dict[str, Any]:
-    """Return model data with every section empty."""
+def empty_model_data() -> dict[str, Any]:
+    """Model data with every section empty."""
     return {section: {} for section in DATA_SECTIONS}
 
 
 def _to_jsonable(value: Any, path: str = "data") -> Any:
-    """Convert dicts, sequences and NumPy values to plain JSON types; dict keys become strings."""
+    """Plain JSON types of dicts, sequences and NumPy values; keys become strings.
+
+    Raises:
+        ValueError: If two keys become the same string (``1`` and ``"1"``).
+        TypeError: If a value is not a number, string, None, sequence or mapping.
+    """
     if isinstance(value, Mapping):
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for key, item in value.items():
             text = str(key)
             if text in out:
@@ -57,335 +60,497 @@ def _to_jsonable(value: Any, path: str = "data") -> Any:
         return [_to_jsonable(item, path) for item in value]
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
-    raise TypeError(f"{path}: {type(value).__name__} cannot be stored in the model data; use numbers, strings, lists and dicts.")
+    raise TypeError(f"{path}: a {type(value).__name__} cannot be stored in the model data; use numbers, strings, "
+                    "lists and dicts.")
 
 
-class pyTEC3D_Model:
-    """pyTEC3D model: the mesh and the model data.
+class Model:
+    """A pyTEC3D model: the mesh (a VTK unstructured grid) and the model data.
 
-    The model data is a JSON-like dict, ``model.data``, with these sections (see ``DATA_SECTIONS``):
+    The model data, :attr:`data`, is a JSON-like dict with these sections (:data:`DATA_SECTIONS`):
 
-    - ``element_types``: ``{"<TYPE id>": {"element_type": 0, "option1": 6, "option2": 1, "option3": 0}}``
-    - ``materials``: ``{"<MATERIAL id>": {"mur": [[1,0,0],[0,1,0],[0,0,1]], "rho": [[...]], "M": [0, 0, 0]}}``
-    - ``constants``: ``{"<CONSTANT id>": {"thickness": 1.0, "T": [0, 0, 1], ...}}``
-    - ``dof_couplings``: ``{"<CP id>": ["A", "VOLT"]}``
-    - ``bh_curves``: ``{"<MATERIAL id>": {"H": [0.0, ...], "B": [0.0, ...]}}``
-    - ``coordinate_systems``: ``{"<COORDINATE_SYSTEM id>": {"type": "cylindrical", "origin": [...], "matrix": [[...]]}}``
+    * ``element_types``: ``{"<TYPE id>": {"element_type": 0, "option1": 6, "option2": 1, "option3": 0}}``;
+    * ``materials``: ``{"<MATERIAL id>": {"mur": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "rho": [[...]], "M": [0, 0, 0]}}``;
+    * ``constants``: ``{"<CONSTANT id>": {"thickness": 1.0, "T": [0, 0, 1], ...}}``;
+    * ``dof_couplings``: ``{"<CP id>": ["A", "VOLT"]}``;
+    * ``nonlinear_laws``: ``{"<id>": {"type": "bh_curve", "B": [0.0, ...], "H": [0.0, ...]}}`` (or a list of such
+      entries): the laws of ``nonlinear_laws.json`` selected on the cells of the id, a MATERIAL, CONSTANT or TYPE id
+      as the source of the law says, with the data of the law (here its curve);
+    * ``coordinate_systems``: ``{"<COORDINATE_SYSTEM id>": {"type": "cylindrical", "origin": [...], "matrix": [...]}}``.
 
-    The names inside a material or constants entry are the ``mat.`` and ``rc.`` parameters of
-    ``element_types.json``; a property no kernel of the element's domain needs can be left out.
-    The data is stored in the mesh (VTK field data) as JSON text when the model is saved, and
-    handed to the solver as JSON text when it is loaded.
+    The names in a materials or constants row are the ``mat.`` and ``rc.`` parameters of ``element_types.json``; a
+    property no kernel of the element's domain needs can be left out. The cells select their rows through the cell
+    arrays TYPE, MATERIAL, CONSTANT and COORDINATE_SYSTEM.
+
+    The model data is stored in the mesh (VTK field data, as JSON text) when the model is saved, and handed to the
+    solver as JSON text when it is loaded.
+
+    While the model is loaded into a solver session it is :attr:`locked`: the mesh and the model data cannot change,
+    only the values of the mesh arrays (loads, boundary conditions). Close the session
+    (:meth:`pytec3d.Solver.close_session`) to change them, then load the model again.
     """
 
-    def __init__(
-        self,
-        mesh: Optional[vtk.vtkUnstructuredGrid] = None,
-        mesh_name: Optional[str] = None,
-    ) -> None:
-        """Create a model, optionally around an existing mesh.
+    def __init__(self, mesh: vtkUnstructuredGrid | None = None, mesh_name: str | None = None) -> None:
+        """Create a model, empty or around a mesh (whose arrays are not touched; see :meth:`from_grid`).
 
         Args:
-            mesh: Optional unstructured grid.
-            mesh_name: Optional logical name of the model, used in output file names.
+            mesh: The mesh.
+            mesh_name: Name of the model, used in output file names; ``"model"`` by default.
 
         Raises:
-            TypeError: If mesh or mesh_name has the wrong type.
+            TypeError: If ``mesh`` is not a ``vtkUnstructuredGrid`` or ``mesh_name`` not a str.
         """
-        if mesh is not None and not isinstance(mesh, vtk.vtkUnstructuredGrid):
-            raise TypeError("mesh must be a vtk.vtkUnstructuredGrid or None.")
         if mesh_name is not None and not isinstance(mesh_name, str):
-            raise TypeError("mesh_name must be a str or None.")
-
-        self._mesh: Optional[vtk.vtkUnstructuredGrid] = None
-        self._mesh_name: Optional[str] = mesh_name if mesh_name is not None else "model"
-        self._data: Dict[str, Any] = empty_model_data()
+            raise TypeError(f"mesh_name must be a str, got {type(mesh_name).__name__}.")
+        self._mesh: vtkUnstructuredGrid | None = None
+        self.mesh_name: str = mesh_name or "model"
+        LOGGER.debug("Model '%s' created.", self.mesh_name)
+        self._data: dict[str, Any] = empty_model_data()
+        #: Absolute path of the JSON file the model data was read from (:meth:`read_json`); None once it is replaced.
+        self.data_file: str | None = None
+        self._locked = False
         if mesh is not None:
             self.mesh = mesh
 
-    @property
-    def mesh(self) -> vtk.vtkUnstructuredGrid:
-        """The mesh of the model.
+    def __repr__(self) -> str:
+        size = (
+            f"{self._mesh.GetNumberOfPoints()} points, {self._mesh.GetNumberOfCells()} cells"
+            if self._mesh is not None else "no mesh"
+        )
+        return f"Model({self.mesh_name!r}, {size}{', locked' if self._locked else ''})"
+
+    # ------------------------------------------------------------------------------------------- creation
+
+    @classmethod
+    def from_grid(cls, mesh: vtkUnstructuredGrid, mesh_name: str | None = None) -> Model:
+        """Create a model around a mesh, with the model data and the name stored in it, if any.
+
+        The arrays the model needs are added to the mesh (:meth:`update_grid`).
+
+        Args:
+            mesh: The mesh (kept, not copied).
+            mesh_name: Name of the model; the one stored in the mesh, or ``"model"``, when None.
+        """
+        model = cls(mesh=mesh)
+        model._read_field_data()
+        if mesh_name is not None:
+            model.mesh_name = mesh_name
+        model.update_grid()
+        return model
+
+    @classmethod
+    def read_model(cls, path: PathType, reset_arrays: bool = False) -> Model:
+        """Read a model from a ``.vtu`` / ``.pvtu`` file: the mesh and the model data stored in it.
+
+        The model is named after the file.
+
+        Args:
+            path: File to read.
+            reset_arrays: Set the arrays of the element types back to their default values, clear the selection and
+                compute the midside-node mask.
 
         Raises:
-            RuntimeError: If no mesh is loaded.
+            FileNotFoundError: If the file does not exist.
+            ValueError: If the file is not a valid mesh.
+        """
+        file_path = os.path.abspath(os.fspath(path))
+        mesh = meshes.read_mesh(file_path, reset_arrays=reset_arrays)
+        if reset_arrays:
+            selection.ensure_selection_arrays(mesh)
+            tree_gauge.add_midside_nodes_mask(mesh)
+        return cls.from_grid(mesh, mesh_name=os.path.splitext(os.path.basename(file_path))[0])
+
+    def save_model(self, path: PathType, binary: bool = True) -> None:
+        """Write the mesh, with the name and the model data in its field data, to a ``.vtu`` file.
+
+        Raises:
+            SolverStateError: If the model has no mesh.
+            ValueError, TypeError: If the model data cannot be written as JSON (see :meth:`data_json`).
+            OSError: If the file cannot be written.
+        """
+        mesh = self.mesh
+        field_data = mesh.GetFieldData()
+        self._remove_field_arrays(field_data)
+        self._add_string(field_data, NAME_ARRAY_NAME, self.mesh_name)
+        self._add_string(field_data, DATA_ARRAY_NAME, self.data_json())
+        meshes.save_mesh(mesh, path, binary=binary)
+
+    # ------------------------------------------------------------------------------------------- lock
+
+    @property
+    def locked(self) -> bool:
+        """True while the model is loaded into a solver session."""
+        return self._locked
+
+    def lock(self) -> None:
+        """Fix the mesh and the model data; called by the solver when it loads the model."""
+        self._locked = True
+
+    def unlock(self) -> None:
+        """Allow changes to the mesh and the model data again; called by the solver when it closes the session."""
+        self._locked = False
+
+    def _require_unlocked(self, what: str) -> None:
+        if self._locked:
+            raise ModelLockedError(
+                f"Cannot change {what} while the model is loaded into a solver session: only array values can "
+                "change. Close the session (Solver.close_session()) and load the model again."
+            )
+
+    # ------------------------------------------------------------------------------------------- mesh
+
+    @property
+    def has_mesh(self) -> bool:
+        """True when the model has a mesh."""
+        return self._mesh is not None
+
+    @property
+    def mesh(self) -> vtkUnstructuredGrid:
+        """The mesh.
+
+        Raises:
+            SolverStateError: When reading it before a mesh is set.
+            TypeError: When setting something else than a ``vtkUnstructuredGrid``.
+            ModelLockedError: When setting it while the model is locked.
         """
         if self._mesh is None:
-            raise RuntimeError("No mesh is loaded.")
+            raise SolverStateError("The model has no mesh: read one first (Solver.read_model).")
         return self._mesh
 
     @mesh.setter
-    def mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
-        if not isinstance(value, vtk.vtkUnstructuredGrid):
-            raise TypeError("mesh must be a vtk.vtkUnstructuredGrid.")
+    def mesh(self, value: vtkUnstructuredGrid) -> None:
+        meshes.check_grid(value)
+        self._require_unlocked("the mesh")
         self._mesh = value
 
+    def update_grid(self, reset: bool = False) -> None:
+        """Add to the mesh the arrays the model needs (:func:`pytec3d.mesh.update_grid`).
+
+        Those of the element types of the model data, or of every element type of the library while it names none.
+
+        Args:
+            reset: Also set the arrays of the element types back to their default values.
+        """
+        meshes.update_grid(self.mesh, self.element_type_names() or None, reset=reset)
+
+    # ------------------------------------------------------------------------------------------- data
+
     @property
-    def data(self) -> Dict[str, Any]:
-        """The model data dict; edit it in place or assign a new one."""
+    def data(self) -> dict[str, Any]:
+        """The model data: edit it in place, or assign a new dict (missing sections are added, empty).
+
+        The solver copies it when the model is loaded; later edits only take effect at the next load.
+
+        Raises:
+            ModelLockedError: When assigning it while the model is locked.
+            TypeError: When assigning something else than a dict of dicts.
+        """
         return self._data
 
     @data.setter
     def data(self, value: Mapping[str, Any]) -> None:
+        self._require_unlocked("the model data")
         if not isinstance(value, Mapping):
-            raise TypeError("data must be a dict.")
+            raise TypeError(f"data must be a dict, got {type(value).__name__}.")
         data = empty_model_data()
         data.update(value)
         for section in DATA_SECTIONS:
             if not isinstance(data[section], Mapping):
-                raise TypeError(f"data['{section}'] must be a dict.")
+                raise TypeError(f"data['{section}'] must be a dict, got {type(data[section]).__name__}.")
         self._data = data
-
-    # ------------------------------------------------------------------ JSON
+        self.data_file = None
 
     def data_json(self) -> str:
-        """Return the model data as compact JSON text (what the solver and the VTK field data get).
+        """The model data as compact JSON text: what the solver and the saved mesh receive.
 
         Raises:
-            ValueError: If a value is not finite or a key is repeated.
+            ValueError: If a value is not finite, or a key is given twice (as 1 and "1").
             TypeError: If a value is not a number, string, list or dict.
         """
         return json.dumps(_to_jsonable(self._data), separators=(",", ":"), allow_nan=False)
 
-    def read_json(self, json_file_path: Union[str, PathLike[str]]) -> None:
-        """Replace the model data with the content of a JSON file.
-
-        Args:
-            json_file_path: Path of the model data JSON.
+    def read_json(self, path: PathType) -> None:
+        """Replace the model data by the content of a JSON file, and add the arrays its element types need.
 
         Raises:
-            ValueError: If the file does not contain a JSON object.
+            ModelLockedError: If the model is locked.
+            ValueError: If the file does not hold a JSON object.
+            OSError: If the file cannot be read.
         """
-        path = os.fspath(json_file_path)
-        LOGGER.info("Reading model data from '%s'.", path)
-        with open(path, encoding="utf-8") as handle:
+        self._require_unlocked("the model data")
+        file_path = os.fspath(path)
+        LOGGER.info("Reading the model data from '%s'.", file_path)
+        with open(file_path, encoding="utf-8") as handle:
             loaded = json.load(handle)
         if not isinstance(loaded, dict):
-            raise ValueError(f"'{path}' must contain a JSON object.")
+            raise ValueError(f"'{file_path}' must hold a JSON object, got {type(loaded).__name__}.")
         unknown = sorted(set(loaded) - set(DATA_SECTIONS))
         if unknown:
             LOGGER.warning("Model data sections not used by the solver: %s.", unknown)
         self.data = loaded
+        self.data_file = os.path.abspath(file_path)
+        laws = sum(len(v) if isinstance(v, list) else 1 for v in self._data["nonlinear_laws"].values())
+        LOGGER.info(
+            "Model data: element types %s; %d material(s), %d constants row(s), %d DOF coupling(s), %d nonlinear "
+            "law(s), %d coordinate system(s).",
+            sorted(set(self.element_type_names())) or "none", len(self._data["materials"]),
+            len(self._data["constants"]), len(self._data["dof_couplings"]), laws,
+            len(self._data["coordinate_systems"]),
+        )
         if self._mesh is not None:
             self.update_grid()
 
-    def element_type_names(self) -> list:
-        """Names of the element types the model data uses (element_types section)."""
+    def write_json(self, path: PathType) -> None:
+        """Write the model data to a JSON file (indented).
+
+        Raises:
+            ValueError, TypeError: As :meth:`data_json`.
+        """
+        file_path = os.fspath(path)
+        with open(file_path, "w", encoding="utf-8") as handle:
+            json.dump(_to_jsonable(self._data), handle, indent=2, allow_nan=False)
+        LOGGER.info("Model data written to '%s'.", file_path)
+
+    def element_type_names(self) -> list[str]:
+        """Names of the element types of the ``element_types`` rows."""
         return [
-            element_library.element_type_name(entry["element_type"])
-            for entry in self._data.get("element_types", {}).values()
-            if isinstance(entry, Mapping) and "element_type" in entry
+            element_library.element_type_name(row["element_type"])
+            for row in self._data.get("element_types", {}).values()
+            if isinstance(row, Mapping) and "element_type" in row
         ]
 
-    def update_grid(self, reset: bool = False) -> None:
-        """Add to the mesh the arrays the model needs and does not have (ModelEdit.update_grid).
-
-        The arrays of the element types of the model data, or of every element type of the library while the
-        model data names none.
-
-        Args:
-            reset: When True, also set the arrays of the element types back to their default values.
-        """
-        names = self.element_type_names()
-        ModelEdit.update_grid(self.mesh, element_types=names or None, reset=reset)
-
-    def write_json(self, json_file_path: Union[str, PathLike[str]]) -> None:
-        """Write the model data to a JSON file.
-
-        Args:
-            json_file_path: Path of the file to write.
-        """
-        path = os.fspath(json_file_path)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(_to_jsonable(self._data), handle, indent=2, allow_nan=False)
-        LOGGER.info("Model data written to '%s'.", path)
-
-    # ------------------------------------------------- access to the sections
-
-    def _entry(self, section: str, entry_id: int) -> Any:
-        """Return ``data[section]`` for an id given as int or str, or None when absent."""
-        entries = self._data[section]
-        for key in (entry_id, str(entry_id)):
-            if key in entries:
-                return entries[key]
+    def _row(self, section: str, row_id: int) -> Any:
+        """``data[section]`` row ``row_id`` (keyed as int or str), or None."""
+        rows = self._data[section]
+        for key in (row_id, str(row_id)):
+            if key in rows:
+                return rows[key]
         return None
 
+    def real_constant(self, constants_id: int, name: str, default: Any = None) -> Any:
+        """The real constant ``name`` of the constants row ``constants_id``, or ``default`` when undefined."""
+        row = self._row("constants", int(constants_id))
+        return default if row is None else row.get(name, default)
+
     def coordinate_system(self, cs_id: int) -> CoordinateSystem:
-        """Build the coordinate system ``cs_id`` from its attributes in ``data['coordinate_systems']``.
+        """The coordinate system ``cs_id`` of ``data["coordinate_systems"]``, as an object.
 
-        Args:
-            cs_id: COORDINATE_SYSTEM id used by the mesh.
-
-        Returns:
-            CoordinateSystem: A new object for the stored attributes.
+        Called by the C++ solver for the elements of a COORDINATE_SYSTEM.
 
         Raises:
             KeyError: If the model data does not define it.
             ValueError: If its attributes are invalid.
         """
-        spec = self._entry("coordinate_systems", int(cs_id))
+        spec = self._row("coordinate_systems", int(cs_id))
         if spec is None:
-            raise KeyError(f"data['coordinate_systems'] has no entry for id {int(cs_id)}.")
+            raise KeyError(f"data['coordinate_systems'] has no entry for the id {int(cs_id)}.")
         try:
             return coordinate_system_from_dict(spec)
         except ValueError as exc:
             raise ValueError(f"coordinate_systems[{int(cs_id)}]: {exc}") from exc
 
     def set_coordinate_system(self, cs_id: int, coordinate_system: CoordinateSystem) -> None:
-        """Store the attributes (type, origin, matrix) of a coordinate system object under ``cs_id``.
+        """Store a coordinate system as ``data["coordinate_systems"][cs_id]`` (type, origin, matrix).
 
-        Args:
-            cs_id: COORDINATE_SYSTEM id used by the mesh (> 0).
-            coordinate_system: Object to describe in the model data.
+        Raises:
+            ModelLockedError: If the model is locked.
+            ValueError: If ``cs_id`` is not > 0 (0 is the global system).
         """
+        self._require_unlocked("the model data")
         if int(cs_id) <= 0:
-            raise ValueError("cs_id must be > 0.")
+            raise ValueError(f"cs_id must be > 0 (0 is the global system), got {cs_id}.")
         self._data["coordinate_systems"][str(int(cs_id))] = coordinate_system_to_dict(coordinate_system)
+        LOGGER.debug("Coordinate system %d: %r.", int(cs_id), coordinate_system)
 
-    def add_dof_couplings(self, couplings: Mapping[int, Sequence[str]]) -> None:
-        """Add coupled variables to the CP ids, keeping those already defined.
+    def add_dof_couplings(self, couplings: Mapping[int, Sequence[str]] | None) -> None:
+        """Add coupled DOF fields to CP ids, keeping those already there.
 
         Args:
-            couplings: ``{cp_id: [variable, ...]}``, as returned by ``ModelEdit.periodic_boundaries``.
+            couplings: ``{cp_id: [field, ...]}``.
+
+        Raises:
+            ModelLockedError: If the model is locked.
         """
-        for cp_id, variables in couplings.items():
-            existing = self._entry("dof_couplings", int(cp_id))
+        self._require_unlocked("the model data")
+        for cp_id, fields in (couplings or {}).items():
+            existing = self._row("dof_couplings", int(cp_id))
             merged = list(existing) if existing is not None else []
-            merged.extend(str(v) for v in variables if str(v) not in merged)
+            merged.extend(str(f) for f in fields if str(f) not in merged)
             self._data["dof_couplings"].pop(int(cp_id), None)
             self._data["dof_couplings"][str(int(cp_id))] = merged
 
-    def set_bh_curve(self, material_id: int, table: Any) -> None:
-        """Store a BH curve given as rows of ``[H, B]`` under the material id.
+    def periodic_boundaries(
+        self,
+        coordinate_system: CoordinateSystem,
+        variables: Sequence[str] | str,
+        dx: float = 0.0,
+        dy: float = 0.0,
+        dz: float = 0.0,
+        array_name: str = "CP_0",
+        tolerance: float = 1e-6,
+    ) -> dict[int, list[str]]:
+        """Couple the selected points with their periodic images.
+
+        Each selected point is moved by ``(dx, dy, dz)`` in the local coordinates of ``coordinate_system`` (e.g.
+        ``dy=30`` turns by 30 degrees in a cylindrical system) and matched with the nearest mesh point. Both points of a
+        pair get the same new CP id in ``array_name``, after the ids already used by any CP_k array, and the new ids
+        couple ``variables`` in ``data["dof_couplings"]``. Points that already have an id in ``array_name``, or whose
+        image is farther than ``tolerance``, are skipped.
 
         Args:
-            material_id: MATERIAL id used by the mesh (> 0).
-            table: Array-like of shape (N, 2) with columns H and B.
+            coordinate_system: System of the shift.
+            variables: The DOF fields the pairs share, e.g. ``("A", "VOLT")``.
+            dx: Shift of the first local coordinate.
+            dy: Shift of the second local coordinate (degrees for an angle).
+            dz: Shift of the third local coordinate.
+            array_name: CP point array that receives the ids.
+            tolerance: Largest distance between an image and the point matched with it.
+
+        Returns:
+            ``{cp_id: variables}`` of the new pairs (also added to the model data).
+
+        Raises:
+            ModelLockedError: If the model is locked.
+            MissingArrayError: If ``array_name`` is missing.
+            ValueError: If ``tolerance`` is not positive.
         """
-        arr = np.asarray(table, dtype=float)
-        if arr.ndim != 2 or arr.shape[1] != 2:
-            raise ValueError(f"table must have shape (N, 2) with columns [H, B], got {arr.shape}.")
-        self._data["bh_curves"][str(int(material_id))] = {"H": arr[:, 0].tolist(), "B": arr[:, 1].tolist()}
+        self._require_unlocked("the model data")
+        if tolerance <= 0:
+            raise ValueError(f"tolerance must be positive, got {tolerance}.")
+        fields = [variables] if isinstance(variables, str) else [str(v) for v in variables]
+        mesh = self.mesh
 
-    def real_constant(self, constants_id: int, name: str, default: Any = None) -> Any:
-        """Return the real constant ``name`` of the constants ``constants_id``, or ``default`` if undefined."""
-        entry = self._entry("constants", int(constants_id))
-        if entry is None:
-            return default
-        return entry.get(name, default)
+        local, sources = model_edit.to_local_coordinates(mesh, coordinate_system, "node", selected_only=True)
+        if local.size == 0:
+            LOGGER.warning("periodic_boundaries: no point is selected; nothing coupled.")
+            return {}
+        shifted = np.asarray(local, dtype=float).copy()
+        shifted[:, 0] += float(dx)
+        shifted[:, 1] += float(dy)
+        shifted[:, 2] += float(dz)
+        images, _ = model_edit.to_global_coordinates(mesh, shifted, coordinate_system, "node", selected_only=True)
 
-    # ------------------------------------------------------ VTK serialization
+        coordinates = meshes.points(mesh)
+        locator = vtkPointLocator()
+        locator.SetDataSet(mesh)
+        locator.BuildLocator()
+        cp_array = meshes.get_array(mesh, array_name, "node")
+        cp_values = vtknp.vtk_to_numpy(cp_array)
+        used = self._used_coupling_ids()
+        next_id = 1
+        while next_id in used:
+            next_id += 1
 
-    @staticmethod
-    def _meta_array_name(key: str) -> str:
-        return f"{FIELD_PREFIX}META_{key}"
-
-    @staticmethod
-    def _remove_prefixed_field_arrays(field_data: vtk.vtkFieldData) -> None:
-        """Remove every array of the field data written by the model."""
-        names = []
-        for i in range(field_data.GetNumberOfArrays()):
-            arr = field_data.GetAbstractArray(i)
-            if arr is None:
+        new_ids: list[int] = []
+        paired: set[int] = set()
+        unmatched = 0
+        for source, image in zip(sources.tolist(), images, strict=True):
+            if source in paired or cp_values[source] != 0:
                 continue
-            name = arr.GetName()
-            if isinstance(name, str) and name.startswith(FIELD_PREFIX):
-                names.append(name)
+            target = int(locator.FindClosestPoint(image))
+            if target < 0 or target == source or target in paired or cp_values[target] != 0:
+                continue
+            if np.linalg.norm(coordinates[target] - image) > tolerance:
+                unmatched += 1
+                continue
+            cp_values[source] = cp_values[target] = next_id
+            paired.update((source, target))
+            used.add(next_id)
+            new_ids.append(next_id)
+            while next_id in used:
+                next_id += 1
+        cp_array.Modified()
+
+        couplings = {cp_id: list(fields) for cp_id in new_ids}
+        self.add_dof_couplings(couplings)
+        LOGGER.info(
+            "Periodic boundaries: %d pair(s) of %d selected point(s) coupled in '%s' (ids %s), fields %s; "
+            "%d image(s) farther than %g.",
+            len(new_ids), sources.size, array_name,
+            f"{new_ids[0]}..{new_ids[-1]}" if new_ids else "none", fields, unmatched, tolerance,
+        )
+        return couplings
+
+    def _used_coupling_ids(self) -> set[int]:
+        """CP ids already used by the contiguous family of point arrays CP_0, CP_1, ..."""
+        used: set[int] = set()
+        point_data = self.mesh.GetPointData()
+        index = 0
+        while (array := point_data.GetArray(f"CP_{index}")) is not None:
+            values = vtknp.vtk_to_numpy(array)
+            used.update(values[np.isfinite(values) & (values != 0)].astype(int).tolist())
+            index += 1
+        return used
+
+    def set_nonlinear_law(self, row_id: int, law: str, **data: Any) -> None:
+        """Select a nonlinear law on the cells of an id, with its data: ``data["nonlinear_laws"][row_id]``.
+
+        The id is a MATERIAL, CONSTANT or TYPE id, as the source of the law says (``nonlinear_laws.json``). An entry of
+        the same law for that id is replaced; entries of other laws are kept.
+
+        Args:
+            row_id: The MATERIAL, CONSTANT or TYPE id.
+            law: Name of the law, e.g. ``"bh_curve"``.
+            **data: The data of the law, e.g. its curve arrays ``B=[...], H=[...]``.
+
+        Raises:
+            ModelLockedError: If the model is locked.
+        """
+        self._require_unlocked("the model data")
+        laws = self._data["nonlinear_laws"]
+        key = str(int(row_id))
+        existing = laws.pop(int(row_id), None) or laws.pop(key, None) or []
+        entries = [e for e in (existing if isinstance(existing, list) else [existing]) if e.get("type") != law]
+        entries.append({"type": law, **{name: _to_jsonable(value) for name, value in data.items()}})
+        laws[key] = entries[0] if len(entries) == 1 else entries
+        LOGGER.info("Nonlinear law '%s' set on id %s (data: %s).", law, key, ", ".join(sorted(data)) or "none")
+
+    def set_bh_curve(self, material_id: int, table: Any) -> None:
+        """Select the ``bh_curve`` law on a material, with its BH curve given as rows ``[H, B]``.
+
+        Args:
+            material_id: The MATERIAL id.
+            table: Shape (N, 2): H and B, B increasing.
+
+        Raises:
+            ModelLockedError: If the model is locked.
+            ValueError: If ``table`` does not have shape (N, 2).
+        """
+        rows = np.asarray(table, dtype=float)
+        if rows.ndim != 2 or rows.shape[1] != 2:
+            raise ValueError(f"table must have shape (N, 2) with columns [H, B], got {rows.shape}.")
+        self.set_nonlinear_law(material_id, "bh_curve", B=rows[:, 1].tolist(), H=rows[:, 0].tolist())
+
+    # ------------------------------------------------------------------------------------------- field data
+
+    @staticmethod
+    def _remove_field_arrays(field_data: vtkFieldData) -> None:
+        names = [field_data.GetArrayName(i) for i in range(field_data.GetNumberOfArrays())]
         for name in names:
-            field_data.RemoveArray(name)
+            if name and name.startswith(FIELD_PREFIX):
+                field_data.RemoveArray(name)
 
     @staticmethod
-    def _add_string_array(field_data: vtk.vtkFieldData, name: str, text: str) -> None:
-        arr = vtk.vtkStringArray()
-        arr.SetName(name)
-        arr.SetNumberOfValues(1)
-        arr.SetValue(0, text)
-        field_data.AddArray(arr)
+    def _add_string(field_data: vtkFieldData, name: str, text: str) -> None:
+        array = vtkStringArray()
+        array.SetName(name)
+        array.SetNumberOfValues(1)
+        array.SetValue(0, text)
+        field_data.AddArray(array)
 
     @staticmethod
-    def _read_string(field_data: vtk.vtkFieldData, name: str) -> Optional[str]:
-        arr = vtk.vtkStringArray.SafeDownCast(field_data.GetAbstractArray(name))
-        if arr is None or arr.GetNumberOfValues() == 0:
-            return None
-        return arr.GetValue(0)
+    def _read_string(field_data: vtkFieldData, name: str) -> str | None:
+        array = vtkStringArray.SafeDownCast(field_data.GetAbstractArray(name))
+        return None if array is None or array.GetNumberOfValues() == 0 else array.GetValue(0)
 
-    def _write_model_field_data(self) -> None:
-        """Store the mesh name and the model data (as JSON text) in the field data of the mesh."""
-        if self._mesh is None:
-            raise RuntimeError("No mesh is loaded.")
-
-        field_data = self._mesh.GetFieldData()
-        self._remove_prefixed_field_arrays(field_data)
-        self._add_string_array(field_data, self._meta_array_name("MESH_NAME"), self._mesh_name or "")
-        self._add_string_array(field_data, DATA_ARRAY_NAME, self.data_json())
-
-    def _read_model_field_data(self) -> None:
-        """Load the mesh name and the model data from the field data of the mesh."""
-        if self._mesh is None:
-            raise RuntimeError("No mesh is loaded.")
-
-        field_data = self._mesh.GetFieldData()
-        mesh_name = self._read_string(field_data, self._meta_array_name("MESH_NAME"))
-        if mesh_name:
-            self._mesh_name = mesh_name
-
+    def _read_field_data(self) -> None:
+        """Take the name and the model data stored in the field data of the mesh, if any."""
+        field_data = self.mesh.GetFieldData()
+        name = self._read_string(field_data, NAME_ARRAY_NAME)
+        if name:
+            self.mesh_name = name
         text = self._read_string(field_data, DATA_ARRAY_NAME)
         if text is None:
             self._data = empty_model_data()
-            return
-        self.data = json.loads(text)
-
-    @classmethod
-    def read_model(
-        cls,
-        vtk_file_path: Union[str, PathLike[str]],
-        reset_arrays: bool = False,
-    ) -> "pyTEC3D_Model":
-        """Read a model (mesh and the model data stored in it) from a VTK file.
-
-        Args:
-            vtk_file_path: Path of the VTK file.
-            reset_arrays: Whether to reinitialize the required VTK arrays on load.
-
-        Returns:
-            pyTEC3D_Model: The loaded model.
-        """
-        absolute_path = os.path.abspath(os.fspath(vtk_file_path))
-        loaded_mesh = ModelEdit.read_mesh(absolute_path, reset_arrays=reset_arrays)
-        resolved_name = os.path.splitext(os.path.basename(absolute_path))[0]
-        return cls.from_grid(loaded_mesh, mesh_name=resolved_name)
-
-    @classmethod
-    def from_grid(
-        cls,
-        mesh: vtk.vtkUnstructuredGrid,
-        mesh_name: Optional[str] = None,
-    ) -> "pyTEC3D_Model":
-        """Create a model around a grid, taking the model data stored in it if any.
-
-        Args:
-            mesh: Unstructured grid.
-            mesh_name: Optional logical name of the model.
-
-        Returns:
-            pyTEC3D_Model: The model.
-        """
-        model = cls(mesh=mesh, mesh_name=mesh_name)
-        model._read_model_field_data()
-        model.update_grid()
-        return model
-
-    def save_model(self, output_file: Union[str, PathLike[str]], binary: bool = True) -> None:
-        """Save the mesh with the model data stored in its field data.
-
-        Args:
-            output_file: Path of the VTK file.
-            binary: Whether to write binary data.
-
-        Raises:
-            RuntimeError: If no mesh is loaded.
-        """
-        if self._mesh is None:
-            raise RuntimeError("No mesh is loaded.")
-        self._write_model_field_data()
-        ModelEdit.save_mesh(self.mesh, output_file, binary=binary)
+        else:
+            self.data = json.loads(text)

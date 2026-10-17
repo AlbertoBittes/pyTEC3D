@@ -12,8 +12,7 @@
  * named solution system's fields back onto the VTK grid so Python can access them.
  */
 
-#ifndef VTKIO_H
-#define VTKIO_H
+#pragma once
 
 // Local includes
 #include <libmesh/libmesh_common.h>
@@ -88,24 +87,14 @@ private:
 
     struct ElementMaps
     {
-        // Associate libmesh_type with vtk_type (searchable in both directions).
-        void associate(libMesh::ElemType libmesh_type, vtkIdType vtk_type)
-        {
-            writing_map[libmesh_type] = vtk_type;
-            reading_map[vtk_type] = libmesh_type;
-        }
+        /** @brief Associates @p libmesh_type with @p vtk_type (searchable in both directions). */
+        void associate(libMesh::ElemType libmesh_type, vtkIdType vtk_type);
 
-        // Find an entry in the writing map, or abort via libMesh diagnostics.
-        vtkIdType find(libMesh::ElemType libmesh_type)
-        {
-            return libmesh_map_find(writing_map, libmesh_type);
-        }
+        /** @brief The VTK type of @p libmesh_type; aborts via libMesh diagnostics if unknown. */
+        vtkIdType find(libMesh::ElemType libmesh_type);
 
-        // Find an entry in the reading map, or abort via libMesh diagnostics.
-        libMesh::ElemType find(vtkIdType vtk_type)
-        {
-            return libmesh_map_find(reading_map, vtk_type);
-        }
+        /** @brief The libMesh type of @p vtk_type; aborts via libMesh diagnostics if unknown. */
+        libMesh::ElemType find(vtkIdType vtk_type);
 
         std::map<libMesh::ElemType, vtkIdType> writing_map;
         std::map<vtkIdType, libMesh::ElemType> reading_map;
@@ -117,5 +106,3 @@ private:
 
     // void broadcast_all_fe_data_objects();
 };
-
-#endif // VTKIO_H

@@ -12,7 +12,10 @@
 #   .deps/src/libmesh            libMesh checkout (patched once)
 #   .deps/libmesh-<method>/      libMesh install prefix (baked into the module's RPATH)
 #   build/pytec3d-<method>/      CMake build tree (wiped on every run)
-#   src/pytec3d_solver/*.so      compiled module
+#   src/pytec3d_solver/*.so      compiled module, installed there by `cmake --install`
+#
+# Incremental rebuild after editing the C++ sources:
+#   cmake --build build/pytec3d-<method> && cmake --install build/pytec3d-<method>
 set -euo pipefail
 
 # --- Options (env only) ----------------------------------------------------------
@@ -168,6 +171,7 @@ build_solver() {
     -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
     -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD}"
   cmake --build "${SOLVER_BUILD_DIR}" -j"${CPU_COUNT}"
+  cmake --install "${SOLVER_BUILD_DIR}"
 
   shopt -s nullglob
   local modules=("${SOLVER_PKG_DIR}"/pytec3d_solver*.{so,pyd,dylib})

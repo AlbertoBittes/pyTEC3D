@@ -10,7 +10,7 @@
 #include <libmesh/system.h>
 
 #include "element_type.h"
-#include "element_types_factory.h"
+#include "model_element_types.h"
 #include "logging.h"
 
 namespace
@@ -143,7 +143,7 @@ std::vector<VariablesMap::SystemVariable> VariablesMap::get_system_variables_for
 }
 
 VariableToElementIdsMapType VariablesMap::associate_variables_with_element_IDs(
-    const ElementTypesFactory &factory,
+    const ModelElementTypes &factory,
     pyTEC3DSystemBase::SystemType system_type)
 {
     VariableToElementIdsMapType variable_to_element_ids;

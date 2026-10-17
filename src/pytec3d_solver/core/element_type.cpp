@@ -199,6 +199,32 @@ namespace pytec3d
                 }
     }
 
+    LibMeshVariable ElementType::variable(const FieldSpec &field) const
+    {
+        return {field.variable, field.family, order(field.order)};
+    }
+
+    bool ElementType::active(const FieldSpec &field, registry::Domain domain)
+    {
+        return (field.domains & registry::bit(domain)) != 0;
+    }
+
+    bool ElementType::active(const formulation::TermSpec &term, registry::Domain domain)
+    {
+        return (term.domains & registry::bit(domain)) != 0;
+    }
+
+    bool ElementType::selected(const formulation::TermSpec &term, registry::LawMask laws)
+    {
+        return term.law >= 0 ? (laws & registry::bit(static_cast<registry::LawId>(term.law))) != 0
+                             : (term.replaced_by & laws) == 0;
+    }
+
+    unsigned int ElementType::field_operators(FieldKind kind, registry::Domain domain) const
+    {
+        return field_operators_[kind == FieldKind::Nodal ? 0 : 1][static_cast<std::size_t>(domain)];
+    }
+
     libMesh::Order ElementType::order(formulation::OrderRule rule) const
     {
         switch (rule)

@@ -18,12 +18,16 @@ Clone Repository
 Project Structure
 -----------------
 
-- ``python/pytec3d``: main Python API
-- ``python/pytec3d_coordinate_system``: coordinate_system helpers
-- ``python/pytec3d_solver``: compiled solver extension location
-- ``python/pytec3d_paraview``: ParaView support module
-- ``python/pytec3d_algorithm``: pyTEC3D algorithm module
-- ``python/pytec3d_mesh_converter``: mesh conversion package
+- ``src/pytec3d``: the Python package (``from pytec3d import Solver, Model, selection``)
+
+  - ``model``, ``solver``: the model (mesh + model data) and its solution;
+  - ``selection``, ``mesh``, ``model_edit``, ``coordinate_system``, ``tree_gauge``: model preparation;
+  - ``algorithm``: plasma equilibrium and evolution;
+  - ``pytec3d_paraview_plugin``: ParaView filters and console helpers;
+  - ``mesh_converter``: ANSYS ``.cdb`` to ``.vtu`` conversion (``pytec3d-convert-cdb``);
+  - ``resources``: the JSON element library compiled into the solver.
+
+- ``src/pytec3d_solver``: the C++ solver; the compiled module ``pytec3d_solver.pytec3d_solver`` is installed there.
 
 Quick Start (Local Workflow)
 ----------------------------
@@ -69,20 +73,16 @@ Editable install:
 Fast Rebuild Loop for Solver-Only C++ Changes
 ----------------------------------------------
 
-After a full initial run of ``./build.sh``, rebuild with CMake:
+After a full initial run of ``./build.sh``, rebuild the solver module incrementally and install it into
+``src/pytec3d_solver`` (``<method>`` is ``opt``, ``dbg`` or ``devel``):
 
 .. code-block:: bash
 
-   cmake -S src -B build/pytec3d -G Ninja \
-     -DCMAKE_BUILD_TYPE=Debug \
-     -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
-     -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
-     -DLIBMESH_DIR="$CONDA_PREFIX" \
-     -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD:-dbg}" \
-     -DpyTEC3D_PYTHON_SITEARCH="$PWD/python" \
-     -DpyTEC3D_BUILD_PYBIND_MODULE=ON
-   cmake --build build/pytec3d -j
-   cmake --install build/pytec3d
+   cmake --build build/pytec3d-<method>
+   cmake --install build/pytec3d-<method>
+
+Debug builds (``pyTEC3D_LIBMESH_METHOD=dbg``) treat compiler warnings as errors
+(``-DPYTEC3D_WARNINGS_AS_ERRORS=OFF`` to disable).
 
 Sanity checks
 -------------
@@ -90,7 +90,7 @@ Sanity checks
 .. code-block:: bash
 
    python -c "import pytec3d_solver.pytec3d_solver"
-   python -c "from pytec3d_solver import pyTEC3D; pyTEC3D()"
+   python -c "from pytec3d import Solver; Solver().close()"
 
 Optional dependencies
 ---------------------

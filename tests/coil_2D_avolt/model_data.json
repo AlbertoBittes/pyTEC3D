@@ -139,6 +139,6 @@
       "VOLT"
     ]
   },
-  "bh_curves": {},
+  "nonlinear_laws": {},
   "coordinate_systems": {}
 }

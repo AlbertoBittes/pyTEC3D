@@ -102,7 +102,7 @@
         <DataArray type="Float64" Name="E" format="binary" RangeMin="1e+299" RangeMax="-1e+299">
           AQAAAACAAAAQBgAAGQAAAA==eJxjYACBH/UMo/QoPUqP0qP0iKYBCzscPg==
         </DataArray>
-        <DataArray type="Float64" Name="angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="0">
+        <DataArray type="Float64" Name="node_angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="0">
           AQAAAACAAAAwEgAAGwAAAA==eJztwTEBAAAAwqD1T+1pCaAAAAAA4AYSMAAB
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">

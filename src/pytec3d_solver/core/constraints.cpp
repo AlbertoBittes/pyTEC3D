@@ -9,12 +9,11 @@
  *   3. DOF-coupling constraints from CP_* periodic-boundary node pairs.
  */
 #include "constraints.h"
-#include "fe_parent_object.h"
 #include "pytec3d_system.h"
 #include "pytec3d_equation_systems.h"
 #include "pytec3d_model.h"
 #include "augment_sparsity_on_nodes.h"
-#include "element_types_factory.h"
+#include "model_element_types.h"
 
 #include "variables_map.h"
 #include <libmesh/dof_map.h>
@@ -43,8 +42,8 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 #include "logging.h"
+#include "report_tables.h"
 
-namespace py = pybind11;
 
 using libMesh::dof_id_type;
 using libMesh::DofMap;
@@ -68,7 +67,6 @@ namespace
     {
         std::unordered_map<dof_id_type, unsigned int> dof_to_var_idx;
         const auto &mesh = system.get_equation_systems().get_mesh();
-        const unsigned int sys_num = system.number();
         const unsigned int n_vars = system.n_vars();
 
         // Map each local DOF to its variable index for O(1) per-constraint variable lookups.
@@ -101,8 +99,8 @@ namespace
 } // namespace
 
 template <typename ImplSystem>
-GlobalConstraintsObject<ImplSystem>::GlobalConstraintsObject(pyTEC3DDOFSystem<ImplSystem> *sys)
-    : FEParentObjectBase<pyTEC3DDOFSystem<ImplSystem>>(sys)
+GlobalConstraintsObject<ImplSystem>::GlobalConstraintsObject(pyTEC3DDOFSystem<ImplSystem> &system)
+    : system_(system)
 {
     this->initialize_coupling_entries_cache();
 }
@@ -114,9 +112,9 @@ void GlobalConstraintsObject<ImplSystem>::initialize_coupling_entries_cache()
     _coupling_variable_values.clear();
     _edge_coupling_cp_ids.clear();
 
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = equation_systems.get_parent_object();
+    auto *solver = &equation_systems.model();
     if (!solver)
         return;
 
@@ -133,7 +131,7 @@ GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     System &system = *dof_system;
 
     const auto *time_step = dof_system->current_time_step();
@@ -142,7 +140,7 @@ GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
 
     DofMap &dof_map = system.get_dof_map();
     const MeshBase &mesh = system.get_equation_systems().get_mesh();
-    const auto &factory = dof_system->get_pytec3d_equation_systems().get_element_types_factory();
+    const auto &factory = dof_system->get_pytec3d_equation_systems().element_types();
 
     // A DOF is pinned when no element around it gives its field a row in K: its equation would be empty.
     std::unordered_set<dof_id_type> without_stiffness;
@@ -150,7 +148,7 @@ GlobalConstraintsObject<ImplSystem>::build_time_integration_constraints()
     std::vector<dof_id_type> dof_indices;
     for (const auto *elem : mesh.active_element_ptr_range())
     {
-        const ElementTypesFactory::Entry &entry = factory->get(elem->subdomain_id());
+        const ModelElementTypes::Entry &entry = factory.get(elem->subdomain_id());
         const pytec3d::ElementType &type = *entry.type;
         for (std::size_t field = 0; field < type.spec().fields.size(); ++field)
         {
@@ -178,10 +176,10 @@ GlobalConstraintsObject<ImplSystem>::build_point_constraints()
     std::map<dof_id_type, ConstraintEntry> constraints;
     this->_point_constraint_owner_cache.clear();
 
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     System &system = *dof_system;
     auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = equation_systems.get_parent_object();
+    auto *solver = &equation_systems.model();
     vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
 
     vtkPointData *point_data = vtk_grid->GetPointData();
@@ -530,13 +528,11 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 {
     std::map<dof_id_type, ConstraintEntry> constraints;
 
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     System &system = *dof_system;
     auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = equation_systems.get_parent_object();
-    vtkUnstructuredGrid *vtk_grid = solver ? solver->get_active_vtk_grid() : nullptr;
+    auto *solver = &equation_systems.model();
 
-    vtkPointData *point_data = vtk_grid->GetPointData();
     const auto &node_rotations = equation_systems.get_node_local_to_global_rotations();
     const std::size_t n_entries =
         std::min(_coupling_cp_id_values.size(), _coupling_variable_values.size());
@@ -733,7 +729,7 @@ GlobalConstraintsObject<ImplSystem>::build_coupling_constraints()
 template <typename ImplSystem>
 void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 {
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     System &system = *dof_system;
     // The CPs that couple an H(curl) variable: its DOFs carry an edge orientation.
     _edge_coupling_cp_ids.clear();
@@ -759,7 +755,7 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
         _edge_orientations_map->clear();
 
     auto &equation_systems = dof_system->get_pytec3d_equation_systems();
-    auto *solver = equation_systems.get_parent_object();
+    auto *solver = &equation_systems.model();
 
     const auto *coupling_functor = solver->get_coupling_functor();
     const auto &pairs_by_cp = coupling_functor->cp_pairs_by_cp;
@@ -957,21 +953,21 @@ void GlobalConstraintsObject<ImplSystem>::build_edge_orientations_map()
 template <typename ImplSystem>
 void GlobalConstraintsObject<ImplSystem>::constrain()
 {
-    if (!this->get_parent_object()->is_initialized())
+    if (!system_.is_initialized())
         return;
 
-    if (VariablesMap::has_edge_variable(*this->get_parent_object()) &&
+    if (VariablesMap::has_edge_variable(system_) &&
         (_edge_orientations_map == nullptr || _edge_orientations_map->empty()))
         build_edge_orientations_map();
 
-    pyTEC3DDOFSystem<ImplSystem> *dof_system = this->get_parent_object();
+    pyTEC3DDOFSystem<ImplSystem> *dof_system = &system_;
     const auto *time_step = dof_system->current_time_step();
     const bool time_step_updated = !time_step || time_step->updated;
 
     if (!time_step_updated && _has_constraint_cache)
     {
         pytec3d::logging::info("Reusing cached DOF constraints (time step unchanged)");
-        DofMap &dof_map = this->parent_object->get_dof_map();
+        DofMap &dof_map = system_.get_dof_map();
         for (const auto &entry : _constraint_cache)
         {
             if (!dof_map.is_constrained_dof(entry.first))
@@ -980,8 +976,8 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
         return;
     }
 
-    System &system = *this->get_parent_object();
-    DofMap &dof_map = this->parent_object->get_dof_map();
+    System &system = system_;
+    DofMap &dof_map = system_.get_dof_map();
     pytec3d::logging::info("Computing nodal DOF constraints");
 
     const unsigned int n_vars = system.n_vars();
@@ -1100,7 +1096,7 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
     comm.sum(global_total_constraints);
     comm.sum(global_applied_constraints);
 
-    std::vector<pytec3d::logging::ConstraintVariableStat> variable_stats;
+    std::vector<pytec3d::report::ConstraintVariableStat> variable_stats;
     variable_stats.reserve(n_vars);
     for (unsigned int var_idx = 0; var_idx < n_vars; ++var_idx)
     {
@@ -1111,8 +1107,8 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
         variable_stats.push_back({system.variable_name(var_idx), total_count, applied_count});
     }
     std::sort(variable_stats.begin(), variable_stats.end(),
-              [](const pytec3d::logging::ConstraintVariableStat &lhs,
-                 const pytec3d::logging::ConstraintVariableStat &rhs)
+              [](const pytec3d::report::ConstraintVariableStat &lhs,
+                 const pytec3d::report::ConstraintVariableStat &rhs)
               {
                   if (lhs.total_count != rhs.total_count)
                       return lhs.total_count > rhs.total_count;
@@ -1124,7 +1120,7 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
     _constraint_cache.insert(constraints.begin(), constraints.end());
     _has_constraint_cache = true;
 
-    pytec3d::logging::table_root(pytec3d::logging::format_constraints_summary_table(global_time_integration_constraints,
+    pytec3d::logging::table_root(pytec3d::report::format_constraints_summary_table(global_time_integration_constraints,
                                                                                     global_point_constraints,
                                                                                     global_coupling_constraints,
                                                                                     global_total_constraints,
@@ -1138,7 +1134,7 @@ template <typename ImplSystem>
 bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
 {
     bool update_boundary_conditions = false;
-    DofMap &dof_map = this->parent_object->get_dof_map();
+    DofMap &dof_map = system_.get_dof_map();
     const auto &comm = dof_map.comm();
 
     // Swap to bring the old constraints to the front
@@ -1180,7 +1176,7 @@ bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
     comm.max(update_boundary_conditions);
 
     if (update_boundary_conditions)
-        this->get_parent_object()->delete_rows_cols_constrained_dofs();
+        system_.delete_rows_cols_constrained_dofs();
 
     return update_boundary_conditions;
 }

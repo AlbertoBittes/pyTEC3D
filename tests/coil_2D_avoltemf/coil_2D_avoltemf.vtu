@@ -170,7 +170,7 @@
         <DataArray type="UInt8" Name="BOUNDARY_NODES" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAADZCQAAGwAAAA==eJztwQEBAAAIAqD8f7ofCiRbDgCg1QPVuQDx
         </DataArray>
-        <DataArray type="Float64" Name="angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="0">
+        <DataArray type="Float64" Name="node_angles" NumberOfComponents="3" format="binary" RangeMin="0" RangeMax="0">
           AgAAAACAAABYbAAANAAAADIAAAA=eJztwQEBAAAAgJD+r+4ICgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYgAAAAXic7cExAQAAAMKg9U9tDB+gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAtwFsWAAB
           <InformationKey name="L2_NORM_RANGE" location="vtkDataArray" length="2">
             <Value index="0">

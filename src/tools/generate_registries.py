@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Compiles the JSON registries into C++ headers: enums, compiled expressions and element type tables.
 
-Inputs (src/resources): domains.json, fields.json, element_types.json, laws.json.
+Inputs (src/pytec3d/resources): domains.json, fields.json, element_types.json, nonlinear_laws.json.
 Outputs:
   registries.h     enums with name tables and lookups (Domain, FieldId, VariableId, ElementTypeId,
                    MaterialProperty, RealConstant, ParameterId, CurveId, LawId, LawOutputId), the
                    parameter tables and evaluate_expression().
+  registries.cpp   the definitions of the lookups that are not constexpr (parse_*(), default_value()).
   formulations.h   one formulation::ElementTypeSpec per element type (formulation_spec.h) and evaluate_law().
 
 Everything is checked here, so a formulation that builds is consistent: names, types of every product,
@@ -54,8 +55,8 @@ element_types.json, "element_types": { "<name>": {
       The key says where the kernels go:
         K  blocks test^T * coeff * trial: in K, or in C with a dt() trial, in M with a dt(dt()) trial.
         F  right-hand side: test^T * coeff.
-      The coefficients are linear parameters. Where a law of laws.json replaces one (on the elements whose model
-      data selects the law), the term is left out of K / F and the law's terms stand for it (see laws.json).
+      The coefficients are linear parameters. Where a law of nonlinear_laws.json replaces one (on the elements whose model
+      data selects the law), the term is left out of K / F and the law's terms stand for it (see nonlinear_laws.json).
   "nodal_kernels":   { "B": [kernel, ...] }   L2 projection onto the field: M^-1 * sum of test^T * coeff * trial(u),
                                               the test being the field's shape functions ("test" may name a nodal
                                               field with the same finite elements).
@@ -68,18 +69,19 @@ element_types.json, "element_types": { "<name>": {
 
 } }
 
-laws.json, "laws": { "<name>": {
+nonlinear_laws.json, "nonlinear_laws": { "<name>": {
 
-  "source": "mat" | "rc" | "me",       the model data rows that select the law with their "law" key: materials,
-                                       constants, or element_types (TYPE); its curves are keyed by the same ids.
+  "source": "mat" | "rc" | "me",       the ids of the model data "nonlinear_laws" section: MATERIAL, CONSTANT or TYPE ids.
+                                       An entry {"type": "<name>", ...} under an id selects the law on those cells.
   "input": "B",                        a nodal or element field, computed at the quadrature points by its kernels
                                        (element kernels if the element type has an element field of that name, else
                                        the nodal ones), neither averaged nor projected.
-  "curve": {"section": "bh_curves", "x": "B", "y": "H"},     optional: model data "<section>": {"<row id>":
-                                       {"<x>": [...], "<y>": [...]}}, extended by its first and last segments.
-  "locals": { "b": "B.norm()", ... },  C++, in order.
-  "replaces": { "nu[][]": {"secant": "...", "tangent": "..."}, "nu_gauge": {"secant": "..."} } } }
-      The parameters the law replaces, with their type, where the law is selected: secant S(x) and optionally
+  "curve": {"x": "B", "y": "H"},       optional: the entry of the law carries the arrays "<x>" and "<y>" of a
+                                       curve y(x), extended by its first and last segments.
+  "expressions": { "b": "B.norm()", ... },  C++, in order.
+  "coefficients": { "nu[][]": {"secant": "...", "tangent": "..."}, "nu_gauge": {"secant": "..."} } } }
+      The coefficients (parameters or expressions of the element types) the law replaces, with their type,
+      where the law is selected: secant S(x) and optionally
       tangent d(S(x) x)/dx, x the input. Expressions see the input by its name, the curve (curve.value(x),
       curve.slope(x)), the constants and parameters of the element type.
 
@@ -285,35 +287,38 @@ def cpp_expression(entry, index, entries, context):
 
 
 def read_laws(resource_dir):
-    """laws.json: name -> {source, input, curve (section, x, y) or None, locals, replaces}."""
-    definitions = load(f"{resource_dir}/laws.json").get("laws")
+    """nonlinear_laws.json: name -> {source, input, curve (name, x, y) or None, locals, replaces}."""
+    definitions = load(f"{resource_dir}/nonlinear_laws.json").get("nonlinear_laws")
     if not isinstance(definitions, dict):
-        fail("laws.json must contain a 'laws' object.")
+        fail("nonlinear_laws.json must contain a 'nonlinear_laws' object.")
     laws = OrderedDict()
     for name, options in definitions.items():
-        context = f"laws.json, law '{name}'"
+        context = f"nonlinear_laws.json, law '{name}'"
         check_enumerator(name, context)
-        check_keys(options, {"source", "input", "curve", "locals", "replaces"}, context)
+        check_keys(options, {"source", "input", "curve", "expressions", "coefficients"}, context)
         source = read_string(options, "source", context)
         if source not in LAW_SOURCES:
             fail(f"{context}: source must be one of {', '.join(LAW_SOURCES)} (the model data rows that select it).")
         curve = None
         if "curve" in options:
-            check_keys(options["curve"], {"section", "x", "y"}, f"{context}, curve")
-            curve = tuple(read_string(options["curve"], key, f"{context}, curve") for key in ("section", "x", "y"))
-        locals_ = options.get("locals", {})
-        check_keys(locals_, set(locals_), f"{context}, locals")
+            check_keys(options["curve"], {"x", "y"}, f"{context}, curve")
+            x, y = (read_string(options["curve"], key, f"{context}, curve") for key in ("x", "y"))
+            if x == y or "type" in (x, y):
+                fail(f"{context}, curve: x and y must be two names other than 'type'.")
+            curve = (name, x, y)
+        locals_ = options.get("expressions", {})
+        check_keys(locals_, set(locals_), f"{context}, expressions")
         for local, text in locals_.items():
-            check_enumerator(local, f"{context}, local '{local}'")
+            check_enumerator(local, f"{context}, expression '{local}'")
             if local in RESERVED_NAMES:
-                fail(f"{context}: local '{local}' is reserved.")
+                fail(f"{context}: expression '{local}' is reserved.")
             if not isinstance(text, str):
-                fail(f"{context}, local '{local}' must be a C++ expression.")
+                fail(f"{context}, expression '{local}' must be a C++ expression.")
         replaces = OrderedDict()
-        if not isinstance(options.get("replaces"), dict) or not options["replaces"]:
-            fail(f"{context}: 'replaces' names the parameters the law replaces, with their secant (and tangent).")
-        for key, value in options["replaces"].items():
-            where = f"{context}, replaces '{key}'"
+        if not isinstance(options.get("coefficients"), dict) or not options["coefficients"]:
+            fail(f"{context}: 'coefficients' names the coefficients the law replaces, with their secant (and tangent).")
+        for key, value in options["coefficients"].items():
+            where = f"{context}, coefficient '{key}'"
             parameter, suffix = split_key(key, where)
             check_keys(value, {"secant", "tangent"}, where)
             replaces[parameter] = {"type": TYPE_BY_SUFFIX[suffix], "secant": read_string(value, "secant", where),
@@ -321,7 +326,7 @@ def read_laws(resource_dir):
         laws[name] = {"name": name, "source": source, "input": read_string(options, "input", context), "curve": curve,
                       "locals": locals_, "replaces": replaces}
     if len(laws) > MAX_LAWS:
-        fail(f"laws.json: at most {MAX_LAWS} laws.")
+        fail(f"nonlinear_laws.json: at most {MAX_LAWS} laws.")
     return laws
 
 
@@ -552,18 +557,14 @@ class ElementType:
             embedded = field["single_component"]
             if operator == "Identity":
                 output = V if embedded else S
-            elif operator == "Grad" and not embedded:
-                output = V
-            elif operator == "Curl" and embedded and self.dimension == 2 and component == 2:
+            elif operator == "Grad" and not embedded or operator == "Curl" and embedded and self.dimension == 2 and component == 2:
                 output = V
             else:
                 fail(f"{context}: {name} is not defined for this field on a {self.dimension}D element "
                      "(scalar FE: grad of a scalar; curl of the out-of-plane component of a 2D element).")
         else:
             nedelec = fe["family"] == "NEDELEC_ONE"
-            if operator == "Identity":
-                output = V
-            elif operator == "Curl" and self.dimension == 3:
+            if operator == "Identity" or operator == "Curl" and self.dimension == 3:
                 output = V
             elif operator == "Div" and not nedelec:
                 output = S
@@ -582,7 +583,7 @@ class ElementType:
     # -- laws --
 
     def bind_laws(self, laws, law_index):
-        """The laws of laws.json that replace parameters of the element type, compiled on its parameters."""
+        """The laws of nonlinear_laws.json that replace parameters of the element type, compiled on its parameters."""
         self.law_outputs = OrderedDict()
         self.replacements = {}  # parameter -> [{law, law_id, secant, tangent}]
         self.law_by_name = {}
@@ -750,7 +751,7 @@ class ElementType:
 
         Appends its term and returns what its law variants need (law_variant)."""
         if "nonlinear" in options:
-            fail(f"{context}: 'nonlinear' was removed: the laws of laws.json say which parameters they replace.")
+            fail(f"{context}: 'nonlinear' was removed: the laws of nonlinear_laws.json say which parameters they replace.")
         check_keys(options, {"trial", "coeff", "test", "domain"}, context)
         trial_text = read_string(options, "trial", context, required=False)
         test_text = read_string(options, "test", context, required=False)
@@ -919,15 +920,8 @@ def read_registries(resource_dir):
         mask_of = {entry["name"]: entry["domains"] for entry in element_type.entries}
         element_type.masks = [mask_of.get(p["name"], 0) for p in parameters]
 
-    # Curves: a section of the model data keyed by the row (MATERIAL, CONSTANT or TYPE id) the laws reading it are
-    # selected by, so the laws sharing a curve share their source.
-    curves = OrderedDict()
-    for name, law in laws.items():
-        if law["curve"] is None:
-            continue
-        known = curves.setdefault(law["curve"], {"index": len(curves), "source": law["source"]})
-        if known["source"] != law["source"]:
-            fail(f"laws.json, law '{name}': curve section '{law['curve'][0]}' is read by laws of another source.")
+    # Curves: one per law that has one, given with the law in the "nonlinear_laws" section of the model data.
+    curves = OrderedDict((law["curve"], {"index": i}) for i, law in enumerate(x for x in laws.values() if x["curve"]))
     # Law outputs: global names, one meaning each.
     law_outputs = OrderedDict()
     for type_name, element_type in types.items():
@@ -985,7 +979,7 @@ def cpp_string(text):
     return json.dumps(text)
 
 
-def emit_enum(out, enum, names, doc):
+def emit_enum(out, src, enum, names, doc):
     out.append(f"/// {doc}")
     out.append(f"enum class {enum} : unsigned short")
     out.append("{")
@@ -1000,14 +994,17 @@ def emit_enum(out, enum, names, doc):
         out.append(f"    {cpp_string(name)},")
     out.append("};")
     out.append(f"inline constexpr std::string_view name({enum} id) {{ return k{enum}Names[static_cast<std::size_t>(id)]; }}")
-    out.append(f"inline std::optional<{enum}> parse_{enum}(std::string_view text)")
-    out.append("{")
-    out.append(f"    for (std::size_t i = 0; i < k{enum}Names.size(); ++i)")
-    out.append(f"        if (k{enum}Names[i] == text)")
-    out.append(f"            return static_cast<{enum}>(i);")
-    out.append("    return std::nullopt;")
-    out.append("}")
+    out.append(f"/// The {enum} named @p text; nullopt when there is none.")
+    out.append(f"std::optional<{enum}> parse_{enum}(std::string_view text);")
     out.append("")
+    src.append(f"std::optional<{enum}> parse_{enum}(std::string_view text)")
+    src.append("{")
+    src.append(f"    for (std::size_t i = 0; i < k{enum}Names.size(); ++i)")
+    src.append(f"        if (k{enum}Names[i] == text)")
+    src.append(f"            return static_cast<{enum}>(i);")
+    src.append("    return std::nullopt;")
+    src.append("}")
+    src.append("")
 
 
 def emit_scope(out, indent):
@@ -1063,12 +1060,15 @@ def emit_expressions(out, types):
     out.append("")
 
 
-def emit_defaults(out, types):
+def emit_defaults(out, src, types):
     out.append("/**")
     out.append(" * @brief Default value of the mat./rc. parameter @p id of the element type @p type, used when the model data")
     out.append(" * leaves it undefined; nullopt when it has none.")
     out.append(" */")
-    out.append("inline std::optional<ParameterValue> default_value(ElementTypeId type, ParameterId id)")
+    out.append("std::optional<ParameterValue> default_value(ElementTypeId type, ParameterId id);")
+    out.append("")
+    out = src  # the definition goes to registries.cpp
+    out.append("std::optional<ParameterValue> default_value(ElementTypeId type, ParameterId id)")
     out.append("{")
     emit_scope(out, "    ")
     out.append("    switch (type)")
@@ -1099,8 +1099,19 @@ def emit_defaults(out, types):
 
 
 def render_registries(registries):
+    """The text of registries.h and of registries.cpp (the definitions of the lookups that are not constexpr)."""
+    src = [
+        "// Generated by src/tools/generate_registries.py from src/pytec3d/resources/*.json. Do not edit.",
+        '#include "registries.h"',
+        "",
+        "#include <cmath>",
+        "",
+        "namespace pytec3d::registry",
+        "{",
+        "",
+    ]
     out = [
-        "// Generated by src/tools/generate_registries.py from src/resources/*.json. Do not edit.",
+        "// Generated by src/tools/generate_registries.py from src/pytec3d/resources/*.json. Do not edit.",
         "#pragma once",
         "",
         "#include <array>",
@@ -1118,13 +1129,13 @@ def render_registries(registries):
         "",
     ]
 
-    emit_enum(out, "Domain", registries["domains"], "Physical regions (domains.json).")
+    emit_enum(out, src, "Domain", registries["domains"], "Physical regions (domains.json).")
     out.append("/// A set of domains: bit i is the Domain with index i.")
     out.append("using DomainMask = std::uint64_t;")
     out.append("inline constexpr DomainMask bit(Domain domain) { return DomainMask(1) << static_cast<unsigned int>(domain); }")
     out.append("")
 
-    emit_enum(out, "FieldId", list(registries["fields"]), "Fields and grid arrays (fields.json).")
+    emit_enum(out, src, "FieldId", list(registries["fields"]), "Fields and grid arrays (fields.json).")
     out.append("inline constexpr std::array<bool, kNumFieldId> kFieldIsVector = {")
     for kind in registries["fields"].values():
         out.append(f"    {'true' if kind == 'vector' else 'false'},")
@@ -1133,7 +1144,7 @@ def render_registries(registries):
     out.append("")
 
     variables = registries["variables"]
-    emit_enum(out, "VariableId", list(variables), "libMesh variable labels the fields can have, in system order.")
+    emit_enum(out, src, "VariableId", list(variables), "libMesh variable labels the fields can have, in system order.")
     out.append("enum class VariableKind : unsigned char")
     out.append("{")
     out.append("    Scalar,    ///< A scalar field.")
@@ -1159,7 +1170,7 @@ def render_registries(registries):
     out.append("")
 
     types = registries["types"]
-    emit_enum(out, "ElementTypeId", list(types), "Element types (element_types.json).")
+    emit_enum(out, src, "ElementTypeId", list(types), "Element types (element_types.json).")
     out.append("inline constexpr std::array<unsigned int, kNumElementTypeId> kElementTypeDimensions = {")
     for element_type in types.values():
         out.append(f"    {element_type.dimension},")
@@ -1171,7 +1182,7 @@ def render_registries(registries):
     for enum, key, doc in (("MaterialProperty", "material_properties", 'Material properties ("mat." parameters).'),
                            ("RealConstant", "real_constants", 'Real constants ("rc." parameters).')):
         entries = registries[key]
-        emit_enum(out, enum, [e["name"] for e in entries], doc)
+        emit_enum(out, src, enum, [e["name"] for e in entries], doc)
         out.append(f"inline constexpr std::array<ParameterType, {len(entries)}> k{enum}Types = {{")
         for entry in entries:
             out.append(f"    ParameterType::{entry['type']},")
@@ -1190,7 +1201,7 @@ def render_registries(registries):
     out.append("")
 
     parameters = registries["parameters"]
-    emit_enum(out, "ParameterId", [p["name"] for p in parameters], "Parameters of all the element types: declared first, then expressions.")
+    emit_enum(out, src, "ParameterId", [p["name"] for p in parameters], "Parameters of all the element types: declared first, then expressions.")
     out.append("struct ParameterInfo")
     out.append("{")
     out.append("    ParameterType type;")
@@ -1226,27 +1237,27 @@ def render_registries(registries):
     out.append("")
 
     emit_expressions(out, types)
-    emit_defaults(out, types)
+    emit_defaults(out, src, types)
 
 
     curves = registries["curves"]
-    emit_enum(out, "CurveId", [f"{section}_{x}_{y}" for section, x, y in curves],
-              "Curves of the model data the laws read: a section, by the id of the row selecting the law, with an x and a y array.")
+    emit_enum(out, src, "CurveId", [f"{law}_{x}_{y}" for law, x, y in curves],
+              "Curves of the laws: the arrays x and y of a law entry of the model data \"laws\" section.")
     out.append("struct CurveSource")
     out.append("{")
-    out.append("    std::string_view section;")
+    out.append("    std::string_view law;")
     out.append("    std::string_view x;")
     out.append("    std::string_view y;")
     out.append("};")
     out.append(f"inline constexpr std::array<CurveSource, {len(curves)}> kCurveSources = {{{{")
-    for section, x, y in curves:
-        out.append(f"    {{{cpp_string(section)}, {cpp_string(x)}, {cpp_string(y)}}},")
+    for law, x, y in curves:
+        out.append(f"    {{{cpp_string(law)}, {cpp_string(x)}, {cpp_string(y)}}},")
     out.append("}};")
     out.append("")
 
     laws = registries["laws"]
-    emit_enum(out, "LawId", list(laws), "Nonlinear laws (laws.json).")
-    out.append("/// The model data rows a law is selected by (their \"law\" key); its curves are keyed by the same ids.")
+    emit_enum(out, src, "LawId", list(laws), "Nonlinear laws (nonlinear_laws.json).")
+    out.append("/// What the ids of the model data \"laws\" section are, for a law: MATERIAL, CONSTANT or TYPE ids.")
     out.append("enum class LawSource : unsigned char")
     out.append("{")
     out.append("    Material, ///< materials (mat.)")
@@ -1257,11 +1268,12 @@ def render_registries(registries):
     out.append("{")
     out.append("    LawSource source;")
     out.append("    CurveId curve; ///< COUNT for a law without curve.")
+    out.append("    std::string_view input; ///< The field the law is a function of (its curve's x).")
     out.append("};")
     out.append(f"inline constexpr std::array<LawInfo, {len(laws)}> kLaws = {{{{")
     for law in laws.values():
         curve = f"CurveId::{'_'.join(law['curve'])}" if law["curve"] else "CurveId::COUNT"
-        out.append(f"    {{LawSource::{LAW_SOURCES[law['source']]}, {curve}}},")
+        out.append(f"    {{LawSource::{LAW_SOURCES[law['source']]}, {curve}, {cpp_string(law['input'])}}},")
     out.append("}};")
     out.append("inline constexpr const LawInfo &info(LawId id) { return kLaws[static_cast<std::size_t>(id)]; }")
     out.append("/// A set of laws: bit i is the LawId with index i.")
@@ -1269,7 +1281,7 @@ def render_registries(registries):
     out.append("inline constexpr LawMask bit(LawId law) { return LawMask(1) << static_cast<unsigned int>(law); }")
     out.append("")
     law_outputs = registries["law_outputs"]
-    emit_enum(out, "LawOutputId", list(law_outputs), "Outputs of the nonlinear laws, used in kernels like a parameter.")
+    emit_enum(out, src, "LawOutputId", list(law_outputs), "Outputs of the nonlinear laws, used in kernels like a parameter.")
     out.append("struct LawOutputInfo")
     out.append("{")
     out.append("    LawId law;")
@@ -1283,7 +1295,9 @@ def render_registries(registries):
     out.append("")
     out.append("} // namespace pytec3d::registry")
     out.append("")
-    return "\n".join(out)
+    src.append("} // namespace pytec3d::registry")
+    src.append("")
+    return "\n".join(out), "\n".join(src)
 
 
 # ---- formulations.h --------------------------------------------------------------------------------------
@@ -1348,7 +1362,7 @@ def emit_laws(out, types, registries):
 def render_formulations(registries):
     types = registries["types"]
     out = [
-        "// Generated by src/tools/generate_registries.py from src/resources/element_types.json and laws.json. Do not edit.",
+        "// Generated by src/tools/generate_registries.py from src/pytec3d/resources/element_types.json and nonlinear_laws.json. Do not edit.",
         "#pragma once",
         "",
         "#include <array>",
@@ -1463,11 +1477,13 @@ def write_if_changed(path, text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--resources", required=True, help="Directory with the JSON registries.")
-    parser.add_argument("--output", required=True, help="Directory for registries.h and formulations.h.")
+    parser.add_argument("--output", required=True, help="Directory for registries.h, registries.cpp and formulations.h.")
     args = parser.parse_args()
 
     registries = read_registries(args.resources)
-    write_if_changed(f"{args.output}/registries.h", render_registries(registries))
+    header, source = render_registries(registries)
+    write_if_changed(f"{args.output}/registries.h", header)
+    write_if_changed(f"{args.output}/registries.cpp", source)
     write_if_changed(f"{args.output}/formulations.h", render_formulations(registries))
 
 

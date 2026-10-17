@@ -18,9 +18,11 @@
 #include "pytec3d_equation_systems.h"
 #include "pytec3d_model.h"
 #include "logging.h"
+#include "report_tables.h"
+#include "solver_diagnostics.h"
 #include "binary_reader.h"
 #include "element_builder.h"
-#include "element_types_factory.h"
+#include "model_element_types.h"
 #include "constraints.h"
 #include "system_matrix_reduction.h"
 #include "variables_map.h"
@@ -28,6 +30,10 @@
 #include <libmesh/libmesh.h>
 #include <libmesh/libmesh_common.h>
 #include <libmesh/elem_range.h>
+#include <libmesh/enum_to_string.h>
+#include <libmesh/diff_solver.h>
+#include <libmesh/newton_solver.h>
+#include <libmesh/nonlinear_solver.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/petsc_linear_solver.h>
 #include <libmesh/petsc_matrix.h> // for libMesh::PetscMatrix
@@ -45,6 +51,23 @@ using libMesh::libmesh_ignore;
 
 namespace
 {
+    /** @brief Keeps the norm of each full Newton step (before the line search), for the Newton history. */
+    class FullStepMonitor final : public libMesh::LinearSolutionMonitor
+    {
+    public:
+        explicit FullStepMonitor(libMesh::Real &norm) : norm_(norm) {}
+        void operator()(const libMesh::NumericVector<libMesh::Number> & /*delta_u*/, const libMesh::Real &norm_delta_u,
+                        const libMesh::NumericVector<libMesh::Number> & /*u*/, const libMesh::Real & /*norm_u*/,
+                        const libMesh::NumericVector<libMesh::Number> & /*residual*/,
+                        const libMesh::Real & /*norm_residual*/, const unsigned int /*iteration*/) override
+        {
+            norm_ = norm_delta_u;
+        }
+
+    private:
+        libMesh::Real &norm_;
+    };
+
     std::filesystem::path get_emat_folderpath_from_solver()
     {
         return std::filesystem::current_path() / "emat";
@@ -177,16 +200,123 @@ pyTEC3DSystemBase::SystemType pyTEC3DSystemBase::system_type_from_name(const std
     return pyTEC3DSystemBase::NUM_SYSTEMS;
 }
 
-template <typename ImplicitSys>
-void pyTEC3DDOFSystem<ImplicitSys>::prepare_time_step_solve(const pybind11::dict &time_step_dict)
+// ---- pyTEC3DSystem ----------------------------------------------------------------------------------------
+
+template <typename SysLike>
+pyTEC3DSystem<SysLike>::pyTEC3DSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
+    : SysLike(es, name, number),
+      system_type_(pyTEC3DSystemBase::system_type_from_name(name))
 {
-    this->typed_equation_systems().prepare_time_step_solve(time_step_dict);
+    this->attach_assemble_function(&pyTEC3DSystem<SysLike>::assemble_dispatch);
+}
+
+template <typename SysLike>
+void pyTEC3DSystem<SysLike>::solve()
+{
+    SysLike::solve();
+}
+
+template <typename SysLike>
+bool pyTEC3DSystem<SysLike>::is_nodal() const
+{
+    return system_type_ != pyTEC3DSystemBase::ELEMENT_SOLUTION;
+}
+
+template <typename SysLike>
+void pyTEC3DSystem<SysLike>::post_init()
+{
+}
+
+template <typename SysLike>
+pyTEC3DEquationSystems &pyTEC3DSystem<SysLike>::get_pytec3d_equation_systems()
+{
+    return this->typed_equation_systems();
+}
+
+template <typename SysLike>
+const pyTEC3DEquationSystems &pyTEC3DSystem<SysLike>::get_pytec3d_equation_systems() const
+{
+    return this->typed_equation_systems();
+}
+
+template <typename SysLike>
+const TimeStep *pyTEC3DSystem<SysLike>::current_time_step() const
+{
+    return this->typed_equation_systems().current_time_step();
+}
+
+template <typename SysLike>
+const TimeStep *pyTEC3DSystem<SysLike>::previous_time_step() const
+{
+    return this->typed_equation_systems().previous_time_step();
+}
+
+template <typename SysLike>
+pyTEC3DEquationSystems &pyTEC3DSystem<SysLike>::typed_equation_systems()
+{
+    return static_cast<pyTEC3DEquationSystems &>(this->get_equation_systems());
+}
+
+template <typename SysLike>
+const pyTEC3DEquationSystems &pyTEC3DSystem<SysLike>::typed_equation_systems() const
+{
+    return static_cast<const pyTEC3DEquationSystems &>(this->get_equation_systems());
+}
+
+template <typename SysLike>
+void pyTEC3DSystem<SysLike>::assemble_dispatch(libMesh::EquationSystems &es, const std::string &name)
+{
+    auto *system = dynamic_cast<pyTEC3DSystemBase *>(&es.get_system(name));
+    if (!system)
+        pytec3d::logging::error_and_abort("pyTEC3DSystem::assemble_dispatch: system is not a pyTEC3DSystemBase.");
+    system->assemble_system();
+}
+
+// ---- pyTEC3DDOFSystem -------------------------------------------------------------------------------------
+
+template <typename ImplicitSys>
+pyTEC3DDOFSystem<ImplicitSys>::pyTEC3DDOFSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
+    : pyTEC3DSystem<libMesh::TransientSystem<ImplicitSys>>(es, name, number)
+{
+    global_constraints_object_ = std::make_unique<GlobalConstraintsObject<ImplicitSys>>(*this);
+    this->attach_constraint_object(*global_constraints_object_);
+    for (const char *vector_name : {pyTEC3DSystemBase::kVelocity, pyTEC3DSystemBase::kAcceleration,
+                                    pyTEC3DSystemBase::kOldVelocity, pyTEC3DSystemBase::kOldAcceleration,
+                                    pyTEC3DSystemBase::kMeanVelocity})
+        this->add_vector(vector_name, true, libMesh::GHOSTED);
 }
 
 template <typename ImplicitSys>
-void pyTEC3DDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_step_dict)
+pyTEC3DDOFSystem<ImplicitSys>::~pyTEC3DDOFSystem() noexcept = default;
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::solve()
 {
-    this->prepare_time_step_solve(time_step_dict);
+    libMesh::TransientSystem<ImplicitSys>::solve();
+}
+
+template <typename ImplicitSys>
+GlobalConstraintsObject<ImplicitSys> *pyTEC3DDOFSystem<ImplicitSys>::get_global_constraints_object() const
+{
+    return global_constraints_object_.get();
+}
+
+template <typename ImplicitSys>
+libMesh::LinearSolver<libMesh::Number> *pyTEC3DDOFSystem<ImplicitSys>::get_linear_solver() const
+{
+    return this->linear_solver.get();
+}
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::prepare_time_step_solve(const TimeStepInput &time_step)
+{
+    this->typed_equation_systems().prepare_time_step_solve(time_step);
+}
+
+template <typename ImplicitSys>
+void pyTEC3DDOFSystem<ImplicitSys>::init_time_step(const TimeStepInput &time_step_input)
+{
+    this->prepare_time_step_solve(time_step_input);
 
     const auto *time_step = this->current_time_step();
     if (!time_step)
@@ -202,7 +332,7 @@ void pyTEC3DDOFSystem<ImplicitSys>::init_time_step(const pybind11::dict &time_st
         this->get_vector(pyTEC3DSystemBase::kOldAcceleration) = this->get_vector(pyTEC3DSystemBase::kAcceleration);
         this->get_vector(pyTEC3DSystemBase::kOldAcceleration).close();
         pytec3d::logging::info("Advanced to new time step");
-        pytec3d::logging::table_root(pytec3d::logging::format_time_step_table(*time_step));
+        pytec3d::logging::table_root(pytec3d::report::format_time_step_table(*time_step, this->typed_equation_systems().time_order()));
     }
 
     this->get_dof_map().swap_dof_constraints();
@@ -238,7 +368,7 @@ void pyTEC3DDOFSystem<ImplicitSys>::update_time_derivatives()
 template <typename ImplicitSys>
 bool pyTEC3DDOFSystem<ImplicitSys>::check_update_system_matrix()
 {
-    auto bc_object = this->get_global_constraints_object();
+    auto *bc_object = this->get_global_constraints_object();
 
     if (bc_object && bc_object->check_update_boundary_conditions())
     {
@@ -314,21 +444,17 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
         "nodal_sol_mtrx_" + rank_str + ".emat",
         "element_sol_mtrx_" + rank_str + ".emat"};
 
-    const bool emat_files_exist = std::all_of(
-        filenames.begin(),
-        filenames.end(),
-        [&](const std::string &filename)
-        {
-            return std::filesystem::exists(emat_folderpath / filename);
-        });
-
-    if (emat_files_exist)
+    StepReport &report = equation_systems.step_report();
+    if (element_matrices_written_)
     {
         pytec3d::logging::info("Reusing element matrices from previous time step");
         return;
     }
 
-    pytec3d::logging::info("Computing element matrices for current time-step");
+    report.element_matrices_computed = true;
+    pytec3d::logging::ScopedTimer timer("Element matrices computed (" +
+                                            std::to_string(mesh.n_active_local_elem()) + " local elements)",
+                                        &report.seconds_element_matrices);
 
     auto streams = reader.open_output_streams(emat_folderpath, filenames);
 
@@ -348,6 +474,7 @@ void pyTEC3DDOFSystem<ImplicitSys>::write_element_matrices()
     }
 
     reader.close_file_streams(streams);
+    element_matrices_written_ = true;
 }
 
 template <typename ImplicitSys>
@@ -356,7 +483,7 @@ const NodalLoadInjectorElemByVarMap *pyTEC3DDOFSystem<ImplicitSys>::ensure_nodal
     if (!nodal_load_injector_map_)
     {
         auto &equation_systems = this->typed_equation_systems();
-        auto *solver_parent = equation_systems.get_parent_object();
+        auto *solver_parent = &equation_systems.model();
         if (!solver_parent)
             pytec3d::logging::error_and_abort("pyTEC3DDOFSystem::ensure_nodal_load_injector_map: solver parent not available.");
 
@@ -364,7 +491,7 @@ const NodalLoadInjectorElemByVarMap *pyTEC3DDOFSystem<ImplicitSys>::ensure_nodal
         if (!vtk_grid)
             pytec3d::logging::error_and_abort("pyTEC3DDOFSystem::ensure_nodal_load_injector_map: active VTK grid not available.");
 
-        nodal_load_injector_map_ = std::make_shared<NodalLoadInjectorElemByVarMap>(
+        nodal_load_injector_map_ = std::make_unique<NodalLoadInjectorElemByVarMap>(
             build_nodal_load_injector_map_for_system(
                 equation_systems.get_mesh(),
                 *this,
@@ -381,6 +508,21 @@ void pyTEC3DDOFSystem<ImplicitSys>::post_init()
     this->zero_out_matrix_and_rhs = false;
     this->get_system_matrix().zero();
     pytec3d::logging::info("Setting linear solver configurations");
+}
+
+// ---- pyTEC3DLinearSystem ----------------------------------------------------------------------------------
+
+pyTEC3DLinearSystem::pyTEC3DLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
+    : pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>(es, name, number)
+{
+}
+
+pyTEC3DLinearSystem::~pyTEC3DLinearSystem() noexcept = default;
+
+void pyTEC3DLinearSystem::add_matrices()
+{
+    libMesh::ImplicitSystem::add_matrices();
+    this->get_system_matrix().use_hash_table(true);
 }
 
 void pyTEC3DLinearSystem::release_subset_solve()
@@ -413,22 +555,24 @@ void pyTEC3DLinearSystem::delete_rows_cols_constrained_dofs()
 {
     pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
     this->release_subset_solve();
-    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+    subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
     this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
 }
 
 void pyTEC3DNonLinearSystem::delete_rows_cols_constrained_dofs()
 {
     pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
-    subset_solve_holder_ = std::make_shared<SystemMatrixReduction>(*this);
+    subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
     auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
     auto *newton_petsc_solver =
         dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(&newton_solver->get_linear_solver());
-    newton_petsc_solver->restrict_solve_to(&subset_solve_holder_.get()->dof_ids(), libMesh::SUBSET_ZERO);
+    newton_petsc_solver->restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
 }
 
 void pyTEC3DLinearSystem::solve()
 {
+    StepReport &report = this->typed_equation_systems().step_report();
+    pytec3d::logging::ScopedTimer timer("Linear system assembled and solved", &report.seconds_solve);
     if (this->assemble_before_solve)
         // Assemble the linear system
         this->assemble();
@@ -535,6 +679,10 @@ void pyTEC3DLinearSystem::solve()
                                 subrhs_wrapper,
                                 tol,
                                 maxits);
+    report.true_residual = pytec3d::diagnostics::relative_true_residual(reduced_submat_, reduced_subsolution_,
+                                                                        reduced_subrhs_);
+    if (auto *petsc_solver = dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(linear_solver.get()))
+        report.factorization = pytec3d::diagnostics::factorization_report(petsc_solver->ksp());
 
     LibmeshPetscCall(VecZeroEntries(solution->vec()));
     VecScatterBeginEnd(this->comm(), reduced_scatter_, reduced_subsolution_, solution->vec(), INSERT_VALUES, SCATTER_REVERSE);
@@ -551,25 +699,32 @@ void pyTEC3DLinearSystem::solve()
     this->get_dof_map().enforce_constraints_exactly(*this);
     this->update();
     this->update_time_derivatives();
-    pytec3d::logging::info("Finished linear system solve");
+    const auto reason = linear_solver->get_converged_reason();
+    std::size_t unconstrained = subset_dofs.size();
+    this->comm().sum(unconstrained);
+    report.linear_iterations = rval.first;
+    report.linear_residual = rval.second;
+    report.linear_reason = libMesh::Utility::enum_to_string(reason);
+    report.unconstrained_dofs = unconstrained;
+    pytec3d::logging::info("Linear solve: {} iteration(s), residual {:.3e}, true residual {:.3e}, {} ({} unconstrained "
+                           "DOFs on this rank).",
+                           rval.first, rval.second, report.true_residual, libMesh::Utility::enum_to_string(reason),
+                           subset_dofs.size());
+    pytec3d::diagnostics::check_linear_solve(report.factorization, report.true_residual);
+    if (reason < 0)
+        pytec3d::logging::warn("The linear solver did not converge: {}.", libMesh::Utility::enum_to_string(reason));
 }
 
 void pyTEC3DLinearSystem::post_init()
 {
     pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>::post_init();
 
-    auto &equation_systems = this->get_pytec3d_equation_systems();
-    auto *solver_parent = equation_systems.get_parent_object();
     auto *linear_solver = this->get_linear_solver();
-    if (solver_parent && linear_solver)
-    {
-        this->solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
-            equation_systems.get_solver_settings(),
-            linear_solver);
-        this->solver_config_copy_->configure_solver();
-    }
-    else
-        pytec3d::logging::error_and_abort("Solver parent or PETSc linear solver not available.");
+    if (!linear_solver)
+        pytec3d::logging::error_and_abort("pyTEC3DLinearSystem::post_init: PETSc linear solver not available.");
+    this->solver_config_ = std::make_unique<PetscSolverConfiguration>(
+        this->get_pytec3d_equation_systems().get_solver_settings(), linear_solver);
+    this->solver_config_->configure_solver();
 }
 
 void pyTEC3DLinearSystem::assemble_system()
@@ -586,6 +741,7 @@ void pyTEC3DLinearSystem::assemble_system()
     const auto &comm = system.comm();
 
     const bool update_matrix = this->check_update_system_matrix();
+    this->typed_equation_systems().step_report().system_matrix_updated |= update_matrix;
     if (update_matrix)
     {
         matrix.zero();
@@ -648,6 +804,71 @@ void pyTEC3DLinearSystem::assemble_system()
     pytec3d::logging::info("Linear solver output info");
 }
 
+// ---- pyTEC3DNonLinearSystem -------------------------------------------------------------------------------
+
+pyTEC3DNonLinearSystem::pyTEC3DNonLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
+    : pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>(es, name, number)
+{
+    auto newton_solver = std::make_unique<libMesh::NewtonSolver>(*this);
+    newton_solver->verbose = true;
+    newton_solver->require_residual_reduction = true;
+    diff_solver = std::move(newton_solver);
+    this->nonlinear_solver->matvec = &pyTEC3DNonLinearSystem::matvec_callback;
+    this->nonlinear_solver->residual = &pyTEC3DNonLinearSystem::residual_callback;
+}
+
+pyTEC3DNonLinearSystem::~pyTEC3DNonLinearSystem() noexcept = default;
+
+void pyTEC3DNonLinearSystem::add_matrices()
+{
+    libMesh::ImplicitSystem::add_matrices();
+    this->get_system_matrix().use_hash_table(true);
+    this->add_matrix("linear_stiffness");
+    this->get_matrix("linear_stiffness").use_hash_table(true);
+}
+
+void pyTEC3DNonLinearSystem::matvec_callback(const libMesh::NumericVector<libMesh::Number> & /*X*/,
+                                             libMesh::NumericVector<libMesh::Number> *R,
+                                             libMesh::SparseMatrix<libMesh::Number> *J,
+                                             libMesh::NonlinearImplicitSystem &S)
+{
+    auto *system = dynamic_cast<pyTEC3DNonLinearSystem *>(&S);
+    if (!system)
+        pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::matvec_callback: system is not pyTEC3DNonLinearSystem.");
+    if (R && J)
+    {
+        system->assemble_system();
+        system->residual_ready_from_matvec_ = true;
+        R->close();
+        system->record_newton_iterate(R->l2_norm());
+    }
+    else if (J)
+    {
+        system->assemble_jacobian_only();
+        system->residual_ready_from_matvec_ = false;
+    }
+    else if (R)
+    {
+        system->assemble_residual_only();
+        system->residual_ready_from_matvec_ = false;
+    }
+}
+
+void pyTEC3DNonLinearSystem::residual_callback(const libMesh::NumericVector<libMesh::Number> & /*X*/,
+                                               libMesh::NumericVector<libMesh::Number> & /*R*/,
+                                               libMesh::NonlinearImplicitSystem &S)
+{
+    auto *system = dynamic_cast<pyTEC3DNonLinearSystem *>(&S);
+    if (!system)
+        pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::residual_callback: system is not pyTEC3DNonLinearSystem.");
+    if (system->residual_ready_from_matvec_)
+    {
+        system->residual_ready_from_matvec_ = false;
+        return;
+    }
+    system->assemble_residual_only();
+}
+
 void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool assemble_residual)
 {
     libMesh::PerfLog perf_log("Matrix Assembly");
@@ -661,6 +882,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
     const auto &comm = system.comm();
 
     const bool update_matrix = this->check_update_system_matrix();
+    this->typed_equation_systems().step_report().system_matrix_updated |= update_matrix;
     const TimeScheme scheme = this->typed_equation_systems().time_scheme();
 
     const std::filesystem::path emat_folderpath = get_emat_folderpath_from_solver();
@@ -807,7 +1029,7 @@ void pyTEC3DNonLinearSystem::assemble_system_impl(bool assemble_jacobian, bool a
     reader.close_file_streams(streams);
     comm.barrier();
     if (assemble_jacobian && assemble_residual)
-        pytec3d::logging::info("Newton-Rhapson solver output info");
+        pytec3d::logging::info("Newton iteration: Jacobian and residual assembled.");
 }
 
 void pyTEC3DNonLinearSystem::assemble_system()
@@ -825,33 +1047,117 @@ void pyTEC3DNonLinearSystem::assemble_residual_only()
     this->assemble_system_impl(false, true);
 }
 
+void pyTEC3DNonLinearSystem::record_newton_iterate(libMesh::Real residual)
+{
+    std::vector<NewtonIteration> &history = this->typed_equation_systems().step_report().newton_history;
+    NewtonIteration iteration;
+    iteration.residual = residual;
+    if (!previous_iterate_)
+        previous_iterate_ = this->solution->clone();
+    else
+    {
+        // The step from the previous iterate, line search included.
+        previous_iterate_->add(-1.0, *this->solution);
+        iteration.step = previous_iterate_->l2_norm();
+        const libMesh::Real norm = this->solution->l2_norm();
+        iteration.relative_step = norm > 0.0 ? iteration.step / norm : iteration.step;
+        if (full_newton_step_ > 0.0)
+            iteration.step_length = iteration.step / full_newton_step_;
+        *previous_iterate_ = *this->solution;
+    }
+    full_newton_step_ = -1.0;
+    history.push_back(iteration);
+}
+
 void pyTEC3DNonLinearSystem::solve()
 {
+    StepReport &report = this->typed_equation_systems().step_report();
+    pytec3d::logging::ScopedTimer timer("Nonlinear system solved", &report.seconds_solve);
+    previous_iterate_.reset();
+    full_newton_step_ = -1.0;
     libMesh::NonlinearImplicitSystem::solve();
+    // The last iterate: libMesh stops after the residual of the last step, without assembling the Jacobian again.
+    if (previous_iterate_)
+    {
+        this->rhs->close();
+        record_newton_iterate(this->rhs->l2_norm());
+        if (report.newton_history.size() >= 2 &&
+            report.newton_history.back().step == 0.0) // converged at the start of an iteration: no new iterate
+            report.newton_history.pop_back();
+    }
+    previous_iterate_.reset();
     this->update_time_derivatives();
-    pytec3d::logging::info("Finished nonlinear system solve");
+    if (auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get()))
+        if (auto *petsc_solver = dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(
+                &newton_solver->get_linear_solver()))
+            report.factorization = pytec3d::diagnostics::factorization_report(petsc_solver->ksp());
+    pytec3d::diagnostics::check_linear_solve(report.factorization, -1.0);
+
+    const unsigned int result = diff_solver->solve_result();
+    std::string reasons;
+    for (const auto &[flag, text] : std::initializer_list<std::pair<unsigned int, const char *>>{
+             {libMesh::DiffSolver::CONVERGED_ABSOLUTE_RESIDUAL, "absolute residual"},
+             {libMesh::DiffSolver::CONVERGED_RELATIVE_RESIDUAL, "relative residual"},
+             {libMesh::DiffSolver::CONVERGED_ABSOLUTE_STEP, "absolute step"},
+             {libMesh::DiffSolver::CONVERGED_RELATIVE_STEP, "relative step"},
+             {libMesh::DiffSolver::DIVERGED_MAX_NONLINEAR_ITERATIONS, "maximum iterations reached"},
+             {libMesh::DiffSolver::DIVERGED_BACKTRACKING_FAILURE, "line search failed"},
+             {libMesh::DiffSolver::DIVERGED_LINEAR_SOLVER_FAILURE, "linear solver failed"},
+             {libMesh::DiffSolver::DIVERGED_NO_REASON, "diverged"}})
+        if (result & flag)
+            reasons += (reasons.empty() ? "" : ", ") + std::string(text);
+    report.newton_iterations = diff_solver->total_outer_iterations();
+    report.linear_iterations = diff_solver->total_inner_iterations(); // libMesh counts them per solve
+    report.newton_result = reasons.empty() ? "no convergence test met" : reasons;
+    pytec3d::logging::info("Newton: {} iteration(s), {} linear iteration(s); {}.", report.newton_iterations,
+                           report.linear_iterations, report.newton_result);
+    if (result >= libMesh::DiffSolver::DIVERGED_NO_REASON)
+        pytec3d::logging::warn("The Newton solver did not converge ({}); the solution is the last iterate.", reasons);
 }
 
 void pyTEC3DNonLinearSystem::post_init()
 {
     pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>::post_init();
 
-    auto &equation_systems = this->get_pytec3d_equation_systems();
-    auto *solver_parent = equation_systems.get_parent_object();
     auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
-    if (!solver_parent || !newton_solver)
-        pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::post_init: solver parent or Newton solver not available.");
-    newton_solver->require_residual_reduction = false;
+    if (!newton_solver)
+        pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem::post_init: Newton solver not available.");
+    // The Newton settings: the tolerances and limits through the parameters libMesh copies into the solver at every
+    // solve (NonlinearImplicitSystem::set_solver_parameters), the others on the solver itself.
+    const NewtonSettings &newton = this->get_pytec3d_equation_systems().get_solver_settings().nonlinear;
+    libMesh::Parameters &parameters = this->get_equation_systems().parameters;
+    parameters.set<unsigned int>("nonlinear solver maximum iterations") = newton.max_iterations;
+    parameters.set<libMesh::Real>("nonlinear solver absolute residual tolerance") = newton.absolute_residual_tolerance;
+    parameters.set<libMesh::Real>("nonlinear solver relative residual tolerance") = newton.relative_residual_tolerance;
+    parameters.set<libMesh::Real>("nonlinear solver absolute step tolerance") = newton.absolute_step_tolerance;
+    parameters.set<libMesh::Real>("nonlinear solver relative step tolerance") = newton.relative_step_tolerance;
+    newton_solver->require_residual_reduction = newton.require_residual_reduction;
+    newton_solver->require_finite_residual = newton.require_finite_residual;
+    newton_solver->brent_line_search = newton.brent_line_search;
+    newton_solver->minsteplength = newton.minimum_step_length;
+    newton_solver->linear_tolerance_multiplier = newton.linear_tolerance_multiplier;
+    newton_solver->continue_after_max_iterations = newton.continue_after_max_iterations;
+    newton_solver->continue_after_backtrack_failure = newton.continue_after_backtrack_failure;
+    newton_solver->verbose = newton.verbose;
+    newton_solver->linear_solution_monitor = std::make_unique<FullStepMonitor>(full_newton_step_);
 
-    this->nonlinear_solver_config_copy_ = std::make_unique<PetscSolverConfiguration>(
-        equation_systems.get_solver_settings(),
-        &newton_solver->get_linear_solver());
-    this->nonlinear_solver_config_copy_->configure_solver();
+    this->solver_config_ = std::make_unique<PetscSolverConfiguration>(
+        this->get_pytec3d_equation_systems().get_solver_settings(), &newton_solver->get_linear_solver(), true);
+    this->solver_config_->configure_solver();
+}
+
+// ---- explicit systems -------------------------------------------------------------------------------------
+
+pyTEC3DExplicitSystem::pyTEC3DExplicitSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
+    : pyTEC3DSystem<libMesh::ExplicitSystem>(es, name, number)
+{
+    this->remove_vector("RHS");
 }
 
 void pyTEC3DNodalSolutionSystem::assemble_system()
 {
-    pytec3d::logging::info("Computing nodal solution");
+    pytec3d::logging::ScopedTimer timer("Nodal fields computed",
+                                        &this->typed_equation_systems().step_report().seconds_nodal_fields);
 
     auto &eq_sys = this->typed_equation_systems();
 
@@ -873,12 +1179,12 @@ void pyTEC3DNodalSolutionSystem::assemble_system()
     reader.close_file_streams(streams);
 
     this->solution->close();
-    pytec3d::logging::info("Nodal solution updated");
 }
 
 void pyTEC3DElementSolutionSystem::assemble_system()
 {
-    pytec3d::logging::info("Computing elemental solution");
+    pytec3d::logging::ScopedTimer timer("Element fields computed",
+                                        &this->typed_equation_systems().step_report().seconds_element_fields);
 
     auto &eq_sys = this->typed_equation_systems();
 
@@ -900,22 +1206,16 @@ void pyTEC3DElementSolutionSystem::assemble_system()
     reader.close_file_streams(streams);
 
     this->solution->close();
-    pytec3d::logging::info("Element solution updated");
 }
 
 template <typename SysType>
 void pyTEC3DSystem<SysType>::init_variables()
 {
     auto &equation_systems = this->typed_equation_systems();
-    auto element_types_collector = equation_systems.get_element_types_factory();
+    const ModelElementTypes &element_types = equation_systems.element_types();
     const auto type = pyTEC3DSystemBase::system_type_from_name(this->name());
 
-    if (!element_types_collector)
-        pytec3d::logging::error_and_abort("Element types are not available for system variables.");
-
-    auto vars_to_subdomain_ids = VariablesMap::associate_variables_with_element_IDs(
-        *element_types_collector,
-        type);
+    auto vars_to_subdomain_ids = VariablesMap::associate_variables_with_element_IDs(element_types, type);
 
     std::set<libMesh::subdomain_id_type> mesh_subdomain_ids;
     this->get_mesh().subdomain_ids(mesh_subdomain_ids);
@@ -934,7 +1234,7 @@ void pyTEC3DSystem<SysType>::init_variables()
         if (subdomain_ids.empty())
             continue;
 
-        const auto &entry = element_types_collector->get(*subdomain_ids.begin());
+        const auto &entry = element_types.get(*subdomain_ids.begin());
         const auto system_variables = VariablesMap::get_system_variables_for_element(*entry.type, entry.domain, type);
         const auto variable = std::find_if(system_variables.begin(), system_variables.end(),
                                            [&pair](const VariablesMap::SystemVariable &v)

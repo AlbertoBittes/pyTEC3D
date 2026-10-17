@@ -1,11 +1,9 @@
-from pytec3d_solver.solver import pyTEC3DSolver
-from pytec3d.model_edit import ModelEdit
-from pytec3d.selector import Selector
+from pytec3d import selection, Solver
 import os
 import vtk.util.numpy_support as vtknp
 import numpy as np
 
-pytec3d = pyTEC3DSolver()
+pytec3d = Solver()
 
 filename = "ITER_coil_3D_test_1"
 
@@ -15,28 +13,28 @@ pytec3d.read_model(filepath)
 
 pytec3d.model.read_json("model_data.json")
 
-Selector.select(pytec3d.model.mesh, "X_BOUND", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "X_BOUND", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select(pytec3d.model.mesh, "Z_BOUND", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.select(pytec3d.model.mesh, "Z_BOUND", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
 
-Selector.select(pytec3d.model.mesh, "AXIS_NODES", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "AXIS_NODES", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select(pytec3d.model.mesh, "ROD_1", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
-Selector.select(pytec3d.model.mesh, "ROD_2", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
+selection.select(pytec3d.model.mesh, "ROD_1", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
+selection.select(pytec3d.model.mesh, "ROD_2", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 
-Selector.select(pytec3d.model.mesh, "INFINITY_BOUNDARY_INNER", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "INFINITY_BOUNDARY_INNER", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 pytec3d.load_model_into_solver()
 
@@ -54,7 +52,7 @@ for i in range(1, 10):
         pytec3d.time_step["theta"] = 1.0  # autots,off (default)
 
     # select coil elements
-    Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
+    selection.select(pytec3d.model.mesh, "MATERIAL", 23, location="elem")
     selection_cells = vtknp.vtk_to_numpy(
         pytec3d.model.mesh.GetCellData().GetArray("selection_cell")
     )

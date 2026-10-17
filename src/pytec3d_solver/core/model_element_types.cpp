@@ -1,15 +1,15 @@
 /**
- * @file element_types_factory.cpp
- * @brief ElementTypesFactory: maps the element_types of the model data onto element types.
+ * @file model_element_types.cpp
+ * @brief ModelElementTypes: maps the element_types of the model data onto element types.
  */
-#include "element_types_factory.h"
+#include "model_element_types.h"
 
 #include <algorithm>
 #include <string>
 
 #include "logging.h"
 
-ElementTypesFactory::ElementTypesFactory(const pytec3d::ModelData &model_data)
+ModelElementTypes::ModelElementTypes(const pytec3d::ModelData &model_data)
 {
     for (const auto &[subdomain, spec] : model_data.element_types())
     {
@@ -29,7 +29,7 @@ ElementTypesFactory::ElementTypesFactory(const pytec3d::ModelData &model_data)
     }
 }
 
-unsigned int ElementTypesFactory::time_order() const
+unsigned int ModelElementTypes::time_order() const
 {
     unsigned int order = 0;
     for (const auto &pair : entries_)
@@ -37,7 +37,7 @@ unsigned int ElementTypesFactory::time_order() const
     return order;
 }
 
-const ElementTypesFactory::Entry &ElementTypesFactory::get(libMesh::subdomain_id_type subdomain_id) const
+const ModelElementTypes::Entry &ModelElementTypes::get(libMesh::subdomain_id_type subdomain_id) const
 {
     const auto it = entries_.find(subdomain_id);
     if (it == entries_.end())
@@ -45,3 +45,4 @@ const ElementTypesFactory::Entry &ElementTypesFactory::get(libMesh::subdomain_id
                                           ". Define it in model.data[\"element_types\"].");
     return it->second;
 }
+

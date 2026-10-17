@@ -6,27 +6,21 @@
  * Solution), orchestrates variable initialisation, physics initialisation, and
  * the per-time-step solve sequence.
  */
-#ifndef pyTEC3D_EQUATION_SYSTEMS_H
-#define pyTEC3D_EQUATION_SYSTEMS_H
+#pragma once
 
-#include <unordered_map>
 #include <memory>
 #include <string>
-#include <tuple>
-#include <vector>
-#include <array>
+#include <unordered_map>
 
 #include <libmesh/equation_systems.h>
-#include <libmesh/numeric_vector.h>
 #include <libmesh/tensor_value.h>
-#include <pybind11/pybind11.h>
 
-#include "fe_parent_object.h"
+#include "coordinate_rotations.h"
+#include "model_data.h"
 #include "solver_configuration.h"
 #include "time_step.h"
-#include "model_data.h"
 
-class ElementTypesFactory;
+class ModelElementTypes;
 class pyTEC3DSystemBase;
 class pyTEC3DModel;
 class pyTEC3DDOFSystemBase;
@@ -34,25 +28,27 @@ class pyTEC3DDOFSystemBase;
 /**
  * @brief Manages all libMesh solution systems for one pyTEC3D simulation.
  *
- * Derives from libMesh::EquationSystems and FEParentObjectBase<pyTEC3DModel>.
+ * Derives from libMesh::EquationSystems; belongs to a pyTEC3DModel (model()).
  * Responsible for:
  *   - Registering and configuring DOF/nodal/element solution systems.
  *   - Driving variable and physics initialisation (variable adds, mesh prepare, DOF distribute).
  *   - Executing the per-time-step solve via solve_equation_systems().
  */
 class pyTEC3DEquationSystems
-    : public libMesh::EquationSystems,
-      public FEParentObjectBase<pyTEC3DModel>
+    : public libMesh::EquationSystems
 
 {
 public:
     using RotationMap = std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>>;
 
-    /**
-     * @brief Parses the model data JSON (model.data) and builds the element types it selects.
-     * @p solver_settings is the dict of the Python solver, read at every solve.
-     */
-    void load_model_data(const std::string &model_json, pybind11::object solver_settings);
+    pyTEC3DEquationSystems(libMesh::MeshBase &mesh, pyTEC3DModel &model);
+
+    /** @brief The model the systems belong to: its grid and coupling functor. */
+    pyTEC3DModel &model() const { return model_; }
+    ~pyTEC3DEquationSystems() override;
+
+    /** @brief Parses the model data JSON (model.data) and builds the element types it selects. */
+    void load_model_data(const std::string &model_json, const SolverSettings &solver_settings);
 
     /**
      * @brief Dry run of the coefficients on one element per (TYPE, MATERIAL, CONSTANT) combination of the mesh.
@@ -65,14 +61,14 @@ public:
     /** @brief The model data of the loaded model. */
     const pytec3d::ModelData &get_model_data() const;
 
-    /** @brief The solver_settings dict of the Python solver (none when it passed none). */
-    const pybind11::object &get_solver_settings() const;
+    /** @brief The linear solver settings, fixed when the model is loaded. */
+    const SolverSettings &get_solver_settings() const;
 
     /** @brief Updates time-step state and decides whether this solve advances time. */
-    void prepare_time_step_solve(const pybind11::dict &time_step);
+    void prepare_time_step_solve(const TimeStepInput &time_step);
 
     /** @brief Executes a single time-step solve: prepares constraints, assembles, solves, and updates post-processing fields. */
-    void solve_equation_systems(const pybind11::dict &time_step);
+    void solve_equation_systems(const TimeStepInput &time_step);
 
     /** @brief Registers each system type with the EquationSystems container. */
     void configure_systems();
@@ -95,6 +91,10 @@ public:
     /** @brief Returns the active DOF solution system (linear or nonlinear). */
     const pyTEC3DDOFSystemBase &get_dof_solution_system() const;
 
+    /** @brief What the current (or last) time-step solve did; filled by the systems. */
+    StepReport &step_report() { return step_report_; }
+    const StepReport &step_report() const { return step_report_; }
+
     /** @brief Returns the current time-step state. */
     const TimeStep *current_time_step() const;
 
@@ -110,8 +110,8 @@ public:
     /** @brief Scheme of the current time step for the time order of the model (time_step.h). */
     TimeScheme time_scheme() const;
 
-    /** @brief Returns the element-types factory built from the model description. */
-    const std::shared_ptr<ElementTypesFactory> &get_element_types_factory() const;
+    /** @brief The element types of the model, by TYPE id; aborts before load_model_data(). */
+    const ModelElementTypes &element_types() const;
 
     /** @brief Returns precomputed element-center local-to-global rotations keyed by element id. */
     const RotationMap &get_element_local_to_global_rotations() const;
@@ -119,24 +119,22 @@ public:
     /** @brief Returns precomputed node local-to-global rotations keyed by node id. */
     const RotationMap &get_node_local_to_global_rotations() const;
 
-    // Variadic template constructor: forwards all args to EquationSystems, context view is last and optional
-    template <typename... Args>
-    pyTEC3DEquationSystems(Args &&...args)
-        : libMesh::EquationSystems(std::forward<Args>(args)...)
-    {
-    }
-
-    void build_rotation_caches(pybind11::object pytec3dmodel_object);
+    /** @brief Precomputes the local-to-global rotations of the local elements (at their centres) and of the nodes. */
+    void build_rotation_caches(const CoordinateRotations &rotations);
 
 private:
+    /** @brief The largest input of each nonlinear law per id, into the step report; warns on extrapolation. */
+    void compute_law_ranges();
+
+    pyTEC3DModel &model_;
     bool use_nonlinear_system_ = false;
     std::unique_ptr<TimeStep> time_step_;
+    StepReport step_report_;
     std::unique_ptr<TimeStep> old_time_step_;
-    std::shared_ptr<ElementTypesFactory> element_types_factory_;
+    std::unique_ptr<ModelElementTypes> element_types_;
     pytec3d::ModelData model_data_;
-    pybind11::object solver_settings_;
+    SolverSettings solver_settings_;
     RotationMap element_local_to_global_rotations_;
     RotationMap node_local_to_global_rotations_;
 };
 
-#endif // pyTEC3D_EQUATION_SYSTEMS_H

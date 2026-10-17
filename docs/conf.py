@@ -9,7 +9,7 @@ version = release
 
 # Add project root and python package to path so autodoc can find modules
 sys.path.insert(0, os.path.abspath(".."))
-sys.path.insert(0, os.path.abspath("../python"))
+sys.path.insert(0, os.path.abspath("../src"))
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -29,14 +29,12 @@ suppress_warnings = ["autodoc.mocked_object"]
 # Mock heavy optional dependencies to keep RTD builds light
 autodoc_mock_imports = [
     "numpy",
-    "pandas",
-    "openpyxl",
     "mpi4py",
     "vtk",
     "vtkmodules",
     "vtk.util",
-    "pytec3d.coordinate_system",
-    "pytec3d.solver._pytec3d_solver",
+    "pytec3d_solver.pytec3d_solver",
+    "paraview",
     "ansys",
     "ansys.mapdl",
     "ansys.mapdl.reader",

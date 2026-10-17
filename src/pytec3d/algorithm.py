@@ -1,1456 +1,557 @@
+"""Plasma equilibrium and evolution (APEC-M): Picard iterations of the free-boundary Grad-Shafranov problem.
+
+The plasma lives on the *vacuum-chamber mesh*: a 2D (R, Z) mesh of the VACUUM_CHAMBER cells. The solver mesh is
+that same 2D mesh or a 3D torus built by revolving it about the y axis; toroidal maps then carry the plasma current
+density from the vacuum-chamber mesh to the solver mesh (projection) and the poloidal flux back (toroidal average).
+
+Each Picard iteration:
+
+1. finds the magnetic axis (PSI maximum), the X point (PSI saddle) and the limiter point, and from them the last closed
+   flux surface; the cells inside it, connected to the axis, are the plasma (``PLASMA`` cell array);
+2. computes the plasma current density ``Js`` from the Grad-Shafranov profile (``alpha_mp``, ``alpha_np``,
+   ``beta_p``), scaled to the target ``plasma_current``, and, in a limiter configuration with a halo, the halo
+   currents ``AMPS`` along the vacuum-chamber wall;
+3. for an equilibrium, corrects the control-coil currents so that the field at the target axis is zero;
+4. projects ``Js`` and ``AMPS`` to the solver mesh, solves, and averages the new flux ``PSI`` back;
+5. stops when the largest change of PSI is below ``tolerance_value``.
+
+Arrays read: ``VACUUM_CHAMBER``, ``PLASMA``, ``Js``, ``CONSTANT``, the control-coil component arrays and
+``cell_centroids`` / ``cell_volume`` (cells); ``PSI`` and the vector potential ``A`` (points). ``AMPS`` (points) is
+optional: the mesh only has it when an element type has the field it loads (the voltage ``V`` of a solid conductor);
+without it there are no halo currents.
+"""
+
 from __future__ import annotations
 
+import contextlib
 import copy
+import csv
+import math
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
+import time
+from collections import deque
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pandas as pd
-import vtk
-
-from pytec3d.selector import Selector
-from pytec3d.model_edit import ModelEdit
-from pytec3d.coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
-from pytec3d.logging_utils import get_logger
-from pytec3d.constants import (
-    DEFAULT_pyTEC3D_ALGORITHM_INPUT_PARAMETERS,
-    DEFAULT_pyTEC3D_ALGORITHM_STATUS,
+from vtkmodules.util import numpy_support as vtknp
+from vtkmodules.vtkCommonCore import reference, vtkPoints
+from vtkmodules.vtkCommonDataModel import (
+    vtkCellLocator,
+    vtkDataObject,
+    vtkPolyData,
+    vtkStaticPointLocator,
+    vtkUnstructuredGrid,
 )
+from vtkmodules.vtkFiltersCore import vtkPointDataToCellData
+from vtkmodules.vtkFiltersGeneral import vtkGradientFilter
 
-import vtk.util.numpy_support as vtknp  # type: ignore[import-not-found]
+from . import mesh as meshes
+from . import model_edit, selection
+from ._logging import get_logger
+from ._typing import Location
+from .coordinate_system import CylindricalCoordinateSystem, YAxisCylindricalCoordinateSystem
+from .errors import ConvergenceError, SolverStateError
 
-if TYPE_CHECKING:  # pragma: no cover - import is for type hints only
-    from pytec3d_solver.solver import pyTEC3DSolver
-
+if TYPE_CHECKING:
+    from .solver import Solver
 
 LOGGER = get_logger("pytec3d.algorithm")
 
-class pyTEC3DAlgorithm:
-    """
-    Python scaffold of the legacy pyTEC3D equilibrium/evolution analysis objects.
+MU_0 = 4.0e-7 * np.pi
 
-    Notes:
-        - This class mirrors the old C++ analysis API shape.
-        - Methods that previously depended on libMesh internals are intentionally
-          left as VTK-grid placeholders and can be refined incrementally.
-        - Only time-step logic is supported (no substeps).
+#: Point arrays of the PSI gradient and Hessian computed on the vacuum-chamber mesh.
+PSI_GRADIENT = "__pytec3d_psi_gradient__"
+PSI_HESSIAN = "__pytec3d_psi_hessian__"
+#: Load arrays the algorithm writes only when the solver mesh has them, i.e. when an element type of the model has
+#: the field they load (AMPS: the nodal current of the solid-conductor voltage V).
+OPTIONAL_LOADS = frozenset({"AMPS"})
+#: Directory (in the working directory) and file of the per-iteration diagnostics.
+DIAGNOSTICS_DIRECTORY = "__pytec3d__"
+DIAGNOSTICS_FILE = "pytec3d_iteration_diagnostics.csv"
+
+#: Default input parameters; override them in :attr:`Algorithm.input_parameters`.
+DEFAULT_INPUT_PARAMETERS: dict[str, Any] = {
+    # Target position of the magnetic axis (x = R, y = Z).
+    "target_central_axis_x": 0.0,
+    "target_central_axis_y": 0.0,
+    "target_central_axis_z": 0.0,
+    # Major radius and Grad-Shafranov profile.
+    "R0": 0.0,
+    "alpha_mp": 1.0001,
+    "alpha_np": 0.83197,
+    "beta_p": 0.0,
+    "AF0": 5.3 * 6.2,
+    "plasma_current": 0.0,
+    # Picard iterations.
+    "max_picard_iterations": 1,
+    "tolerance_value": 1e-6,
+    # Field at the target axis of a unit radial / vertical correction current.
+    "bradx_value": 0.0,
+    "brady_value": 0.0,
+    "bverx_value": 0.0,
+    "bvery_value": 0.0,
+    # Meshes and toroidal extrusion of a 3D solver mesh.
+    "equilibrium_mesh": "",
+    "static_mesh": "",
+    "evolution_mesh": "",
+    "extrusion_angle": 360.0,
+    "n_toroidal_divisions": -1,
+    # Halo: psi_2_min = psi_min - delta1 * (1 + (t - t0) * delta2) * (psi_max - psi_min), from t0_halo on.
+    "halo_delta1": 0.0,
+    "halo_delta2": 0.0,
+    "t0_halo": 0.0,
+    # Control coils: each coil gets I = radial_gain * I_radial + vertical_gain * I_vertical, as a current density
+    # I / cross_section added to the Js of its cells (component array of that name).
+    "control_coils": [
+        {"component": "PFC_2", "radial_gain": 1.0, "vertical_gain": 0.0},
+        {"component": "PFC_3", "radial_gain": 0.0, "vertical_gain": 1.0},
+        {"component": "PFC_4", "radial_gain": 0.0, "vertical_gain": 1.0},
+        {"component": "PFC_5", "radial_gain": -1.0, "vertical_gain": 0.0},
+    ],
+}
+
+#: Initial status; :attr:`Algorithm.status` holds the results of the last iteration.
+DEFAULT_STATUS: dict[str, Any] = {
+    "psi_magnetic_axis": 0.0,
+    "psi_max": 0.0,
+    "psi_min": 0.0,
+    "psi_2_min": 0.0,
+    "magnetic_axis_node_id": -1,
+    "limiter_node_id": -1,
+    "x_point_node_id": -1,
+    "magnetic_axis": (0.0, 0.0, 0.0),
+    "b_target_axis": (0.0, 0.0),
+    "last_psi_limiter": 0.0,
+    "last_psi_x_point": 0.0,
+    "separatrix_configuration": "uninitialized",
+    "limiter_point": (np.nan, np.nan, np.nan),
+    "x_point": (np.nan, np.nan, np.nan),
+    "flux_norm": np.nan,
+    "flux_tolerance": np.nan,
+    "radial_correction_current": 0.0,
+    "vertical_correction_current": 0.0,
+    "total_plasma_current_before_scaling": 0.0,
+    "plasma_current_scaling_lambda": 0.0,
+    "plasma_element_count": 0,
+    "picard_iteration": 0,
+    "converged": False,
+}
+
+
+def _has_array(mesh: vtkUnstructuredGrid, name: str, location: Location) -> bool:
+    data = mesh.GetPointData() if location == "node" else mesh.GetCellData()
+    return data.GetArray(name) is not None
+
+
+class Algorithm:
+    """Plasma equilibrium and evolution solves driving a :class:`~pytec3d.Solver`.
+
+    The algorithm only uses the public API of the solver (its model, ``time_step``, ``solve()``)::
+
+        solver = Solver()
+        solver.read_model("ITER_2D.vtu")
+        solver.model.read_json("model_data.json")
+        solver.load_model_into_solver()
+
+        algorithm = Algorithm(solver)
+        algorithm.input_parameters["R0"] = 6.2
+        algorithm.equilibrium_solve()
+
+    Attributes:
+        solver: The solver the algorithm drives.
+        input_parameters: Parameters of the algorithm (:data:`DEFAULT_INPUT_PARAMETERS`).
+        status: Results of the last iteration (:data:`DEFAULT_STATUS`).
     """
 
-    def __init__(
-        self,
-        pytec3d: "pyTEC3DSolver",
-        input_parameters: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """Initialize algorithm state and optional parameter overrides.
+    def __init__(self, solver: Solver, input_parameters: dict[str, Any] | None = None) -> None:
+        """Create the algorithm for a solver.
 
         Args:
-            pytec3d: Owning pyTEC3D object.
-            input_parameters: Optional input-parameter overrides.
-
-        Returns:
-            None
+            solver: The solver whose model the algorithm drives.
+            input_parameters: Overrides of :data:`DEFAULT_INPUT_PARAMETERS`.
         """
-        self.pytec3d: "pyTEC3DSolver" = pytec3d
-        self.input_parameters: Dict[str, Any] = copy.deepcopy(
-            DEFAULT_pyTEC3D_ALGORITHM_INPUT_PARAMETERS
-        )
+        self.solver = solver
+        self.input_parameters: dict[str, Any] = copy.deepcopy(DEFAULT_INPUT_PARAMETERS)
         if input_parameters:
             self.input_parameters.update(input_parameters)
-
-        self.status: Dict[str, Any] = copy.deepcopy(DEFAULT_pyTEC3D_ALGORITHM_STATUS)
-
-        self._first_absolute_iteration: bool = True
-        self._previous_flux_vector: Optional[np.ndarray] = None
-        self._old_control_current_density_base: Optional[np.ndarray] = None
-        self._b_target_axis_cache: Optional[
-            Tuple[Tuple[Any, ...], np.ndarray, np.ndarray]
-        ] = None
-        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
-        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
-        self._halo_node_groups: Tuple[np.ndarray, ...] = ()
-        self._halo_boundary_graph_cache: Optional[
-            Tuple[np.ndarray, Dict[int, np.ndarray]]
-        ] = None
-        self._equilibrium_mesh: Optional[vtk.vtkUnstructuredGrid] = None
-        LOGGER.debug(
-            "pyTEC3DAlgorithm initialized%s.",
-            " with parameter overrides" if input_parameters else "",
-        )
+        self.status: dict[str, Any] = copy.deepcopy(DEFAULT_STATUS)
+        self._equilibrium_mesh: vtkUnstructuredGrid | None = None
+        self.reset()
 
     def reset(self) -> None:
-        """Reset iterative state and cached data to default values.
-
-        Returns:
-            None
-        """
-        self.status = copy.deepcopy(DEFAULT_pyTEC3D_ALGORITHM_STATUS)
+        """Forget the iterations: status, previous flux, cached maps and graphs (the vacuum-chamber mesh stays)."""
+        self.status = copy.deepcopy(DEFAULT_STATUS)
         self._first_absolute_iteration = True
-        self._previous_flux_vector = None
-        self._old_control_current_density_base = None
-        self._b_target_axis_cache = None
-        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
-        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
-        self._halo_node_groups = ()
-        self._halo_boundary_graph_cache = None
-        LOGGER.debug("pyTEC3DAlgorithm state reset.")
+        self._previous_flux: np.ndarray | None = None
+        self._control_current_density_base: np.ndarray | None = None
+        self._b_target_cache: tuple[tuple[Any, ...], np.ndarray, np.ndarray] | None = None
+        self._toroidal_nodes = np.zeros((0, 0), dtype=np.int64)
+        self._toroidal_cells = np.zeros((0, 0), dtype=np.int64)
+        self._halo_node_groups: tuple[np.ndarray, ...] = ()
+        self._halo_boundary: tuple[np.ndarray, dict[int, np.ndarray]] | None = None
+
+    # ------------------------------------------------------------------------------------------- vacuum chamber
 
     @property
-    def vacuum_chamber_mesh(self) -> vtk.vtkUnstructuredGrid:
-        """Return the extracted vacuum-chamber equilibrium mesh.
+    def vacuum_chamber_mesh(self) -> vtkUnstructuredGrid:
+        """The 2D mesh of the vacuum chamber, where the plasma is computed.
 
-        Returns:
-            vtk.vtkUnstructuredGrid: Validated equilibrium mesh.
+        Set it from a 2D mesh with a ``VACUUM_CHAMBER`` cell array: a copy of its VACUUM_CHAMBER cells is kept.
+        :meth:`equilibrium_solve` sets it from the solver mesh when it is not set.
+
+        Raises:
+            SolverStateError: When reading it before it is set, or setting it twice.
+            ValueError: When the mesh has no VACUUM_CHAMBER cell.
         """
         if self._equilibrium_mesh is None:
-            raise ValueError("equilibrium_mesh is not set.")
+            raise SolverStateError("The vacuum-chamber mesh is not set.")
         return self._equilibrium_mesh
 
     @vacuum_chamber_mesh.setter
-    def vacuum_chamber_mesh(self, value: vtk.vtkUnstructuredGrid) -> None:
-        """Set the equilibrium mesh from a source mesh by extracting VACUUM_CHAMBER cells."""
-
+    def vacuum_chamber_mesh(self, value: vtkUnstructuredGrid) -> None:
         if self._equilibrium_mesh is not None:
-            raise ValueError("equilibrium_mesh is already set.")
-
-        source_mesh = vtk.vtkUnstructuredGrid()
-        source_mesh.DeepCopy(value)
-
-        Selector.select(source_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        selection_cell_array = self._require_array(source_mesh.GetCellData(), "selection_cell")
-        selected_cell_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_cell_array) == 1).astype(np.int64)
-        if selected_cell_ids.size == 0:
-            raise ValueError("No VACUUM_CHAMBER elements found while setting equilibrium_mesh.")
-
-        selected_cell_ids_vtk = vtknp.numpy_to_vtkIdTypeArray(selected_cell_ids, deep=True)
-
-        selection_node = vtk.vtkSelectionNode()
-        selection_node.SetFieldType(vtk.vtkSelectionNode.CELL)
-        selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
-        selection_node.SetSelectionList(selected_cell_ids_vtk)
-
-        selection = vtk.vtkSelection()
-        selection.AddNode(selection_node)
-
-        extract = vtk.vtkExtractSelection()
-        extract.SetInputData(0, source_mesh)
-        extract.SetInputData(1, selection)
-        extract.Update()
-
-        extracted = vtk.vtkUnstructuredGrid.SafeDownCast(extract.GetOutput())
+            raise SolverStateError("The vacuum-chamber mesh is already set.")
+        source = vtkUnstructuredGrid()
+        source.DeepCopy(meshes.check_grid(value))
+        selection.select(source, "VACUUM_CHAMBER", 1, location="elem")
+        cells = selection.selected_ids(source, "elem")
+        if cells.size == 0:
+            raise ValueError("The mesh has no VACUUM_CHAMBER cell.")
+        extracted = vtkUnstructuredGrid.SafeDownCast(selection._extract_cells(source, cells))
         if extracted is None or extracted.GetNumberOfCells() == 0:
-            raise ValueError("Failed to extract VACUUM_CHAMBER subgrid for equilibrium_mesh.")
-
-        Selector.select_all(extracted, type="elem")
-        Selector.nsle(extracted, mode="s")
-
+            raise ValueError("Failed to extract the VACUUM_CHAMBER cells.")
+        selection.select_all(extracted, location="elem")
+        selection.nsle(extracted)
         self._equilibrium_mesh = extracted
-        model_mesh = self.pytec3d.model.mesh
-        self._toroidal_slices_nodes = np.zeros((0, 0), dtype=np.int64)
-        self._toroidal_slices_elems = np.zeros((0, 0), dtype=np.int64)
-        self._halo_boundary_graph_cache = None
+        self._toroidal_nodes = np.zeros((0, 0), dtype=np.int64)
+        self._toroidal_cells = np.zeros((0, 0), dtype=np.int64)
+        self._halo_boundary = None
 
-    @staticmethod
-    def _require_array(
-        data: "vtk.vtkDataSetAttributes",
-        name: str,
-    ) -> "vtk.vtkDataArray":
-        """Return a named VTK array or raise a descriptive error if missing.
-
-        Args:
-            data: VTK data attributes object (CellData or PointData).
-            name: Array name to look up.
-
-        Returns:
-            vtk.vtkDataArray: Found array.
-
-        Raises:
-            ValueError: If the named array is not present in the data object.
-        """
-        arr = data.GetArray(name)
-        if arr is None:
-            raise ValueError(
-                f"Required array '{name}' not found. "
-                "Ensure the mesh is fully initialized before running the algorithm."
-            )
-        return arr
+    # ------------------------------------------------------------------------------------------- toroidal maps
 
     @staticmethod
     def build_toroidal_slices(
-        input_mesh: "vtk.vtkUnstructuredGrid",
-        target_mesh: "vtk.vtkUnstructuredGrid",
-        location: str = "node",
+        input_mesh: vtkUnstructuredGrid,
+        target_mesh: vtkUnstructuredGrid,
+        location: Location = "node",
         extrusion_angle: float = 360.0,
-        n_divisions: Optional[int] = None,
-        coordinate_system: Optional["CylindricalCoordinateSystem"] = None,
+        n_divisions: int | None = None,
+        coordinate_system: CylindricalCoordinateSystem | None = None,
     ) -> np.ndarray:
-        """
-        Build a toroidal projection map from a 2D input mesh to a target mesh.
+        """Map the selected points / cells of a 2D mesh to their images on a target mesh around the torus.
 
-        The first column stores source IDs. The remaining columns store the
-        closest target IDs corresponding to the expected toroidal stations.
-
-        For a 3D target:
-            - node mapping -> n_divisions + 1 stations
-            - element mapping -> n_divisions stations
-
-        For a 2D target:
-            - one target match is returned.
-
-        Matching is performed using a vtkStaticPointLocator in Cartesian space.
+        Each selected entity of ``input_mesh`` is revolved about the axis of ``coordinate_system`` to the toroidal
+        stations of the target, and matched with the nearest selected entity of ``target_mesh``.
 
         Args:
-            input_mesh: 2D unstructured grid used to generate a surface of
-                revolution.
-            target_mesh: Target unstructured grid.
-            location: "node" to map point IDs or "elem" to map cell IDs.
-            extrusion_angle: Total toroidal extrusion angle in degrees.
-            n_divisions: Number of toroidal element divisions.
-            coordinate_system: Cylindrical coordinate system used for the
-                projection.
+            input_mesh: The 2D (R, Z) mesh.
+            target_mesh: The target mesh: the same 2D mesh, or the 3D torus.
+            location: ``"node"`` (points) or ``"elem"`` (cell centroids).
+            extrusion_angle: Toroidal extent of a 3D target, degrees.
+            n_divisions: Number of cells along the torus of a 3D target. A 3D target has ``n_divisions + 1`` point
+                stations or ``n_divisions`` cell stations; a 2D target one.
+            coordinate_system: The cylindrical system of the torus; :class:`YAxisCylindricalCoordinateSystem` by
+                default.
 
         Returns:
-            np.ndarray:
-                Integer map with shape (num_input, 1 + num_matches).
+            Shape (selected inputs, 1 + stations): the input id, then the matched target id at each station.
+
+        Raises:
+            ValueError: On an invalid argument, a 3D input mesh, or an empty target selection.
         """
-        import vtk
-
-        # ------------------------------------------------------------------
-        # Validation
-        # ------------------------------------------------------------------
-
-        if location not in ("node", "elem"):
-            raise ValueError("location must be 'node' or 'elem'.")
-
+        location = meshes.check_location(location)
         if extrusion_angle <= 0.0:
             raise ValueError("extrusion_angle must be positive.")
+        if input_mesh.GetNumberOfCells() > 0 and input_mesh.GetMaxSpatialDimension() > 2:
+            raise ValueError("The input mesh must be 2D.")
+        coordinate_system = coordinate_system or YAxisCylindricalCoordinateSystem()
+        if not isinstance(coordinate_system, CylindricalCoordinateSystem):
+            raise ValueError("The toroidal maps need a cylindrical coordinate system.")
 
-        if (
-            input_mesh.GetNumberOfCells() > 0
-            and input_mesh.GetMaxSpatialDimension() > 2
-        ):
-            raise ValueError("Input mesh must be 2D.")
-
-        if coordinate_system is None:
-            coordinate_system = YAxisCylindricalCoordinateSystem()
-
-        if coordinate_system.type != "cylindrical":
-            raise ValueError(
-                "coordinate_system must be cylindrical for toroidal projection."
-            )
-
-        # ------------------------------------------------------------------
-        # Determine target dimensionality and toroidal stations
-        # ------------------------------------------------------------------
-
-        target_is_3d = target_mesh.GetMaxSpatialDimension() > 2
-
-        if target_is_3d:
-            if n_divisions is None:
-                raise ValueError(
-                    "n_divisions must be provided for 3D target meshes."
-                )
-
+        if target_mesh.GetMaxSpatialDimension() > 2:
+            if n_divisions is None or int(n_divisions) <= 0:
+                raise ValueError("A 3D target mesh needs a positive n_divisions.")
             n_divisions = int(n_divisions)
-
-            if n_divisions <= 0:
-                raise ValueError(
-                    "n_divisions must be a positive integer."
-                )
-
             if location == "node":
-                num_matches = n_divisions + 1
-                expected_theta_deg = np.linspace(
-                    0.0,
-                    float(extrusion_angle),
-                    num_matches,
-                    dtype=np.float64,
-                )
+                stations = np.linspace(0.0, float(extrusion_angle), n_divisions + 1)
             else:
-                num_matches = n_divisions
-                expected_theta_deg = (
-                    np.arange(
-                        n_divisions,
-                        dtype=np.float64,
-                    )
-                    + 0.5
-                ) * (
-                    float(extrusion_angle) / n_divisions
-                )
-
+                stations = (np.arange(n_divisions, dtype=np.float64) + 0.5) * (float(extrusion_angle) / n_divisions)
         else:
-            num_matches = 1
-            expected_theta_deg = np.zeros(
-                1,
-                dtype=np.float64,
-            )
+            stations = np.zeros(1)
+        n_stations = stations.size
 
-        # ------------------------------------------------------------------
-        # Convert meshes to cylindrical coordinates
-        # ------------------------------------------------------------------
+        inputs, input_ids = model_edit.to_local_coordinates(input_mesh, coordinate_system, location, True)
+        targets, target_ids = model_edit.to_local_coordinates(target_mesh, coordinate_system, location, True)
+        if inputs.size == 0:
+            return np.empty((0, 1 + n_stations), dtype=np.int64)
+        if targets.size == 0:
+            raise ValueError("The target mesh has no selected points / cells to map to.")
+        inputs = np.asarray(inputs, dtype=np.float64)
+        targets = np.asarray(targets, dtype=np.float64)
 
-        input_local, input_ids = ModelEdit.to_local_coordinates(
-            input_mesh,
-            coordinate_system,
-            location=location,
-            selected_only=True,
+        # Cartesian positions in the frame of the y-axis system: x = R cos(theta), y = Z, z = R sin(theta).
+        target_theta = np.deg2rad(targets[:, 1])
+        target_xyz = np.column_stack(
+            (targets[:, 0] * np.cos(target_theta), targets[:, 2], targets[:, 0] * np.sin(target_theta))
         )
-
-        target_local, target_ids = ModelEdit.to_local_coordinates(
-            target_mesh,
-            coordinate_system,
-            location=location,
-            selected_only=True,
-        )
-
-        if input_local.size == 0:
-            return np.empty(
-                (0, 1 + num_matches),
-                dtype=np.int64,
-            )
-
-        if target_local.size == 0:
-            raise ValueError(
-                "Target mesh has no points/cells to map."
-            )
-
-        input_local = np.asarray(
-            input_local,
-            dtype=np.float64,
-        )
-        target_local = np.asarray(
-            target_local,
-            dtype=np.float64,
-        )
-
-        input_ids = np.asarray(input_ids)
-        target_ids = np.asarray(target_ids)
-
-        input_radius = input_local[:, 0]
-        input_axial = input_local[:, 2]
-
-        target_radius = target_local[:, 0]
-        target_theta_deg = target_local[:, 1]
-        target_axial = target_local[:, 2]
-
-        num_input = input_radius.size
-        target_count = target_radius.size
-
-        # ------------------------------------------------------------------
-        # Convert target cylindrical coordinates to Cartesian coordinates.
-        #
-        # Y-axis cylindrical system:
-        #
-        #   x = R cos(theta)
-        #   y = Z
-        #   z = R sin(theta)
-        #
-        # The locator therefore works in the actual 3D spatial geometry.
-        # ------------------------------------------------------------------
-
-        target_theta_rad = np.deg2rad(target_theta_deg)
-
-        target_xyz = np.empty(
-            (target_count, 3),
-            dtype=np.float64,
-        )
-
-        target_xyz[:, 0] = (
-            target_radius * np.cos(target_theta_rad)
-        )
-        target_xyz[:, 1] = target_axial
-        target_xyz[:, 2] = (
-            target_radius * np.sin(target_theta_rad)
-        )
-
-        # ------------------------------------------------------------------
-        # Build static locator
-        # ------------------------------------------------------------------
-
-        vtk_target_points = vtknp.numpy_to_vtk(
-            target_xyz,
-            deep=True,
-        )
-
-        locator_points = vtk.vtkPoints()
-        locator_points.SetData(vtk_target_points)
-
-        locator_dataset = vtk.vtkPolyData()
-        locator_dataset.SetPoints(locator_points)
-
-        locator = vtk.vtkStaticPointLocator()
-        locator.SetDataSet(locator_dataset)
+        locator_points = vtkPoints()
+        locator_points.SetData(vtknp.numpy_to_vtk(target_xyz, deep=True))
+        locator_data = vtkPolyData()
+        locator_data.SetPoints(locator_points)
+        locator = vtkStaticPointLocator()
+        locator.SetDataSet(locator_data)
         locator.AutomaticOn()
         locator.BuildLocator()
 
-        # ------------------------------------------------------------------
-        # Generate all query points in one NumPy operation.
-        #
-        # Shape:
-        #
-        #     (num_input, num_matches, 3)
-        #
-        # Flatten afterwards so the locator queries can be performed in a
-        # simple contiguous loop.
-        # ------------------------------------------------------------------
+        theta = np.deg2rad(stations)
+        n_inputs = inputs.shape[0]
+        queries = np.empty((n_inputs * n_stations, 3))
+        queries[:, 0] = (inputs[:, 0, None] * np.cos(theta)[None, :]).ravel()
+        queries[:, 1] = np.broadcast_to(inputs[:, 2, None], (n_inputs, n_stations)).ravel()
+        queries[:, 2] = (inputs[:, 0, None] * np.sin(theta)[None, :]).ravel()
+        nearest = np.fromiter((locator.FindClosestPoint(q) for q in queries), dtype=np.int64, count=len(queries))
 
-        theta_rad = np.deg2rad(expected_theta_deg)
-
-        query_x = (
-            input_radius[:, None]
-            * np.cos(theta_rad)[None, :]
-        )
-
-        query_y = input_axial[:, None]
-
-        query_z = (
-            input_radius[:, None]
-            * np.sin(theta_rad)[None, :]
-        )
-
-        num_queries = num_input * num_matches
-
-        query_points = np.empty(
-            (num_queries, 3),
-            dtype=np.float64,
-        )
-
-        query_points[:, 0] = query_x.ravel()
-        query_points[:, 1] = np.broadcast_to(
-            query_y,
-            (num_input, num_matches),
-        ).ravel()
-        query_points[:, 2] = query_z.ravel()
-
-        # ------------------------------------------------------------------
-        # Query closest target point.
-        #
-        # vtkStaticPointLocator performs the actual spatial search in C++.
-        # Only the scalar lookup crosses the Python/VTK boundary.
-        # ------------------------------------------------------------------
-
-        target_indices = np.empty(
-            num_queries,
-            dtype=np.int64,
-        )
-
-        for query_idx in range(num_queries):
-            target_indices[query_idx] = locator.FindClosestPoint(
-                query_points[query_idx]
-            )
-
-        # ------------------------------------------------------------------
-        # Convert target locator indices to actual target IDs.
-        # ------------------------------------------------------------------
-
-        matched_ids = target_ids[target_indices]
-
-        # ------------------------------------------------------------------
-        # Assemble result.
-        # ------------------------------------------------------------------
-
-        mapping = np.empty(
-            (num_input, 1 + num_matches),
-            dtype=np.int64,
-        )
-
-        mapping[:, 0] = input_ids.astype(
-            np.int64,
-            copy=False,
-        )
-
-        mapping[:, 1:] = matched_ids.reshape(
-            num_input,
-            num_matches,
-        ).astype(
-            np.int64,
-            copy=False,
-        )
-
+        mapping = np.empty((n_inputs, 1 + n_stations), dtype=np.int64)
+        mapping[:, 0] = input_ids
+        mapping[:, 1:] = np.asarray(target_ids)[nearest].reshape(n_inputs, n_stations)
         return mapping
 
-    def _set_toroidal_slices(self) -> None:
-        """Build toroidal node/element mapping slices when they are not cached yet.
-
-        Returns:
-            None
-        """
-        if (
-            self._toroidal_slices_nodes.size != 0
-            and self._toroidal_slices_elems.size != 0
-        ):
-            LOGGER.debug("Toroidal slices already cached; skipping rebuild.")
+    def _ensure_toroidal_maps(self) -> None:
+        """Build the point and cell toroidal maps between the vacuum-chamber mesh and the solver mesh, once."""
+        if self._toroidal_nodes.size and self._toroidal_cells.size:
             return
-        LOGGER.debug("Building toroidal node/element slices.")
+        LOGGER.debug("Building the toroidal maps.")
+        chamber = self.vacuum_chamber_mesh
+        target = self.solver.model.mesh
+        divisions = int(self.input_parameters.get("n_toroidal_divisions", -1))
+        if target.GetMaxSpatialDimension() > 2 and divisions <= 0:
+            raise ValueError("input_parameters['n_toroidal_divisions'] must be positive for a 3D solver mesh.")
+        if divisions <= 0:
+            divisions = 1
+        angle = float(self.input_parameters.get("extrusion_angle", 360.0))
 
-        equilibrium_mesh = self.vacuum_chamber_mesh
+        selection.select(target, "VACUUM_CHAMBER", 1, location="elem")
+        selection.nsle(target)
+        selection.select(chamber, "VACUUM_CHAMBER", 1, location="elem")
+        self._toroidal_nodes = self.build_toroidal_slices(chamber, target, "node", angle, divisions)
+        self._toroidal_cells = self.build_toroidal_slices(chamber, target, "elem", angle, divisions)
 
-        target_dimension = self.pytec3d.model.mesh.GetMaxSpatialDimension()
-        extrusion_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
-        n_toroidal_divisions = int(
-            self.input_parameters.get("n_toroidal_divisions", -1)
-        )
-        if target_dimension > 2 and n_toroidal_divisions <= 0:
-            raise ValueError(
-                "n_toroidal_divisions must be a positive integer for 3D meshes."
-            )
-        if target_dimension <= 2 and n_toroidal_divisions <= 0:
-            n_toroidal_divisions = 1
+    def _map(self, location: Location) -> tuple[np.ndarray, np.ndarray]:
+        self._ensure_toroidal_maps()
+        mapping = self._toroidal_nodes if location == "node" else self._toroidal_cells
+        return np.asarray(mapping[:, 0], dtype=np.int64), np.asarray(mapping[:, 1:], dtype=np.int64)
 
-        Selector.select(self.pytec3d.model.mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-        Selector.nsle(self.pytec3d.model.mesh, mode="s")
-        Selector.select(equilibrium_mesh, "VACUUM_CHAMBER", 1, type="elem", mode="s")
-
-        self._toroidal_slices_nodes = self.build_toroidal_slices(
-            equilibrium_mesh,
-            self.pytec3d.model.mesh,
-            location="node",
-            extrusion_angle=extrusion_angle,
-            n_divisions=n_toroidal_divisions,
-        )
-        self._toroidal_slices_elems = self.build_toroidal_slices(
-            equilibrium_mesh,
-            self.pytec3d.model.mesh,
-            location="elem",
-            extrusion_angle=extrusion_angle,
-            n_divisions=n_toroidal_divisions,
-        )
-
-    def _diagnostics_csv_path(self) -> str:
-        """Return diagnostics CSV output path under the __pytec3d__ folder.
-
-        Returns:
-            str: Diagnostics CSV file path.
-        """
-        diagnostics_dir = os.path.join(os.getcwd(), "__pytec3d__")
-        os.makedirs(diagnostics_dir, exist_ok=True)
-        return os.path.join(diagnostics_dir, "pytec3d_iteration_diagnostics.csv")
-
-    def _clear_diagnostics_file(self) -> None:
-        """Remove diagnostics CSV on rank 0 before a new run.
-
-        Returns:
-            None
-        """
-        if self.pytec3d._world_rank() != 0:
-            return
-
-        csv_path = self._diagnostics_csv_path()
-        try:
-            os.remove(csv_path)
-        except FileNotFoundError:
-            pass
-
-    def _build_diagnostics_row(self, converged: bool) -> Dict[str, Any]:
-        """Build one diagnostics record from current algorithm status.
+    def toroidal_average(self, array_name: str, location: Location, component: int | None = None) -> None:
+        """Average an array of the solver mesh over the toroidal stations into the vacuum-chamber mesh.
 
         Args:
-            converged: Current convergence flag.
+            array_name: Array present on both meshes.
+            location: ``"node"`` or ``"elem"``.
+            component: Component of a vector array; all of them when None.
 
-        Returns:
-            Dict[str, Any]: Row payload for CSV append.
+        Raises:
+            MissingArrayError: If the array is missing on a mesh.
+            ValueError: If ``component`` is out of range.
         """
-        row: Dict[str, Any] = {
-            "time": float(self.pytec3d.time_step["time"]),
-            "picard_iteration": int(self.status["picard_iteration"]),
-            "flux_metric": float(self.status["flux_norm"]),
-            "flux_threshold": float(self.status["flux_tolerance"]),
-            "converged": bool(converged),
-        }
+        location = meshes.check_location(location)
+        sources, targets = self._map(location)
+        chamber_array = meshes.get_array(self.vacuum_chamber_mesh, array_name, location)
+        chamber = vtknp.vtk_to_numpy(chamber_array)
+        model = meshes.array_values(self.solver.model.mesh, array_name, location)
+        if chamber.ndim == 1:
+            chamber[sources] = np.mean(model[targets], axis=1)
+        else:
+            for c in self._components(chamber, component, array_name):
+                chamber[sources, c] = np.mean(model[targets, c], axis=1)
+        chamber_array.Modified()
 
-        for key, value in self.status.items():
-            if key in (
-                "picard_iteration",
-                "converged",
-                "flux_norm",
-                "flux_tolerance",
-            ):
-                continue
-            if key == "magnetic_axis":
-                row["magnetic_axis_x"] = float(value[0])
-                row["magnetic_axis_y"] = float(value[1])
-                row["magnetic_axis_z"] = float(value[2])
-            elif key == "limiter_point":
-                row["limiter_x"] = float(value[0])
-                row["limiter_y"] = float(value[1])
-                row["limiter_z"] = float(value[2])
-            elif key == "x_point":
-                row["x_point_x"] = float(value[0])
-                row["x_point_y"] = float(value[1])
-                row["x_point_z"] = float(value[2])
-            elif key == "b_target_axis":
-                row["b_target_axis_x"] = float(value[0])
-                row["b_target_axis_y"] = float(value[1])
-            else:
-                row[key] = value
-        return row
+    def toroidal_projection(self, array_name: str, location: Location, component: int | None = None) -> None:
+        """Copy an array of the vacuum-chamber mesh to every toroidal station of the solver mesh.
+
+        Same arguments and errors as :meth:`toroidal_average`, except for an optional load (:data:`OPTIONAL_LOADS`):
+        when the solver mesh does not have it (no element type has the field it loads) nothing is projected.
+        """
+        location = meshes.check_location(location)
+        if array_name in OPTIONAL_LOADS and not _has_array(self.solver.model.mesh, array_name, location):
+            LOGGER.debug("No '%s' array on the solver mesh (no field takes it): not projected.", array_name)
+            return
+        sources, targets = self._map(location)
+        chamber = meshes.array_values(self.vacuum_chamber_mesh, array_name, location)
+        model_array = meshes.get_array(self.solver.model.mesh, array_name, location)
+        model = vtknp.vtk_to_numpy(model_array)
+        flat_targets = targets.reshape(-1)
+        valid = flat_targets >= 0
+        if not np.any(valid):
+            return
+        flat_targets = flat_targets[valid]
+        if chamber.ndim == 1:
+            model[flat_targets] = np.broadcast_to(chamber[sources, np.newaxis], targets.shape).reshape(-1)[valid]
+        else:
+            for c in self._components(chamber, component, array_name):
+                projected = np.broadcast_to(chamber[sources, c][:, np.newaxis], targets.shape).reshape(-1)[valid]
+                model[flat_targets, c] = projected
+        model_array.Modified()
+
+    @staticmethod
+    def _components(values: np.ndarray, component: int | None, array_name: str) -> list[int]:
+        """All the components of a vector array, or the one asked for."""
+        if component is None:
+            return list(range(values.shape[1]))
+        if not 0 <= component < values.shape[1]:
+            raise ValueError(f"Component {component} out of range for array '{array_name}'.")
+        return [component]
+
+    def _swap_projected_js_components(self) -> None:
+        """On a 3D solver mesh, turn the projected (R, Z, phi) components of Js into global Cartesian ones."""
+        target = self.solver.model.mesh
+        if target.GetMaxSpatialDimension() <= 2:
+            return
+        _, targets = self._map("elem")
+        js_array = meshes.get_array(target, "Js", "elem")
+        js = vtknp.vtk_to_numpy(js_array)
+        if js.ndim != 2 or js.shape[1] < 3:
+            raise ValueError("Js must be a vector array.")
+        cells = targets.reshape(-1)
+        cells = cells[cells >= 0]
+        if cells.size == 0:
+            return
+        js[cells, :] = js[cells][:, [0, 2, 1]]
+        selection.select(target, selection.ID, np.unique(cells), location="elem")
+        model_edit.map_vector_field_to_global_components(
+            target, "Js", YAxisCylindricalCoordinateSystem(), "elem", selected_only=True
+        )
+        js_array.Modified()
+
+    # ------------------------------------------------------------------------------------------- flux
+
+    def calculate_poloidal_flux(self) -> None:
+        """Update ``Ae``, ``PSI`` and ``PSIe`` on the solver mesh from the vector potential ``A``.
+
+        Raises:
+            MissingArrayError: If the point array ``A`` is missing.
+        """
+        target = self.solver.model.mesh
+        meshes.get_array(target, "A", "node")
+        model_edit.element_solution(target, "A")
+        model_edit.poloidal_flux(target, YAxisCylindricalCoordinateSystem())
 
     def _compute_psi_derivatives(self) -> None:
-        """Compute and cache PSI gradient and Hessian on the equilibrium mesh."""
-        mesh = self.vacuum_chamber_mesh
-
-        grad_filter = vtk.vtkGradientFilter()
-        grad_filter.SetInputData(mesh)
-        grad_filter.SetInputScalars(vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
-        grad_filter.SetResultArrayName("__pytec3d_psi_gradient__")
-        if hasattr(grad_filter, "SetComputeGradient"):
-            grad_filter.SetComputeGradient(True)
-        grad_filter.Update()
-
-        grad_output = grad_filter.GetOutput()
-        gradient_array = grad_output.GetPointData().GetArray("__pytec3d_psi_gradient__")
+        """Store the PSI gradient and Hessian (``vtkGradientFilter``) as point arrays of the vacuum-chamber mesh."""
+        chamber = self.vacuum_chamber_mesh
+        gradient = vtkGradientFilter()
+        gradient.SetInputData(chamber)
+        gradient.SetInputScalars(vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
+        gradient.SetResultArrayName(PSI_GRADIENT)
+        gradient.SetComputeGradient(True)
+        gradient.Update()
+        gradient_array = gradient.GetOutput().GetPointData().GetArray(PSI_GRADIENT)
         if gradient_array is None:
-            raise RuntimeError("Failed to compute PSI gradient on equilibrium mesh.")
+            raise RuntimeError("Failed to compute the PSI gradient.")
 
-        hessian_filter = vtk.vtkGradientFilter()
-        hessian_filter.SetInputConnection(grad_filter.GetOutputPort())
-        hessian_filter.SetInputScalars(
-            vtk.vtkDataObject.FIELD_ASSOCIATION_POINTS,
-            "__pytec3d_psi_gradient__",
-        )
-        hessian_filter.SetResultArrayName("__pytec3d_psi_hessian__")
-        if hasattr(hessian_filter, "SetComputeGradient"):
-            hessian_filter.SetComputeGradient(True)
-        hessian_filter.Update()
-
-        hessian_output = hessian_filter.GetOutput()
-        hessian_array = hessian_output.GetPointData().GetArray("__pytec3d_psi_hessian__")
+        hessian = vtkGradientFilter()
+        hessian.SetInputConnection(gradient.GetOutputPort())
+        hessian.SetInputScalars(vtkDataObject.FIELD_ASSOCIATION_POINTS, PSI_GRADIENT)
+        hessian.SetResultArrayName(PSI_HESSIAN)
+        hessian.SetComputeGradient(True)
+        hessian.Update()
+        hessian_array = hessian.GetOutput().GetPointData().GetArray(PSI_HESSIAN)
         if hessian_array is None:
-            raise RuntimeError("Failed to compute PSI Hessian on equilibrium mesh.")
+            raise RuntimeError("Failed to compute the PSI Hessian.")
 
-        mesh_point_data = mesh.GetPointData()
-        existing_grad = mesh_point_data.GetArray("__pytec3d_psi_gradient__")
-        if existing_grad is not None:
-            mesh_point_data.RemoveArray("__pytec3d_psi_gradient__")
-        existing_hess = mesh_point_data.GetArray("__pytec3d_psi_hessian__")
-        if existing_hess is not None:
-            mesh_point_data.RemoveArray("__pytec3d_psi_hessian__")
+        point_data = chamber.GetPointData()
+        for array in (gradient_array, hessian_array):
+            point_data.RemoveArray(array.GetName())
+            point_data.AddArray(array)
 
-        mesh_point_data.AddArray(gradient_array)
-        mesh_point_data.AddArray(hessian_array)
-
-    def _normalized_control_coils(self) -> List[Dict[str, Any]]:
-        """Validate and normalize control-coil mapping from input parameters.
-
-        Returns:
-            List[Dict[str, Any]]: Normalized list with component/radial_gain/vertical_gain.
-        """
-        raw = self.input_parameters.get("control_coils", [])
-        if raw is None:
-            return []
-        if not isinstance(raw, list):
-            raise TypeError(
-                "input_parameters['control_coils'] must be a list of dictionaries."
-            )
-
-        normalized: List[Dict[str, Any]] = []
-        for idx, item in enumerate(raw, start=1):
-            if not isinstance(item, dict):
-                raise TypeError(
-                    f"control_coils[{idx}] must be a dictionary, got {type(item).__name__}."
-                )
-
-            component = str(item.get("component", "")).strip()
-            if not component:
-                raise ValueError(
-                    f"control_coils[{idx}] must define a non-empty 'component'."
-                )
-
-            if "radial_gain" not in item:
-                raise ValueError(
-                    f"control_coils[{idx}] must define 'radial_gain'."
-                )
-            if "vertical_gain" not in item:
-                raise ValueError(
-                    f"control_coils[{idx}] must define 'vertical_gain'."
-                )
-
-            radial_gain = item["radial_gain"]
-            vertical_gain = item["vertical_gain"]
-            normalized.append(
-                {
-                    "component": component,
-                    "radial_gain": float(radial_gain),
-                    "vertical_gain": float(vertical_gain),
-                }
-            )
-        return normalized
-
-    def _cache_halo_boundary_graph(self) -> None:
-        """Cache the external boundary graph of selected vacuum-chamber cells.
-
-        Returns:
-            None
-        """
-        if self._halo_boundary_graph_cache is not None:
-            LOGGER.debug("Halo boundary graph already cached; skipping rebuild.")
-            return
-        LOGGER.debug("Building halo boundary graph.")
-        mesh = self.vacuum_chamber_mesh
-        Selector.select_all(mesh)
-        boundary_node_ids, boundary_adjacency = (
-            Selector.get_selected_external_node_adjacency(mesh)
-        )
-        self._halo_boundary_graph_cache = (boundary_node_ids, boundary_adjacency)
-
-    def _get_halo_boundary_graph(self) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
-        """Return cached halo boundary graph, computing it on first use.
-
-        Returns:
-            Tuple[np.ndarray, Dict[int, np.ndarray]]: Boundary node ids and adjacency map.
-        """
-        if self._halo_boundary_graph_cache is None:
-            self._cache_halo_boundary_graph()
-        if self._halo_boundary_graph_cache is None:
-            raise RuntimeError("Halo boundary graph cache is unexpectedly empty.")
-        return self._halo_boundary_graph_cache
-
-    @staticmethod
-    def _connected_node_groups(
-        node_ids: np.ndarray,
-        boundary_adjacency: Dict[int, np.ndarray],
-    ) -> Tuple[np.ndarray, ...]:
-        """Split node ids into ordered edge-connected components on the boundary graph.
-
-        Args:
-            node_ids: Candidate node ids.
-            boundary_adjacency: Boundary adjacency graph.
-
-        Returns:
-            Tuple[np.ndarray, ...]: Ordered connected node groups.
-        """
-        node_ids = np.unique(np.asarray(node_ids, dtype=np.int64).reshape(-1))
-        if node_ids.size == 0:
-            return ()
-        if node_ids.size == 1:
-            return (node_ids,)
-
-        selected = set(int(node_id) for node_id in node_ids)
-        visited: set[int] = set()
-        groups: list[np.ndarray] = []
-
-        for start_node in node_ids:
-            start = int(start_node)
-            if start in visited:
-                continue
-
-            stack = [start]
-            component: list[int] = []
-            visited.add(start)
-            while stack:
-                node = stack.pop()
-                component.append(node)
-                for neighbor in boundary_adjacency.get(node, ()):
-                    neighbor = int(neighbor)
-                    if neighbor in selected and neighbor not in visited:
-                        visited.add(neighbor)
-                        stack.append(neighbor)
-
-            component_set = set(component)
-            if len(component) <= 2:
-                groups.append(np.asarray(component, dtype=np.int64))
-                continue
-
-            degrees = {
-                node: sum(
-                    int(neighbor) in component_set
-                    for neighbor in boundary_adjacency.get(node, ())
-                )
-                for node in component
-            }
-            if any(degree > 2 for degree in degrees.values()):
-                raise ValueError(
-                    "Halo node group has branching edge connectivity; "
-                    "cannot order it as a single boundary path."
-                )
-
-            endpoints = [node for node, degree in degrees.items() if degree == 1]
-            if len(endpoints) != 2:
-                raise ValueError("Halo node group is not an open edge-connected path.")
-
-            ordered: list[int] = []
-            previous = -1
-            current = min(endpoints)
-            ordered_set: set[int] = set()
-            while current not in ordered_set:
-                ordered.append(current)
-                ordered_set.add(current)
-                next_candidates = [
-                    int(neighbor)
-                    for neighbor in boundary_adjacency.get(current, ())
-                    if (
-                        int(neighbor) in component_set
-                        and int(neighbor) != previous
-                        and int(neighbor) not in ordered_set
-                    )
-                ]
-                if not next_candidates:
-                    break
-                previous, current = current, next_candidates[0]
-
-            if len(ordered) != len(component):
-                raise ValueError("Halo node group is not a simple edge-connected path.")
-            groups.append(np.asarray(ordered, dtype=np.int64))
-
-        return tuple(sorted(groups, key=lambda group: int(group[0])))
-
-    @staticmethod
-    def _extract_main_plasma_region_cells(
-        mesh: "vtk.vtkUnstructuredGrid",
-        axis_node_id: int,
-        psi_point: np.ndarray,
-        psi_x: float,
-        vac_cell_mask: np.ndarray,
-    ) -> np.ndarray:
-        """Traverses VACUUM_CHAMBER elements starting from the magnetic axis.
-        
-        Candidate elements must have ALL nodes satisfying PSI >= PSI_x.
-        Adjacent elements MUST share >= 2 nodes to prevent BFS traversal 
-        across a single-node X-point saddle contact.
-        """
-        n_cells = mesh.GetNumberOfCells()
-        n_points = mesh.GetNumberOfPoints()
-
-        if axis_node_id < 0 or axis_node_id >= n_points:
-            return np.zeros(0, dtype=np.int64)
-
-        psi_axis = psi_point[axis_node_id]
-        if not np.isfinite(psi_axis):
-            return np.zeros(0, dtype=np.int64)
-
-        core_above = psi_axis >= psi_x
-
-        cells = mesh.GetCells()
-        offsets_array = cells.GetOffsetsArray()
-        connectivity_array = cells.GetConnectivityArray()
-
-        if offsets_array is None or connectivity_array is None:
-            return np.zeros(0, dtype=np.int64)
-
-        offsets = vtknp.vtk_to_numpy(offsets_array)
-        connectivity = vtknp.vtk_to_numpy(connectivity_array)
-
-        # 1. Filter VACUUM_CHAMBER cells where ALL nodes satisfy PSI condition
-        candidate_cell_mask = np.zeros(n_cells, dtype=bool)
-        vac_cell_ids = np.flatnonzero(vac_cell_mask)
-
-        for cell_id in vac_cell_ids:
-            start = offsets[cell_id]
-            end = offsets[cell_id + 1]
-            cell_nodes = connectivity[start:end]
-            cell_psi = psi_point[cell_nodes]
-
-            if not np.all(np.isfinite(cell_psi)):
-                continue
-
-            all_nodes_valid = np.all(cell_psi >= psi_x) if core_above else np.all(cell_psi <= psi_x)
-            if all_nodes_valid:
-                candidate_cell_mask[cell_id] = True
-
-        # 2. Build reverse lookup: Node ID -> List of Candidate Cell IDs
-        node_to_cand_cells = [[] for _ in range(n_points)]
-        cand_cell_ids = np.flatnonzero(candidate_cell_mask)
-
-        for cell_id in cand_cell_ids:
-            start = offsets[cell_id]
-            end = offsets[cell_id + 1]
-            for node_id in connectivity[start:end]:
-                node_to_cand_cells[node_id].append(cell_id)
-
-        # 3. Seed BFS from candidate cells touching the magnetic axis node
-        seed_cells = node_to_cand_cells[axis_node_id]
-        if not seed_cells:
-            return np.zeros(0, dtype=np.int64)
-
-        # 4. Run cell-level BFS with strict edge-connectivity check (>= 2 common nodes)
-        from collections import deque
-
-        visited_cells = np.zeros(n_cells, dtype=bool)
-        queue = deque(seed_cells)
-        for cid in seed_cells:
-            visited_cells[cid] = True
-
-        while queue:
-            curr_cid = queue.popleft()
-            start = offsets[curr_cid]
-            end = offsets[curr_cid + 1]
-            curr_nodes = set(connectivity[start:end])
-
-            # Get potential neighbor candidate cells sharing at least 1 node
-            potential_neighbors = set()
-            for node_id in curr_nodes:
-                potential_neighbors.update(node_to_cand_cells[node_id])
-
-            # Test edge-connectivity (>= 2 common nodes required)
-            for nbr_cid in potential_neighbors:
-                if visited_cells[nbr_cid]:
-                    continue
-
-                nbr_start = offsets[nbr_cid]
-                nbr_end = offsets[nbr_cid + 1]
-                nbr_nodes = connectivity[nbr_start:nbr_end]
-
-                # Count overlapping nodes between current cell and neighbor
-                common_nodes_count = sum(1 for node in nbr_nodes if node in curr_nodes)
-
-                # If common_nodes_count == 1, it is a point-contact (X-point node) -> REJECT
-                if common_nodes_count >= 2:
-                    visited_cells[nbr_cid] = True
-                    queue.append(nbr_cid)
-
-        return np.flatnonzero(visited_cells).astype(np.int64)
-
-    @staticmethod
-    def _orient_halo_node_groups(
-        groups: Tuple[np.ndarray, ...],
-        points: np.ndarray,
-        reference_point: Tuple[float, float, float],
-        plasma_current: float,
-    ) -> Tuple[np.ndarray, ...]:
-        """Orient each halo node path consistently with the plasma-current direction.
-
-        Args:
-            groups: Ordered halo node groups.
-            points: Mesh point coordinates.
-            reference_point: Magnetic axis reference point.
-            plasma_current: Plasma current sign/magnitude.
-
-        Returns:
-            Tuple[np.ndarray, ...]: Oriented node groups.
-        """
-        if not groups or plasma_current == 0.0:
-            return groups
-
-        reference_xy = np.asarray(reference_point[:2], dtype=float)
-        target_clockwise = plasma_current > 0.0
-        oriented_groups: list[np.ndarray] = []
-
-        for group in groups:
-            if group.size <= 1:
-                oriented_groups.append(group)
-                continue
-
-            xy = np.asarray(points[group, :2], dtype=float) - reference_xy
-            cross = xy[:-1, 0] * xy[1:, 1] - xy[:-1, 1] * xy[1:, 0]
-            dot = np.einsum("ij,ij->i", xy[:-1], xy[1:])
-            signed_angle = float(np.sum(np.arctan2(cross, dot)))
-            if abs(signed_angle) <= np.finfo(float).eps:
-                oriented_groups.append(group)
-                continue
-
-            is_clockwise = signed_angle < 0.0
-            if is_clockwise != target_clockwise:
-                group = group[::-1].copy()
-            oriented_groups.append(group)
-
-        return tuple(oriented_groups)
+    # ------------------------------------------------------------------------------------------- separatrix
 
     def _set_psi_magnetic_axis(self) -> None:
-        """Compute and store magnetic-axis location and PSI from all mesh nodes.
-
-        Returns:
-            None
-        """
-        mesh = self.vacuum_chamber_mesh
-
-        psi_array = pyTEC3DAlgorithm._require_array(mesh.GetPointData(), "PSI")
-
-        psi = vtknp.vtk_to_numpy(psi_array)
-        axis_index = int(np.argmax(psi))
-        psi_axis = float(psi[axis_index])
-
-        points = mesh.GetPoints()
-        xyz = vtknp.vtk_to_numpy(points.GetData())
-        axis_point = tuple(float(v) for v in xyz[axis_index])
-
-        self.status["psi_magnetic_axis"] = psi_axis
-        self.status["psi_max"] = psi_axis
-        self.status["magnetic_axis_node_id"] = axis_index
-        self.status["magnetic_axis"] = axis_point
-        LOGGER.debug(
-            "Magnetic axis at (%.4g, %.4g, %.4g), PSI_axis=%.6g.",
-            axis_point[0], axis_point[1], axis_point[2], psi_axis,
+        """The magnetic axis: the point of largest PSI."""
+        chamber = self.vacuum_chamber_mesh
+        psi = meshes.array_values(chamber, "PSI", "node")
+        axis = int(np.argmax(psi))
+        psi_axis = float(psi[axis])
+        point = tuple(float(v) for v in meshes.points(chamber)[axis])
+        self.status.update(
+            psi_magnetic_axis=psi_axis, psi_max=psi_axis, magnetic_axis_node_id=axis, magnetic_axis=point
         )
-
-    def _reset_plasma_components(self) -> None:
-        """Reset PLASMA/AMPS and Js fields over the full mesh.
-
-        Returns:
-            None
-        """
-        mesh = self.vacuum_chamber_mesh
-        cell_data = mesh.GetCellData()
-        point_data = mesh.GetPointData()
-
-        plasma_array = pyTEC3DAlgorithm._require_array(cell_data, "PLASMA")
-        amps_array = pyTEC3DAlgorithm._require_array(point_data, "AMPS")
-        js_array = pyTEC3DAlgorithm._require_array(cell_data, "Js")
-
-        plasma_np = vtknp.vtk_to_numpy(plasma_array)
-        amps_np = vtknp.vtk_to_numpy(amps_array)
-        js_np = vtknp.vtk_to_numpy(js_array)
-
-        plasma_np[...] = 1
-        amps_np[...] = 0.0
-        js_np[...] = 0.0
-
-        plasma_array.Modified()
-        amps_array.Modified()
-        js_array.Modified()
-
-    def _identify_plasma_region(self) -> None:
-        """Identify plasma elements from PSI thresholds and optional halo settings.
-
-        Returns:
-            None
-        """
-        mesh = self.vacuum_chamber_mesh
-
-        psi_2_min = float(self.status["psi_2_min"])
-        psi_min = float(self.status["psi_min"])
-        is_limiter = self.status["separatrix_configuration"] == "limiter"
-        halo_delta1 = float(self.input_parameters.get("halo_delta1", 0.0))
-        t0_halo = float(self.input_parameters.get("t0_halo", 0.0))
-        halo_requested = (
-            is_limiter
-            and halo_delta1 > 0.0
-            and self.pytec3d.time_step["time"] >= t0_halo
-        )
-
-        point_data = mesh.GetPointData()
-        cell_data = mesh.GetCellData()
-        self._halo_node_groups = ()
-
-        if halo_requested and psi_2_min >= psi_min:
-            raise ValueError(
-                "psi_2_min must be lower than psi_min when identifying plasma region with halo."
-            )
-        has_halo = halo_requested and psi_2_min < psi_min
-
-        selected_elem_count = 0
-
-        vac_cell_mask = np.ones(mesh.GetNumberOfCells(), dtype=bool)
-
-        if np.any(vac_cell_mask):
-            psi_x = self.status.get("last_psi_x_point")
-            axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
-
-            if psi_x is not None and axis_node_id >= 0:
-                psi_x = float(psi_x)
-                psi_point_array = pyTEC3DAlgorithm._require_array(point_data, "PSI")
-                psi_point = vtknp.vtk_to_numpy(psi_point_array)
-
-                # 2, 3 & 4. Run cell-based BFS requiring ALL nodes >= PSI_x AND >= 2 shared nodes
-                connected_cell_ids = self._extract_main_plasma_region_cells(
-                    mesh,
-                    axis_node_id,
-                    psi_point,
-                    psi_x,
-                    vac_cell_mask,
-                )
-
-                connected_cell_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
-                if connected_cell_ids.size > 0:
-                    connected_cell_mask[connected_cell_ids] = True
-
-                # 5. Unselect candidate cells that are topologically disconnected
-                cells = mesh.GetCells()
-                offsets = vtknp.vtk_to_numpy(cells.GetOffsetsArray())
-                connectivity = vtknp.vtk_to_numpy(cells.GetConnectivityArray())
-
-                psi_axis = psi_point[axis_node_id]
-                core_above = psi_axis >= psi_x
-
-                remove_mask = np.zeros(mesh.GetNumberOfCells(), dtype=bool)
-                vac_cell_ids = np.flatnonzero(vac_cell_mask)
-
-                for cell_id in vac_cell_ids:
-                    start = offsets[cell_id]
-                    end = offsets[cell_id + 1]
-                    cell_nodes = connectivity[start:end]
-                    cell_psi = psi_point[cell_nodes]
-
-                    # Candidate condition: ALL nodes satisfy the PSI constraint
-                    all_nodes_valid = np.all(cell_psi >= psi_x) if core_above else np.all(cell_psi <= psi_x)
-
-                    # If element is a valid candidate BUT unreachable via edge-sharing BFS, unselect it
-                    if all_nodes_valid and not connected_cell_mask[cell_id]:
-                        remove_mask[cell_id] = True
-
-                # 1. Any VACUUM_CHAMBER element not reached by the core BFS is non-plasma
-                remove_mask = vac_cell_mask & (~connected_cell_mask)
-
-                # 2. Reset PLASMA flag on all disconnected divertor/SOL elements
-                if np.any(remove_mask):
-                    selected_elem_count = int(np.count_nonzero(remove_mask))
-                    Selector.apply_boolean_selection_mask(
-                        remove_mask,
-                        cell_data,
-                        "elem",
-                        "s",
-                    )
-                    Selector.set_value_on_selection(mesh, "PLASMA", 0, type="elem")
-
-        if has_halo:
-            lower_strict = np.nextafter(psi_2_min, np.inf)
-            upper_strict = np.nextafter(psi_min, -np.inf)
-            Selector.select(
-                mesh,
-                "PSI",
-                (lower_strict, upper_strict),
-                type="node",
-                mode="s",
-            )
-            # Keep only PSI-band nodes attached to currently active plasma elements.
-            Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
-            Selector.nsle(mesh, mode="r")
-
-            selection_array = point_data.GetArray("selection_point")
-            halo_node_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-            boundary_node_ids, boundary_adjacency = self._get_halo_boundary_graph()
-            halo_node_ids = np.intersect1d(
-                halo_node_ids,
-                boundary_node_ids,
-                assume_unique=True,
-            )
-            halo_node_groups = self._connected_node_groups(
-                halo_node_ids,
-                boundary_adjacency,
-            )
-            points = vtknp.vtk_to_numpy(mesh.GetPoints().GetData())
-            self._halo_node_groups = self._orient_halo_node_groups(
-                halo_node_groups,
-                points,
-                self.status["magnetic_axis"],
-                float(self.input_parameters["plasma_current"]),
-            )
-
-        halo_group_count = len(self._halo_node_groups)
-        LOGGER.debug(
-            "Plasma region identified: %d elements excluded, %d halo group(s)%s.",
-            selected_elem_count,
-            halo_group_count,
-            " (halo active)" if halo_group_count > 0 else "",
-        )
-
-    def _check_limiter(self) -> None:
-        """Locate limiter contact point and associated PSI among selected boundary nodes,
-        excluding divertor/private-flux nodes with inverted poloidal field rotation.
-
-        Returns:
-            None
-        """
-        mesh = self.vacuum_chamber_mesh
-
-        psi_array = pyTEC3DAlgorithm._require_array(mesh.GetPointData(), "PSI")
-        psi = vtknp.vtk_to_numpy(psi_array)
-
-        # 1. Initial selection of external boundary nodes attached to PLASMA.
-        Selector.select_all(mesh, type="elem")
-        Selector.nsel_ext(mesh, mode="s")
-
-        selection_array = pyTEC3DAlgorithm._require_array(mesh.GetPointData(), "selection_point")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
-        if selected_ids.size == 0:
-            raise ValueError(
-                "No limiter candidates found on the external vacuum-chamber "
-                "boundary attached to PLASMA elements."
-            )
-
-        # 2. Use precomputed PSI point gradient to evaluate field rotation.
-        grad_array = pyTEC3DAlgorithm._require_array(mesh.GetPointData(), "__pytec3d_psi_gradient__")
-        grad = vtknp.vtk_to_numpy(grad_array)
-
-        # 3. Filter out divertor nodes where (r - r_axis) . grad(PSI) has reversed sign
-        axis_node_id = int(self.status.get("magnetic_axis_node_id", -1))
-        psi_x = self.status.get("last_psi_x_point")
-
-        points = mesh.GetPoints()
-        xyz = vtknp.vtk_to_numpy(points.GetData())
-
-        if axis_node_id >= 0 and axis_node_id < mesh.GetNumberOfPoints():
-            axis_xyz = xyz[axis_node_id]
-            psi_axis = psi[axis_node_id]
-
-            reference_psi = float(psi_x) if psi_x is not None else float(psi.max())
-            core_sign = 1.0 if reference_psi >= psi_axis else -1.0
-
-            candidate_xyz = xyz[selected_ids]
-            candidate_grad = grad[selected_ids]
-
-            # 2D radial vector from magnetic axis in (R, Z)
-            vec_r = candidate_xyz[:, :2] - axis_xyz[:2]
-            dot_prod = vec_r[:, 0] * candidate_grad[:, 0] + vec_r[:, 1] * candidate_grad[:, 1]
-
-            # Keep only nodes matching core outward gradient alignment
-            valid_mask = (core_sign * dot_prod) > 0.0
-            if np.any(valid_mask):
-                selected_ids = selected_ids[valid_mask]
-
-        # 4. Find maximum PSI among filtered main-chamber boundary nodes
-        psi_selected = psi[selected_ids]
-        limiter_local_index = int(np.argmax(psi_selected))
-        limiter_index = int(selected_ids[limiter_local_index])
-        psi_limiter = float(psi[limiter_index])
-
-        limiter_point = tuple(float(v) for v in xyz[limiter_index])
-
-        self.status["last_psi_limiter"] = psi_limiter
-        self.status["limiter_node_id"] = limiter_index
-        self.status["limiter_point"] = limiter_point
-        LOGGER.debug(
-            "Limiter contact at (%.4g, %.4g, %.4g), PSI_limiter=%.6g.",
-            limiter_point[0], limiter_point[1], limiter_point[2], psi_limiter,
-        )
+        LOGGER.debug("Magnetic axis at (%.4g, %.4g, %.4g), PSI = %.6g.", *point, psi_axis)
 
     def _check_x_point(self) -> None:
-        """Locate the X-point as a PSI saddle-point candidate.
+        """The X point: among the PSI saddle points (det(Hessian) < 0), the one of smallest |grad PSI|.
 
-        Returns:
-            None
+        Raises:
+            ValueError: If PSI has no saddle point.
         """
-        mesh = self.vacuum_chamber_mesh
-        point_data = mesh.GetPointData()
-        psi_array = pyTEC3DAlgorithm._require_array(point_data, "PSI")
-        hessian_array = pyTEC3DAlgorithm._require_array(point_data, "__pytec3d_psi_hessian__")
-        gradient_array = pyTEC3DAlgorithm._require_array(point_data, "__pytec3d_psi_gradient__")
-
-        psi = vtknp.vtk_to_numpy(psi_array)
-        hessian = vtknp.vtk_to_numpy(hessian_array)
+        chamber = self.vacuum_chamber_mesh
+        psi = meshes.array_values(chamber, "PSI", "node")
+        hessian = meshes.array_values(chamber, PSI_HESSIAN, "node")
+        gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
         if hessian.ndim != 2 or hessian.shape[1] != 9:
-            raise ValueError(
-                "Unexpected PSI Hessian shape: expected (n_points, 9) for scalar PSI on 2D mesh."
-            )
-
-        # VTK/VMTK flattened tensor layout: [xx, xy, xz, yx, yy, yz, zx, zy, zz].
-        hxx = hessian[:, 0]
-        hxy = hessian[:, 1]
-        hyx = hessian[:, 3]
-        hyy = hessian[:, 4]
-
-        det_h = hxx * hyy - hxy * hyx
-        finite_mask = np.isfinite(det_h)
-        saddle_mask = finite_mask & (det_h < 0.0)
-        saddle_ids = np.flatnonzero(saddle_mask)
-
-        if saddle_ids.size == 0:
-            raise ValueError("No PSI saddle-point candidates found for the X point.")
-
-        gradient = vtknp.vtk_to_numpy(gradient_array)
+            raise ValueError(f"The PSI Hessian must have 9 components, got shape {hessian.shape}.")
+        # Row-major tensor: [xx, xy, xz, yx, yy, yz, zx, zy, zz].
+        determinant = hessian[:, 0] * hessian[:, 4] - hessian[:, 1] * hessian[:, 3]
+        saddles = np.flatnonzero(np.isfinite(determinant) & (determinant < 0.0))
+        if saddles.size == 0:
+            raise ValueError("PSI has no saddle point: no X point.")
         if gradient.ndim != 2 or gradient.shape[1] < 2:
-            raise ValueError("Unexpected PSI gradient shape while enforcing X-point stationarity criterion.")
-        grad_mag = np.sqrt(np.square(gradient[:, 0]) + np.square(gradient[:, 1]))
-        finite_grad_ids = saddle_ids[np.isfinite(grad_mag[saddle_ids])]
-        if finite_grad_ids.size == 0:
-            raise ValueError("No finite gradient magnitudes found among PSI saddle-point candidates.")
+            raise ValueError(f"The PSI gradient must have at least 2 components, got shape {gradient.shape}.")
+        magnitude = np.sqrt(np.square(gradient[:, 0]) + np.square(gradient[:, 1]))
+        saddles = saddles[np.isfinite(magnitude[saddles])]
+        if saddles.size == 0:
+            raise ValueError("The PSI gradient is not finite at any saddle point.")
+        x_point = int(saddles[int(np.argmin(magnitude[saddles]))])
+        point = tuple(float(v) for v in meshes.points(chamber)[x_point])
+        self.status.update(last_psi_x_point=float(psi[x_point]), x_point_node_id=x_point, x_point=point)
+        LOGGER.debug("X point at (%.4g, %.4g, %.4g), PSI = %.6g.", *point, psi[x_point])
 
-        x_point_node_id = int(finite_grad_ids[int(np.argmin(grad_mag[finite_grad_ids]))])
-        psi_x = float(psi[x_point_node_id])
+    def _check_limiter(self) -> None:
+        """The limiter point: the wall point of largest PSI, among those where the poloidal field turns as in the core.
 
-        points = mesh.GetPoints()
-        xyz = vtknp.vtk_to_numpy(points.GetData())
-        self.status["last_psi_x_point"] = psi_x
-        self.status["x_point_node_id"] = x_point_node_id
-        x_point = tuple(float(v) for v in xyz[x_point_node_id])
-        self.status["x_point"] = x_point
-        LOGGER.debug(
-            "X-point at (%.4g, %.4g, %.4g), PSI_x=%.6g.",
-            x_point[0], x_point[1], x_point[2], psi_x,
-        )
-
-    def _set_b_target_axis(self) -> None:
-        """Interpolate poloidal magnetic field (BR, BZ) at target axis using vtkGradientFilter on PSI.
-
-        Returns:
-            None
+        Raises:
+            ValueError: If the vacuum-chamber mesh has no boundary point.
         """
-        mesh = self.vacuum_chamber_mesh
-        grad_array = pyTEC3DAlgorithm._require_array(mesh.GetPointData(), "__pytec3d_psi_gradient__")
-        grad_np = vtknp.vtk_to_numpy(grad_array)
+        chamber = self.vacuum_chamber_mesh
+        psi = meshes.array_values(chamber, "PSI", "node")
+        selection.select_all(chamber, location="elem")
+        selection.nsel_ext(chamber)
+        candidates = selection.selected_ids(chamber, "node")
+        if candidates.size == 0:
+            raise ValueError("The vacuum chamber has no boundary point to be a limiter.")
 
-        target_point = (
-            float(self.input_parameters["target_central_axis_x"]),
-            float(self.input_parameters["target_central_axis_y"]),
-            float(self.input_parameters["target_central_axis_z"]),
+        # Drop the divertor / private-flux points, where (r - r_axis) . grad(PSI) has the sign opposite to the core's.
+        gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
+        coordinates = meshes.points(chamber)
+        axis = int(self.status.get("magnetic_axis_node_id", -1))
+        psi_x = self.status.get("last_psi_x_point")
+        if 0 <= axis < chamber.GetNumberOfPoints():
+            reference_psi = float(psi_x) if psi_x is not None else float(psi.max())
+            core_sign = 1.0 if reference_psi >= psi[axis] else -1.0
+            radial = coordinates[candidates, :2] - coordinates[axis, :2]
+            alignment = radial[:, 0] * gradient[candidates, 0] + radial[:, 1] * gradient[candidates, 1]
+            outward = core_sign * alignment > 0.0
+            if np.any(outward):
+                candidates = candidates[outward]
+
+        limiter = int(candidates[int(np.argmax(psi[candidates]))])
+        point = tuple(float(v) for v in coordinates[limiter])
+        self.status.update(last_psi_limiter=float(psi[limiter]), limiter_node_id=limiter, limiter_point=point)
+        LOGGER.debug("Limiter at (%.4g, %.4g, %.4g), PSI = %.6g.", *point, psi[limiter])
+
+    def _halo_active(self) -> bool:
+        """A halo is requested: limiter configuration, halo_delta1 > 0, from t0_halo on."""
+        return (
+            self.status["separatrix_configuration"] == "limiter"
+            and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
+            and self.solver.time_step["time"] >= float(self.input_parameters.get("t0_halo", 0.0))
         )
-        target_point_seq = [target_point[0], target_point[1], target_point[2]]
-
-        cache_key = (
-            id(mesh),
-            mesh.GetNumberOfPoints(),
-            mesh.GetNumberOfCells(),
-            target_point,
-        )
-
-        if (
-            self._b_target_axis_cache is None
-            or self._b_target_axis_cache[0] != cache_key
-        ):
-            locator = vtk.vtkCellLocator()
-            locator.SetDataSet(mesh)
-            locator.BuildLocator()
-            cell_id = int(locator.FindCell(target_point_seq))
-            if cell_id < 0:
-                raise ValueError(
-                    "Target magnetic axis point is not inside the mesh: "
-                    f"{target_point}."
-                )
-
-            cell = mesh.GetCell(cell_id)
-            n_points = int(cell.GetNumberOfPoints())
-            if n_points <= 0:
-                raise ValueError(f"Cell {cell_id} has no points; cannot interpolate B.")
-
-            closest_point = [0.0, 0.0, 0.0]
-            pcoords = [0.0, 0.0, 0.0]
-            sub_id = vtk.reference(0)
-            dist2 = vtk.reference(0.0)
-            weights = [0.0] * n_points
-            inside = int(
-                cell.EvaluatePosition(
-                    target_point_seq,
-                    closest_point,
-                    cast(Any, sub_id),
-                    pcoords,
-                    cast(Any, dist2),
-                    weights,
-                )
-            )
-            if inside < 0:
-                raise ValueError(
-                    "Could not evaluate interpolation weights for target magnetic axis "
-                    f"point {target_point} in cell {cell_id}."
-                )
-
-            point_ids = cell.GetPointIds()
-            point_ids_np = np.fromiter(
-                (int(point_ids.GetId(local_idx)) for local_idx in range(n_points)),
-                dtype=np.int64,
-                count=n_points,
-            )
-            weights_np = np.asarray(weights, dtype=float)
-            self._b_target_axis_cache = (cache_key, point_ids_np, weights_np)
-        else:
-            _, point_ids_np, weights_np = self._b_target_axis_cache
-
-        # 2. Interpolate dPSI/dR and dPSI/dZ at the target point using cell weights
-        grad_target = weights_np @ grad_np[point_ids_np, :2]
-        dpsi_dr = float(grad_target[0])
-        dpsi_dz = float(grad_target[1])
-
-        r_target = target_point[0]
-        if r_target <= 0.0:
-            raise ValueError(f"Invalid non-positive radial coordinate R={r_target} for target axis.")
-
-        # 3. Convert gradient components to magnetic field: BR = -(1/R) * dPSI/dZ, BZ = (1/R) * dPSI/dR
-        br = -dpsi_dz / r_target
-        bz = dpsi_dr / r_target
-
-        target = (float(br), float(bz))
-        self.status["b_target_axis"] = target
-        LOGGER.debug("B at target axis via vtkGradientFilter: BR=%.6g, BZ=%.6g.", target[0], target[1])
-
-    def _compute_correction_currents(self) -> None:
-        """Compute radial/vertical control-current corrections from target-axis B.
-
-        Returns:
-            None
-        """
-        bradx = float(self.input_parameters["bradx_value"])
-        brady = float(self.input_parameters["brady_value"])
-        bverx = float(self.input_parameters["bverx_value"])
-        bvery = float(self.input_parameters["bvery_value"])
-        btx, bty = self.status["b_target_axis"]
-
-        det = bradx * bvery - bverx * brady
-        if abs(det) <= np.finfo(float).eps:
-            correction = (0.0, 0.0)
-        else:
-            dira = -(bverx * bty - bvery * btx) / det
-            dive = -(brady * btx - bradx * bty) / det
-            correction = (-dira, -dive)
-
-        self.status["radial_correction_current"] = float(correction[0])
-        self.status["vertical_correction_current"] = float(correction[1])
-        LOGGER.debug(
-            "Correction currents: radial=%.6g A, vertical=%.6g A.",
-            correction[0], correction[1],
-        )
-
-    def _apply_control_currents(self) -> None:
-        """Apply computed control currents to configured coil regions via Js updates.
-
-        Returns:
-            None
-        """
-        mesh = self.pytec3d.model.mesh
-        control_coils = self._normalized_control_coils()
-        if not control_coils:
-            LOGGER.debug("No control coils configured; skipping control-current update.")
-            return
-
-        cell_data = mesh.GetCellData()
-        js_array = pyTEC3DAlgorithm._require_array(cell_data, "Js")
-        js_np = vtknp.vtk_to_numpy(js_array)
-        radial_current = float(self.status["radial_correction_current"])
-        vertical_current = float(self.status["vertical_correction_current"])
-
-        selected_mask = np.zeros(js_np.shape[0], dtype=bool)
-        correction_current_all = np.zeros(js_np.shape[0], dtype=float)
-        for coil in control_coils:
-            component = coil["component"]
-            component_array = pyTEC3DAlgorithm._require_array(cell_data, component)
-            component_mask = vtknp.vtk_to_numpy(component_array) == 1
-            selected_mask |= component_mask
-
-            correction_current = (
-                float(coil["radial_gain"]) * radial_current
-                + float(coil["vertical_gain"]) * vertical_current
-            )
-            correction_current_all[component_mask] += correction_current
-
-        selected_ids = np.flatnonzero(selected_mask)
-        if selected_ids.size == 0:
-            LOGGER.debug("Configured control coils selected zero elements; skipping update.")
-            return
-
-        real_constant_array = pyTEC3DAlgorithm._require_array(cell_data, "CONSTANT")
-        real_constant_ids = vtknp.vtk_to_numpy(real_constant_array)
-        selected_rc_ids = real_constant_ids[selected_ids].astype(int)
-        area_by_constant: Dict[int, float] = {}
-        missing_ids = []
-        for rc_id in np.unique(selected_rc_ids).tolist():
-            area = self.pytec3d.model.real_constant(rc_id, "cross_section")
-            if area is None:
-                missing_ids.append(rc_id)
-            else:
-                area_by_constant[rc_id] = float(area)
-        if missing_ids:
-            raise ValueError(
-                f"Real constant IDs without 'cross_section' in model.data['constants']: {missing_ids}."
-            )
-        selected_areas_np = np.array([area_by_constant[i] for i in selected_rc_ids.tolist()], dtype=float)
-        invalid_area = np.abs(selected_areas_np) <= np.finfo(float).eps
-        if np.any(invalid_area):
-            bad_ids = np.unique(selected_rc_ids[invalid_area])
-            raise ValueError(
-                f"Real constant IDs with invalid area (cross_section=0): {bad_ids.tolist()}."
-            )
-
-        base_js_z = self._old_control_current_density_base
-        if base_js_z is None or base_js_z.shape[0] != js_np.shape[0]:
-            base_js_z = np.asarray(js_np[:, 2], dtype=float).copy()
-            self._old_control_current_density_base = base_js_z
-
-        correction_current_density = correction_current_all[selected_ids] / selected_areas_np
-        js_np[selected_ids, 2] = base_js_z[selected_ids] + correction_current_density
-
-        js_array.Modified()
 
     def find_separatrix(self) -> None:
-        """Default separatrix detection and plasma-region classification workflow.
+        """Find the axis, X point and limiter, the last closed flux surface (``psi_min``), the halo boundary
+        (``psi_2_min``), and mark the plasma cells.
 
-        Returns:
-            None
+        Raises:
+            ValueError: If halo_delta1 is negative, or no X point / limiter is found.
         """
         self._reset_plasma_components()
         self._set_psi_magnetic_axis()
@@ -1459,550 +560,594 @@ class pyTEC3DAlgorithm:
         psi_limiter = float(self.status["last_psi_limiter"])
         psi_x_point = float(self.status["last_psi_x_point"])
         if psi_limiter > psi_x_point:
-            self.status["psi_min"] = psi_limiter
-            self.status["separatrix_configuration"] = "limiter"
+            self.status.update(psi_min=psi_limiter, separatrix_configuration="limiter")
         else:
-            self.status["psi_min"] = psi_x_point
-            self.status["separatrix_configuration"] = "X-point"
-        halo_delta1 = float(self.input_parameters.get("halo_delta1", 0.0))
-        halo_delta2 = float(self.input_parameters.get("halo_delta2", 0.0))
-        t0_halo = float(self.input_parameters.get("t0_halo", 0.0))
-        if halo_delta1 < 0.0:
-            raise ValueError("halo_delta1 must be non-negative.")
-        if (
-            halo_delta1 > 0.0
-            and self.pytec3d.time_step["time"] >= t0_halo
-            and self.status["separatrix_configuration"] == "limiter"
-        ):
-            halo_scale = halo_delta1 * (
-                1.0 + (self.pytec3d.time_step["time"] - t0_halo) * halo_delta2
-            )
-            self.status["psi_2_min"] = (
-                self.status["psi_min"]
-                - halo_scale * (self.status["psi_max"] - self.status["psi_min"])
-            )
+            self.status.update(psi_min=psi_x_point, separatrix_configuration="X-point")
+
+        delta1 = float(self.input_parameters.get("halo_delta1", 0.0))
+        if delta1 < 0.0:
+            raise ValueError("input_parameters['halo_delta1'] must not be negative.")
+        if self._halo_active():
+            delta2 = float(self.input_parameters.get("halo_delta2", 0.0))
+            t0 = float(self.input_parameters.get("t0_halo", 0.0))
+            scale = delta1 * (1.0 + (self.solver.time_step["time"] - t0) * delta2)
+            psi_min, psi_max = self.status["psi_min"], self.status["psi_max"]
+            self.status["psi_2_min"] = psi_min - scale * (psi_max - psi_min)
         else:
             self.status["psi_2_min"] = self.status["psi_min"]
         self._identify_plasma_region()
         LOGGER.info(
-            "Separatrix: config=%s, PSI_min=%.6g, PSI_2_min=%.6g, PSI_axis=%.6g.",
-            self.status["separatrix_configuration"],
-            self.status["psi_min"],
-            self.status["psi_2_min"],
+            "Separatrix: %s, PSI_min = %.6g, PSI_2_min = %.6g, PSI_axis = %.6g.",
+            self.status["separatrix_configuration"], self.status["psi_min"], self.status["psi_2_min"],
             self.status["psi_magnetic_axis"],
         )
 
-    def compute_jplasma_gradshafranov(self) -> None:
-        """Compute Grad-Shafranov plasma current profile and update Js using PSI gradients.
+    def _reset_plasma_components(self) -> None:
+        """PLASMA = 1, AMPS = 0, Js = 0 on the whole vacuum-chamber mesh."""
+        chamber = self.vacuum_chamber_mesh
+        for name, location, value in (("PLASMA", "elem", 1), ("AMPS", "node", 0.0), ("Js", "elem", 0.0)):
+            if name in OPTIONAL_LOADS and not _has_array(chamber, name, location):  # type: ignore[arg-type]
+                continue
+            array = meshes.get_array(chamber, name, location)  # type: ignore[arg-type]
+            vtknp.vtk_to_numpy(array)[...] = value
+            array.Modified()
+
+    @staticmethod
+    def _main_plasma_cells(
+        chamber: vtkUnstructuredGrid, axis_node: int, psi: np.ndarray, psi_x: float
+    ) -> np.ndarray:
+        """The cells inside the flux surface ``psi_x`` connected to the magnetic axis.
+
+        A candidate cell has all its points on the axis side of ``psi_x``. The connected region grows from the
+        candidates touching the axis point through cells sharing at least two points, so it does not cross an X point
+        (where two regions only share one point).
 
         Returns:
-            None
+            The cell ids, increasing.
         """
-        mesh = self.vacuum_chamber_mesh
+        n_cells, n_points = chamber.GetNumberOfCells(), chamber.GetNumberOfPoints()
+        if not 0 <= axis_node < n_points or not np.isfinite(psi[axis_node]):
+            return np.zeros(0, dtype=np.int64)
+        offsets, connectivity = meshes.cell_connectivity(chamber)
+        lengths = np.diff(offsets)
+        cell_of_entry = np.repeat(np.arange(n_cells), lengths)
+        entry_psi = psi[connectivity]
+        inside = entry_psi >= psi_x if psi[axis_node] >= psi_x else entry_psi <= psi_x
+        outside_points = np.bincount(cell_of_entry, weights=~(np.isfinite(entry_psi) & inside), minlength=n_cells)
+        candidate = outside_points == 0
 
-        point_data = mesh.GetPointData()
-        cell_data = mesh.GetCellData()
+        # Point -> candidate cells, as a CSR table.
+        entries = candidate[cell_of_entry]
+        entry_points, entry_cells = connectivity[entries], cell_of_entry[entries]
+        order = np.lexsort((entry_cells, entry_points))
+        cells_by_point = entry_cells[order].tolist()
+        point_start = np.searchsorted(entry_points[order], np.arange(n_points + 1)).tolist()
 
-        js_array = pyTEC3DAlgorithm._require_array(cell_data, "Js")
-        js_np = vtknp.vtk_to_numpy(js_array)
+        def candidates_at(point: int) -> list[int]:
+            return cells_by_point[point_start[point]:point_start[point + 1]]
 
-        psi_point_array = pyTEC3DAlgorithm._require_array(point_data, "PSI")
-        psi_point = vtknp.vtk_to_numpy(psi_point_array)
+        seeds = candidates_at(axis_node)
+        if not seeds:
+            return np.zeros(0, dtype=np.int64)
+        visited = np.zeros(n_cells, dtype=bool)
+        visited[seeds] = True
+        queue = deque(seeds)
+        while queue:
+            cell = queue.popleft()
+            points = set(connectivity[offsets[cell]:offsets[cell + 1]].tolist())
+            neighbours = {other for point in points for other in candidates_at(point)}
+            for other in neighbours:
+                if visited[other]:
+                    continue
+                shared = sum(1 for p in connectivity[offsets[other]:offsets[other + 1]].tolist() if p in points)
+                if shared >= 2:
+                    visited[other] = True
+                    queue.append(other)
+        return np.flatnonzero(visited).astype(np.int64)
 
-        psie_array = pyTEC3DAlgorithm._require_array(cell_data, "PSIe")
-        psi_elem = vtknp.vtk_to_numpy(psie_array)
+    def _identify_plasma_region(self) -> None:
+        """PLASMA = 0 on the cells outside the main plasma region; with a halo, find the halo wall paths.
 
-        # -------------------------------------------------------------------------
-        # 1. Interpolate precomputed PSI point gradients to cell centroids
-        # -------------------------------------------------------------------------
-        pyTEC3DAlgorithm._require_array(point_data, "__pytec3d_psi_gradient__")
+        Raises:
+            ValueError: If a halo is requested but psi_2_min >= psi_min.
+        """
+        chamber = self.vacuum_chamber_mesh
+        psi_2_min, psi_min = float(self.status["psi_2_min"]), float(self.status["psi_min"])
+        halo_requested = self._halo_active()
+        if halo_requested and psi_2_min >= psi_min:
+            raise ValueError("psi_2_min must be below psi_min to identify the plasma region with a halo.")
+        self._halo_node_groups = ()
 
-        p2c_filter = vtk.vtkPointDataToCellData()
-        p2c_filter.SetInputData(mesh)
-        p2c_filter.SetProcessAllArrays(False)
-        p2c_filter.AddPointDataArray("__pytec3d_psi_gradient__")
-        p2c_filter.Update()
+        excluded = 0
+        psi_x = self.status.get("last_psi_x_point")
+        axis = int(self.status.get("magnetic_axis_node_id", -1))
+        if psi_x is not None and axis >= 0:
+            psi = meshes.array_values(chamber, "PSI", "node")
+            connected = np.zeros(chamber.GetNumberOfCells(), dtype=bool)
+            connected[self._main_plasma_cells(chamber, axis, psi, float(psi_x))] = True
+            outside = ~connected
+            if np.any(outside):
+                excluded = int(np.count_nonzero(outside))
+                selection.apply_mask(chamber, outside, "elem", "s")
+                selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
 
-        grad_cell_data = p2c_filter.GetOutput().GetCellData().GetArray("__pytec3d_psi_gradient__")
-        grad_cell_np = vtknp.vtk_to_numpy(grad_cell_data)
+        if halo_requested:
+            # Wall points in the halo flux band, attached to the plasma cells, as ordered paths along the wall.
+            band = (np.nextafter(psi_2_min, np.inf), np.nextafter(psi_min, -np.inf))
+            selection.select(chamber, "PSI", band, location="node")
+            selection.select(chamber, "PLASMA", 1, location="elem")
+            selection.nsle(chamber, mode="r")
+            wall_points, adjacency = self._halo_boundary_graph()
+            halo_points = np.intersect1d(selection.selected_ids(chamber, "node"), wall_points, assume_unique=True)
+            self._halo_node_groups = self._orient_halo_node_groups(
+                self._connected_node_groups(halo_points, adjacency),
+                meshes.points(chamber),
+                self.status["magnetic_axis"],
+                float(self.input_parameters["plasma_current"]),
+            )
+        LOGGER.debug(
+            "Plasma region: %d cells excluded, %d halo group(s).", excluded, len(self._halo_node_groups)
+        )
 
-        dpsi_dr = grad_cell_np[:, 0]
-        dpsi_dz = grad_cell_np[:, 1]
+    def _halo_boundary_graph(self) -> tuple[np.ndarray, dict[int, np.ndarray]]:
+        """The wall of the vacuum chamber as a graph of points (computed once)."""
+        if self._halo_boundary is None:
+            chamber = self.vacuum_chamber_mesh
+            selection.select_all(chamber)
+            self._halo_boundary = selection.external_node_adjacency(chamber)
+        return self._halo_boundary
 
-        centroids_array = pyTEC3DAlgorithm._require_array(cell_data, "cell_centroids")
-        centroids = vtknp.vtk_to_numpy(centroids_array)
-        elem_centroid_rad = centroids[:, 0]
+    @staticmethod
+    def _connected_node_groups(nodes: np.ndarray, adjacency: dict[int, np.ndarray]) -> tuple[np.ndarray, ...]:
+        """Split points into the paths they form along the wall graph, each ordered from one end to the other.
 
-        # Grad-Shafranov magnetic field: B_R = -(1/R) * dPSI/dZ, B_Z = (1/R) * dPSI/dR
-        # Note: If your PSI definition includes a 2*pi factor, adjust denominator to (2.0 * np.pi * elem_centroid_rad)
-        bx = -dpsi_dz / elem_centroid_rad
-        by = dpsi_dr / elem_centroid_rad
+        Returns:
+            The paths, sorted by their first point.
 
-        # -------------------------------------------------------------------------
-        # 2. Extract domain setup and parameters
-        # -------------------------------------------------------------------------
-        volume_array = pyTEC3DAlgorithm._require_array(cell_data, "cell_volume")
-        cell_volume = vtknp.vtk_to_numpy(volume_array)
+        Raises:
+            ValueError: If a group branches or closes on itself.
+        """
+        nodes = np.unique(np.asarray(nodes, dtype=np.int64).reshape(-1))
+        if nodes.size <= 1:
+            return (nodes,) if nodes.size else ()
 
-        psi_magnetic_axis = float(self.status["psi_magnetic_axis"])
+        def neighbours_of(node: int) -> list[int]:
+            return adjacency[node].tolist() if node in adjacency else []
+
+        selected = set(nodes.tolist())
+        visited: set[int] = set()
+        groups: list[np.ndarray] = []
+        for start in nodes.tolist():
+            if start in visited:
+                continue
+            stack, component = [start], []
+            visited.add(start)
+            while stack:
+                node = stack.pop()
+                component.append(node)
+                for neighbour in neighbours_of(node):
+                    if neighbour in selected and neighbour not in visited:
+                        visited.add(neighbour)
+                        stack.append(neighbour)
+            if len(component) <= 2:
+                groups.append(np.asarray(component, dtype=np.int64))
+                continue
+
+            members = set(component)
+            neighbours = {node: [n for n in neighbours_of(node) if n in members] for node in component}
+            if any(len(n) > 2 for n in neighbours.values()):
+                raise ValueError("A halo point group branches: it cannot be ordered as one path along the wall.")
+            ends = [node for node, n in neighbours.items() if len(n) == 1]
+            if len(ends) != 2:
+                raise ValueError("A halo point group is not an open path along the wall.")
+            ordered = [min(ends)]
+            previous = -1
+            while True:
+                following = [n for n in neighbours[ordered[-1]] if n != previous and n not in ordered]
+                if not following:
+                    break
+                previous = ordered[-1]
+                ordered.append(following[0])
+            if len(ordered) != len(component):
+                raise ValueError("A halo point group is not a simple path along the wall.")
+            groups.append(np.asarray(ordered, dtype=np.int64))
+        return tuple(sorted(groups, key=lambda group: int(group[0])))
+
+    @staticmethod
+    def _orient_halo_node_groups(
+        groups: tuple[np.ndarray, ...],
+        coordinates: np.ndarray,
+        axis_point: tuple[float, float, float],
+        plasma_current: float,
+    ) -> tuple[np.ndarray, ...]:
+        """Orient each path: clockwise around the axis for a positive plasma current, counterclockwise otherwise."""
+        if not groups or plasma_current == 0.0:
+            return groups
+        axis_xy = np.asarray(axis_point[:2], dtype=float)
+        clockwise_wanted = plasma_current > 0.0
+        oriented = []
+        for group in groups:
+            if group.size > 1:
+                xy = np.asarray(coordinates[group, :2], dtype=float) - axis_xy
+                cross = xy[:-1, 0] * xy[1:, 1] - xy[:-1, 1] * xy[1:, 0]
+                dot = np.einsum("ij,ij->i", xy[:-1], xy[1:])
+                turn = float(np.sum(np.arctan2(cross, dot)))
+                if abs(turn) > np.finfo(float).eps and (turn < 0.0) != clockwise_wanted:
+                    group = group[::-1].copy()
+            oriented.append(group)
+        return tuple(oriented)
+
+    # ------------------------------------------------------------------------------------------- plasma current
+
+    def compute_jplasma_gradshafranov(self) -> None:
+        """Compute the plasma current density Js of the PLASMA cells, and the halo currents AMPS on the wall.
+
+        Toroidal: ``J_phi = lambda * (1 - psi_n^alpha_mp)^alpha_np * (beta_p R / R0 + (1 - beta_p) R0 / R)``, with
+        ``psi_n`` the normalized flux of the cell and ``lambda`` scaling the total to ``plasma_current``. Poloidal:
+        ``J_p = F'(psi) B_p`` from the same profile.
+        """
+        chamber = self.vacuum_chamber_mesh
+        js_array = meshes.get_array(chamber, "Js", "elem")
+        js = vtknp.vtk_to_numpy(js_array)
+        psi_point = meshes.array_values(chamber, "PSI", "node")
+        psi_cell = meshes.array_values(chamber, "PSIe", "elem")
+        meshes.get_array(chamber, PSI_GRADIENT, "node")
+
+        averaging = vtkPointDataToCellData()
+        averaging.SetInputData(chamber)
+        averaging.SetProcessAllArrays(False)
+        averaging.AddPointDataArray(PSI_GRADIENT)
+        averaging.Update()
+        cell_gradient = vtknp.vtk_to_numpy(averaging.GetOutput().GetCellData().GetArray(PSI_GRADIENT))
+        radius = meshes.array_values(chamber, meshes.CENTROIDS_ARRAY, "elem")[:, 0]
+        # Poloidal field: B_R = -dPSI/dZ / R, B_Z = dPSI/dR / R.
+        b_r = -cell_gradient[:, 1] / radius
+        b_z = cell_gradient[:, 0] / radius
+        volume = meshes.array_values(chamber, meshes.SIZES_ARRAY, "elem")
+
+        psi_axis = float(self.status["psi_magnetic_axis"])
         psi_min = float(self.status["psi_2_min"])
-        psi_den = psi_min - psi_magnetic_axis
-        if abs(psi_den) <= np.finfo(float).eps:
-            self.status["total_plasma_current_before_scaling"] = 0.0
-            self.status["plasma_current_scaling_lambda"] = 0.0
-            self.status["plasma_element_count"] = 0
+        psi_span = psi_min - psi_axis
+        if abs(psi_span) <= np.finfo(float).eps:
+            self.status.update(total_plasma_current_before_scaling=0.0, plasma_current_scaling_lambda=0.0,
+                               plasma_element_count=0)
             return
 
-        beta_profile = float(self.input_parameters["beta_p"])
-        alpha_mp = float(self.input_parameters["alpha_mp"])
-        alpha_np = float(self.input_parameters["alpha_np"])
-        r0 = float(self.input_parameters["R0"])
-        af0 = float(self.input_parameters["AF0"])
-        target_plasma_current = float(self.input_parameters["plasma_current"])
+        p = self.input_parameters
+        beta = float(p["beta_p"])
+        alpha_m, alpha_n = float(p["alpha_mp"]), float(p["alpha_np"])
+        r0, af0 = float(p["R0"]), float(p["AF0"])
+        target_current = float(p["plasma_current"])
 
-        # -------------------------------------------------------------------------
-        # 3. Select active PLASMA elements
-        # -------------------------------------------------------------------------
-        Selector.select(mesh, "PLASMA", 1, type="elem", mode="s")
-        selection_array = cell_data.GetArray("selection_cell")
-        selected_ids = np.flatnonzero(vtknp.vtk_to_numpy(selection_array) == 1)
+        selection.select(chamber, "PLASMA", 1, location="elem")
+        plasma = selection.selected_ids(chamber, "elem")
 
-        # -------------------------------------------------------------------------
-        # 4. Compute toroidal and poloidal current densities
-        # -------------------------------------------------------------------------
-        psi_segn = (psi_elem[selected_ids] - psi_magnetic_axis) / psi_den
-        psi_segn = np.nan_to_num(psi_segn, nan=0.0, posinf=1.0, neginf=0.0)
-        psi_segn = np.clip(psi_segn, 0.0, 1.0)
-        one_minus = np.maximum(1.0 - np.power(psi_segn, alpha_mp), 0.0)
-        pprime_h2 = np.power(one_minus, alpha_np)
-        
-        grad_shafranov_current_density = pprime_h2 * (
-            beta_profile * elem_centroid_rad[selected_ids] / r0
-            + (1.0 - beta_profile) * (r0 / elem_centroid_rad[selected_ids])
-        )
+        psi_n = np.nan_to_num((psi_cell[plasma] - psi_axis) / psi_span, nan=0.0, posinf=1.0, neginf=0.0)
+        psi_n = np.clip(psi_n, 0.0, 1.0)
+        one_minus = np.maximum(1.0 - np.power(psi_n, alpha_m), 0.0)
+        profile = np.power(one_minus, alpha_n)
+        density = profile * (beta * radius[plasma] / r0 + (1.0 - beta) * (r0 / radius[plasma]))
+        total = float(np.sum(density * volume[plasma]))
+        scale = target_current / total if abs(total) > np.finfo(float).eps else 0.0
 
-        total_plasma_current = float(
-            np.sum(grad_shafranov_current_density * cell_volume[selected_ids])
-        )
-        lambda_scale = 0.0
-        if abs(total_plasma_current) > np.finfo(float).eps:
-            lambda_scale = target_plasma_current / total_plasma_current
-
-        js_toroidal = grad_shafranov_current_density * lambda_scale
-
-        mu_0 = 4.0 * np.pi * 1e-7
-        ffprime_h2 = np.power(one_minus, alpha_np + 1.0)
-        c_const = (
-            2.0
-            * mu_0
-            * r0
-            * (1.0 - beta_profile)
-            * (psi_magnetic_axis - psi_min)
-            * lambda_scale
-            / (alpha_np + 1.0)
-        )
-        f_value = np.sqrt(np.maximum(c_const * ffprime_h2 + af0 * af0, 0.0))
-        ffprime = pprime_h2 * (1.0 - beta_profile) * r0
-        fprime = (ffprime * lambda_scale) / f_value
-
-        js_radial = fprime * bx[selected_ids]
-        js_vertical = fprime * by[selected_ids]
-
-        # Update output current density array
-        js_np[selected_ids, 0] = js_radial
-        js_np[selected_ids, 1] = js_vertical
-        js_np[selected_ids, 2] = js_toroidal
+        c_const = 2.0 * MU_0 * r0 * (1.0 - beta) * (psi_axis - psi_min) * scale / (alpha_n + 1.0)
+        f_value = np.sqrt(np.maximum(c_const * np.power(one_minus, alpha_n + 1.0) + af0 * af0, 0.0))
+        f_prime = (profile * (1.0 - beta) * r0 * scale) / f_value
+        js[plasma, 0] = f_prime * b_r[plasma]
+        js[plasma, 1] = f_prime * b_z[plasma]
+        js[plasma, 2] = density * scale
         js_array.Modified()
 
-        amps_array = point_data.GetArray("AMPS")
-        halo_currents_enabled = (
-            self.pytec3d.model.mesh.GetMaxSpatialDimension() > 2
-            and self.status["separatrix_configuration"] == "limiter"
-            and float(self.input_parameters.get("halo_delta1", 0.0)) > 0.0
-            and self.pytec3d.time_step["time"]
-            >= float(self.input_parameters.get("t0_halo", 0.0))
+        amps_array = chamber.GetPointData().GetArray("AMPS")
+        halo_currents = (
+            self.solver.model.mesh.GetMaxSpatialDimension() > 2
+            and self._halo_active()
             and float(self.status["psi_2_min"]) < float(self.status["psi_min"])
         )
-        if (
-            halo_currents_enabled
-            and amps_array is not None
-            and self._halo_node_groups
-        ):
-            amps_np = vtknp.vtk_to_numpy(amps_array)
-            halo_angle = float(self.input_parameters.get("extrusion_angle", 360.0))
-            halo_angle_factor = halo_angle / 360.0
-            halo_flux_den = psi_min - psi_magnetic_axis
-
-            def apply_halo_currents(node_ids: np.ndarray) -> None:
-                if node_ids.size <= 1:
-                    return
-
-                psi_seg = (psi_point[node_ids] - psi_magnetic_axis) / halo_flux_den
-                psi_seg = np.clip(psi_seg, 0.0, 1.0)
-
-                integrand = np.power(
-                    np.maximum(1.0 - np.power(psi_seg, alpha_mp), 0.0),
-                    alpha_np,
-                )
-                dpsi_seg = np.diff(psi_seg)
-                integral = np.empty_like(psi_seg)
-                integral[0] = 0.0
-                integral[1:] = np.cumsum(
-                    0.5 * (integrand[:-1] + integrand[1:]) * dpsi_seg
-                )
-
-                f_const = 2.0 * mu_0 * r0 * (1.0 - beta_profile) * halo_flux_den * lambda_scale
+        if halo_currents and amps_array is not None and self._halo_node_groups:
+            amps = vtknp.vtk_to_numpy(amps_array)
+            angle_factor = float(p.get("extrusion_angle", 360.0)) / 360.0
+            for path in self._halo_node_groups:
+                if path.size <= 1:
+                    continue
+                # Current between two wall points: the change of the poloidal current function F along the wall.
+                psi_seg = np.clip((psi_point[path] - psi_axis) / psi_span, 0.0, 1.0)
+                integrand = np.power(np.maximum(1.0 - np.power(psi_seg, alpha_m), 0.0), alpha_n)
+                integral = np.concatenate(([0.0], np.cumsum(0.5 * (integrand[:-1] + integrand[1:]) * np.diff(psi_seg))))
+                f_const = 2.0 * MU_0 * r0 * (1.0 - beta) * psi_span * scale
                 f_profile = np.sqrt(np.maximum(f_const * integral + af0 * af0, 0.0))
-                segment_currents = (
-                    (2.0 * np.pi / mu_0)
-                    * (f_profile[:-1] - f_profile[1:])
-                    * halo_angle_factor
-                )
-                nodal_segment_currents = 0.5 * segment_currents
-                np.add.at(amps_np, node_ids[:-1], nodal_segment_currents)
-                np.add.at(amps_np, node_ids[1:], nodal_segment_currents)
-
-            for halo_node_group in self._halo_node_groups:
-                apply_halo_currents(halo_node_group)
+                half_currents = 0.5 * (2.0 * np.pi / MU_0) * (f_profile[:-1] - f_profile[1:]) * angle_factor
+                np.add.at(amps, path[:-1], half_currents)
+                np.add.at(amps, path[1:], half_currents)
             amps_array.Modified()
 
-        self.status["total_plasma_current_before_scaling"] = total_plasma_current
-        self.status["plasma_current_scaling_lambda"] = float(lambda_scale)
-        self.status["plasma_element_count"] = int(selected_ids.size)
-        LOGGER.info(
-            "Grad-Shafranov: %d plasma elements, I_plasma_raw=%.6g A, lambda=%.6g.",
-            selected_ids.size, total_plasma_current, lambda_scale,
+        self.status.update(
+            total_plasma_current_before_scaling=total,
+            plasma_current_scaling_lambda=float(scale),
+            plasma_element_count=int(plasma.size),
         )
+        LOGGER.info("Grad-Shafranov: %d plasma cells, I_raw = %.6g A, lambda = %.6g.", plasma.size, total, scale)
+
+    # ------------------------------------------------------------------------------------------- control
 
     def control_currents(self) -> None:
-        """Default control-current pipeline: sample B, compute correction, apply Js.
-
-        Returns:
-            None
-        """
+        """Correct the control-coil currents so that the poloidal field at the target axis vanishes."""
         self._set_b_target_axis()
         self._compute_correction_currents()
         self._apply_control_currents()
         LOGGER.info(
-            "Control currents applied: radial=%.6g A, vertical=%.6g A.",
-            self.status["radial_correction_current"],
-            self.status["vertical_correction_current"],
+            "Control currents: radial %.6g A, vertical %.6g A.",
+            self.status["radial_correction_current"], self.status["vertical_correction_current"],
         )
+
+    def _set_b_target_axis(self) -> None:
+        """The poloidal field (B_R, B_Z) at the target axis, from the PSI gradient interpolated in its cell.
+
+        Raises:
+            ValueError: If the target point is outside the vacuum chamber or at R <= 0.
+        """
+        chamber = self.vacuum_chamber_mesh
+        gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
+        p = self.input_parameters
+        target = tuple(float(p[f"target_central_axis_{axis}"]) for axis in "xyz")
+        if target[0] <= 0.0:
+            raise ValueError(f"The target axis must be at R > 0, got R = {target[0]}.")
+
+        key = (id(chamber), chamber.GetNumberOfPoints(), chamber.GetNumberOfCells(), target)
+        if self._b_target_cache is None or self._b_target_cache[0] != key:
+            locator = vtkCellLocator()
+            locator.SetDataSet(chamber)
+            locator.BuildLocator()
+            cell_id = int(locator.FindCell(list(target)))
+            if cell_id < 0:
+                raise ValueError(f"The target axis {target} is outside the vacuum chamber.")
+            cell = chamber.GetCell(cell_id)
+            n = int(cell.GetNumberOfPoints())
+            weights = [0.0] * n
+            inside = cell.EvaluatePosition(
+                list(target), [0.0, 0.0, 0.0], reference(0), [0.0, 0.0, 0.0], reference(0.0), weights  # type: ignore[arg-type]
+            )
+            if int(inside) < 0:
+                raise ValueError(f"Cannot interpolate at the target axis {target} in cell {cell_id}.")
+            ids = cell.GetPointIds()
+            point_ids = np.array([ids.GetId(i) for i in range(n)], dtype=np.int64)
+            self._b_target_cache = (key, point_ids, np.asarray(weights, dtype=float))
+        _, point_ids, weights_np = self._b_target_cache
+
+        d_psi = weights_np @ gradient[point_ids, :2]
+        b_target = (float(-d_psi[1] / target[0]), float(d_psi[0] / target[0]))
+        self.status["b_target_axis"] = b_target
+        LOGGER.debug("Field at the target axis: B_R = %.6g, B_Z = %.6g.", *b_target)
+
+    def _compute_correction_currents(self) -> None:
+        """Radial and vertical correction currents cancelling the field at the target axis (2x2 linear system)."""
+        p = self.input_parameters
+        bradx, brady = float(p["bradx_value"]), float(p["brady_value"])
+        bverx, bvery = float(p["bverx_value"]), float(p["bvery_value"])
+        btx, bty = self.status["b_target_axis"]
+        determinant = bradx * bvery - bverx * brady
+        if abs(determinant) <= np.finfo(float).eps:
+            radial = vertical = 0.0
+        else:
+            radial = (bverx * bty - bvery * btx) / determinant
+            vertical = (brady * btx - bradx * bty) / determinant
+        self.status.update(radial_correction_current=float(radial), vertical_correction_current=float(vertical))
+        LOGGER.debug("Correction currents: radial %.6g A, vertical %.6g A.", radial, vertical)
+
+    def _control_coils(self) -> list[dict[str, Any]]:
+        """``input_parameters["control_coils"]``, checked: component name and the two gains of each coil."""
+        coils = self.input_parameters.get("control_coils") or []
+        if not isinstance(coils, list):
+            raise TypeError("input_parameters['control_coils'] must be a list of dicts.")
+        out = []
+        for index, coil in enumerate(coils, start=1):
+            if not isinstance(coil, dict):
+                raise TypeError(f"control_coils[{index}] must be a dict, got {type(coil).__name__}.")
+            component = str(coil.get("component", "")).strip()
+            missing = [k for k in ("radial_gain", "vertical_gain") if k not in coil]
+            if not component or missing:
+                raise ValueError(f"control_coils[{index}] needs a 'component', 'radial_gain' and 'vertical_gain'.")
+            out.append({"component": component, "radial_gain": float(coil["radial_gain"]),
+                        "vertical_gain": float(coil["vertical_gain"])})
+        return out
+
+    def _apply_control_currents(self) -> None:
+        """Add the correction current density of each control coil to the Js of its cells on the solver mesh.
+
+        Raises:
+            ValueError: If a coil cell has a constants row without (or with a zero) ``cross_section``.
+        """
+        coils = self._control_coils()
+        if not coils:
+            LOGGER.debug("No control coils.")
+            return
+        target = self.solver.model.mesh
+        js_array = meshes.get_array(target, "Js", "elem")
+        js = vtknp.vtk_to_numpy(js_array)
+        radial = float(self.status["radial_correction_current"])
+        vertical = float(self.status["vertical_correction_current"])
+
+        in_coil = np.zeros(js.shape[0], dtype=bool)
+        current = np.zeros(js.shape[0])
+        for coil in coils:
+            cells = meshes.array_values(target, coil["component"], "elem") == 1
+            in_coil |= cells
+            current[cells] += coil["radial_gain"] * radial + coil["vertical_gain"] * vertical
+        cells = np.flatnonzero(in_coil)
+        if cells.size == 0:
+            LOGGER.debug("The control coils have no cells.")
+            return
+
+        constants_ids = meshes.array_values(target, "CONSTANT", "elem")[cells].astype(int)
+        areas = {int(i): self.solver.model.real_constant(int(i), "cross_section") for i in np.unique(constants_ids)}
+        missing = sorted(i for i, area in areas.items() if area is None)
+        if missing:
+            raise ValueError(f"The constants rows {missing} of control-coil cells have no 'cross_section'.")
+        cell_areas = np.array([float(areas[i]) for i in constants_ids.tolist()])
+        zero = np.abs(cell_areas) <= np.finfo(float).eps
+        if np.any(zero):
+            raise ValueError(f"The constants rows {np.unique(constants_ids[zero]).tolist()} have cross_section = 0.")
+
+        if self._control_current_density_base is None or self._control_current_density_base.shape[0] != js.shape[0]:
+            self._control_current_density_base = np.asarray(js[:, 2], dtype=float).copy()
+        js[cells, 2] = self._control_current_density_base[cells] + current[cells] / cell_areas
+        js_array.Modified()
+
+    # ------------------------------------------------------------------------------------------- iterations
 
     def check_convergence(self) -> bool:
-        """Check Picard convergence using max absolute PSI change on all nodes.
+        """Compare PSI with the previous iteration: converged when ``max |dPSI| <= tolerance_value``.
 
-        Returns:
-            bool: True when convergence criterion is satisfied.
+        The first call only stores PSI and returns False.
         """
-        mesh = self.vacuum_chamber_mesh
-
-        point_data = mesh.GetPointData()
-        psi_array = point_data.GetArray("PSI")
-
-        current_flux_vector = vtknp.vtk_to_numpy(psi_array).copy()
-
+        psi = meshes.array_values(self.vacuum_chamber_mesh, "PSI", "node").copy()
         tolerance = float(self.input_parameters["tolerance_value"])
         self.status["flux_tolerance"] = tolerance
-
-        if self._first_absolute_iteration or self._previous_flux_vector is None:
-            self._previous_flux_vector = current_flux_vector.copy()
-            self.status["flux_norm"] = np.nan
-            self.status["converged"] = False
+        if self._first_absolute_iteration or self._previous_flux is None:
+            self._previous_flux = psi
+            self.status.update(flux_norm=np.nan, converged=False)
             return False
-
-        if self._previous_flux_vector.size != current_flux_vector.size:
-            raise ValueError("Size mismatch between current and previous flux vectors.")
-
-        flux_norm = float(np.max(np.abs(current_flux_vector - self._previous_flux_vector)))
-        self._previous_flux_vector = current_flux_vector.copy()
-
-        converged = bool(flux_norm <= tolerance)
-        self.status["flux_norm"] = flux_norm
-        self.status["converged"] = converged
-        LOGGER.info(
-            "Convergence check: flux_norm=%.6g, tolerance=%.6g -> %s.",
-            flux_norm, tolerance, "CONVERGED" if converged else "not converged",
-        )
+        if self._previous_flux.size != psi.size:
+            raise ValueError("PSI changed size between two iterations.")
+        flux_norm = float(np.max(np.abs(psi - self._previous_flux)))
+        self._previous_flux = psi
+        converged = flux_norm <= tolerance
+        self.status.update(flux_norm=flux_norm, converged=converged)
+        LOGGER.info("Convergence: max |dPSI| = %.6g, tolerance %.6g: %s.", flux_norm, tolerance,
+                    "converged" if converged else "not converged")
         return converged
 
-    def toroidal_average(
-        self,
-        array_name: str,
-        location: str,
-        component: Optional[int] = None,
-    ) -> None:
-        """Average a mapped array component from model mesh into equilibrium mesh."""
-        if location not in ("node", "elem"):
-            raise ValueError("location must be 'node' or 'elem'.")
+    def _diagnostics_path(self) -> str:
+        directory = os.path.join(os.getcwd(), DIAGNOSTICS_DIRECTORY)
+        os.makedirs(directory, exist_ok=True)
+        return os.path.join(directory, DIAGNOSTICS_FILE)
 
-        equilibrium_mesh = self.vacuum_chamber_mesh
-        model_mesh = self.pytec3d.model.mesh
-        self._set_toroidal_slices()
+    def _clear_diagnostics(self) -> None:
+        if self.solver.rank == 0:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(self._diagnostics_path())
 
-        mapping = self._toroidal_slices_nodes if location == "node" else self._toroidal_slices_elems
-        src_ids = np.asarray(mapping[:, 0], dtype=np.int64)
-        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
+    def _diagnostics_row(self) -> dict[str, Any]:
+        """One CSV row of the status; points become one column per coordinate."""
+        row: dict[str, Any] = {
+            "time": float(self.solver.time_step["time"]),
+            "picard_iteration": int(self.status["picard_iteration"]),
+            "flux_metric": float(self.status["flux_norm"]),
+            "flux_threshold": float(self.status["flux_tolerance"]),
+            "converged": bool(self.status["converged"]),
+        }
+        expanded = {"magnetic_axis": "magnetic_axis", "limiter_point": "limiter", "x_point": "x_point",
+                    "b_target_axis": "b_target_axis"}
+        for key, value in self.status.items():
+            if key in ("picard_iteration", "converged", "flux_norm", "flux_tolerance"):
+                continue
+            if key in expanded:
+                for axis, coordinate in zip("xyz", value, strict=False):
+                    row[f"{expanded[key]}_{axis}"] = float(coordinate)
+            else:
+                row[key] = value
+        return row
 
-        eq_data = equilibrium_mesh.GetPointData() if location == "node" else equilibrium_mesh.GetCellData()
-        model_data = model_mesh.GetPointData() if location == "node" else model_mesh.GetCellData()
-        eq_array = pyTEC3DAlgorithm._require_array(eq_data, array_name)
-        model_array = pyTEC3DAlgorithm._require_array(model_data, array_name)
-
-        eq_np = vtknp.vtk_to_numpy(eq_array)
-        model_np = vtknp.vtk_to_numpy(model_array)
-
-        if eq_np.ndim == 1:
-            avg_values = np.mean(model_np[dst_ids], axis=1)
-            eq_np[src_ids] = avg_values
-            eq_array.Modified()
+    def _append_diagnostics(self) -> None:
+        """Append the status to the diagnostics CSV (rank 0); NaN is written as an empty field."""
+        if self.solver.rank != 0:
             return
+        row = {k: "" if isinstance(v, float) and math.isnan(v) else v for k, v in self._diagnostics_row().items()}
+        path = self._diagnostics_path()
+        new_file = not os.path.exists(path) or os.path.getsize(path) == 0
+        with open(path, "a", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(row))
+            if new_file:
+                writer.writeheader()
+            writer.writerow(row)
 
-        n_components = eq_np.shape[1]
-        if component is None:
-            for comp in range(n_components):
-                self.toroidal_average(array_name, location, component=comp)
-            return
-        if component < 0 or component >= n_components:
-            raise ValueError(f"Invalid component index {component} for array '{array_name}'.")
+    def _run_picard_loop(self, label: str, equilibrium: bool) -> bool:
+        """The Picard iterations shared by the equilibrium and evolution solves.
 
-        avg_values = np.mean(model_np[dst_ids, component], axis=1)
-        eq_np[src_ids, component] = avg_values
-        eq_array.Modified()
-
-    def toroidal_projection(
-        self,
-        array_name: str,
-        location: str,
-        component: Optional[int] = None,
-    ) -> None:
-        """Project an equilibrium-mesh array component to the mapped model mesh entities."""
-        if location not in ("node", "elem"):
-            raise ValueError("location must be 'node' or 'elem'.")
-
-        equilibrium_mesh = self.vacuum_chamber_mesh
-        model_mesh = self.pytec3d.model.mesh
-        self._set_toroidal_slices()
-
-        mapping = self._toroidal_slices_nodes if location == "node" else self._toroidal_slices_elems
-        src_ids = np.asarray(mapping[:, 0], dtype=np.int64)
-        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
-
-        eq_data = equilibrium_mesh.GetPointData() if location == "node" else equilibrium_mesh.GetCellData()
-        model_data = model_mesh.GetPointData() if location == "node" else model_mesh.GetCellData()
-        eq_array = pyTEC3DAlgorithm._require_array(eq_data, array_name)
-        model_array = pyTEC3DAlgorithm._require_array(model_data, array_name)
-
-        eq_np = vtknp.vtk_to_numpy(eq_array)
-        model_np = vtknp.vtk_to_numpy(model_array)
-
-        flat_dst = dst_ids.reshape(-1)
-        valid = flat_dst >= 0
-        flat_dst = flat_dst[valid]
-        if flat_dst.size == 0:
-            return
-
-        if eq_np.ndim == 1:
-            projected = np.broadcast_to(eq_np[src_ids, np.newaxis], dst_ids.shape).reshape(-1)[valid]
-            model_np[flat_dst] = projected
-            model_array.Modified()
-            return
-
-        n_components = eq_np.shape[1]
-        if component is None:
-            for comp in range(n_components):
-                self.toroidal_projection(array_name, location, component=comp)
-            return
-        if component < 0 or component >= n_components:
-            raise ValueError(f"Invalid component index {component} for array '{array_name}'.")
-
-        projected = np.broadcast_to(eq_np[src_ids, component][:, np.newaxis], dst_ids.shape).reshape(-1)[valid]
-        model_np[flat_dst, component] = projected
-        model_array.Modified()
-
-    def _swap_projected_js_components_on_model_slices(self) -> None:
-        """Swap projected model Js components on mapped destination element ids.
-
-        Applies [0, 2, 1] component reordering only for 3D static meshes.
+        Raises:
+            ConvergenceError: If PSI does not converge within ``max_picard_iterations``.
         """
-        model_mesh = self.pytec3d.model.mesh
-        static_mesh_is_3d = model_mesh.GetMaxSpatialDimension() > 2
-        if not static_mesh_is_3d:
-            return
-
-        self._set_toroidal_slices()
-
-        mapping = self._toroidal_slices_elems
-        dst_ids = np.asarray(mapping[:, 1:], dtype=np.int64)
-
-        model_data = model_mesh.GetCellData()
-        model_array = pyTEC3DAlgorithm._require_array(model_data, "Js")
-
-        model_np = vtknp.vtk_to_numpy(model_array)
-        if model_np.ndim != 2 or model_np.shape[1] < 3:
-            raise ValueError("Expected vector Js array with at least 3 components.")
-
-        flat_dst = dst_ids.reshape(-1)
-        valid = flat_dst >= 0
-        if not np.any(valid):
-            return
-
-        dst = flat_dst[valid]
-        model_np[dst, :] = model_np[dst][:, [0, 2, 1]]
-        Selector.select(model_mesh, "ID", np.unique(dst), type="elem")
-        ModelEdit.map_vector_field_to_global_components(model_mesh, "Js", YAxisCylindricalCoordinateSystem(), "elem", True)
-        model_array.Modified()
-
-    def _append_iteration_diagnostics(
-        self,
-        converged: bool,
-    ) -> None:
-        """Append one solver-iteration diagnostics row to the CSV diagnostics file.
-
-        Args:
-            converged: Current convergence flag.
-
-        Returns:
-            None
-        """
-        if not isinstance(converged, (bool, np.bool_)):
-            raise TypeError("converged must be a boolean value.")
-
-        self.status["converged"] = bool(converged)
-        if self.pytec3d._world_rank() != 0:
-            return
-
-        row = self._build_diagnostics_row(converged)
-        row_df = pd.DataFrame([row])
-        csv_path = self._diagnostics_csv_path()
-        write_header = (not os.path.exists(csv_path)) or os.path.getsize(csv_path) == 0
-        row_df.to_csv(csv_path, mode="a", header=write_header, index=False)
-
-    def calculate_poloidal_flux(self) -> None:
-        """Update Ae/PSI/PSIe fields from current vector-potential solution arrays.
-
-        Returns:
-            None
-        """
-        mesh = self.pytec3d.model.mesh
-        if mesh.GetPointData().GetArray("A") is None:
-            raise ValueError("Required PointData array 'A' is missing before poloidal flux calculation.")
-
-        ModelEdit.element_solution(mesh, "A")
-        ModelEdit.poloidal_flux(
-            mesh=mesh,
-            coordinate_system=YAxisCylindricalCoordinateSystem(),
-        )
-
-    def _run_picard_loop(
-        self,
-        *,
-        solve_label: str,
-        equilibrium_flag: bool,
-    ) -> bool:
-        """Shared Picard-loop runner for equilibrium/evolution solves.
-
-        Args:
-            solve_label: Human-readable solve label for logs/errors.
-            include_control_currents: Whether to run control-current update.
-
-        Returns:
-            bool: True when convergence is reached.
-        """
-        max_picard_iterations = max(
-            1, int(self.input_parameters["max_picard_iterations"])
-        )
+        max_iterations = max(1, int(self.input_parameters["max_picard_iterations"]))
         self.status["converged"] = False
-
         if self._first_absolute_iteration:
-            self._set_toroidal_slices()
-            self._cache_halo_boundary_graph()
+            self._ensure_toroidal_maps()
+            self._halo_boundary_graph()
 
-        for iteration in range(max_picard_iterations):
-            self.status["picard_iteration"] = iteration + 1
-            LOGGER.info(
-                "%s Picard iteration %d/%d.",
-                solve_label,
-                self.status["picard_iteration"],
-                max_picard_iterations,
-            )
-
-            if not self._first_absolute_iteration:
+        for iteration in range(1, max_iterations + 1):
+            self.status["picard_iteration"] = iteration
+            LOGGER.info("%s Picard iteration %d/%d (t = %g).", label, iteration, max_iterations,
+                        self.solver.time_step["time"])
+            started = time.perf_counter()
+            if self._first_absolute_iteration:
+                self.check_convergence()
+            else:
                 self._compute_psi_derivatives()
                 self.find_separatrix()
                 self.compute_jplasma_gradshafranov()
-                if equilibrium_flag:
+                if equilibrium:
                     self.control_currents()
-            else:
-                self.check_convergence()
 
             self.toroidal_projection("Js", "elem")
-            self._swap_projected_js_components_on_model_slices()
+            self._swap_projected_js_components()
             self.toroidal_projection("AMPS", "node")
-            self.pytec3d.solve()
+            self.solver.solve()
             self.calculate_poloidal_flux()
-            self.toroidal_average("PSI", location="node")
+            self.toroidal_average("PSI", "node")
             self.toroidal_average("PSIe", "elem")
 
-            converged = self.check_convergence()
-            if not equilibrium_flag and self._first_absolute_iteration:
-                converged = True
-            self._append_iteration_diagnostics(converged)
+            converged = self.check_convergence() or (not equilibrium and self._first_absolute_iteration)
+            self.status["converged"] = converged
+            self._append_diagnostics()
             self._first_absolute_iteration = False
+            LOGGER.info("%s Picard iteration %d done in %.2f s.", label, iteration, time.perf_counter() - started)
             if converged:
-                self.status["converged"] = True
-                LOGGER.info(
-                    "%s solve converged at iteration %d (flux_norm=%s).",
-                    solve_label,
-                    self.status["picard_iteration"],
-                    self.status["flux_norm"],
-                )
+                LOGGER.info("%s solve converged at iteration %d (max |dPSI| = %s).", label, iteration,
+                            self.status["flux_norm"])
                 return True
 
-        self.status["converged"] = False
-        LOGGER.error(
-            "%s solve did not converge after %d iterations (last flux_norm=%s).",
-            solve_label,
-            max_picard_iterations,
-            self.status["flux_norm"],
+        raise ConvergenceError(
+            f"The {label.lower()} solve did not converge in {max_iterations} Picard iterations "
+            f"(last max |dPSI| = {self.status['flux_norm']})."
         )
-        raise RuntimeError(
-            f"{solve_label} solve did not converge after "
-            f"{max_picard_iterations} Picard iterations "
-            f"(last flux metric: {self.status['flux_norm']})."
-        )
+
+    def _require_session(self, what: str) -> None:
+        if not self.solver.is_loaded:
+            raise SolverStateError(f"No solver session: call solver.load_model_into_solver() before {what}().")
 
     def equilibrium_solve(self) -> bool:
-        """Run the equilibrium Picard loop until convergence or iteration limit.
+        """Iterate the free-boundary equilibrium, with control currents, until PSI converges.
+
+        The vacuum-chamber mesh is taken from the solver mesh if it is not set.
 
         Returns:
-            bool: True when convergence is reached.
-        """
-        LOGGER.info("Starting equilibrium solve.")
-        if self.pytec3d.solver is None:
-            raise RuntimeError("No solver session available. Call load_model_into_solver() before equilibrium_solve().")
+            True (it raises otherwise).
 
+        Raises:
+            SolverStateError: If the model is not loaded into a solver session.
+            ConvergenceError: If PSI does not converge within ``max_picard_iterations``.
+        """
+        LOGGER.info("Starting the equilibrium solve.")
+        self._require_session("equilibrium_solve")
         if self._first_absolute_iteration:
-            self._clear_diagnostics_file()
-        self.vacuum_chamber_mesh = self.pytec3d.model.mesh
-        return self._run_picard_loop(
-            solve_label="Equilibrium",
-            equilibrium_flag=True,
-        )
+            self._clear_diagnostics()
+        if self._equilibrium_mesh is None:
+            self.vacuum_chamber_mesh = self.solver.model.mesh
+        return self._run_picard_loop("Equilibrium", equilibrium=True)
 
     def evolution_solve(self) -> bool:
-        """Run the evolution Picard loop, including toroidal transfer operations.
+        """Iterate one time step of the plasma evolution (no control currents) until PSI converges.
+
+        The first call only initializes the flux and returns after one solve.
 
         Returns:
-            bool: True when evolution solve completes successfully.
-        """
-        LOGGER.info("Starting evolution solve.")
-        if self.pytec3d.solver is None:
-            raise RuntimeError("No solver session available. Call load_model_into_solver() before evolution_solve().")
+            True (it raises otherwise).
 
+        Raises:
+            SolverStateError: If the model is not loaded or the vacuum-chamber mesh is not set.
+            ConvergenceError: If PSI does not converge within ``max_picard_iterations``.
+        """
+        LOGGER.info("Starting the evolution solve.")
+        self._require_session("evolution_solve")
         if self._first_absolute_iteration:
-            self._clear_diagnostics_file()
-        return self._run_picard_loop(
-            solve_label="Evolution",
-            equilibrium_flag=False,
-        )
+            self._clear_diagnostics()
+        return self._run_picard_loop("Evolution", equilibrium=False)

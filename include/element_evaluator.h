@@ -78,13 +78,13 @@ namespace pytec3d
 
         /** @brief K, C and M of the element: the linear block terms by number of dt() (and the replaced ones on linear
          * elements). @p M is empty for element types of time order below 2. */
-        void add_matrices(Matrix &K, Matrix &C, Matrix &M) { impl_->add_matrices(K, C, M); }
+        void add_matrices(Matrix &K, Matrix &C, Matrix &M);
 
         /** @brief Right-hand side of the element: the linear rhs terms (and the replaced ones on linear elements). */
-        void add_rhs(Vector &F) { impl_->add_rhs(F); }
+        void add_rhs(Vector &F);
 
         /** @brief Jacobian (J) and residual (R) terms of the laws selected on the element, at the current solution. */
-        void add_nonlinear(Matrix &J, Vector &R) { impl_->add_nonlinear(J, R); }
+        void add_nonlinear(Matrix &J, Vector &R);
 
         /**
          * @brief Operators of the static nodal or element fields (Matrices operation): the field values are
@@ -92,19 +92,13 @@ namespace pytec3d
          * All the fields of a kind collapse into these three matrices and one vector; those the spec cannot fill
          * on the element (ElementType::field_operators) are left empty.
          */
-        void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F, Vector &f)
-        {
-            impl_->field_operators(kind, indices, F, f);
-        }
+        void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F, Vector &f);
 
         /** @brief Values of the dynamic nodal or element fields, written at their positions @p indices in @p values. */
-        void field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values)
-        {
-            impl_->field_values(kind, indices, values);
-        }
+        void field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values);
 
         /** @brief Reads every parameter the terms active in the domain need, so that a missing one aborts now. */
-        void check_parameters() { impl_->check_parameters(); }
+        void check_parameters();
 
         /** @brief The evaluator of one element type (element_evaluator.cpp). */
         class Implementation

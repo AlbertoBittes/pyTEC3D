@@ -1,16 +1,14 @@
-from pytec3d_solver.solver import pyTEC3DSolver
+from pytec3d import selection, Solver, tree_gauge
 import os
 import numpy as np
 from pytec3d.coordinate_system import CylindricalCoordinateSystem
-from pytec3d.tree_gauge import TreeGauge
-from pytec3d.selector import Selector
 from pytec3d.coordinate_system import XAxisCylindricalCoordinateSystem
 import vtk.util.numpy_support as vtknp
 
 
 # from convert_mesh import convert_mesh_from_cdb
 
-pytec3d = pyTEC3DSolver()
+pytec3d = Solver()
 
 filename = "CREATE_B_measurement"
 
@@ -85,34 +83,35 @@ pytec3d.model.set_bh_curve(2, [
     [2337890.865, 5],
 ])
 
-pytec3d.model.set_bh_curve(3, [
-    [0.0, 0.0],
-    [156.167232069, 0.239888044992],
-    [210.113464193, 0.316039547109],
-    [268.172738721, 0.376125353665],
-    [328.323296843, 0.411896921926],
-    [385.48042051, 0.430604288452],
-    [439.93479209, 0.441320807285],
-    [493.674322039, 0.447584189692],
-    [546.856093148, 0.45147893673],
-    [815.950268409, 0.460889474772],
-    [1081.56016787, 0.46628751316],
-    [1342.08642302, 0.470285285821],
-    [1601.49817015, 0.473868234982],
-    [1854.3064012, 0.477043124008],
-    [2199.37439592, 0.483047707152],
-    [2451.14947669, 0.485160621417],
-    [2684.76597187, 0.486756019625],
-    [3166.7575261, 0.489818986148],
-    [3637.99523776, 0.492120559561],
-    [4264.282677, 0.494422134],
-    [6131.085178, 0.499025282],
-])
+# Material 3 is linear: a curve would select the bh_curve law on it (nonlinear_laws).
+# pytec3d.model.set_bh_curve(3, [
+#     [0.0, 0.0],
+#     [156.167232069, 0.239888044992],
+#     [210.113464193, 0.316039547109],
+#     [268.172738721, 0.376125353665],
+#     [328.323296843, 0.411896921926],
+#     [385.48042051, 0.430604288452],
+#     [439.93479209, 0.441320807285],
+#     [493.674322039, 0.447584189692],
+#     [546.856093148, 0.45147893673],
+#     [815.950268409, 0.460889474772],
+#     [1081.56016787, 0.46628751316],
+#     [1342.08642302, 0.470285285821],
+#     [1601.49817015, 0.473868234982],
+#     [1854.3064012, 0.477043124008],
+#     [2199.37439592, 0.483047707152],
+#     [2451.14947669, 0.485160621417],
+#     [2684.76597187, 0.486756019625],
+#     [3166.7575261, 0.489818986148],
+#     [3637.99523776, 0.492120559561],
+#     [4264.282677, 0.494422134],
+#     [6131.085178, 0.499025282],
+# ])
 
 # Coupling for stranded coils
-Selector.select(pytec3d.model.mesh, "TYPE", 3, type="elem")
-Selector.nsle(pytec3d.model.mesh)
-Selector.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
+selection.select(pytec3d.model.mesh, "TYPE", 3, location="elem")
+selection.nsle(pytec3d.model.mesh)
+selection.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
 master_node = vtknp.vtk_to_numpy(
     pytec3d.model.mesh.GetPointData().GetArray("selection_point")
 ).nonzero()[0][0]
@@ -122,32 +121,30 @@ xc0, yc0, zc0 = 0.0645, 0.035, 0.05
 xc1, yc1, zc1 = 0.0645, 0.035, 0.078
 
 pytec3d.model.set_coordinate_system(91, XAxisCylindricalCoordinateSystem(
-)
     origin=[xc0, yc0, zc0],
-)
+))
 pytec3d.model.set_coordinate_system(92, XAxisCylindricalCoordinateSystem(
-)
     origin=[xc1, yc1, zc1],
-)
+))
 
-Selector.select(pytec3d.model.mesh, "CONSTANT", 2, type="elem")
-Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 91, type="elem")
+selection.select(pytec3d.model.mesh, "CONSTANT", 2, location="elem")
+selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 91, location="elem")
 
-Selector.select(pytec3d.model.mesh, "CONSTANT", 4, type="elem")
-Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, type="elem")
+selection.select(pytec3d.model.mesh, "CONSTANT", 4, location="elem")
+selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, location="elem")
 
 # Az: Symmetry BCs + Far field + Tree Gauging
-Selector.select_all(pytec3d.model.mesh)
-Selector.nsel_ext(pytec3d.model.mesh)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
-TreeGauge.tree_gauge(pytec3d.model.mesh)
+selection.select_all(pytec3d.model.mesh)
+selection.nsel_ext(pytec3d.model.mesh)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
+tree_gauge.tree_gauge(pytec3d.model.mesh)
 
 # Symmetry BCs
-Selector.select_all(pytec3d.model.mesh)
-Selector.nsel_ext(pytec3d.model.mesh)
-Selector.select(pytec3d.model.mesh, "TYPE", 2, type="elem")
-Selector.nsle(pytec3d.model.mesh, mode="r")
-Selector.set_value_on_selection(pytec3d.model.mesh, "_V", 0.0)
+selection.select_all(pytec3d.model.mesh)
+selection.nsel_ext(pytec3d.model.mesh)
+selection.select(pytec3d.model.mesh, "TYPE", 2, location="elem")
+selection.nsle(pytec3d.model.mesh, mode="r")
+selection.set_value_on_selection(pytec3d.model.mesh, "_V", 0.0)
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "times_CREATE.txt"))
@@ -169,8 +166,8 @@ for step_idx in range(len(time_steps)):
         pytec3d.time_step["time"] = 1e-10
     else:
         pytec3d.time_step["transient_effects"] = True
-    Selector.select(pytec3d.model.mesh, "ID", master_node)
-    Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", voltages[step_idx])
+    selection.select(pytec3d.model.mesh, "ID", master_node)
+    selection.set_value_on_selection(pytec3d.model.mesh, "_VOLT", voltages[step_idx])
     pytec3d.solve()
     if step_idx % 10 == 0:
         pytec3d.write_output()

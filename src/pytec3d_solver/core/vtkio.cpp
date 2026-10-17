@@ -100,10 +100,6 @@ using libMesh::VTK;
 
 namespace Utility = libMesh::Utility;
 
-// A convenient macro for comparing VTK versions.  Returns 1 if the
-// // current VTK version is < major.minor.subminor and zero otherwise.
-// #define VTK_VERSION_LESS_THAN(major, minor, subminor)                                                            \
-//     (VTK_VERSION_NUMBER < VTK_VERSION_CHECK((major), (minor), (subminor)))
 
 namespace
 {
@@ -233,6 +229,22 @@ VTKIO::VTKIO(const MeshBase &mesh, EquationSystems *eq_systems, vtkUnstructuredG
 }
 
 // Static initialisation of the element type maps.
+void VTKIO::ElementMaps::associate(libMesh::ElemType libmesh_type, vtkIdType vtk_type)
+{
+    writing_map[libmesh_type] = vtk_type;
+    reading_map[vtk_type] = libmesh_type;
+}
+
+vtkIdType VTKIO::ElementMaps::find(libMesh::ElemType libmesh_type)
+{
+    return libmesh_map_find(writing_map, libmesh_type);
+}
+
+libMesh::ElemType VTKIO::ElementMaps::find(vtkIdType vtk_type)
+{
+    return libmesh_map_find(reading_map, vtk_type);
+}
+
 std::map<ElemMappingType, VTKIO::ElementMaps> VTKIO::_element_maps = VTKIO::build_element_maps();
 
 /// Constructs the map from libMesh element types to VTK cell types for each mapping strategy.

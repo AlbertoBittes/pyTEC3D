@@ -42,7 +42,7 @@ namespace pytec3d
             return std::sqrt(p(0) * p(0) + p(2) * p(2));
         }
 
-        void evaluate_scalar(const formulation::NablaSpec &spec, libMesh::FEBase &fe, unsigned int dimension, bool axisymmetric,
+        void evaluate_scalar(const formulation::NablaSpec &spec, libMesh::FEBase &fe, unsigned int /*dimension*/, bool axisymmetric,
                              const std::vector<Real> &length, ValueTable &out)
         {
             const auto &phi = fe.get_phi();

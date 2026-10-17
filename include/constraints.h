@@ -9,15 +9,13 @@
  *   -# Point/nodal Dirichlet constraints read from VTK point-data arrays.
  *   -# DOF-coupling (periodic boundary) constraints derived from CP_* arrays.
  */
-#ifndef CONSTRAINTS_H
-#define CONSTRAINTS_H
+#pragma once
 
 #include <libmesh/dof_map.h>
 #include <libmesh/equation_systems.h>
 #include <libmesh/numeric_vector.h>
 #include <libmesh/system.h>
 
-#include "fe_parent_object.h"
 
 #include <map>
 #include <memory>
@@ -40,13 +38,10 @@ class pyTEC3DDOFSystem;
  */
 template <typename ImplSystem>
 class GlobalConstraintsObject
-    : public libMesh::System::Constraint,
-      public FEParentObjectBase<pyTEC3DDOFSystem<ImplSystem>>
+    : public libMesh::System::Constraint
 {
 public:
-  using FEParentObjectBase<pyTEC3DDOFSystem<ImplSystem>>::FEParentObjectBase;
-
-  GlobalConstraintsObject(pyTEC3DDOFSystem<ImplSystem> *sys);
+  explicit GlobalConstraintsObject(pyTEC3DDOFSystem<ImplSystem> &system);
 
   virtual ~GlobalConstraintsObject() = default;
 
@@ -96,6 +91,5 @@ private:
   std::vector<std::string> _coupling_variable_values;
   std::unordered_set<int> _edge_coupling_cp_ids;
   bool _has_constraint_cache = false;
+  pyTEC3DDOFSystem<ImplSystem> &system_; ///< The DOF system constrained.
 };
-
-#endif // CONSTRAINTS_H

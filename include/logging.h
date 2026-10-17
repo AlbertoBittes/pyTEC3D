@@ -1,46 +1,26 @@
 /**
  * @file logging.h
- * @brief MPI-aware structured logging interface for the pyTEC3D solver.
+ * @brief MPI-aware logging for the pyTEC3D solver.
  *
- * Wraps spdlog with rank-filtering helpers so that, by default, only the
- * root rank (rank 0) emits messages.  All free functions forward to the
- * process-wide spdlog default logger initialised by pytec3d::logging::initialize().
- * Use pytec3d::logging::error_and_abort() for unrecoverable errors; it logs the
- * message on all ranks and then throws in debug builds so Python/debuggers can
- * show the original failure. In release builds, set pyTEC3D_HARD_ABORT=1 to
- * force libmesh_error_msg() hard-abort semantics.
+ * Wraps spdlog with rank-filtering helpers so that, by default, only the root rank (rank 0) emits messages.
+ * All free functions forward to the process-wide spdlog default logger initialised by initialize().
+ * error_and_abort() is for unrecoverable errors: it logs the message on all ranks, then calls MPI_Abort when
+ * running on several ranks (an error raised on some ranks only would otherwise leave the others waiting in the
+ * next collective call) or throws std::runtime_error in a serial run, which reaches Python as an exception.
  */
 #pragma once
 
 #include <mpi.h>
 #include <spdlog/spdlog.h>
-#include <libmesh/libmesh_common.h>
 
-#include <cstdlib>
-#include <stdexcept>
+#include <chrono>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
-
-#include "time_step.h"
-
-class pyTEC3DEquationSystems;
-#include "pytec3d_equation_systems.h"
-namespace libMesh
-{
-    class MeshBase;
-}
 
 namespace pytec3d::logging
 {
-    struct ConstraintVariableStat
-    {
-        std::string variable_name;
-        std::size_t total_count = 0;
-        std::size_t applied_count = 0;
-    };
-
     void initialize(MPI_Comm comm, std::string_view component = "pytec3d");
     void shutdown();
 
@@ -48,25 +28,46 @@ namespace pytec3d::logging
     int size();
     bool log_all_ranks();
 
+    /**
+     * @brief Also write the log (messages and tables, rank 0) to @p path, appended. Can be called before
+     * initialize(); an empty path stops writing to a file.
+     */
+    void set_log_file(const std::string &path);
+
+    /** @brief Warnings and errors logged on this rank since initialize(). */
+    std::pair<std::size_t, std::size_t> message_counts();
+
     void info_root(const std::string &message);
     void print_root(const std::string &message);
     void table_root(const std::string &table);
-    std::string format_solver_banner(std::string_view version, std::string_view build_mode, std::string_view build_stamp);
-    std::string format_mesh_summary_table(const libMesh::MeshBase &mesh);
-    std::string format_time_step_table(const TimeStep &time_step, std::string_view title = "Time Step Information");
-    std::string format_equation_systems_summary_table(pyTEC3DEquationSystems &equation_systems);
-    std::string format_constraints_summary_table(std::size_t time_integration_count,
-                                                 std::size_t dof_constraint_count,
-                                                 std::size_t coupling_count,
-                                                 std::size_t total_count,
-                                                 std::size_t applied_count,
-                                                 const std::vector<ConstraintVariableStat> &variable_stats,
-                                                 std::size_t unknown_total_count,
-                                                 std::size_t unknown_applied_count);
-    std::string format_petsc_solver_configuration_table(std::string_view backend_name,
-                                                        std::string_view solver_class,
-                                                        std::string_view ksp_name,
-                                                        std::string_view pc_name);
+
+    /** @brief Logs @p message on all ranks, then MPI_Abort on several ranks or throws std::runtime_error. */
+    [[noreturn]] void error_and_abort(const std::string &message);
+
+    /**
+     * @brief Logs, on the root rank, the wall time of a phase when it goes out of scope: "<label>: 1.234 s", or a
+     * warning that the phase was interrupted when an exception leaves it.
+     *
+     * For phases (load, assembly, solve), not for loops over elements.
+     */
+    class ScopedTimer
+    {
+    public:
+        /** @param seconds If given, receives the elapsed time when the timer goes out of scope. */
+        explicit ScopedTimer(std::string label, double *seconds = nullptr);
+        ~ScopedTimer();
+        ScopedTimer(const ScopedTimer &) = delete;
+        ScopedTimer &operator=(const ScopedTimer &) = delete;
+
+        /** @brief Seconds since the timer started. */
+        double elapsed() const;
+
+    private:
+        std::string label_;
+        std::chrono::steady_clock::time_point start_;
+        int exceptions_ = 0; ///< std::uncaught_exceptions() at the start.
+        double *seconds_ = nullptr;
+    };
 
     inline bool should_log_this_rank()
     {
@@ -130,11 +131,5 @@ namespace pytec3d::logging
     inline void critical_all_ranks(spdlog::format_string_t<Args...> fmt, Args &&...args)
     {
         spdlog::critical(fmt, std::forward<Args>(args)...);
-    }
-
-    [[noreturn]] inline void error_and_abort(const std::string &message)
-    {
-        error_all_ranks("[rank {}/{}] {}", rank(), size(), message);
-        throw std::runtime_error(message);
     }
 } // namespace pytec3d::logging

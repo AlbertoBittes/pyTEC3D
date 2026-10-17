@@ -9,12 +9,16 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 
 ## Project structure
 
-- `python/pytec3d`: main Python API
-- `python/pytec3d_coordinate_system`: coordinate_system helpers
-- `python/pytec3d_solver`: compiled solver extension location
-- `python/pytec3d_paraview`: ParaView support module
-- `python/pytec3d_algorithm`: pyTEC3D algorith module
-- `python/pytec3d_mesh_converter`: mesh conversion package
+- `src/pytec3d`: the Python package (`from pytec3d import Solver, Model, selection`)
+
+  - `model`, `solver`: the model (mesh + model data) and its solution;
+  - `selection`, `mesh`, `model_edit`, `coordinate_system`, `tree_gauge`: model preparation;
+  - `algorithm`: plasma equilibrium and evolution;
+  - `pytec3d_paraview_plugin`: ParaView filters and console helpers;
+  - `mesh_converter`: ANSYS `.cdb` to `.vtu` conversion (`pytec3d-convert-cdb`);
+  - `resources`: the JSON element library compiled into the solver.
+
+- `src/pytec3d_solver`: the C++ solver; the compiled module `pytec3d_solver.pytec3d_solver` is installed there.
 
 ## Quick start (local workflow)
 
@@ -73,10 +77,6 @@ cmake --build build/pytec3d -j
 
 ## Extension output location
 
-The compiled extension modules are written to the Python package tree (default: `python/`), not kept as import targets in `build/`.
-
-- `pytec3d_solver` extension output: `python/pytec3d_solver`
-- `pytec3d_coordinate_system` extension output: `python/pytec3d_coordinate_system`
-
-This keeps imports consistent for both regular installs and editable installs (`pip install -e .`).
+CMake builds the solver module in `build/pytec3d-<method>/`; `cmake --install build/pytec3d-<method>` copies it to
+`src/pytec3d_solver/pytec3d_solver*.so`, where both regular and editable installs (`pip install -e .`) import it.
 If needed, override the package root during build with `PYTEC3D_PYTHON_PACKAGE_ROOT=/path/to/python_packages`.

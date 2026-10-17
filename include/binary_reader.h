@@ -7,8 +7,7 @@
  * rank-local .emat files after the first assembly pass and deserialises them on
  * subsequent time steps when no recomputation is needed.
  */
-#ifndef BINARY_READER_H
-#define BINARY_READER_H
+#pragma once
 
 #include <filesystem>
 #include <fstream>
@@ -87,5 +86,3 @@ public:
                                      unsigned int &elem_id,
                                      std::vector<libMesh::DenseVector<libMesh::Number>> &elem_vectors_vector);
 };
-
-#endif // BINARY_READER_H

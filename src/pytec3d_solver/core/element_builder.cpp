@@ -39,8 +39,7 @@ namespace
 } // namespace
 
 ElementBuilder::ElementBuilder(pyTEC3DEquationSystems *equation_systems)
-    : FEParentObjectBase<pyTEC3DEquationSystems>(equation_systems),
-      matrices(MatricesSet::NUM_MATRICES_SETS),
+    :       matrices(MatricesSet::NUM_MATRICES_SETS),
       vectors(VectorsSet::NUM_VECTORS_SETS)
 {
     equation_systems_ = equation_systems;
@@ -51,7 +50,7 @@ ElementBuilder::ElementBuilder(pyTEC3DEquationSystems *equation_systems)
     element_solution_system_ = &equation_systems_->get_system(pyTEC3DSystemBase::ELEMENT_SOLUTION);
     dof_solution_dof_map_ = &dof_solution_system_->get_dof_map();
 
-    vtk_grid_ = equation_systems_->get_parent_object()->get_active_vtk_grid();
+    vtk_grid_ = equation_systems_->model().get_active_vtk_grid();
     if (!vtk_grid_)
         fail("active VTK grid is not available.");
     material_cell_array_ = vtk_grid_->GetCellData()->GetArray("MATERIAL");
@@ -64,8 +63,8 @@ ElementBuilder::ElementBuilder(pyTEC3DEquationSystems *equation_systems)
     if (!coordinate_system_cell_array_)
         fail("COORDINATE_SYSTEM array is not available in the active VTK grid.");
 
-    element_types_factory_ = equation_systems_->get_element_types_factory().get();
-    if (!element_types_factory_)
+    element_types_ = &equation_systems_->element_types();
+    if (!element_types_)
         fail("element types factory is not available.");
 
     model_data_ = &equation_systems_->get_model_data();
@@ -90,7 +89,7 @@ bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variabl
 
 void ElementBuilder::set_element_data(const libMesh::Elem *elem)
 {
-    elem_data.entry = &element_types_factory_->get(elem->subdomain_id());
+    elem_data.entry = &element_types_->get(elem->subdomain_id());
 
     const vtkIdType elem_id = static_cast<vtkIdType>(elem->id());
     elem_data.material_num = static_cast<unsigned int>(material_cell_array_->GetComponent(elem_id, 0));

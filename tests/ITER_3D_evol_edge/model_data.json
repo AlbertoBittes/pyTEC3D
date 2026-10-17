@@ -295,6 +295,6 @@
     }
   },
   "dof_couplings": {},
-  "bh_curves": {},
+  "nonlinear_laws": {},
   "coordinate_systems": {}
 }

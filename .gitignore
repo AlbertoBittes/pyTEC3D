@@ -91,3 +91,6 @@ tests/**/temp/
 
 # Sphinx generated docs
 docs/generated/
+
+# Job logs of the runs (Solver log_file)
+*.log

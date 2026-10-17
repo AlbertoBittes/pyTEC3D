@@ -79,28 +79,20 @@ namespace pytec3d
         const ElementTypeOptions &options() const { return options_; }
 
         const FieldSpec &field(std::size_t index) const { return spec_->fields[index]; }
-        LibMeshVariable variable(const FieldSpec &field) const { return {field.variable, field.family, order(field.order)}; }
+        /** @brief The libMesh variable of @p field, at the order of the options. */
+        LibMeshVariable variable(const FieldSpec &field) const;
 
-        static bool active(const FieldSpec &field, registry::Domain domain)
-        {
-            return (field.domains & registry::bit(domain)) != 0;
-        }
+        /** @brief True when the field exists in @p domain. */
+        static bool active(const FieldSpec &field, registry::Domain domain);
 
         /** @brief True when the term applies in @p domain. */
-        static bool active(const formulation::TermSpec &term, registry::Domain domain)
-        {
-            return (term.domains & registry::bit(domain)) != 0;
-        }
+        static bool active(const formulation::TermSpec &term, registry::Domain domain);
 
         /**
          * @brief True when a term is used on an element where the laws @p laws are selected: a law variant where its
          * law is, any other term where no law replacing its coefficient is.
          */
-        static bool selected(const formulation::TermSpec &term, registry::LawMask laws)
-        {
-            return term.law >= 0 ? (laws & registry::bit(static_cast<registry::LawId>(term.law))) != 0
-                                 : (term.replaced_by & laws) == 0;
-        }
+        static bool selected(const formulation::TermSpec &term, registry::LawMask laws);
 
         /**
          * @brief True when @p operation computes @p term of @p evaluation on an element in @p domain where the laws
@@ -136,10 +128,7 @@ namespace pytec3d
          * F_k, the terms with k dt() on the trial, bit 3 for the constant (terms without trial). Known from the
          * spec: the others are never allocated.
          */
-        unsigned int field_operators(FieldKind kind, registry::Domain domain) const
-        {
-            return field_operators_[kind == FieldKind::Nodal ? 0 : 1][static_cast<std::size_t>(domain)];
-        }
+        unsigned int field_operators(FieldKind kind, registry::Domain domain) const;
 
         const Nabla &nabla(std::size_t index) const { return nablas_[index]; }
 

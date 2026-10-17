@@ -11,8 +11,7 @@
  *
  * The formulations are those of element_types.json (formulations.h, generated).
  */
-#ifndef ELEMENT_BUILDER_H
-#define ELEMENT_BUILDER_H
+#pragma once
 
 #include <string>
 #include <map>
@@ -29,21 +28,25 @@
 #include "element_evaluator.h"
 #include "element_parameters.h"
 #include "element_type.h"
-#include "element_types_factory.h"
-#include "fe_parent_object.h"
+#include "model_element_types.h"
 #include "model_data.h"
 #include "time_step.h"
 #include "variables_map.h"
 
 class pyTEC3DEquationSystems;
 class vtkUnstructuredGrid;
+
+namespace libMesh
+{
+    class ImplicitSystem;
+}
 class vtkDataArray;
 
 /** @brief Per-element context bundle populated by set_element_data(). */
 struct ElemData
 {
     const libMesh::Elem *elem = nullptr;               ///< Active element.
-    const ElementTypesFactory::Entry *entry = nullptr; ///< Element type and domain of the element's subdomain.
+    const ModelElementTypes::Entry *entry = nullptr; ///< Element type and domain of the element's subdomain.
     unsigned int material_num = 0;                     ///< Material ID (from VTK MATERIAL cell array).
     unsigned int real_constant_num = 0;                ///< Real-constant ID (from VTK CONSTANT cell array).
     unsigned int coordinate_system_num = 0;            ///< Coordinate-system ID (from VTK COORDINATE_SYSTEM cell array).
@@ -56,7 +59,6 @@ struct ElemData
  * Constructed once per assembly pass. Call set_element_data() before any build_*() method.
  */
 class ElementBuilder
-    : public FEParentObjectBase<pyTEC3DEquationSystems>
 {
 public:
     enum MatricesSet
@@ -158,7 +160,7 @@ private:
     libMesh::System *element_solution_system_ = nullptr;
     libMesh::DofMap *dof_solution_dof_map_ = nullptr;
 
-    ElementTypesFactory *element_types_factory_ = nullptr;
+    const ModelElementTypes *element_types_ = nullptr;
     const pytec3d::ModelData *model_data_ = nullptr;
     vtkUnstructuredGrid *vtk_grid_ = nullptr;
     vtkDataArray *material_cell_array_ = nullptr;
@@ -166,5 +168,3 @@ private:
     vtkDataArray *coordinate_system_cell_array_ = nullptr;
     const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *element_local_to_global_rotations_ = nullptr;
 };
-
-#endif // ELEMENT_BUILDER_H

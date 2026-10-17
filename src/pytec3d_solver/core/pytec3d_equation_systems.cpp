@@ -8,21 +8,21 @@
 #include "pytec3d_model.h"
 #include "element_evaluator.h"
 #include "element_parameters.h"
-#include "element_types_factory.h"
+#include "model_element_types.h"
 #include "vtkio.h"
 #include "logging.h"
+#include "report_tables.h"
 #include <libmesh/petsc_linear_solver.h>
 #include <libmesh/solver_configuration.h>
 #include "solver_configuration.h"
-
-#include <pybind11/numpy.h>
-#include <pybind11/stl.h>
 
 #include <cmath>
 #include <limits>
 #include <utility>
 #include <array>
+#include <map>
 #include <set>
+#include <vector>
 #include <unordered_map>
 
 #include <libmesh/elem.h>
@@ -33,13 +33,18 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
-namespace py = pybind11;
+pyTEC3DEquationSystems::pyTEC3DEquationSystems(libMesh::MeshBase &mesh, pyTEC3DModel &model)
+    : libMesh::EquationSystems(mesh), model_(model)
+{
+}
 
-void pyTEC3DEquationSystems::load_model_data(const std::string &model_json, py::object solver_settings)
+pyTEC3DEquationSystems::~pyTEC3DEquationSystems() = default;
+
+void pyTEC3DEquationSystems::load_model_data(const std::string &model_json, const SolverSettings &solver_settings)
 {
     model_data_ = pytec3d::ModelData::parse(model_json);
-    solver_settings_ = std::move(solver_settings);
-    element_types_factory_ = std::make_shared<ElementTypesFactory>(model_data_);
+    solver_settings_ = solver_settings;
+    element_types_ = std::make_unique<ModelElementTypes>(model_data_);
 
     element_local_to_global_rotations_.clear();
     node_local_to_global_rotations_.clear();
@@ -47,7 +52,7 @@ void pyTEC3DEquationSystems::load_model_data(const std::string &model_json, py::
 
 void pyTEC3DEquationSystems::validate_model_data() const
 {
-    vtkUnstructuredGrid *grid = this->get_parent_object()->get_active_vtk_grid();
+    vtkUnstructuredGrid *grid = model_.get_active_vtk_grid();
     vtkCellData *cell_data = grid ? grid->GetCellData() : nullptr;
     vtkDataArray *types = cell_data ? cell_data->GetArray("TYPE") : nullptr;
     vtkDataArray *materials = cell_data ? cell_data->GetArray("MATERIAL") : nullptr;
@@ -65,7 +70,7 @@ void pyTEC3DEquationSystems::validate_model_data() const
         if (!checked.insert(key).second)
             continue;
 
-        const ElementTypesFactory::Entry &entry = element_types_factory_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
+        const ModelElementTypes::Entry &entry = element_types_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
         const pytec3d::ElementType &type = *entry.type;
 
         pytec3d::ElementParameterValues::Inputs inputs;
@@ -102,42 +107,40 @@ const pytec3d::ModelData &pyTEC3DEquationSystems::get_model_data() const
     return model_data_;
 }
 
-const py::object &pyTEC3DEquationSystems::get_solver_settings() const
+const SolverSettings &pyTEC3DEquationSystems::get_solver_settings() const
 {
     return solver_settings_;
 }
 
-void pyTEC3DEquationSystems::build_rotation_caches(pybind11::object pytec3dmodel_object)
+void pyTEC3DEquationSystems::build_rotation_caches(const CoordinateRotations &rotations)
 {
     element_local_to_global_rotations_.clear();
     node_local_to_global_rotations_.clear();
 
-    auto *model = this->get_parent_object();
-
-    vtkUnstructuredGrid *vtk_grid = model->get_active_vtk_grid();
-
+    vtkUnstructuredGrid *vtk_grid = model_.get_active_vtk_grid();
     vtkCellData *cell_data = vtk_grid->GetCellData();
     vtkPointData *point_data = vtk_grid->GetPointData();
     vtkDataArray *coordinate_system_cell_array =
         cell_data ? vtkDataArray::SafeDownCast(cell_data->GetArray("COORDINATE_SYSTEM")) : nullptr;
     vtkDataArray *angles_array =
-        point_data ? vtkDataArray::SafeDownCast(point_data->GetArray("angles")) : nullptr;
+        point_data ? vtkDataArray::SafeDownCast(point_data->GetArray("node_angles")) : nullptr;
 
-    const libMesh::TensorValue<libMesh::Real> identity_rotation(
+    const libMesh::RealTensorValue identity_rotation(
         1.0, 0.0, 0.0,
         0.0, 1.0, 0.0,
         0.0, 0.0, 1.0);
 
-    std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> elem_ids_by_cs;
-    std::unordered_map<libMesh::dof_id_type, std::vector<std::array<libMesh::Real, 3>>> centers_by_cs;
+    // The local elements of each coordinate system with their centres.
+    std::map<unsigned int, std::vector<libMesh::dof_id_type>> elem_ids_by_cs;
+    std::map<unsigned int, std::vector<libMesh::Point>> centers_by_cs;
     const libMesh::MeshBase &mesh = this->get_mesh();
 
     for (const auto &elem : mesh.active_local_element_ptr_range())
     {
         const auto elem_id = elem->id();
-        libMesh::dof_id_type cs_id = 0;
+        unsigned int cs_id = 0;
         if (coordinate_system_cell_array)
-            cs_id = static_cast<libMesh::dof_id_type>(coordinate_system_cell_array->GetComponent(static_cast<vtkIdType>(elem->id()), 0));
+            cs_id = static_cast<unsigned int>(coordinate_system_cell_array->GetComponent(static_cast<vtkIdType>(elem_id), 0));
 
         if (cs_id == 0)
         {
@@ -145,110 +148,54 @@ void pyTEC3DEquationSystems::build_rotation_caches(pybind11::object pytec3dmodel
             continue;
         }
 
-        const libMesh::Point center = elem->vertex_average();
         elem_ids_by_cs[cs_id].push_back(elem_id);
-        centers_by_cs[cs_id].push_back({static_cast<libMesh::Real>(center(0)),
-                                        static_cast<libMesh::Real>(center(1)),
-                                        static_cast<libMesh::Real>(center(2))});
+        centers_by_cs[cs_id].push_back(elem->vertex_average());
     }
 
-    py::gil_scoped_acquire gil;
-
-    for (const auto &entry : centers_by_cs)
+    for (const auto &[cs_id, centers] : centers_by_cs)
     {
-        const auto cs_id = entry.first;
-        // The model builds the object from the attributes in model.data["coordinate_systems"].
-        py::object coordinate_system = pytec3dmodel_object.attr("coordinate_system")(py::int_(cs_id));
-        const auto &centers = entry.second;
+        if (!rotations.at_points)
+            pytec3d::logging::error_and_abort("No coordinate systems are available for COORDINATE_SYSTEM " + std::to_string(cs_id) + ".");
+        const auto matrices = rotations.at_points(cs_id, centers);
+        if (matrices.size() != centers.size())
+            pytec3d::logging::error_and_abort("Coordinate system rotation cache size mismatch for id=" + std::to_string(cs_id));
+
         const auto &elem_ids = elem_ids_by_cs[cs_id];
-        const py::ssize_t n = static_cast<py::ssize_t>(centers.size());
-
-        py::array_t<double> positions({n, static_cast<py::ssize_t>(3)});
-        auto positions_view = positions.mutable_unchecked<2>();
-        for (py::ssize_t i = 0; i < n; ++i)
-        {
-            positions_view(i, 0) = centers[static_cast<std::size_t>(i)][0];
-            positions_view(i, 1) = centers[static_cast<std::size_t>(i)][1];
-            positions_view(i, 2) = centers[static_cast<std::size_t>(i)][2];
-        }
-
-        py::object matrices_obj = coordinate_system.attr("local_to_global_matrices")(positions);
-        const auto matrices = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(matrices_obj);
-        if (matrices.ndim() != 3 || matrices.shape(0) != n || matrices.shape(1) != 3 || matrices.shape(2) != 3)
-            pytec3d::logging::error_and_abort("Coordinate system rotation cache shape mismatch for id=" + std::to_string(cs_id));
-
-        auto matrices_view = matrices.unchecked<3>();
-        for (py::ssize_t i = 0; i < n; ++i)
-        {
-            libMesh::TensorValue<libMesh::Real> rotation(
-                static_cast<libMesh::Real>(matrices_view(i, 0, 0)),
-                static_cast<libMesh::Real>(matrices_view(i, 0, 1)),
-                static_cast<libMesh::Real>(matrices_view(i, 0, 2)),
-                static_cast<libMesh::Real>(matrices_view(i, 1, 0)),
-                static_cast<libMesh::Real>(matrices_view(i, 1, 1)),
-                static_cast<libMesh::Real>(matrices_view(i, 1, 2)),
-                static_cast<libMesh::Real>(matrices_view(i, 2, 0)),
-                static_cast<libMesh::Real>(matrices_view(i, 2, 1)),
-                static_cast<libMesh::Real>(matrices_view(i, 2, 2)));
-            element_local_to_global_rotations_[elem_ids[static_cast<std::size_t>(i)]] = rotation;
-        }
+        for (std::size_t i = 0; i < matrices.size(); ++i)
+            element_local_to_global_rotations_[elem_ids[i]] = matrices[i];
     }
 
-    if (angles_array)
-    {
-        const vtkIdType n_tuples = angles_array->GetNumberOfTuples();
-        py::array_t<double> angles({static_cast<py::ssize_t>(n_tuples), static_cast<py::ssize_t>(3)});
-        auto angles_view = angles.mutable_unchecked<2>();
-        for (vtkIdType i = 0; i < n_tuples; ++i)
-        {
-            angles_view(i, 0) = angles_array->GetComponent(i, 0);
-            angles_view(i, 1) = angles_array->GetComponent(i, 1);
-            angles_view(i, 2) = angles_array->GetComponent(i, 2);
-        }
-
-        py::module_ coordinate_module = py::module_::import("pytec3d.coordinate_system");
-        py::object coordinate_type = coordinate_module.attr("CoordinateSystem");
-        py::object coeffs_obj = coordinate_type.attr("build_local_to_global_coefficients")(angles);
-        const auto coeffs = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(coeffs_obj);
-        if (coeffs.ndim() != 2 || coeffs.shape(0) != n_tuples || coeffs.shape(1) != 9)
-            pytec3d::logging::error_and_abort("Node rotation cache shape mismatch from CoordinateSystem.build_local_to_global_coefficients.");
-
-        auto coeffs_view = coeffs.unchecked<2>();
-        for (const auto *node : mesh.node_ptr_range())
-        {
-            const auto node_id = static_cast<libMesh::dof_id_type>(node->id());
-
-            libMesh::TensorValue<libMesh::Real> rotation(
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 0)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 1)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 2)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 3)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 4)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 5)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 6)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 7)),
-                static_cast<libMesh::Real>(coeffs_view(static_cast<vtkIdType>(node->id()), 8)));
-            node_local_to_global_rotations_[node_id] = rotation;
-        }
-    }
-    else
+    if (!angles_array)
     {
         for (const auto *node : mesh.node_ptr_range())
-            node_local_to_global_rotations_[static_cast<libMesh::dof_id_type>(node->id())] = identity_rotation;
+            node_local_to_global_rotations_[node->id()] = identity_rotation;
+        return;
     }
+
+    const vtkIdType n_tuples = angles_array->GetNumberOfTuples();
+    std::vector<std::array<libMesh::Real, 3>> angles(static_cast<std::size_t>(n_tuples));
+    for (vtkIdType i = 0; i < n_tuples; ++i)
+        angles[static_cast<std::size_t>(i)] = {angles_array->GetComponent(i, 0),
+                                               angles_array->GetComponent(i, 1),
+                                               angles_array->GetComponent(i, 2)};
+
+    if (!rotations.from_angles)
+        pytec3d::logging::error_and_abort("No rotations are available for the \"node_angles\" point array.");
+    const auto node_rotations = rotations.from_angles(angles);
+    if (node_rotations.size() != angles.size())
+        pytec3d::logging::error_and_abort("Node rotation cache size mismatch for the \"node_angles\" point array.");
+
+    for (const auto *node : mesh.node_ptr_range())
+        node_local_to_global_rotations_[node->id()] = node_rotations[static_cast<std::size_t>(node->id())];
 }
 
-void pyTEC3DEquationSystems::prepare_time_step_solve(const pybind11::dict &time_step_dict)
+void pyTEC3DEquationSystems::prepare_time_step_solve(const TimeStepInput &time_step)
 {
-    const libMesh::Real requested_time = pybind11::cast<libMesh::Real>(time_step_dict["time"]);
-    const libMesh::Real requested_theta = pybind11::cast<libMesh::Real>(time_step_dict["theta"]);
-    const bool requested_transient_effect = pybind11::cast<bool>(time_step_dict["transient_effects"]);
-    // Newmark parameters of second-order formulations: average acceleration when not given.
-    const TimeStep defaults;
-    const libMesh::Real requested_beta =
-        time_step_dict.contains("beta") ? pybind11::cast<libMesh::Real>(time_step_dict["beta"]) : defaults.beta;
-    const libMesh::Real requested_gamma =
-        time_step_dict.contains("gamma") ? pybind11::cast<libMesh::Real>(time_step_dict["gamma"]) : defaults.gamma;
+    const libMesh::Real requested_time = time_step.time;
+    const libMesh::Real requested_theta = time_step.theta;
+    const bool requested_transient_effect = time_step.transient_effects;
+    const libMesh::Real requested_beta = time_step.beta;
+    const libMesh::Real requested_gamma = time_step.gamma;
 
     if (!time_step_)
     {
@@ -308,15 +255,112 @@ void pyTEC3DEquationSystems::prepare_time_step_solve(const pybind11::dict &time_
     pytec3d::logging::error_and_abort("pyTEC3DEquationSystems::prepare_time_step_solve: received time smaller than current time step.");
 }
 
-void pyTEC3DEquationSystems::solve_equation_systems(const pybind11::dict &time_step)
+void pyTEC3DEquationSystems::solve_equation_systems(const TimeStepInput &time_step)
 {
-    pytec3d::logging::info("Preparing time-step solution");
     auto &system = get_dof_solution_system();
-
     system.init_time_step(time_step);
-    system.write_element_matrices();
 
+    const TimeStep &step = *current_time_step();
+    step_report_ = StepReport{};
+    step_report_.time = step.time;
+    step_report_.dt = step.dt;
+    step_report_.index = step.time_step_idx;
+    step_report_.transient = time_scheme().transient();
+    step_report_.advanced = step.updated;
+    step_report_.nonlinear = use_nonlinear_system_;
+    step_report_.elements = get_mesh().n_active_elem();
+    step_report_.total_dofs = get_system(pyTEC3DSystemBase::system_name_from_type(pyTEC3DSystemBase::DOF_SOLUTION_SYSTEM)).n_dofs();
+
+    system.write_element_matrices();
     this->solve();
+    if (use_nonlinear_system_)
+        compute_law_ranges();
+}
+
+void pyTEC3DEquationSystems::compute_law_ranges()
+{
+    namespace reg = pytec3d::registry;
+    const libMesh::System &fields =
+        get_system(pyTEC3DSystemBase::system_name_from_type(pyTEC3DSystemBase::ELEMENT_SOLUTION));
+    vtkCellData *cell_data = model_.get_active_vtk_grid()->GetCellData();
+    vtkDataArray *materials = cell_data->GetArray("MATERIAL");
+    vtkDataArray *constants = cell_data->GetArray("CONSTANT");
+    if (!materials || !constants)
+        return;
+
+    // The element field variables of each law input ("B", or "B_x", "B_y", "B_z").
+    std::array<std::vector<unsigned int>, reg::kNumLawId> input_vars;
+    for (std::size_t law = 0; law < reg::kNumLawId; ++law)
+    {
+        const std::string input(reg::kLaws[law].input);
+        for (unsigned int var = 0; var < fields.n_vars(); ++var)
+        {
+            const std::string &name = fields.variable_name(var);
+            if (name == input || (name.size() == input.size() + 2 && name.compare(0, input.size(), input) == 0 &&
+                                  name[input.size()] == '_' && std::string("xyz").find(name.back()) != std::string::npos))
+                input_vars[law].push_back(var);
+        }
+    }
+
+    // Largest element mean of |input| per (law, id), over the local elements.
+    std::map<std::pair<std::size_t, unsigned int>, libMesh::Real> largest;
+    std::vector<libMesh::dof_id_type> dofs;
+    for (const libMesh::Elem *elem : get_mesh().active_local_element_ptr_range())
+    {
+        const auto cell = static_cast<vtkIdType>(elem->id());
+        const std::array<unsigned int, 3> ids{static_cast<unsigned int>(materials->GetComponent(cell, 0)),
+                                              static_cast<unsigned int>(constants->GetComponent(cell, 0)),
+                                              static_cast<unsigned int>(elem->subdomain_id())};
+        const reg::LawMask mask = model_data_.laws(ids[2], ids[0], ids[1]) &
+                                  element_types_->get(elem->subdomain_id()).type->laws();
+        if (!mask)
+            continue;
+        for (std::size_t law = 0; law < reg::kNumLawId; ++law)
+        {
+            if (!(mask & (reg::LawMask(1) << law)) || input_vars[law].empty())
+                continue;
+            libMesh::Real squares = 0.0;
+            for (const unsigned int var : input_vars[law])
+            {
+                fields.get_dof_map().dof_indices(elem, dofs, var);
+                for (const auto dof : dofs)
+                    squares += std::norm(fields.current_solution(dof));
+            }
+            const unsigned int id = ids[static_cast<std::size_t>(reg::kLaws[law].source)];
+            libMesh::Real &value = largest[{law, id}];
+            value = std::max(value, std::sqrt(squares));
+        }
+    }
+
+    // Every (law, id) selected in the model, in the same order on every rank.
+    std::vector<LawRange> &ranges = step_report_.law_ranges;
+    ranges.clear();
+    static const std::array<const char *, 3> source_names = {"MATERIAL", "CONSTANT", "TYPE"};
+    for (std::size_t source = 0; source < 3; ++source)
+        for (const auto &[id, mask] : model_data_.law_selection()[source])
+            for (std::size_t law = 0; law < reg::kNumLawId; ++law)
+            {
+                if (!(mask & (reg::LawMask(1) << law)) || input_vars[law].empty())
+                    continue;
+                LawRange range;
+                range.law = std::string(reg::kLawIdNames[law]);
+                range.input = std::string(reg::kLaws[law].input);
+                range.id = id;
+                range.source = source_names[source];
+                const auto it = largest.find({law, id});
+                range.max_input = it == largest.end() ? 0.0 : it->second;
+                this->comm().max(range.max_input);
+                if (reg::kLaws[law].curve != reg::CurveId::COUNT)
+                    if (const pytec3d::CurveData *curve = model_data_.curve(reg::kLaws[law].curve, id))
+                        range.curve_max = curve->x().back();
+                range.extrapolated = range.curve_max > 0.0 && range.max_input > range.curve_max;
+                if (range.extrapolated)
+                    pytec3d::logging::warn("The {} law of {} {}: |{}| reaches {:.4g} (element mean), beyond the last "
+                                           "point of its curve ({:.4g}): the law is extrapolated.",
+                                           range.law, range.source, range.id, range.input, range.max_input,
+                                           range.curve_max);
+                ranges.push_back(std::move(range));
+            }
 }
 
 void pyTEC3DEquationSystems::configure_systems()
@@ -402,7 +446,7 @@ void pyTEC3DEquationSystems::initialize_physics()
 {
     this->init();
     post_initialize_systems();
-    pytec3d::logging::table_root(pytec3d::logging::format_equation_systems_summary_table(*this));
+    pytec3d::logging::table_root(pytec3d::report::format_equation_systems_summary_table(*this));
 }
 
 bool pyTEC3DEquationSystems::uses_nonlinear_system() const
@@ -438,9 +482,9 @@ const TimeStep *pyTEC3DEquationSystems::previous_time_step() const
 
 bool pyTEC3DEquationSystems::has_nonlinear_elements() const
 {
-    if (!element_types_factory_)
+    if (!element_types_)
         return false;
-    vtkUnstructuredGrid *grid = this->get_parent_object()->get_active_vtk_grid();
+    vtkUnstructuredGrid *grid = model_.get_active_vtk_grid();
     vtkCellData *cell_data = grid ? grid->GetCellData() : nullptr;
     vtkDataArray *types = cell_data ? cell_data->GetArray("TYPE") : nullptr;
     vtkDataArray *materials = cell_data ? cell_data->GetArray("MATERIAL") : nullptr;
@@ -458,7 +502,7 @@ bool pyTEC3DEquationSystems::has_nonlinear_elements() const
                       static_cast<unsigned int>(constants->GetComponent(cell, 0))};
         if (!checked.insert(key).second)
             continue;
-        const auto &entry = element_types_factory_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
+        const auto &entry = element_types_->get(static_cast<libMesh::subdomain_id_type>(key[0]));
         if (model_data_.laws(key[0], key[1], key[2]) & entry.type->laws())
             return true;
     }
@@ -467,7 +511,7 @@ bool pyTEC3DEquationSystems::has_nonlinear_elements() const
 
 unsigned int pyTEC3DEquationSystems::time_order() const
 {
-    return element_types_factory_ ? element_types_factory_->time_order() : 0;
+    return element_types_ ? element_types_->time_order() : 0;
 }
 
 TimeScheme pyTEC3DEquationSystems::time_scheme() const
@@ -477,9 +521,11 @@ TimeScheme pyTEC3DEquationSystems::time_scheme() const
     return TimeScheme::make(*time_step_, this->time_order());
 }
 
-const std::shared_ptr<ElementTypesFactory> &pyTEC3DEquationSystems::get_element_types_factory() const
+const ModelElementTypes &pyTEC3DEquationSystems::element_types() const
 {
-    return element_types_factory_;
+    if (!element_types_)
+        pytec3d::logging::error_and_abort("Element types are not available before the model data is loaded.");
+    return *element_types_;
 }
 
 const pyTEC3DEquationSystems::RotationMap &pyTEC3DEquationSystems::get_element_local_to_global_rotations() const

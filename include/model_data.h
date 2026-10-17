@@ -1,6 +1,6 @@
 /**
  * @file model_data.h
- * @brief The model data JSON: element types, materials, real constants, DOF couplings and BH curves.
+ * @brief The model data JSON: element types, materials, real constants, DOF couplings and nonlinear laws.
  *
  * The Python model keeps the data as a JSON-like dict (model.data); the solver receives it as text and reads
  * it here. Only these sections are read; the keys that name something are checked against the registries
@@ -9,20 +9,17 @@
  *   "element_types":  { "<TYPE id>": { "element_type": 0 | "AV2D_nodal",       // index or name in element_types.json
  *                                      "option1": 6 | "STRANDED_COIL",         // domain: index or name in domains.json
  *                                      "option2": 1,                           // FE order (default 1)
- *                                      "option3": 0,                           // axisymmetric (default 0)
- *                                      "law": "<me. law>" } }                  // nonlinear laws of source me (optional)
- *   "materials":      { "<MATERIAL id>": { "mur": [[1,0,0],[0,1,0],[0,0,1]], "rho": [[..]], "M": [0,0,0],   // "mat." parameters
- *                                          "law": "ferromagnetic" } }          // nonlinear laws of source mat (optional)
- *   "constants":      { "<CONSTANT id>": { "thickness": 1.0, "T": [0, 0, 1], ..., "law": ... } }   // "rc." parameters
+ *                                      "option3": 0 } }                        // axisymmetric (default 0)
+ *   "materials":      { "<MATERIAL id>": { "mur": [[1,0,0],[0,1,0],[0,0,1]], "rho": [[..]], "M": [0,0,0] } }  // "mat."
+ *   "constants":      { "<CONSTANT id>": { "thickness": 1.0, "T": [0, 0, 1], ... } }                         // "rc."
  *   "dof_couplings":  { "<CP id>": ["A", "VOLT"] }
- *   "bh_curves":      { "<MATERIAL id>": { "B": [0, ...], "H": [0, ...] } }   // the curves of the laws (CurveId)
+ *   "nonlinear_laws": { "<id>": { "type": "bh_curve", "B": [0, ...], "H": [0, ...] } }   // or an array of such entries
  *
- * "law" is a law of laws.json (name or index) or an array of them; each must have the source of the row. The
- * laws selected on an element are those of its TYPE, MATERIAL and CONSTANT rows that its element type has; they
- * replace the parameters they say (see laws.json). A curve section, and the names of its x and y arrays, are
- * those the laws declare; it is keyed by the ids of the rows of the laws' source, and every row selecting a law
- * with a curve needs one. A formulation variant (e.g. time-integrated potentials) is an element type of its
- * own, not an option.
+ * A "nonlinear_laws" entry selects the law "type" of nonlinear_laws.json (name or index) on the cells of its id, which is a MATERIAL,
+ * CONSTANT or TYPE id as the source of the law says (mat, rc, me). The entry carries the data of the law: the x and
+ * y arrays of its curve, if it has one (x strictly increasing). The laws selected on an element are those of its
+ * TYPE, MATERIAL and CONSTANT ids that its element type has; they replace the parameters they say (see nonlinear_laws.json).
+ * A formulation variant (e.g. time-integrated potentials) is an element type of its own, not an option.
  *
  * A material property or real constant is a number, a 3-vector or a 3x3 tensor as its type says (a number
  * stands for a vector with equal components). Any of them can be left out: it is only an error when a
@@ -48,8 +45,6 @@ namespace pytec3d
     class PropertyRow
     {
     public:
-        registry::LawMask laws = 0; ///< Selected by the "law" key.
-
         const ParameterValue *find(Id id) const
         {
             const auto &value = values_[static_cast<std::size_t>(id)];
@@ -72,7 +67,6 @@ namespace pytec3d
         registry::Domain domain = registry::Domain::COUNT;
         unsigned int order = 1;
         bool axisymmetric = false;
-        registry::LawMask laws = 0; ///< Laws of source me selected by the "law" key.
     };
 
     struct DofCoupling
@@ -94,14 +88,25 @@ namespace pytec3d
         const MaterialRow *material(unsigned int id) const;
         const ConstantRow *constants(unsigned int id) const;
 
-        /** @brief The curve @p id of row @p row_id (of the source of the laws reading it); null when undefined. */
+        /** @brief The curve @p id of the law entry of id @p row_id (MATERIAL, CONSTANT or TYPE id as the source of the
+         * law says); null when undefined. */
         const CurveData *curve(registry::CurveId id, unsigned int row_id) const;
 
-        /** @brief The laws selected by the TYPE, MATERIAL and CONSTANT rows @p type_id, @p material_id, @p constants_id. */
+        /** @brief The laws selected on the TYPE, MATERIAL and CONSTANT ids @p type_id, @p material_id, @p constants_id. */
         registry::LawMask laws(unsigned int type_id, unsigned int material_id, unsigned int constants_id) const;
 
 
         const std::vector<DofCoupling> &dof_couplings() const { return dof_couplings_; }
+
+        /** @brief All the materials and constants rows, by id. */
+        const std::map<unsigned int, MaterialRow> &material_rows() const { return materials_; }
+        const std::map<unsigned int, ConstantRow> &constant_rows() const { return constants_; }
+
+        /** @brief The laws selected by id, by LawSource (Material, Constant, Cell). */
+        const std::array<std::map<unsigned int, registry::LawMask>, 3> &law_selection() const { return laws_; }
+
+        /** @brief One line for the log: the number of rows of each section and the nonlinear laws by id. */
+        std::string summary() const;
 
     private:
         std::map<unsigned int, ElementTypeSpec> element_types_;
@@ -109,5 +114,6 @@ namespace pytec3d
         std::map<unsigned int, ConstantRow> constants_;
         std::array<std::map<unsigned int, CurveData>, registry::kNumCurveId> curves_; ///< By CurveId, then row id.
         std::vector<DofCoupling> dof_couplings_;
+        std::array<std::map<unsigned int, registry::LawMask>, 3> laws_; ///< By LawSource, then id.
     };
 } // namespace pytec3d

@@ -7,8 +7,7 @@
  * coupled nodes are ghosted onto each other's processor partition.  This ensures
  * correct DOF-coupling constraints across periodic boundaries in distributed runs.
  */
-#ifndef AUGMENT_SPARSITY_ON_NODES_H
-#define AUGMENT_SPARSITY_ON_NODES_H
+#pragma once
 
 #include <unordered_map>
 #include <vector>
@@ -65,5 +64,3 @@ private:
     vtkUnstructuredGrid *_vtk_grid = nullptr;                                                          ///< Non-owning VTK grid pointer.
     std::unordered_map<libMesh::dof_id_type, std::vector<libMesh::dof_id_type>> slave_to_master_elems; ///< Maps each slave element ID to all of its master element IDs.
 };
-
-#endif // AUGMENT_SPARSITY_ON_NODES_H

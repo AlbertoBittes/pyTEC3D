@@ -132,8 +132,7 @@
           0.0,
           1.09e-07
         ]
-      ],
-      "law": "ferromagnetic"
+      ]
     },
     "24": {
       "mur": [
@@ -182,6 +181,6 @@
       "VOLT"
     ]
   },
-  "bh_curves": {},
+  "nonlinear_laws": {},
   "coordinate_systems": {}
 }

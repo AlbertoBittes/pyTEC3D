@@ -37,13 +37,14 @@ If any are missing, validation fails.
 Required point-data arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The array ``angles`` must exist in point data.
+The array ``node_angles`` (3 components: the orientation angles thxy, thyz, thzx of each node, in degrees) must
+exist in point data; ``pytec3d.mesh.update_grid`` adds it, zero, when missing.
 
 Required initialized arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The arrays a model needs follow from its element types (``src/resources/element_types.json``, read by
-``pytec3d.element_library``). ``ModelEdit.update_grid`` (called when a model is read, when its model data is
+The arrays a model needs follow from its element types (``src/pytec3d/resources/element_types.json``, read by
+``pytec3d.element_library``). ``pytec3d.mesh.update_grid`` (called when a model is read, when its model data is
 read, and before a solve) adds the missing ones:
 
 - TYPE, MATERIAL, CONSTANT (elem, default 1), COORDINATE_SYSTEM (elem, default 0), CP_0 (node, default 0);
@@ -91,14 +92,86 @@ A coordinate system can be:
 Solver Settings Rules
 ---------------------
 
-``solver_settings`` must satisfy:
+``solver.solver_settings`` has three groups; the keys left out keep their default
+(``pytec3d.solver.DEFAULT_SOLVER_SETTINGS``), and unknown keys are rejected:
 
-- ``ksp_type``: string and one of supported PETSc KSP names.
-- ``pc_type``: string and one of supported PETSc PC names.
-- ``initial_linear_tolerance``: finite and ``> 0``.
-- ``minimum_linear_tolerance``: finite and ``> 0`` and
-	``<= initial_linear_tolerance``.
-- ``max_linear_iterations``: integer ``>= 1``.
+.. code-block:: python
+
+   solver.solver_settings = {
+       "linear": {                       # PETSc KSP, alone or inside each Newton iteration
+           "ksp_type": "preonly",        # a supported PETSc KSP name
+           "pc_type": "lu",              # a supported PETSc PC name
+           "relative_tolerance": 1e-6,   # finite, > 0
+           "absolute_tolerance": 1e-10,  # finite, > 0, <= relative_tolerance
+           "divergence_tolerance": None, # None (PETSc default) or > 0
+           "max_iterations": 100,        # integer >= 1
+           "initial_guess_nonzero": False,
+           "factor_solver_type": "mumps",  # package of lu / cholesky; None for the PETSc default
+       },
+       "nonlinear": {                    # libMesh Newton solver (models with nonlinear laws)
+           "max_iterations": 50,
+           "absolute_residual_tolerance": 1e-35,
+           "relative_residual_tolerance": 1e-8,
+           "absolute_step_tolerance": 1e-8,
+           "relative_step_tolerance": 1e-8,
+           "require_residual_reduction": False,
+           "require_finite_residual": True,
+           "brent_line_search": True,    # False: plain backtracking
+           "minimum_step_length": 1e-5,  # in (0, 1]
+           "linear_tolerance_multiplier": 1e-3,
+           "continue_after_max_iterations": True,
+           "continue_after_backtrack_failure": False,
+           "verbose": True,
+       },
+       "petsc_options": {                # set before each linear solve; None removes a default
+           "-ksp_monitor": "", "-ksp_view": "", "-ksp_converged_reason": "", "-log_view": "",
+           "-ksp_monitor_true_residual": "", "-ksp_monitor_solution": "", "-mat_mumps_icntl_4": "2",
+       },
+   }
+
+The solver settings and the model data are copied when the model is loaded
+(``Solver.load_model_into_solver()``): later changes take effect at the next load. While the model is loaded,
+its mesh and model data are locked; only the values of the mesh arrays (loads, boundary conditions) may change.
+
+Run Log and Reports
+-------------------
+
+Every run writes a job log, ``<mesh_name>.log`` in the working directory (``Solver(log_file=...)``: a path, or
+``False`` for none). It is started when the model is read or loaded, overwriting the log of a previous run. It holds
+the Python and C++ messages and all the tables below. The raw output of PETSc and libMesh (``-ksp_monitor``,
+``-log_view``, the verbose Newton lines) goes to the standard output only.
+
+The log contains, in order:
+
+* **Run**: date, command line, working directory, host and user, platform, Python, numpy and pytec3d versions,
+  and the SHA-256 of the input files (mesh, ``model_data.json``, the script).
+* **Solver banner**: version, build mode and stamp, the git commit the solver was built from (``-dirty`` with
+  uncommitted changes), compiler, libMesh and PETSc versions, host, MPI ranks and threads.
+* **Mesh** and **Mesh quality**: per element shape, the largest edge length ratio, the smallest and largest
+  interior angle, the smallest scaled Jacobian (min / max of det(J) over the quadrature points; 1 for an
+  undistorted element) with the cell id where it occurs, and the count of distorted (scaled Jacobian < 0.2) and
+  degenerate (det(J) <= 0) elements. The elements whose node ordering was inverted and was fixed on import are
+  counted too. Degenerate and distorted elements are also reported as warnings.
+* **Model**: the analysis (2D planar, 2D axisymmetric about the y axis, 3D), the units (SI: m, kg, s, A, V, T),
+  the element types with their out-of-plane length (the real constant, times 2 pi r if axisymmetric; 1 if the
+  element type has none), materials, real constants, nonlinear laws and DOF couplings.
+* **Solver configuration** and, for each step, **Time Step**, **Constraints** and the **step report**:
+  iterations and residuals; the true residual ||b - Ax|| / ||b|| of a linear solve (a warning above 1e-6); the
+  MUMPS factorization statistics (status, memory, entries of the matrix and of the factors, fill-in, operations,
+  delayed pivots; null pivots when ``"-mat_mumps_icntl_24": "1"`` is set); for a nonlinear model the Newton
+  iterations (residual, reduction, step, relative step, line search step) and the operating range of each
+  nonlinear law: the largest element mean of its input (|B| of a B-H curve) per id, with a warning when it goes
+  beyond the last point of the curve (the law is then extrapolated); the wall time of each phase.
+* **Run summary**, when the solver is closed: a row per step (time, Newton and linear iterations, convergence,
+  true residual, wall time, output file), the total wall and CPU time, and the number of warnings and errors.
+  The rows are also written to ``output/<mesh_name>_steps.csv``.
+
+``Solver.write_output()`` writes ``output/<mesh_name>_out_<n>.vtu``, ``n`` the number of steps solved so far by
+the solver (writing again after the same step overwrites it). On its first call it deletes the outputs of a previous
+run of the same model (``<mesh_name>_out_*.vtu`` and ``<mesh_name>_steps.csv``); other files are kept.
+
+From Python, ``Solver.steps`` holds a record per solved step, and ``record["report"]`` the full step report of the
+C++ solver (the same data as the step report table).
 
 DataFrame Rules
 ---------------
@@ -172,7 +245,7 @@ To each element type, beyond the formulation, there are five options
 - OPTION3: 2D behavior mode. The available options are:
   - 0: Planar
   - 1: Axisymmetric
-- LAW (optional): the nonlinear laws of source ``me`` selected on the cells of this TYPE (see
+- Nonlinear laws of source ``me`` are selected on the cells of a TYPE in the ``nonlinear_laws`` section (see
   `Nonlinear laws`_). The formulation with time-integrated electric potentials is an element type of its own
   (``*_timint``), not an option.
 
@@ -229,27 +302,34 @@ Summary Rules:
 Which properties an element needs depends on its element type and domain: the solver checks that they are
 defined when the model is loaded.
 
-A material may also select nonlinear laws of source ``mat`` with its ``law`` key, e.g. ``"law": "ferromagnetic"``
+A material is made nonlinear by a law of source ``mat`` in the ``nonlinear_laws`` section, under its MATERIAL id
 (see `Nonlinear laws`_).
 
 Nonlinear laws
 ~~~~~~~~~~~~~~
 
-The nonlinear laws are defined in ``src/resources/laws.json`` and compiled into the solver. A law replaces one or
-more coefficients of the element types (e.g. ``ferromagnetic`` replaces the reluctivity ``nu`` and ``nu_gauge``)
-by values computed at each quadrature point from a field (``B``) and, optionally, a curve of the model data.
+The nonlinear laws are defined in ``src/pytec3d/resources/nonlinear_laws.json`` and compiled into the solver. A law
+replaces coefficients of the element types (e.g. ``bh_curve`` replaces the reluctivity ``nu`` and ``nu_gauge``) by
+values computed at each quadrature point from a field (``B``) and the data of the law, e.g. a curve.
 
-A law is selected by the ``law`` key of the rows of its source:
+The ``nonlinear_laws`` section of the model data selects the laws, by id, with their data::
 
-- ``mat``: the ``materials`` rows (the law follows the material);
-- ``rc``: the ``constants`` rows;
-- ``me``: the ``element_types`` rows (by TYPE).
+    "nonlinear_laws": {
+      "26": {"type": "bh_curve", "B": [0.0, 0.62, 2.03], "H": [0.0, 200.0, 20396.8]}
+    }
 
-``law`` is a law name (or index) or a list of them. On a cell, the laws selected by its TYPE, MATERIAL and CONSTANT
-rows apply wherever its element type uses a coefficient they replace; elsewhere the coefficients are the linear
-material properties and real constants. A model with at least one such cell is solved with Newton's method. The
-curve of a law is keyed by the id of the row that selects it, e.g. ``bh_curves[<MATERIAL id>]`` for
-``ferromagnetic``, and every row selecting a law with a curve must have one.
+The id is a MATERIAL, CONSTANT or TYPE id, as the source of the law says in ``nonlinear_laws.json``:
+
+- ``mat``: a MATERIAL id (the law follows the material), e.g. ``bh_curve``;
+- ``rc``: a CONSTANT id;
+- ``me``: a TYPE id.
+
+An id may have a list of entries for several laws. On a cell, the laws of its TYPE, MATERIAL and CONSTANT ids apply
+wherever its element type uses a coefficient they replace; elsewhere the coefficients are the linear material
+properties and real constants. A model with at least one such cell is solved with Newton's method.
+
+In Python: ``model.set_bh_curve(26, [[H, B], ...])``, or in general
+``model.set_nonlinear_law(26, "bh_curve", B=[...], H=[...])``.
 
 Constants
 ~~~~~~~~~
@@ -293,9 +373,7 @@ Point-data arrays matching ``CP_<xx>`` (for integer ``xx``) are scanned.
 Curves of the Laws
 ------------------
 
-The curve of a law (e.g. ``bh_curves`` for ``ferromagnetic``) is a section of the model data keyed by the id of
-the row selecting the law. Each curve is an object with the two arrays the law names (``B`` and ``H`` for
-``bh_curves``):
+A law with a curve (``bh_curve``) takes the two arrays it names (``B`` and ``H``) in its ``nonlinear_laws`` entry:
 
 - same length ``>= 2``, finite values;
 - the x array (``B``) strictly increasing.

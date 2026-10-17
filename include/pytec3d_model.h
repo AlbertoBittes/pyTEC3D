@@ -1,57 +1,75 @@
 /**
  * @file pytec3d_model.h
- * @brief C++ model container for mesh/equation-system ownership in pytec3d.
+ * @brief A model loaded into the solver: the grid, the libMesh mesh and the equation systems built from them.
  */
-#ifndef pyTEC3D_MODEL_H
-#define pyTEC3D_MODEL_H
+#pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
-#include <libmesh/distributed_mesh.h>
-#include <pybind11/pybind11.h>
+#include <vtkSmartPointer.h>
+#include <vtkUnstructuredGrid.h>
 
-#include "augment_sparsity_on_nodes.h"
+#include "coordinate_rotations.h"
+#include "solver_configuration.h"
+#include "time_step.h"
 
-class vtkUnstructuredGrid;
+class AugmentSparsityOnNodes;
 class pyTEC3DEquationSystems;
 
 namespace libMesh
 {
-    class LibMeshInit;
+    class DistributedMesh;
+    namespace Parallel
+    {
+        class Communicator;
+    }
 }
 
-class PYBIND11_EXPORT pyTEC3DModel
+class pyTEC3DModel
 {
 public:
-    pyTEC3DModel() = default;
+    pyTEC3DModel();
     ~pyTEC3DModel();
 
+    pyTEC3DModel(const pyTEC3DModel &) = delete;
+    pyTEC3DModel &operator=(const pyTEC3DModel &) = delete;
+
     /**
-     * @brief Imports the grid and the model data of the Python model, distributes mesh and DOFs.
-     * @param solver_settings dict of the Python solver (KSP/PC types and tolerances), read at every solve.
+     * @brief Imports @p grid and the model data, distributes mesh and DOFs.
+     *
+     * Keeps a reference to @p grid: the solution is written into it after each solve.
      */
-    void load_into_solver(const std::shared_ptr<libMesh::LibMeshInit> &libmesh_init,
-                          pybind11::object pytec3dmodel_object,
-                          pybind11::object solver_settings);
-    /** @brief Solves the time step described by the dict of the Python solver (time, theta, transient_effects). */
-    void solve(const pybind11::dict &time_step);
+    void load(const libMesh::Parallel::Communicator &comm,
+              vtkUnstructuredGrid *grid,
+              const std::string &model_json,
+              const SolverSettings &solver_settings,
+              const CoordinateRotations &rotations);
+
+    /** @brief Solves one time step and writes the solution of every system into the grid. */
+    void solve(const TimeStepInput &time_step);
+
     void write_system_to_vtk_grid(const std::string &system_name);
+
+    /** @brief What the last solve() did. */
+    const StepReport &last_step_report() const;
+
+    /** @brief Releases the equation systems and the mesh. */
     void clear();
 
     bool is_loaded() const;
-    pybind11::object get_pytec3d_object() const;
     vtkUnstructuredGrid *get_active_vtk_grid() const;
     const AugmentSparsityOnNodes *get_coupling_functor() const;
 
 private:
-    std::unique_ptr<libMesh::DistributedMesh> mesh;
-    std::shared_ptr<pyTEC3DEquationSystems> equation_system;
-    std::unique_ptr<AugmentSparsityOnNodes> coupling_functor;
-    vtkUnstructuredGrid *active_vtk_grid = nullptr;
-    pybind11::object pytec3d_object;
-    bool loaded = false;
-    bool closed_ = false;
-};
+    void require_loaded() const;
 
-#endif // pyTEC3D_MODEL_H
+    // Destroyed in reverse order: the equation systems before the coupling functor they use, the mesh last.
+    vtkSmartPointer<vtkUnstructuredGrid> grid_;
+    std::unique_ptr<libMesh::DistributedMesh> mesh_;
+    std::unique_ptr<AugmentSparsityOnNodes> coupling_functor_;
+    std::unique_ptr<pyTEC3DEquationSystems> equation_systems_;
+    std::size_t flipped_elements_ = 0; ///< Reoriented when the mesh was imported.
+    bool loaded_ = false;
+};

@@ -16,12 +16,11 @@
 
 
 # 0. Import necessary modules
-from pytec3d_solver.solver import pyTEC3DSolver
-from pytec3d.selector import Selector
+from pytec3d import selection, Solver
 import os
 
 # 1. Initialize the program instance
-pytec3d = pyTEC3DSolver()
+pytec3d = Solver()
 
 # 2. Define the file name and path for the model and read it into the program
 filename = "3D_loop_cond_base"
@@ -39,27 +38,27 @@ pytec3d.load_model_into_solver()
 
 # 6. Boundary conditions
 # Far-field boundary conditions: set magnetic vector potential A to zero
-Selector.select(pytec3d.model.mesh, "Z_BOUNDS_1", 1)
-Selector.select(pytec3d.model.mesh, "Z_BOUNDS_2", 1, mode="a")
-Selector.select(pytec3d.model.mesh, "Y_BOUNDS_2", 1, mode="a")
-Selector.select(pytec3d.model.mesh, "X_BOUNDS_2", 1, mode="a")
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "Z_BOUNDS_1", 1)
+selection.select(pytec3d.model.mesh, "Z_BOUNDS_2", 1, mode="a")
+selection.select(pytec3d.model.mesh, "Y_BOUNDS_2", 1, mode="a")
+selection.select(pytec3d.model.mesh, "X_BOUNDS_2", 1, mode="a")
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 # Symmetry boundary conditions: set parallel magnetic vector potential A to zero on the symmetry planes
-Selector.select(pytec3d.model.mesh, "X_BOUNDS_1", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "X_BOUNDS_1", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select(pytec3d.model.mesh, "Y_BOUNDS_1", 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select(pytec3d.model.mesh, "Y_BOUNDS_1", 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
 # Voltage boundary conditions: set the electric potential V on the voltage boundaries
-Selector.select(pytec3d.model.mesh, "VOLT_0_1", 1)
-Selector.select(pytec3d.model.mesh, "VOLT_0_2", 1, mode="a")
-Selector.set_value_on_selection(pytec3d.model.mesh, "_V", 0)
+selection.select(pytec3d.model.mesh, "VOLT_0_1", 1)
+selection.select(pytec3d.model.mesh, "VOLT_0_2", 1, mode="a")
+selection.set_value_on_selection(pytec3d.model.mesh, "_V", 0)
 
 # sqrt(2)/2 factor for the corner element of the current loop
 b = 2**0.5 / 2
@@ -77,13 +76,13 @@ for i in range(1, 3):
         pytec3d.time_step["transient_effects"] = 1
 
     # 7. Loads: impose a fixed source current Js on the active coil elements
-    Selector.select(pytec3d.model.mesh, "COIL_NOCOND_1", 1, type="elem")
-    Selector.set_value_on_selection(pytec3d.model.mesh, "Js", 1 / i, 1, type="elem")
-    Selector.select(pytec3d.model.mesh, "COIL_NOCOND_2", 1, type="elem")
-    Selector.set_value_on_selection(pytec3d.model.mesh, "Js", -1 / i, 0, type="elem")
-    Selector.select(pytec3d.model.mesh, "COIL_NOCOND_3", 1, type="elem")
-    Selector.set_value_on_selection(pytec3d.model.mesh, "Js", -b / i, 0, type="elem")
-    Selector.set_value_on_selection(pytec3d.model.mesh, "Js", b / i, 1, type="elem")
+    selection.select(pytec3d.model.mesh, "COIL_NOCOND_1", 1, location="elem")
+    selection.set_value_on_selection(pytec3d.model.mesh, "Js", 1 / i, 1, location="elem")
+    selection.select(pytec3d.model.mesh, "COIL_NOCOND_2", 1, location="elem")
+    selection.set_value_on_selection(pytec3d.model.mesh, "Js", -1 / i, 0, location="elem")
+    selection.select(pytec3d.model.mesh, "COIL_NOCOND_3", 1, location="elem")
+    selection.set_value_on_selection(pytec3d.model.mesh, "Js", -b / i, 0, location="elem")
+    selection.set_value_on_selection(pytec3d.model.mesh, "Js", b / i, 1, location="elem")
 
     # 9. Solve the system for this time-step
     pytec3d.solve()

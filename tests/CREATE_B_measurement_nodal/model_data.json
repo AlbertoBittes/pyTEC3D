@@ -90,8 +90,7 @@
           0.0,
           1.09e-07
         ]
-      ],
-      "law": "ferromagnetic"
+      ]
     },
     "3": {
       "mur": [
@@ -275,6 +274,6 @@
       "EMF"
     ]
   },
-  "bh_curves": {},
+  "nonlinear_laws": {},
   "coordinate_systems": {}
 }

@@ -1,16 +1,14 @@
-from pytec3d_solver.solver import pyTEC3DSolver
+from pytec3d import Algorithm, mesh, selection, Solver
 import vtk.util.numpy_support as vtknp
 import numpy as np
-from pytec3d.selector import Selector
-from pytec3d.model_edit import ModelEdit
 from pytec3d.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
 import os
-import pandas as pd
 import vtk
 
 # from convert_mesh import convert_mesh_from_cdb
 
-pytec3d = pyTEC3DSolver()
+pytec3d = Solver()
+algorithm = Algorithm(pytec3d)
 
 filename = "ITER_3D_evol_fine2"
 pytec3d_equilibrium_output_filename = "ITER_2D_fine2_out_1"
@@ -32,68 +30,69 @@ extr_angle = 1.0
 
 # # Read the evolution mesh
 pytec3d.read_model(filepath)
-pytec3d.algorithm.vacuum_chamber_mesh = ModelEdit.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
+algorithm.vacuum_chamber_mesh = mesh.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
 pytec3d.model.read_json("model_data.json")
 
 # # Set Boundary conditions
 # Axis boundary conditions
-Selector.select_pos(
+selection.select_pos(
     pytec3d.model.mesh, 0, (-eps, +eps), coordinate_system=YAxisCylindricalCoordinateSystem()
 )
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 
 # Outer boundary far field zero boundary conditions
-Selector.select_pos(
+selection.select_pos(
     pytec3d.model.mesh, 0, (max_rad - eps, max_rad + eps), coordinate_system=SphericalCoordinateSystem()
 )
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 0)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 1)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 0)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 1)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 
 # Cyclic periodic boundaries
-ModelEdit.remove_array(pytec3d.model.mesh, "CP_0")
-ModelEdit.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
-Selector.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-pytec3d.model.add_dof_couplings(ModelEdit.periodic_boundaries(pytec3d.model.mesh, YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT")))
+mesh.remove_array(pytec3d.model.mesh, "CP_0")
+mesh.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
+selection.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+pytec3d.model.periodic_boundaries(
+            YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_0", variables=("A", "VOLT"))
 
 # rotate nodal coordinate system to align with periodic plane
-Selector.select_pos(pytec3d.model.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
-Selector.set_value_on_selection(pytec3d.model.mesh, "angles", extr_angle, 2)
+selection.select_pos(pytec3d.model.mesh, 1, (extr_angle - eps, extr_angle + eps), coordinate_system=YAxisCylindricalCoordinateSystem())
+selection.set_value_on_selection(pytec3d.model.mesh, "node_angles", extr_angle, 2)
 
 # Grounding vacuum vessel
-Selector.select(pytec3d.model.mesh, "ID", 9664)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
+selection.select(pytec3d.model.mesh, "ID", 9664)
+selection.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0)
 
-Selector.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, type="elem")
-Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, type="elem")
+selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 # Apply equilibrium coils current densities
-Selector.select(pytec3d.model.mesh, "COILS", 1, type="elem")
+selection.select(pytec3d.model.mesh, "COILS", 1, location="elem")
 pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
-Selector.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, type="elem")
+selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, location="elem")
 coils = ["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
          "CS3L", "CS3U", "CS2L", "CS2U", "CS1L", "CS1U"]
 for coil in coils:
-    Selector.select(pytec3d.algorithm.vacuum_chamber_mesh, coil, 1, type="elem", mode="s")
-    js_z = Selector.get_selection_values(pytec3d.algorithm.vacuum_chamber_mesh, "Js", 2, type="elem")[0]
-    Selector.select(pytec3d.model.mesh, coil, 1, type="elem", mode="s")
-    Selector.set_value_on_selection(pytec3d.model.mesh, "Js", js_z, 1, type="elem")
+    selection.select(algorithm.vacuum_chamber_mesh, coil, 1, location="elem", mode="s")
+    js_z = selection.get_selection_values(algorithm.vacuum_chamber_mesh, "Js", 2, location="elem")[0]
+    selection.select(pytec3d.model.mesh, coil, 1, location="elem", mode="s")
+    selection.set_value_on_selection(pytec3d.model.mesh, "Js", js_z, 1, location="elem")
 
 pytec3d.save_model()
 
-pytec3d.algorithm.input_parameters["R0"] = 6.2
-pytec3d.algorithm.input_parameters["max_picard_iterations"] = 70
-pytec3d.algorithm.input_parameters["tolerance_value"] = 1e-4
-pytec3d.algorithm.input_parameters["alpha_mp"] = 1.0001
-pytec3d.algorithm.input_parameters["alpha_np"] = 0.83197
-pytec3d.algorithm.input_parameters["AF0"] = 5.3 * 6.2
-pytec3d.algorithm.input_parameters["halo_delta1"] = 0.04
-pytec3d.algorithm.input_parameters["halo_delta2"] = 0
-pytec3d.algorithm.input_parameters["t0_halo"] = 0.37
-pytec3d.algorithm.input_parameters["extrusion_angle"] = extr_angle
-pytec3d.algorithm.input_parameters["n_toroidal_divisions"] = 1
+algorithm.input_parameters["R0"] = 6.2
+algorithm.input_parameters["max_picard_iterations"] = 70
+algorithm.input_parameters["tolerance_value"] = 1e-4
+algorithm.input_parameters["alpha_mp"] = 1.0001
+algorithm.input_parameters["alpha_np"] = 0.83197
+algorithm.input_parameters["AF0"] = 5.3 * 6.2
+algorithm.input_parameters["halo_delta1"] = 0.04
+algorithm.input_parameters["halo_delta2"] = 0
+algorithm.input_parameters["t0_halo"] = 0.37
+algorithm.input_parameters["extrusion_angle"] = extr_angle
+algorithm.input_parameters["n_toroidal_divisions"] = 1
 
 # Read the numpy arrays of time, current and beta from file
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))
@@ -116,8 +115,8 @@ for step_idx in range(len(time_steps)):
         pytec3d.time_step["time"] = 1e-10
     else:
         pytec3d.time_step["transient_effects"] = True
-    pytec3d.algorithm.input_parameters["plasma_current"] = currents[step_idx]
-    pytec3d.algorithm.input_parameters["beta_p"] = betas[step_idx]
-    pytec3d.algorithm.evolution_solve()
+    algorithm.input_parameters["plasma_current"] = currents[step_idx]
+    algorithm.input_parameters["beta_p"] = betas[step_idx]
+    algorithm.evolution_solve()
     pytec3d.write_output()
 

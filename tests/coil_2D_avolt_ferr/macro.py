@@ -1,11 +1,9 @@
-from pytec3d_solver.solver import pyTEC3DSolver
-from pytec3d.selector import Selector
-from pytec3d.model_edit import ModelEdit
+from pytec3d import mesh, selection, Solver
 import os
 import vtk.util.numpy_support as vtknp
 import vtk
 
-pytec3d = pyTEC3DSolver()
+pytec3d = Solver()
 
 filename = "coil_2D_avolt_ferr"
 
@@ -15,16 +13,16 @@ pytec3d.read_model(filepath)
 
 pytec3d.model.read_json("model_data.json")
 
-ModelEdit.add_array(pytec3d.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
+mesh.add_array(pytec3d.model.mesh, "COORDINATE_SYSTEM", location="elem", dtype=vtk.VTK_INT)
 
-Selector.select_all(pytec3d.model.mesh)
-Selector.select_pos(pytec3d.model.mesh, 0, (0.4, 0.6), type="elem")
-Selector.select_pos(pytec3d.model.mesh, 1, (-0.6, 0.6), type="elem", mode="r")
-Selector.inv(pytec3d.model.mesh)
-Selector.select_pos(pytec3d.model.mesh, 0, (0.25, 0.75), type="elem", mode="r")
-Selector.select_pos(pytec3d.model.mesh, 1, (-0.75, 0.75), type="elem", mode="r")
-Selector.set_value_on_selection(pytec3d.model.mesh, "MATERIAL", 26, type="elem")
-Selector.set_value_on_selection(pytec3d.model.mesh, "TYPE", 26, type="elem")
+selection.select_all(pytec3d.model.mesh)
+selection.select_pos(pytec3d.model.mesh, 0, (0.4, 0.6), location="elem")
+selection.select_pos(pytec3d.model.mesh, 1, (-0.6, 0.6), location="elem", mode="r")
+selection.inv(pytec3d.model.mesh)
+selection.select_pos(pytec3d.model.mesh, 0, (0.25, 0.75), location="elem", mode="r")
+selection.select_pos(pytec3d.model.mesh, 1, (-0.75, 0.75), location="elem", mode="r")
+selection.set_value_on_selection(pytec3d.model.mesh, "MATERIAL", 26, location="elem")
+selection.set_value_on_selection(pytec3d.model.mesh, "TYPE", 26, location="elem")
 
 pytec3d.model.set_bh_curve(26, [
     [0.0, 0.0],
@@ -58,30 +56,30 @@ pytec3d.model.set_bh_curve(26, [
 ])
 
 
-Selector.select_all(pytec3d.model.mesh)
-Selector.nsel_ext(pytec3d.model.mesh)
-Selector.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
+selection.select_all(pytec3d.model.mesh)
+selection.nsel_ext(pytec3d.model.mesh)
+selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)
 
-Selector.select(pytec3d.model.mesh, "MATERIAL", 23, type="elem")
-Selector.nsle(pytec3d.model.mesh)
-Selector.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
+selection.select(pytec3d.model.mesh, "MATERIAL", 23, location="elem")
+selection.nsle(pytec3d.model.mesh)
+selection.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
 # Take the first selected node as master node (lowest ID)
 master_node = vtknp.vtk_to_numpy(pytec3d.model.mesh.GetPointData().GetArray("selection_point")).nonzero()[0][0]
 
 pytec3d.load_model_into_solver()
 
-Selector.select_all(pytec3d.model.mesh)
+selection.select_all(pytec3d.model.mesh)
 pytec3d.time_step["theta"] = 0.5
 
 for i in range(1, 3):
     pytec3d.time_step["time"] = i * 1e-5
     if i == 1:
-        Selector.select(pytec3d.model.mesh, "ID", master_node)
-        Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 30000)
+        selection.select(pytec3d.model.mesh, "ID", master_node)
+        selection.set_value_on_selection(pytec3d.model.mesh, "CURR", 30000)
     else:
-        Selector.select(pytec3d.model.mesh, "ID", master_node)
-        Selector.set_value_on_selection(pytec3d.model.mesh, "CURR", 0)
-        Selector.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0.232874)
+        selection.select(pytec3d.model.mesh, "ID", master_node)
+        selection.set_value_on_selection(pytec3d.model.mesh, "CURR", 0)
+        selection.set_value_on_selection(pytec3d.model.mesh, "_VOLT", 0.232874)
     pytec3d.solve()
     pytec3d.write_output()
 

@@ -1,0 +1,16 @@
+# Style of the C++ sources (include/, src/pytec3d_solver/core/): Allman braces, 4 spaces, indented namespaces.
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: c++17
+IndentWidth: 4
+ColumnLimit: 120
+NamespaceIndentation: All
+PointerAlignment: Right
+ReferenceAlignment: Right
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+AccessModifierOffset: -4
+BreakConstructorInitializers: BeforeColon
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

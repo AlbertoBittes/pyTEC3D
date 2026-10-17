@@ -169,11 +169,8 @@ namespace pytec3d
                                                                                             : in_.type_id;
                     laws_[l].curve = in_.model_data ? in_.model_data->curve(info.curve, row) : nullptr;
                     if (!laws_[l].curve)
-                    {
-                        const auto &source = registry::kCurveSources[static_cast<std::size_t>(info.curve)];
-                        fail("law '" + std::string(registry::name(id)) + "' is selected by row " + std::to_string(row) +
-                             " but the model data has no '" + std::string(source.section) + "' curve for it.");
-                    }
+                        fail("law '" + std::string(registry::name(id)) + "' of id " + std::to_string(row) +
+                             " has no curve in the model data.");
                 }
             }
 
@@ -691,7 +688,7 @@ namespace pytec3d
             std::vector<Real> length_;
             std::array<ValueTable, kNablas> tables_{};
             std::array<bool, kNablas> table_done_{};
-            std::array<KernelResult, kKernels> kernels_{};
+            std::array<KernelResult, kKernels> kernels_;
             std::array<Matrix, kKernels> factors_{};
             std::array<bool, kKernels> factors_done_{};
             std::array<LawState, kLaws> laws_{};
@@ -714,4 +711,35 @@ namespace pytec3d
     }
 
     ElementEvaluator::~ElementEvaluator() = default;
+
+    void ElementEvaluator::add_matrices(Matrix &K, Matrix &C, Matrix &M)
+    {
+        impl_->add_matrices(K, C, M);
+    }
+
+    void ElementEvaluator::add_rhs(Vector &F)
+    {
+        impl_->add_rhs(F);
+    }
+
+    void ElementEvaluator::add_nonlinear(Matrix &J, Vector &R)
+    {
+        impl_->add_nonlinear(J, R);
+    }
+
+    void ElementEvaluator::field_operators(FieldKind kind, const ElementType::FieldIndices &indices,
+                                           std::array<Matrix, 3> &F, Vector &f)
+    {
+        impl_->field_operators(kind, indices, F, f);
+    }
+
+    void ElementEvaluator::field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values)
+    {
+        impl_->field_values(kind, indices, values);
+    }
+
+    void ElementEvaluator::check_parameters()
+    {
+        impl_->check_parameters();
+    }
 } // namespace pytec3d
