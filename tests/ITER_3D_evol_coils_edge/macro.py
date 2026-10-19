@@ -1,16 +1,55 @@
+# =====================================================================================================================
+# ITER_3D_evol_coils_edge - ITER_3D_evol_coils with edge elements and a tree gauge
+# =====================================================================================================================
+#
+# What this example shows
+# -----------------------
+# ITER_3D_evol (read that macro first) with the CS modules and PF coils modelled as STRANDED COILS fed by constant
+# voltage sources (the 3D counterpart of ITER_2D_evol_coils): the coil currents react to the plasma displacement.
+# It shows the TYPE of a region changed by the macro (COILS cells -> TYPE 35, stranded coils), two CP arrays (CP_0 for
+# the coil terminals, CP_1 for the periodic pairs) and the coil voltages computed from the 2D equilibrium: VOLT = R i,
+# with i = S Jt_z / N the equilibrium current of the coil.
+#
+# Geometry and mesh: ITER_3D_evol_coils_edge.vtu, the 2 degree, 2 cell ITER sector (22272 HEX20 + 208 WEDGE15, quadratic).
+# Model data (model_data.json): AV3D_edge: 31 NON_CONDUCTING, 33 STRANDED_CONDUCTOR (plasma region), 34
+#   SOLID_CONDUCTOR (vessel and structures), 35 STRANDED_COIL (coils: A + VOLT + EMF). Coil real constants:
+#   volume = volume of the WHOLE coil, symmetry = 180 (360 / 2 degrees), T = (0, 1, 0) in the cylindrical element
+#   system 1 (toroidal). DOF couplings 1-6 (PF) and 11-16 (CS) -> ["VOLT", "EMF"].
+# Boundary conditions:  cyclic symmetry theta = 0 <-> 2 degrees (A, V; edge values need no frame
+#   rotation); tangential A = 0 on the outer sphere (midside nodes); tree-cotree gauge over all the cells, aware of
+#   the periodic pairs; V = 0 on node 16170 of the vessel.
+# Time history (tests/files): time_steps.txt (0 to 0.636 s), plasma_current.txt (about 15 MA), beta_p.txt;
+#   the first point and one point every 5 (dt = 1e-3 s). Step 0 static at t = 1e-10 s, then transient backward-Euler
+#   steps, one evolution solve (Picard iterations on the plasma) and one output file per step.
+# Algorithm parameters:  R0 = 6.2 m, AF0 = 5.3 * 6.2, alpha_mp = 1.0001, alpha_np = 0.83197, tolerance 1e-4;
+#   extrusion_angle and n_toroidal_divisions describe the 3D sector (toroidal maps between the 2D vacuum-chamber mesh
+#   and the 3D mesh); halo currents (AMPS on the vessel wall) from t0_halo on, with halo_delta1 = 0.04.
+#
+# Results: output/ITER_3D_evol_coils_edge_out_<n>.vtu after every step, ITER_3D_evol_coils_edge_steps.csv, ITER_3D_evol_coils_edge.log,
+#   __pytec3d__/pytec3d_iteration_diagnostics.csv.
+#
+# How to run:  run ITER_2D first (it writes ../ITER_2D/output), then  cd tests/ITER_3D_evol_coils_edge && python macro.py  (a long run).
+# Documentation: "User manual - plasma equilibrium and evolution, periodic boundaries", "Examples" (ITER).
+# =====================================================================================================================
+
+
 from pytec3d import Algorithm, mesh, selection, Solver, tree_gauge
 import numpy as np
 import vtk
 from pytec3d.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem
+import glob
 import os
 from vtkmodules.util import numpy_support as vtknp
 # from convert_mesh import convert_mesh_from_cdb
 
+# 1. The solver and the plasma algorithm.
 pytec3d = Solver()
 algorithm = Algorithm(pytec3d)
 filename = "ITER_3D_evol_coils_edge"
-pytec3d_equilibrium_output_filename = "ITER_2D_out_1"
+pytec3d_equilibrium_output_filename = "ITER_2D_out_*"
 
+# 2. Files: the 3D evolution mesh and the 2D equilibrium output; geometric parameters (tolerances, radius of the
+#    far boundary, sector angle in degrees).
 filepath = os.path.join(os.getcwd(), filename + ".vtu")
 # Read the output of the equilibrium analysis
 output_eq_mesh_filepath = os.path.join(
@@ -20,6 +59,9 @@ output_eq_mesh_filepath = os.path.join(
     "output",
     pytec3d_equilibrium_output_filename + ".vtu",
 )
+# The equilibrium case writes its result once, after its Picard loop, as output/<name>_out_<n>.vtu (n = number of
+# solves): read the most recent file of that series.
+output_eq_mesh_filepath = max(glob.glob(output_eq_mesh_filepath), key=os.path.getmtime)
 
 eps = 1e-1
 rad_eps = 10
@@ -28,11 +70,15 @@ max_rad = 100.0
 extr_angle = 2.0
 
 # # Read the evolution mesh
+# 3. Read the 3D model; the 2D equilibrium gives the vacuum-chamber mesh of the algorithm.
 pytec3d.read_model(filepath)
 algorithm.vacuum_chamber_mesh = mesh.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
 
+# 4. Model data of the 3D evolution.
 pytec3d.model.read_json("model_data.json")
 
+# 5. The coil cells become stranded coils (TYPE 35) and use the cylindrical element system 1 (T toroidal); the
+#    vacuum chamber keeps the global system (the algorithm writes its Js in global components).
 selection.select(pytec3d.model.mesh, "COILS", 1, location="elem", mode="s")
 selection.set_value_on_selection(pytec3d.model.mesh, "TYPE", 35, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, location="elem")
@@ -42,6 +88,8 @@ selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 # 1. Set coils equilibrium voltages from the equilibrium output mesh
+# 6. Coil terminals in a fresh CP_0: for each coil, couple VOLT and EMF of its nodes, read N, R and S of its real
+#    constants row, and impose the steady-state voltage of the equilibrium current on the master node.
 mesh.remove_array(pytec3d.model.mesh, "CP_0")
 mesh.add_array(pytec3d.model.mesh, "CP_0", dtype=vtk.VTK_INT)
 selection.select(pytec3d.model.mesh, "COILS", 1, location="elem")
@@ -84,6 +132,7 @@ for k, comp in enumerate(["PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6"])
 
 
 # Cyclic periodic boundaries
+# 7. Cyclic periodic boundaries in CP_1: the face theta = 0 paired with theta = extr_angle, coupling A and V.
 mesh.remove_array(pytec3d.model.mesh, "CP_1")
 mesh.add_array(pytec3d.model.mesh, "CP_1", dtype=vtk.VTK_INT)
 selection.select_pos(pytec3d.model.mesh, 1, (-eps, eps), coordinate_system=YAxisCylindricalCoordinateSystem())
@@ -91,6 +140,7 @@ pytec3d.model.periodic_boundaries(
             YAxisCylindricalCoordinateSystem(), dy=extr_angle, array_name="CP_1", variables=("A", "V"))
 
 # Far-field boundary conditions and tree gauge constraints
+# 8. Far field: tangential A = 0 on the outer sphere, then the tree-cotree gauge (periodic pairs in CP_1).
 selection.select_all(pytec3d.model.mesh)
 selection.select_pos(
     pytec3d.model.mesh, 0, (max_rad - rad_eps, max_rad + rad_eps), coordinate_system=SphericalCoordinateSystem()
@@ -102,11 +152,14 @@ tree_gauge.tree_gauge(
 )
 
 # Ground Vacuum Vessel
+# 9. Ground the potential V of the vacuum vessel on one node.
 selection.select(pytec3d.model.mesh, "ID", 16170)
 selection.set_value_on_selection(pytec3d.model.mesh, "_V", 0)
 
+# 10. Save the prepared model (overwrites the input .vtu).
 pytec3d.save_model()
 
+# Evolution parameters of the algorithm (see the header).
 algorithm.input_parameters["R0"] = 6.2
 algorithm.input_parameters["max_picard_iterations"] = 70
 algorithm.input_parameters["tolerance_value"] = 1e-4
@@ -120,6 +173,7 @@ algorithm.input_parameters["extrusion_angle"] = extr_angle
 algorithm.input_parameters["n_toroidal_divisions"] = 2
 
 # Read the numpy arrays of time, current and beta from file
+# Waveforms of the scenario: times, plasma current [A], poloidal beta (first point + one every 5).
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "time_steps.txt"))
 currents = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "plasma_current.txt"))
 betas = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "beta_p.txt"))
@@ -130,6 +184,7 @@ currents = np.concatenate((currents[0:1], currents[1::5]))
 betas = np.concatenate((betas[0:1], betas[1::5]))
 pytec3d.time_step["theta"] = 1.0
 
+# Load the model, then the time loop: static initial step, transient steps, one evolution solve and one output each.
 pytec3d.load_model_into_solver()
 for step_idx in range(len(time_steps)):
     pytec3d.time_step["time"] = time_steps[step_idx]

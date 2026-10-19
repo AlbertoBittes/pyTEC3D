@@ -21,8 +21,9 @@ import numpy as np
 from . import element_library
 from . import mesh as meshes
 from ._logging import get_logger
+from ._typing import Location
 from .coordinate_system import coordinate_system_from_dict
-from .errors import ValidationError
+from .errors import ModelLockedError, ValidationError
 
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
@@ -237,19 +238,75 @@ def check_time_step(time_step: Mapping[str, Any]) -> None:
         raise ValidationError("Invalid time step", problems)
 
 
-def check_before_solve(model: Model, time_step: Mapping[str, Any]) -> None:
+#: The arrays that define the model in a solver session, read when the model is loaded: the cell ids (the element
+#: matrices are built from them once), the element coordinate systems, the nodal frames and the DOF couplings
+#: (``CP_k``, added by :func:`load_time_arrays`).
+LOAD_TIME_ARRAYS: tuple[tuple[Location, str], ...] = (
+    ("elem", "TYPE"), ("elem", "MATERIAL"), ("elem", "CONSTANT"), ("elem", "COORDINATE_SYSTEM"),
+    ("node", meshes.NODE_ANGLES_ARRAY),
+)
+
+
+def load_time_arrays(mesh: vtkUnstructuredGrid) -> dict[tuple[Location, str], np.ndarray]:
+    """Copies of the arrays of :data:`LOAD_TIME_ARRAYS` and of the ``CP_k`` arrays, taken when a model is loaded."""
+    point_data = mesh.GetPointData()
+    names = list(LOAD_TIME_ARRAYS) + [
+        ("node", name) for name in (point_data.GetArrayName(i) for i in range(point_data.GetNumberOfArrays()))
+        if name and _CP_ARRAY.match(name)
+    ]
+    return {
+        (location, name): np.array(meshes.array_values(mesh, name, location), copy=True)
+        for location, name in names
+        if meshes.attributes(mesh, location).GetArray(name) is not None
+    }
+
+
+def check_load_time_arrays(mesh: vtkUnstructuredGrid, snapshot: Mapping[tuple[Location, str], np.ndarray]) -> None:
+    """Compare the arrays of a loaded model with their copies taken at the load (:func:`load_time_arrays`).
+
+    A change would be ignored by the session, or mixed with the old values (``MATERIAL`` and ``CONSTANT`` are read
+    again by the loads and the output fields). The cost is one comparison of the arrays, about 1 % of a solve on
+    large models.
+
+    Raises:
+        ModelLockedError: If one of the arrays changed or was removed.
+    """
+    for (location, name), values in snapshot.items():
+        present = meshes.attributes(mesh, location).GetArray(name) is not None
+        if not present or not np.array_equal(meshes.array_values(mesh, name, location), values):
+            raise ModelLockedError(
+                f"The array '{name}' changed after the model was loaded. The session builds the element matrices"
+                " (TYPE, MATERIAL, CONSTANT), the element coordinate systems, the nodal frames and the DOF couplings"
+                " when the model is loaded: set them before load_model_into_solver(), or close the session and load"
+                " the model again."
+            )
+
+
+def check_before_solve(
+    model: Model,
+    time_step: Mapping[str, Any],
+    loaded_arrays: Mapping[tuple[Location, str], np.ndarray] | None = None,
+) -> None:
     """Checks run before every solve: the time step, the arrays, and warnings for loads and constraints.
 
     Warns when every load array is zero (nothing drives the problem) or every Dirichlet array is NaN (no boundary
     condition).
 
+    Args:
+        model: The loaded model.
+        time_step: The step to solve.
+        loaded_arrays: The copies of :func:`load_time_arrays` taken at the load, to check they did not change.
+
     Raises:
         ValidationError: If the time step is invalid or arrays are missing.
+        ModelLockedError: If an array of :data:`LOAD_TIME_ARRAYS` or a ``CP_k`` array changed since the load.
     """
     check_time_step(time_step)
     types = model.element_type_names() or None
     mesh = model.mesh
     check_required_arrays(mesh, types)
+    if loaded_arrays is not None:
+        check_load_time_arrays(mesh, loaded_arrays)
 
     loads = element_library.load_arrays(types)
     if loads and all(np.all(np.nan_to_num(meshes.array_values(mesh, a.name, a.location)) == 0.0) for a in loads):
@@ -397,7 +454,7 @@ class _ModelChecker:
             )
 
     def property_rows(self, name: str, known: dict[str, str], what: str) -> dict[int, Any]:
-        """The materials or constants rows: known names, value shapes, laws."""
+        """The materials or constants rows: known names and value shapes."""
         rows = self.section(name)
         for row_id, row in rows.items():
             if not isinstance(row, Mapping):
@@ -405,9 +462,7 @@ class _ModelChecker:
                 continue
             for key, value in row.items():
                 label = f"{name}[{row_id}].{key}"
-                if key == "law":
-                    self.problems.append(f"{label}: the nonlinear laws are given in data['nonlinear_laws'], by id.")
-                elif key not in known:
+                if key not in known:
                     self.problems.append(f"{label}: unknown {what}; known: {sorted(known)}.")
                 else:
                     self.value_shape(value, known[key], label)
@@ -424,14 +479,7 @@ class _ModelChecker:
             if not isinstance(row, Mapping):
                 self.problems.append(f"{label}: must be an object.")
                 continue
-            if "option4" in row:
-                self.problems.append(
-                    f"{label}: option4 was removed; a nonlinear law is selected in data['nonlinear_laws'], by the"
-                    " MATERIAL, CONSTANT or TYPE id of its source (nonlinear_laws.json)."
-                )
-            if "law" in row:
-                self.problems.append(f"{label}: the nonlinear laws are given in data['nonlinear_laws'], by id.")
-            unknown = sorted(set(row) - _ELEMENT_TYPE_KEYS - {"option4", "law"})
+            unknown = sorted(set(row) - _ELEMENT_TYPE_KEYS)
             if unknown:
                 self.problems.append(f"{label}: unknown keys {unknown}.")
             missing = [key for key in ("element_type", "option1") if key not in row]
@@ -457,6 +505,14 @@ class _ModelChecker:
             axisymmetric = row.get("option3", 0)
             if axisymmetric not in (0, 1):
                 self.problems.append(f"{label}: option3 (axisymmetric) must be 0 or 1; got {axisymmetric!r}.")
+            if element_type is not None and domain is not None:
+                type_name = self.element_type_names[element_type]
+                supported = element_library.element_types().get(type_name, {}).get("domains")
+                if supported is not None and self.domains[domain] not in supported:
+                    self.problems.append(
+                        f"{label}: the domain {self.domains[domain]} (option1) is not one of the domains of"
+                        f" {type_name}: {supported}."
+                    )
             if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
                 resolved[type_id] = {"element_type": element_type, "axisymmetric": int(axisymmetric)}
 

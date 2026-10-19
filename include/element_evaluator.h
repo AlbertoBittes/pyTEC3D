@@ -21,7 +21,9 @@
  *
  * A nodal or element field is static where none of its terms is a law variant used on the element: it is then a
  * linear operator on the solution, F u + F_dt du/dt + ..., computed once with the element matrices
- * (field_operators) and only applied at output. Dynamic fields are evaluated at output (field_values).
+ * (field_operators) and only applied at output, plus its terms without trial (a load or parameter alone, e.g.
+ * Jt = Js), evaluated at every output so that they follow the current loads. Dynamic fields are evaluated at output
+ * (field_values).
  *
  * Integration weights are JxW, times the out-of-plane length L of 2D elements: the parameter the element type
  * declares as its out_of_plane_length (1 if none), times 2 pi r when axisymmetric. In field terms, a dt()
@@ -87,14 +89,18 @@ namespace pytec3d
         void add_nonlinear(Matrix &J, Vector &R);
 
         /**
-         * @brief Operators of the static nodal or element fields (Matrices operation): the field values are
-         * F[0] u + F[1] du/dt + F[2] d2u/dt2 + f, F of size (field system element DOFs, DOF system element DOFs).
-         * All the fields of a kind collapse into these three matrices and one vector; those the spec cannot fill
-         * on the element (ElementType::field_operators) are left empty.
+         * @brief Operators of the static nodal or element fields (Matrices operation): the terms with a trial give
+         * F[0] u + F[1] du/dt + F[2] d2u/dt2, F of size (field system element DOFs, DOF system element DOFs).
+         * All the fields of a kind collapse into these three matrices; those the spec cannot fill on the element
+         * (ElementType::field_operators) are left empty. The terms without trial are not stored: field_values adds them.
          */
-        void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F, Vector &f);
+        void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F);
 
-        /** @brief Values of the dynamic nodal or element fields, written at their positions @p indices in @p values. */
+        /**
+         * @brief At output (NodalFields / ElementFields operation): writes the values of the dynamic fields at their
+         * positions @p indices in @p values, and adds the terms without trial of the static ones (e.g. Jt = Js), from
+         * the current parameters, to the values of their stored operators.
+         */
         void field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values);
 
         /** @brief Reads every parameter the terms active in the domain need, so that a missing one aborts now. */
@@ -108,8 +114,7 @@ namespace pytec3d
             virtual void add_matrices(Matrix &K, Matrix &C, Matrix &M) = 0;
             virtual void add_rhs(Vector &F) = 0;
             virtual void add_nonlinear(Matrix &J, Vector &R) = 0;
-            virtual void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F,
-                                         Vector &f) = 0;
+            virtual void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F) = 0;
             virtual void field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values) = 0;
             virtual void check_parameters() = 0;
         };

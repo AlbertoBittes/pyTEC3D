@@ -1,20 +1,20 @@
 {
   "element_types": {
     "21": {
-      "element_type": "AV3D_edge_timint",
+      "element_type": 4,
       "option1": 0,
       "option2": 1,
       "option3": 0
     },
     "23": {
-      "element_type": "AV3D_edge_timint",
+      "element_type": 4,
       "option1": 3,
       "option2": 1,
       "option3": 0
     },
     "24": {
-      "element_type": "AV3D_edge_timint",
-      "option1": 4,
+      "element_type": 4,
+      "option1": 5,
       "option2": 1,
       "option3": 0
     }

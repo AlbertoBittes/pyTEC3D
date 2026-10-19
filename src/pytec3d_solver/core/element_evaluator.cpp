@@ -9,6 +9,7 @@
  */
 #include "element_evaluator.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -188,8 +189,7 @@ namespace pytec3d
                     } });
             }
 
-            void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F,
-                                 Vector &f) override
+            void field_operators(FieldKind kind, const ElementType::FieldIndices &indices, std::array<Matrix, 3> &F) override
             {
                 if (in_.operation != Operation::Matrices)
                     fail("the evaluator was built for another operation.");
@@ -197,7 +197,6 @@ namespace pytec3d
                 const unsigned int operators = type_.field_operators(kind, in_.domain);
                 for (std::size_t k = 0; k < F.size(); ++k)
                     F[k].resize(operators & (1u << k) ? indices.n_dofs : 0, operators & (1u << k) ? in_.dofs->n_dofs : 0);
-                f.resize(operators & 8u ? indices.n_dofs : 0);
                 if (nq_ == 0)
                     return;
 
@@ -212,9 +211,9 @@ namespace pytec3d
                             return;
                         const auto &ids = indices.field[static_cast<std::size_t>(evaluation.field)];
                         if constexpr (evaluation.kind == EvaluationKind::Average)
-                            average_operator<e>(ids, F, f);
+                            average_operator<e>(ids, F);
                         else
-                            projection_operator<e>(ids, F, f);
+                            projection_operator<e>(ids, F);
                     } });
             }
 
@@ -272,14 +271,24 @@ namespace pytec3d
                     if constexpr (evaluation.kind == EvaluationKind::Average || evaluation.kind == EvaluationKind::L2Projection)
                     {
                         constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
-                        if (field.kind != kind || !ElementType::active(field, in_.domain) ||
-                            !type_.dynamic(evaluation, in_.domain, in_.laws))
+                        if (field.kind != kind || !ElementType::active(field, in_.domain))
                             return;
                         const auto &ids = indices.field[static_cast<std::size_t>(evaluation.field)];
+                        const bool dynamic = type_.dynamic(evaluation, in_.domain, in_.laws);
                         if constexpr (evaluation.kind == EvaluationKind::Average)
-                            average<e>(ids, values);
+                        {
+                            if (dynamic)
+                                average<e>(ids, values);
+                            else
+                                add_constant_average<e>(ids, values);
+                        }
                         else
-                            project<e>(ids, values);
+                        {
+                            if (dynamic)
+                                project<e>(ids, values);
+                            else
+                                add_constant_projection<e>(ids, values);
+                        }
                     } });
             }
 
@@ -566,9 +575,9 @@ namespace pytec3d
                     return value;
             }
 
-            /** @brief Rows of an element field: the quadrature mean of each term, by number of dt() on the trial. */
+            /** @brief The terms without trial of a static element field: their quadrature mean, added to @p values. */
             template <std::size_t E>
-            void average_operator(const ElementType::FieldRange &ids, std::array<Matrix, 3> &F, Vector &f)
+            void add_constant_average(const ElementType::FieldRange &ids, Vector &values)
             {
                 constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
@@ -577,56 +586,87 @@ namespace pytec3d
                 static_for<evaluation.n_terms>([&](auto i)
                                                {
                     constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
-                    if (!used(term))
-                        return;
-                    const KernelResult &k = kernel<term.kernel>();
-                    for (std::size_t c = 0; c < ids.size(); ++c)
+                    if constexpr (term.trial_field < 0)
                     {
-                        const unsigned int component = field.components[c];
-                        if constexpr (term.trial_field < 0)
-                        {
+                        if (!used(term))
+                            return;
+                        const KernelResult &k = kernel<term.kernel>();
+                        for (std::size_t c = 0; c < ids.size(); ++c)
                             for (std::size_t qp = 0; qp < nq_; ++qp)
-                                f(ids[c]) += inverse_count * component_of(k.values[qp].template get<Out>(), component);
-                        }
-                        else
-                        {
-                            const auto &table = k.table.template get<Out>();
-                            const auto &columns = in_.dofs->field[static_cast<std::size_t>(term.trial_field)];
-                            Matrix &target = F[term.trial_dt];
+                                values(ids[c]) += inverse_count * component_of(k.values[qp].template get<Out>(), field.components[c]);
+                    } });
+            }
+
+            /** @brief The terms without trial of a static nodal field: M^-1 of their sum, added to @p values. */
+            template <std::size_t E>
+            void add_constant_projection(const ElementType::FieldRange &ids, Vector &values)
+            {
+                constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
+                Vector y;
+                static_for<evaluation.n_terms>([&](auto i)
+                                               {
+                    constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
+                    if constexpr (term.trial_field < 0)
+                    {
+                        if (!used(term))
+                            return;
+                        if (y.size() == 0)
+                            y.resize(static_cast<unsigned int>(ids.size()));
+                        y += kernel<term.kernel>().vector;
+                    } });
+                if (y.size() == 0)
+                    return;
+                Vector x;
+                mass_factors<static_cast<std::size_t>(evaluation.mass_kernel)>().cholesky_solve(y, x);
+                for (std::size_t r = 0; r < ids.size(); ++r)
+                    values(ids[r]) += x(static_cast<unsigned int>(r));
+            }
+
+            /** @brief Rows of an element field: the quadrature mean of each term with a trial, by number of dt() on it. */
+            template <std::size_t E>
+            void average_operator(const ElementType::FieldRange &ids, std::array<Matrix, 3> &F)
+            {
+                constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
+                constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
+                using Out = cpp_t<field.value>;
+                const Real inverse_count = 1.0 / static_cast<Real>(nq_);
+                static_for<evaluation.n_terms>([&](auto i)
+                                               {
+                    constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
+                    if constexpr (term.trial_field >= 0)
+                    {
+                        if (!used(term))
+                            return;
+                        const auto &table = kernel<term.kernel>().table.template get<Out>();
+                        const auto &columns = in_.dofs->field[static_cast<std::size_t>(term.trial_field)];
+                        Matrix &target = F[term.trial_dt];
+                        for (std::size_t c = 0; c < ids.size(); ++c)
                             for (std::size_t qp = 0; qp < nq_; ++qp)
                                 for (std::size_t j = 0; j < columns.size(); ++j)
-                                    target(ids[c], columns[j]) += inverse_count * component_of(table[qp][j], component);
-                        }
+                                    target(ids[c], columns[j]) += inverse_count * component_of(table[qp][j], field.components[c]);
                     } });
             }
 
             /**
-             * @brief Rows of a nodal field: F_k = M^-1 Y_k and f = M^-1 y. The terms are first summed by number of dt()
-             * into Y_k, one column per DOF of the element (the columns of each term's trial field), and the source
-             * vectors into y; then one solve per column a term touches, and one for y.
+             * @brief Rows of a nodal field: F_k = M^-1 Y_k. The terms with a trial are first summed by number of dt()
+             * into Y_k, one column per DOF of the element (the columns of each term's trial field); then one solve per
+             * column a term touches.
              */
             template <std::size_t E>
-            void projection_operator(const ElementType::FieldRange &ids, std::array<Matrix, 3> &F, Vector &f)
+            void projection_operator(const ElementType::FieldRange &ids, std::array<Matrix, 3> &F)
             {
                 constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
                 const unsigned int n_rows = static_cast<unsigned int>(ids.size());
                 std::array<Matrix, 3> Y;
                 std::array<std::vector<bool>, 3> touched;
-                Vector y;
                 static_for<evaluation.n_terms>([&](auto i)
                                                {
                     constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
                     if (!used(term))
                         return;
-                    const KernelResult &k = kernel<term.kernel>();
-                    if constexpr (term.trial_field < 0)
+                    if constexpr (term.trial_field >= 0)
                     {
-                        if (y.size() == 0)
-                            y.resize(n_rows);
-                        y += k.vector;
-                    }
-                    else
-                    {
+                        const KernelResult &k = kernel<term.kernel>();
                         Matrix &sum = Y[term.trial_dt];
                         std::vector<bool> &columns_used = touched[term.trial_dt];
                         if (sum.m() == 0)
@@ -642,6 +682,8 @@ namespace pytec3d
                                 sum(r, columns[j]) += k.matrix(r, j);
                         }
                     } });
+                if (std::all_of(Y.begin(), Y.end(), [](const Matrix &m) { return m.m() == 0; }))
+                    return;
 
                 Matrix &mass = mass_factors<static_cast<std::size_t>(evaluation.mass_kernel)>();
                 Vector column(n_rows);
@@ -657,12 +699,6 @@ namespace pytec3d
                         for (unsigned int r = 0; r < n_rows; ++r)
                             F[d](ids[r], j) += x(r);
                     }
-                if (y.size() > 0)
-                {
-                    mass.cholesky_solve(y, x);
-                    for (unsigned int r = 0; r < n_rows; ++r)
-                        f(ids[r]) += x(r);
-                }
             }
 
             /**
@@ -728,9 +764,9 @@ namespace pytec3d
     }
 
     void ElementEvaluator::field_operators(FieldKind kind, const ElementType::FieldIndices &indices,
-                                           std::array<Matrix, 3> &F, Vector &f)
+                                           std::array<Matrix, 3> &F)
     {
-        impl_->field_operators(kind, indices, F, f);
+        impl_->field_operators(kind, indices, F);
     }
 
     void ElementEvaluator::field_values(FieldKind kind, const ElementType::FieldIndices &indices, Vector &values)

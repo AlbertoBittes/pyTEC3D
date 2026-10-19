@@ -1,3 +1,42 @@
+# =====================================================================================================================
+# CREATE_B_measurement_nodal - CREATE_B_measurement with nodal elements
+# =====================================================================================================================
+#
+# What this example shows
+# -----------------------
+# A laboratory electromagnet (transient, voltage driven): a racetrack STRANDED COIL around a conducting, saturating iron yoke, on a half
+# model (symmetry = 2). It shows:
+#   * a racetrack coil described piecewise by real constants rows: straight parts with a global winding direction T,
+#     rounded ends with T = (0, 1, 0) in their own cylindrical ELEMENT coordinate systems (91, 92: X-axis
+#     cylindrical systems centred on the arc centres), so that T is the azimuthal direction of each arc;
+#   * a nonlinear B-H curve on a conducting region (the yoke, SOLID_CONDUCTOR): Newton iterations together
+#     with eddy currents;
+#   * nodal A: symmetry plane y = 0.05 m with A_x = A_z = 0, A = 0 on the rest of the external boundary;
+#   * V = 0 on the yoke nodes of the external boundary;
+#
+# Geometry and mesh (CREATE_B_measurement_nodal.vtu): -0.1 <= x <= 0.2, -0.1 <= y <= 0.05, -0.1 <= z <= 0.183 m, 250496 HEX8 cells. Named cell arrays: AIR, COIL, COIL1 ... COIL5 (coil pieces), YOKE,
+#   YOKE_LEFT, YOKE_RIGHT, YOKE_BRIDGE, SUPPORT_PLATE.
+#
+# Model data (model_data.json)
+#   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
+#   * 1: 1 = AV3D_nodal / NON_CONDUCTING            / 1 / 0   air and support plate
+#   * 2: 1 = AV3D_nodal / SOLID_CONDUCTOR           / 1 / 0   yoke: A + V, B-H curve
+#   * 3: 1 = AV3D_nodal / STRANDED_COIL             / 1 / 0   coil: A + VOLT + EMF
+#   Materials: 2 yoke (rho = 1.09e-7 Ohm m, B-H curve added by the macro), 3 support plate (rho = 10, not used in a
+#     non-conducting type), 10 coil, 11 air (mur = 1).
+#   Real constants 1-5 (coil pieces): cross_section = 1.19e-4 m^2, turns = 156, volume = 1.54e-5 m^3 (whole coil), resistance = 1.144 Ohm, symmetry = 2, T per piece.
+#   DOF couplings: 1 -> ["VOLT", "EMF"] (coil terminals).   Nonlinear laws: bh_curve on MATERIAL 2.
+#
+# Loads and time history: terminal voltage of the coil (_VOLT on the master node) from tests/files/volt_CREATE.txt at
+#   the times of times_CREATE.txt (0 to 0.2 s, dt = 1e-4 s, 2000 points); step 0 static at t = 1e-10 s, then
+#   backward-Euler transient steps (Newton iterations at each step); an output file every 10 steps.
+# Results: output/CREATE_B_measurement_nodal_out_<n>.vtu (A, V, VOLT, EMF, B, H, Jt), CREATE_B_measurement_nodal_steps.csv, CREATE_B_measurement_nodal.log
+#
+# How to run:  cd tests/CREATE_B_measurement_nodal && python macro.py
+# Documentation: "User manual - coordinate systems, nonlinear laws", "Element library" (stranded coil).
+# =====================================================================================================================
+
+
 from pytec3d import selection, Solver
 import os
 import numpy as np
@@ -8,6 +47,7 @@ import vtk.util.numpy_support as vtknp
 
 # from convert_mesh import convert_mesh_from_cdb
 
+# 1. Solver and model files.
 pytec3d = Solver()
 
 filename = "CREATE_B_measurement_nodal"
@@ -49,6 +89,8 @@ pytec3d.model.read_json("model_data.json")
 #     [8303.31592013, 2.11657067391],
 # ]
 
+# 2. B-H curve of the yoke (rows [H, B]): selects the bh_curve law on MATERIAL 2. The last point (B = 5 T) gives the
+#    slope of the curve in deep saturation, where it is extended linearly.
 pytec3d.model.set_bh_curve(2, [
     [0.0, 0.0],
     [100.0, 0.31],
@@ -109,6 +151,7 @@ pytec3d.model.set_bh_curve(2, [
 # ])
 
 # Coupling for stranded coils
+# 3. Coil terminals: VOLT and EMF of all the coil nodes coupled (CP_0 = 1); master = lowest node id.
 selection.select(pytec3d.model.mesh, "TYPE", 3, location="elem")
 selection.nsle(pytec3d.model.mesh)
 selection.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
@@ -117,6 +160,8 @@ master_node = vtknp.vtk_to_numpy(
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
+# 4. Element coordinate systems of the two rounded ends of the racetrack: cylindrical systems centred on the arc
+#    centres; the cells of the real constants rows 2 and 4 use them, so that T = (0, 1, 0) is azimuthal there.
 xc0, yc0, zc0 = 0.0645, 0.035, 0.05
 xc1, yc1, zc1 = 0.0645, 0.035, 0.078
 
@@ -140,6 +185,7 @@ selection.select(pytec3d.model.mesh, "CONSTANT", 4, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, location="elem")
 
 # Az: Symmetry BCs + Far field
+# 5. Boundary conditions of the nodal vector potential: symmetry plane(s), then A = 0 on the rest of the boundary.
 selection.select_pos(pytec3d.model.mesh, 1, (0.05-1e-6, 0.05+1e-6))
 # selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
 selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
@@ -160,6 +206,7 @@ selection.nsle(pytec3d.model.mesh, mode="r")
 selection.set_value_on_selection(pytec3d.model.mesh, "_V", 0.0)
 
 # Read the numpy arrays of time, current and beta from file
+# 6. Waveform of the coil voltage.
 time_steps = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "times_CREATE.txt"))
 voltages = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "volt_CREATE.txt"))
 
@@ -169,9 +216,11 @@ voltages = np.loadtxt(os.path.join(os.getcwd(), "..", "files", "volt_CREATE.txt"
 
 pytec3d.save_model()
 
+# 7. Load the model (save_model() above stores the prepared model).
 pytec3d.load_model_into_solver()
 
 pytec3d.time_step["theta"] = 1.0
+# 8. Time loop: static first step, transient steps; coil terminal voltage from the waveform; output every 10 steps.
 for step_idx in range(len(time_steps)):
     pytec3d.time_step["time"] = time_steps[step_idx]
     if step_idx == 0:

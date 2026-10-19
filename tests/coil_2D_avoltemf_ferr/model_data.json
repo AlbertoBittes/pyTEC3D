@@ -190,9 +190,6 @@
     "1": [
       "EMF",
       "VOLT"
-    ],
-    "2": [
-      "VOLT"
     ]
   },
   "nonlinear_laws": {},

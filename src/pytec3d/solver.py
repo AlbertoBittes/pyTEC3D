@@ -17,15 +17,16 @@ import weakref
 from types import ModuleType, TracebackType
 from typing import Any, TextIO
 
+import numpy as np
 from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 
 from . import mesh as meshes
 from ._logging import close_log_file, get_logger, message_counts, open_log_file, world_rank
 from ._report import Table, print_table, provenance_table
-from ._typing import PathType
+from ._typing import Location, PathType
 from .errors import SolverStateError
 from .model import Model
-from .validation import check_before_solve, check_model, check_solver_settings
+from .validation import check_before_solve, check_model, check_solver_settings, load_time_arrays
 
 LOGGER = get_logger("pytec3d.solver")
 
@@ -157,6 +158,7 @@ class Solver:
         self.solver_settings: dict[str, Any] = copy.deepcopy(DEFAULT_SOLVER_SETTINGS)
         self._mesh_filepath: str | None = None
         self._session: Any | None = None
+        self._load_time_arrays: dict[tuple[Location, str], np.ndarray] = {}  # copies taken at the load
         self._saved_stdio: tuple[TextIO, TextIO] | None = None
         self._closed = False
         _register_shutdown()
@@ -490,6 +492,7 @@ class Solver:
             session.close()
             raise
         self._session = session
+        self._load_time_arrays = load_time_arrays(self.model.mesh)
         self.model.lock()
         LOGGER.info("Model '%s' loaded into the solver session in %.2f s.", self.model.mesh_name,
                     time.perf_counter() - start)
@@ -504,7 +507,7 @@ class Solver:
         """
         if self._session is None:
             raise SolverStateError("No solver session: call load_model_into_solver() first.")
-        check_before_solve(self.model, self.time_step)
+        check_before_solve(self.model, self.time_step, self._load_time_arrays)
         step = self.time_step
         LOGGER.info(
             "Solving t = %g (%s; theta %g, beta %g, gamma %g).", step["time"],

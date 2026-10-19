@@ -65,7 +65,7 @@ public:
     {
         DOF_SOLUTION_MATRICES,      ///< {Ke, Ce} and Me for second-order element types
         TANGENT_STIFFNESS_MATRICES,
-        NODAL_SOLUTION_MATRICES,    ///< Static nodal fields: {F u, F du/dt, F d2u/dt2, constant (n x 1)}
+        NODAL_SOLUTION_MATRICES,    ///< Static nodal fields: {F u, F du/dt, F d2u/dt2} (terms without trial: at output)
         ELEMENT_SOLUTION_MATRICES,  ///< Static element fields: same layout
         NUM_MATRICES_SETS
     };

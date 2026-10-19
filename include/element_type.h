@@ -125,8 +125,8 @@ namespace pytec3d
 
         /**
          * @brief The operators the static nodal or element fields can have in @p domain: bit k (k = 0, 1, 2) for
-         * F_k, the terms with k dt() on the trial, bit 3 for the constant (terms without trial). Known from the
-         * spec: the others are never allocated.
+         * F_k, the terms with k dt() on the trial, bit 3 for the terms without trial (evaluated at every output, not
+         * stored). Known from the spec: the others are never allocated.
          */
         unsigned int field_operators(FieldKind kind, registry::Domain domain) const;
 

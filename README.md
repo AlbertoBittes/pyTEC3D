@@ -25,8 +25,8 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 1. Clone and enter the repository.
 
   ```bash
-  git clone <your-repo-url>
-  cd PlasmaArc
+  git clone https://github.com/AlbertoBittes/pyTEC3D.git
+  cd pyTEC3D
   ```
 
 2. Create a Python 3.12 development environment.
@@ -42,6 +42,7 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
                         openmpi \
                         petsc \
                         vtk \
+                        pyvista \
                         pybind11 \
                         spdlog \
                         numpy \

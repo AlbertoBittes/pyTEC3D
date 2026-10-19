@@ -19,6 +19,9 @@ element_types.json, "element_types": { "<name>": {
       Starts from another element type: each section given here replaces the parent's entries key by key
       (a dof_kernels "K" list, an element_kernels "Jt" list, a parameter...); "dimension" replaces it.
   "dimension": 2 | 3,
+  "domains": ["NON_CONDUCTING", ...]
+      The domains (domains.json) a TYPE row of the model data may give this element type (option1); every
+      domain when missing. The model check rejects the others.
   "time_order": 0 | 1 | 2      highest time derivative of the formulation (default 1): at most that many dt().
   "out_of_plane_length": "thickness"
       2D only: the scalar parameter giving the out-of-plane length L of the elements (times 2 pi r when
@@ -336,7 +339,7 @@ def read_laws(resource_dir):
 class ElementType:
     """One element type of element_types.json, checked and reduced to the tables of formulation_spec.h."""
 
-    SECTIONS = {"inherits", "dimension", "time_order", "out_of_plane_length", "constants", "parameters", "expressions",
+    SECTIONS = {"inherits", "dimension", "domains", "time_order", "out_of_plane_length", "constants", "parameters", "expressions",
                 "dof_fields", "dof_kernels", "nodal_fields", "nodal_kernels", "element_fields", "element_kernels"}
 
     def __init__(self, name, definition, domains, fields_json, laws, law_index):
@@ -350,6 +353,9 @@ class ElementType:
         self.dimension = definition.get("dimension")
         if self.dimension not in (2, 3):
             fail(f"{self.context}: dimension must be 2 or 3.")
+        supported = definition.get("domains")
+        if supported is not None:
+            read_domain_mask({"domain": supported}, domains, f"{self.context}, domains")
         self.time_order = definition.get("time_order", 1)
         if self.time_order not in (0, 1, 2):
             fail(f"{self.context}: time_order must be 0 (static), 1 or 2.")

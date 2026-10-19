@@ -192,20 +192,17 @@ void ElementBuilder::build_element()
     if (type.spec().time_order >= 2)
         matrices[MatricesSet::DOF_SOLUTION_MATRICES].push_back(std::move(mass));
 
-    // The operators of the static nodal and element fields: {F u, F du/dt, F d2u/dt2, constant} per kind.
+    // The operators of the static nodal and element fields: {F u, F du/dt, F d2u/dt2} per kind. Their terms without
+    // trial (a load alone, e.g. Jt = Js) are not stored: build_fields evaluates them at every output.
     for (const auto &[kind, set, system] : {std::make_tuple(pytec3d::FieldKind::Nodal, MatricesSet::NODAL_SOLUTION_MATRICES, nodal_solution_system_),
                                             std::make_tuple(pytec3d::FieldKind::Element, MatricesSet::ELEMENT_SOLUTION_MATRICES, element_solution_system_)})
     {
         const auto field_indices = type.element_indices(*system, *elem_data.elem, kind, elem_data.entry->domain);
         std::array<DenseMatrix<Number>, 3> F;
-        DenseVector<Number> f;
-        evaluator.field_operators(kind, field_indices, F, f);
+        evaluator.field_operators(kind, field_indices, F);
 
-        DenseMatrix<Number> constant(f.size(), f.size() ? 1 : 0);
-        for (unsigned int i = 0; i < f.size(); ++i)
-            constant(i, 0) = f(i);
         std::vector<DenseMatrix<Number>> &stored = matrices[set];
-        stored = {std::move(F[0]), std::move(F[1]), std::move(F[2]), std::move(constant)};
+        stored = {std::move(F[0]), std::move(F[1]), std::move(F[2])};
         for (DenseMatrix<Number> &m : stored)
             drop_if_zero(m);
     }
@@ -314,6 +311,7 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
     const auto &stored = matrices[kind == pytec3d::FieldKind::Nodal ? MatricesSet::NODAL_SOLUTION_MATRICES
                                                                     : MatricesSet::ELEMENT_SOLUTION_MATRICES];
     const bool dynamic = type.has_dynamic_fields(kind, domain, elem_data.laws);
+    const bool constants = (type.field_operators(kind, domain) & 8u) != 0;
     const auto needs = [&](std::size_t k) { return dynamic || (k < stored.size() && stored[k].m() > 0); };
 
     // The solution and, where a field reads them, its rates: first-order models report the mean rate over the
@@ -328,12 +326,10 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
     for (std::size_t k = 0; k < 3 && k < stored.size(); ++k)
         if (stored[k].m() > 0)
             stored[k].vector_mult_add(field_values, 1.0, *solutions[k]);
-    if (stored.size() > 3 && stored[3].m() > 0)
-        for (unsigned int i = 0; i < field_values.size(); ++i)
-            field_values(i) += stored[3](i, 0);
 
-    // The dynamic fields (a law selected on the element) depend on the solution: evaluated now.
-    if (dynamic)
+    // Evaluated now: the dynamic fields (a law selected on the element), which depend on the solution, and the terms
+    // without trial of the static ones, which read the current loads.
+    if (dynamic || constants)
     {
         auto inputs = evaluator_inputs(kind == pytec3d::FieldKind::Nodal ? pytec3d::Operation::NodalFields : pytec3d::Operation::ElementFields,
                                        values, dofs);

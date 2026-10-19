@@ -16,9 +16,14 @@ dependencies = [
   "mpi4py",
 ]
 
+[project.urls]
+Repository = "https://github.com/AlbertoBittes/pyTEC3D"
+
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
 cdb = ["ansys-mapdl-reader"]
+# Tutorial notebooks of the documentation (they also use pyvista, installed with conda: see the installation docs).
+notebooks = ["matplotlib", "ipykernel"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

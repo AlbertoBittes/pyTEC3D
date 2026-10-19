@@ -37,6 +37,68 @@ def empty_model_data() -> dict[str, Any]:
     return {section: {} for section in DATA_SECTIONS}
 
 
+_LOCKED_DATA_MESSAGE = (
+    "The model data cannot change while the model is loaded into a solver session: the session uses the copy made "
+    "at the load. Close the session (Solver.close_session()), change the data and load the model again."
+)
+
+
+def _refuse(*_: Any, **__: Any) -> Any:
+    raise ModelLockedError(_LOCKED_DATA_MESSAGE)
+
+
+class _FrozenDict(dict):  # type: ignore[type-arg]
+    """A dict of the model data while the model is loaded: reading works as usual, any change raises."""
+
+    __setitem__ = __delitem__ = __ior__ = _refuse
+    clear = pop = popitem = setdefault = update = _refuse
+
+    def __copy__(self) -> dict[str, Any]:
+        return _thaw(self)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[str, Any]:
+        return _thaw(self)
+
+    def __reduce__(self) -> Any:
+        return (dict, (_thaw(self),))
+
+
+class _FrozenList(list):  # type: ignore[type-arg]
+    """A list of the model data while the model is loaded: reading works as usual, any change raises."""
+
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _refuse
+    append = clear = extend = insert = pop = remove = reverse = sort = _refuse
+
+    def __copy__(self) -> list[Any]:
+        return _thaw(self)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> list[Any]:
+        return _thaw(self)
+
+    def __reduce__(self) -> Any:
+        return (list, (_thaw(self),))
+
+
+def _freeze(value: Any) -> Any:
+    """A read-only deep copy of model data (dicts and lists nested at any depth)."""
+    if isinstance(value, Mapping):
+        return _FrozenDict((key, _freeze(item)) for key, item in value.items())
+    if isinstance(value, (list, tuple)):
+        return _FrozenList(_freeze(item) for item in value)
+    if isinstance(value, np.ndarray):
+        return _FrozenList(_freeze(item) for item in value.tolist())
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    """A plain, editable deep copy of (possibly frozen) model data."""
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_thaw(item) for item in value]
+    return value
+
+
 def _to_jsonable(value: Any, path: str = "data") -> Any:
     """Plain JSON types of dicts, sequences and NumPy values; keys become strings.
 
@@ -109,6 +171,7 @@ class Model:
         #: Absolute path of the JSON file the model data was read from (:meth:`read_json`); None once it is replaced.
         self.data_file: str | None = None
         self._locked = False
+        self._frozen_data: dict[str, Any] | None = None
         if mesh is not None:
             self.mesh = mesh
 
@@ -183,12 +246,17 @@ class Model:
         return self._locked
 
     def lock(self) -> None:
-        """Fix the mesh and the model data; called by the solver when it loads the model."""
+        """Fix the mesh and the model data; called by the solver when it loads the model.
+
+        From now on :attr:`data` is a read-only copy: an edit raises :class:`~pytec3d.errors.ModelLockedError`.
+        """
+        self._frozen_data = _freeze(self._data)
         self._locked = True
 
     def unlock(self) -> None:
         """Allow changes to the mesh and the model data again; called by the solver when it closes the session."""
         self._locked = False
+        self._frozen_data = None
 
     def _require_unlocked(self, what: str) -> None:
         if self._locked:
@@ -239,12 +307,15 @@ class Model:
     def data(self) -> dict[str, Any]:
         """The model data: edit it in place, or assign a new dict (missing sections are added, empty).
 
-        The solver copies it when the model is loaded; later edits only take effect at the next load.
+        The solver copies it when the model is loaded. While the model is loaded the data is read-only: reading works
+        as usual (the values are ``dict`` and ``list`` objects), any edit raises.
 
         Raises:
-            ModelLockedError: When assigning it while the model is locked.
+            ModelLockedError: When assigning it, or editing it in place, while the model is locked.
             TypeError: When assigning something else than a dict of dicts.
         """
+        if self._locked and self._frozen_data is not None:
+            return self._frozen_data
         return self._data
 
     @data.setter

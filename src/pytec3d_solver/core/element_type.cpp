@@ -67,17 +67,22 @@ namespace pytec3d
         switch (operation)
         {
         case Operation::Matrices:
+            // The operators of the static fields, stored with the element matrices: the terms with a trial only.
             if (field)
-                return !dynamic(evaluation, domain, laws);
+                return !dynamic(evaluation, domain, laws) && term.trial_field >= 0;
             return evaluation.kind == EvaluationKind::Block && term.stage == Stage::Linear;
         case Operation::Rhs:
             return evaluation.kind == EvaluationKind::Rhs && term.stage == Stage::Linear;
         case Operation::Nonlinear:
             return term.stage == Stage::Tangent || term.stage == Stage::Residual;
+        // At output: the dynamic fields, and the terms without trial of every field (e.g. Jt = Js), which read
+        // the current loads.
         case Operation::NodalFields:
-            return evaluation.kind == EvaluationKind::L2Projection && dynamic(evaluation, domain, laws);
+            return evaluation.kind == EvaluationKind::L2Projection &&
+                   (dynamic(evaluation, domain, laws) || term.trial_field < 0);
         case Operation::ElementFields:
-            return evaluation.kind == EvaluationKind::Average && dynamic(evaluation, domain, laws);
+            return evaluation.kind == EvaluationKind::Average &&
+                   (dynamic(evaluation, domain, laws) || term.trial_field < 0);
         case Operation::Parameters:
             // The law variants are evaluated from the solution; their parameters are read there.
             return evaluation.kind != EvaluationKind::Quadrature && term.law < 0;

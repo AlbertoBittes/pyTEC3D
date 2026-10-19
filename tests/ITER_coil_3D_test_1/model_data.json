@@ -130,9 +130,7 @@
     }
   },
   "constants": {
-    "1": {
-      "thickness": 0.0
-    }
+    "1": {}
   },
   "dof_couplings": {},
   "nonlinear_laws": {},

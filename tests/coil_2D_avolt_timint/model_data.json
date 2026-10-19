@@ -8,13 +8,13 @@
     },
     "23": {
       "element_type": "AV2D_nodal_timint",
-      "option1": 5,
+      "option1": 4,
       "option2": 2,
       "option3": 1
     },
     "24": {
       "element_type": "AV2D_nodal_timint",
-      "option1": 4,
+      "option1": 5,
       "option2": 2,
       "option3": 1
     }
@@ -136,7 +136,7 @@
   },
   "dof_couplings": {
     "1": [
-      "VOLT"
+      "V"
     ]
   },
   "nonlinear_laws": {},

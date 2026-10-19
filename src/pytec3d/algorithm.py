@@ -368,8 +368,11 @@ class Algorithm:
     def toroidal_projection(self, array_name: str, location: Location, component: int | None = None) -> None:
         """Copy an array of the vacuum-chamber mesh to every toroidal station of the solver mesh.
 
-        Same arguments and errors as :meth:`toroidal_average`, except for an optional load (:data:`OPTIONAL_LOADS`):
-        when the solver mesh does not have it (no element type has the field it loads) nothing is projected.
+        A nodal load (:data:`OPTIONAL_LOADS`, the halo currents ``AMPS``) is the load of the whole sector: it is not
+        copied but shared among the node stations (trapezoid weights), so that the sector receives it once.
+
+        Same arguments and errors as :meth:`toroidal_average`, except for an optional load: when the solver mesh does
+        not have it (no element type has the field it loads) nothing is projected.
         """
         location = meshes.check_location(location)
         if array_name in OPTIONAL_LOADS and not _has_array(self.solver.model.mesh, array_name, location):
@@ -384,6 +387,19 @@ class Algorithm:
         if not np.any(valid):
             return
         flat_targets = flat_targets[valid]
+        if array_name in OPTIONAL_LOADS and chamber.ndim == 1 and targets.shape[1] > 1:
+            # A nodal load of the chamber is the current of the whole sector: shared among the node stations with
+            # the trapezoid weights (1/(2n) on the two end stations, 1/n inside), so that the sector receives it
+            # once, also when the end stations are coupled by cyclic symmetry (the load of a slave node is carried
+            # to its master).
+            n = targets.shape[1] - 1
+            weights = np.full(targets.shape[1], 1.0 / n)
+            weights[[0, -1]] = 0.5 / n
+            shares = (chamber[sources, np.newaxis] * weights[np.newaxis, :]).reshape(-1)[valid]
+            model[flat_targets] = 0.0
+            np.add.at(model, flat_targets, shares)
+            model_array.Modified()
+            return
         if chamber.ndim == 1:
             model[flat_targets] = np.broadcast_to(chamber[sources, np.newaxis], targets.shape).reshape(-1)[valid]
         else:
@@ -646,7 +662,11 @@ class Algorithm:
         return np.flatnonzero(visited).astype(np.int64)
 
     def _identify_plasma_region(self) -> None:
-        """PLASMA = 0 on the cells outside the main plasma region; with a halo, find the halo wall paths.
+        """PLASMA = 1 on the cells that carry plasma current, 0 elsewhere; with a halo, find the halo wall paths.
+
+        The region connected to the magnetic axis inside the X-point flux surface (which keeps the private flux
+        region out) is narrowed to the cells inside the boundary of the current: ``psi_2_min``, the limiter or X-point
+        flux, or the halo boundary. These are the cells where the Grad-Shafranov profile is not zero.
 
         Raises:
             ValueError: If a halo is requested but psi_2_min >= psi_min.
@@ -685,6 +705,16 @@ class Algorithm:
                 self.status["magnetic_axis"],
                 float(self.input_parameters["plasma_current"]),
             )
+        # Narrow to the current-carrying cells (after the halo paths, which use the whole connected region).
+        psi_axis = float(self.status["psi_magnetic_axis"])
+        if psi_2_min != psi_axis:
+            psi_cell = meshes.array_values(chamber, "PSIe", "elem")
+            beyond = ~((psi_cell - psi_2_min) * np.sign(psi_axis - psi_2_min) > 0.0)
+            beyond &= meshes.array_values(chamber, "PLASMA", "elem") == 1
+            if np.any(beyond):
+                excluded += int(np.count_nonzero(beyond))
+                selection.apply_mask(chamber, beyond, "elem", "s")
+                selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
         LOGGER.debug(
             "Plasma region: %d cells excluded, %d halo group(s).", excluded, len(self._halo_node_groups)
         )

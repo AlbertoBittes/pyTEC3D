@@ -2,14 +2,17 @@
     "element_types": {
         "AV2D_nodal": {
             "dimension": 2,
+            "domains": ["NON_CONDUCTING", "SOFT_MAGNETIC", "HARD_MAGNETIC", "STRANDED_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR",
+                        "SOLID_CONDUCTOR", "STRANDED_COIL"],
             "time_order": 1,
             "out_of_plane_length": "thickness",
             "constants": {"mu0": "4 * pi * 1e-7"},
             "parameters": {
                 "mat.mur[][]": {},
-                "mat.rho[][]": {"domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                "mat.M[]": {"domain": ["HARD_MAGNETIC"], "default": [0, 0, 0]},
+                "mat.rho[][]": {"domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+                "mat.M[]": {"domain": ["HARD_MAGNETIC", "STRANDED_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR", "STRANDED_COIL"], "default": [0, 0, 0]},
                 "me.Js": {"domain": ["STRANDED_CONDUCTOR"]},
+                "mn.AMPS": {},
                 "mn.CURR": {},
                 "rc.thickness": {"default": 1},
                 "rc.cross_section": {"domain": ["STRANDED_COIL"]},
@@ -21,7 +24,7 @@
             },
             "expressions": {
                 "nu[][]": "(mu0 * mur).inverse()",
-                "sigma[][]": {"value": "rho.inverse()", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                "sigma[][]": {"value": "rho.inverse()", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
                 "turns_density": {"value": "turns / (cross_section * resistance)", "domain": ["STRANDED_COIL"]},
                 "coil_volume": {"value": "(axisymmetric ? 2 * pi * radius : 1.0) * cross_section * thickness", "domain": ["STRANDED_COIL"]},
                 "kvv": {"value": "1 / (resistance * coil_volume)", "domain": ["STRANDED_COIL"]},
@@ -34,23 +37,24 @@
             },
             "dof_fields": {
                 "A": {"active_components": ["z"]},
-                "VOLT": {"active_components": ["z"], "nodal_loads": "CURR", "domain": ["SOLID_CONDUCTOR", "STRANDED_COIL"]},
+                "V": {"active_components": ["z"], "nodal_loads": "AMPS", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                "VOLT": {"active_components": ["z"], "nodal_loads": "CURR", "domain": ["STRANDED_COIL"]},
                 "EMF": {"active_components": ["z"], "domain": ["STRANDED_COIL"]}
             },
             "dof_kernels": {
                 "K": [{"trial": "curl(A)", "coeff": "nu", "test": "curl(A)"},
-                      {"trial": "grad(VOLT)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
-                      {"trial": "grad(VOLT)", "coeff": "sigma", "test": "grad(VOLT)", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "grad(V)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "grad(V)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
                       {"trial": "VOLT", "coeff": "coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
                       {"trial": "EMF", "coeff": "-coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
                       {"trial": "VOLT", "coeff": "coil_vv", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "EMF", "coeff": "coil_ee", "test": "EMF", "domain": ["STRANDED_COIL"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(VOLT)", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]}],
                 "F": [{"coeff": "Js", "test": "A", "domain": ["STRANDED_CONDUCTOR"]},
-                      {"coeff": "M", "test": "curl(A)", "domain": ["HARD_MAGNETIC"]}]
+                      {"coeff": "M", "test": "curl(A)", "domain": ["HARD_MAGNETIC", "STRANDED_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR", "STRANDED_COIL"]}]
             },
             "nodal_fields": {
                 "B": {},
@@ -69,20 +73,22 @@
                 "B": [{"trial": "curl(A)"}],
                 "H": [{"trial": "curl(A)", "coeff": "nu"}],
                 "Jt": [{"coeff": "Js", "domain": ["STRANDED_CONDUCTOR"]},
-                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                       {"trial": "grad(VOLT)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
+                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+                       {"trial": "grad(V)", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
                        {"trial": "VOLT", "coeff": "coil_j", "domain": ["STRANDED_COIL"]},
                        {"trial": "EMF", "coeff": "-coil_j", "domain": ["STRANDED_COIL"]}]
             }
         },
         "AV3D_nodal": {
             "dimension": 3,
+            "domains": ["NON_CONDUCTING", "SOFT_MAGNETIC", "HARD_MAGNETIC", "STRANDED_CONDUCTOR", "SOLID_CONDUCTOR",
+                        "STRANDED_COIL"],
             "time_order": 1,
             "constants": {"mu0": "4 * pi * 1e-7"},
             "parameters": {
                 "mat.mur[][]": {},
-                "mat.rho[][]": {"domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                "mat.M[]": {"domain": ["HARD_MAGNETIC"], "default": [0, 0, 0]},
+                "mat.rho[][]": {"domain": ["SOLID_CONDUCTOR"]},
+                "mat.M[]": {"domain": ["HARD_MAGNETIC", "STRANDED_CONDUCTOR", "SOLID_CONDUCTOR", "STRANDED_COIL"], "default": [0, 0, 0]},
                 "me.Js": {"domain": ["STRANDED_CONDUCTOR"]},
                 "mn.AMPS": {},
                 "mn.CURR": {},
@@ -96,7 +102,7 @@
             "expressions": {
                 "nu[][]": "(mu0 * mur).inverse()",
                 "nu_gauge": "cbrt(abs(nu.det()))",
-                "sigma[][]": {"value": "rho.inverse()", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                "sigma[][]": {"value": "rho.inverse()", "domain": ["SOLID_CONDUCTOR"]},
                 "turns_density": {"value": "turns / (cross_section * resistance)", "domain": ["STRANDED_COIL"]},
                 "kvv": {"value": "1 / (resistance * volume)", "domain": ["STRANDED_COIL"]},
                 "coil_av[]": {"value": "-turns_density * T", "domain": ["STRANDED_COIL"]},
@@ -108,7 +114,7 @@
             },
             "dof_fields": {
                 "A": {"finite_elements": "LAGRANGE"},
-                "V": {"nodal_loads": "AMPS", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                "V": {"nodal_loads": "AMPS", "domain": ["SOLID_CONDUCTOR"]},
                 "VOLT": {"nodal_loads": "CURR", "domain": ["STRANDED_COIL"]},
                 "EMF": {"domain": ["STRANDED_COIL"]}
             },
@@ -121,14 +127,12 @@
                       {"trial": "EMF", "coeff": "-coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
                       {"trial": "VOLT", "coeff": "coil_vv", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "EMF", "coeff": "coil_ee", "test": "EMF", "domain": ["STRANDED_COIL"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]}],
                 "F": [{"coeff": "Js", "test": "A", "domain": ["STRANDED_CONDUCTOR"]},
-                      {"coeff": "M", "test": "curl(A)", "domain": ["HARD_MAGNETIC"]}]
+                      {"coeff": "M", "test": "curl(A)", "domain": ["HARD_MAGNETIC", "STRANDED_CONDUCTOR", "SOLID_CONDUCTOR", "STRANDED_COIL"]}]
             },
             "nodal_fields": {
                 "B": {},
@@ -147,8 +151,7 @@
                 "B": [{"trial": "curl(A)"}],
                 "H": [{"trial": "curl(A)", "coeff": "nu"}],
                 "Jt": [{"coeff": "Js", "domain": ["STRANDED_CONDUCTOR"]},
-                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                       {"trial": "grad(dt(V))", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
                        {"trial": "grad(V)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
                        {"trial": "VOLT", "coeff": "coil_j", "domain": ["STRANDED_COIL"]},
                        {"trial": "EMF", "coeff": "-coil_j", "domain": ["STRANDED_COIL"]}]
@@ -167,10 +170,8 @@
                       {"trial": "EMF", "coeff": "-coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
                       {"trial": "VOLT", "coeff": "coil_vv", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "EMF", "coeff": "coil_ee", "test": "EMF", "domain": ["STRANDED_COIL"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]}]
             }
@@ -179,10 +180,10 @@
             "inherits": "AV2D_nodal",
             "dof_kernels": {
                 "K": [{"trial": "curl(A)", "coeff": "nu", "test": "curl(A)"},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(VOLT)", "domain": ["SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(VOLT))", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(VOLT))", "coeff": "sigma", "test": "grad(VOLT)", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(VOLT)", "coeff": "coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
@@ -192,8 +193,8 @@
             },
             "element_kernels": {
                 "Jt": [{"coeff": "Js", "domain": ["STRANDED_CONDUCTOR"]},
-                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                       {"trial": "grad(dt(VOLT))", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
+                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+                       {"trial": "grad(dt(V))", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR"]},
                        {"trial": "dt(VOLT)", "coeff": "coil_j", "domain": ["STRANDED_COIL"]},
                        {"trial": "dt(EMF)", "coeff": "-coil_j", "domain": ["STRANDED_COIL"]}]
             }
@@ -203,10 +204,10 @@
             "dof_kernels": {
                 "K": [{"trial": "curl(A)", "coeff": "nu", "test": "curl(A)"},
                       {"trial": "div(A)", "coeff": "nu_gauge", "test": "div(A)"},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(VOLT)", "coeff": "coil_av", "test": "A", "domain": ["STRANDED_COIL"]},
@@ -216,8 +217,8 @@
             },
             "element_kernels": {
                 "Jt": [{"coeff": "Js", "domain": ["STRANDED_CONDUCTOR"]},
-                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                       {"trial": "grad(dt(V))", "coeff": "-sigma", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                       {"trial": "dt(A)", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
+                       {"trial": "grad(dt(V))", "coeff": "-sigma", "domain": ["SOLID_CONDUCTOR"]},
                        {"trial": "dt(VOLT)", "coeff": "coil_j", "domain": ["STRANDED_COIL"]},
                        {"trial": "dt(EMF)", "coeff": "-coil_j", "domain": ["STRANDED_COIL"]}]
             }
@@ -229,10 +230,10 @@
             },
             "dof_kernels": {
                 "K": [{"trial": "curl(A)", "coeff": "nu", "test": "curl(A)"},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
-                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["CIRCUIT_COUPLED_CONDUCTOR", "SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "dt(A)", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "A", "domain": ["SOLID_CONDUCTOR"]},
+                      {"trial": "grad(dt(V))", "coeff": "sigma", "test": "grad(V)", "domain": ["SOLID_CONDUCTOR"]},
                       {"trial": "dt(A)", "coeff": "coil_va", "test": "VOLT", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(A)", "coeff": "coil_ea", "test": "EMF", "domain": ["STRANDED_COIL"]},
                       {"trial": "dt(VOLT)", "coeff": "coil_av", "test": "A", "domain": ["STRANDED_COIL"]},

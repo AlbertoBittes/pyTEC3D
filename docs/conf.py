@@ -1,6 +1,5 @@
 import os
 import sys
-from datetime import datetime
 
 project = "pyTEC3D"
 author = "pyTEC3D Team"
@@ -16,19 +15,31 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinx.ext.mathjax",
+    # Jupyter notebooks of the user manual, shown with the outputs stored in them (not executed at build time: the
+    # C++ solver is not available on the documentation builders).
+    "myst_nb",
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "refactor_open_points.md", "**.ipynb_checkpoints"]
+
+nb_execution_mode = "off"
+# $...$ and $$...$$ math in the markdown cells, as Jupyter renders it.
+myst_enable_extensions = ["dollarmath", "amsmath"]
+numfig = True
+math_number_all = False
 
 autosummary_generate = True
 autosummary_generate_overwrite = True
-autosummary_imported_members = True
+# Each object is documented once, in its module (the names re-exported by pytec3d point there).
+autosummary_imported_members = False
 suppress_warnings = ["autodoc.mocked_object"]
+# "Attributes:" sections of the docstrings as instance variable fields (no duplicate attribute entries).
+napoleon_use_ivar = True
 
-# Mock heavy optional dependencies to keep RTD builds light
+# Mock heavy optional dependencies to keep RTD builds light (numpy is installed: module-level arithmetic needs it)
 autodoc_mock_imports = [
-    "numpy",
     "mpi4py",
     "vtk",
     "vtkmodules",
@@ -49,3 +60,4 @@ autodoc_default_options = {
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 html_last_updated_fmt = "%Y-%m-%d"
+html_theme_options = {"navigation_depth": 3, "collapse_navigation": False}

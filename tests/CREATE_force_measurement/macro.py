@@ -1,3 +1,41 @@
+# =====================================================================================================================
+# CREATE_force_measurement - static force measurement setup, edge elements
+# =====================================================================================================================
+#
+# What this example shows
+# -----------------------
+# A laboratory electromagnet (static): a racetrack STRANDED COIL around a conducting, saturating iron yoke, on a half
+# model (symmetry = 2). It shows:
+#   * a racetrack coil described piecewise by real constants rows: straight parts with a global winding direction T,
+#     rounded ends with T = (0, 1, 0) in their own cylindrical ELEMENT coordinate systems (91, 92: Z-axis
+#     cylindrical systems centred on the arc centres), so that T is the azimuthal direction of each arc;
+#   * a nonlinear B-H curve on a conducting region (the yoke, SOLID_CONDUCTOR): Newton iterations together
+#     with eddy currents;
+#   * edge elements: tangential A = 0 on the external boundary and a tree-cotree gauge grown from it; the nodes of the plane y = 0
+#     are left out of the tangential condition (symmetry plane where B is tangent);
+#
+# Geometry and mesh (CREATE_force_measurement.vtu): 0 <= x <= 0.2, 0 <= y <= 0.154, -0.1 <= z <= 0.177 m, 170040 HEX20 cells. Named cell arrays: AIR, COIL, COIL1 ... COIL5 (coil pieces), YOKE,
+#   YOKE_LEFT, YOKE_RIGHT, YOKE_BRIDGE, SUPPORT_PLATE.
+#
+# Model data (model_data.json)
+#   Element types: TYPE id -> element_type / option1 (domain) / option2 (FE order) / option3 (axisymmetric)
+#   * 1: 2 = AV3D_edge / NON_CONDUCTING            / 1 / 0   air and support plate
+#   * 2: 2 = AV3D_edge / SOLID_CONDUCTOR           / 1 / 0   yoke: A + V, B-H curve
+#   * 3: 2 = AV3D_edge / STRANDED_COIL             / 1 / 0   coil: A + VOLT + EMF
+#   Materials: 2 yoke (rho = 1.09e-7 Ohm m, B-H curve added by the macro), 3 support plate (rho = 10, not used in a
+#     non-conducting type), 10 coil, 11 air (mur = 1).
+#   Real constants 1-5 (coil pieces): cross_section = 8.16e-5 m^2, turns = 127, volume = 1.27e-5 m^3 (whole coil), resistance = 1.144 Ohm, symmetry = 2, T per piece.
+#   DOF couplings: 1 -> ["VOLT", "EMF"] (coil terminals).   Nonlinear laws: bh_curve on MATERIAL 2.
+#
+# Loads: one static step (t = 1e-5 s): coil current CURR = 5 A on the master node of the coil terminal (the current of
+#   the whole coil, symmetry = 2).
+# Results: output/CREATE_force_measurement_out_<n>.vtu (A, V, VOLT, EMF, B, H, Jt), CREATE_force_measurement_steps.csv, CREATE_force_measurement.log
+#
+# How to run:  cd tests/CREATE_force_measurement && python macro.py
+# Documentation: "User manual - coordinate systems, nonlinear laws", "Element library" (stranded coil).
+# =====================================================================================================================
+
+
 from pytec3d import selection, Solver, tree_gauge
 import os
 from pytec3d.coordinate_system import CylindricalCoordinateSystem
@@ -7,10 +45,11 @@ import vtk.util.numpy_support as vtknp
 
 # from convert_mesh import convert_mesh_from_cdb
 
+# 1. Solver and model files.
 pytec3d = Solver()
 
 # convert_mesh_from_cdb(
-#     r"D:\PlasmaArc\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
+#     r"D:\pyTEC3D\simulations\single_wire_edge_elements\single_wire_edge_elements.cdb"
 # )
 filename = "CREATE_force_measurement"
 
@@ -51,6 +90,8 @@ pytec3d.model.read_json("model_data.json")
 #     [8303.31592013, 2.11657067391],
 # ]
 
+# 2. B-H curve of the yoke (rows [H, B]): selects the bh_curve law on MATERIAL 2. The last point (B = 5 T) gives the
+#    slope of the curve in deep saturation, where it is extended linearly.
 pytec3d.model.set_bh_curve(2, [
     [0.0, 0.0],
     [100.0, 0.31],
@@ -111,6 +152,7 @@ pytec3d.model.set_bh_curve(2, [
 # ])
 
 # Coupling for stranded coils
+# 3. Coil terminals: VOLT and EMF of all the coil nodes coupled (CP_0 = 1); master = lowest node id.
 selection.select(pytec3d.model.mesh, "TYPE", 3, location="elem")
 selection.nsle(pytec3d.model.mesh)
 selection.set_value_on_selection(pytec3d.model.mesh, "CP_0", 1)
@@ -119,6 +161,8 @@ master_node = vtknp.vtk_to_numpy(
 ).nonzero()[0][0]
 
 # Specify coil rounds' ESYS
+# 4. Element coordinate systems of the two rounded ends of the racetrack: cylindrical systems centred on the arc
+#    centres; the cells of the real constants rows 2 and 4 use them, so that T = (0, 1, 0) is azimuthal there.
 xc0, yc0, zc0 = 0.01786, 0.012965, 0.04555
 xc1, yc1, zc1 = 0.01786, 0.050605, 0.04555
 
@@ -136,21 +180,26 @@ selection.select(pytec3d.model.mesh, "CONSTANT", 4, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 92, location="elem")
 
 # Az: Symmetry BCs + Far field + Tree Gauging
+# 5. Tangential A = 0 on the external boundary (component 2 of _A on the midside nodes), then the tree-cotree gauge
+#    over the edges of all the cells, grown from the boundary nodes.
 selection.select_all(pytec3d.model.mesh)
 selection.nsel_ext(pytec3d.model.mesh)
 selection.select_pos(pytec3d.model.mesh, 1, (-1e-6, 1e-6), mode="u")
 selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0.0, 2)
 tree_gauge.tree_gauge(pytec3d.model.mesh)
 
+# 6. Load the model; one static step.
 pytec3d.load_model_into_solver()
 
 pytec3d.time_step["time"] = 0.00001
 pytec3d.time_step["transient_effects"] = False
 
+# 7. Coil current CURR = 5 A on the master node of the coil terminal, solve, write the output.
 selection.select(pytec3d.model.mesh, "ID", master_node)
-selection.set_value_on_selection(pytec3d.model.mesh, "AMPS", 5)
+selection.set_value_on_selection(pytec3d.model.mesh, "CURR", 5)
 
 pytec3d.solve()
 pytec3d.write_output()
 
+# 8. Save the solved model (overwrites the input .vtu when run from the case folder).
 pytec3d.save_model()
