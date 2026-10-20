@@ -281,8 +281,7 @@ pyTEC3DDOFSystem<ImplicitSys>::pyTEC3DDOFSystem(libMesh::EquationSystems &es, co
     global_constraints_object_ = std::make_unique<GlobalConstraintsObject<ImplicitSys>>(*this);
     this->attach_constraint_object(*global_constraints_object_);
     for (const char *vector_name : {pyTEC3DSystemBase::kVelocity, pyTEC3DSystemBase::kAcceleration,
-                                    pyTEC3DSystemBase::kOldVelocity, pyTEC3DSystemBase::kOldAcceleration,
-                                    pyTEC3DSystemBase::kMeanVelocity})
+                                    pyTEC3DSystemBase::kOldVelocity, pyTEC3DSystemBase::kOldAcceleration})
         this->add_vector(vector_name, true, libMesh::GHOSTED);
 }
 
@@ -361,8 +360,6 @@ void pyTEC3DDOFSystem<ImplicitSys>::update_time_derivatives()
     };
     update(this->get_vector(pyTEC3DSystemBase::kVelocity), scheme.c_v, scheme.hu_v, scheme.hv_v, scheme.ha_v);
     update(this->get_vector(pyTEC3DSystemBase::kAcceleration), scheme.c_a, scheme.hu_a, scheme.hv_a, scheme.ha_a);
-    const libMesh::Real rate = scheme.transient() ? 1.0 / this->current_time_step()->dt : 0.0;
-    update(this->get_vector(pyTEC3DSystemBase::kMeanVelocity), rate, -rate, 0.0, 0.0);
 }
 
 template <typename ImplicitSys>

@@ -314,11 +314,11 @@ void ElementBuilder::build_fields(pytec3d::FieldKind kind, System &system)
     const bool constants = (type.field_operators(kind, domain) & 8u) != 0;
     const auto needs = [&](std::size_t k) { return dynamic || (k < stored.size() && stored[k].m() > 0); };
 
-    // The solution and, where a field reads them, its rates: first-order models report the mean rate over the
-    // step, second-order ones the scheme velocity.
+    // The solution and, where a field reads them, its rates: the velocity and acceleration of the time scheme, the
+    // ones of the equations at the end of the step (with theta < 1 the mean rate (u - u_n) / dt would not satisfy them).
     const DenseVector<Number> u = local_dof_vector(dof_solution_system_->current_local_solution.get());
-    const char *velocity = equation_systems_->time_order() >= 2 ? pyTEC3DSystemBase::kVelocity : pyTEC3DSystemBase::kMeanVelocity;
-    const DenseVector<Number> u_dt = needs(1) ? local_dof_vector(&dof_solution_system_->get_vector(velocity)) : DenseVector<Number>();
+    const DenseVector<Number> u_dt = needs(1) ? local_dof_vector(&dof_solution_system_->get_vector(pyTEC3DSystemBase::kVelocity))
+                                              : DenseVector<Number>();
     const DenseVector<Number> u_ddt = needs(2) ? local_dof_vector(&dof_solution_system_->get_vector(pyTEC3DSystemBase::kAcceleration))
                                                : DenseVector<Number>();
     DenseVector<Number> field_values(field_indices.n_dofs);

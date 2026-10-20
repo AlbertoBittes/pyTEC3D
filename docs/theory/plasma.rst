@@ -260,7 +260,7 @@ correction, so a residual field
    \mathbf B_t = \big(\mathbb 1 + M_c M^{-1}\big)^{-1}\mathbf B_0
 
 remains at the target (neglecting the reaction of the plasma, which moves with the field): the axis converges
-*near* the target, closer for a larger loop gain :math:`M_cM^{-1}`. In ``tests/ITER_2D`` the ``b*_value`` are the
+*near* the target, closer for a larger loop gain :math:`M_cM^{-1}`. In ``tests/examples/ITER_2D`` the ``b*_value`` are the
 fields of unit gains while the gains are 0.5 (:math:`M_c = M/2`), and the axis converges about 5 cm from the target
 with a residual field of a few mT (see :doc:`../tutorials/tutorial_iter_equilibrium`). The control currents are a
 small fraction of the coil currents (a few percent in [APEC2018]_). Control is used only for the equilibrium; during
@@ -324,7 +324,7 @@ coil has the A-VOLT-EMF formulation,
 
 with its terminal voltage fixed to the value that sustains its equilibrium current, :math:`\mathrm{VOLT} = R\,i_0`.
 During the transient the induced EMF changes the coil currents; a larger resistance reduces the stabilizing effect (the
-limit :math:`R\to\infty` gives fixed currents). See ``tests/ITER_2D_evol_coils`` and ``tests/ITER_3D_evol_coils``.
+limit :math:`R\to\infty` gives fixed currents). See ``tests/examples/ITER_2D_evol_coils`` and ``tests/examples/ITER_3D_evol_coils``.
 
 .. _theory-plasma-3d:
 

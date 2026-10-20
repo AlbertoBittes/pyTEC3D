@@ -19,6 +19,7 @@ parallel C++ solver (libMesh, PETSc, MUMPS) assembles and solves the finite-elem
 
    getting_started
    installation
+   testing
    tutorials/index
    user_manual/index
    theory/index

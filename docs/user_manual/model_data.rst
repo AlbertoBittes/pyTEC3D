@@ -76,8 +76,8 @@ element_types
      - FE order of the Lagrange fields, 1 or 2 (default 1). Order 2 needs quadratic cells. Edge fields are always
        first-order Nedelec; ``option2`` then sets the order of V, VOLT and EMF.
    * - ``option3``
-     - 1 for a 2D axisymmetric model (about the y axis), 0 otherwise (default 0). Must be the same in every row, and 0
-       for 3D cells.
+     - 1 for a 2D axisymmetric model (about the y axis), 0 otherwise (default 0). Must be the same in the rows used by
+       the cells (rows no cell uses are free), and 0 for 3D cells.
 
 Rules checked when the model is loaded:
 
@@ -157,7 +157,7 @@ constants (real constants)
        thickness``.
    * - ``volume``
      - number
-     - 3D stranded coil: volume of the **whole** coil [m^3] (also when only a sector is modelled).
+     - 3D stranded coil: volume of the **whole** real coil Vc [m^3] (also when only a sector is modelled).
    * - ``symmetry``
      - number
      - Stranded coil: ratio between the whole coil and the modelled part (1 for a full coil, 12 for a 30 degree
@@ -165,6 +165,14 @@ constants (real constants)
    * - ``T``
      - 3-vector
      - Stranded coil: winding direction (unit vector, in the element coordinate system of the cell).
+
+**Coil volume and symmetry** (:ref:`theory-stranded-coil`, [MAPDLTheory2024]_). The current density of the coil
+is ``(N / S) i T`` with ``i = (VOLT - EMF) / R`` and the resistance term of the circuit equation is
+``symmetry / (R Vc)`` integrated over the modelled coil cells, Vc the coil volume above. The coil current is the
+imposed ``CURR`` exactly when ``symmetry * V_model = Vc``, V_model the volume of the modelled coil cells: ``symmetry``
+accounts for the part of the coil that is not modelled. If the mesh does not represent the coil volume exactly (a
+curved coil meshed with flat facets), the current density differs from ``N CURR / S`` by the factor
+``Vc / (symmetry * V_model)`` (1.8e-3 for a 30 degree sector in 5 straight divisions).
 
 A coil made of straight and curved pieces uses one row per piece (with its own ``T``) and the same terminal coupling
 for all of them. ``CONSTANT`` ids used by the cells but absent from the section are warned about; the solver reports

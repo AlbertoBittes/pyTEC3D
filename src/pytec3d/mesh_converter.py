@@ -1,6 +1,7 @@
 """Conversion of ANSYS ``.cdb`` meshes to pytec3d ``.vtu`` meshes.
 
-Needs ``ansys-mapdl-reader`` (``pip install ansys-mapdl-reader``). Command line::
+Needs ``ansys-mapdl-reader``, installed by ``build.sh`` (by hand: ``pip install --no-deps ansys-mapdl-reader appdirs
+tqdm``: its declared requirements conflict with the conda packages of the solver). Command line::
 
     pytec3d-convert-cdb mesh.cdb      # writes mesh.vtu next to it
 """
@@ -62,7 +63,9 @@ def convert_cdb(path: PathType) -> str:
     try:
         from ansys.mapdl import reader as mapdl_reader
     except ImportError as exc:
-        raise ImportError("Converting .cdb files needs 'ansys-mapdl-reader': pip install ansys-mapdl-reader.") from exc
+        raise ImportError(
+            "Converting .cdb files needs 'ansys-mapdl-reader': pip install --no-deps ansys-mapdl-reader appdirs tqdm."
+        ) from exc
 
     LOGGER.info("Converting '%s'.", file_path)
     grid = mapdl_reader.Archive(file_path).grid

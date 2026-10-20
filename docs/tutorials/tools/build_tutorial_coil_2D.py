@@ -18,7 +18,7 @@ def code(text):
 md("""
 # Tutorial: a 2D axisymmetric coil, step by step
 
-This notebook builds and runs a complete pyTEC3D analysis interactively: the case `tests/coil_2D_avolt`. Two rings of
+This notebook builds and runs a complete pyTEC3D analysis interactively: the case `docs/tutorials/data/coil_2D_avolt`. Two rings of
 square cross-section sit one above the other, in 2D axisymmetry about the y axis:
 
 * the **lower ring** is a *circuit-coupled conductor*, a massive conductor with a terminal: its current is not imposed
@@ -55,7 +55,7 @@ import pytec3d
 from pytec3d import Solver, selection, element_library
 from pytec3d import mesh as meshes
 
-CASE = Path("../../tests/coil_2D_avolt").resolve()           # the test case of the repository
+CASE = Path("data/coil_2D_avolt").resolve()           # the test case of the repository
 WORK = Path(tempfile.mkdtemp(prefix="pytec3d_tutorial_"))   # a scratch working directory
 for name in ("coil_2D_avolt.vtu", "model_data.json"):
     shutil.copy(CASE / name, WORK / name)
@@ -202,8 +202,8 @@ md("""
 ## 7. Time steps
 
 `time_step["time"]` is the end time of each step; the first step starts at t = 0 from zero fields. We use backward
-Euler (theta = 1): it damps the sudden changes of excitation of this example. (The test macro uses theta = 0.5; see
-the remark on theta at the end of section 8.) (User manual: *Time Steps and Analysis Types*.)
+Euler (theta = 1): it damps the sudden changes of excitation of this example; a lower theta is only for smooth
+excitations (see the remark on theta at the end of section 8). (User manual: *Time Steps and Analysis Types*.)
 
 * Step 1: `AMPS = 100` on the master node: 100 A through the ring (current driven).
 * Steps 2-4: `AMPS = 0` and `_V = 1e-3`: the ring is now driven by 1 mV across its circumference; its current
@@ -258,15 +258,15 @@ for t, volt, i_active, i_passive in history:
 md("""
 Two things to notice:
 
-* At step 1 the estimate of the active current is about 155 A, not the 100 A imposed: the time step (10 us) is much
-  shorter than the diffusion time of the ring, so the current flows in a skin layer far thinner than the cells, and
-  the element value of `Jt` is the plain mean of its values at the quadrature points of the cell. The solver imposes
-  exactly 100 A; it is the post-processing of a field that varies strongly inside a cell that is inaccurate. Refine
-  the mesh near the surface, or integrate the current from the nodal solution, for integral quantities.
-* With theta = 0.5 (the test macro) the element `Jt` uses the mean rate of A over the step, while the Crank-Nicolson
-  equations use the theta velocity: after a sudden change of excitation the two differ, and the estimated currents
-  oscillate from step to step with huge values. Use theta close to 1 when the currents are post-processed after
-  sudden changes (User manual: *Time Steps and Analysis Types*).
+* At step 1 the estimated active current is the 100 A imposed: the element value of `Jt` is the mean over the cell
+  area, so `Jt * area` summed over the ring is its current, even though the time step (10 us) is much shorter than the
+  diffusion time of the ring and the current flows in a skin layer far thinner than the cells. The distribution
+  inside a cell is not resolved: refine the mesh near the surface where local values matter.
+* Theta: `Jt` uses the rate of A of the time scheme, the one of the equations, so its sums match the terminal current
+  for any theta. The theta itself matters after the sudden changes of this example (100 A at t = 0, then the switch
+  to voltage drive): with theta = 0.5 the active ring settles near 200 A instead of 100 A, because half of the rate
+  of step 1 (the voltage that built up the 100 A) still acts at step 2. Use theta = 1 after sudden changes, a lower
+  theta only for smooth excitations (User manual: *Time Steps and Analysis Types*).
 """)
 
 md("""
@@ -346,7 +346,8 @@ md("""
 
 * Change the excitation: drive step 1 by a voltage instead (`_V` on the master node, `AMPS = 0`), or add steps to
   see the currents decay with `_V = 0` (a shorted ring, like the solid one).
-* Run the same steps with theta = 0.5 and compare the ring currents (section 8).
+* Run the same steps with theta = 0.5 and compare the ring currents (section 8); then run step 1 with theta = 1 and
+  the next ones with theta = 0.5.
 * Make the first step static (`time_step["transient_effects"] = False`): the passive ring then carries no current at
   step 1.
 * Use the time-integrated formulation: set `"element_type": "AV2D_nodal_timint"` in every row of the model data

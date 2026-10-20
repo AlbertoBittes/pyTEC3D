@@ -21,7 +21,8 @@ Repository = "https://github.com/AlbertoBittes/pyTEC3D"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
-cdb = ["ansys-mapdl-reader"]
+# ansys-mapdl-reader (pytec3d-convert-cdb) is installed by build.sh with --no-deps, after this package: its requirements conflict with
+# the conda packages of the solver. Manually: pip install --no-deps ansys-mapdl-reader appdirs tqdm
 # Tutorial notebooks of the documentation (they also use pyvista, installed with conda: see the installation docs).
 notebooks = ["matplotlib", "ipykernel"]
 

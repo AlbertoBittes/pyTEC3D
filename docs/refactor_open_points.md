@@ -3,13 +3,12 @@
 State after the JSON element library refactor (branch `operator-version`, commits `df88eae`, `a84fca2`).
 Reference for the physics: `main` at `3e16de0`; the comparison tests (no CREATE / APEC) match it.
 
-## Decisions pending
+## Decisions taken
 
-- **Element field average.** Element fields are the plain mean of the quadrature-point values, as on `main`.
-  Candidates: area-weighted mean (sum JxW v / sum JxW, without the 2 pi r and thickness factor), so that
-  sum(Jt * area) gives the current through a section; or volume-weighted. The difference is large where a field
-  varies strongly inside an element (2D solid conductors on 8-node quads: up to 30-40 % per cell). Integral
-  quantities (currents, losses, forces) are better computed by a dedicated integration than from element values.
+- **Element field average:** JxW-weighted mean (sum JxW v / sum JxW, without the 2 pi r and thickness factor),
+  so that sum(Jt * area) is the current through a section (`ElementEvaluator::mean_weights`).
+- **Stranded coil volume:** as ANSYS (A-VOLT-EMF): Vc is the real coil volume (`volume`, or from `radius`), the
+  modelled part is accounted for by `symmetry`; J = N i / S exactly only when symmetry * V_model = Vc.
 
 ## Deferred on purpose
 
@@ -45,9 +44,9 @@ Reference for the physics: `main` at `3e16de0`; the comparison tests (no CREATE 
 
 ## Found while documenting the tests (2026-10-17)
 
-- **Output rates for theta < 1.** Derived fields use the mean rate `(u - u_n)/dt`, the equations the theta velocity.
-  After a sudden change they differ a lot: `coil_2D_avolt` with theta = 0.5 gives element `Jt` sums of +-2 MA for a
-  100 A load, alternating in sign (theta = 1: 155 A, the plain-mean issue above).
+- **Output rates for theta < 1** (resolved 2026-10-20). Derived fields used the mean rate `(u - u_n)/dt`, the
+  equations the theta velocity: `coil_2D_avolt` with theta = 0.5 gave element `Jt` sums of +-2 MA for a 100 A load.
+  They now use the scheme velocity (as MAPDL): 100.0 A. Theta = 1 is documented for sudden changes.
 
 ## Found while writing the plasma tutorials (2026-10-18)
 

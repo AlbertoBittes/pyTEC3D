@@ -516,11 +516,6 @@ class _ModelChecker:
             if element_type is not None and domain is not None and order in (1, 2) and axisymmetric in (0, 1):
                 resolved[type_id] = {"element_type": element_type, "axisymmetric": int(axisymmetric)}
 
-        if len({spec["axisymmetric"] for spec in resolved.values()}) > 1:
-            self.problems.append(
-                "element_types: option3 (axisymmetric) must be the same in every row; found "
-                f"{ {i: spec['axisymmetric'] for i, spec in resolved.items()} }."
-            )
         self.mesh_ids("element_types", rows, self.type_ids, missing_is_error=True)
         self.cell_dimensions(resolved)
         return rows
@@ -533,7 +528,8 @@ class _ModelChecker:
         return int(value) if _is_index(value, len(names)) else None
 
     def cell_dimensions(self, resolved: dict[int, dict[str, int]]) -> None:
-        """One element type for the whole mesh, of the dimension of its cells; 3D cells not axisymmetric."""
+        """One element type and one option3 for the cells of the mesh, of the dimension of the cells; 3D cells not
+        axisymmetric. Only the rows used by cells are checked: the model data may define more (unused) rows."""
         active = sorted(set(np.unique(self.type_ids).tolist()) & set(resolved))
         if not active:
             return
@@ -542,6 +538,11 @@ class _ModelChecker:
             self.problems.append(
                 "element_types: all the cells must have the same element_type, found "
                 f"{ {t: self.element_type_names[resolved[t]['element_type']] for t in active} }."
+            )
+        if len({resolved[t]["axisymmetric"] for t in active}) > 1:
+            self.problems.append(
+                "element_types: the cells must be all planar or all axisymmetric (option3), found "
+                f"{ {t: resolved[t]['axisymmetric'] for t in active} }."
             )
         dimensions = meshes.cell_dimensions(self.mesh)
         for type_id in active:

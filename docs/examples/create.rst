@@ -56,23 +56,23 @@ The macros
 CREATE_B_measurement
 ~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/CREATE_B_measurement/macro.py
+.. literalinclude:: ../../tests/examples/CREATE_B_measurement/macro.py
    :language: python
 
 CREATE_B_measurement_nodal
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/CREATE_B_measurement_nodal/macro.py
+.. literalinclude:: ../../tests/examples/CREATE_B_measurement_nodal/macro.py
    :language: python
 
 CREATE_force_measurement
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/CREATE_force_measurement/macro.py
+.. literalinclude:: ../../tests/examples/CREATE_force_measurement/macro.py
    :language: python
 
 CREATE_force_measurement_nodal
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/CREATE_force_measurement_nodal/macro.py
+.. literalinclude:: ../../tests/examples/CREATE_force_measurement_nodal/macro.py
    :language: python

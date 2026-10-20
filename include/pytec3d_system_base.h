@@ -50,9 +50,6 @@ public:
     static constexpr const char *kAcceleration = "solution_second_time_derivative";
     static constexpr const char *kOldVelocity = "old_solution_time_derivative";
     static constexpr const char *kOldAcceleration = "old_solution_second_time_derivative";
-    /// Mean rate of the solution over the step, (u - u_n) / dt: the dt() of the nodal and element fields of
-    /// first-order models (with theta < 1 the scheme velocity oscillates from step to step).
-    static constexpr const char *kMeanVelocity = "solution_mean_time_derivative";
     static const std::string &system_name_from_type(SystemType system_type);
     static SystemType system_type_from_name(const std::string &system_name);
 };

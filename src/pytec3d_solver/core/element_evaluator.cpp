@@ -518,17 +518,19 @@ namespace pytec3d
             void average(const ElementType::FieldRange &ids, Vector &values)
             {
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(spec.evaluations[E].field)];
-                ParameterValue mean = ParameterValue::zero(field.value);
-                for (const ParameterValue &point : point_values<E>())
-                    mean += point;
+                const std::vector<Real> &w = mean_weights();
+                const std::vector<ParameterValue> points = point_values<E>();
                 for (std::size_t c = 0; c < ids.size(); ++c)
                 {
-                    Real total;
-                    if constexpr (field.value == ValueType::Vector)
-                        total = mean.vector()(field.components[c]);
-                    else
-                        total = mean.scalar();
-                    values(ids[c]) = total / static_cast<Real>(nq_);
+                    Real total = 0.0;
+                    for (std::size_t qp = 0; qp < points.size(); ++qp)
+                    {
+                        if constexpr (field.value == ValueType::Vector)
+                            total += w[qp] * points[qp].vector()(field.components[c]);
+                        else
+                            total += w[qp] * points[qp].scalar();
+                    }
+                    values(ids[c]) = total;
                 }
             }
 
@@ -582,7 +584,7 @@ namespace pytec3d
                 constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
                 using Out = cpp_t<field.value>;
-                const Real inverse_count = 1.0 / static_cast<Real>(nq_);
+                const std::vector<Real> &w = mean_weights();
                 static_for<evaluation.n_terms>([&](auto i)
                                                {
                     constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
@@ -593,7 +595,7 @@ namespace pytec3d
                         const KernelResult &k = kernel<term.kernel>();
                         for (std::size_t c = 0; c < ids.size(); ++c)
                             for (std::size_t qp = 0; qp < nq_; ++qp)
-                                values(ids[c]) += inverse_count * component_of(k.values[qp].template get<Out>(), field.components[c]);
+                                values(ids[c]) += w[qp] * component_of(k.values[qp].template get<Out>(), field.components[c]);
                     } });
             }
 
@@ -629,7 +631,7 @@ namespace pytec3d
                 constexpr formulation::EvaluationSpec evaluation = spec.evaluations[E];
                 constexpr formulation::FieldSpec field = spec.fields[static_cast<std::size_t>(evaluation.field)];
                 using Out = cpp_t<field.value>;
-                const Real inverse_count = 1.0 / static_cast<Real>(nq_);
+                const std::vector<Real> &w = mean_weights();
                 static_for<evaluation.n_terms>([&](auto i)
                                                {
                     constexpr formulation::TermSpec term = spec.terms[evaluation.first_term + i];
@@ -643,7 +645,7 @@ namespace pytec3d
                         for (std::size_t c = 0; c < ids.size(); ++c)
                             for (std::size_t qp = 0; qp < nq_; ++qp)
                                 for (std::size_t j = 0; j < columns.size(); ++j)
-                                    target(ids[c], columns[j]) += inverse_count * component_of(table[qp][j], field.components[c]);
+                                    target(ids[c], columns[j]) += w[qp] * component_of(table[qp][j], field.components[c]);
                     } });
             }
 
@@ -717,11 +719,31 @@ namespace pytec3d
                 return factors_[K];
             }
 
+            /**
+             * @brief Weights of the element means: JxW / sum(JxW), JxW without the out-of-plane length (the area of a 2D
+             * cell, the volume of a 3D one), so that the element value times the cell area (2D) or volume (3D) is the
+             * integral of the field over the cell (e.g. sum(Jt * area) = the current through a 2D section).
+             */
+            const std::vector<Real> &mean_weights()
+            {
+                if (mean_weights_.size() != nq_)
+                {
+                    mean_weights_.assign(nq_, 0.0);
+                    Real total = 0.0;
+                    for (std::size_t qp = 0; qp < nq_; ++qp)
+                        total += mean_weights_[qp] = weights_[qp] / length_[qp];
+                    for (Real &v : mean_weights_)
+                        v = total > 0.0 ? v / total : 1.0 / static_cast<Real>(nq_);
+                }
+                return mean_weights_;
+            }
+
             const Inputs in_;
             const ElementType &type_;
             std::size_t nq_ = 0;
             std::vector<Real> weights_;
             std::vector<Real> length_;
+            std::vector<Real> mean_weights_;
             std::array<ValueTable, kNablas> tables_{};
             std::array<bool, kNablas> table_done_{};
             std::array<KernelResult, kKernels> kernels_;

@@ -12,6 +12,8 @@ Finite elements for eddy currents
    IEEE Transactions on Magnetics 31(3), 1342-1347 (1995).
 .. [Meunier2008] G. Meunier (ed.), *The Finite Element Method for Electromagnetic Modeling*, ISTE / Wiley (2008):
    potential formulations, stranded and massive conductors, circuit coupling.
+.. [MAPDLTheory2024] *Mechanical APDL Theory Reference*, Release 2024 R2, section 5.4 "Stranded Coil Analyses"
+   (A-VOLT-EMF formulation: coil volume, symmetry factor, time-integrated variant).
 
 Plasma equilibrium and evolution
 --------------------------------

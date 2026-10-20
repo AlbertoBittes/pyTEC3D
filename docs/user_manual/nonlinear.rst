@@ -60,7 +60,7 @@ The curve
 * The curve is **piecewise linear** between the points and is extended beyond the last point along its last segment
   (and below the first along the first). Give the table up to deep saturation, and make the last segment have the
   slope you want there (close to :math:`\mu_0` in B per H, i.e. :math:`dH/dB\approx1/\mu_0`): adding a far point such
-  as ``[2.34e6, 5.0]`` does that (``tests/CREATE_B_measurement``).
+  as ``[2.34e6, 5.0]`` does that (``tests/examples/CREATE_B_measurement``).
 * The initial reluctivity (:math:`B\to0`) is the slope of the first segment.
 * Use a monotone table (H increasing with B): a decreasing segment makes the tangent indefinite and Newton may fail.
 * The ``mur`` of the material is still required by validation but is not used where the law applies.

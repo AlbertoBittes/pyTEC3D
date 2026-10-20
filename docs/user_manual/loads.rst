@@ -47,7 +47,7 @@ fed by a current source, a plasma current density given by the plasma algorithm)
 * Curved coils: give the components in a cylindrical **element coordinate system** (``COORDINATE_SYSTEM`` of the coil
   cells; Js[1] is then the toroidal component), or compute the global components yourself
   (``model_edit.map_vector_field_to_global_components`` converts an array given in the components of a coordinate
-  system; or write them with NumPy from ``cell_centroids``). See ``tests/ITER_coil_3D*``.
+  system; or write them with NumPy from ``cell_centroids``). See ``tests/apdl_benchmarks/sphere_coil_3D*``.
 
 Current or voltage of a 2D conductor with a terminal and of a coil
 ------------------------------------------------------------------

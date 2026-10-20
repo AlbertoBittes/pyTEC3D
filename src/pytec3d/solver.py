@@ -24,7 +24,7 @@ from . import mesh as meshes
 from ._logging import close_log_file, get_logger, message_counts, open_log_file, world_rank
 from ._report import Table, print_table, provenance_table
 from ._typing import Location, PathType
-from .errors import SolverStateError
+from .errors import ConvergenceError, SolverStateError
 from .model import Model
 from .validation import check_before_solve, check_model, check_solver_settings, load_time_arrays
 
@@ -503,6 +503,8 @@ class Solver:
         Raises:
             SolverStateError: If the model is not loaded into a solver session.
             ValidationError: If the time step is invalid or arrays are missing.
+            ConvergenceError: If the Newton solver of a nonlinear model does not converge (the step is recorded and the
+                mesh holds the last iterate).
             RuntimeError: If the C++ solver fails (in a parallel run it aborts instead).
         """
         if self._session is None:
@@ -518,7 +520,14 @@ class Solver:
         self._session.solve(step)
         seconds = time.perf_counter() - start
         LOGGER.info("t = %g solved in %.2f s.", step["time"], seconds)
-        self._record_step(self._session.last_step_report(), seconds)
+        report = self._session.last_step_report()
+        self._record_step(report, seconds)
+        if report["nonlinear"] and not _newton_converged(report["newton_result"]):
+            raise ConvergenceError(
+                f"t = {step['time']:g}: the Newton solver did not converge ({report['newton_result']}, "
+                f"{report['newton_iterations']} iteration(s)). See solver_settings['nonlinear'] (line search, "
+                "iterations, tolerances), the loads and the nonlinear laws."
+            )
 
     def _record_step(self, report: dict[str, Any], seconds: float) -> None:
         nonlinear = bool(report["nonlinear"])
@@ -538,6 +547,16 @@ class Solver:
             "output": None,
             "report": report,
         })
+
+
+#: Newton results (``newton_result`` of the step report) that mean convergence, and those that mean failure.
+_NEWTON_CONVERGED = ("absolute residual", "relative residual", "absolute step", "relative step")
+_NEWTON_FAILED = ("maximum iterations reached", "line search failed", "linear solver failed", "diverged")
+
+
+def _newton_converged(result: str) -> bool:
+    """True when the Newton result names a convergence test and no failure."""
+    return any(r in result for r in _NEWTON_CONVERGED) and not any(r in result for r in _NEWTON_FAILED)
 
 
 def _package_version() -> str:

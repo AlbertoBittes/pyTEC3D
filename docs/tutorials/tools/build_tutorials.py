@@ -463,9 +463,8 @@ pl.show()
 * step 2, transient (dt = 1 ms): Js = 100 A/m^2, a sudden rise: the shorted rod reacts;
 * step 3, transient: Js = 0, the source is switched off.
 
-The test macro uses theta = 0.75 and 0.65 for these steps; here we use theta = 1: after a sudden change the element
-current density, which uses the mean rate of A over the step, is only consistent with the solution for theta = 1
-(see the remark at the end of section 8 of the first tutorial).
+We use theta = 1 (backward Euler) for these steps: they are sudden changes of the source, and theta < 1 would carry
+part of the rate before each change into the next step (see the remark at the end of section 8 of the first tutorial).
 
 The current through the shorted rod is estimated from its element current density, `J_z * volume / length` summed
 over its cells (the mean over its length).

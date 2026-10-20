@@ -117,12 +117,12 @@ iteration appends a row to ``__pytec3d__/pytec3d_iteration_diagnostics.csv``.
 A complete workflow
 -------------------
 
-#. **Equilibrium** (``tests/ITER_2D``): 2D axisymmetric, static; coil current densities in the coils, a uniform initial
+#. **Equilibrium** (``tests/examples/ITER_2D``): 2D axisymmetric, static; coil current densities in the coils, a uniform initial
    plasma current density in the vacuum chamber; ``algorithm.equilibrium_solve()``; ``solver.write_output()``.
-#. **Evolution** (``tests/ITER_2D_evol``, ``tests/ITER_3D_evol``): read the equilibrium output as the vacuum-chamber
+#. **Evolution** (``tests/examples/ITER_2D_evol``, ``tests/examples/ITER_3D_evol``): read the equilibrium output as the vacuum-chamber
    mesh, copy its current densities (coils, plasma) into ``Js`` of the evolution model (same cells), set the
    conductors (vessel, structures) as conducting domains; then a static first step and transient steps following the
    plasma current and beta waveforms, one ``evolution_solve()`` per step. Coils can be fixed current densities
-   (stranded conductors) or voltage-driven stranded coils (``tests/ITER_2D_evol_coils``).
+   (stranded conductors) or voltage-driven stranded coils (``tests/examples/ITER_2D_evol_coils``).
 
 See :doc:`../examples/iter`.

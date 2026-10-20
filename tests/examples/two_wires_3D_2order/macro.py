@@ -47,11 +47,9 @@ pytec3d.read_model(filepath)
 
 pytec3d.model.read_json("model_data.json")
 
-# 2. Planes x = +-0.5 m (axis 0): all the components of A fixed to zero.
-#    Note: the x faces of this mesh are at x = +-1 m; the planes x = +-0.5 m hold (almost) no node, so this
-#    selection constrains (almost) nothing.
-selection.select_pos(pytec3d.model.mesh, 0, (0.499, 0.50001))
-selection.select_pos(pytec3d.model.mesh, 0, (-0.501, -0.49999), mode="a")
+# 2. Faces x = +-1 m (axis 0): all the components of A fixed to zero.
+selection.select_pos(pytec3d.model.mesh, 0, (0.999, 1.00001))
+selection.select_pos(pytec3d.model.mesh, 0, (-1.001, -0.99999), mode="a")
 selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 0)
 selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 1)
 selection.set_value_on_selection(pytec3d.model.mesh, "_A", 0, 2)

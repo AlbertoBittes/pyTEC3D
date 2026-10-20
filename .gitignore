@@ -94,3 +94,7 @@ docs/generated/
 
 # Job logs of the runs (Solver log_file)
 *.log
+
+# APDL benchmark repository (separate git repo, fetched by tests/test_apdl_benchmarks.py)
+/pyTEC3D_APDL_benchmarks/
+/APEC/

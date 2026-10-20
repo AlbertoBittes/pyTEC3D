@@ -94,7 +94,8 @@ The workflow
 A first analysis
 ----------------
 
-The example below is the complete script of ``tests/coil_2D_avolt``: two rings in 2D axisymmetry, the lower one a
+The example below is the complete script of ``docs/tutorials/data/coil_2D_avolt`` (with its mesh and model data):
+two rings in 2D axisymmetry, the lower one a
 massive conductor with a terminal (``CIRCUIT_COUPLED_CONDUCTOR``) driven first by its current and then by its voltage,
 the upper one a passive ring (``SOLID_CONDUCTOR``) where eddy currents are induced. The :doc:`tutorial notebook <tutorials/tutorial_coil_2D>` runs the same analysis step by step
 and looks at the results.
@@ -122,7 +123,7 @@ and looks at the results.
        master = selection.selected_ids(mesh, "node")[0]
 
        solver.load_model_into_solver()
-       solver.time_step["theta"] = 0.5            # Crank-Nicolson
+       solver.time_step["theta"] = 1.0            # backward Euler: the loads change suddenly
 
        for i in (1, 2):
            solver.time_step["time"] = i * 1e-5

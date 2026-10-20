@@ -1,7 +1,8 @@
 Tutorials
 =========
 
-Jupyter notebooks that build and run complete analyses step by step, taken from the test cases of ``tests/``, with
+Jupyter notebooks that build and run complete analyses step by step, taken from the examples of ``tests/examples`` and from ``docs/tutorials/data`` (the original inputs of cases that are now
+MAPDL benchmarks), with
 explanations, results and plots (matplotlib and `pyvista <https://docs.pyvista.org>`_). The pages below show them with
 their stored outputs; to run them yourself:
 
@@ -12,7 +13,7 @@ their stored outputs; to run them yourself:
    conda install -c conda-forge jupyterlab
    cd docs/tutorials && jupyter lab
 
-Each notebook copies its test case into a temporary folder, so the files of ``tests/`` are not modified.
+Each notebook copies its case into a temporary folder, so the repository files are not modified.
 
 .. list-table::
    :header-rows: 1

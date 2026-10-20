@@ -54,16 +54,59 @@ Transient analysis
 * The fields start at zero. A first transient step with a non-zero load is a **step change** of the load at
   :math:`t=0`; to start from the magnetostatic state of the initial loads, make the first step static (at a small
   time, e.g. ``1e-10``).
-* Choosing theta: 1 (backward Euler) is robust and damps everything, first-order accurate: small time steps;
-  0.5 (Crank-Nicolson) is second-order accurate but does not damp: after a sudden change of a load the eddy currents
-  can oscillate from step to step. Values such as 0.6 - 0.75 are a compromise.
-  The current densities written in ``Jt`` use the mean rate over the step, which matches the solution only for
-  theta = 1 (:doc:`outputs`): prefer theta = 1 when the eddy currents are post-processed after sudden changes.
+* Choosing theta: 1 after sudden changes, a lower value only for smooth excitations (:ref:`choosing-theta`).
 * The time step should resolve the shortest time constant of interest, :math:`\tau\approx\mu_0\sigma\ell^2` for a
   conductor of size :math:`\ell` (L/R of a circuit).
 * Repeating a solve at the same time re-solves the step (e.g. with other loads, as the plasma algorithm does at
   every Picard iteration); theta, beta, gamma and transient_effects must then be unchanged. A time smaller than the
   previous one is an error (the solver stops).
+
+.. _choosing-theta:
+
+Choosing theta
+--------------
+
+A component of the solution that decays with time constant :math:`\tau` (an eddy current mode, the L/R of a circuit)
+is multiplied at each step by
+
+.. math::
+
+   R = \frac{1-(1-\theta)\,\Delta t/\tau}{1+\theta\,\Delta t/\tau}
+   \;\xrightarrow{\ \Delta t\gg\tau\ }\; -\frac{1-\theta}{\theta}.
+
+For a time step much longer than :math:`\tau` (fast modes: thin skin layers, small conductors, the first steps after a
+jump), theta = 1 gives :math:`R\to 0`: the mode is damped at once. Theta = 0.5 gives :math:`R\to -1`: the mode
+is not damped and changes sign at every step. The fields, and the current densities computed from them, then oscillate
+from step to step (``Jt`` reports the rates of the equations, so it shows the oscillation as it is,
+see :doc:`outputs`).
+
+A sudden change also harms theta < 1 when :math:`\Delta t\ll\tau`. The step update
+:math:`\mathbf{u}^{n+1}=\mathbf{u}^n+\Delta t\,[(1-\theta)\mathbf{v}^n+\theta\mathbf{v}^{n+1}]` assumes that the rate
+varies linearly over the step, so a fraction :math:`1-\theta` of the rate before the change still acts after it. In
+``coil_2D_avolt`` (100 A imposed at the first step, then a voltage drive of 1 mV) the driven ring keeps about 100 A with
+theta = 1, as it should, but settles near 200 A with theta = 0.5: half of the voltage that built up the 100 A at step 1
+is applied again at step 2.
+
+**Use theta = 1 (backward Euler) after any sudden change:**
+
+* a step change of a load (``Js``, ``AMPS``, ``CURR``), including the first transient step from zero fields with a
+  non-zero load;
+* a switch of excitation (current driven to voltage driven, a Dirichlet value or a coupling added or removed);
+* a time step much longer than the time constants of some conductors of the model, which then react as to a jump;
+* fast transients such as a plasma current quench.
+
+It is first-order accurate: resolve the transient with time steps short against the time constants of interest.
+
+**Use a lower theta only for smooth excitations, with time steps that resolve the time constants:**
+
+* theta = 0.5 (Crank-Nicolson, second-order accurate) for continuous loads (ramps, sinusoids, slowly varying
+  plasma currents) when :math:`\Delta t\lesssim\tau` for every conductor that matters: the same accuracy with
+  fewer steps than theta = 1;
+* 0.6 - 0.75 as a compromise where some fast modes remain (:math:`R\to -0.67` and :math:`-0.33`): some damping, in
+  practice more accurate than theta = 1, but formally first order.
+
+Theta can be changed between steps: a common recipe is one or two steps with theta = 1 right after each sudden change,
+then back to 0.5. A change of theta costs one refactorization of the system matrix (see below).
 
 Matrix reuse
 ------------

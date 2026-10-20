@@ -87,7 +87,8 @@ The solution is noisy or the true residual is large
    any A condition. Enable ``"-mat_mumps_icntl_24": "1"`` and read the number of null pivots in the step report.
 
 Eddy currents oscillate from step to step
-   Crank-Nicolson (theta = 0.5) after a sudden load change: use a larger theta or smaller steps.
+   Crank-Nicolson (theta = 0.5), or theta close to 0.5, after a sudden load change: use theta = 1 for the steps after
+   the change (:ref:`choosing-theta`).
 
 Newton does not converge
    See :doc:`nonlinear` (load ramps, smaller steps, line search settings, the curve beyond saturation).

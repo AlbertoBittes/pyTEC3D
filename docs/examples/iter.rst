@@ -66,43 +66,43 @@ The macros
 ITER_2D
 ~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_2D/macro.py
+.. literalinclude:: ../../tests/examples/ITER_2D/macro.py
    :language: python
 
 ITER_2D_evol
 ~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_2D_evol/macro.py
+.. literalinclude:: ../../tests/examples/ITER_2D_evol/macro.py
    :language: python
 
 ITER_2D_evol_coils
 ~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_2D_evol_coils/macro.py
+.. literalinclude:: ../../tests/examples/ITER_2D_evol_coils/macro.py
    :language: python
 
 ITER_3D_evol
 ~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_3D_evol/macro.py
+.. literalinclude:: ../../tests/examples/ITER_3D_evol/macro.py
    :language: python
 
 ITER_3D_evol_edge
 ~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_3D_evol_edge/macro.py
+.. literalinclude:: ../../tests/examples/ITER_3D_evol_edge/macro.py
    :language: python
 
 ITER_3D_evol_coils
 ~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_3D_evol_coils/macro.py
+.. literalinclude:: ../../tests/examples/ITER_3D_evol_coils/macro.py
    :language: python
 
 ITER_3D_evol_coils_edge
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/ITER_3D_evol_coils_edge/macro.py
+.. literalinclude:: ../../tests/examples/ITER_3D_evol_coils_edge/macro.py
    :language: python
 
 The other variants (``ITER_2D_fine``, ``_fine2``, ``_coils``, ``_carma``, ``ITER_2D_evol_fine``, ``_fine2``, ``_carma``,

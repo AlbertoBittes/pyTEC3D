@@ -35,22 +35,23 @@ Python right away:
      - Total current density [A/m^2]: imposed (``Js``), eddy / conduction (:math:`-\sigma(\partial_t\mathbf{A}+\nabla
        V)`) and coil current density, depending on the domain (:doc:`element_library`).
 
-How these fields are computed (projection, quadrature mean, time derivative as the mean rate over the step) is
-explained in :ref:`theory-postprocessing`.
+How these fields are computed (projection, quadrature mean, time derivatives of the time scheme) is explained in
+:ref:`theory-postprocessing`.
 
 .. warning::
 
    Two limits of the derived fields, to keep in mind when post-processing:
 
-   * **Element means.** The element values are the plain mean of the quadrature-point values. In a conductor whose
-     current flows in a skin layer thinner than the cells (short time steps, coarse mesh) the sum of ``Jt`` times
-     the cell area over a cross-section can be far from the total current (e.g. 155 A for 100 A imposed in the first
-     tutorial). Refine the mesh, or integrate the nodal solution, for integral quantities.
-   * **theta < 1.** The time derivatives in the derived fields are the mean rates over the step,
-     :math:`(\mathbf{u}^{n+1}-\mathbf{u}^n)/\Delta t`, while the equations of the theta method use the theta
-     velocity. They coincide for theta = 1; for theta < 1, after a sudden change of a load or of a constraint, the eddy
-     and conduction current densities in ``Jt`` can differ widely from the solution (with Crank-Nicolson they may
-     alternate in sign from step to step). Use theta = 1, or theta close to 1, when currents are post-processed.
+   * **Element means.** The element values are the means over the cell (quadrature values weighted by
+     :math:`JxW`): the sum of ``Jt`` times the cell area over a cross-section is the current through it. In a
+     conductor whose current flows in a skin layer thinner than the cells (short time steps, coarse mesh) the mean
+     still hides the distribution inside the cell: refine the mesh where the local values matter.
+   * **Time derivatives.** The time derivatives in the derived fields (:math:`\partial_t\mathbf{A}` in the eddy
+     current density) are the velocity of the time scheme at the end of the step, the one of the equations: ``Jt``
+     satisfies the same balances as the solution (the sum of ``Jt`` times the area of a conductor is its terminal
+     current, for any theta). With theta < 1, after a sudden change of a load or of a constraint, the current
+     densities may oscillate from step to step (Crank-Nicolson: alternating in sign): the solution itself oscillates.
+     Use theta = 1 after sudden changes (:ref:`choosing-theta`).
 
    The part of a field that does not depend on the solution (``Jt = Js`` in a ``STRANDED_CONDUCTOR``) is evaluated
    at every output from the current loads: ``Jt`` follows the changes of ``Js`` between steps.

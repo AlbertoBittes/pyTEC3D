@@ -1,0 +1,45 @@
+{
+ "description": "Time history of ALL the benchmark cases (tests/files/benchmark_case.py, pyTEC3D_APDL_benchmarks). One entry per step: end time [s], theta, transient_effects (false = static step) and the loads of the active coil (MATERIAL 2): Js [A/m2] for a stranded conductor (along the coil direction of the case), one of AMPS [A] / V [V] for a circuit-coupled or solid conductor (current or voltage drive) and one of CURR [A] / VOLT [V] for a stranded coil (current or voltage drive); null = not given. The formulation of the active coil of each case decides which values are used. With the _timint element types V and VOLT are time integrals [V s]. Theta = 0.5 (Crank-Nicolson): it checks every term of the theta scheme, including the start-of-step velocity that theta = 1 drops (pyTEC3D_APDL_benchmarks/variants/time_history_theta1.json is the backward-Euler history). Keep theta the same in every transient step: MAPDL does not apply a change of TINTP theta between load steps correctly (checked against an exact backward-Euler step), so the MAPDL references would be wrong.",
+ "steps": [
+  {
+   "time": 0.01,
+   "theta": 0.5,
+   "transient_effects": true,
+   "Js": 1000000.0,
+   "AMPS": 100.0,
+   "V": null,
+   "CURR": 100.0,
+   "VOLT": null
+  },
+  {
+   "time": 0.02,
+   "theta": 0.5,
+   "transient_effects": true,
+   "Js": 2000000.0,
+   "AMPS": 200.0,
+   "V": null,
+   "CURR": 200.0,
+   "VOLT": null
+  },
+  {
+   "time": 0.04,
+   "theta": 0.5,
+   "transient_effects": true,
+   "Js": 2000000.0,
+   "AMPS": null,
+   "V": 0.02,
+   "CURR": null,
+   "VOLT": 5000.0
+  },
+  {
+   "time": 0.06,
+   "theta": 0.5,
+   "transient_effects": true,
+   "Js": 0.0,
+   "AMPS": null,
+   "V": 0.0,
+   "CURR": null,
+   "VOLT": 0.0
+  }
+ ]
+}

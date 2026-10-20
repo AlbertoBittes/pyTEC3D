@@ -88,14 +88,16 @@ What each package is for:
    * - ``numpy``, ``pandas``
      - Numerical work on the mesh arrays (``pandas`` for tabular post-processing).
 
-3. Build libMesh and the solver
--------------------------------
+3. Build and install
+--------------------
 
 .. code-block:: bash
 
-   ./build.sh
+   ./build.sh                      # editable install (default)
+   ./build.sh --pip=regular        # regular install
+   ./build.sh --extras=notebooks   # also the optional dependencies of step 4
 
-``build.sh`` runs in two stages:
+``build.sh`` runs in four stages:
 
 #. **libMesh**: clones it into ``.deps/src/libmesh``, applies the patches of ``libmesh_patches/`` (Nedelec shape
    functions on prisms and pyramids, quadratic pyramids) and installs it in ``.deps/libmesh-<method>``. This stage is
@@ -103,9 +105,34 @@ What each package is for:
 #. **Solver module**: configures ``src/CMakeLists.txt`` in ``build/pytec3d-<method>`` (always from scratch), builds
    the module and installs it as ``src/pytec3d_solver/pytec3d_solver*.so``. The JSON files of the element library
    (``src/pytec3d/resources``) are compiled into the module at this point by ``src/tools/generate_registries.py``.
-   The script finally checks that the module resolves all its shared libraries without ``LD_LIBRARY_PATH``.
+   The script then checks that the module resolves all its shared libraries without ``LD_LIBRARY_PATH``.
+#. **Python packages**: ``pip install -e .`` (or ``pip install .``, see step 4) of ``pytec3d`` and of the module just
+   built, then a check that the installed copy imports.
+#. **ansys-mapdl-reader**: installed with ``--no-deps`` after the package, so that no later dependency resolution
+   touches it (see step 4).
 
-Options are given as environment variables:
+The installation of the Python packages is chosen with the command-line flags:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Flag
+     - Effect
+   * - ``--pip=editable``
+     - ``pip install -e .`` (default).
+   * - ``--pip=regular``
+     - ``pip install .``.
+   * - ``--pip=none``
+     - No pip install: only libMesh and the module (``ansys-mapdl-reader`` is still installed). Run step 4 by hand.
+   * - ``--extras=LIST``
+     - Optional dependencies of ``pyproject.toml`` to install with the package, comma-separated
+       (e.g. ``--extras=dev,notebooks``).
+   * - ``-h``, ``--help``
+     - Print the usage.
+
+The build options are given as environment variables (``pyTEC3D_PIP_INSTALL`` and ``pyTEC3D_PIP_EXTRAS`` are also
+accepted for ``--pip`` and ``--extras``; the flags take precedence):
 
 .. list-table::
    :header-rows: 1
@@ -117,6 +144,8 @@ Options are given as environment variables:
      - Build type of libMesh and of the solver: ``opt`` (default, ``-O3``), ``devel`` (``-O2 -g``, assertions on),
        ``dbg`` (``-O0 -g3``, all checks; compiler warnings are errors, ``-DPYTEC3D_WARNINGS_AS_ERRORS=OFF`` to
        disable). Each method has its own libMesh installation and build directory.
+   * - ``pyTEC3D_CDB_READER=0``
+     - Do not install ``ansys-mapdl-reader`` (default: installed with ``--no-deps``, see below).
    * - ``FORCE_LIBMESH=1``
      - Delete and rebuild libMesh (clone, patch, configure, build).
    * - ``CPU_COUNT=<n>``
@@ -130,14 +159,17 @@ Options are given as environment variables:
 
 Example: a debug build on 8 cores, ``pyTEC3D_LIBMESH_METHOD=dbg CPU_COUNT=8 ./build.sh``.
 
-4. Install the Python packages
-------------------------------
+4. The Python packages: editable or regular
+-------------------------------------------
+
+``build.sh`` already ran one of these (``--pip``); run them by hand after ``--pip=none``, or to switch between the
+two:
 
 .. code-block:: bash
 
-   python -m pip install -e .        # editable: the environment uses the sources of src/ directly
+   python -m pip install -e .        # editable (--pip=editable): the environment uses the sources of src/ directly
    # or
-   python -m pip install .           # regular: copies the packages into site-packages
+   python -m pip install .           # regular (--pip=regular): copies the packages into site-packages
 
 The **editable** install is recommended while developing or when the sources are updated often: the environment
 imports ``src/pytec3d`` and ``src/pytec3d_solver`` directly, so a ``git pull`` or a rebuild of the module takes effect
@@ -145,13 +177,21 @@ at once. With a **regular** install, ``pip install .`` must be run again after e
 every rebuild of the solver, otherwise the environment keeps using the old copy. ``python -c "import pytec3d;
 print(pytec3d.__file__)"`` shows which copy is imported.
 
-Optional extras:
+Optional extras (``./build.sh --extras=dev,notebooks``, or by hand):
 
 .. code-block:: bash
 
-   python -m pip install -e ".[cdb]"   # ansys-mapdl-reader: conversion of ANSYS .cdb meshes (pytec3d-convert-cdb)
    python -m pip install -e ".[dev]"   # pytest, ruff, mypy
    python -m pip install -e ".[notebooks]"   # matplotlib, ipykernel: the tutorial notebooks
+
+``build.sh`` also installs ``ansys-mapdl-reader``, after the package, used to convert ANSYS ``.cdb`` meshes (``pytec3d-convert-cdb``,
+:func:`pytec3d.mesh_converter.convert_cdb`) and by the MAPDL benchmarks. Its declared requirements conflict with the
+conda packages the solver is built against, while the package works with them: it is installed without
+dependencies. To install it by hand, or to skip it in the build (``pyTEC3D_CDB_READER=0``):
+
+.. code-block:: bash
+
+   python -m pip install --no-deps ansys-mapdl-reader appdirs tqdm
 
 To run the notebooks, also install Jupyter (``conda install -c conda-forge jupyterlab``) and start it from
 ``docs/tutorials``; they also use pyvista, part of the conda environment above.
@@ -165,17 +205,24 @@ To run the notebooks, also install Jupyter (``conda install -c conda-forge jupyt
    python -c "from pytec3d import Solver; Solver().close()"   # the package and the solver runtime start
    python -c "import pytec3d; print(pytec3d.__version__)"
 
+Run the benchmarks against ANSYS MAPDL results (no ANSYS needed; details in :doc:`testing`):
+
+.. code-block:: bash
+
+   python -m pip install -e ".[dev]"
+   pytest tests/test_apdl_benchmarks.py -q
+
 Then run a first analysis (about 3 seconds):
 
 .. code-block:: bash
 
-   mkdir -p /tmp/first_run && cp tests/coil_2D_avolt/{coil_2D_avolt.vtu,model_data.json,macro.py} /tmp/first_run
+   cp -r docs/tutorials/data/coil_2D_avolt /tmp/first_run
    cd /tmp/first_run && python macro.py
    ls output          # coil_2D_avolt_out_1.vtu  coil_2D_avolt_out_2.vtu  coil_2D_avolt_steps.csv
    less coil_2D_avolt.log
 
-Working on a copy keeps the files of ``tests/`` unchanged: the macros save the solved model over their input
-``.vtu`` (see :doc:`examples/index`).
+Working on a copy keeps the repository unchanged: the macro saves the solved model over its input ``.vtu`` (see
+:doc:`examples/index`).
 
 Running in parallel
 -------------------
@@ -205,6 +252,7 @@ Rebuilding after a change
   automatically when a JSON file changes. ``PYTEC3D_RESOURCES`` points the Python side to another resources
   directory, but the solver always uses the library it was built with.
 * **Python sources**: nothing to do with an editable install; ``pip install .`` again with a regular one.
+* **A full rebuild** (``./build.sh``) reinstalls the package as well (``--pip=none`` to leave it alone).
 
 Building this documentation
 ---------------------------
@@ -222,8 +270,8 @@ Troubleshooting
 ---------------
 
 ``ImportError: Could not import the C++ solver module 'pytec3d_solver.pytec3d_solver'``
-   The module is not built or not installed in the active environment: run ``./build.sh``, then ``pip install``
-   (step 4), with the ``pytec3d`` environment active.
+   The module is not built or not installed in the active environment: run ``./build.sh`` with the ``pytec3d``
+   environment active (and ``pip install`` by hand if it was run with ``--pip=none``, step 4).
 
 ``unresolved shared libraries (RPATH problem)`` at the end of ``build.sh``
    The module was linked against libraries outside the environment. Rebuild from a clean shell with only the conda
@@ -258,6 +306,5 @@ into a shell where ``conda`` is available. The first run takes 30 to 60 minutes 
      python=3.12 compilers git cmake ninja pkg-config openmpi petsc vtk pyvista pybind11 spdlog nlohmann_json \
      numpy pandas mpi4py pip jupyterlab
    conda activate pytec3d
-   ./build.sh
-   python -m pip install -e ".[notebooks]"
+   ./build.sh --extras=notebooks
    python -c "from pytec3d import Solver; Solver().close()" && echo "pyTEC3D is installed"

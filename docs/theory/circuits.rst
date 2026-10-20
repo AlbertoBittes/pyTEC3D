@@ -47,7 +47,7 @@ DOF coupling (:doc:`../user_manual/couplings`). With the coefficients of the ele
 
 where :math:`V_c` is the volume of the **whole** coil (``volume`` in 3D, :math:`2\pi\,\text{radius}\,S\,t` in 2D
 axisymmetry, :math:`S\,t` planar) and :math:`s` the ratio between the whole coil and the modelled part (e.g. 12 for a
-30 degree sector), the weak form of the coil is
+30 degree sector), the weak form of the coil is (the A-VOLT-EMF formulation of [MAPDLTheory2024]_)
 
 .. math::
 

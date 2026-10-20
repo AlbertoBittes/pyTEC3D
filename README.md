@@ -52,32 +52,14 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
                         -y
   conda activate pytec3d
   ./build.sh
-  python -m pip install .
   ```
 
-  Editable install:
+  `build.sh` builds libMesh and the solver module, installs the package with `pip install -e .`, then installs
+  `ansys-mapdl-reader` with `--no-deps` (its pins conflict with the conda packages). Flags:
 
   ```bash
-  python -m pip install -e .
+  ./build.sh --pip=regular             # pip install .   instead of   pip install -e .
+  ./build.sh --pip=none                # no pip install (run it by hand afterwards)
+  ./build.sh --extras=dev,notebooks    # also the optional dependencies
+  ./build.sh --help
   ```
-
-## Fast rebuild loop for solver-only C++ changes
-
-After a full initial run of `build.sh`, rebuild with CMake:
-
-```bash
-cmake -S src -B build/pytec3d -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
-  -DCMAKE_INSTALL_PREFIX="$CONDA_PREFIX" \
-  -DLIBMESH_DIR="$CONDA_PREFIX" \
-  -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD:-opt}"
-
-cmake --build build/pytec3d -j
-```
-
-## Extension output location
-
-CMake builds the solver module in `build/pytec3d-<method>/`; `cmake --install build/pytec3d-<method>` copies it to
-`src/pytec3d_solver/pytec3d_solver*.so`, where both regular and editable installs (`pip install -e .`) import it.
-If needed, override the package root during build with `PYTEC3D_PYTHON_PACKAGE_ROOT=/path/to/python_packages`.

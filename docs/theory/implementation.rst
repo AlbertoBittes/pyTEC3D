@@ -60,7 +60,7 @@ step: :math:`\mathbf{v}^{n+1} = c_v\,\mathbf{u}^{n+1} + \mathbf{h}_v`,
 
 :math:`\theta=1` is backward Euler (first order, strongly damped), :math:`\theta=1/2` Crank-Nicolson (second order,
 no numerical damping: stiff components may oscillate from step to step); values in between trade accuracy for
-damping. ``time_step["theta"]`` must be in :math:`(0, 1]`.
+damping. ``time_step["theta"]`` must be in :math:`(0, 1]`. When to use which: :ref:`choosing-theta`.
 
 **Newmark** (second-order formulations, ``time_order = 2``; parameters ``beta`` and ``gamma``):
 
@@ -127,19 +127,20 @@ After each solve the derived fields of the element types are computed from the s
 * **Nodal fields** (``B``, ``H`` on the points) are :math:`L^2` projections on discontinuous Lagrange elements of the
   order of the model, cell by cell, :math:`\mathbf{f}_e = M_e^{-1}\int_e\boldsymbol\phi\cdot P\,\mathcal{L}(\mathbf{u})`
   with :math:`M_e` the mass matrix of the cell; the values of the cells sharing a node are averaged at the node.
-* **Element fields** (``B``, ``H``, ``Jt`` on the cells) are the plain mean of the values
-  :math:`P\,\mathcal{L}(\mathbf{u})` at the quadrature points of the cell (not weighted by the quadrature weights).
-  Where a field varies strongly inside a cell (the current density of a coarse 2D conductor) the mean is a poor
-  estimate of the integral: compute integral quantities (currents, losses, forces) from the nodal fields or on a finer
-  mesh.
+* **Element fields** (``B``, ``H``, ``Jt`` on the cells) are the means of the values :math:`P\,\mathcal{L}(\mathbf{u})`
+  at the quadrature points of the cell weighted by :math:`JxW` (without the out-of-plane factor, thickness or
+  :math:`2\pi r`), :math:`\bar f_e=\sum_q JxW_q\,f_q/\sum_q JxW_q`: the mean over the cell area (2D) or volume (3D),
+  so that :math:`\sum_e \bar J_e\,|e|` over a cross-section is the current through it. Where a field varies strongly
+  inside a cell the mean hides the variation, and it differs from the value at the cell centroid.
 * The terms of a field that depend on the solution are linear operators computed with the element matrices; the terms
   without trial (a load or a parameter alone, e.g. ``Jt = Js`` of a stranded conductor) are evaluated at every output
   from the current loads.
 * Where a law applies, its secant is used (e.g. :math:`\mathbf{H}=\nu_s(B)\,\mathbf{B}`).
 * ``H`` is :math:`\nu\nabla\times\mathbf{A}`: in a magnetized cell the magnetization is not subtracted.
-* The time derivatives of the output (e.g. :math:`\partial_t\mathbf{A}` in the eddy current density) are the **mean
-  rates over the step**, :math:`(\mathbf{u}^{n+1}-\mathbf{u}^n)/\Delta t`, for first-order formulations, so that
-  :math:`\int\mathbf{J}\,dt` is consistent over the steps. This equals the rate of the discrete equations only for
-  :math:`\theta=1`; for :math:`\theta<1` the eddy current densities of the output differ from those of the
-  equations, by a large amount after sudden changes of the excitation (:doc:`../user_manual/outputs`). Second-order
-  formulations use :math:`\mathbf{v}^{n+1}`.
+* The time derivatives of the output (e.g. :math:`\partial_t\mathbf{A}` in the eddy current density) are the
+  velocity :math:`\mathbf{v}^{n+1}` (and acceleration :math:`\mathbf{a}^{n+1}`) of the time scheme, those of the
+  discrete equations at :math:`t^{n+1}`: the output fields satisfy the same balances as the solution (e.g. the sum of
+  the current densities of a conductor equals its terminal current). The mean rate
+  :math:`(\mathbf{u}^{n+1}-\mathbf{u}^n)/\Delta t=(1-\theta)\mathbf{v}^n+\theta\mathbf{v}^{n+1}` is not used: for
+  :math:`\theta<1` it mixes the two ends of the step and, combined with the other terms at :math:`t^{n+1}`, breaks
+  these balances by :math:`(1-\theta)(\mathbf{v}^{n+1}-\mathbf{v}^n)`.
