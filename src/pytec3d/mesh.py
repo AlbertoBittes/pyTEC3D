@@ -238,8 +238,10 @@ def cell_sizes(mesh: vtkUnstructuredGrid) -> np.ndarray:
 
     dimensions = cell_dimensions(mesh)
     sizes = np.zeros(n_cells)
-    sizes[dimensions >= 3] = volumes[dimensions >= 3]
-    sizes[dimensions == 2] = areas[dimensions == 2]
+    # vtkCellSizeFilter returns a negative volume for cells of inverted node order (e.g. a sector extruded towards
+    # -z from ANSYS); sizes are magnitudes.
+    sizes[dimensions >= 3] = np.abs(volumes[dimensions >= 3])
+    sizes[dimensions == 2] = np.abs(areas[dimensions == 2])
     return sizes
 
 

@@ -66,8 +66,8 @@ PSI_HESSIAN = "__pytec3d_psi_hessian__"
 #: the field they load (AMPS: the nodal current of the solid-conductor voltage V).
 OPTIONAL_LOADS = frozenset({"AMPS"})
 #: Directory (in the working directory) and file of the per-iteration diagnostics.
-DIAGNOSTICS_DIRECTORY = "__pytec3d__"
-DIAGNOSTICS_FILE = "pytec3d_iteration_diagnostics.csv"
+#: The diagnostics CSV of the Picard iterations, in the output folder of the solver: <mesh_name><suffix>.
+DIAGNOSTICS_SUFFIX = "_iteration_diagnostics.csv"
 
 #: Default input parameters; override them in :attr:`Algorithm.input_parameters`.
 DEFAULT_INPUT_PARAMETERS: dict[str, Any] = {
@@ -1048,9 +1048,10 @@ class Algorithm:
         return converged
 
     def _diagnostics_path(self) -> str:
-        directory = os.path.join(os.getcwd(), DIAGNOSTICS_DIRECTORY)
+        from pytec3d.solver import OUTPUT_DIRECTORY
+        directory = os.path.join(os.getcwd(), OUTPUT_DIRECTORY)
         os.makedirs(directory, exist_ok=True)
-        return os.path.join(directory, DIAGNOSTICS_FILE)
+        return os.path.join(directory, self.solver.model.mesh_name + DIAGNOSTICS_SUFFIX)
 
     def _clear_diagnostics(self) -> None:
         if self.solver.rank == 0:

@@ -264,8 +264,8 @@ Boundary conditions and setup
    * Every circuit-coupled conductor needs a coupling of its V over its nodes (:doc:`couplings`), and then either a
      current (``AMPS`` on the master node), a voltage (``_V``) or ``_V = 0`` (shorted, as a solid conductor).
    * Every coil needs a coupling of VOLT and EMF, and a current (``CURR``) or a voltage (``_VOLT``).
-   * Examples: ``tests/apdl_benchmarks/coil_2D_avolt*`` (circuit-coupled conductor and a solid ring), ``tests/apdl_benchmarks/coil_2D_avoltemf*``
-     (stranded coil and a solid ring), ``tests/apdl_benchmarks/two_wires_2D``, ``tests/examples/ITER_2D*`` (solid vessel structures).
+   * Examples: ``examples/coil_2D_avolt*`` (circuit-coupled conductor and a solid ring), ``examples/coil_2D_avoltemf*``
+     (stranded coil and a solid ring), ``pyTEC3D_APDL_benchmarks/suites/simple/cases/two_wires_2D``, ``examples/ITER_2D*`` (solid vessel structures).
 
 .. _el-av3d-nodal:
 
@@ -355,8 +355,8 @@ Boundary conditions and setup
      no other condition on V (``_V = 0``).
    * Cyclic symmetry: :meth:`~pytec3d.model.Model.periodic_boundaries` with ``("A", "V")`` and rotated frames on the
      second face (:doc:`couplings`).
-   * Examples: ``tests/apdl_benchmarks/coil_3D_avoltemf*``, ``tests/examples/3D_loop_cond_base``, ``tests/apdl_benchmarks/sphere_coil_*``,
-     ``tests/examples/ITER_3D_evol_coils``.
+   * Examples: ``examples/coil_3D_avoltemf*``, ``pyTEC3D_APDL_benchmarks/suites/simple/cases/sphere_coil_*``,
+     ``examples/ITER_3D_evol_coils_edge``.
 
 .. _el-av3d-edge:
 
@@ -377,8 +377,8 @@ Differences from ``AV3D_nodal``
      rotation is needed (the values are scalars).
    * Cyclic couplings pair the midside nodes as well; the edge orientation is matched automatically.
 
-Examples: ``tests/apdl_benchmarks/coil_3D_avoltemf_edge*``, ``tests/examples/two_wires_3D_edge*``, ``tests/examples/CREATE_*``,
-``tests/examples/ITER_3D_evol_*edge``.
+Examples: ``examples/coil_3D_avoltemf_edge*``,
+``examples/ITER_3D_evol_coils_edge``.
 
 .. _el-timint:
 
@@ -414,8 +414,8 @@ All the coupling terms then multiply a time derivative and move to **C**, which 
   flows on a static step;
 * ``Jt`` uses the time derivatives: e.g. for a coil :math:`n\mathbf{T}(\partial_t\mathrm{VOLT}-\partial_t\mathrm{EMF})`.
 
-Examples: ``tests/apdl_benchmarks/coil_2D_avolt_timint``, ``tests/apdl_benchmarks/coil_2D_avoltemf_timint``, ``tests/apdl_benchmarks/coil_3D_avoltemf_timint``,
-``tests/examples/ITER_3D_evol``.
+Examples: ``examples/coil_2D_avolt_timint``, ``examples/coil_3D_avoltemf_timint``,
+``examples/ITER_3D_evol_fine2``.
 
 .. _el-laws:
 

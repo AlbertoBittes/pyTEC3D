@@ -2,108 +2,110 @@ ITER Plasma Equilibrium and Vertical Displacement
 =================================================
 
 The full workflow of the plasma algorithm (:doc:`../user_manual/plasma_algorithm`) on ITER: a free-boundary
-equilibrium in 2D axisymmetry, then a vertical displacement event (the poloidal beta drops from 0.68 to 0.24 in
-0.636 s at about 15 MA: the plasma moves up and becomes limited around 0.36 s) with the eddy currents of the vacuum
-vessel and of the passive structures, in 2D and on thin 3D toroidal sectors. The waveforms end with the thermal
-quench at 0.6356 s.
+equilibrium in 2D axisymmetry, then a vertical displacement event, in 2D and on thin 3D toroidal sectors. During the
+event the poloidal beta drops from 0.68 to 0.24 in 0.636 s at about 15 MA; the plasma moves up and becomes limited
+around 0.36 s. The eddy currents of the vacuum vessel and of the passive structures react to it. The waveforms end
+with the thermal quench at 0.6356 s.
 
-Two notebooks run the 2D cases step by step with plots and analysis of the results:
-:doc:`../tutorials/tutorial_iter_equilibrium` and :doc:`../tutorials/tutorial_iter_evolution`; a third one,
-:doc:`../tutorials/tutorial_iter_3d_halo`, runs ``ITER_3D_evol_coils`` (3D sector, voltage-driven coils, halo
-currents) with 30 ms steps.
+The examples cover different meshes and element families. The standard cases (``ITER_2D_evol``, ``ITER_2D_coils``,
+``ITER_3D_evol``, ...) are part of the benchmark of the plasma algorithm against APEC in the benchmark repository
+(:doc:`../testing`).
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 20 50
+   :widths: 28 22 50
 
    * - Case
      - Element type
      - Content
-   * - ``ITER_2D``, ``_fine``, ``_fine2``, ``_coils``, ``_carma``
-     - ``AV2D_nodal``
-     - Equilibria on meshes of different refinement and order (``_coils``, ``_carma`` second order).
-   * - ``ITER_2D_evol``, ``_fine``, ``_fine2``, ``_carma``
-     - ``AV2D_nodal``
-     - Vertical displacement from the matching equilibrium; coils with fixed current densities.
-   * - ``ITER_2D_evol_coils``
-     - ``AV2D_nodal``
-     - Coils as voltage-driven stranded coils (circuit equations).
-   * - ``ITER_3D_evol``, ``_fine``, ``_fine2``
+   * - ``ITER_2D_carma``
+     - ``AV2D_nodal`` (quadratic)
+     - Equilibrium on a second-order mesh (QUAD8 / TRI6): the starting point of ``ITER_2D_evol_carma`` and
+       ``ITER_3D_evol_coils_edge``.
+   * - ``ITER_2D_fine2``
+     - ``AV2D_nodal`` (linear)
+     - Equilibrium on a refined linear mesh: the starting point of ``ITER_2D_evol_fine2`` and ``ITER_3D_evol_fine2``.
+   * - ``ITER_2D_evol_carma``
+     - ``AV2D_nodal`` (quadratic)
+     - Vertical displacement from ``ITER_2D_carma``; coils with fixed current densities.
+   * - ``ITER_2D_evol_fine2``
+     - ``AV2D_nodal`` (linear)
+     - Vertical displacement from ``ITER_2D_fine2``.
+   * - ``ITER_3D_evol_fine2``
      - ``AV3D_nodal_timint``
-     - Vertical displacement on 2, 20 and 1 degree sectors, with halo currents from the limiter phase.
-   * - ``ITER_3D_evol_edge``, ``_fine2_edge``
-     - ``AV3D_edge_timint``
-     - The same with edge elements.
-   * - ``ITER_3D_evol_coils``, ``_coils_edge``
-     - ``AV3D_nodal``, ``AV3D_edge``
-     - 3D sector with voltage-driven stranded coils.
+     - Vertical displacement on a 1 degree sector of the fine2 mesh (time-integrated V), with halo currents
+       injected into the vessel wall from the limiter phase.
+   * - ``ITER_3D_evol_coils_edge``
+     - ``AV3D_edge``
+     - Vertical displacement on the ``ITER_2D_carma`` mesh revolved over 2 degrees in 4 cells (quadratic), with edge elements and a tree gauge, the coils as voltage-driven stranded coils (their
+       currents respond to the displacement), halo currents.
+
+Three notebooks run these analyses step by step, with plots of the results:
+
+* :doc:`../tutorials/tutorial_iter_equilibrium` (``ITER_2D_fine2``);
+* :doc:`../tutorials/tutorial_iter_evolution` (``ITER_2D_evol_fine2``);
+* :doc:`../tutorials/tutorial_iter_3d_halo` (``ITER_3D_evol_coils_edge``, coarser steps).
 
 Workflow
 --------
 
-#. **Equilibrium** (``ITER_2D``). Coil current densities ``Js = I / a`` in the CS modules and PF coils, a uniform
-   15 MA in the vacuum chamber as initial guess, A = 0 on the boundary, static. ``Algorithm.equilibrium_solve()``
-   iterates: plasma boundary from the flux, Grad-Shafranov current density scaled to 15 MA, control-coil corrections to
-   keep the magnetic axis at the target, field solve, until the flux converges. ``write_output()`` stores it.
-#. **Evolution** (``ITER_2D_evol``). A mesh with the same cells, where the vessel and structures are
-   ``SOLID_CONDUCTOR`` cells (closed toroidal shells, in 3D with the potential V). The equilibrium output becomes the
-   vacuum-chamber mesh of the algorithm and its ``Jt`` (equal to ``Js`` on the stranded conductors) the source ``Js``
-   of the evolution. A static first step at ``t = 1e-10`` starts from the equilibrium; then,
-   for each point of the waveforms, a transient step with the plasma current and beta of that time and one
-   ``evolution_solve()``.
-#. **3D** (``ITER_3D_evol``). The 2D mesh revolved over 2 degrees with cyclic symmetry; the coil current densities of
-   the equilibrium are written as the toroidal component of ``Js`` in a cylindrical element coordinate system; the
-   algorithm maps the 2D vacuum chamber to the toroidal stations (``extrusion_angle``, ``n_toroidal_divisions``) and,
-   from ``t0_halo``, injects halo currents into the wall (``AMPS``).
-#. **Voltage-driven coils** (``*_coils``). Each coil a stranded coil with its terminal (VOLT, EMF coupled), driven by the
-   steady-state voltage of its equilibrium current: the coil currents then respond to the displacement.
+#. **Equilibrium** (``ITER_2D_carma``, ``ITER_2D_fine2``). The macro sets:
 
-These runs are long (hundreds of steps, several Picard iterations each).
+   * coil current densities ``Js = I / a`` in the CS modules and PF coils;
+   * a uniform 15 MA in the vacuum chamber as initial guess;
+   * A = 0 on the boundary, and a static solve.
+
+   ``Algorithm.equilibrium_solve()`` iterates until the flux converges. Each iteration finds the plasma boundary from
+   the flux, scales the Grad-Shafranov current density to 15 MA, corrects the control coils so that the magnetic axis
+   stays at the target, and solves the field. ``write_output()`` stores the result.
+#. **2D evolution** (``ITER_2D_evol_*``). The evolution mesh has the same cells as the equilibrium mesh, but the
+   vessel and structures are ``SOLID_CONDUCTOR`` cells (closed toroidal shells). The equilibrium output becomes the
+   vacuum-chamber mesh of the algorithm, and its ``Jt`` (equal to ``Js`` on the stranded conductors) becomes the source
+   ``Js`` of the evolution. A static first step at ``t = 1e-10`` starts from the equilibrium. Then each point of the
+   waveforms gives one transient step, with the plasma current and beta of that time and one ``evolution_solve()``.
+#. **3D evolution** (``ITER_3D_evol_*``). The setup:
+
+   * the 2D mesh is revolved over a small sector with cyclic symmetry;
+   * the coil current densities of the equilibrium are written as the toroidal component of ``Js``, in a cylindrical
+     element coordinate system;
+   * the algorithm maps the 2D vacuum chamber to the toroidal stations (``extrusion_angle``, ``n_toroidal_divisions``)
+     and averages the flux over them;
+   * from ``t0_halo``, it injects halo currents into the wall (``AMPS``).
+
+   With edge elements (``ITER_3D_evol_coils_edge``) a tree-cotree gauge replaces the Coulomb gauge.
+#. **Voltage-driven coils** (``ITER_3D_evol_coils_edge``). Each coil is a stranded coil with its terminal (VOLT, EMF
+   coupled), driven by the steady-state voltage of its equilibrium current. The coil currents then respond to the
+   displacement.
+
+Run the equilibrium first: an evolution reads the most recent ``<equilibrium>_out_*.vtu`` of its equilibrium folder
+(``../ITER_2D_fine2/output``, ...). These runs are long: hundreds of steps, with several Picard iterations each.
 
 The macros
 ----------
 
-ITER_2D
-~~~~~~~
+ITER_2D_fine2
+~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/examples/ITER_2D/macro.py
+.. literalinclude:: ../../examples/ITER_2D_fine2/macro.py
    :language: python
 
-ITER_2D_evol
-~~~~~~~~~~~~
-
-.. literalinclude:: ../../tests/examples/ITER_2D_evol/macro.py
-   :language: python
-
-ITER_2D_evol_coils
+ITER_2D_evol_fine2
 ~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/examples/ITER_2D_evol_coils/macro.py
+.. literalinclude:: ../../examples/ITER_2D_evol_fine2/macro.py
    :language: python
 
-ITER_3D_evol
-~~~~~~~~~~~~
-
-.. literalinclude:: ../../tests/examples/ITER_3D_evol/macro.py
-   :language: python
-
-ITER_3D_evol_edge
-~~~~~~~~~~~~~~~~~
-
-.. literalinclude:: ../../tests/examples/ITER_3D_evol_edge/macro.py
-   :language: python
-
-ITER_3D_evol_coils
+ITER_3D_evol_fine2
 ~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/examples/ITER_3D_evol_coils/macro.py
+.. literalinclude:: ../../examples/ITER_3D_evol_fine2/macro.py
    :language: python
 
 ITER_3D_evol_coils_edge
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: ../../tests/examples/ITER_3D_evol_coils_edge/macro.py
+.. literalinclude:: ../../examples/ITER_3D_evol_coils_edge/macro.py
    :language: python
 
-The other variants (``ITER_2D_fine``, ``_fine2``, ``_coils``, ``_carma``, ``ITER_2D_evol_fine``, ``_fine2``, ``_carma``,
-``ITER_3D_evol_fine``, ``_fine2``, ``_fine2_edge``) follow the same scripts; their headers list the differences.
+``ITER_2D_carma`` and ``ITER_2D_evol_carma`` follow the scripts of ``ITER_2D_fine2`` and ``ITER_2D_evol_fine2`` on
+the quadratic mesh; their headers list the differences (mesh, order, files).

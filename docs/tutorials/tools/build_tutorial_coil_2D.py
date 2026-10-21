@@ -18,7 +18,7 @@ def code(text):
 md("""
 # Tutorial: a 2D axisymmetric coil, step by step
 
-This notebook builds and runs a complete pyTEC3D analysis interactively: the case `docs/tutorials/data/coil_2D_avolt`. Two rings of
+This notebook builds and runs a complete pyTEC3D analysis interactively: the example `examples/coil_2D_avolt`. Two rings of
 square cross-section sit one above the other, in 2D axisymmetry about the y axis:
 
 * the **lower ring** is a *circuit-coupled conductor*, a massive conductor with a terminal: its current is not imposed
@@ -33,7 +33,7 @@ the results. Each section links to the page of the user manual that describes th
 
 Run it from `docs/tutorials` with the `pytec3d` environment (`jupyter lab` or `jupyter notebook`; install
 `ipykernel` in the environment if needed). It works on a copy of the case in a temporary folder, so the files of
-`tests/` are not modified.
+`examples/` are not modified.
 """)
 
 md("""
@@ -55,7 +55,7 @@ import pytec3d
 from pytec3d import Solver, selection, element_library
 from pytec3d import mesh as meshes
 
-CASE = Path("data/coil_2D_avolt").resolve()           # the test case of the repository
+CASE = Path("../../examples/coil_2D_avolt").resolve()  # the example of the repository
 WORK = Path(tempfile.mkdtemp(prefix="pytec3d_tutorial_"))   # a scratch working directory
 for name in ("coil_2D_avolt.vtu", "model_data.json"):
     shutil.copy(CASE / name, WORK / name)
@@ -130,7 +130,7 @@ for type_id, row in data["element_types"].items():
     print(f"TYPE {type_id}: {name:11s} domain {domain:26s} FE order {row.get('option2', 1)}  axisymmetric {row.get('option3', 0)}")
 print("materials    :", {k: {p: np.diag(v).tolist() for p, v in m.items()} for k, m in data["materials"].items()})
 print("constants    :", data["constants"])
-print("dof_couplings:", data["dof_couplings"])
+print("dof_couplings:", data["dof_couplings"], "(none: the macro sets them, section 5)")
 """)
 
 md("""
@@ -138,7 +138,8 @@ md("""
 * `TYPE 23` is a `CIRCUIT_COUPLED_CONDUCTOR`: A_z plus the terminal voltage V; the material gives its resistivity.
 * `TYPE 24` is a `SOLID_CONDUCTOR`: in 2D, a massive conductor without terminal, i.e. a closed (shorted) ring.
 * `thickness = 1` makes the out-of-plane length 2 pi r: the full 360 degree ring.
-* `dof_couplings["1"] = ["V"]`: the nodes with id 1 in the array `CP_0` will share one V.
+* `dof_couplings` is empty: the DOF couplings are set by the script (section 5) with `add_dof_couplings`, where the
+  nodes that share a DOF are chosen.
 
 The element library tells which arrays an element type reads and writes (User manual: *Element Library*):
 """)
@@ -170,14 +171,16 @@ md("""
 ## 5. The terminal of the circuit-coupled conductor: a DOF coupling
 
 The V of a 2D circuit-coupled conductor is a single value for the whole cross-section. We select the cells of the ring,
-then their nodes, and give them the CP id 1 in `CP_0`. The node with the **lowest id** of the group is the master: the
-current load and the voltage of the terminal are set there. (User manual: *DOF Couplings*.)
+then their nodes, and give them the CP id 1 in `CP_0`; `add_dof_couplings({1: ["V"]})` tells the model data that CP id
+1 couples the field V. The node with the **lowest id** of the group is the master: the current load and the voltage of
+the terminal are set there. (User manual: *DOF Couplings*.)
 """)
 
 code("""
 selection.select(mesh, "MATERIAL", 23, location="elem")
 selection.nsle(mesh)
 selection.set_value_on_selection(mesh, "CP_0", 1)
+solver.model.add_dof_couplings({1: ["V"]})
 master = int(selection.selected_ids(mesh, "node")[0])
 print("nodes of the ring:", selection.selected_ids(mesh, "node").size, "- master node:", master)
 """)
@@ -352,10 +355,10 @@ md("""
   step 1.
 * Use the time-integrated formulation: set `"element_type": "AV2D_nodal_timint"` in every row of the model data
   (before loading). `_V` then fixes the time integral of the voltage.
-* Add an iron yoke with a B-H curve, as in `tests/coil_2D_avolt_ferr` (User manual: *Nonlinear Materials*).
-* Replace the driven ring by a stranded coil with its circuit equation, as in `tests/coil_2D_avoltemf`.
+* Add an iron yoke with a B-H curve, as in `examples/coil_2D_avoltemf_ferr` (a stranded coil with an iron frame) (User manual: *Nonlinear Materials*).
+* Replace the driven ring by a stranded coil with its circuit equation, as in `examples/coil_2D_avoltemf`.
 
-The commented macros of `tests/` (see *Examples*) show these variants and the 3D versions of the same model.
+The commented macros of `examples/` (see *Examples*) show these variants and the 3D versions of the same model.
 """)
 
 

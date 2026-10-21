@@ -151,6 +151,7 @@ class Solver:
         self._log_file: str | None = None
         self._steps: list[dict[str, Any]] = []
         self._cleared_outputs: set[str] = set()  # models whose previous outputs write_output() has deleted
+        self._last_output: dict[str, tuple[int, int]] = {}  # model -> (solves at the last write, its index)
         self._start = (time.perf_counter(), time.process_time())
         self._counts_at_start = _all_message_counts()
         self._model = Model()
@@ -390,10 +391,12 @@ class Solver:
     def write_output(self) -> str | None:
         """Save the model as ``output/<mesh_name>_out_<n>.vtu`` in the working directory, on rank 0 only.
 
-        ``n`` is the number of steps this solver has solved (0 before the first :meth:`solve`): writing again
-        after the same step overwrites the file. The directory is created if needed, and on the first write the
-        outputs of a previous run of the same model (``<mesh_name>_out_*.vtu``, ``<mesh_name>_steps.csv``) are
-        deleted, so that the series only holds the steps of this run.
+        ``n`` numbers the outputs of the run: the latest output of the model in the folder (the last completed step)
+        plus one, so that the steps of an analysis are ``_1, _2, ...`` whatever the number of solves per step (the
+        Picard iterations of the plasma algorithm are solves). Writing again with no solve in between overwrites the
+        same file; a write before the first :meth:`solve` is ``_0``. The directory is created if needed, and on the
+        first write the outputs of a previous run of the same model (``<mesh_name>_out_*.vtu``,
+        ``<mesh_name>_steps.csv``) are deleted, so that the series only holds the steps of this run.
 
         Returns:
             The path written (None on the other ranks).
@@ -411,7 +414,18 @@ class Solver:
         if name not in self._cleared_outputs:
             self._clear_previous_outputs(directory, name)
             self._cleared_outputs.add(name)
-        path = os.path.join(directory, f"{name}_out_{len(self._steps)}.vtu")
+        solves = len(self._steps)
+        last = self._last_output.get(name)
+        if solves == 0:
+            index = 0
+        elif last is not None and last[0] == solves:
+            index = last[1]                                  # no solve since the last write: overwrite it
+        else:
+            pattern = re.compile(rf"^{re.escape(name)}_out_(\d+)\.vtu$")
+            written = [int(m.group(1)) for m in map(pattern.match, os.listdir(directory)) if m]
+            index = max(written, default=0) + 1
+        self._last_output[name] = (solves, index)
+        path = os.path.join(directory, f"{name}_out_{index}.vtu")
         self.save_model(path)
         if self._steps and self._steps[-1]["output"] is None:
             self._steps[-1]["output"] = path

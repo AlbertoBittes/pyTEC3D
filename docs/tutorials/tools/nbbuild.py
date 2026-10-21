@@ -42,6 +42,8 @@ def run(nb, path):
     socket.gethostname = lambda: "workstation"
     getpass.getuser = lambda: "user"
     sys.argv = [os.path.basename(path)]
+    # the open figures are captured after each cell: plt.show() is a no-op (with Agg it only warns)
+    plt.show = lambda *args, **kwargs: None
 
     images = []
     try:

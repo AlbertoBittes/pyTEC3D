@@ -82,6 +82,6 @@ basis :math:`(\mathbf{e}_r,\mathbf{e}_\theta,\mathbf{e}_z)` of the cell is used.
 * ``Js = (0, J, 0)`` is a toroidal current density;
 * an orthotropic ``mur`` or ``rho`` tensor is given in the local axes (e.g. a laminated core).
 
-Use one system per curved part with its own centre (e.g. the two arcs of a racetrack coil, ``tests/examples/CREATE_*``).
+Use one system per curved part with its own centre (e.g. the two arcs of a racetrack coil).
 ``COORDINATE_SYSTEM = 0`` (default) is the global Cartesian system. Every positive id used by the cells must exist in
 ``data["coordinate_systems"]``.

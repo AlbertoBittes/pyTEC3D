@@ -84,9 +84,11 @@ python/pytec3d/local_packages/*
 **/__pycache__/
 **/__pycache__/*
 
-# Ignore emat, input, output, temp subfolders anywhere under tests/
+# Ignore the run folders of the examples and tests (emat, output)
 tests/**/emat/
 tests/**/output/
+examples/**/emat/
+examples/**/output/
 tests/**/temp/
 
 # Sphinx generated docs
@@ -95,6 +97,6 @@ docs/generated/
 # Job logs of the runs (Solver log_file)
 *.log
 
-# APDL benchmark repository (separate git repo, fetched by tests/test_apdl_benchmarks.py)
-/pyTEC3D_APDL_benchmarks/
+
+# APEC (separate repository, a submodule of the benchmark repository) when checked out inside this tree
 /APEC/

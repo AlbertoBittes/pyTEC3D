@@ -47,7 +47,7 @@ def iter_equilibrium():
 # ITER free-boundary plasma equilibrium (2D axisymmetric)
 
 This notebook computes the free-boundary equilibrium of the ITER 15 MA reference plasma, following
-`tests/ITER_2D`, and looks inside every step of the computation. It is the starting point of every plasma
+`examples/ITER_2D_fine2` (the refined linear mesh), and looks inside every step of the computation. It is the starting point of every plasma
 evolution (see the next tutorial).
 
 **The problem.** In an axisymmetric plasma the poloidal flux per radian $\psi(R,Z) = R A_\varphi$ obeys the
@@ -80,12 +80,12 @@ control parameters come from), run the iterations one by one, then analyse the c
 separatrix, current density, pressure and toroidal-field profiles, global quantities, and a 3D view. The run takes
 about 10 s. Theory: *Theory - Plasma equilibrium and evolution*; options: *User manual - Plasma algorithm*.
 """)
-    nb.code(SETUP.format(case="ITER_2D", files='("ITER_2D.vtu", "model_data.json")')
+    nb.code(SETUP.format(case="ITER_2D_fine2", files='("ITER_2D_fine2.vtu", "model_data.json")')
             + "\nimport json, time\nfrom pytec3d import Algorithm, ConvergenceError, element_library\n" + PLOT_HELPERS)
     nb.md("""
 ## The machine
 
-`ITER_2D.vtu` is the poloidal cross-section (x = R, y = Z) of the whole machine in a 100 m x 200 m half-plane of
+`ITER_2D_fine2.vtu` is the poloidal cross-section (x = R, y = Z) of the whole machine in a 100 m x 200 m half-plane of
 air: the six central-solenoid modules CS3U ... CS3L, the six poloidal-field coils PF1 ... PF6, the vacuum chamber
 (where the plasma can be) and the **passive structures**: the double-wall vacuum vessel and the in-vessel supports,
 massive steel conductors. Every component is a cell array with value 1 on its cells. The model data gives two TYPE
@@ -95,9 +95,9 @@ role. In the evolution (next tutorials) the passive structures become **solid co
 massive conductors in which the plasma motion induces eddy currents.
 """)
     nb.code('''
-solver = Solver(log_file="ITER_2D.log")
+solver = Solver(log_file="ITER_2D_fine2.log")
 algorithm = Algorithm(solver)
-solver.read_model("ITER_2D.vtu")
+solver.read_model("ITER_2D_fine2.vtu")
 solver.model.read_json("model_data.json")
 mesh = solver.model.mesh
 grid = pv.wrap(mesh)
@@ -301,12 +301,12 @@ for key in ("separatrix_configuration", "magnetic_axis", "x_point", "limiter_poi
     print(f"  {key:32s}", tuple(round(v, 4) for v in value[:2]) if isinstance(value, tuple) else value)
 ''')
     nb.md("""
-The status after every iteration is also appended to `__pytec3d__/pytec3d_iteration_diagnostics.csv` in the working
+The status after every iteration is also appended to `output/ITER_2D_fine2_iteration_diagnostics.csv` in the working
 folder (one row per iteration, the points split in x/y/z columns), which is what you would look at after a batch
 run:
 """)
     nb.code('''
-diag = np.genfromtxt("__pytec3d__/pytec3d_iteration_diagnostics.csv", delimiter=",", names=True, dtype=None,
+diag = np.genfromtxt("output/ITER_2D_fine2_iteration_diagnostics.csv", delimiter=",", names=True, dtype=None,
                      encoding="utf-8")
 it = np.arange(1, len(diag) + 1)
 fig, axes = plt.subplots(2, 2, figsize=(10, 6.5), sharex=True)
@@ -336,7 +336,7 @@ How to read it:
 
 * the first iteration only solves the initial guess (no plasma region yet: zero cells, no correction); from the
   second on, the plasma takes its shape: too small at first, then too large and touching the wall (limited, in
-  iterations 4 - 6, while the control pulls it outwards), then diverted again for good (picture below);
+  some of the early iterations, while the control pulls it back), then diverted again for good (picture below);
 * the flux change falls roughly geometrically: the Picard iteration is a fixed-point iteration, linearly
   convergent; its rate is set by how strongly the plasma shape reacts to its own current;
 * the correction currents swing by several MA in the first iterations, while the plasma forms, then settle to a
@@ -530,8 +530,8 @@ pl.show()
 ## Save the result
 
 `write_output()` writes the solver mesh with all the arrays (A, PSI, Js of the plasma and the coils, PLASMA, B...)
-as `output/ITER_2D_out_<n>.vtu`, `n` being the number of solves of the session (the iterations plus the two
-response solves of this notebook). This file is what the evolution reads as its initial state (next tutorial).
+as `output/ITER_2D_fine2_out_<n>.vtu`, where `n` numbers the outputs of the session (the latest output plus one: the
+Picard iterations and the two response solves do not count, only the outputs written). This file is what the evolution reads as its initial state (next tutorial).
 """)
     nb.code('''
 written = solver.write_output()
@@ -548,7 +548,8 @@ def iter_evolution():
     nb.md(r"""
 # ITER plasma evolution: a vertical displacement event (2D axisymmetric)
 
-This notebook follows `tests/ITER_2D_evol`: the 15 MA equilibrium of the previous tutorial evolves for 0.63 s
+This notebook follows `examples/ITER_2D_evol_fine2`: a 15 MA equilibrium, computed on the refined `fine2` mesh as in the
+previous tutorial, evolves for 0.63 s
 while its poloidal beta drops from 0.68 to 0.23, at nearly constant current. Losing pressure, the plasma loses the
 equilibrium imposed by the (fixed) coil currents and drifts vertically: a **vertical displacement event** (VDE).
 The motion induces eddy currents in the vessel, which oppose it and set its speed; the plasma moves up, its X point
@@ -563,43 +564,43 @@ current and the eddy currents are thus found together, implicitly. Unlike the eq
 control: the plasma goes where the fields take it. The coil currents stay as they were (the model imposes their
 current densities, as if ideal power supplies kept them constant).
 
-The run takes about 2 minutes (the equilibrium, then 22 time steps of 30 ms). Theory: *Theory - Plasma
+The run takes a few minutes (the equilibrium, then 42 time steps of 15 ms). Theory: *Theory - Plasma
 equilibrium and evolution*.
 """)
-    nb.code(SETUP.format(case="ITER_2D_evol", files='("ITER_2D_evol.vtu", "model_data.json")')
+    nb.code(SETUP.format(case="ITER_2D_evol_fine2", files='("ITER_2D_evol_fine2.vtu", "model_data.json")')
             + "\nimport json, subprocess, sys, time\nfrom pytec3d import Algorithm, Model, element_library\n" + PLOT_HELPERS)
     nb.md("""
 ## The initial equilibrium
 
-The evolution starts from the converged equilibrium. We run the test macro `tests/ITER_2D/macro.py` itself, in a
-sub-folder of the working folder (about 10 s), and take its output: `output/ITER_2D_out_<n>.vtu`, the most recent
+The evolution starts from the converged equilibrium. We run the test macro `examples/ITER_2D_fine2/macro.py` itself, in a
+sub-folder of the working folder (about 10 s), and take its output: `output/ITER_2D_fine2_out_<n>.vtu`, the most recent
 of that series, as the evolution macro does. (The previous tutorial explains this computation.)
 """)
     nb.code('''
-EQ = WORK / "ITER_2D"
+EQ = WORK / "ITER_2D_fine2"
 EQ.mkdir()
-for name in ("ITER_2D.vtu", "model_data.json", "macro.py"):
-    shutil.copy(CASE.parent / "ITER_2D" / name, EQ / name)
+for name in ("ITER_2D_fine2.vtu", "model_data.json", "macro.py"):
+    shutil.copy(CASE.parent / "ITER_2D_fine2" / name, EQ / name)
 started = time.perf_counter()
 run = subprocess.run([sys.executable, "macro.py"], cwd=EQ, capture_output=True, text=True)
 assert run.returncode == 0, run.stderr[-3000:]
-eq_file = max(EQ.glob("output/ITER_2D_out_*.vtu"), key=os.path.getmtime)
+eq_file = max(EQ.glob("output/ITER_2D_fine2_out_*.vtu"), key=os.path.getmtime)
 print(f"equilibrium computed in {time.perf_counter() - started:.0f} s:", eq_file.name)
 equilibrium = Model.read_model(str(eq_file), reset_arrays=False)
 ''')
     nb.md("""
 ## The evolution model
 
-`ITER_2D_evol.vtu` is the same mesh as the equilibrium (same cells, same component arrays), with a third TYPE: 24,
+`ITER_2D_evol_fine2.vtu` is the same mesh as the equilibrium (same cells, same component arrays), with a third TYPE: 24,
 `SOLID_CONDUCTOR`, on the **passive structures**: the vacuum vessel and its supports are **solid conductors**,
 massive steel (rho = 8e-7 Ohm m) in which the eddy currents are computed. In 2D a solid conductor has no electric
 unknown: its current density is $-\\sigma\\,\\partial_t A$, the current of a toroidally closed shell. The coils and the
 vacuum chamber stay `STRANDED_CONDUCTOR` (imposed `Js`).
 """)
     nb.code('''
-solver = Solver(log_file="ITER_2D_evol.log")
+solver = Solver(log_file="ITER_2D_evol_fine2.log")
 algorithm = Algorithm(solver)
-solver.read_model("ITER_2D_evol.vtu")
+solver.read_model("ITER_2D_evol_fine2.vtu")
 solver.model.read_json("model_data.json")
 mesh = solver.model.mesh
 grid = pv.wrap(mesh)
@@ -616,8 +617,10 @@ print("passive structures = PASSIVE_STRUCTURES cells:", np.array_equal(structure
     nb.md(r"""
 How fast can the vessel react? A rough time constant of a thin toroidal shell is $\tau \approx \mu_0\sigma\,d\,b$
 (thickness $d$, minor radius $b$). It sets the time step: the vertical motion of an unstable plasma grows on the
-time scale of the vessel currents, here a few hundred milliseconds, so steps of 30 ms resolve it, with backward
-Euler (theta = 1) for stability.
+time scale of the vessel currents, here a few hundred milliseconds, so steps of 15 ms resolve it, with backward
+Euler (theta = 1) for stability. (On this refined mesh 30 ms steps are too coarse: around t = 0.33 s, just before
+the plasma touches the wall, the Picard iteration of a 30 ms step stalls; 15 ms steps converge in at most 28
+iterations.)
 """)
     nb.code('''
 d, b = 0.06, 2.5              # ITER vessel: about 60 mm of steel per shell, 2-2.5 m from the plasma
@@ -652,8 +655,8 @@ algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, AF0
     nb.md("""
 ## The scenario
 
-`tests/files` holds the waveforms of $I_p(t)$ and $\\beta_p(t)$, sampled every 0.2 ms up to 0.636 s. The test
-macro uses every fifth sample (1 ms steps, 637 steps); here we take one every 150 (30 ms), 22 steps. At $t = 0$
+`examples/files` holds the waveforms of $I_p(t)$ and $\\beta_p(t)$, sampled every 0.2 ms up to 0.636 s. The test
+macro uses every fifth sample (1 ms steps, 637 steps); here we take one every 75 (15 ms), 42 steps. At $t = 0$
 the plasma loses part of its energy ($\\beta_p$ 0.68 -> 0.58 within 0.4 ms, $I_p$ -110 kA), then $\\beta_p$ keeps
 decaying while $I_p$ recovers slowly to 15.2 MA. The last samples are the **thermal quench** at 0.6356 s
 ($\\beta_p \\to 0$, $I_p$ starting to fall; `plasma_current.txt` continues with the current quench beyond the last
@@ -664,7 +667,7 @@ files = CASE.parent / "files"
 t_all = np.loadtxt(files / "time_steps.txt")
 ip_all = np.loadtxt(files / "plasma_current.txt")[:len(t_all)]
 bp_all = np.loadtxt(files / "beta_p.txt")
-pick = np.concatenate(([0], np.arange(150, len(t_all), 150)))
+pick = np.concatenate(([0], np.arange(75, len(t_all), 75)))
 times, ip, bp = t_all[pick], ip_all[pick], bp_all[pick]
 fig, ax = plt.subplots(figsize=(7, 3.2))
 ax.plot(t_all, ip_all / 1e6, color="C0", lw=0.8); ax.plot(times, ip / 1e6, "o", color="C0", ms=4)
@@ -753,11 +756,11 @@ if switch is not None:
 What happens:
 
 * **first step**: the loss of pressure reduces the outward force on the plasma ring (the coil currents, set for
-  $\\beta_p$ = 0.68, now push too much inwards): the plasma moves inwards by about 8 cm, and keeps drifting inwards
-  as $\\beta_p$ decays (the current centroid by 0.5 m in all). The plasma current falls by 90 kA, and the vessel
-  picks up a co-current of about 0.1 MA that keeps the flux it encloses;
+  $\\beta_p$ = 0.68, now push too much inwards): the plasma moves inwards by about 9 cm in the first 40 ms, and
+  keeps drifting inwards as $\\beta_p$ decays (the magnetic axis by 0.5 m in all). The plasma current falls by about
+  0.1 MA, and the vessel picks up a co-current of about 0.1 MA that keeps the flux it encloses;
 * **vertical drift**: an elongated plasma in the field of fixed coils is vertically unstable. The plasma rises
-  slowly at first (15 cm in 0.3 s) and then faster and faster (1.3 m in the last 0.3 s): an exponential growth whose
+  slowly at first (15 cm in 0.3 s) and then faster and faster (1.1 m in the last 0.3 s): an exponential growth whose
   rate is set by the vessel, since the plasma can only move as fast as the eddy currents that oppose the motion
   decay. Upper structures get a counter-current, lower ones a co-current (see the snapshots);
 * **limited plasma**: from 0.36 s the X point is no longer the boundary: the last closed surface touches the wall
@@ -840,7 +843,7 @@ with quietly():
     nb.md("""
 ## Going further
 
-* **The full test**: `tests/ITER_2D_evol/macro.py` runs the same scenario with 1 ms steps and writes every step to
+* **The full test**: `examples/ITER_2D_evol_fine2/macro.py` runs the same scenario with 1 ms steps and writes every step to
   `./output` (open the series in ParaView; see *User manual - ParaView*).
 * **Halo currents**: when the plasma is limited, `halo_delta1`, `halo_delta2`, `t0_halo` define a halo region outside
   the last closed surface, whose poloidal currents close through the wall (3D models, `ITER_3D_evol*`).
@@ -858,12 +861,14 @@ def iter_3d_halo():
     nb.md(r"""
 # ITER 3D: vertical displacement with halo currents and voltage-driven coils
 
-This notebook follows `tests/ITER_3D_evol_coils`: the vertical displacement event of the 2D tutorial, now with the
+This notebook follows `examples/ITER_3D_evol_coils_edge`: the vertical displacement event of the 2D tutorial, now with the
 field solved on a **3D** model of the machine and three new physical effects:
 
 * **3D solid conductors**: the vessel and the passive structures are `SOLID_CONDUCTOR` cells of the 3D nodal A-V
-  formulation (`AV3D_nodal`), with the electric potential $V$ (charge conservation). Besides the toroidal eddy
-  currents they can carry **poloidal** currents, which the 2D model cannot represent;
+  formulation (`AV3D_edge`, edge elements for $A$, nodal $V$), with the electric potential $V$ (charge conservation). Besides the toroidal eddy
+  currents they can carry **poloidal** currents, which the 2D model cannot represent. Here the vector potential uses
+  **edge** (Nedelec) elements (`AV3D_edge`): its DOFs are circulations along the mesh edges, and a tree-cotree gauge
+  fixes it;
 * **halo currents**: when the plasma is limited, a thin layer of open field lines outside the last closed flux
   surface (the halo) carries part of the plasma current; its poloidal current flows *into the wall* and back,
   closing through the vessel. The algorithm injects it as nodal currents (`AMPS`) on the wall nodes;
@@ -872,48 +877,51 @@ field solved on a **3D** model of the machine and three new physical effects:
   being frozen as in the 2D tutorial.
 
 **How the 3D model is coupled with the plasma.** The plasma stays axisymmetric and lives on the 2D vacuum-chamber
-mesh of the equilibrium. The field is solved on a thin toroidal **sector** of 2 degrees (two cells along the torus,
+mesh of the equilibrium. The field is solved on a thin toroidal **sector** of 2 degrees (four cells along the torus,
 cyclic symmetry between its faces) obtained by revolving the 2D mesh. At every Picard iteration the 2D plasma current
 density (toroidal and poloidal) and the halo currents are *projected* onto every toroidal station of the sector; after
 the solve, the toroidal vector potential is *averaged* over the stations to give the flux $\psi$ seen by the plasma.
 
-The run takes about 20 minutes (the equilibrium, then 22 steps of 30 ms, each a Picard iteration of 3D solves).
+The run takes about 40 minutes (the equilibrium, then 22 steps of 30 ms, each a Picard iteration of 3D solves on a
+quadratic mesh of 464 000 nodes).
 Read the 2D tutorials first; theory: *Theory - Plasma equilibrium and evolution* (3D coupling, halo currents),
 *Circuits* (stranded coils).
 """)
-    nb.code(SETUP.format(case="ITER_3D_evol_coils", files='("ITER_3D_evol_coils.vtu", "model_data.json")')
+    nb.code(SETUP.format(case="ITER_3D_evol_coils_edge", files='("ITER_3D_evol_coils_edge.vtu", "model_data.json")')
             + "\nimport json, subprocess, sys, time, vtk\nfrom pytec3d import Algorithm, element_library\n"
             + "from pytec3d.coordinate_system import YAxisCylindricalCoordinateSystem, SphericalCoordinateSystem\n"
             + PLOT_HELPERS)
     nb.md("""
 ## The initial equilibrium
 
-As in the 2D evolution, we run the equilibrium macro `tests/ITER_2D/macro.py` in a sub-folder (about 10 s) and take
+As in the 2D evolution, we run the equilibrium macro `examples/ITER_2D_carma/macro.py` (the quadratic mesh) in a sub-folder and take
 its output. Its mesh becomes the vacuum-chamber mesh of the algorithm: the 2D mesh on which the plasma is computed.
 """)
     nb.code('''
-EQ = WORK / "ITER_2D"
+EQ = WORK / "ITER_2D_carma"
 EQ.mkdir()
-for name in ("ITER_2D.vtu", "model_data.json", "macro.py"):
-    shutil.copy(CASE.parent / "ITER_2D" / name, EQ / name)
+for name in ("ITER_2D_carma.vtu", "model_data.json", "macro.py"):
+    shutil.copy(CASE.parent / "ITER_2D_carma" / name, EQ / name)
 started = time.perf_counter()
 run = subprocess.run([sys.executable, "macro.py"], cwd=EQ, capture_output=True, text=True)
 assert run.returncode == 0, run.stderr[-3000:]
-eq_file = max(EQ.glob("output/ITER_2D_out_*.vtu"), key=os.path.getmtime)
+eq_file = max(EQ.glob("output/ITER_2D_carma_out_*.vtu"), key=os.path.getmtime)
 print(f"equilibrium computed in {time.perf_counter() - started:.0f} s:", eq_file.name)
 equilibrium = meshes.read_mesh(str(eq_file), reset_arrays=False)
 ''')
     nb.md("""
 ## The 3D sector
 
-`ITER_3D_evol_coils.vtu` is the ITER cross-section revolved by 2 degrees about the vertical (y) axis, with two cells
-along the torus (three node stations, at 0, 1 and 2 degrees), inside a 100 m sphere of air. The angle is measured
-from the x axis towards -z. Cells: HEX8, with WEDGE6 on the axis.
+`ITER_3D_evol_coils_edge.vtu` is the quadratic ITER cross-section of `ITER_2D_carma` revolved by 2 degrees about the
+vertical (y) axis, with four cells along the torus (five node stations, every 0.5 degree, and the midside nodes in
+between), inside a 100 m sphere of air. The angle is measured
+from the x axis towards -z. Cells: HEX20, with WEDGE15 on the axis: a quadratic mesh, because the edge DOFs of
+`AV3D_edge` live on its midside nodes.
 """)
     nb.code('''
-solver = Solver(log_file="ITER_3D_evol_coils.log")
+solver = Solver(log_file="ITER_3D_evol_coils_edge.log")
 algorithm = Algorithm(solver)
-solver.read_model("ITER_3D_evol_coils.vtu")
+solver.read_model("ITER_3D_evol_coils_edge.vtu")
 algorithm.vacuum_chamber_mesh = equilibrium
 solver.model.read_json("model_data.json")
 mesh = solver.model.mesh
@@ -923,13 +931,13 @@ theta = np.arctan2(-centroid[:, 2], centroid[:, 0])          # toroidal angle of
 radius = np.hypot(centroid[:, 0], centroid[:, 2])
 angles = np.degrees(np.arctan2(-grid.points[:, 2], grid.points[:, 0]))
 print(f"{grid.n_points} points, {grid.n_cells} cells:", dict(zip(*np.unique(grid.celltypes, return_counts=True))),
-      "(12 = HEX8, 13 = WEDGE6)")
+      "(25 = HEX20, 26 = WEDGE15)")
 print("node stations [deg]:", np.unique(np.round(angles[np.hypot(grid.points[:, 0], grid.points[:, 2]) > 0.1], 3)))
 
 data = json.load(open("model_data.json"))
 domains = dict(enumerate(element_library.domains()))
 for tid, row in data["element_types"].items():
-    print(f"TYPE {tid}: AV3D_nodal {domains[row['option1']]:26s} {np.sum(grid.cell_data['TYPE'] == int(tid)):6d} cells")
+    print(f"TYPE {tid}: AV3D_edge {domains[row['option1']]:26s} {np.sum(grid.cell_data['TYPE'] == int(tid)):6d} cells")
 ''')
     nb.code('''
 machine = grid.threshold(value=(32.5, 35.5), scalars="TYPE")         # all but the air
@@ -967,8 +975,8 @@ Points to note for a 3D sector (real constants of each coil):
 * `volume` is the volume of the **whole** coil and `symmetry = 180` (360 / 2 degrees): the model holds 1/180 of each
   coil, and the circuit equation is that of the whole coil (R and N of the whole coil, the EMF of the sector times
   180);
-* all the nodes of a coil share one `VOLT` and one `EMF` (a DOF coupling `CP_0` per coil, rows 1-6 and 11-16 of
-  `dof_couplings`).
+* all the nodes of a coil share one `VOLT` and one `EMF`: a CP id per coil in `CP_0` (1-6, 11-16), and the couplings
+  set with `add_dof_couplings` (the model data has none).
 
 The source voltage of each coil is the one that keeps its equilibrium current in steady state, `VOLT = R i`, with
 `i = S Js / N` from the current density of the coil in the equilibrium output (its `Jt` holds the same values: the
@@ -987,6 +995,7 @@ selection.set_value_on_selection(mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 meshes.remove_array(mesh, "CP_0")
 meshes.add_array(mesh, "CP_0", dtype=vtk.VTK_INT)
+solver.model.add_dof_couplings({cid: ["VOLT", "EMF"] for cid in coil_ids.values()})
 eq_js, eq_jt = meshes.array_values(equilibrium, "Js", "elem"), meshes.array_values(equilibrium, "Jt", "elem")
 coils = {}
 print(f"{'coil':>6} {'N':>5} {'R [Ohm]':>8} {'i [kA]':>8} {'i from Jt':>9} {'VOLT [V]':>9}")
@@ -1006,34 +1015,32 @@ for name, cid in coil_ids.items():
           f"{section_area * eq_jt[on, 2].mean() / turns / 1e3:9.3f} {resistance * current:9.2f}")
 ''')
     nb.md("""
-## Cyclic symmetry and boundary conditions
+## Cyclic symmetry, boundary conditions and gauge
 
 * **Cyclic symmetry**: every node of the face at 0 degrees is coupled with its image at 2 degrees, for `A` and `V`
-  (`periodic_boundaries`, in a second CP array, `CP_1`, since a node of a coil face already has a `CP_0` id). The
-  vector components of the second face are expressed in a nodal frame rotated by 2 degrees (`node_angles`), so that
-  the coupling equates the same *cylindrical* components on both faces.
-* **Axis**: $A_x = A_z = 0$ on the y axis (only $A_y$ is compatible with the symmetry there).
-* **Far boundary**: $A = 0$ on the sphere of radius 100 m.
+  (`periodic_boundaries`, in a second CP array, `CP_1`, since a node of a coil face already has a `CP_0` id). With
+  edge elements the coupled values are scalars (circulations along the edges), so no nodal frame rotation is needed.
+* **Far boundary**: the tangential $A$ vanishes on the sphere of radius 100 m: the edge DOFs, stored as component 2 of
+  `_A` on the midside nodes, are fixed to zero there.
+* **Gauge**: the edge discretisation of $A$ has no Coulomb gauge term; a tree-cotree decomposition of the mesh edges
+  fixes $A = 0$ on the edges of a spanning tree (`tree_gauge`), built consistently with the periodic pairs.
 * **Potential of the structures**: $V$ is defined up to a constant in each solid conductor not connected to a
   source: it is fixed to zero on one node of the vessel (node 16170).
 """)
     nb.code('''
-eps, sector = 0.1, 2.0
+from pytec3d import tree_gauge
+eps, sector, divisions = 0.1, 2.0, 4
 cylindrical = YAxisCylindricalCoordinateSystem()
 meshes.remove_array(mesh, "CP_1")
 meshes.add_array(mesh, "CP_1", dtype=vtk.VTK_INT)
 selection.select_pos(mesh, 1, (-eps, eps), coordinate_system=cylindrical)
 pairs = solver.model.periodic_boundaries(cylindrical, dy=sector, array_name="CP_1", variables=("A", "V"))
-selection.select_pos(mesh, 1, (sector - eps, sector + eps), coordinate_system=cylindrical)
-selection.set_value_on_selection(mesh, "node_angles", sector, 2)
 print(len(pairs), "periodic node pairs")
 
-selection.select_pos(mesh, 0, (-eps, eps), coordinate_system=cylindrical)
-selection.set_value_on_selection(mesh, "_A", 0.0, 0)
-selection.set_value_on_selection(mesh, "_A", 0.0, 2)
-selection.select_pos(mesh, 0, (100.0 - eps, 100.0 + eps), coordinate_system=SphericalCoordinateSystem())
-for component in range(3):
-    selection.set_value_on_selection(mesh, "_A", 0.0, component)
+selection.select_all(mesh)
+selection.select_pos(mesh, 0, (90.0, 110.0), coordinate_system=SphericalCoordinateSystem())
+selection.set_value_on_selection(mesh, "_A", 0.0, 2)                 # tangential A = 0 (edge DOFs, midside nodes)
+tree_gauge.tree_gauge(mesh, periodic_point_coupling="CP_1")
 selection.select(mesh, "ID", 16170)
 selection.set_value_on_selection(mesh, "_V", 0.0)
 
@@ -1045,7 +1052,7 @@ with quietly():
 
 Besides the profile parameters of the 2D evolution:
 
-* `extrusion_angle = 2`, `n_toroidal_divisions = 2`: the sector, to build the toroidal maps between the 2D chamber
+* `extrusion_angle = 2`, `n_toroidal_divisions = 4`: the sector, to build the toroidal maps between the 2D chamber
   and the 3D stations;
 * the **halo**: from `t0_halo` = 0.41 s on, when the plasma is limited, the current-carrying region extends beyond the
   last closed surface $\psi_b$ to
@@ -1060,13 +1067,13 @@ Besides the profile parameters of the 2D evolution:
     nb.code('''
 algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, AF0=5.3 * 6.2,
                                   tolerance_value=1e-4, max_picard_iterations=70,
-                                  extrusion_angle=sector, n_toroidal_divisions=2,
+                                  extrusion_angle=sector, n_toroidal_divisions=divisions,
                                   halo_delta1=0.04, halo_delta2=0.0, t0_halo=0.41)
 files = CASE.parent / "files"
 t_all = np.loadtxt(files / "time_steps.txt")
 ip_all = np.loadtxt(files / "plasma_current.txt")[:len(t_all)]
 bp_all = np.loadtxt(files / "beta_p.txt")
-pick = np.concatenate(([0], np.arange(150, len(t_all), 150)))       # 30 ms steps, as in the 2D tutorial
+pick = np.concatenate(([0], np.arange(150, len(t_all), 150)))       # 30 ms steps
 times, ip, bp = t_all[pick], ip_all[pick], bp_all[pick]
 print(len(times), "steps up to", times[-1], "s")
 ''')
@@ -1075,10 +1082,10 @@ print(len(times), "steps up to", times[-1], "s")
 
 The results are 3D vectors in global components. For pictures and integrals we use:
 
-* `section(grid)`: the cut of the 3D grid by the meridian plane at 0.5 degrees (through the first layer of cells),
+* `section(grid)`: the cut of the 3D grid by the meridian plane at 0.25 degrees (through the first layer of cells),
   flattened to (R, Z), with the vector cell arrays in **cylindrical** components (R, Z, toroidal) - the toroidal
   sign as in the 2D models, so the plasma current is positive;
-* integrals over the first layer of cells (0 - 1 degree), times 360 for the whole torus: the toroidal current of a
+* integrals over the first layer of cells (0 - 0.5 degree), times 720 for the whole torus: the toroidal current of a
   region is $\\sum J_\\varphi\\,a$ with the cell area $a = V_{cell} / (R\\,\\Delta\\theta)$;
 * the **vertical force** on the structures, $F_Z = \\int (\\mathbf J\\times\\mathbf B)_Z\\,dV$. The model has no
   toroidal-field coils: its $\\mathbf B$ has only the poloidal field (and the small toroidal field of the plasma
@@ -1091,7 +1098,7 @@ def cylindrical_components(vectors, angle):
     c, s = np.cos(angle), np.sin(angle)
     return np.c_[vectors[:, 0] * c - vectors[:, 2] * s, vectors[:, 1], vectors[:, 0] * s + vectors[:, 2] * c]
 
-def section(grid, angle_deg=0.5):
+def section(grid, angle_deg=0.25):
     """The meridian cut at angle_deg, flattened to (R, Z), with Jt, Js, B in cylindrical components (*_cyl)."""
     a = np.radians(angle_deg)
     cut = pv.wrap(grid).slice(normal=(-np.sin(a), 0.0, -np.cos(a)), origin=(0.0, 0.0, 0.0))
@@ -1101,8 +1108,9 @@ def section(grid, angle_deg=0.5):
         cut.cell_data[name + "_cyl"] = cylindrical_components(cut.cell_data[name], a)
     return cut.cast_to_unstructured_grid()
 
-layer = theta < np.radians(1.0)                       # first layer of cells
-area = grid.cell_data["cell_volume"] / (radius * np.radians(1.0))
+dtheta = sector / divisions                            # angle of a cell layer [deg]
+layer = theta < np.radians(dtheta)                     # first layer of cells
+area = grid.cell_data["cell_volume"] / (radius * np.radians(dtheta))
 volume = grid.cell_data["cell_volume"]
 types = grid.cell_data["TYPE"]
 structure = layer & (types == 34)
@@ -1116,8 +1124,8 @@ def integrals():
     f_model = np.cross(j_global, b_global)[:, 1] * volume
     return {"I_plasma": (js[:, 2] * area)[layer & (types == 33)].sum(),
             "I_vessel": (jt[:, 2] * area)[structure].sum(),
-            "Fz_model": f_model[structure].sum() * 360,
-            "Fz_halo": (-jt[:, 0] * b_phi_vacuum * volume)[structure].sum() * 360,
+            "Fz_model": f_model[structure].sum() * 360 / dtheta,
+            "Fz_halo": (-jt[:, 0] * b_phi_vacuum * volume)[structure].sum() * 360 / dtheta,
             "jpol_max": np.hypot(jt[:, 0], jt[:, 1])[structure].max()}
 ''')
     nb.md("""
@@ -1210,13 +1218,13 @@ plt.tight_layout(); plt.show()
 How to read it (and how it compares with the 2D tutorial):
 
 * **Motion.** The same vertical drift, a little slower: the plasma becomes limited at 0.39 s instead of 0.36 s and the
-  axis ends at Z = 1.8 m instead of 2.0 m. The structures have the same resistivity, but the coils now react, the
+  axis ends at Z = 1.6 m instead of 1.8 m. The structures have the same resistivity, but the coils now react, the
   structures can carry poloidal currents, and the plasma sees the toroidal average of the 3D flux.
-* **Vessel current and forces.** The toroidal current induced in the structures grows to about 0.25 MA. Its
+* **Vessel current and forces.** The toroidal current induced in the structures grows to about 0.22 MA. Its
   interaction with the poloidal field gives a vertical force on the structures that grows with the displacement, to
-  about 30 MN at the end: the order of magnitude of the design loads of the ITER vessel for VDEs.
+  about 27 MN at the end: the order of magnitude of the design loads of the ITER vessel for VDEs.
 * **Coils.** With constant source voltages and a tiny resistance, each coil keeps (almost) the flux it links: as the
-  plasma moves, its currents change by hundreds of kA-turns, up to 0.7 MA-turns in CS2U (about 17 % of its current).
+  plasma moves, its currents change by hundreds of kA-turns, up to 0.6 MA-turns in CS2U (about 15 % of its current).
   The upper CS modules (CS3U, CS2U), which see the plasma come closer, lose current; the coils it moves away from
   gain current. In the 2D tutorial the coil currents were frozen: here they react, through their circuit
   equations, and their response feeds back on the plasma motion. A real machine adds the power supplies and the
@@ -1226,14 +1234,14 @@ How to read it (and how it compares with the 2D tutorial):
   paramagnetic $F(\\psi) > F_0$ of the equilibrium) decrease with $\\beta_p$. They peak (0.2 MA/m$^2$) right after
   the fast drop of $\\beta_p$ at $t = 0$, and decay with the time constant of the vessel. A 2D model, with only
   toroidal currents, cannot have them.
-* **Halo.** From 0.42 s the halo is active and its poloidal current is injected into the wall: some 20 - 40 kA for
+* **Halo.** From 0.42 s the halo is active and its poloidal current is injected into the wall: some 13 - 28 kA for
   the whole torus, a small fraction of $I_p$. With `halo_delta1 = 0.04` the halo is thin, and the profile
   $(1 - \\bar\\psi^{\\alpha_m})^{\\alpha_n}$ normalized on $\\psi_2$ is close to zero there, so little current flows in
-  it. The halo force ($J_{pol}\\times B_\\varphi$ with the 5.3 T vacuum field) is negligible here (about 0.01 MN).
+  it. The halo force ($J_{pol}\\times B_\\varphi$ with the 5.3 T vacuum field) is negligible here.
   Wider halos (larger `halo_delta1`, growth with `halo_delta2`) or broader edge profiles give the halo fractions of
   tens of per cent seen in VDEs, and forces comparable with the eddy ones.
 * **Cost.** Each Picard iteration is a 3D solve with the factorized matrix plus the projections and averages
-  between the 2D chamber and the 3D stations: about 1.5 - 2 s here, against 0.15 s in 2D.
+  between the 2D chamber and the 3D stations: about 5 - 6 s here, against 0.15 s in 2D.
 """)
     nb.md("""
 ### Core, halo and wall currents
@@ -1284,8 +1292,8 @@ plt.show()
 A zoom on the contact region at the last step, with the **poloidal** current density in the structures (the R and Z
 components of `Jt`, colour and arrows). The halo current enters the wall above the contact point (red) and leaves it
 below (blue), flowing along the vessel shell in between: a current path that only the 3D A-V model, with the
-potential $V$, can carry. Here it is small against the poloidal currents induced by the change of toroidal flux: 23 -
-40 kA spread over a wall section of about 1.5 m$^2$ (the shell thickness times $2\\pi R$) is some 0.02 MA/m$^2$,
+potential $V$, can carry. Here it is small against the poloidal currents induced by the change of toroidal flux: 13 -
+28 kA spread over a wall section of about 1.5 m$^2$ (the shell thickness times $2\\pi R$) is some 0.02 MA/m$^2$,
 against 0.1 MA/m$^2$ of induced current.
 """)
     nb.code('''
@@ -1364,10 +1372,10 @@ with quietly():
     nb.md("""
 ## Notes and going further
 
-* **The full test** (`tests/ITER_3D_evol_coils/macro.py`) runs the same model with 1 ms steps (637 steps), a long
+* **The full test** (`examples/ITER_3D_evol_coils_edge/macro.py`) runs the same model with 1 ms steps (637 steps), a long
   run.
 * **Halo injection on the stations.** The algorithm computes the halo current of the sector (scaled by
-  `extrusion_angle / 360`) and shares it among the three node stations of the wall (0, 1, 2 degrees) with the
+  `extrusion_angle / 360`) and shares it among the five node stations of the wall (every 0.5 degree) with the
   trapezoid weights 1/4, 1/2, 1/4: stations 0 and 2 are one periodic pair, whose loads add up, so the sector receives
   its share once (*Theory - Halo currents*).
 * **Other 3D cases**: `ITER_3D_evol` (coils with fixed currents), `ITER_3D_evol_edge` and `ITER_3D_evol_coils_edge`

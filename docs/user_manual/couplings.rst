@@ -81,5 +81,5 @@ Guidelines:
   ``tree_gauge(mesh, periodic_point_coupling="CP_1")`` so that the gauge tree accounts for the identified edges;
 * couple ``V`` for conductors crossing the faces, ``A`` always.
 
-Examples: ``tests/apdl_benchmarks/coil_3D_avoltemf`` (30 degrees, nodal), ``tests/apdl_benchmarks/coil_3D_avoltemf_edge`` (edge),
-``tests/apdl_benchmarks/sphere_coil_3D_period`` (90 degrees), ``tests/examples/ITER_3D_evol`` (2 degrees).
+Examples: ``examples/coil_3D_avoltemf`` (30 degrees, nodal), ``examples/coil_3D_avoltemf_edge`` (edge),
+``pyTEC3D_APDL_benchmarks/suites/simple/cases/sphere_coil_3D_period`` (90 degrees), ``examples/ITER_3D_evol_coils_edge`` (2 degrees).

@@ -146,7 +146,7 @@ Run in a working directory, an analysis reads and writes:
      - The model after step ``n`` (one per ``write_output()`` call).
    * - ``output/<name>_steps.csv``
      - One row per solved step, written when the solver is closed.
-   * - ``__pytec3d__/pytec3d_iteration_diagnostics.csv``
+   * - ``output/<name>_iteration_diagnostics.csv``
      - Plasma algorithm only: one row per Picard iteration.
 
 MPI parallel runs

@@ -94,7 +94,7 @@ The workflow
 A first analysis
 ----------------
 
-The example below is the complete script of ``docs/tutorials/data/coil_2D_avolt`` (with its mesh and model data):
+The example below is the complete script of ``examples/coil_2D_avolt`` (with its mesh and model data):
 two rings in 2D axisymmetry, the lower one a
 massive conductor with a terminal (``CIRCUIT_COUPLED_CONDUCTOR``) driven first by its current and then by its voltage,
 the upper one a passive ring (``SOLID_CONDUCTOR``) where eddy currents are induced. The :doc:`tutorial notebook <tutorials/tutorial_coil_2D>` runs the same analysis step by step

@@ -20,11 +20,14 @@ dependencies = [
 Repository = "https://github.com/AlbertoBittes/pyTEC3D"
 
 [project.optional-dependencies]
+# Testing (tests/test_benchmarks.py runs the benchmark repository) and code checks.
 dev = ["pytest", "ruff", "mypy"]
+# Documentation (sphinx-build docs docs/_build): the docs/requirements.txt of Read the Docs.
+docs = ["sphinx>=7.0", "sphinx-rtd-theme>=1.3", "myst-nb>=1.0"]
 # ansys-mapdl-reader (pytec3d-convert-cdb) is installed by build.sh with --no-deps, after this package: its requirements conflict with
 # the conda packages of the solver. Manually: pip install --no-deps ansys-mapdl-reader appdirs tqdm
 # Tutorial notebooks of the documentation (they also use pyvista, installed with conda: see the installation docs).
-notebooks = ["matplotlib", "ipykernel"]
+notebooks = ["matplotlib", "ipykernel", "jupyterlab", "nbformat", "nbclient"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

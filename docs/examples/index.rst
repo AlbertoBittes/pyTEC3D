@@ -1,16 +1,21 @@
 Examples
 ========
 
-The folder ``tests/`` holds two kinds of complete analyses:
+The folder ``examples/`` of the repository holds complete analyses, each in its own folder:
 
-* ``tests/examples/``: the examples of this section, each in its own folder with the mesh (``<case>.vtu``), the model
-  data (``model_data.json``) and the script (``macro.py``). Every macro starts with a summary (physics, geometry,
-  element types, materials, real constants, boundary conditions, loads, results) and comments each block of commands;
-  the pages of this section explain the families of cases and show the macros in full.
-* ``tests/apdl_benchmarks/``: the cases benchmarked against ANSYS MAPDL (:ref:`examples-benchmarks`).
+* the mesh (``<case>.vtu``);
+* the model data (``model_data.json``);
+* the script (``macro.py``).
 
-The :doc:`tutorial notebooks <../tutorials/index>` build and run analyses step by step; their own inputs are in
-``docs/tutorials/data``.
+Every macro starts with a summary (physics, geometry, element types, materials, real constants, boundary conditions,
+loads, results) and comments each block of commands. The pages of this section explain the families of cases and show
+the macros in full. ``examples/files`` holds the waveforms they read.
+
+The :doc:`tutorial notebooks <../tutorials/index>` run some of these examples step by step, with pre- and
+post-processing.
+
+The benchmarks against ANSYS MAPDL and APEC are not examples: they live in the benchmark repository
+(``pyTEC3D_APDL_benchmarks``, :doc:`../testing`).
 
 Running an example
 ------------------
@@ -19,61 +24,43 @@ The macros use paths relative to the working directory: run them from their fold
 
 .. code-block:: bash
 
-   cd tests/examples/ITER_2D
+   cd examples/coil_2D_avolt
    python macro.py                      # or: mpirun -np 4 python macro.py
 
 They write ``<case>.log``, ``output/`` and ``emat/`` in the folder, and most of them end with ``save_model()``, which
-overwrites the input ``<case>.vtu`` with the solved model. To keep the repository clean, copy the folder first (with
-``tests/examples/files`` and, for an evolution, its equilibrium case, as below).
-
-The ITER evolution cases read the output of an equilibrium case (``../ITER_2D/output/...``) and the waveforms of
-``tests/examples/files``: run the equilibrium first, and keep the folder structure.
+overwrites the input ``<case>.vtu`` with the solved model. To keep the repository clean, copy the folder first, together
+with ``examples/files`` and, for an evolution, its equilibrium case, keeping the folder structure. The ITER evolution
+cases read the output of their equilibrium case (``../ITER_2D_fine2/output/...``) and the waveforms of
+``../files``: run the equilibrium first.
 
 Overview
 --------
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 18 52
+   :widths: 32 20 48
 
    * - Case
      - Element type
      - What it shows
-   * - :doc:`conductors`: ``two_wires_3D_2order``, ``two_wires_3D_edge``
-     - ``AV3D_nodal``, ``AV3D_edge``
-     - Source wire with imposed Js and a passive wire in a box, second-order nodal and edge elements.
-   * - :doc:`conductors`: ``3D_loop_cond_base``
-     - ``AV3D_nodal``
-     - Quarter model of two square loops: named boundary arrays, symmetry planes, potential on symmetry cuts.
-   * - :doc:`create`: ``CREATE_B_measurement(_nodal)``, ``CREATE_force_measurement(_nodal)``
-     - ``AV3D_edge``, ``AV3D_nodal``
-     - A laboratory electromagnet: racetrack stranded coil with element coordinate systems, saturating conducting
-       yoke, voltage waveform.
-   * - :doc:`iter`: ``ITER_2D*``, ``ITER_2D_evol*``, ``ITER_3D_evol*``
+   * - :doc:`coils_2d`: ``coil_2D_avolt``, ``coil_2D_avoltemf``, ``coil_2D_avoltemf_ferr``, ``coil_2D_avolt_timint``
+     - ``AV2D_nodal``, ``AV2D_nodal_timint``
+     - Axisymmetric coils and rings: circuit-coupled conductor, stranded coil with its circuit equation, saturating
+       iron, time-integrated potential; current- and voltage-driven steps.
+   * - :doc:`coils_3d`: ``coil_3D_avoltemf``, ``coil_3D_avoltemf_edge``, ``coil_3D_avoltemf_edge_ferr``,
+       ``coil_3D_avoltemf_timint``
+     - ``AV3D_nodal``, ``AV3D_edge``, ``AV3D_nodal_timint``
+     - The same rings on a 30 degree cyclic sector: coordinate systems, cyclic symmetry of nodal and edge fields, tree
+       gauge, iron with edge elements, time-integrated unknowns.
+   * - :doc:`iter`: ``ITER_2D_carma``, ``ITER_2D_fine2``, ``ITER_2D_evol_carma``, ``ITER_2D_evol_fine2``,
+       ``ITER_3D_evol_fine2``, ``ITER_3D_evol_coils_edge``
      - all
-     - Plasma equilibrium and vertical displacement of ITER with the plasma algorithm, in 2D and on 3D toroidal sectors.
-
-Note: the evolution cases read the most recent ``<equilibrium case>_out_*.vtu`` of the equilibrium case: the
-equilibrium writes one output, numbered by the solves of its Picard loop.
-
-.. _examples-benchmarks:
-
-Benchmarks against ANSYS MAPDL
-------------------------------
-
-The cases of ``tests/apdl_benchmarks/`` (2D and 3D coils, conductors and rings: nodal, edge on hexahedra, prisms
-and pyramids, time-integrated, with iron) share one model data and one time history (``model_data.json``, ``time_history.json`` in that folder): TYPE ids
-select formulation and role, materials and real constants are the same for all, and the time history drives the active
-coil with Js, a current or a voltage, as its formulation requires (``benchmark_case.py``). Their macros differ from the
-examples above: they read the shared data through ``benchmark_case.py`` and their meshes are written from the MAPDL
-models.
-
-``pytest tests/test_apdl_benchmarks.py`` runs them and compares their fields with MAPDL results: how to run the tests,
-read the summary, benchmark other inputs and update the references is in :doc:`../testing`.
+     - Plasma equilibria and vertical displacement of ITER with the plasma algorithm: linear and quadratic meshes, 3D
+       sectors with nodal and edge elements, halo currents, voltage-driven coils.
 
 .. toctree::
    :maxdepth: 2
 
-   conductors
-   create
+   coils_2d
+   coils_3d
    iter

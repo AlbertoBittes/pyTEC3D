@@ -95,7 +95,8 @@ What each package is for:
 
    ./build.sh                      # editable install (default)
    ./build.sh --pip=regular        # regular install
-   ./build.sh --extras=notebooks   # also the optional dependencies of step 4
+   ./build.sh --extras=            # without the optional dependencies (default: dev,docs,notebooks)
+   ./build.sh --validate=no        # without the validation against the benchmarks
 
 ``build.sh`` runs in four stages:
 
@@ -126,8 +127,8 @@ The installation of the Python packages is chosen with the command-line flags:
    * - ``--pip=none``
      - No pip install: only libMesh and the module (``ansys-mapdl-reader`` is still installed). Run step 4 by hand.
    * - ``--extras=LIST``
-     - Optional dependencies of ``pyproject.toml`` to install with the package, comma-separated
-       (e.g. ``--extras=dev,notebooks``).
+     - Optional dependencies of ``pyproject.toml`` to install with the package, comma-separated. Default
+       ``dev,docs,notebooks`` (testing, documentation, tutorial notebooks); ``--extras=`` installs none.
    * - ``-h``, ``--help``
      - Print the usage.
 
@@ -177,12 +178,13 @@ at once. With a **regular** install, ``pip install .`` must be run again after e
 every rebuild of the solver, otherwise the environment keeps using the old copy. ``python -c "import pytec3d;
 print(pytec3d.__file__)"`` shows which copy is imported.
 
-Optional extras (``./build.sh --extras=dev,notebooks``, or by hand):
+Optional extras, installed by ``build.sh`` by default (``--extras=dev,docs,notebooks``), or by hand:
 
 .. code-block:: bash
 
-   python -m pip install -e ".[dev]"   # pytest, ruff, mypy
-   python -m pip install -e ".[notebooks]"   # matplotlib, ipykernel: the tutorial notebooks
+   python -m pip install -e ".[dev]"         # pytest, ruff, mypy: tests (tests/test_benchmarks.py) and checks
+   python -m pip install -e ".[docs]"        # sphinx, sphinx-rtd-theme, myst-nb: sphinx-build docs docs/_build
+   python -m pip install -e ".[notebooks]"   # matplotlib, ipykernel, jupyterlab, nbformat, nbclient: the tutorials
 
 ``build.sh`` also installs ``ansys-mapdl-reader``, after the package, used to convert ANSYS ``.cdb`` meshes (``pytec3d-convert-cdb``,
 :func:`pytec3d.mesh_converter.convert_cdb`) and by the MAPDL benchmarks. Its declared requirements conflict with the
@@ -205,18 +207,20 @@ To run the notebooks, also install Jupyter (``conda install -c conda-forge jupyt
    python -c "from pytec3d import Solver; Solver().close()"   # the package and the solver runtime start
    python -c "import pytec3d; print(pytec3d.__version__)"
 
-Run the benchmarks against ANSYS MAPDL results (no ANSYS needed; details in :doc:`testing`):
+Validate the installation against the stored ANSYS MAPDL / APEC results of the benchmark repository (no ANSYS
+needed; ``build.sh`` already does it unless ``--validate=no``; details in :doc:`testing`):
 
 .. code-block:: bash
 
+   git submodule update --init                 # pyTEC3D_APDL_benchmarks
    python -m pip install -e ".[dev]"
-   pytest tests/test_apdl_benchmarks.py -q
+   pytest tests/test_benchmarks.py -s
 
 Then run a first analysis (about 3 seconds):
 
 .. code-block:: bash
 
-   cp -r docs/tutorials/data/coil_2D_avolt /tmp/first_run
+   cp -r examples/coil_2D_avolt /tmp/first_run
    cd /tmp/first_run && python macro.py
    ls output          # coil_2D_avolt_out_1.vtu  coil_2D_avolt_out_2.vtu  coil_2D_avolt_steps.csv
    less coil_2D_avolt.log
@@ -295,7 +299,8 @@ More output, or less
 The whole default installation in one block
 -------------------------------------------
 
-Steps 1 to 5 with the default options (optimized build, editable install, the notebook extras), to copy and paste
+Steps 1 to 5 with the default options (optimized build, editable install, the test / docs / notebook extras, the
+validation), to copy and paste
 into a shell where ``conda`` is available. The first run takes 30 to 60 minutes (libMesh).
 
 .. code-block:: bash
@@ -306,5 +311,6 @@ into a shell where ``conda`` is available. The first run takes 30 to 60 minutes 
      python=3.12 compilers git cmake ninja pkg-config openmpi petsc vtk pyvista pybind11 spdlog nlohmann_json \
      numpy pandas mpi4py pip jupyterlab
    conda activate pytec3d
-   ./build.sh --extras=notebooks
+   git submodule update --init       # pyTEC3D_APDL_benchmarks: the validation of the build
+   ./build.sh
    python -c "from pytec3d import Solver; Solver().close()" && echo "pyTEC3D is installed"

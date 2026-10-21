@@ -19,13 +19,19 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
   - `resources`: the JSON element library compiled into the solver.
 
 - `src/pytec3d_solver`: the C++ solver; the compiled module `pytec3d_solver.pytec3d_solver` is installed there.
+- `examples/`: commented example analyses (2D and 3D coils, an electromagnet, ITER equilibria and vertical
+  displacements in 2D and 3D), each with its mesh, model data and `macro.py`.
+- `docs/`: the documentation (Sphinx), with the tutorial notebooks in `docs/tutorials`.
+- `tests/test_benchmarks.py`: the validation of the installation, which runs the benchmark repository.
+- `pyTEC3D_APDL_benchmarks/` (git submodule): the benchmarks against ANSYS MAPDL and APEC, with the stored reference
+  results (no ANSYS needed to validate pyTEC3D) and the tools for parametric studies.
 
 ## Quick start (local workflow)
 
-1. Clone and enter the repository.
+1. Clone the repository with its benchmark submodule.
 
   ```bash
-  git clone https://github.com/AlbertoBittes/pyTEC3D.git
+  git clone --recurse-submodules https://github.com/AlbertoBittes/pyTEC3D.git
   cd pyTEC3D
   ```
 
@@ -54,12 +60,14 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
   ./build.sh
   ```
 
-  `build.sh` builds libMesh and the solver module, installs the package with `pip install -e .`, then installs
-  `ansys-mapdl-reader` with `--no-deps` (its pins conflict with the conda packages). Flags:
+  `build.sh` builds libMesh and the solver module, installs the package with `pip install -e .` (with the test,
+  docs and notebook dependencies), installs `ansys-mapdl-reader` with `--no-deps` (its pins conflict with the conda
+  packages), then validates the installation against the stored benchmark references. Flags:
 
   ```bash
   ./build.sh --pip=regular             # pip install .   instead of   pip install -e .
   ./build.sh --pip=none                # no pip install (run it by hand afterwards)
-  ./build.sh --extras=dev,notebooks    # also the optional dependencies
+  ./build.sh --extras=                 # without the optional dependencies (default: dev,docs,notebooks)
+  ./build.sh --validate=no             # without the validation against the benchmarks
   ./build.sh --help
   ```

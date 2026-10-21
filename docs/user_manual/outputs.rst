@@ -76,11 +76,12 @@ Files
 -----
 
 ``write_output()``
-   Saves ``output/<name>_out_<n>.vtu`` (rank 0): the whole model (mesh, every array, the model data). ``n`` is the
-   number of steps solved by this solver so far (writing again after the same step overwrites the file). On the first
-   call of a run, the outputs of a previous run of the same model (``<name>_out_*.vtu``, ``<name>_steps.csv``) in
-   ``output`` are deleted, so the series only holds the current run. The plasma algorithm solves many times per step
-   (one solve per Picard iteration): ``n`` then counts those solves.
+   Saves ``output/<name>_out_<n>.vtu`` (rank 0): the whole model (mesh, every array, the model data). ``n``
+   numbers the outputs of the run: the latest output of the model in ``output`` (the last completed step) plus one, so
+   that the steps are ``_1, _2, ...`` whatever the number of solves per step (the plasma algorithm solves once per
+   Picard iteration); writing again with no solve in between overwrites the file, a write before the first solve is
+   ``_0``. On the first call of a run, the outputs of a previous run of the same model (``<name>_out_*.vtu``,
+   ``<name>_steps.csv``) in ``output`` are deleted, so the series only holds the current run.
 
 ``<name>.log``
    The job log (``Solver(log_file=...)``), started when the model is read and overwritten by a new run. It holds every

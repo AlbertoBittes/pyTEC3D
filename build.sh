@@ -1,15 +1,19 @@
 #!/bin/bash
-# pyTEC3D build: libMesh -> solver module -> pip install of the package -> ansys-mapdl-reader.
+# pyTEC3D build: libMesh -> solver module -> pip install of the package -> ansys-mapdl-reader -> validation.
 #
-# Usage: ./build.sh [--pip=editable|regular|none] [--extras=dev,notebooks]
+# Usage: ./build.sh [--pip=editable|regular|none] [--extras=dev,docs,notebooks] [--validate=yes|long|no]
 #   --pip=editable   pip install -e .   (default: the environment imports src/ directly)
 #   --pip=regular    pip install .      (copy into site-packages; rerun after every change of the sources)
 #   --pip=none       no pip install (only libMesh and the module; ansys-mapdl-reader is still installed)
-#   --extras=LIST    optional dependencies of pyproject.toml, e.g. --extras=dev,notebooks
+#   --extras=LIST    optional dependencies of pyproject.toml (default dev,docs,notebooks: pytest, sphinx, jupyter;
+#                    --extras= installs none)
+#   --validate=yes   validate the installation against the benchmark references (default; about 10 minutes,
+#                    no ANSYS needed: pyTEC3D_APDL_benchmarks/bench.py validate); long: also the 3D ITER cases; no
 #
 # Env vars:
 #   pyTEC3D_LIBMESH_METHOD=opt|dbg|devel   libMesh method (default: opt)
-#   pyTEC3D_PIP_INSTALL, pyTEC3D_PIP_EXTRAS same as --pip / --extras (the flags take precedence)
+#   pyTEC3D_PIP_INSTALL, pyTEC3D_PIP_EXTRAS, pyTEC3D_VALIDATE  same as --pip / --extras / --validate
+#   PYTEC3D_BENCHMARKS=DIR                 benchmark repository (default: pyTEC3D_APDL_benchmarks in the tree)
 #   pyTEC3D_CDB_READER=0                   do not install ansys-mapdl-reader (default 1: installed with
 #                                          --no-deps, see install_cdb_reader)
 #   FORCE_LIBMESH=1                        wipe and rebuild libMesh (default: reuse if present; also rebuilt
@@ -28,17 +32,22 @@
 set -euo pipefail
 
 # --- Options --------------------------------------------------------------------
-usage() { sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 pyTEC3D_PIP_INSTALL="${pyTEC3D_PIP_INSTALL:-editable}"
-pyTEC3D_PIP_EXTRAS="${pyTEC3D_PIP_EXTRAS:-}"
+pyTEC3D_PIP_EXTRAS="${pyTEC3D_PIP_EXTRAS-dev,docs,notebooks}"
+pyTEC3D_VALIDATE="${pyTEC3D_VALIDATE:-yes}"
 for arg in "$@"; do
   case "${arg}" in
     --pip=*)    pyTEC3D_PIP_INSTALL="${arg#--pip=}" ;;
     --extras=*) pyTEC3D_PIP_EXTRAS="${arg#--extras=}" ;;
+    --validate=*) pyTEC3D_VALIDATE="${arg#--validate=}" ;;
     -h|--help)  usage; exit 0 ;;
     *) echo "ERROR: unknown argument '${arg}'."; usage; exit 1 ;;
   esac
 done
+case "${pyTEC3D_VALIDATE}" in yes|long|no) ;;
+  *) echo "ERROR: invalid --validate='${pyTEC3D_VALIDATE}'. Allowed: yes, long, no."; exit 1 ;;
+esac
 case "${pyTEC3D_PIP_INSTALL}" in editable|regular|none) ;;
   *) echo "ERROR: invalid --pip='${pyTEC3D_PIP_INSTALL}'. Allowed: editable, regular, none."; exit 1 ;;
 esac
@@ -299,11 +308,36 @@ install_cdb_reader() {
     || { echo "ERROR: ansys-mapdl-reader does not import in this environment."; exit 1; }
 }
 
+# =================================================================================
+# Stage 5: validation of the installation against the benchmark references
+# =================================================================================
+# The benchmark repository (pyTEC3D_APDL_benchmarks, submodule) runs its cases with the installed pytec3d and compares
+# them with the stored ANSYS MAPDL / APEC results (no ANSYS needed). A missing repository skips the stage with a
+# warning; a failed validation fails the build.
+validate_install() {
+  if [ "${pyTEC3D_VALIDATE}" = "no" ] || [ "${pyTEC3D_PIP_INSTALL}" = "none" ]; then
+    echo "==> Validation: skipped (--validate=no or --pip=none)"
+    return
+  fi
+  local bench_dir="${PYTEC3D_BENCHMARKS:-${SRC_DIR}/pyTEC3D_APDL_benchmarks}"
+  if [ ! -f "${bench_dir}/bench.py" ]; then
+    echo "WARNING: validation skipped: benchmark repository not found at ${bench_dir}"
+    echo "         (git submodule update --init, or set PYTEC3D_BENCHMARKS)"
+    return
+  fi
+  local extra=()
+  if [ "${pyTEC3D_VALIDATE}" = "long" ]; then extra+=(--long); fi
+  echo "==> Validating the installation: ${bench_dir}/bench.py validate ${extra[*]:-}"
+  "${PYTHON}" "${bench_dir}/bench.py" validate "${extra[@]}" \
+    || { echo "ERROR: the validation against the benchmark references failed (see the summary above)."; exit 1; }
+}
+
 echo "pyTEC3D build: method=${pyTEC3D_LIBMESH_METHOD} prefix=${PREFIX} pip=${pyTEC3D_PIP_INSTALL}${pyTEC3D_PIP_EXTRAS:+ extras=${pyTEC3D_PIP_EXTRAS}}"
 build_libmesh
 build_solver
 pip_install
 install_cdb_reader
+validate_install
 if [ "${pyTEC3D_PIP_INSTALL}" = "none" ]; then
   echo "==> Done. Now run: pip install -e .   (or: pip install .)"
 else

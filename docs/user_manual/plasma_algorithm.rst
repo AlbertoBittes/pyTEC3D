@@ -19,7 +19,7 @@ toroidal station, the flux is averaged back over the stations.
 * For an evolution, set it from the output of the equilibrium, which carries the flux ``PSI``, ``Js`` and the plasma
   cells: ``algorithm.vacuum_chamber_mesh = Model.read_model(path).mesh`` (or
   ``mesh.read_mesh(path, reset_arrays=False)``), with ``path`` the last ``output/<name>_out_<n>.vtu`` of the
-  equilibrium (``n`` is the number of solves of its session).
+  equilibrium (``_1``: the equilibrium writes one output, after its Picard loop).
 * The test macros select the vacuum-chamber cells and their nodes on the solver mesh before the evolution solves
   (``selection.select(mesh, "VACUUM_CHAMBER", 1, location="elem"); selection.nsle(mesh)``). This is not required: the
   algorithm makes its own selections on the solver mesh and on its copy of the vacuum chamber.
@@ -112,17 +112,17 @@ Results
 
 ``algorithm.status`` holds the results of the last iteration: axis, X point and limiter positions and fluxes, the
 separatrix configuration, the correction currents, the plasma current scaling and cell count, convergence. Every
-iteration appends a row to ``__pytec3d__/pytec3d_iteration_diagnostics.csv``.
+iteration appends a row to ``output/<model>_iteration_diagnostics.csv``.
 
 A complete workflow
 -------------------
 
-#. **Equilibrium** (``tests/examples/ITER_2D``): 2D axisymmetric, static; coil current densities in the coils, a uniform initial
+#. **Equilibrium** (``examples/ITER_2D_fine2``): 2D axisymmetric, static; coil current densities in the coils, a uniform initial
    plasma current density in the vacuum chamber; ``algorithm.equilibrium_solve()``; ``solver.write_output()``.
-#. **Evolution** (``tests/examples/ITER_2D_evol``, ``tests/examples/ITER_3D_evol``): read the equilibrium output as the vacuum-chamber
+#. **Evolution** (``examples/ITER_2D_evol_fine2``, ``examples/ITER_3D_evol_fine2``): read the equilibrium output as the vacuum-chamber
    mesh, copy its current densities (coils, plasma) into ``Js`` of the evolution model (same cells), set the
    conductors (vessel, structures) as conducting domains; then a static first step and transient steps following the
    plasma current and beta waveforms, one ``evolution_solve()`` per step. Coils can be fixed current densities
-   (stranded conductors) or voltage-driven stranded coils (``tests/examples/ITER_2D_evol_coils``).
+   (stranded conductors) or voltage-driven stranded coils (``examples/ITER_3D_evol_coils_edge``).
 
 See :doc:`../examples/iter`.
