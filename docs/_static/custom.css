@@ -1,0 +1,16 @@
+/* Tables scroll horizontally instead of squeezing their content into the page width: the theme does it only through
+   jQuery, which recent Sphinx versions no longer ship. */
+.rst-content table.docutils:not(.field-list):not(.footnote):not(.citation) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.rst-content table.docutils:not(.field-list):not(.footnote):not(.citation) td,
+.rst-content table.docutils:not(.field-list):not(.footnote):not(.citation) th {
+  min-width: 6em;
+}
+/* Formulas in table cells stay on one line (MathJax would break them at every operator). */
+.rst-content table.docutils td .math,
+.rst-content table.docutils td mjx-container {
+  white-space: nowrap;
+}

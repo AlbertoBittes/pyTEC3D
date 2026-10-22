@@ -1,22 +1,24 @@
 The Mesh
 ========
 
-A pyTEC3D model lives on a VTK **unstructured grid** (``vtkUnstructuredGrid``), stored in ``.vtu`` files (or ``.pvtu``
-for a partitioned grid). Everything that varies over the model is an **array** of the grid, on the points
-(``location="node"``, point data) or on the cells (``location="elem"``, cell data).
+A pyTEC3D model lives on a `VTK <https://vtk.org/>`_ [Schroeder2006]_ **unstructured grid**
+(:vtk:`vtkUnstructuredGrid`), stored in ``.vtu`` files (or ``.pvtu`` for a partitioned grid), the `VTK XML format
+<https://docs.vtk.org/en/latest/vtk_file_formats/vtkxml_file_format.html>`_. Everything that varies over the model is
+an **array** of the grid, on the points (``location="node"``, point data) or on the cells (``location="elem"``, cell
+data).
 
 Making a mesh
 -------------
 
 Any mesher can be used, as long as the result is converted to a ``.vtu`` file with coordinates in metres:
 
-* **ANSYS** ``.cdb`` files: ``pytec3d-convert-cdb mesh.cdb`` writes ``mesh.vtu`` next to it (needs the ``cdb`` extra,
-  ``pip install -e ".[cdb]"``). The ANSYS element type, material and real constant numbers become the cell arrays
-  ``TYPE``, ``MATERIAL`` and ``CONSTANT``, and the arrays of a model are added. Node and element numbers of ANSYS
-  are kept as ``ansys_node_num`` / ``ansys_elem_num``.
-* **Gmsh, Salome, Cubit...**: export to VTK, or convert with `meshio <https://github.com/nschloe/meshio>`_
-  (``meshio convert mesh.msh mesh.vtu``); physical groups become integer arrays that can be turned into
-  ``TYPE`` / ``MATERIAL`` ids with :mod:`pytec3d.selection`.
+* **ANSYS** ``.cdb`` files: ``pytec3d-convert-cdb mesh.cdb`` writes ``mesh.vtu`` next to it (with
+  `ansys-mapdl-reader <https://reader.docs.pyansys.com/>`_, installed by ``build.sh``). The ANSYS element type,
+  material and real constant numbers become the cell arrays ``TYPE``, ``MATERIAL`` and ``CONSTANT``, and the arrays of
+  a model are added. Node and element numbers of ANSYS are kept as ``ansys_node_num`` / ``ansys_elem_num``.
+* **Gmsh** (https://gmsh.info/), **Salome**, **Cubit**...: export to VTK, or convert with `meshio
+  <https://github.com/nschloe/meshio>`_ (``meshio convert mesh.msh mesh.vtu``); physical groups become integer arrays
+  that can be turned into ``TYPE`` / ``MATERIAL`` ids with :mod:`pytec3d.selection`.
 * **ParaView / VTK**: any filter pipeline that ends in an unstructured grid can be saved as ``.vtu``.
 * **Python**: build a ``vtkUnstructuredGrid`` and use :meth:`pytec3d.solver.Solver.from_grid` / :meth:`pytec3d.model.Model.from_grid`.
 
@@ -171,4 +173,4 @@ The model data inside the mesh
 ``Model.save_model()`` (and ``Solver.save_model()`` / ``write_output()``) store the model name and the model data, as
 JSON text, in the field data of the grid (``pyTEC3D_META_MESH_NAME``, ``pyTEC3D_MODEL_DATA``). A saved model is
 therefore self-contained: ``Solver.read_model("saved.vtu")`` restores both. Field arrays of older tools found in a
-mesh (``APEC_M_TABLE_*``...) are ignored.
+mesh.

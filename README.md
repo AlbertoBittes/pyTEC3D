@@ -1,6 +1,6 @@
 # pyTEC3D
 
-A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
+python Tokamak Eddy-currents Code 3D: A finite-element code for electromagnetic simulation of plasma equilibria and disruptions.
 
 ## Supported platform
 
@@ -31,43 +31,27 @@ A finite-element code for electromagnetic simulation of plasma equilibria and di
 1. Clone the repository with its benchmark submodule.
 
   ```bash
-  git clone --recurse-submodules https://github.com/AlbertoBittes/pyTEC3D.git
+  git clone https://github.com/AlbertoBittes/pyTEC3D.git
   cd pyTEC3D
+  git submodule update --init pyTEC3D_APDL_benchmarks
   ```
 
-2. Create a Python 3.12 development environment.
+2. Create the conda environment of `environment.yml` (conda-forge; Python 3.12, PETSc 3.26, VTK 9, Open MPI 5) and
+  build.
 
   ```bash
- conda create -n pytec3d -c conda-forge \
-                        python=3.12 \
-                        compilers \
-                        git \
-                        cmake \
-                        ninja \
-                        pkg-config \
-                        openmpi \
-                        petsc \
-                        vtk \
-                        pyvista \
-                        pybind11 \
-                        spdlog \
-                        numpy \
-                        pandas \
-                        mpi4py \
-                        pip \
-                        -y
+  conda env create -f environment.yml
   conda activate pytec3d
   ./build.sh
   ```
 
-  `build.sh` builds libMesh and the solver module, installs the package with `pip install -e .` (with the test,
+  `build.sh` builds libMesh and the solver module, installs the package with `pip install .` (with the test,
   docs and notebook dependencies), installs `ansys-mapdl-reader` with `--no-deps` (its pins conflict with the conda
   packages), then validates the installation against the stored benchmark references. Flags:
 
   ```bash
-  ./build.sh --pip=regular             # pip install .   instead of   pip install -e .
-  ./build.sh --pip=none                # no pip install (run it by hand afterwards)
-  ./build.sh --extras=                 # without the optional dependencies (default: dev,docs,notebooks)
+  ./build.sh                           # pip install .     (regular, for users; the default)
+  ./build.sh --pip=editable            # pip install -e .  (editable, for developers)
   ./build.sh --validate=no             # without the validation against the benchmarks
   ./build.sh --help
   ```

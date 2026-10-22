@@ -1,14 +1,18 @@
 ParaView Integration
 ====================
 
-`ParaView <https://www.paraview.org/>`_ is the graphical front end of pyTEC3D: the model is a VTK grid, so ParaView
-shows it directly, and with ``src/pytec3d/pytec3d_paraview_plugin.py`` the mesh can also be **edited interactively**
-with the pyTEC3D tools, in two complementary ways:
+`ParaView <https://www.paraview.org/>`_ [Ahrens2005]_ (`documentation <https://docs.paraview.org/en/latest/>`_) is the
+graphical front end of pyTEC3D: the model is a VTK grid, so ParaView shows it directly, and with
+``src/pytec3d/pytec3d_paraview_plugin.py`` the mesh can also be **edited interactively** with the pyTEC3D tools, in
+two complementary ways:
 
-* the **Python Shell** of ParaView: the whole :mod:`pytec3d.selection`, :mod:`pytec3d.mesh` and
-  :mod:`pytec3d.model_edit` API, run on the grids loaded in the GUI, with the results shown at once;
+* the **Python Shell** of ParaView (:paraview:`ParaView and Python
+  <Tutorials/SelfDirectedTutorial/batchPythonScripting.html>`): the whole :mod:`pytec3d.selection`,
+  :mod:`pytec3d.mesh` and :mod:`pytec3d.model_edit` API, run on the grids loaded in the GUI, with the results shown at
+  once;
 * three **filters** (*Select*, *Select Extracted Data*, *Set Value On Selection*) that do the same operations from
-  the pipeline browser, without code, and combine with the graphical selection tools of ParaView.
+  the pipeline browser, without code, and combine with the graphical selection tools of ParaView
+  (:paraview:`selecting data <UsersGuide/selectingData.html>`).
 
 The idea is to prepare the model where you see it: pick regions and boundaries with the mouse or by criteria, check
 them visually, write values (Dirichlet arrays, loads, ``TYPE`` / ``MATERIAL`` ids, coupling ids), save the mesh, and
@@ -23,10 +27,17 @@ The plugin file solves this: when it is executed it adds the folder that contain
 ``sys.path`` of ParaView's Python, so ``import pytec3d`` works from then on (ParaView's Python provides VTK and NumPy).
 
 * **For the console**: open *View > Python Shell*, click **Run Script** and choose
-  ``src/pytec3d/pytec3d_paraview_plugin.py`` (from the repository, or from the installed package folder). This is
-  needed once per ParaView session.
+  ``src/pytec3d/pytec3d_paraview_plugin.py`` (from the repository, or from the installed package folder), once per
+  ParaView session. The shell then has pytec3d and its tools, **with nothing to import**: ``selection``, ``meshes``
+  (:mod:`pytec3d.mesh`), ``model_edit``, ``element_library``, ``tree_gauge``, ``Model``, the coordinate systems
+  (``CylindricalCoordinateSystem``...), ``np``, ``pytec3d`` itself and ``plot`` (the list is
+  :data:`pytec3d.pytec3d_paraview_plugin.CONSOLE_NAMES`). ``selection`` is :mod:`pytec3d.selection`, not the selection
+  module of ParaView.
 * **For the filters**: *Tools > Manage Plugins > Load New...*, select the same file (tick *Auto Load* to have the
-  filters at every start). Loading the plugin also makes the package importable in the Python Shell.
+  filters at every start). Loaded this way, the plugin also puts the names of the console in the Python Shell if the
+  shell is already open; otherwise (e.g. *Auto Load* at the start of ParaView) use *Run Script* as above.
+
+The two can be combined: the filters from the Plugin Manager, the console from *Run Script*.
 
 Use a ParaView version whose Python has the same major version as the environment (3.12) and NumPy available
 (ParaView 5.12 or later binaries).
@@ -34,13 +45,9 @@ Use a ParaView version whose Python has the same major version as the environmen
 Working in the Python Shell
 ---------------------------
 
-After *Run Script* of the plugin file:
+After *Run Script* of the plugin file, with no import:
 
 .. code-block:: python
-
-   from pytec3d import selection, Model
-   from pytec3d import mesh as meshes
-   from pytec3d.pytec3d_paraview_plugin import plot
 
    # 1. Read a model with pytec3d and show it in the view
    model = Model.read_model("/path/to/coil_2D_avolt.vtu", reset_arrays=True)
@@ -61,7 +68,7 @@ A grid already opened in the GUI (*File > Open*) can be fetched into the console
 
 .. code-block:: python
 
-   from paraview import servermanager
+   from paraview import servermanager                # ParaView's own module
    grid = servermanager.Fetch(GetActiveSource())     # a copy of the data of the selected pipeline item
    selection.select_all(grid); selection.nsel_ext(grid)
    plot(grid, "boundary nodes")                     # show the edited copy

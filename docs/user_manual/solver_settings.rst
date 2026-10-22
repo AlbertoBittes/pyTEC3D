@@ -5,6 +5,11 @@ Solver Settings
 (:data:`pytec3d.solver.DEFAULT_SOLVER_SETTINGS`); unknown keys are errors, so a misspelled setting is never ignored
 silently. The settings are copied when the model is loaded: change them before ``load_model_into_solver()``.
 
+The linear systems are solved with `PETSc <https://petsc.org/>`_ [PETScManual]_: the ``linear`` group configures a
+KSP (Krylov solver) and its PC (preconditioner), described in the `KSP chapter
+<https://petsc.org/release/manual/ksp/>`_ of the PETSc manual; the ``nonlinear`` group configures the Newton solver of
+libMesh (:libmesh:`NewtonSolver`) [Kirk2006]_.
+
 .. code-block:: python
 
    solver.solver_settings = {
@@ -52,23 +57,33 @@ and lists the settings that differ from the defaults.
 Linear solver
 -------------
 
-The default is a **direct** solve: ``preonly`` + ``lu`` with **MUMPS**, robust for the indefinite and ill-conditioned
-systems of eddy-current problems (curl-curl operators, coupled electric unknowns, edge elements), in serial and in
-parallel. Its memory grows quickly with the size of 3D models.
+The default is a **direct** solve: ``preonly`` + ``lu`` (:petsc:`KSPPREONLY <KSP/KSPPREONLY>`, :petsc:`PCLU
+<PC/PCLU>`) with **MUMPS** (`MUMPS <https://mumps-solver.org/>`_, the parallel multifrontal solver [Amestoy2001]_,
+through :petsc:`MATSOLVERMUMPS <Mat/MATSOLVERMUMPS>`), robust for the indefinite and ill-conditioned systems of
+eddy-current problems (curl-curl operators, coupled electric unknowns, edge elements), in serial and in parallel. Its
+memory grows quickly with the size of 3D models.
 
-Iterative solvers (``ksp_type`` ``gmres``, ``fgmres``, ``bcgs``... with ``pc_type`` ``ilu``, ``asm``, ``bjacobi``,
-``hypre``, ``gamg``...) use less memory but need a preconditioner suited to the problem; generic preconditioners
-converge poorly on curl-curl operators. Check ``linear_iterations`` and the true residual of each step.
+Iterative solvers (``ksp_type`` ``gmres`` [SaadSchultz1986]_, ``fgmres``, ``bcgs``... with ``pc_type`` ``ilu``,
+``asm``, ``bjacobi``, ``hypre``, ``gamg``...) use less memory but need a preconditioner suited to the problem; generic
+preconditioners converge poorly on curl-curl operators, which need auxiliary-space preconditioners such as the AMS of
+`hypre <https://hypre.readthedocs.io/>`_ [HiptmairXu2007]_ (:petsc:`PCHYPRE <PC/PCHYPRE>`). Check
+``linear_iterations`` and the true residual of each step; the tolerances are those of :petsc:`KSPSetTolerances
+<KSP/KSPSetTolerances>`.
 
-Accepted ``ksp_type``: ``preonly gmres fgmres bcgs bcgsl cgs cg minres symmlq lgmres ibcgs gcr tfqmr tcqmr cr lsqr bicg
-richardson chebyshev``. Accepted ``pc_type``: ``lu cholesky ilu icc asm gasm bjacobi jacobi sor eisenstat hypre ml gamg
-mg ksp none``.
+Accepted ``ksp_type`` (:petsc:`KSPType <KSP/KSPType>`): ``preonly gmres fgmres bcgs bcgsl cgs cg minres symmlq lgmres
+ibcgs gcr tfqmr tcqmr cr lsqr bicg richardson chebyshev``. Accepted ``pc_type`` (:petsc:`PCType <PC/PCType>`): ``lu
+cholesky ilu icc asm gasm bjacobi jacobi sor eisenstat hypre ml gamg mg ksp none``.
 
 After every linear solve the solver computes the **true residual** :math:`\|b-Ax\|/\|b\|` of the reduced system and
 warns above :math:`10^{-6}`.
 
 Useful PETSc / MUMPS options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every ``-mat_mumps_icntl_<n>`` option of PETSc is listed in :petsc:`MATSOLVERMUMPS <Mat/MATSOLVERMUMPS>`, the meaning
+of each ICNTL parameter in the `MUMPS user guide <https://mumps-solver.org/index.php?page=doc>`_. The monitors are
+described in :petsc:`KSPMonitor <KSP/KSPMonitor>`, :petsc:`KSPView <KSP/KSPView>` and the `profiling chapter
+<https://petsc.org/release/manual/profiling/>`_ (``-log_view``).
 
 .. list-table::
    :header-rows: 1
@@ -84,7 +99,7 @@ Useful PETSc / MUMPS options
    * - ``"-mat_mumps_icntl_14": "50"``
      - Extra workspace (percent) when MUMPS stops with a memory error (INFOG(1) = -9).
    * - ``"-mat_mumps_icntl_7": "5"``
-     - Ordering (5 = METIS).
+     - Ordering (5 = METIS [KarypisKumar1998]_).
    * - ``"-ksp_monitor": None``, ``"-ksp_view": None``, ``"-log_view": None``
      - Remove the default monitors (they print to the standard output only, not to the log).
 
@@ -110,7 +125,7 @@ Used when at least one cell has a nonlinear law (:doc:`nonlinear`, :ref:`theory-
    * - ``require_finite_residual``
      - Stop on NaN / Inf residuals.
    * - ``brent_line_search``
-     - Line search by Brent's method (True) or plain backtracking (False).
+     - Line search by Brent's method [Brent1973]_ (True) or plain backtracking (False).
    * - ``minimum_step_length``
      - Smallest step of the line search, in (0, 1].
    * - ``linear_tolerance_multiplier``

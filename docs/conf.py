@@ -16,6 +16,8 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.mathjax",
+    "sphinx.ext.extlinks",
+    "sphinx.ext.intersphinx",
     # Jupyter notebooks of the user manual, shown with the outputs stored in them (not executed at build time: the
     # C++ solver is not available on the documentation builders).
     "myst_nb",
@@ -59,5 +61,22 @@ autodoc_default_options = {
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]        # scrollable tables
+
+# Links to the documentation of the libraries: :petsc:`KSPGMRES <KSP/KSPGMRES>` (PETSc manual pages),
+# :vtk:`vtkUnstructuredGrid` (VTK class reference), :paraview:`text <UsersGuide/selectingData.html>` (ParaView guide),
+# :libmesh:`NewtonSolver` (libMesh class reference).
+extlinks = {
+    "petsc": ("https://petsc.org/release/manualpages/%s/", "%s"),
+    "vtk": ("https://vtk.org/doc/nightly/html/class%s.html", "%s"),
+    "paraview": ("https://docs.paraview.org/en/latest/%s", "%s"),
+    "libmesh": ("https://libmesh.github.io/doxygen/classlibMesh_1_1%s.html", "%s"),
+}
+# Python, NumPy and pyvista objects named in the docstrings link to their documentation.
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "pyvista": ("https://docs.pyvista.org", None),
+}
 html_last_updated_fmt = "%Y-%m-%d"
 html_theme_options = {"navigation_depth": 3, "collapse_navigation": False}

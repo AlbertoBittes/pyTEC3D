@@ -6,7 +6,8 @@ Magneto-quasi-static approximation
 
 pyTEC3D solves the low-frequency (eddy-current) regime of Maxwell's equations: the fields change slowly enough that
 the displacement current :math:`\partial_t\mathbf{D}` is negligible against the conduction current, i.e. the size of
-the model is small against the wavelength and capacitive effects are negligible. The equations are then
+the model is small against the wavelength and capacitive effects are negligible [Bossavit1998]_ [Meunier2008]_. The
+equations are then
 
 .. math::
 
@@ -110,5 +111,5 @@ without conductivity the discrete curl-curl operator is singular and a gauge is 
   continuity of all the components of :math:`\mathbf{A}`) [BiroPreis1989]_;
 * the **edge** 3D element types use a **tree-cotree gauge**: the circulations of :math:`\mathbf{A}` on the edges of a
   spanning tree of the mesh are fixed to zero (they are the gradient part), the cotree edges carry the solution
-  [MangesCendes1995]_ (:func:`pytec3d.tree_gauge.tree_gauge`);
+  [AlbaneseRubinacci1988]_ [MangesCendes1995]_ (:func:`pytec3d.tree_gauge.tree_gauge`);
 * in **2D** the out-of-plane potential :math:`A_z` has no gradient freedom: no gauge is needed.

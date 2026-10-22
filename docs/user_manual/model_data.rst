@@ -85,7 +85,7 @@ Rules checked when the model is loaded:
 * **all the cells of a model have the same** ``element_type`` (the domains, orders and ids may differ): a model is
   either 2D nodal, 3D nodal or 3D edge, linear or time-integrated;
 * the dimension of the element type matches the cells (2D cells, 2D type);
-* the domain is one of the domains of the element type (``CIRCUIT_COUPLED_CONDUCTOR`` exists only in 2D);
+* the domain is one of the domains of the element type (e.g. ``CIRCUIT_COUPLED_CONDUCTOR`` exists only in 2D);
 * rows not used by any cell are reported as warnings; keys other than ``element_type`` and ``option1`` - ``option3``
   are errors (nonlinear laws are selected in ``nonlinear_laws``).
 

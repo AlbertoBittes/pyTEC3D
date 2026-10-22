@@ -66,7 +66,8 @@ the normal component at material interfaces, where the exact :math:`\mathbf{A}` 
 vectors in the nodal frames (``node_angles``).
 
 **Edge** (``AV3D_edge``). :math:`\mathbf{A}_h=\sum_kW_k\,a_k` with the first-order Nedelec shape functions of the first
-kind (``NEDELEC_ONE``): one DOF per edge, the circulation :math:`a_k=\int_{\text{edge }k}\mathbf{A}\cdot d\mathbf{l}`.
+kind (``NEDELEC_ONE``) [Nedelec1980]_: one DOF per edge, the circulation
+:math:`a_k=\int_{\text{edge }k}\mathbf{A}\cdot d\mathbf{l}`.
 Only the tangential component is continuous across faces, which is what the physics requires at material interfaces
 [Biro1999]_. There is no gauge term: the gradient part of :math:`\mathbf{A}` is removed with a tree-cotree gauge
 (:ref:`theory-gauge`). The edge DOFs are stored on the midside nodes of a quadratic mesh: an edge model needs TET10,

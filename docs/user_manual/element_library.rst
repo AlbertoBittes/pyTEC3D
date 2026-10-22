@@ -363,8 +363,9 @@ Boundary conditions and setup
 ``AV3D_edge`` (index 2)
 -----------------------
 
-``AV3D_nodal`` with the vector potential discretized by first-order Nedelec (edge) elements of the first kind,
-``NEDELEC_ONE``: one DOF per edge, the circulation of A along it; A is tangentially continuous only, which represents
+``AV3D_nodal`` with the vector potential discretized by first-order Nedelec (edge) elements of the first kind
+[Nedelec1980]_, ``NEDELEC_ONE``: one DOF per edge, the circulation of A along it; A is tangentially continuous only,
+which represents
 fields at material interfaces correctly. Theory: :ref:`theory-3d`.
 
 Differences from ``AV3D_nodal``

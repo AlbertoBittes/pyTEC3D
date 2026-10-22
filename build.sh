@@ -1,25 +1,19 @@
 #!/bin/bash
 # pyTEC3D build: libMesh -> solver module -> pip install of the package -> ansys-mapdl-reader -> validation.
 #
-# Usage: ./build.sh [--pip=editable|regular|none] [--extras=dev,docs,notebooks] [--validate=yes|long|no]
-#   --pip=editable   pip install -e .   (default: the environment imports src/ directly)
-#   --pip=regular    pip install .      (copy into site-packages; rerun after every change of the sources)
-#   --pip=none       no pip install (only libMesh and the module; ansys-mapdl-reader is still installed)
-#   --extras=LIST    optional dependencies of pyproject.toml (default dev,docs,notebooks: pytest, sphinx, jupyter;
-#                    --extras= installs none)
+# Usage: ./build.sh [--pip=regular|editable] [--validate=yes|long|no]
+#   --pip=regular    pip install .      (default, for users: the packages are copied into site-packages)
+#   --pip=editable   pip install -e .   (for developers: the environment imports src/ directly)
 #   --validate=yes   validate the installation against the benchmark references (default; about 10 minutes,
 #                    no ANSYS needed: pyTEC3D_APDL_benchmarks/bench.py validate); long: also the 3D ITER cases; no
+# The package is installed with its test, documentation and notebook dependencies (extras dev,docs,notebooks) and
+# ansys-mapdl-reader, in the active conda environment, building with all the cores.
 #
 # Env vars:
-#   pyTEC3D_LIBMESH_METHOD=opt|dbg|devel   libMesh method (default: opt)
-#   pyTEC3D_PIP_INSTALL, pyTEC3D_PIP_EXTRAS, pyTEC3D_VALIDATE  same as --pip / --extras / --validate
-#   PYTEC3D_BENCHMARKS=DIR                 benchmark repository (default: pyTEC3D_APDL_benchmarks in the tree)
-#   pyTEC3D_CDB_READER=0                   do not install ansys-mapdl-reader (default 1: installed with
-#                                          --no-deps, see install_cdb_reader)
+#   pyTEC3D_LIBMESH_METHOD=opt|dbg|devel   build type of libMesh and of the solver (default: opt)
 #   FORCE_LIBMESH=1                        wipe and rebuild libMesh (default: reuse if present; also rebuilt
 #                                          automatically when it links an MPI other than the one of PETSc)
-#   PREFIX, PYTHON, CPU_COUNT, DEPS_DIR, PATCH_DIR
-#   pyTEC3D_METHOD_CFLAGS / _CXXFLAGS, pyTEC3D_EXTRA_{CFLAGS,CXXFLAGS,CPPFLAGS,LDFLAGS}
+#   PYTEC3D_BENCHMARKS=DIR                 benchmark repository (default: pyTEC3D_APDL_benchmarks in the tree)
 #
 # Layout (derived from the repo root):
 #   .deps/src/libmesh            libMesh checkout (patched once)
@@ -27,19 +21,18 @@
 #   build/pytec3d-<method>/      CMake build tree (wiped on every run)
 #   src/pytec3d_solver/*.so      compiled module, installed there by `cmake --install`
 #
-# Incremental rebuild after editing the C++ sources:
-#   cmake --build build/pytec3d-<method> && cmake --install build/pytec3d-<method>
+# After a change of the C++ sources or of the element library, run ./build.sh again: libMesh is reused, only the
+# module is rebuilt.
 set -euo pipefail
 
 # --- Options --------------------------------------------------------------------
-usage() { sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
-pyTEC3D_PIP_INSTALL="${pyTEC3D_PIP_INSTALL:-editable}"
-pyTEC3D_PIP_EXTRAS="${pyTEC3D_PIP_EXTRAS-dev,docs,notebooks}"
-pyTEC3D_VALIDATE="${pyTEC3D_VALIDATE:-yes}"
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+pyTEC3D_PIP_INSTALL=regular
+pyTEC3D_PIP_EXTRAS=dev,docs,notebooks
+pyTEC3D_VALIDATE=yes
 for arg in "$@"; do
   case "${arg}" in
     --pip=*)    pyTEC3D_PIP_INSTALL="${arg#--pip=}" ;;
-    --extras=*) pyTEC3D_PIP_EXTRAS="${arg#--extras=}" ;;
     --validate=*) pyTEC3D_VALIDATE="${arg#--validate=}" ;;
     -h|--help)  usage; exit 0 ;;
     *) echo "ERROR: unknown argument '${arg}'."; usage; exit 1 ;;
@@ -48,12 +41,9 @@ done
 case "${pyTEC3D_VALIDATE}" in yes|long|no) ;;
   *) echo "ERROR: invalid --validate='${pyTEC3D_VALIDATE}'. Allowed: yes, long, no."; exit 1 ;;
 esac
-case "${pyTEC3D_PIP_INSTALL}" in editable|regular|none) ;;
-  *) echo "ERROR: invalid --pip='${pyTEC3D_PIP_INSTALL}'. Allowed: editable, regular, none."; exit 1 ;;
+case "${pyTEC3D_PIP_INSTALL}" in editable|regular) ;;
+  *) echo "ERROR: invalid --pip='${pyTEC3D_PIP_INSTALL}'. Allowed: regular, editable."; exit 1 ;;
 esac
-if ! [[ "${pyTEC3D_PIP_EXTRAS}" =~ ^[A-Za-z0-9_,-]*$ ]]; then
-  echo "ERROR: invalid --extras='${pyTEC3D_PIP_EXTRAS}' (comma-separated names, e.g. dev,notebooks)."; exit 1
-fi
 
 pyTEC3D_LIBMESH_METHOD="$(printf '%s' "${pyTEC3D_LIBMESH_METHOD:-opt}" | tr '[:upper:]' '[:lower:]')"
 case "${pyTEC3D_LIBMESH_METHOD}" in opt|dbg|devel) ;;
@@ -69,16 +59,18 @@ if [ ! -d "${SRC_DIR}/src/pytec3d" ]; then
   exit 1
 fi
 
-PREFIX="${PREFIX:-${CONDA_PREFIX:-}}"
+# Everything is built against, and installed into, the active conda environment.
+PREFIX="${CONDA_PREFIX:-}"
 if [ -z "${PREFIX}" ]; then
-  echo "ERROR: Could not resolve PREFIX. Activate the conda env or export PREFIX."
+  echo "ERROR: no active conda environment: conda env create -f environment.yml; conda activate pytec3d"
   exit 1
 fi
 export PREFIX
-PYTHON="${PYTHON:-python}"
+PYTHON="${PREFIX}/bin/python"
+[ -x "${PYTHON}" ] || { echo "ERROR: ${PYTHON} not found: install python in the conda environment."; exit 1; }
 
-DEPS_DIR="${DEPS_DIR:-${SRC_DIR}/.deps}"
-PATCH_DIR="${PATCH_DIR:-${SRC_DIR}/libmesh_patches}"
+DEPS_DIR="${SRC_DIR}/.deps"
+PATCH_DIR="${SRC_DIR}/libmesh_patches"
 LIBMESH_SRC_DIR="${DEPS_DIR}/src/libmesh"
 LIBMESH_PREFIX="${DEPS_DIR}/libmesh-${pyTEC3D_LIBMESH_METHOD}"
 LIBMESH_LIB="${LIBMESH_PREFIX}/lib/libmesh_${pyTEC3D_LIBMESH_METHOD}.so"
@@ -86,9 +78,7 @@ SOLVER_BUILD_DIR="${SRC_DIR}/build/pytec3d-${pyTEC3D_LIBMESH_METHOD}"
 PYTEC3D_PYTHON_PACKAGE_ROOT="${SRC_DIR}/src"
 SOLVER_PKG_DIR="${PYTEC3D_PYTHON_PACKAGE_ROOT}/pytec3d_solver"
 
-if [ -z "${CPU_COUNT:-}" ]; then
-  CPU_COUNT="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-fi
+CPU_COUNT="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
 if ! [[ "${CPU_COUNT}" =~ ^[0-9]+$ ]] || [ "${CPU_COUNT}" -le 0 ]; then CPU_COUNT=1; fi
 
 # --- MPI: one implementation only ------------------------------------------------
@@ -145,20 +135,19 @@ export METIS_DIR="${METIS_DIR:-${PREFIX}}"
 export PARMETIS_DIR="${PARMETIS_DIR:-${PREFIX}}"
 export MPI_DIR="${MPI_DIR:-${MPI_PREFIX}}"
 
+# Optimization flags of each method (fixed).
 CMAKE_BUILD_TYPE=Release
-METHOD_FLAGS_DEFAULT="-O3 -g0"
+METHOD_FLAGS="-O3 -g0"
 if [ "${pyTEC3D_LIBMESH_METHOD}" = "dbg" ]; then
-  CMAKE_BUILD_TYPE=Debug;          METHOD_FLAGS_DEFAULT="-O0 -g3"
+  CMAKE_BUILD_TYPE=Debug;          METHOD_FLAGS="-O0 -g3"
 elif [ "${pyTEC3D_LIBMESH_METHOD}" = "devel" ]; then
-  CMAKE_BUILD_TYPE=RelWithDebInfo; METHOD_FLAGS_DEFAULT="-O2 -g"
+  CMAKE_BUILD_TYPE=RelWithDebInfo; METHOD_FLAGS="-O2 -g"
 fi
-pyTEC3D_METHOD_CFLAGS="${pyTEC3D_METHOD_CFLAGS:-${METHOD_FLAGS_DEFAULT}}"
-pyTEC3D_METHOD_CXXFLAGS="${pyTEC3D_METHOD_CXXFLAGS:-${pyTEC3D_METHOD_CFLAGS}}"
 
-export CFLAGS="${CFLAGS:-} -I${PREFIX}/include ${pyTEC3D_METHOD_CFLAGS} ${pyTEC3D_EXTRA_CFLAGS:-}"
-export CPPFLAGS="${CPPFLAGS:-} -I${PREFIX}/include ${pyTEC3D_EXTRA_CPPFLAGS:-}"
-export CXXFLAGS="${CXXFLAGS:-} -I${PREFIX}/include ${pyTEC3D_METHOD_CXXFLAGS} ${pyTEC3D_EXTRA_CXXFLAGS:-}"
-export LDFLAGS="${LDFLAGS:-} -L${PREFIX}/lib ${pyTEC3D_EXTRA_LDFLAGS:-}"
+export CFLAGS="${CFLAGS:-} -I${PREFIX}/include ${METHOD_FLAGS}"
+export CPPFLAGS="${CPPFLAGS:-} -I${PREFIX}/include"
+export CXXFLAGS="${CXXFLAGS:-} -I${PREFIX}/include ${METHOD_FLAGS}"
+export LDFLAGS="${LDFLAGS:-} -L${PREFIX}/lib"
 # Build-time convenience only (configure runs small test binaries). The final
 # module must not depend on it: it is verified below with LD_LIBRARY_PATH unset.
 export LD_LIBRARY_PATH="${PREFIX}/lib:${LD_LIBRARY_PATH:-}"
@@ -280,9 +269,8 @@ build_solver() {
 # Stage 3: the Python packages (pytec3d + the module just built)
 # =================================================================================
 pip_install() {
-  local target="${SRC_DIR}${pyTEC3D_PIP_EXTRAS:+[${pyTEC3D_PIP_EXTRAS}]}"
+  local target="${SRC_DIR}[${pyTEC3D_PIP_EXTRAS}]"
   case "${pyTEC3D_PIP_INSTALL}" in
-    none)     echo "==> pip install: skipped (--pip=none)"; return ;;
     editable) echo "==> pip install -e ${target}"; "${PYTHON}" -m pip install -e "${target}" ;;
     regular)  echo "==> pip install ${target}";    "${PYTHON}" -m pip install "${target}" ;;
   esac
@@ -298,10 +286,6 @@ pip_install() {
 # the package itself works with them. It is installed without dependencies, plus its two small pure-Python modules,
 # after the pip install of pytec3d, so that no later resolution of dependencies touches it.
 install_cdb_reader() {
-  if [ "${pyTEC3D_CDB_READER:-1}" = "0" ]; then
-    echo "==> ansys-mapdl-reader: skipped (pyTEC3D_CDB_READER=0)"
-    return
-  fi
   echo "==> Installing ansys-mapdl-reader (--no-deps)"
   "${PYTHON}" -m pip install --no-deps --quiet ansys-mapdl-reader appdirs tqdm
   "${PYTHON}" -c "from ansys.mapdl import reader" \
@@ -315,8 +299,8 @@ install_cdb_reader() {
 # them with the stored ANSYS MAPDL / APEC results (no ANSYS needed). A missing repository skips the stage with a
 # warning; a failed validation fails the build.
 validate_install() {
-  if [ "${pyTEC3D_VALIDATE}" = "no" ] || [ "${pyTEC3D_PIP_INSTALL}" = "none" ]; then
-    echo "==> Validation: skipped (--validate=no or --pip=none)"
+  if [ "${pyTEC3D_VALIDATE}" = "no" ]; then
+    echo "==> Validation: skipped (--validate=no)"
     return
   fi
   local bench_dir="${PYTEC3D_BENCHMARKS:-${SRC_DIR}/pyTEC3D_APDL_benchmarks}"
@@ -332,14 +316,10 @@ validate_install() {
     || { echo "ERROR: the validation against the benchmark references failed (see the summary above)."; exit 1; }
 }
 
-echo "pyTEC3D build: method=${pyTEC3D_LIBMESH_METHOD} prefix=${PREFIX} pip=${pyTEC3D_PIP_INSTALL}${pyTEC3D_PIP_EXTRAS:+ extras=${pyTEC3D_PIP_EXTRAS}}"
+echo "pyTEC3D build: method=${pyTEC3D_LIBMESH_METHOD} prefix=${PREFIX} pip=${pyTEC3D_PIP_INSTALL} extras=${pyTEC3D_PIP_EXTRAS} jobs=${CPU_COUNT}"
 build_libmesh
 build_solver
 pip_install
 install_cdb_reader
 validate_install
-if [ "${pyTEC3D_PIP_INSTALL}" = "none" ]; then
-  echo "==> Done. Now run: pip install -e .   (or: pip install .)"
-else
-  echo "==> Done."
-fi
+echo "==> Done."

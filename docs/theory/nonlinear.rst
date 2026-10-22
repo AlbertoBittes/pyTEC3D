@@ -63,7 +63,8 @@ Iteration
    \mathbf{u}^{k+1} = \mathbf{u}^k - \lambda\,\delta\mathbf{u},
 
 starting from the solution of the previous step. :math:`\lambda\in[\lambda_\text{min},1]` is chosen by a line search
-when the full step does not reduce the residual. The linear system of each iteration is solved with the linear solver
+when the full step does not reduce the residual [DennisSchnabel1996]_. The linear system of each iteration is solved
+with the linear solver
 settings; the iterations stop when the residual or the step is small enough
 (``solver_settings["nonlinear"]``, :doc:`../user_manual/solver_settings`). The Dirichlet values and the couplings are
 applied to every iterate.

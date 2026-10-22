@@ -1,0 +1,34 @@
+# Conda environment of pyTEC3D: everything build.sh compiles against and the package runs with, from conda-forge
+# (binary-compatible compilers, MPI, PETSc, VTK and Python).
+#
+#   conda env create -f environment.yml && conda activate pytec3d && ./build.sh
+#   conda env update -f environment.yml          # after a change of this file
+#
+# The pure-Python test, documentation and notebook tools are installed by build.sh (extras of pyproject.toml).
+# Do not install vtk or mpi4py with pip: the solver module is linked against the conda ones.
+name: pytec3d
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  # build tools: C, C++ and Fortran compilers with the MPI wrappers, CMake, Ninja
+  - compilers
+  - git
+  - cmake
+  - ninja
+  - pkg-config
+  # MPI and linear algebra: PETSc with MUMPS and METIS / ParMETIS (libMesh follows the PETSc API of a release)
+  - openmpi=5
+  - mpi4py
+  - petsc=3.26
+  # mesh format and mesh operations (VTK); pyvista for plots in scripts and notebooks
+  - vtk=9
+  - pyvista
+  # C++ solver: Python binding, logging, JSON parsing
+  - pybind11
+  - spdlog
+  - nlohmann_json
+  # numerical work on the mesh arrays
+  - numpy
+  - pandas
+  - pip

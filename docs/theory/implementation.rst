@@ -29,7 +29,8 @@ right-hand side term :math:`\int\mathcal{T}(\boldsymbol\phi_i)^T P`. The semi-di
 with :math:`\mathbf{u}` all the DOFs (A, V, VOLT, EMF). Each section of the theory gives the kernels of a domain: the
 2D ones in :ref:`theory-2d`, the 3D ones in :ref:`theory-3d`, the coils in :ref:`theory-stranded-coil`.
 
-* **Quadrature**: Gauss rule of the default order of the finite elements of the element type.
+* **Quadrature**: Gauss rule of the default order of the finite elements of the element type (the finite elements
+  and quadrature rules of libMesh [Kirk2006]_).
 * **2D weights**: the weight of each quadrature point is multiplied by the out-of-plane length :math:`L`
   (``thickness``, times :math:`2\pi r` in axisymmetry), so every 2D integral is an integral over the 3D body.
 * **Coefficients**: material properties and real constants are constant over a cell (or computed per quadrature point
@@ -51,18 +52,19 @@ unknown :math:`\mathbf{u}^{n+1}` and of the state :math:`(\mathbf{u}^n,\mathbf{v
 step: :math:`\mathbf{v}^{n+1} = c_v\,\mathbf{u}^{n+1} + \mathbf{h}_v`,
 :math:`\mathbf{a}^{n+1} = c_a\,\mathbf{u}^{n+1} + \mathbf{h}_a`.
 
-**Theta method** (first-order formulations, all the element types of the library):
+**Theta method** (first-order formulations, all the element types of the library) [Hughes2000]_:
 
 .. math::
 
    \mathbf{v}^{n+1} = \frac{\mathbf{u}^{n+1}-\mathbf{u}^n}{\theta\,\Delta t} - \frac{1-\theta}{\theta}\,\mathbf{v}^n,
    \qquad c_v = \frac{1}{\theta\,\Delta t},\quad c_a = 0.
 
-:math:`\theta=1` is backward Euler (first order, strongly damped), :math:`\theta=1/2` Crank-Nicolson (second order,
+:math:`\theta=1` is backward Euler (first order, strongly damped), :math:`\theta=1/2` Crank-Nicolson
+[CrankNicolson1947]_ (second order,
 no numerical damping: stiff components may oscillate from step to step); values in between trade accuracy for
 damping. ``time_step["theta"]`` must be in :math:`(0, 1]`. When to use which: :ref:`choosing-theta`.
 
-**Newmark** (second-order formulations, ``time_order = 2``; parameters ``beta`` and ``gamma``):
+**Newmark** [Newmark1959]_ (second-order formulations, ``time_order = 2``; parameters ``beta`` and ``gamma``):
 
 .. math::
 

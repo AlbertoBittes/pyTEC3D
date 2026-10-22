@@ -1,14 +1,17 @@
 """ParaView integration of pytec3d.
 
-Two uses:
+Two uses, which can be combined:
 
+* Console: *Run Script* of this file in the ParaView Python shell. The shell then has pytec3d and its tools, with no
+  import to type: ``selection``, ``meshes`` (:mod:`pytec3d.mesh`), ``model_edit``, ``Model``, the coordinate systems,
+  ``np``, and :func:`plot` to show a mesh (:data:`CONSOLE_NAMES`).
 * Plugin: load this file in ParaView (Tools > Manage Plugins > Load New) to get the filters *Select*,
   *Select Extracted Data* and *Set Value On Selection*, which edit the selection and the arrays of a model mesh as
-  :mod:`pytec3d.selection` does.
-* Console: ``import`` it in the ParaView Python shell to make ``pytec3d`` importable, then :func:`plot` a mesh.
+  :mod:`pytec3d.selection` does. Loaded this way it also puts the names of the console in the Python shell, when the
+  shell already exists.
 """
 
-from __future__ import annotations
+# No ``from __future__`` import: *Run Script* runs this file after a first line of its own (``__file__ = ...``).
 
 import os
 import sys
@@ -24,7 +27,22 @@ import numpy as np
 from vtkmodules.util import numpy_support as vtknp
 from vtkmodules.vtkCommonDataModel import vtkDataSet, vtkUnstructuredGrid
 
-from pytec3d import selection
+# The console names (CONSOLE_NAMES): with *Run Script* every top-level name of this file is a name of the shell.
+import pytec3d  # noqa: F401
+from pytec3d import (  # noqa: F401
+    CartesianCoordinateSystem,
+    CylindricalCoordinateSystem,
+    Model,
+    SphericalCoordinateSystem,
+    XAxisCylindricalCoordinateSystem,
+    YAxisCylindricalCoordinateSystem,
+    ZAxisCylindricalCoordinateSystem,
+    element_library,
+    model_edit,
+    selection,
+    tree_gauge,
+)
+from pytec3d import mesh as meshes  # noqa: F401
 from pytec3d._logging import get_logger
 from pytec3d._typing import Location, SelectionMode
 
@@ -73,10 +91,52 @@ _MODE_XML = """
 """
 
 
-def setup_paraview_console() -> str:
-    """Make the package importable in the ParaView console; returns the directory added to the path."""
-    LOGGER.info("pytec3d available in ParaView (from %s); working directory %s.", _PACKAGE_PARENT, os.getcwd())
-    return _PACKAGE_PARENT
+#: The names this file puts in the ParaView Python shell.
+CONSOLE_NAMES: tuple[str, ...] = (
+    "np",
+    "pytec3d",
+    "Model",
+    "selection",
+    "meshes",
+    "model_edit",
+    "element_library",
+    "tree_gauge",
+    "CartesianCoordinateSystem",
+    "CylindricalCoordinateSystem",
+    "SphericalCoordinateSystem",
+    "XAxisCylindricalCoordinateSystem",
+    "YAxisCylindricalCoordinateSystem",
+    "ZAxisCylindricalCoordinateSystem",
+    "plot",
+)
+
+
+def setup_paraview_console(namespace: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Put the names of :data:`CONSOLE_NAMES` in the ParaView Python shell.
+
+    Args:
+        namespace: The namespace of the shell. By default the one of ParaView's Python shell (``__vtkConsoleLocals``
+            of ``__main__``), when the shell exists.
+
+    Returns:
+        The namespace, or None when there is no shell (outside ParaView, or a plugin loaded before the shell was
+        created: then *Run Script* of this file gives the names).
+    """
+    if namespace is None:
+        import __main__
+
+        namespace = getattr(__main__, "__vtkConsoleLocals", None)
+        if namespace is None:
+            return None
+    names = globals()
+    namespace.update({name: names[name] for name in CONSOLE_NAMES})
+    LOGGER.info(
+        "pytec3d %s in the ParaView Python shell (from %s): %s.",
+        pytec3d.__version__,
+        _PACKAGE_PARENT,
+        ", ".join(CONSOLE_NAMES),
+    )
+    return namespace
 
 
 def plot(mesh: vtkUnstructuredGrid, name: str = "Mesh") -> None:
@@ -324,3 +384,7 @@ class SetValueOnSelection(VTKPythonAlgorithmBase):
             raise ValueError("Value must be finite.")
         self._value = float(value)
         self.Modified()
+
+
+if PARAVIEW_AVAILABLE:
+    setup_paraview_console()

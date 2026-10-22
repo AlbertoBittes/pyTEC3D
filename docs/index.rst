@@ -1,7 +1,7 @@
 pyTEC3D Documentation
 =====================
 
-pyTEC3D is a finite-element code for low-frequency (eddy-current) electromagnetic analyses, written for the
+pyTEC3D (python Tokamak Eddy-currents Code 3D) is a finite-element code for low-frequency (eddy-current) electromagnetic analyses, written for the
 simulation of plasma equilibria, plasma evolutions and disruptions and of their effects on the conducting
 structures of a tokamak. A Python package prepares the model, drives the analysis and post-processes the results; a
 parallel C++ solver (libMesh, PETSc, MUMPS) assembles and solves the finite-element systems.

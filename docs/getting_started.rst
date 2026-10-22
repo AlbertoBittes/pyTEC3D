@@ -6,19 +6,21 @@ Why pyTEC3D?
 
 Plasma disruptions induce large electromagnetic loads on tokamak components, so an accurate model of the plasma and
 of the currents it induces in the surrounding structures is essential for their design. At Fusion for Energy this
-analysis is done with APEC, a finite-element code built on ANSYS APDL, which couples the axisymmetric plasma
-equilibrium and evolution equations with the full 3D eddy-current equations of the passive structures, whereas most
-codes treat the whole problem as axisymmetric.
+analysis is done with `APEC <https://github.com/Fusion4Energy/APEC>`_ [APEC2018]_ [APEC2019]_ [APEC2020]_, a
+finite-element code built on ANSYS APDL, which couples the axisymmetric plasma equilibrium and evolution equations
+with the full 3D eddy-current equations of the passive structures, whereas most codes treat the whole problem as
+axisymmetric.
 
 The reliance on ANSYS brings performance issues (restarts of the iterations, repeated factorizations of the system
-matrix) that limit the size of the models, and costly HPC licenses restrict its use on large models. pyTEC3D is an
-independent, free, scalable and customizable code that reproduces the algorithm of APEC (the plasma algorithm of
-pyTEC3D is called APEC-M) and removes these limitations.
+matrix) that limit the size of the models, and costly HPC licenses further restrict its use on large models.
+
+pyTEC3D (python Tokamak Eddy-currents Code 3D) is an
+independent, free, scalable and customizable code that reproduces the algorithm of APEC and removes these limitations.
 
 What is pyTEC3D?
 ----------------
 
-pyTEC3D solves time-domain, low-frequency (magneto-quasi-static) electromagnetic problems with the A-V formulation:
+pyTEC3D (python Tokamak Eddy-currents Code 3D) solves time-domain, low-frequency (magneto-quasi-static) electromagnetic problems with the A, V-A formulation:
 the magnetic vector potential **A** everywhere, an electric scalar potential **V** in the massive conductors (in 2D,
 the terminal voltage of a conductor with a terminal), and the circuit unknowns of the coils (terminal voltage
 **VOLT**, induced voltage **EMF**). It covers 2D planar, 2D axisymmetric and 3D models, nodal and edge (Nedelec) elements, linear and
@@ -162,3 +164,6 @@ Project links
 
 * Source repository: https://github.com/AlbertoBittes/pyTEC3D
 * Issues: the GitHub issue tracker of the repository.
+* APEC, the ANSYS APDL reference of the plasma algorithm: https://github.com/Fusion4Energy/APEC
+* Benchmarks and validation against ANSYS MAPDL and APEC: https://github.com/AlbertoBittes/pyTEC3D_APDL_benchmarks
+  (:doc:`testing`).

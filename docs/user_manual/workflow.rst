@@ -117,7 +117,7 @@ What can change between steps
      - no
      - The element matrices, the element coordinate systems, the nodal frames and the couplings are built when the
        model is loaded: every ``solve()`` compares these arrays with their values at the load and stops with an error
-       if one changed (a comparison of a few arrays: about 1 % of a solve on large models). Close the session,
+       if one changed. Close the session,
        change, load again.
    * - ``model.data``
      - no

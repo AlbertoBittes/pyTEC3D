@@ -117,7 +117,9 @@ Files
 Post-processing in ParaView
 ---------------------------
 
-Open the ``output/<name>_out_*.vtu`` series in ParaView (it is recognised as a time series). Useful filters: *Cell
+Open the ``output/<name>_out_*.vtu`` series in ParaView (it is recognised as a :paraview:`time series
+<UsersGuide/dataIngestion.html#handling-temporal-file-series>`). Useful :paraview:`filters
+<UsersGuide/filteringData.html>`: *Cell
 Data to Point Data*, *Glyph* (B, Jt as arrows), *Stream Tracer* (field lines), *Slice*, *Threshold* on ``TYPE`` or
 ``MATERIAL`` (show a region), *Plot Over Line*, *Integrate Variables* (integrals of ``Jt`` over a slice give
 currents). In 2D axisymmetric models remember that the integration measure is :math:`2\pi r\,dr\,dz`. The pyTEC3D

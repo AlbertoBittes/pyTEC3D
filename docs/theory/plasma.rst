@@ -23,7 +23,7 @@ Ideal MHD equilibrium
 ~~~~~~~~~~~~~~~~~~~~~
 
 On the time scales of the plasma evolution and of the eddy currents (milliseconds) the plasma is in force balance at
-every instant: inertia is negligible and the ideal MHD equilibrium holds,
+every instant: inertia is negligible and the ideal MHD equilibrium holds [Freidberg2014]_,
 
 .. math::
 
@@ -77,7 +77,7 @@ and the toroidal current density is
    J_\varphi = R\,p'(\psi) + \frac{F(\psi)F'(\psi)}{\mu_0 R} .
 
 With :math:`\mu_0 J_\varphi\mathbf{e}_\varphi = \nabla\times\mathbf{B}_p` this gives the **Grad-Shafranov equation**
-[Shafranov1958]_
+[GradRubin1958]_ [Shafranov1958]_
 
 .. math::
 
@@ -133,7 +133,7 @@ Grad-Shafranov current density identifies the two flux functions:
 
 * :math:`\beta` weights the pressure-driven part of the current (the term in :math:`R/R_0`, larger on the outboard
   side) against the force-free part (:math:`R_0/R`); it is close to the **poloidal beta**
-  :math:`\beta_p = \int p\,dV\big/\int \frac{B_p^2}{2\mu_0}dV` of the plasma.
+  :math:`\beta_p = \int p\,dV\big/\int \frac{B_p^2}{2\mu_0}dV` of the plasma [Wesson2011]_.
 * the exponents shape the radial profile: a peaked profile (low :math:`\alpha`) concentrates the current on the axis
   and increases the **internal inductance** :math:`l_i = 2L_i/(\mu_0R_0)`, with
   :math:`\tfrac12 L_i I_p^2 = \int_\text{plasma} \frac{B_p^2}{2\mu_0}dV`. The original APEC parametrization uses a single
@@ -218,7 +218,7 @@ Picard iteration
 ~~~~~~~~~~~~~~~~
 
 The non-linearity of the free-boundary problem (the region and :math:`\bar\psi` depend on :math:`\psi`) is resolved by
-fixed-point (Picard) iterations, as in APEC [APEC2018]_:
+fixed-point (Picard) iterations [Jardin2010]_, as in APEC [APEC2018]_:
 
 #. from :math:`\psi^k`: axis, X point, limiter, boundary flux, plasma region :math:`\Omega_p^k`;
 #. the current density :math:`\mathbf{J}^k(\psi^k)` in :math:`\Omega_p^k`, scaled to :math:`I_p` (:math:`\lambda^k`);
@@ -234,7 +234,8 @@ chamber carrying :math:`I_p`. Each iteration appends a row to ``output/<model>_i
 Position control
 ~~~~~~~~~~~~~~~~
 
-A free-boundary equilibrium of an elongated plasma is vertically unstable, and a plain Picard iteration drifts: the
+A free-boundary equilibrium of an elongated plasma is vertically unstable, and a plain Picard iteration drifts
+[Jardin2010]_: the
 plasma moves up or down from one iteration to the next. As in a real machine, a feedback on the coil currents keeps
 it in place. pyTEC3D measures the poloidal field :math:`\mathbf{B}_t = (B_{R,t}, B_{Z,t})` at the **target position of
 the magnetic axis** (``target_central_axis_x``, ``_y``) and computes a radial and a vertical correction current from
@@ -274,7 +275,8 @@ Plasma evolution coupled with the eddy currents
 Quasi-static evolution
 ~~~~~~~~~~~~~~~~~~~~~~
 
-During a disruption, a vertical displacement or a current quench the plasma passes through a sequence of equilibria driven by prescribed
+During a disruption, a vertical displacement or a current quench [Hender2007]_ the plasma passes through a sequence of
+equilibria driven by prescribed
 waveforms of :math:`I_p(t)` and :math:`\beta_p(t)` (and possibly of the profile exponents), while the changing flux
 induces currents in the vacuum vessel, the passive structures and the coils. Those currents change the field, hence
 the equilibrium: the plasma and the conductors are coupled. Each time step :math:`t^n\to t^{n+1}` must find the
@@ -356,7 +358,8 @@ Halo currents
 -------------
 
 In vertical displacement events the plasma touches the wall and part of its current flows in the **halo**, the region
-of open field lines outside the last closed flux surface, closing through the wall [APEC2020]_. The model extends the
+of open field lines outside the last closed flux surface, closing through the wall [HumphreysKellman1999]_
+[Hender2007]_ [APEC2020]_. The model extends the
 current-carrying region beyond the LCFS to a halo boundary flux
 
 .. math::
