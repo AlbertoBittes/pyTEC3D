@@ -40,7 +40,9 @@ jobs:
         run: |
           echo "PYTEC3D_DEPS=$(cygpath -u "${RUNNER_TEMP}")/deps" >> "$GITHUB_ENV"
           gfortran --version | head -1; mpicc --version | head -1; mpifort --version | head -1; python --version
-          python -c "import vtk; print('vtk', vtk.vtkVersion.GetVTKVersion())"
+          # The VTK modules pyTEC3D uses (import vtk would load all of them, Qt rendering included, an optional
+          # dependency of the MSYS2 package).
+          python -c "from vtkmodules.vtkCommonCore import vtkVersion; import vtkmodules.vtkCommonDataModel, vtkmodules.vtkFiltersCore, vtkmodules.vtkFiltersExtraction, vtkmodules.vtkFiltersGeneral, vtkmodules.vtkFiltersGeometry, vtkmodules.vtkFiltersVerdict, vtkmodules.vtkIOXML; print('vtk', vtkVersion.GetVTKVersion())"
 
       - name: Restore libMesh
         id: libmesh-cache
