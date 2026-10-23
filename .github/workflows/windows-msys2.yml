@@ -32,7 +32,7 @@ jobs:
           install: >-
             git make autoconf automake libtool patch diffutils
           pacboy: >-
-            toolchain:p cmake:p ninja:p pkgconf:p
+            toolchain:p gcc-fortran:p cmake:p ninja:p pkgconf:p
             msmpi:p openblas:p
             python:p python-numpy:p python-mpi4py:p python-pandas:p
             vtk:p pybind11:p spdlog:p nlohmann-json:p
@@ -40,7 +40,7 @@ jobs:
       - name: Paths
         run: |
           echo "PYTEC3D_DEPS=$(cygpath -u "${RUNNER_TEMP}")/deps" >> "$GITHUB_ENV"
-          mpicc --version | head -1; mpifort --version | head -1; python --version
+          gfortran --version | head -1; mpicc --version | head -1; mpifort --version | head -1; python --version
           python -c "import vtk; print('vtk', vtk.vtkVersion.GetVTKVersion())"
 
       - name: Restore PETSc
