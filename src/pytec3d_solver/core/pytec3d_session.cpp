@@ -13,9 +13,12 @@
 
 #include <mpi.h>
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <climits>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 
@@ -143,8 +146,13 @@ namespace
 
     std::string host_name()
     {
+#ifdef _WIN32
+        const char *name = std::getenv("COMPUTERNAME");
+        return name != nullptr ? std::string(name) : std::string("unknown");
+#else
         char name[HOST_NAME_MAX + 1] = {};
         return gethostname(name, sizeof(name)) == 0 ? std::string(name) : std::string("unknown");
+#endif
     }
 
     void print_solver_banner_once()

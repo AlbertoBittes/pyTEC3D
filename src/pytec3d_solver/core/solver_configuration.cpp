@@ -71,7 +71,11 @@ void PetscSolverConfiguration::configure_solver()
 
     // Keep BLAS/OpenMP backends consistent with the libMesh thread count.
     const std::string thread_count_str = std::to_string(n_threads);
+#ifdef _WIN32
+    (void)_putenv_s("OMP_NUM_THREADS", thread_count_str.c_str());
+#else
     (void)setenv("OMP_NUM_THREADS", thread_count_str.c_str(), 1);
+#endif
 
     // Enable PETSc performance logging so that -log_view output is available.
     ierr = PetscLogDefaultBegin();

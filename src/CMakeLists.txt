@@ -196,6 +196,10 @@ set_target_properties(pytec3d_solver PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH "${PYTEC3D_RPATH}"
 )
+if(WIN32)
+  # Python imports extension modules as .pyd on Windows.
+  set_target_properties(pytec3d_solver PROPERTIES SUFFIX ".pyd")
+endif()
 install(TARGETS pytec3d_solver LIBRARY DESTINATION "${PYTEC3D_SOLVER_PACKAGE_DIR}")
 
 # DT_RPATH (not DT_RUNPATH) so the search path also applies to transitive deps.

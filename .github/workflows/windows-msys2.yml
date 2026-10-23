@@ -1,0 +1,98 @@
+# Feasibility of a native Windows build (MSYS2 UCRT64): PETSc, patched libMesh, the solver module, an import test.
+# PETSc and libMesh are cached separately, so that a failure in a later stage does not rebuild them.
+name: Windows (MSYS2)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/msys2-feasibility]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      PETSC_VERSION: 3.26.0
+      LIBMESH_COMMIT: 9e5b0b870a585427a1bd400fec715d7789c4d976
+    steps:
+      - uses: actions/checkout@v4
+
+      # The MS-MPI runtime (msmpi.dll, mpiexec): the msmpi package of MSYS2 is only the SDK.
+      - uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make autoconf automake libtool patch diffutils
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p
+            msmpi:p openblas:p
+            python:p python-numpy:p python-mpi4py:p python-pandas:p
+            vtk:p pybind11:p spdlog:p nlohmann-json:p
+
+      - name: Paths
+        run: |
+          echo "PYTEC3D_DEPS=$(cygpath -u "${RUNNER_TEMP}")/deps" >> "$GITHUB_ENV"
+          mpicc --version | head -1; mpifort --version | head -1; python --version
+          python -c "import vtk; print('vtk', vtk.vtkVersion.GetVTKVersion())"
+
+      - name: Restore PETSc
+        id: petsc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/deps/petsc-${{ env.PETSC_VERSION }}
+          key: msys2-petsc-${{ env.PETSC_VERSION }}-v1
+
+      - name: PETSc
+        run: ci/msys2/build.sh petsc
+
+      - name: Save PETSc
+        if: steps.petsc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/deps/petsc-${{ env.PETSC_VERSION }}
+          key: msys2-petsc-${{ env.PETSC_VERSION }}-v1
+
+      - name: Restore libMesh
+        id: libmesh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/deps/libmesh-opt
+          key: msys2-libmesh-${{ env.LIBMESH_COMMIT }}-v1-${{ hashFiles('libmesh_patches/**') }}
+
+      - name: libMesh
+        run: ci/msys2/build.sh libmesh
+
+      - name: Save libMesh
+        if: steps.libmesh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/deps/libmesh-opt
+          key: msys2-libmesh-${{ env.LIBMESH_COMMIT }}-v1-${{ hashFiles('libmesh_patches/**') }}
+
+      - name: Solver module
+        run: ci/msys2/build.sh solver
+
+      - name: Smoke test
+        run: ci/msys2/build.sh test
+
+      # The logs of a failed configure (PETSc configure.log, libMesh config.log).
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/deps/src/petsc/configure.log
+            ${{ runner.temp }}/deps/src/petsc/make.log
+            ${{ runner.temp }}/deps/src/libmesh/build-opt/config.log
+            build/msys2-opt/CMakeFiles/CMakeOutput.log
+            build/msys2-opt/CMakeFiles/CMakeError.log
