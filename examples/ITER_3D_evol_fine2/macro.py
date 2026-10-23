@@ -5,7 +5,7 @@
 # What this example shows
 # -----------------------
 # The 3D evolution of the ITER vertical displacement (workflow: documentation, "Examples - ITER") on a 1 degree,
-# 1 cell sector of the fine2 mesh, with halo currents from the limiter phase. The vacuum-chamber mesh is read
+# 1 cell sector of the fine2 mesh, with halo currents from the limiter phase. The plasma-region mesh is read
 # with mesh.read_mesh(reset_arrays=False), which keeps every array of the equilibrium output.
 #
 # Geometry and mesh: ITER_3D_evol_fine2.vtu, the fine2 ITER mesh revolved over 1 degree with 1 cell (17772 HEX8 +
@@ -30,7 +30,7 @@
 #   steps (theta = 1), one evolution solve (Picard iterations on the plasma) and one output file per step.
 # Algorithm parameters:  R0 = 6.2 m, AF0 = 5.3 * 6.2, alpha_mp = 1.0001, alpha_np = 0.83197, tolerance 1e-4, up to
 #   70 Picard iterations per step; extrusion_angle and n_toroidal_divisions describe the 3D sector, so that the
-#   algorithm maps the 2D vacuum-chamber mesh onto the toroidal stations of the 3D mesh (projection of Js, toroidal
+#   algorithm maps the 2D plasma-region mesh onto the toroidal stations of the 3D mesh (projection of Js, toroidal
 #   average of PSI); halo currents (AMPS on the vacuum-vessel wall nodes) from t0_halo on, with halo_delta1 = 0.04.
 #
 # Results: output/ITER_3D_evol_fine2_out_<n>.vtu after every step (A, V, Js, Jt, PLASMA, B, H), ITER_3D_evol_fine2_steps.csv, ITER_3D_evol_fine2.log,
@@ -79,12 +79,12 @@ max_rad = 100.0
 extr_angle = 1.0
 
 # # Read the evolution mesh
-# 3. Read the 3D model; the 2D equilibrium gives the vacuum-chamber mesh of the algorithm.
+# 3. Read the 3D model; the 2D equilibrium gives the plasma-region mesh of the algorithm.
 pytec3d.read_model(filepath)
-# the full equilibrium output: the algorithm keeps a copy of its VACUUM_CHAMBER cells only, the coil current
+# the full equilibrium output: the algorithm keeps a copy of its PLASMA_REGION cells only, the coil current
 # densities are read from the full mesh below
 equilibrium = mesh.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
-algorithm.vacuum_chamber_mesh = equilibrium
+algorithm.plasma_region_mesh = equilibrium
 
 # 4. Model data of the 3D evolution.
 pytec3d.model.read_json("model_data.json")
@@ -125,7 +125,7 @@ selection.set_value_on_selection(pytec3d.model.mesh, "node_angles", extr_angle, 
 selection.select(pytec3d.model.mesh, "ID", 9664)
 selection.set_value_on_selection(pytec3d.model.mesh, "_V", 0)
 
-selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 # Apply equilibrium coils current densities

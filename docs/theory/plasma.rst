@@ -195,7 +195,7 @@ depends on the plasma current, which depends on the boundary. The problem is:
 Magnetic axis, X point, limiter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The search is done on the vacuum-chamber mesh (the 2D cells where the plasma can be, ``VACUUM_CHAMBER = 1``), with
+The search is done on the plasma-region mesh (the 2D cells where the plasma can be, ``PLASMA_REGION = 1``), with
 the gradient and the Hessian of :math:`\psi` computed on its nodes:
 
 * the **magnetic axis** is the extremum of :math:`\psi` (its maximum with the sign convention of the ITER examples);
@@ -207,12 +207,12 @@ the gradient and the Hessian of :math:`\psi` computed on its nodes:
 
 The boundary flux is the one reached first when moving out from the axis: :math:`\psi_b = \psi_\text{limiter}` if it
 is larger than :math:`\psi_X` (a **limiter** configuration, the plasma touches the wall), :math:`\psi_b = \psi_X`
-otherwise (a **diverted**, X-point configuration). The plasma region is found in two steps: the cells inside the flux
-surface of the X point that are connected to the axis, grown from the axis through cells sharing an edge (so that the
-region does not leak through the X point into the private-flux region), then, among them, the cells inside the
-boundary of the current, :math:`\psi_2` (:math:`\psi_b`, or the halo boundary when a halo is active): in a limiter
-configuration the region ends at the limiter flux surface. These cells, marked in the cell array ``PLASMA``, are
-exactly the cells where the profile, hence the plasma current, is not zero.
+otherwise (a **diverted**, X-point configuration). The plasma region, core and halo alike, is found in one search:
+the cells with all their nodes inside the boundary of the current, :math:`\psi_2` (:math:`\psi_b`, or the halo
+boundary when a halo is active, but never beyond the X-point flux surface), grown from the axis through cells sharing
+an edge (so that the region does not leak through the X point into the private-flux region). The same rule holds in
+both configurations, so the region does not jump when the configuration switches. These cells, marked in the cell
+array ``PLASMA``, are exactly the cells where the profile, hence the plasma current, is not zero.
 
 Picard iteration
 ~~~~~~~~~~~~~~~~
@@ -334,7 +334,7 @@ Coupling the axisymmetric plasma with 3D structures
 ---------------------------------------------------
 
 The main feature of the approach [APEC2019]_ is the coupling of the **axisymmetric** plasma equilibrium with **3D**
-eddy currents in non-axisymmetric structures. The plasma problem stays on the 2D vacuum-chamber mesh; the field is
+eddy currents in non-axisymmetric structures. The plasma problem stays on the 2D plasma-region mesh; the field is
 solved on a 3D mesh obtained by revolving the 2D mesh about the axis over a sector (``extrusion_angle``, with
 ``n_toroidal_divisions`` cells along the torus) with cyclic symmetry on its two faces. Two maps link the meshes:
 

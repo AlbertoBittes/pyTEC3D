@@ -103,7 +103,7 @@ mesh = solver.model.mesh
 grid = pv.wrap(mesh)
 
 components = ["CS3U", "CS2U", "CS1U", "CS1L", "CS2L", "CS3L", "PFC_1", "PFC_2", "PFC_3", "PFC_4", "PFC_5", "PFC_6",
-              "VACUUM_CHAMBER", "PASSIVE_STRUCTURES"]
+              "PLASMA_REGION", "PASSIVE_STRUCTURES"]
 area = grid.cell_data["cell_volume"]            # in 2D the cell size is its area [m^2]
 centroid = grid.cell_data["cell_centroids"]
 print(f"{grid.n_points} points, {grid.n_cells} cells; TYPE ids", np.unique(grid.cell_data["TYPE"]))
@@ -115,7 +115,7 @@ for name in components:
 ''')
     nb.code('''
 fig, ax = plt.subplots(figsize=(6, 7.5))
-fill(ax, mesh, grid.cell_data["VACUUM_CHAMBER"] == 1, facecolor="#dbe9f6", edgecolor="none")
+fill(ax, mesh, grid.cell_data["PLASMA_REGION"] == 1, facecolor="#dbe9f6", edgecolor="none")
 fill(ax, mesh, grid.cell_data["PASSIVE_STRUCTURES"] == 1, facecolor="#2c6e9e", edgecolor="#2c6e9e", linewidth=0.6)
 for name in components[:6]:
     fill(ax, mesh, grid.cell_data[name] == 1, facecolor="#c05a2a", edgecolor="none")
@@ -232,11 +232,11 @@ for coil, current in coil_current.items():
     selection.select(mesh, coil, 1, location="elem")
     selection.set_value_on_selection(mesh, "Js", current / coil_area["CS" if coil.startswith("CS") else coil], 2,
                                      location="elem")
-selection.select(mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.select(mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(mesh, "Js", plasma_current / chamber_area, 2, location="elem")
 
 js = meshes.array_values(mesh, "Js", "elem")
-for name in ("COILS", "VACUUM_CHAMBER"):
+for name in ("COILS", "PLASMA_REGION"):
     on = grid.cell_data[name] == 1
     print(f"total current in {name}: {(js[on, 2] * area[on]).sum() / 1e6:+.2f} MA(-turns)")
 ''')
@@ -274,7 +274,7 @@ algorithm.input_parameters.update(
 To watch the iterations we call it with `max_picard_iterations = 1`: each call does one iteration and raises
 `ConvergenceError` until the last one; the state of the algorithm (previous flux, control-coil currents) is kept
 between calls, so the sequence is the same as one call with 70 iterations. After each iteration we keep the flux of
-the vacuum chamber (`algorithm.vacuum_chamber_mesh`, the mesh on which the algorithm works) and the status.
+the vacuum chamber (`algorithm.plasma_region_mesh`, the mesh on which the algorithm works) and the status.
 """)
     nb.code('''
 algorithm.input_parameters["max_picard_iterations"] = 1
@@ -285,7 +285,7 @@ for iteration in range(1, 71):
             converged = algorithm.equilibrium_solve()
     except ConvergenceError:
         converged = False
-    chamber = algorithm.vacuum_chamber_mesh
+    chamber = algorithm.plasma_region_mesh
     history.append({"psi": meshes.array_values(chamber, "PSI", "node").copy(), **algorithm.status})
     if converged:
         break
@@ -352,7 +352,7 @@ guess or coil currents closer to the scenario.
 ### The plasma boundary during the iterations
 """)
     nb.code('''
-chamber = algorithm.vacuum_chamber_mesh
+chamber = algorithm.plasma_region_mesh
 chamber_tri = triangulation(chamber)
 fig, ax = plt.subplots(figsize=(5.5, 7))
 fill(ax, mesh, grid.cell_data["PASSIVE_STRUCTURES"] == 1, facecolor="0.8", edgecolor="none")
@@ -629,14 +629,14 @@ print(f"tau ~ mu0 sigma d b = {4e-7 * np.pi / 8e-7 * d * b * 1e3:.0f} ms")
     nb.md("""
 ## Initial state
 
-1. `algorithm.vacuum_chamber_mesh = equilibrium.mesh`: the algorithm works on a copy of the VACUUM_CHAMBER cells of
+1. `algorithm.plasma_region_mesh = equilibrium.mesh`: the algorithm works on a copy of the PLASMA_REGION cells of
    the equilibrium, with its flux and plasma region, which is where it looks for the plasma at the first iteration.
 2. $A_z = 0$ on the external boundary, as in the equilibrium.
 3. The current densities of the equilibrium (coils and plasma) become the `Js` of the evolution model: the `Js` of
    the equilibrium output (its `Jt` holds the same values on the stranded conductors).
 """)
     nb.code('''
-algorithm.vacuum_chamber_mesh = equilibrium.mesh
+algorithm.plasma_region_mesh = equilibrium.mesh
 with quietly():
     solver.load_model_into_solver()
 selection.select_all(mesh)
@@ -646,7 +646,7 @@ selection.set_value_on_selection(mesh, "_A", 0.0, 2)
 meshes.array_values(mesh, "Js", "elem")[:] = meshes.array_values(equilibrium.mesh, "Js", "elem")
 meshes.get_array(mesh, "Js", "elem").Modified()
 js = meshes.array_values(mesh, "Js", "elem")[:, 2]
-print(f"plasma current {(js * area)[grid.cell_data['VACUUM_CHAMBER'] == 1].sum() / 1e6:.2f} MA, "
+print(f"plasma current {(js * area)[grid.cell_data['PLASMA_REGION'] == 1].sum() / 1e6:.2f} MA, "
       f"coils {(js * area)[grid.cell_data['COILS'] == 1].sum() / 1e6:.2f} MA-turns")
 
 algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, AF0=5.3 * 6.2,
@@ -693,7 +693,7 @@ centroid of the plasma, and the flux of the vacuum chamber for the pictures.
 """)
     nb.code('''
 solver.time_step["theta"] = 1.0
-chamber = algorithm.vacuum_chamber_mesh
+chamber = algorithm.plasma_region_mesh
 c_area = meshes.array_values(chamber, meshes.SIZES_ARRAY, "elem")
 c_centroid = meshes.array_values(chamber, meshes.CENTROIDS_ARRAY, "elem")
 records, started = [], time.perf_counter()
@@ -895,7 +895,7 @@ Read the 2D tutorials first; theory: *Theory - Plasma equilibrium and evolution*
 ## The initial equilibrium
 
 As in the 2D evolution, we run the equilibrium macro `examples/ITER_2D_carma/macro.py` (the quadratic mesh) in a sub-folder and take
-its output. Its mesh becomes the vacuum-chamber mesh of the algorithm: the 2D mesh on which the plasma is computed.
+its output. Its mesh becomes the plasma-region mesh of the algorithm: the 2D mesh on which the plasma is computed.
 """)
     nb.code('''
 EQ = WORK / "ITER_2D_carma"
@@ -922,7 +922,7 @@ from the x axis towards -z. Cells: HEX20, with WEDGE15 on the axis: a quadratic 
 solver = Solver(log_file="ITER_3D_evol_coils_edge.log")
 algorithm = Algorithm(solver)
 solver.read_model("ITER_3D_evol_coils_edge.vtu")
-algorithm.vacuum_chamber_mesh = equilibrium
+algorithm.plasma_region_mesh = equilibrium
 solver.model.read_json("model_data.json")
 mesh = solver.model.mesh
 grid = pv.wrap(mesh)
@@ -990,7 +990,7 @@ selection.select(mesh, "COILS", 1, location="elem")
 selection.set_value_on_selection(mesh, "TYPE", 35, location="elem")
 selection.set_value_on_selection(mesh, "COORDINATE_SYSTEM", 1, location="elem")
 solver.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
-selection.select(mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.select(mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 meshes.remove_array(mesh, "CP_0")
@@ -1134,12 +1134,12 @@ def integrals():
 As in 2D: a static step 0 (the coils at their source voltages, `VOLT = R i`, give back the equilibrium currents),
 then transient backward-Euler steps of 30 ms, with an evolution solve (Picard iterations of 3D solves) per step. After
 each step we record the status, the coil currents $i = (\\text{VOLT} - \\text{EMF})/R$ at the master node of each
-coil, the integrals above, the halo injection of the 2D chamber (`AMPS` of `algorithm.vacuum_chamber_mesh`), the
+coil, the integrals above, the halo injection of the 2D chamber (`AMPS` of `algorithm.plasma_region_mesh`), the
 flux and current of the chamber, and the meridian section.
 """)
     nb.code('''
 solver.time_step["theta"] = 1.0
-chamber = algorithm.vacuum_chamber_mesh
+chamber = algorithm.plasma_region_mesh
 records, started = [], time.perf_counter()
 for k, t in enumerate(times):
     solver.time_step["transient_effects"] = k > 0

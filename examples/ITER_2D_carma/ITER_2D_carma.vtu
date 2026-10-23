@@ -326,7 +326,7 @@
         <DataArray type="UInt8" Name="PLASMA" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAAAxQwAAXQEAAA==eJztmO0OwiAMReH9X9o43cb6BWUYNTnnxxJHub0tMwFqtSgb5lBMOdl+6UEZ305xc6pZUfhLM+16NPBIMskuMdfglfQduAHNQKPS77yv530G4126zi3vT0vIyxouqSLf6cU6M2dnfpinob6tJuLnKgAAAAD4Kr+0OfrUTq3d409nG4++UYZxgFgov3Yzfz2bXNIszLIMdZi3o8LDuSjza4XGqd0aemcmrTPlLswzoBkfwadcuXc0+og9fJvSSpSwsIRgtrrYrryLiKvLXzot+QOcOvIa5XxvZ0/4NCRExKz9IOkrTdkeNvbNTPtSXzGOWp3/ot1iajkeRhpnAcdSJ30ekZ0ZbduUQV2CWUDGvq6+WcrB2hJEpu96n2tEX9IfrLXKNUp3ZJXLRAvSMko2EbWyIlPgdldXdAQinLWS4/s7FgUAAAAAAAAAAAAAAAAAAAAAAADgv3kAHXIWPA==
         </DataArray>
-        <DataArray type="UInt8" Name="VACUUM_CHAMBER" format="binary" RangeMin="0" RangeMax="1">
+        <DataArray type="UInt8" Name="PLASMA_REGION" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAAAxQwAAKwAAAA==eJztwTEBAAAMAqDZv/Q6eHgBCQAAAAAAAAC1AwAAAAAAAAAAYO4BEyoddg==
         </DataArray>
         <DataArray type="Int64" IdType="1" Name="vtkOriginalCellIds" format="binary" RangeMin="0" RangeMax="17200">

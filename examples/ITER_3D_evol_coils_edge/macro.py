@@ -26,7 +26,7 @@
 #   the first point and one point every 5 (dt = 1e-3 s). Step 0 static at t = 1e-10 s, then transient backward-Euler
 #   steps, one evolution solve (Picard iterations on the plasma) and one output file per step.
 # Algorithm parameters:  R0 = 6.2 m, AF0 = 5.3 * 6.2, alpha_mp = 1.0001, alpha_np = 0.83197, tolerance 1e-4;
-#   extrusion_angle and n_toroidal_divisions describe the 3D sector (toroidal maps between the 2D vacuum-chamber mesh
+#   extrusion_angle and n_toroidal_divisions describe the 3D sector (toroidal maps between the 2D plasma-region mesh
 #   and the 3D mesh); halo currents (AMPS on the vessel wall) from t0_halo on, with halo_delta1 = 0.04.
 #
 # Results: output/ITER_3D_evol_coils_edge_out_<n>.vtu after every step, ITER_3D_evol_coils_edge_steps.csv, ITER_3D_evol_coils_edge.log,
@@ -74,12 +74,12 @@ max_rad = 100.0
 extr_angle = 2.0
 
 # # Read the evolution mesh
-# 3. Read the 3D model; the 2D equilibrium gives the vacuum-chamber mesh of the algorithm.
+# 3. Read the 3D model; the 2D equilibrium gives the plasma-region mesh of the algorithm.
 pytec3d.read_model(filepath)
-# the full equilibrium output: the algorithm keeps a copy of its VACUUM_CHAMBER cells only, the coil current
+# the full equilibrium output: the algorithm keeps a copy of its PLASMA_REGION cells only, the coil current
 # densities are read from the full mesh below
 equilibrium = mesh.read_mesh(output_eq_mesh_filepath, reset_arrays=False)
-algorithm.vacuum_chamber_mesh = equilibrium
+algorithm.plasma_region_mesh = equilibrium
 
 # 4. Model data of the 3D evolution.
 pytec3d.model.read_json("model_data.json")
@@ -94,7 +94,7 @@ selection.set_value_on_selection(pytec3d.model.mesh, "TYPE", 35, location="elem"
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, location="elem")
 pytec3d.model.set_coordinate_system(1, YAxisCylindricalCoordinateSystem())
 
-selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 0, location="elem")
 
 # 1. Set coils equilibrium voltages from the equilibrium output mesh

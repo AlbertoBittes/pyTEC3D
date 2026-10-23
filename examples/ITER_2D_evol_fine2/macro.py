@@ -11,11 +11,11 @@
 # current density: plasma boundary from the flux, Grad-Shafranov profile scaled to the plasma current of the step,
 # field solve, until PSI converges. It shows:
 #   * how to start from the output of another analysis: the equilibrium mesh is read with Model.read_model() and given
-#     to the algorithm as its vacuum-chamber mesh; its total current density Jt becomes the source Js of the
+#     to the algorithm as its plasma-region mesh; its total current density Jt becomes the source Js of the
 #     evolution (the two meshes must have the same cells, in the same order);
 #   * boundary conditions and loads written AFTER load_model_into_solver(): array values can change at any time;
 #   * the selection of the vacuum-chamber cells and nodes on the solver mesh, which the algorithm maps to the
-#     vacuum-chamber mesh;
+#     plasma-region mesh;
 #   * a long time loop driven by waveforms read from text files.
 #
 # Geometry and mesh (ITER_2D_evol_fine2.vtu): the 2D axisymmetric ITER mesh of ITER_2D_fine2 (x = R, y = Z, R <= 100 m, |Z| <= 100 m),
@@ -79,7 +79,7 @@ static_mesh_filepath = max(glob.glob(static_mesh_filepath), key=os.path.getmtime
 #    and give its vacuum-chamber cells (with PSI, Js and PLASMA) to the algorithm.
 pytec3d.read_model(evol_filepath)
 output_pytec3d_equilibrium = Model.read_model(static_mesh_filepath)
-algorithm.vacuum_chamber_mesh = output_pytec3d_equilibrium.mesh
+algorithm.plasma_region_mesh = output_pytec3d_equilibrium.mesh
 
 # 4. Model data of the evolution (conducting structures).
 pytec3d.model.read_json("model_data.json")
@@ -105,7 +105,7 @@ pytec3d.model.mesh.GetCellData().GetArray("Js").Modified()
 
 # 8. Select the vacuum-chamber cells and their nodes: the region of the solver mesh mapped to the vacuum-chamber
 #    mesh of the algorithm. Then the parameters of the evolution.
-selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem", mode="s")
+selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem", mode="s")
 selection.nsle(pytec3d.model.mesh)
 algorithm.input_parameters["R0"] = 6.2
 algorithm.input_parameters["max_picard_iterations"] = 70

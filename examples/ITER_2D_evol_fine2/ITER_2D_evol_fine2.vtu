@@ -78,7 +78,7 @@
         <DataArray type="UInt8" Name="PLASMA" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAADURQAAKwAAAA==eF7twQENAAAMAqDbv/RrOAckAAAAAAAAANDhAAAAAAAAAAAAYMADwqMexQ==
         </DataArray>
-        <DataArray type="UInt8" Name="VACUUM_CHAMBER" format="binary" RangeMin="0" RangeMax="1">
+        <DataArray type="UInt8" Name="PLASMA_REGION" format="binary" RangeMin="0" RangeMax="1">
           AQAAAACAAADURQAAKwAAAA==eF7twQENAAAMAqDbv/RrOAckAAAAAAAAANDhAAAAAAAAAAAAYMADwqMexQ==
         </DataArray>
         <DataArray type="Int64" Name="vtkOriginalCellIds" format="binary" RangeMin="0" RangeMax="17875">

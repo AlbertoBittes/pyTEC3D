@@ -23,7 +23,7 @@
 # Geometry and mesh (ITER_2D_carma.vtu): 2D axisymmetric about the y axis (x = R, y = Z), 0 <= R <= 100 m,
 #   -100 <= Z <= 100 m, 17189 QUAD8 + 12 TRI6 cells (second order). TYPE ids used by the cells: 21 (air), 23 (coils and plasma region), 24 (passive structures).
 #   Named cell arrays (1 on the cells of a component): CS1U, CS1L, CS2U, CS2L, CS3U, CS3L (central solenoid modules),
-#   PFC_1 ... PFC_6 (poloidal field coils), COILS, VACUUM_CHAMBER (where the plasma can be), PASSIVE_STRUCTURES.
+#   PFC_1 ... PFC_6 (poloidal field coils), COILS, PLASMA_REGION (where the plasma can be), PASSIVE_STRUCTURES.
 #
 # Model data (model_data.json)
 #   Element types (AV2D_nodal, option2 = 2, option3 = 1 axisymmetric): 21 NON_CONDUCTING, 23 STRANDED_CONDUCTOR
@@ -161,7 +161,7 @@ selection.select(pytec3d.model.mesh, "PFC_6", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "Js", i_PF6 / a_PF6, 2, location="elem")
 
 # 9. Initial guess of the plasma current: 15 MA spread uniformly over the vacuum chamber.
-selection.select(pytec3d.model.mesh, "VACUUM_CHAMBER", 1, location="elem")
+selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "Js", 15e6 / a_plasma, 2, location="elem")
 
 # 10. Load the model into the solver session.

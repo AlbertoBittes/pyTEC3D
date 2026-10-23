@@ -7,35 +7,66 @@ API of the solver: it writes the plasma current density into ``Js``, calls ``sol
 The notebooks :doc:`../tutorials/tutorial_iter_equilibrium` and :doc:`../tutorials/tutorial_iter_evolution` use it
 step by step on ITER.
 
-The vacuum-chamber mesh
------------------------
+Preparing the model
+-------------------
 
-The plasma lives on a 2D (R, Z) mesh of the region where it can be, the cells with ``VACUUM_CHAMBER = 1``. The solver
-mesh is the same 2D axisymmetric mesh, or a 3D toroidal sector made by revolving it about the y axis. In 3D the
-algorithm builds toroidal maps between the two meshes: the plasma current density is projected on the cells of every
-toroidal station, the flux is averaged back over the stations.
+**Components.** The algorithm finds the regions of the model by their component arrays (cell arrays, 1 on the cells
+of the component):
 
-* For an equilibrium, the vacuum-chamber mesh is taken from the solver mesh (the VACUUM_CHAMBER cells).
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Component
+     - Content
+   * - ``PLASMA_REGION``
+     - The region where the plasma can be: the vacuum chamber inside the first wall. The plasma, the magnetic axis, the
+       X point and the limiter are searched only there; its outer boundary is the wall (limiter points, halo
+       contact). In 3D, the cells of the whole toroidal sector of this region.
+   * - one per coil (e.g. ``CS1U``, ``PFC_2``)
+     - The coils, with their current densities in ``Js`` (stranded conductors) or driven by a voltage. The coils of
+       ``control_coils`` receive the position-control currents; each needs the ``cross_section`` of its constants
+       row.
+   * - the conducting structures
+     - Vacuum vessel and passive structures, as ``SOLID_CONDUCTOR`` cells in the evolution models (eddy currents and,
+       in 3D, halo currents).
+
+**2D models** are axisymmetric about the y axis: x = R >= 0, y = Z.
+
+**3D models** must be the **revolution of the 2D mesh about the central (y) axis**: a toroidal sector of
+``extrusion_angle`` degrees in ``n_toroidal_divisions`` equal divisions, from the plane z = 0, with the same
+cross-section at every station. The algorithm works on the 2D cross-section and maps it on the 3D mesh by matching
+each 2D node and cell, revolved to every toroidal station, with the nearest 3D node and cell: the plasma current
+density is copied to the cells of every station, the flux averaged over the stations. A 3D mesh that is not such an
+extrusion (another cross-section at some station, an unstructured tetrahedral mesh) gives wrong maps without an
+error.
+
+**Halo currents** (3D evolution): the plasma region must be **surrounded by conductor**. The poloidal halo current is
+injected at the wall nodes of the plasma region (the nodal currents ``AMPS`` on the voltage DOF ``V``), so every wall
+node must be a node of the conducting structures; the current of a wall node that is not part of a conductor has
+nowhere to go and is lost.
+
+The plasma-region mesh
+----------------------
+
+The plasma lives on a 2D (R, Z) mesh of the ``PLASMA_REGION`` cells: ``algorithm.plasma_region_mesh``. The solver
+mesh is the same 2D axisymmetric mesh, or the 3D toroidal sector revolved from it.
+
+* For an equilibrium, the plasma-region mesh is taken from the solver mesh (the PLASMA_REGION cells).
 * For an evolution, set it from the output of the equilibrium, which carries the flux ``PSI``, ``Js`` and the plasma
-  cells: ``algorithm.vacuum_chamber_mesh = Model.read_model(path).mesh`` (or
+  cells: ``algorithm.plasma_region_mesh = Model.read_model(path).mesh`` (or
   ``mesh.read_mesh(path, reset_arrays=False)``), with ``path`` the last ``output/<name>_out_<n>.vtu`` of the
   equilibrium (``_1``: the equilibrium writes one output, after its Picard loop).
-* The test macros select the vacuum-chamber cells and their nodes on the solver mesh before the evolution solves
-  (``selection.select(mesh, "VACUUM_CHAMBER", 1, location="elem"); selection.nsle(mesh)``). This is not required: the
-  algorithm makes its own selections on the solver mesh and on its copy of the vacuum chamber.
 * The current densities of the equilibrium (coils and plasma) are in its ``Js`` and ``Jt`` (equal on the stranded
   conductors): either can be copied into the ``Js`` of the evolution model.
-* The ``PLASMA`` cell array marks the cells that carry plasma current: the cells connected to the axis inside the
-  X-point flux surface, and inside the boundary of the current (the limiter flux surface of a limited plasma, the
-  halo boundary when a halo is active).
-* In the evolution models the vacuum vessel and the passive structures are ``SOLID_CONDUCTOR`` cells: in 2D closed
-  toroidal shells (no electric DOF), in 3D conductors with the potential V (fixed on one node, coupled between the
-  faces of the sector).
+* The ``PLASMA`` cell array marks the cells that carry plasma current: the cells connected to the axis with all their
+  nodes inside the boundary of the current (the limiter or X-point flux surface, the halo boundary when a halo is
+  active, never beyond the X-point flux surface).
 * The position control is proportional: the correction currents are recomputed at every iteration from the residual
   field at the target and replace the previous correction. The axis converges near the target, not on it
   (:ref:`theory-plasma` *Position control*).
 
-Required arrays: cell arrays ``VACUUM_CHAMBER``, the component arrays of the control coils (e.g. ``PFC_2``),
+Required arrays: cell arrays ``PLASMA_REGION``, the component arrays of the control coils (e.g. ``PFC_2``),
 ``cell_centroids``, ``cell_volume``, ``Js``; point arrays ``A``, ``PSI``. ``AMPS`` (halo currents) is used when the model
 has 3D conductors.
 
@@ -62,7 +93,8 @@ Each iteration (``equilibrium_solve()`` and ``evolution_solve()``):
    field at the target axis (from the field per unit current ``bradx/brady/bverx/bvery_value``);
 #. projects Js (and the halo currents) on the solver mesh, solves, computes and averages the new flux PSI;
 #. stops when the largest change of PSI is below ``tolerance_value``; raises
-   :class:`~pytec3d.errors.ConvergenceError` after ``max_picard_iterations``.
+   :class:`~pytec3d.errors.ConvergenceError` after ``max_picard_iterations``, or when a plasma current is requested
+   but the plasma region is empty.
 
 The first evolution call only initializes the flux (one solve). Each Picard iteration is one ``solve()`` at the
 same time: the time step is solved again with the updated plasma current.
@@ -118,8 +150,8 @@ A complete workflow
 -------------------
 
 #. **Equilibrium** (``examples/ITER_2D_fine2``): 2D axisymmetric, static; coil current densities in the coils, a uniform initial
-   plasma current density in the vacuum chamber; ``algorithm.equilibrium_solve()``; ``solver.write_output()``.
-#. **Evolution** (``examples/ITER_2D_evol_fine2``, ``examples/ITER_3D_evol_fine2``): read the equilibrium output as the vacuum-chamber
+   plasma current density in the plasma region; ``algorithm.equilibrium_solve()``; ``solver.write_output()``.
+#. **Evolution** (``examples/ITER_2D_evol_fine2``, ``examples/ITER_3D_evol_fine2``): read the equilibrium output as the plasma-region
    mesh, copy its current densities (coils, plasma) into ``Js`` of the evolution model (same cells), set the
    conductors (vessel, structures) as conducting domains; then a static first step and transient steps following the
    plasma current and beta waveforms, one ``evolution_solve()`` per step. Coils can be fixed current densities

@@ -1,8 +1,8 @@
 """Plasma equilibrium and evolution (APEC-M): Picard iterations of the free-boundary Grad-Shafranov problem.
 
-The plasma lives on the *vacuum-chamber mesh*: a 2D (R, Z) mesh of the VACUUM_CHAMBER cells. The solver mesh is
+The plasma lives on the *plasma-region mesh*: a 2D (R, Z) mesh of the PLASMA_REGION cells. The solver mesh is
 that same 2D mesh or a 3D torus built by revolving it about the y axis; toroidal maps then carry the plasma current
-density from the vacuum-chamber mesh to the solver mesh (projection) and the poloidal flux back (toroidal average).
+density from the plasma-region mesh to the solver mesh (projection) and the poloidal flux back (toroidal average).
 
 Each Picard iteration:
 
@@ -13,9 +13,10 @@ Each Picard iteration:
    currents ``AMPS`` along the vacuum-chamber wall;
 3. for an equilibrium, corrects the control-coil currents so that the field at the target axis is zero;
 4. projects ``Js`` and ``AMPS`` to the solver mesh, solves, and averages the new flux ``PSI`` back;
-5. stops when the largest change of PSI is below ``tolerance_value``.
+5. stops when the largest change of PSI is below ``tolerance_value``; otherwise relaxes PSI and PSIe towards the
+   previous iterate, ``(1 - w) PSI_old + w PSI_new``, with ``w`` halved when the iterations oscillate or stall.
 
-Arrays read: ``VACUUM_CHAMBER``, ``PLASMA``, ``Js``, ``CONSTANT``, the control-coil component arrays and
+Arrays read: ``PLASMA_REGION``, ``PLASMA``, ``Js``, ``CONSTANT``, the control-coil component arrays and
 ``cell_centroids`` / ``cell_volume`` (cells); ``PSI`` and the vector potential ``A`` (points). ``AMPS`` (points) is
 optional: the mesh only has it when an element type has the field it loads (the voltage ``V`` of a solid conductor);
 without it there are no halo currents.
@@ -59,7 +60,7 @@ LOGGER = get_logger("pytec3d.algorithm")
 
 MU_0 = 4.0e-7 * np.pi
 
-#: Point arrays of the PSI gradient and Hessian computed on the vacuum-chamber mesh.
+#: Point arrays of the PSI gradient and Hessian computed on the plasma-region mesh.
 PSI_GRADIENT = "__pytec3d_psi_gradient__"
 PSI_HESSIAN = "__pytec3d_psi_hessian__"
 #: Load arrays the algorithm writes only when the solver mesh has them, i.e. when an element type of the model has
@@ -85,6 +86,16 @@ DEFAULT_INPUT_PARAMETERS: dict[str, Any] = {
     # Picard iterations.
     "max_picard_iterations": 1,
     "tolerance_value": 1e-6,
+    # Relaxation of PSI between Picard iterations: PSI <- (1 - w) PSI_old + w PSI_new, starting from w = relaxation
+    # at each time step; w is multiplied by relaxation_factor (down to relaxation_min) when the solved flux comes
+    # back to the one of two iterations before (2-cycle), or when max |dPSI| has not reached a new minimum in
+    # stall_iterations iterations (stall), and divided by it (up to relaxation) when max |dPSI| has decreased at
+    # each of the last stall_iterations iterations (0: no stall test, no recovery). relaxation_min = relaxation keeps
+    # w fixed.
+    "relaxation": 1.0,
+    "relaxation_min": 0.1,
+    "relaxation_factor": 0.5,
+    "stall_iterations": 5,
     # Field at the target axis of a unit radial / vertical correction current.
     "bradx_value": 0.0,
     "brady_value": 0.0,
@@ -128,6 +139,8 @@ DEFAULT_STATUS: dict[str, Any] = {
     "x_point": (np.nan, np.nan, np.nan),
     "flux_norm": np.nan,
     "flux_tolerance": np.nan,
+    "relaxation": 1.0,
+    "oscillation": "",
     "radial_correction_current": 0.0,
     "vertical_correction_current": 0.0,
     "total_plasma_current_before_scaling": 0.0,
@@ -179,10 +192,14 @@ class Algorithm:
         self.reset()
 
     def reset(self) -> None:
-        """Forget the iterations: status, previous flux, cached maps and graphs (the vacuum-chamber mesh stays)."""
+        """Forget the iterations: status, previous flux, cached maps and graphs (the plasma-region mesh stays)."""
         self.status = copy.deepcopy(DEFAULT_STATUS)
         self._first_absolute_iteration = True
         self._previous_flux: np.ndarray | None = None
+        self._previous_cell_flux: np.ndarray | None = None
+        self._solved_fluxes: deque[np.ndarray] = deque(maxlen=2)
+        self._flux_norms: list[float] = []
+        self._relaxation_time: float | None = None
         self._control_current_density_base: np.ndarray | None = None
         self._b_target_cache: tuple[tuple[Any, ...], np.ndarray, np.ndarray] | None = None
         self._toroidal_nodes = np.zeros((0, 0), dtype=np.int64)
@@ -193,33 +210,33 @@ class Algorithm:
     # ------------------------------------------------------------------------------------------- vacuum chamber
 
     @property
-    def vacuum_chamber_mesh(self) -> vtkUnstructuredGrid:
+    def plasma_region_mesh(self) -> vtkUnstructuredGrid:
         """The 2D mesh of the vacuum chamber, where the plasma is computed.
 
-        Set it from a 2D mesh with a ``VACUUM_CHAMBER`` cell array: a copy of its VACUUM_CHAMBER cells is kept.
+        Set it from a 2D mesh with a ``PLASMA_REGION`` cell array: a copy of its PLASMA_REGION cells is kept.
         :meth:`equilibrium_solve` sets it from the solver mesh when it is not set.
 
         Raises:
             SolverStateError: When reading it before it is set, or setting it twice.
-            ValueError: When the mesh has no VACUUM_CHAMBER cell.
+            ValueError: When the mesh has no PLASMA_REGION cell.
         """
         if self._equilibrium_mesh is None:
-            raise SolverStateError("The vacuum-chamber mesh is not set.")
+            raise SolverStateError("The plasma-region mesh is not set.")
         return self._equilibrium_mesh
 
-    @vacuum_chamber_mesh.setter
-    def vacuum_chamber_mesh(self, value: vtkUnstructuredGrid) -> None:
+    @plasma_region_mesh.setter
+    def plasma_region_mesh(self, value: vtkUnstructuredGrid) -> None:
         if self._equilibrium_mesh is not None:
-            raise SolverStateError("The vacuum-chamber mesh is already set.")
+            raise SolverStateError("The plasma-region mesh is already set.")
         source = vtkUnstructuredGrid()
         source.DeepCopy(meshes.check_grid(value))
-        selection.select(source, "VACUUM_CHAMBER", 1, location="elem")
+        selection.select(source, "PLASMA_REGION", 1, location="elem")
         cells = selection.selected_ids(source, "elem")
         if cells.size == 0:
-            raise ValueError("The mesh has no VACUUM_CHAMBER cell.")
+            raise ValueError("The mesh has no PLASMA_REGION cell.")
         extracted = vtkUnstructuredGrid.SafeDownCast(selection._extract_cells(source, cells))
         if extracted is None or extracted.GetNumberOfCells() == 0:
-            raise ValueError("Failed to extract the VACUUM_CHAMBER cells.")
+            raise ValueError("Failed to extract the PLASMA_REGION cells.")
         selection.select_all(extracted, location="elem")
         selection.nsle(extracted)
         self._equilibrium_mesh = extracted
@@ -317,11 +334,11 @@ class Algorithm:
         return mapping
 
     def _ensure_toroidal_maps(self) -> None:
-        """Build the point and cell toroidal maps between the vacuum-chamber mesh and the solver mesh, once."""
+        """Build the point and cell toroidal maps between the plasma-region mesh and the solver mesh, once."""
         if self._toroidal_nodes.size and self._toroidal_cells.size:
             return
         LOGGER.debug("Building the toroidal maps.")
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         target = self.solver.model.mesh
         divisions = int(self.input_parameters.get("n_toroidal_divisions", -1))
         if target.GetMaxSpatialDimension() > 2 and divisions <= 0:
@@ -330,9 +347,9 @@ class Algorithm:
             divisions = 1
         angle = float(self.input_parameters.get("extrusion_angle", 360.0))
 
-        selection.select(target, "VACUUM_CHAMBER", 1, location="elem")
+        selection.select(target, "PLASMA_REGION", 1, location="elem")
         selection.nsle(target)
-        selection.select(chamber, "VACUUM_CHAMBER", 1, location="elem")
+        selection.select(chamber, "PLASMA_REGION", 1, location="elem")
         self._toroidal_nodes = self.build_toroidal_slices(chamber, target, "node", angle, divisions)
         self._toroidal_cells = self.build_toroidal_slices(chamber, target, "elem", angle, divisions)
 
@@ -342,7 +359,7 @@ class Algorithm:
         return np.asarray(mapping[:, 0], dtype=np.int64), np.asarray(mapping[:, 1:], dtype=np.int64)
 
     def toroidal_average(self, array_name: str, location: Location, component: int | None = None) -> None:
-        """Average an array of the solver mesh over the toroidal stations into the vacuum-chamber mesh.
+        """Average an array of the solver mesh over the toroidal stations into the plasma-region mesh.
 
         Args:
             array_name: Array present on both meshes.
@@ -355,7 +372,7 @@ class Algorithm:
         """
         location = meshes.check_location(location)
         sources, targets = self._map(location)
-        chamber_array = meshes.get_array(self.vacuum_chamber_mesh, array_name, location)
+        chamber_array = meshes.get_array(self.plasma_region_mesh, array_name, location)
         chamber = vtknp.vtk_to_numpy(chamber_array)
         model = meshes.array_values(self.solver.model.mesh, array_name, location)
         if chamber.ndim == 1:
@@ -366,7 +383,7 @@ class Algorithm:
         chamber_array.Modified()
 
     def toroidal_projection(self, array_name: str, location: Location, component: int | None = None) -> None:
-        """Copy an array of the vacuum-chamber mesh to every toroidal station of the solver mesh.
+        """Copy an array of the plasma-region mesh to every toroidal station of the solver mesh.
 
         A nodal load (:data:`OPTIONAL_LOADS`, the halo currents ``AMPS``) is the load of the whole sector: it is not
         copied but shared among the node stations (trapezoid weights), so that the sector receives it once.
@@ -379,7 +396,7 @@ class Algorithm:
             LOGGER.debug("No '%s' array on the solver mesh (no field takes it): not projected.", array_name)
             return
         sources, targets = self._map(location)
-        chamber = meshes.array_values(self.vacuum_chamber_mesh, array_name, location)
+        chamber = meshes.array_values(self.plasma_region_mesh, array_name, location)
         model_array = meshes.get_array(self.solver.model.mesh, array_name, location)
         model = vtknp.vtk_to_numpy(model_array)
         flat_targets = targets.reshape(-1)
@@ -452,8 +469,8 @@ class Algorithm:
         model_edit.poloidal_flux(target, YAxisCylindricalCoordinateSystem())
 
     def _compute_psi_derivatives(self) -> None:
-        """Store the PSI gradient and Hessian (``vtkGradientFilter``) as point arrays of the vacuum-chamber mesh."""
-        chamber = self.vacuum_chamber_mesh
+        """Store the PSI gradient and Hessian (``vtkGradientFilter``) as point arrays of the plasma-region mesh."""
+        chamber = self.plasma_region_mesh
         gradient = vtkGradientFilter()
         gradient.SetInputData(chamber)
         gradient.SetInputScalars(vtkDataObject.FIELD_ASSOCIATION_POINTS, "PSI")
@@ -483,7 +500,7 @@ class Algorithm:
 
     def _set_psi_magnetic_axis(self) -> None:
         """The magnetic axis: the point of largest PSI."""
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         psi = meshes.array_values(chamber, "PSI", "node")
         axis = int(np.argmax(psi))
         psi_axis = float(psi[axis])
@@ -499,7 +516,7 @@ class Algorithm:
         Raises:
             ValueError: If PSI has no saddle point.
         """
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         psi = meshes.array_values(chamber, "PSI", "node")
         hessian = meshes.array_values(chamber, PSI_HESSIAN, "node")
         gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
@@ -525,9 +542,9 @@ class Algorithm:
         """The limiter point: the wall point of largest PSI, among those where the poloidal field turns as in the core.
 
         Raises:
-            ValueError: If the vacuum-chamber mesh has no boundary point.
+            ValueError: If the plasma-region mesh has no boundary point.
         """
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         psi = meshes.array_values(chamber, "PSI", "node")
         selection.select_all(chamber, location="elem")
         selection.nsel_ext(chamber)
@@ -599,8 +616,8 @@ class Algorithm:
         )
 
     def _reset_plasma_components(self) -> None:
-        """PLASMA = 1, AMPS = 0, Js = 0 on the whole vacuum-chamber mesh."""
-        chamber = self.vacuum_chamber_mesh
+        """PLASMA = 1, AMPS = 0, Js = 0 on the whole plasma-region mesh."""
+        chamber = self.plasma_region_mesh
         for name, location, value in (("PLASMA", "elem", 1), ("AMPS", "node", 0.0), ("Js", "elem", 0.0)):
             if name in OPTIONAL_LOADS and not _has_array(chamber, name, location):  # type: ignore[arg-type]
                 continue
@@ -664,39 +681,43 @@ class Algorithm:
     def _identify_plasma_region(self) -> None:
         """PLASMA = 1 on the cells that carry plasma current, 0 elsewhere; with a halo, find the halo wall paths.
 
-        The region connected to the magnetic axis inside the X-point flux surface (which keeps the private flux
-        region out) is narrowed to the cells inside the boundary of the current: ``psi_2_min``, the limiter or X-point
-        flux, or the halo boundary. These are the cells where the Grad-Shafranov profile is not zero.
+        One search for the core and the halo: the cells with all their points inside the boundary of the current,
+        connected to the magnetic axis (:meth:`_main_plasma_cells`). The boundary is ``psi_2_min`` (the limiter or
+        X-point flux, or the halo boundary), but never beyond the X-point flux surface, which keeps the private flux
+        region and the scrape-off layer beyond the separatrix out. The halo wall paths are the wall points of these
+        cells: the interface between the plasma region and the wall.
 
         Raises:
             ValueError: If a halo is requested but psi_2_min >= psi_min.
         """
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         psi_2_min, psi_min = float(self.status["psi_2_min"]), float(self.status["psi_min"])
         halo_requested = self._halo_active()
         if halo_requested and psi_2_min >= psi_min:
             raise ValueError("psi_2_min must be below psi_min to identify the plasma region with a halo.")
         self._halo_node_groups = ()
 
-        excluded = 0
-        psi_x = self.status.get("last_psi_x_point")
         axis = int(self.status.get("magnetic_axis_node_id", -1))
-        if psi_x is not None and axis >= 0:
-            psi = meshes.array_values(chamber, "PSI", "node")
-            connected = np.zeros(chamber.GetNumberOfCells(), dtype=bool)
-            connected[self._main_plasma_cells(chamber, axis, psi, float(psi_x))] = True
-            outside = ~connected
-            if np.any(outside):
-                excluded = int(np.count_nonzero(outside))
-                selection.apply_mask(chamber, outside, "elem", "s")
-                selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
+        if axis < 0:
+            return
+        psi = meshes.array_values(chamber, "PSI", "node")
+        psi_axis = float(psi[axis])
+        boundary = psi_2_min
+        psi_x = self.status.get("last_psi_x_point")
+        if psi_x is not None:
+            # The one of psi_2_min and the X-point flux nearer to the axis.
+            inward = 1.0 if psi_axis >= float(psi_x) else -1.0
+            boundary = inward * max(inward * psi_2_min, inward * float(psi_x))
+        plasma = np.zeros(chamber.GetNumberOfCells(), dtype=bool)
+        plasma[self._main_plasma_cells(chamber, axis, psi, boundary)] = True
+        if not np.all(plasma):
+            selection.apply_mask(chamber, ~plasma, "elem", "s")
+            selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
 
         if halo_requested:
-            # Wall points in the halo flux band, attached to the plasma cells, as ordered paths along the wall.
-            band = (np.nextafter(psi_2_min, np.inf), np.nextafter(psi_min, -np.inf))
-            selection.select(chamber, "PSI", band, location="node")
+            # Wall points of the plasma cells, as ordered paths along the wall.
             selection.select(chamber, "PLASMA", 1, location="elem")
-            selection.nsle(chamber, mode="r")
+            selection.nsle(chamber)
             wall_points, adjacency = self._halo_boundary_graph()
             halo_points = np.intersect1d(selection.selected_ids(chamber, "node"), wall_points, assume_unique=True)
             self._halo_node_groups = self._orient_halo_node_groups(
@@ -705,24 +726,15 @@ class Algorithm:
                 self.status["magnetic_axis"],
                 float(self.input_parameters["plasma_current"]),
             )
-        # Narrow to the current-carrying cells (after the halo paths, which use the whole connected region).
-        psi_axis = float(self.status["psi_magnetic_axis"])
-        if psi_2_min != psi_axis:
-            psi_cell = meshes.array_values(chamber, "PSIe", "elem")
-            beyond = ~((psi_cell - psi_2_min) * np.sign(psi_axis - psi_2_min) > 0.0)
-            beyond &= meshes.array_values(chamber, "PLASMA", "elem") == 1
-            if np.any(beyond):
-                excluded += int(np.count_nonzero(beyond))
-                selection.apply_mask(chamber, beyond, "elem", "s")
-                selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
         LOGGER.debug(
-            "Plasma region: %d cells excluded, %d halo group(s).", excluded, len(self._halo_node_groups)
+            "Plasma region: %d cells (boundary PSI = %.6g), %d halo group(s).",
+            int(np.count_nonzero(plasma)), boundary, len(self._halo_node_groups),
         )
 
     def _halo_boundary_graph(self) -> tuple[np.ndarray, dict[int, np.ndarray]]:
         """The wall of the vacuum chamber as a graph of points (computed once)."""
         if self._halo_boundary is None:
-            chamber = self.vacuum_chamber_mesh
+            chamber = self.plasma_region_mesh
             selection.select_all(chamber)
             self._halo_boundary = selection.external_node_adjacency(chamber)
         return self._halo_boundary
@@ -816,7 +828,7 @@ class Algorithm:
         ``psi_n`` the normalized flux of the cell and ``lambda`` scaling the total to ``plasma_current``. Poloidal:
         ``J_p = F'(psi) B_p`` from the same profile.
         """
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         js_array = meshes.get_array(chamber, "Js", "elem")
         js = vtknp.vtk_to_numpy(js_array)
         psi_point = meshes.array_values(chamber, "PSI", "node")
@@ -838,12 +850,13 @@ class Algorithm:
         psi_axis = float(self.status["psi_magnetic_axis"])
         psi_min = float(self.status["psi_2_min"])
         psi_span = psi_min - psi_axis
+        p = self.input_parameters
         if abs(psi_span) <= np.finfo(float).eps:
             self.status.update(total_plasma_current_before_scaling=0.0, plasma_current_scaling_lambda=0.0,
                                plasma_element_count=0)
+            self._require_plasma(0)
             return
 
-        p = self.input_parameters
         beta = float(p["beta_p"])
         alpha_m, alpha_n = float(p["alpha_mp"]), float(p["alpha_np"])
         r0, af0 = float(p["R0"]), float(p["AF0"])
@@ -851,6 +864,7 @@ class Algorithm:
 
         selection.select(chamber, "PLASMA", 1, location="elem")
         plasma = selection.selected_ids(chamber, "elem")
+        self._require_plasma(plasma.size)
 
         psi_n = np.nan_to_num((psi_cell[plasma] - psi_axis) / psi_span, nan=0.0, posinf=1.0, neginf=0.0)
         psi_n = np.clip(psi_n, 0.0, 1.0)
@@ -898,6 +912,19 @@ class Algorithm:
         )
         LOGGER.info("Grad-Shafranov: %d plasma cells, I_raw = %.6g A, lambda = %.6g.", plasma.size, total, scale)
 
+    def _require_plasma(self, cell_count: int) -> None:
+        """Stop the Picard loop when a plasma current is requested but no cell carries it.
+
+        Raises:
+            ConvergenceError: If plasma_current is not zero and there is no plasma cell.
+        """
+        if cell_count == 0 and float(self.input_parameters["plasma_current"]) != 0.0:
+            raise ConvergenceError(
+                f"The plasma region is empty at Picard iteration {self.status['picard_iteration']} "
+                f"(t = {self.solver.time_step['time']}, {self.status['separatrix_configuration']} configuration, "
+                f"PSI_axis = {self.status['psi_magnetic_axis']}, PSI_2_min = {self.status['psi_2_min']})."
+            )
+
     # ------------------------------------------------------------------------------------------- control
 
     def control_currents(self) -> None:
@@ -916,7 +943,7 @@ class Algorithm:
         Raises:
             ValueError: If the target point is outside the vacuum chamber or at R <= 0.
         """
-        chamber = self.vacuum_chamber_mesh
+        chamber = self.plasma_region_mesh
         gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
         p = self.input_parameters
         target = tuple(float(p[f"target_central_axis_{axis}"]) for axis in "xyz")
@@ -1026,26 +1053,117 @@ class Algorithm:
     # ------------------------------------------------------------------------------------------- iterations
 
     def check_convergence(self) -> bool:
-        """Compare PSI with the previous iteration: converged when ``max |dPSI| <= tolerance_value``.
+        """Compare PSI with the PSI the iteration started from: converged when ``max |dPSI| <= tolerance_value``.
 
-        The first call only stores PSI and returns False.
+        ``max |dPSI|`` is the fixed-point residual, whatever the relaxation. When not converged, PSI and PSIe of the
+        plasma-region mesh are relaxed towards the previous iterate (:meth:`_relax_flux`). The first call only stores
+        PSI and returns False.
         """
-        psi = meshes.array_values(self.vacuum_chamber_mesh, "PSI", "node").copy()
+        chamber = self.plasma_region_mesh
+        psi = meshes.array_values(chamber, "PSI", "node").copy()
+        psi_cell = meshes.array_values(chamber, "PSIe", "elem").copy() if _has_array(chamber, "PSIe", "elem") else None
         tolerance = float(self.input_parameters["tolerance_value"])
         self.status["flux_tolerance"] = tolerance
         if self._first_absolute_iteration or self._previous_flux is None:
-            self._previous_flux = psi
+            self._previous_flux, self._previous_cell_flux = psi, psi_cell
             self.status.update(flux_norm=np.nan, converged=False)
             return False
         if self._previous_flux.size != psi.size:
             raise ValueError("PSI changed size between two iterations.")
         flux_norm = float(np.max(np.abs(psi - self._previous_flux)))
-        self._previous_flux = psi
         converged = flux_norm <= tolerance
         self.status.update(flux_norm=flux_norm, converged=converged)
         LOGGER.info("Convergence: max |dPSI| = %.6g, tolerance %.6g: %s.", flux_norm, tolerance,
                     "converged" if converged else "not converged")
+        if converged:
+            self.status["oscillation"] = ""
+            self._previous_flux, self._previous_cell_flux = psi, psi_cell
+        else:
+            self._detect_oscillation(psi, flux_norm)
+            self._relax_flux(psi, psi_cell)
         return converged
+
+    def _reset_relaxation(self) -> None:
+        """Start a time step from w = relaxation, with no oscillation history (kept across calls at the same time)."""
+        p = self.input_parameters
+        relaxation, minimum = float(p["relaxation"]), float(p["relaxation_min"])
+        factor, stall = float(p["relaxation_factor"]), int(p["stall_iterations"])
+        if not 0.0 < relaxation <= 1.0 or not 0.0 < minimum <= 1.0:
+            raise ValueError("input_parameters['relaxation'] and ['relaxation_min'] must be in (0, 1].")
+        if not 0.0 < factor < 1.0:
+            raise ValueError("input_parameters['relaxation_factor'] must be in (0, 1).")
+        if stall < 0:
+            raise ValueError("input_parameters['stall_iterations'] must not be negative.")
+        time_now = float(self.solver.time_step["time"])
+        if self._relaxation_time == time_now:
+            return
+        self._relaxation_time = time_now
+        self._solved_fluxes.clear()
+        self._flux_norms = []
+        self.status.update(relaxation=relaxation, oscillation="")
+
+    def _detect_oscillation(self, psi: np.ndarray, flux_norm: float) -> None:
+        """Reduce the relaxation factor when the iterations oscillate or stall, raise it back when they converge.
+
+        2-cycle: the solved PSI comes back within half its last change to the one of two iterations before. Stall:
+        ``max |dPSI|`` has not gone below its earlier minimum in the last ``stall_iterations`` iterations (a slow but
+        monotone convergence is not a stall). Recovery: ``max |dPSI|`` has decreased at each of the last
+        ``stall_iterations`` iterations, so a reduced factor does not slow down the rest of the convergence. After a
+        change of the factor the history restarts, so the next one needs new evidence.
+        """
+        p = self.input_parameters
+        oscillation = ""
+        if len(self._solved_fluxes) == 2:
+            change = float(np.max(np.abs(psi - self._solved_fluxes[-1])))
+            if change > float(self.status["flux_tolerance"]) and \
+                    float(np.max(np.abs(psi - self._solved_fluxes[0]))) < 0.5 * change:
+                oscillation = "2-cycle"
+        stall = int(p["stall_iterations"])
+        self._flux_norms.append(flux_norm)
+        if not oscillation and stall > 0 and len(self._flux_norms) > stall and \
+                min(self._flux_norms[-stall:]) >= min(self._flux_norms[:-stall]):
+            oscillation = "stall"
+        self._solved_fluxes.append(psi)
+
+        relaxation = float(self.status["relaxation"])
+        minimum, initial, factor = float(p["relaxation_min"]), float(p["relaxation"]), float(p["relaxation_factor"])
+        recent = self._flux_norms[-1 - stall:]
+        converging = stall > 0 and len(recent) == stall + 1 and all(b < a for a, b in zip(recent, recent[1:]))
+        if oscillation and relaxation > minimum:
+            relaxation = max(minimum, relaxation * factor)
+            self._solved_fluxes.clear()
+            self._flux_norms = []
+            LOGGER.warning("Picard %s detected (max |dPSI| = %.6g): relaxation reduced to %.4g.",
+                           oscillation, flux_norm, relaxation)
+        elif not oscillation and converging and relaxation < initial:
+            relaxation = min(initial, relaxation / factor)
+            self._solved_fluxes.clear()
+            self._flux_norms = []
+            LOGGER.info("Picard converging (max |dPSI| = %.6g): relaxation raised to %.4g.", flux_norm, relaxation)
+        elif oscillation:
+            LOGGER.info("Picard %s detected (max |dPSI| = %.6g) at the minimum relaxation %.4g.",
+                        oscillation, flux_norm, relaxation)
+        self.status.update(relaxation=relaxation, oscillation=oscillation)
+
+    def _relax_flux(self, psi: np.ndarray, psi_cell: np.ndarray | None) -> None:
+        """PSI <- (1 - w) PSI_old + w PSI on the plasma-region mesh (PSIe too), and store it as the next start.
+
+        PSI and PSIe are linear in the field, so the relaxed PSIe is the cell flux of the relaxed field; the axis,
+        X point, limiter and plasma region of the next iteration all come from the relaxed flux.
+        """
+        chamber = self.plasma_region_mesh
+        w = float(self.status["relaxation"])
+        if w < 1.0 and self._previous_flux is not None:
+            psi = w * psi + (1.0 - w) * self._previous_flux
+            values = [("PSI", "node", psi)]
+            if psi_cell is not None and self._previous_cell_flux is not None:
+                psi_cell = w * psi_cell + (1.0 - w) * self._previous_cell_flux
+                values.append(("PSIe", "elem", psi_cell))
+            for name, location, relaxed in values:
+                array = meshes.get_array(chamber, name, location)  # type: ignore[arg-type]
+                vtknp.vtk_to_numpy(array)[...] = relaxed
+                array.Modified()
+        self._previous_flux, self._previous_cell_flux = psi, psi_cell
 
     def _diagnostics_path(self) -> str:
         from pytec3d.solver import OUTPUT_DIRECTORY
@@ -1103,6 +1221,7 @@ class Algorithm:
         if self._first_absolute_iteration:
             self._ensure_toroidal_maps()
             self._halo_boundary_graph()
+        self._reset_relaxation()
 
         for iteration in range(1, max_iterations + 1):
             self.status["picard_iteration"] = iteration
@@ -1148,7 +1267,7 @@ class Algorithm:
     def equilibrium_solve(self) -> bool:
         """Iterate the free-boundary equilibrium, with control currents, until PSI converges.
 
-        The vacuum-chamber mesh is taken from the solver mesh if it is not set.
+        The plasma-region mesh is taken from the solver mesh if it is not set.
 
         Returns:
             True (it raises otherwise).
@@ -1162,7 +1281,7 @@ class Algorithm:
         if self._first_absolute_iteration:
             self._clear_diagnostics()
         if self._equilibrium_mesh is None:
-            self.vacuum_chamber_mesh = self.solver.model.mesh
+            self.plasma_region_mesh = self.solver.model.mesh
         return self._run_picard_loop("Equilibrium", equilibrium=True)
 
     def evolution_solve(self) -> bool:
@@ -1174,7 +1293,7 @@ class Algorithm:
             True (it raises otherwise).
 
         Raises:
-            SolverStateError: If the model is not loaded or the vacuum-chamber mesh is not set.
+            SolverStateError: If the model is not loaded or the plasma-region mesh is not set.
             ConvergenceError: If PSI does not converge within ``max_picard_iterations``.
         """
         LOGGER.info("Starting the evolution solve.")

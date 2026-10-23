@@ -60,7 +60,7 @@ Workflow
    stays at the target, and solves the field. ``write_output()`` stores the result.
 #. **2D evolution** (``ITER_2D_evol_*``). The evolution mesh has the same cells as the equilibrium mesh, but the
    vessel and structures are ``SOLID_CONDUCTOR`` cells (closed toroidal shells). The equilibrium output becomes the
-   vacuum-chamber mesh of the algorithm, and its ``Jt`` (equal to ``Js`` on the stranded conductors) becomes the source
+   plasma-region mesh of the algorithm, and its ``Jt`` (equal to ``Js`` on the stranded conductors) becomes the source
    ``Js`` of the evolution. A static first step at ``t = 1e-10`` starts from the equilibrium. Then each point of the
    waveforms gives one transient step, with the plasma current and beta of that time and one ``evolution_solve()``.
 #. **3D evolution** (``ITER_3D_evol_*``). The setup:
