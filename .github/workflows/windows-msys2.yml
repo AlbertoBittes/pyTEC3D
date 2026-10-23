@@ -1,5 +1,5 @@
-# Feasibility of a native Windows build (MSYS2 UCRT64): PETSc, patched libMesh, the solver module, an import test.
-# PETSc and libMesh are cached separately, so that a failure in a later stage does not rebuild them.
+# Feasibility of a native Windows build (MSYS2 UCRT64): patched libMesh on the PETSc of MSYS2, the solver module, an
+# import test. libMesh is cached, so that a failure in a later stage does not rebuild it.
 name: Windows (MSYS2)
 
 on:
@@ -15,7 +15,6 @@ jobs:
       run:
         shell: msys2 {0}
     env:
-      PETSC_VERSION: 3.26.0
       LIBMESH_COMMIT: 9e5b0b870a585427a1bd400fec715d7789c4d976
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +32,7 @@ jobs:
             git make autoconf automake libtool patch diffutils
           pacboy: >-
             toolchain:p gcc-fortran:p cmake:p ninja:p pkgconf:p
-            msmpi:p openblas:p
+            msmpi:p openblas:p petsc:p petsc-build:p
             python:p python-numpy:p python-mpi4py:p python-pandas:p
             vtk:p pybind11:p spdlog:p nlohmann-json:p
 
@@ -42,23 +41,6 @@ jobs:
           echo "PYTEC3D_DEPS=$(cygpath -u "${RUNNER_TEMP}")/deps" >> "$GITHUB_ENV"
           gfortran --version | head -1; mpicc --version | head -1; mpifort --version | head -1; python --version
           python -c "import vtk; print('vtk', vtk.vtkVersion.GetVTKVersion())"
-
-      - name: Restore PETSc
-        id: petsc-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/deps/petsc-${{ env.PETSC_VERSION }}
-          key: msys2-petsc-${{ env.PETSC_VERSION }}-v1
-
-      - name: PETSc
-        run: ci/msys2/build.sh petsc
-
-      - name: Save PETSc
-        if: steps.petsc-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/deps/petsc-${{ env.PETSC_VERSION }}
-          key: msys2-petsc-${{ env.PETSC_VERSION }}-v1
 
       - name: Restore libMesh
         id: libmesh-cache
@@ -83,7 +65,7 @@ jobs:
       - name: Smoke test
         run: ci/msys2/build.sh test
 
-      # The logs of a failed configure (PETSc configure.log, libMesh config.log).
+      # The logs of a failed configure (libMesh config.log, CMake).
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -91,8 +73,6 @@ jobs:
           name: build-logs
           if-no-files-found: ignore
           path: |
-            ${{ runner.temp }}/deps/src/petsc/configure.log
-            ${{ runner.temp }}/deps/src/petsc/make.log
             ${{ runner.temp }}/deps/src/libmesh/build-opt/config.log
             build/msys2-opt/CMakeFiles/CMakeOutput.log
             build/msys2-opt/CMakeFiles/CMakeError.log
