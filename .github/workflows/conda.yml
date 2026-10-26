@@ -33,6 +33,11 @@ concurrency:
 env:
   # The Python of ParaView, which runs the API in its plugin and console.
   PYTHON_VERSIONS: "3.12"
+  # Windows: the PETSc built in MSYS2, and the revisions of the PETSc / libMesh builds of ci/windows/build.sh (bump one
+  # when its configuration changes, to rebuild it instead of restoring it from the cache).
+  PETSC_VERSION: "3.26.0"
+  WINDOWS_PETSC_REVISION: "1"
+  WINDOWS_LIBMESH_REVISION: "1"
 
 jobs:
   libmesh:
@@ -135,19 +140,41 @@ jobs:
           }
           "PYTHONS=$($pythons -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      # PETSc by version and build script, libMesh by commit and patches (a new libMesh commit rebuilds libMesh only).
-      - uses: actions/cache@v4
+      # PETSc by version and build script, libMesh by commit and patches (a new libMesh commit rebuilds libMesh only);
+      # each is saved as soon as it is built, so that a later failure does not lose it.
+      - id: petsc-cache
+        uses: actions/cache/restore@v4
         with:
           path: C:/pytec3d-deps/petsc
-          key: windows-petsc-${{ hashFiles('ci/windows/build.sh') }}
-      - uses: actions/cache@v4
+          key: windows-petsc-${{ env.PETSC_VERSION }}-r${{ env.WINDOWS_PETSC_REVISION }}
+      - name: Build PETSc (MSYS2)
+        if: steps.petsc-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash ci/windows/build.sh petsc
+      - if: steps.petsc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:/pytec3d-deps/petsc
+          key: ${{ steps.petsc-cache.outputs.cache-primary-key }}
+
+      - id: libmesh-cache
+        uses: actions/cache/restore@v4
         with:
           path: C:/pytec3d-deps/libmesh
-          key: windows-libmesh-${{ needs.libmesh.outputs.commit }}-${{ hashFiles('solver/libmesh/**', 'ci/windows/build.sh') }}
-
-      - name: Build PETSc, libMesh and the solver (MSYS2)
+          key: windows-libmesh-${{ needs.libmesh.outputs.commit }}-${{ hashFiles('solver/libmesh/**') }}-r${{ env.WINDOWS_LIBMESH_REVISION }}
+      - name: Build libMesh (MSYS2)
+        if: steps.libmesh-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
-        run: bash ci/windows/build.sh
+        run: bash ci/windows/build.sh libmesh
+      - if: steps.libmesh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:/pytec3d-deps/libmesh
+          key: ${{ steps.libmesh-cache.outputs.cache-primary-key }}
+
+      - name: Build the solver (MSYS2)
+        shell: msys2 {0}
+        run: bash ci/windows/build.sh solver
 
       - name: Package the solver
         shell: pwsh

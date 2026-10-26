@@ -10,11 +10,14 @@
 #
 #   $STAGE_DIR/py<XY>/pytec3d_solver/{__init__.py, pytec3d_solver.cp<XY>-win_amd64.pyd, *.dll}
 #
+# Usage: build.sh [petsc|libmesh|solver|all]   (default all; the CI runs them as separate steps, to cache each)
+#
 # Environment:
 #   DEPS_DIR    prefix of the PETSc and libMesh builds (cached between runs): $DEPS_DIR/{petsc,libmesh}
 #   STAGE_DIR   receives the staged modules
 #   PYTHONS     the python.exe of each conda environment to build for (Windows paths, separated by ';')
 #   CPU_COUNT   parallel jobs (default: all cores)
+#   PETSC_VERSION  PETSc release to build (default 3.26.0)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,7 +26,7 @@ DEPS_DIR="$(cygpath -u "${DEPS_DIR:?prefix of the PETSc / libMesh builds}")"
 STAGE_DIR="$(cygpath -u "${STAGE_DIR:?stage directory}")"
 PYTHONS="${PYTHONS:?python.exe of each target Python, separated by ;}"
 CPU_COUNT="${CPU_COUNT:-$(nproc)}"
-PETSC_VERSION="3.26.0"
+PETSC_VERSION="${PETSC_VERSION:-3.26.0}"
 PETSC_PREFIX="${DEPS_DIR}/petsc"
 LIBMESH_PREFIX="${DEPS_DIR}/libmesh"
 MINGW="${MINGW_PREFIX:-/ucrt64}"
@@ -42,8 +45,12 @@ if ! command -v mpiexec >/dev/null; then
   export PATH="${PATH}:${msmpi_bin}"
 fi
 
+STAGE="${1:-all}"
+case "${STAGE}" in petsc|libmesh|solver|all) ;; *) echo "ERROR: unknown stage '${STAGE}'."; exit 1 ;; esac
+want() { [ "${STAGE}" = "all" ] || [ "${STAGE}" = "$1" ]; }
+
 # --- PETSc, static, with the MUMPS of MSYS2 ---------------------------------------------------------------------------
-if [ ! -f "${PETSC_PREFIX}/lib/libpetsc.a" ]; then
+if want petsc && [ ! -f "${PETSC_PREFIX}/lib/libpetsc.a" ]; then
   echo "==> Building PETSc ${PETSC_VERSION}"
   cd "${DEPS_DIR}/src"
   rm -rf "petsc-${PETSC_VERSION}"
@@ -68,14 +75,20 @@ if [ ! -f "${PETSC_PREFIX}/lib/libpetsc.a" ]; then
 fi
 
 # --- libMesh, static, against that PETSc (and its METIS / ParMETIS) ---------------------------------------------------
-if [ ! -f "${LIBMESH_PREFIX}/lib/libmesh_opt.a" ]; then
+# --allow-multiple-definition: in a static libMesh, an explicit specialization (FE<2, SUBDIVISION>::side_map) and the
+# explicit instantiation of its template are both definitions for the MinGW linker (on ELF the specialization wins);
+# pyTEC3D does not use subdivision elements.
+if want libmesh && [ ! -f "${LIBMESH_PREFIX}/lib/libmesh_opt.a" ]; then
   echo "==> Building libMesh"
+  LDFLAGS="${LDFLAGS:-} -Wl,--allow-multiple-definition" \
   CC=mpicc CXX=mpicxx FC=mpifort F77=mpifort \
   PETSC_DIR="${PETSC_PREFIX}" MPI_DIR="${MINGW}" METIS_DIR=PETSc PARMETIS_DIR=PETSc \
   PYTHON=/usr/bin/python3 CPU_COUNT="${CPU_COUNT}" \
   LIBMESH_CONFIGURE_EXTRA="--disable-shared --enable-static" \
     "${ROOT}/solver/libmesh/build_libmesh.sh" "${DEPS_DIR}/src/libmesh" "${LIBMESH_PREFIX}" opt
 fi
+
+want solver || exit 0
 
 # --- The solver module, for each Python --------------------------------------------------------------------------------
 export PKG_CONFIG_PATH="${PETSC_PREFIX}/lib/pkgconfig:${MINGW}/lib/pkgconfig"
