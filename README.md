@@ -32,8 +32,8 @@ Three independent distributions, built from this repository:
 And around them:
 
 - `conda/`: the conda packages (`recipe.yaml`, rattler-build): `pytec3d` = `pytec3d-base` (the API) + `pytec3d-solver`
-  (+ `pytec3d-element-library`, `pytec3d-libmesh`); `.github/workflows/conda.yml` builds them for Linux and Windows
-  (`ci/windows/`: the MSYS2 build of the Windows solver).
+  (+ `pytec3d-element-library`, `pytec3d-libmesh`), with the build scripts of the solver (`build_windows.sh`: the MSYS2
+  build of the Windows solver); `.github/workflows/conda.yml` builds them for Linux and Windows.
 - `examples/`: commented example analyses (2D and 3D coils, an electromagnet, ITER equilibria and vertical
   displacements in 2D and 3D), each with its mesh, model data and `macro.py`.
 - `docs/`: the documentation (Sphinx), with the tutorial notebooks in `docs/tutorials`.

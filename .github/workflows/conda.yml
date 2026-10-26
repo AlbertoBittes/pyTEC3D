@@ -4,7 +4,7 @@
 #                build the same libMesh
 #   linux        rattler-build of every package: pytec3d-base and pytec3d (noarch), pytec3d-libmesh and pytec3d-solver
 #                (linux-64), with libMesh compiled in the recipe
-#   windows      PETSc, libMesh and the solver compiled in MSYS2 UCRT64 (ci/windows/build.sh), then rattler-build of
+#   windows      PETSc, libMesh and the solver compiled in MSYS2 UCRT64 (conda/build_windows.sh), then rattler-build of
 #                pytec3d-solver (win-64); PETSc is cached by version, libMesh by commit
 #   integration  conda install pytec3d from the packages just built (+ conda-forge) on both systems; runs
 #                conda/tests/test_square_conductor.py in serial and on 2 MPI ranks; pip install of the pure API
@@ -35,7 +35,7 @@ env:
   # The Python of ParaView, which runs the API in its plugin and console.
   PYTHON_VERSIONS: "3.12"
   # Windows: the PETSc built in MSYS2, and the revisions of the PETSc / libMesh builds (bump one when its configuration
-  # in ci/windows/build.sh or solver/libmesh/build_libmesh.sh changes, to rebuild it instead of restoring it from the
+  # in conda/build_windows.sh or solver/libmesh/build_libmesh.sh changes, to rebuild it instead of restoring it from the
   # cache; the libMesh commit and patches are part of the key already).
   PETSC_VERSION: "3.26.0"
   WINDOWS_PETSC_REVISION: "1"
@@ -153,7 +153,7 @@ jobs:
       - name: Build PETSc (MSYS2)
         if: steps.petsc-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
-        run: bash ci/windows/build.sh petsc
+        run: bash conda/build_windows.sh petsc
       - if: steps.petsc-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
@@ -168,7 +168,7 @@ jobs:
       - name: Build libMesh (MSYS2)
         if: steps.libmesh-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
-        run: bash ci/windows/build.sh libmesh
+        run: bash conda/build_windows.sh libmesh
       - if: steps.libmesh-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
@@ -177,7 +177,7 @@ jobs:
 
       - name: Build the solver (MSYS2)
         shell: msys2 {0}
-        run: bash ci/windows/build.sh solver
+        run: bash conda/build_windows.sh solver
 
       - name: Package the solver
         shell: pwsh

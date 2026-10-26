@@ -1,9 +1,9 @@
-:: conda (rattler-build) build of pytec3d-solver on Windows: packages the solver compiled in MSYS2 (ci/windows/build.sh)
+:: conda (rattler-build) build of pytec3d-solver on Windows: packages the solver compiled in MSYS2 (conda/build_windows.sh)
 :: and staged in %PYTEC3D_WINDOWS_STAGE%\py<XY>\pytec3d_solver, with the metadata of the distribution pytec3d-solver.
 @echo on
 setlocal EnableDelayedExpansion
 if "%PYTEC3D_WINDOWS_STAGE%"=="" (
-  echo ERROR: PYTEC3D_WINDOWS_STAGE is not set: build the solver with ci\windows\build.sh first.
+  echo ERROR: PYTEC3D_WINDOWS_STAGE is not set: build the solver with conda\build_windows.sh first.
   exit 1
 )
 set "STAGE=%PYTEC3D_WINDOWS_STAGE:/=\%\py%PY_VER:.=%"

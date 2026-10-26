@@ -6,7 +6,7 @@
 #   pip install ./solver --no-build-isolation -Ccmake.define.LIBMESH_DIR=<libMesh prefix>
 #
 # The conda packages are built this way by conda/recipe.yaml (conda/build_solver.sh) on Linux; Windows uses CMake directly
-# (ci/windows/build.sh). The solver does not depend on the pytec3d package: it only reads, at build time, the JSON
+# (conda/build_windows.sh). The solver does not depend on the pytec3d package: it only reads, at build time, the JSON
 # element library (element_library/, the package pytec3d-element-library), which it compiles into the module.
 [build-system]
 requires = ["scikit-build-core>=0.11", "pybind11>=2.12"]

@@ -12,7 +12,7 @@
 # conda install pytec3d-base installs the API alone (mpi4py with any MPI); conda install pytec3d-solver the solver alone.
 #
 # Linux: rattler-build build -r conda/recipe.yaml -c conda-forge   (variants: conda/variants.yaml)
-# Windows: the solver is compiled in MSYS2 (ci/windows/build.sh, PETSc and libMesh as static libraries) and staged in
+# Windows: the solver is compiled in MSYS2 (conda/build_windows.sh, PETSc and libMesh as static libraries) and staged in
 # PYTEC3D_WINDOWS_STAGE/py<XY>/pytec3d_solver; this recipe packages it (the noarch packages are built on Linux).
 schema_version: 1
 
@@ -149,7 +149,7 @@ outputs:
       name: pytec3d-solver
     build:
       script:
-        # Windows: the stage of ci/windows/build.sh, passed on from the environment of rattler-build.
+        # Windows: the stage of conda/build_windows.sh, passed on from the environment of rattler-build.
         env:
           PYTEC3D_WINDOWS_STAGE: ${{ env.get("PYTEC3D_WINDOWS_STAGE", default="") }}
         content:

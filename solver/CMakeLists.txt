@@ -232,7 +232,7 @@ function(pytec3d_set_rpath target)
 endfunction()
 
 # MinGW (the Windows build, MSYS2): the GCC and C++ runtimes are linked statically; the DLLs of MSYS2 the module still
-# needs are shipped next to it (ci/windows/build.sh).
+# needs are shipped next to it (conda/build_windows.sh).
 # Libraries to add to the link (e.g. what a static libMesh or PETSc of another configuration needs).
 set(PYTEC3D_EXTRA_LIBS "" CACHE STRING "Extra libraries linked to the solver core")
 if(PYTEC3D_EXTRA_LIBS)
@@ -243,7 +243,7 @@ if(MINGW)
   # Static PETSc (the Windows build): its private dependencies (MUMPS, ScaLAPACK, METIS, BLAS, Fortran runtime) too.
   target_link_libraries(pytec3d_core PUBLIC ${PETSC_STATIC_LDFLAGS} ws2_32)
   # --allow-multiple-definition: the static libMesh has duplicate definitions for the MinGW linker (see
-  # ci/windows/build.sh), harmless for the elements pyTEC3D uses.
+  # conda/build_windows.sh), harmless for the elements pyTEC3D uses.
   set(PYTEC3D_STATIC_RUNTIME_OPTIONS -static-libgcc -static-libstdc++ "LINKER:--allow-multiple-definition")
 endif()
 

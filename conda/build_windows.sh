@@ -10,7 +10,7 @@
 #
 #   $STAGE_DIR/py<XY>/pytec3d_solver/{__init__.py, pytec3d_solver.cp<XY>-win_amd64.pyd, *.dll}
 #
-# Usage: build.sh [petsc|libmesh|solver|all]   (default all; the CI runs them as separate steps, to cache each)
+# Usage: build_windows.sh [petsc|libmesh|solver|all]   (default all; the CI runs them as separate steps, to cache each)
 #
 # Environment:
 #   DEPS_DIR    prefix of the PETSc and libMesh builds (cached between runs): $DEPS_DIR/{petsc,libmesh}
@@ -20,7 +20,7 @@
 #   PETSC_VERSION  PETSc release to build (default 3.26.0)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Windows paths (C:/..., C:\...) as POSIX paths of MSYS2 (/c/...), for the shell and the autotools builds.
 DEPS_DIR="$(cygpath -u "${DEPS_DIR:?prefix of the PETSc / libMesh builds}")"
 STAGE_DIR="$(cygpath -u "${STAGE_DIR:?stage directory}")"
