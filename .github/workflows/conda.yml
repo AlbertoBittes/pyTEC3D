@@ -201,9 +201,17 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ["3.12"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash -el {0}
+    env:
+      # Open MPI (Linux) without UCX: on the GitHub runners UCX can fail on the Azure network adapter (mana); shared
+      # memory and TCP are enough for the ranks of one machine. Ignored by MS-MPI (Windows).
+      OMPI_MCA_pml: ob1
+      OMPI_MCA_btl: self,sm,tcp
+      OMPI_MCA_osc: ^ucx
+      OMPI_MCA_rmaps_base_oversubscribe: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -239,6 +247,7 @@ jobs:
         run: micromamba run -n test python test_square_conductor.py
 
       - name: Solve a model (2 MPI ranks)
+        timeout-minutes: 15
         working-directory: conda/tests
         run: micromamba run -n test mpiexec -n 2 python test_square_conductor.py
 

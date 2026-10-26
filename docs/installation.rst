@@ -183,6 +183,10 @@ Troubleshooting
 The module imports but crashes in the first parallel call
    A second MPI is installed by pip in the environment: ``pip uninstall mpi4py`` and reinstall it with conda.
 
+A parallel run stops with ``UCX ERROR ... uct_iface_open`` or ``Failed to create UCP worker`` (Linux)
+   Open MPI tried a network adapter it cannot use (e.g. on Azure virtual machines). On one machine, shared memory
+   and TCP are enough: ``export OMPI_MCA_pml=ob1 OMPI_MCA_btl=self,sm,tcp OMPI_MCA_osc=^ucx`` before ``mpiexec``.
+
 The element library changed but the solver rejects the new names
    The element library is compiled into the solver: build the packages again (``rattler-build build -r
    conda/recipe.yaml -c conda-forge``) and install the new solver.

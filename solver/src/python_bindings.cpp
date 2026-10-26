@@ -46,10 +46,20 @@ namespace
     /** @brief On several ranks, logs the error and aborts all ranks; in a serial run the exception goes on to Python. */
     void abort_if_parallel(const char *context, const char *what)
     {
-        if (pytec3d::logging::size() <= 1)
+        // MPI itself, not the solver log: an error while the runtime starts comes before the log knows the ranks.
+        int initialized = 0;
+        int finalized = 0;
+        MPI_Initialized(&initialized);
+        MPI_Finalized(&finalized);
+        if (!initialized || finalized)
             return;
-        pytec3d::logging::error_all_ranks("[rank {}/{}] {}: {}", pytec3d::logging::rank(), pytec3d::logging::size(),
-                                          context, what);
+        int size = 1;
+        int rank = 0;
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (size <= 1)
+            return;
+        pytec3d::logging::error_all_ranks("[rank {}/{}] {}: {}", rank, size, context, what);
         spdlog::default_logger()->flush();
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
