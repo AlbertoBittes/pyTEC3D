@@ -231,8 +231,8 @@ function(pytec3d_set_rpath target)
   endif()
 endfunction()
 
-# MinGW (the Windows build, MSYS2): the GCC, C++, Fortran and thread runtimes are linked statically, so that the module
-# only needs the DLLs of Windows and MS-MPI.
+# MinGW (the Windows build, MSYS2): the GCC and C++ runtimes are linked statically; the DLLs of MSYS2 the module still
+# needs are shipped next to it (ci/windows/build.sh).
 # Libraries to add to the link (e.g. what a static libMesh or PETSc of another configuration needs).
 set(PYTEC3D_EXTRA_LIBS "" CACHE STRING "Extra libraries linked to the solver core")
 if(PYTEC3D_EXTRA_LIBS)
@@ -242,9 +242,7 @@ endif()
 if(MINGW)
   # Static PETSc (the Windows build): its private dependencies (MUMPS, ScaLAPACK, METIS, BLAS, Fortran runtime) too.
   target_link_libraries(pytec3d_core PUBLIC ${PETSC_STATIC_LDFLAGS} ws2_32)
-  # -static: static archives wherever they exist (libstdc++, libgfortran, winpthread, PETSc, MUMPS...); import
-  # libraries (MS-MPI, Python) still refer to their DLL.
-  set(PYTEC3D_STATIC_RUNTIME_OPTIONS -static)
+  set(PYTEC3D_STATIC_RUNTIME_OPTIONS -static-libgcc -static-libstdc++)
 endif()
 
 # --- Python module: the pybind11 bindings of the core -------------------------------------------------------------

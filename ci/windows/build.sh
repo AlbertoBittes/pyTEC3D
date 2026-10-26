@@ -1,11 +1,12 @@
 #!/bin/bash
 # Windows build of the pyTEC3D solver, in an MSYS2 UCRT64 shell (GitHub Actions: .github/workflows/conda.yml).
 #
-# conda-forge has no Windows PETSc, so PETSc (with MUMPS, ScaLAPACK, METIS, ParMETIS) and libMesh are built here from
-# source with the MinGW-w64 compilers and MS-MPI, as static libraries; the module of each Python version is linked
-# statically against them and against the GCC runtime. The few DLLs of MSYS2 it still needs (the Fortran interface of
-# MS-MPI, libmsmpifec.dll, and what that one needs) are copied next to it; msmpi.dll comes from the conda package msmpi,
-# the rest from Windows. The modules are staged for conda/recipe.yaml (install_solver_windows.bat):
+# conda-forge has no Windows PETSc, and the PETSc of MSYS2 has no MUMPS. So PETSc is built here, as a static library,
+# against the MUMPS, ScaLAPACK, METIS, ParMETIS and OpenBLAS packages of MSYS2 (MS-MPI builds), and libMesh as a static
+# library against that PETSc. The module of each Python version links them, with the GCC and C++ runtimes statically;
+# the DLLs of MSYS2 it needs (MUMPS, ScaLAPACK, OpenBLAS, the Fortran runtime, the Fortran interface of MS-MPI...) are
+# copied next to it. msmpi.dll comes from the conda package msmpi, the rest from Windows. The modules are staged for
+# conda/recipe.yaml (install_solver_windows.bat):
 #
 #   $STAGE_DIR/py<XY>/pytec3d_solver/{__init__.py, pytec3d_solver.cp<XY>-win_amd64.pyd, *.dll}
 #
@@ -41,22 +42,27 @@ if ! command -v mpiexec >/dev/null; then
   export PATH="${PATH}:${msmpi_bin}"
 fi
 
-# --- PETSc, static, with MUMPS ---------------------------------------------------------------------------------------
+# --- PETSc, static, with the MUMPS of MSYS2 ---------------------------------------------------------------------------
 if [ ! -f "${PETSC_PREFIX}/lib/libpetsc.a" ]; then
   echo "==> Building PETSc ${PETSC_VERSION}"
   cd "${DEPS_DIR}/src"
   rm -rf "petsc-${PETSC_VERSION}"
   curl -fsSL "https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-${PETSC_VERSION}.tar.gz" | tar xz
   cd "petsc-${PETSC_VERSION}"
+  # The import libraries (.dll.a) of the MSYS2 packages: their DLLs are shipped with the module.
   /usr/bin/python3 ./configure \
     --prefix="${PETSC_PREFIX}" \
     --with-shared-libraries=0 --with-debugging=0 \
     --with-cc=mpicc --with-cxx=mpicxx --with-fc=mpifort \
     COPTFLAGS=-O2 CXXOPTFLAGS=-O2 FOPTFLAGS=-O2 \
     --with-mpiexec=mpiexec \
-    --with-blaslapack-lib="${MINGW}/lib/libopenblas.a" \
-    --download-mumps --download-scalapack --download-metis --download-parmetis \
-    --with-x=0 --with-ssl=0
+    --with-blaslapack-lib="${MINGW}/lib/libopenblas.dll.a" \
+    --with-mumps-include="${MINGW}/include" --with-mumps-lib="${MINGW}/lib/libmumps-dmo.dll.a" \
+    --with-scalapack-include="${MINGW}/include" --with-scalapack-lib="${MINGW}/lib/libscalapack.dll.a" \
+    --with-metis-include="${MINGW}/include" --with-metis-lib="${MINGW}/lib/libmetis.dll.a" \
+    --with-parmetis-include="${MINGW}/include" --with-parmetis-lib="${MINGW}/lib/libparmetis.dll.a" \
+    --with-x=0 --with-ssl=0 \
+    || { echo "==> PETSc configure.log (end):"; tail -n 120 configure.log; exit 1; }
   make PETSC_DIR="$(pwd)" all -j"${CPU_COUNT}"
   make PETSC_DIR="$(pwd)" install
 fi

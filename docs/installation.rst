@@ -47,9 +47,9 @@ The simplest installation, on Linux (x86_64) and Windows (x86_64): the conda pac
    * - ``pytec3d-solver``
      - linux-64, win-64
      - The solver, for Python 3.12 (the Python of ParaView). Linux: linked against the PETSc, MUMPS and Open MPI of
-       conda-forge and ``pytec3d-libmesh``. Windows: PETSc, MUMPS, libMesh and the GCC runtime are linked statically
-       into the module (built in MSYS2, ``ci/windows/build.sh``), shipped with the Fortran interface of MS-MPI; MS-MPI
-       itself is the conda package ``msmpi``.
+       conda-forge and ``pytec3d-libmesh``. Windows: built in MSYS2 (``ci/windows/build.sh``), PETSc and libMesh
+       linked statically into the module, which is shipped with the DLLs of MUMPS, ScaLAPACK, OpenBLAS and the
+       Fortran runtime of MSYS2; MS-MPI itself is the conda package ``msmpi``.
    * - ``pytec3d-libmesh``
      - linux-64
      - The patched libMesh the solver links: the libMesh development branch at the time of the build

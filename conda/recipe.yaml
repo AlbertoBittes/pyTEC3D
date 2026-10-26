@@ -106,7 +106,7 @@ outputs:
       # The libMesh commit in the build string: packages built from different libMesh commits are distinct.
       string: h${{ hash }}_lm${{ env.get("LIBMESH_REF", default="master")[:8] }}_${{ build_number }}
       script:
-        file: conda/build_libmesh.sh
+        file: build_libmesh.sh
         env:
           LIBMESH_REF: ${{ env.get("LIBMESH_REF", default="master") }}
     requirements:
@@ -181,8 +181,8 @@ outputs:
         - numpy
         - if: win
           then:
-            # MS-MPI runtime (msmpi.dll, mpiexec); PETSc, MUMPS, libMesh and the GCC runtime are linked statically, the
-            # Fortran interface of MS-MPI (libmsmpifec.dll of MSYS2) is shipped next to the module.
+            # MS-MPI runtime (msmpi.dll, mpiexec). PETSc, libMesh and the GCC runtime are linked statically, the DLLs of
+            # MSYS2 the module needs (MUMPS, ScaLAPACK, OpenBLAS, Fortran runtime...) are shipped next to it.
             - msmpi
       run_constraints:
         # An API of another element library would not agree with the registries compiled into the module.

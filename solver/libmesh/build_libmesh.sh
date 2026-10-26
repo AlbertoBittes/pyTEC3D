@@ -74,7 +74,8 @@ cd "${BUILD_DIR}"
   --disable-eigen --disable-fparser --disable-metaphysicl --enable-periodic \
   --disable-nanoflann --disable-qhull --disable-second --disable-capnproto \
   --disable-amr --disable-examples --disable-boost \
-  ${LIBMESH_CONFIGURE_EXTRA:-}
+  ${LIBMESH_CONFIGURE_EXTRA:-} \
+  || { echo "==> libMesh config.log (end):"; tail -n 120 config.log; exit 1; }
 make -j"${CPU_COUNT}"
 make install
 COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)"
