@@ -33,8 +33,9 @@ concurrency:
 env:
   # The Python of ParaView, which runs the API in its plugin and console.
   PYTHON_VERSIONS: "3.12"
-  # Windows: the PETSc built in MSYS2, and the revisions of the PETSc / libMesh builds of ci/windows/build.sh (bump one
-  # when its configuration changes, to rebuild it instead of restoring it from the cache).
+  # Windows: the PETSc built in MSYS2, and the revisions of the PETSc / libMesh builds (bump one when its configuration
+  # in ci/windows/build.sh or solver/libmesh/build_libmesh.sh changes, to rebuild it instead of restoring it from the
+  # cache; the libMesh commit and patches are part of the key already).
   PETSC_VERSION: "3.26.0"
   WINDOWS_PETSC_REVISION: "1"
   WINDOWS_LIBMESH_REVISION: "1"
@@ -162,7 +163,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: C:/pytec3d-deps/libmesh
-          key: windows-libmesh-${{ needs.libmesh.outputs.commit }}-${{ hashFiles('solver/libmesh/**') }}-r${{ env.WINDOWS_LIBMESH_REVISION }}
+          key: windows-libmesh-${{ needs.libmesh.outputs.commit }}-${{ hashFiles('solver/libmesh/patches/**') }}-r${{ env.WINDOWS_LIBMESH_REVISION }}
       - name: Build libMesh (MSYS2)
         if: steps.libmesh-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}

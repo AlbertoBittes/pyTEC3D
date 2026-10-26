@@ -31,15 +31,27 @@ DEPS_PREFIX="${CONDA_PREFIX:-${PREFIX:-}}"
 PYTHON="${PYTHON:-python3}"
 CPU_COUNT="${CPU_COUNT:-$(nproc 2>/dev/null || echo 2)}"
 
+retry() {  # <command...>: up to 5 attempts, waiting 1, 2, 3, 4 minutes in between
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    "$@" && return 0
+    [ "${attempt}" -lt 5 ] || break
+    echo "    (attempt ${attempt} failed; retrying in ${attempt} min)"
+    sleep $((attempt * 60))
+  done
+  echo "ERROR: failed after 5 attempts: $*"; return 1
+}
+
 # --- Source: LIBMESH_REF with its submodules, patched once -------------------------------------------------------------
 if [ ! -e "${SRC_DIR}/.git" ]; then
   echo "==> Cloning libMesh ${LIBMESH_REF} into ${SRC_DIR}"
   mkdir -p "${SRC_DIR}"
   git -C "${SRC_DIR}" init -q
   git -C "${SRC_DIR}" remote add origin "${LIBMESH_REPOSITORY}"
-  git -C "${SRC_DIR}" fetch -q --depth 1 origin "${LIBMESH_REF}"
+  retry git -C "${SRC_DIR}" fetch -q --depth 1 origin "${LIBMESH_REF}"
   git -C "${SRC_DIR}" checkout -q FETCH_HEAD
-  git -C "${SRC_DIR}" submodule update -q --init --recursive --jobs 8
+  # The submodules come from several hosts (GitHub, GitLab...): a busy one should not fail the build.
+  retry git -C "${SRC_DIR}" submodule update -q --init --recursive --jobs 8
   # Git on Windows (MSYS2) may check out the symbolic links of the tree as text files.
   if [ -n "${MSYSTEM:-}" ] && [ -x "${SRC_DIR}/contrib/bin/fix_windows_symlinks.sh" ]; then
     ( cd "${SRC_DIR}" && ./contrib/bin/fix_windows_symlinks.sh )

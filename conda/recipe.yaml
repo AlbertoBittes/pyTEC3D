@@ -148,9 +148,13 @@ outputs:
       name: pytec3d-solver
     build:
       script:
-        - if: unix
-          then: bash conda/build_solver.sh
-          else: conda\install_solver_windows.bat
+        # Windows: the stage of ci/windows/build.sh, passed on from the environment of rattler-build.
+        env:
+          PYTEC3D_WINDOWS_STAGE: ${{ env.get("PYTEC3D_WINDOWS_STAGE", default="") }}
+        content:
+          - if: unix
+            then: bash conda/build_solver.sh
+            else: conda\install_solver_windows.bat
     requirements:
       build:
         - if: unix

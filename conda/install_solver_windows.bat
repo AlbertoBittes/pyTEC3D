@@ -6,7 +6,7 @@ if "%PYTEC3D_WINDOWS_STAGE%"=="" (
   echo ERROR: PYTEC3D_WINDOWS_STAGE is not set: build the solver with ci\windows\build.sh first.
   exit 1
 )
-set "STAGE=%PYTEC3D_WINDOWS_STAGE%\py%PY_VER:.=%"
+set "STAGE=%PYTEC3D_WINDOWS_STAGE:/=\%\py%PY_VER:.=%"
 if not exist "%STAGE%\pytec3d_solver\__init__.py" (
   echo ERROR: no solver staged for Python %PY_VER% in %STAGE%.
   exit 1
