@@ -90,6 +90,34 @@ fi
 
 want solver || exit 0
 
+# Copies into <directory> the DLLs of MSYS2 that <binary> needs, recursively; fails on a DLL found nowhere.
+bundle_dlls() {  # <binary> <directory>
+  local -a pending=("$1")
+  local -A seen=()
+  local binary dll lower
+  while [ "${#pending[@]}" -gt 0 ]; do
+    binary="${pending[0]}"
+    pending=("${pending[@]:1}")
+    while read -r dll; do
+      lower="${dll,,}"
+      [ -n "${seen[${lower}]:-}" ] && continue
+      seen[${lower}]=1
+      case "${lower}" in
+        api-ms-win-*|ext-ms-*|msmpi.dll|python3*.dll) continue ;;
+      esac
+      if [ -f "/c/Windows/System32/${dll}" ] || [ -f "/c/Windows/System32/${lower}" ]; then
+        continue
+      elif [ -f "${MINGW}/bin/${dll}" ]; then
+        cp "${MINGW}/bin/${dll}" "$2/"
+        echo "    bundled ${dll}"
+        pending+=("${MINGW}/bin/${dll}")
+      else
+        echo "ERROR: $(basename "${binary}") needs ${dll}, found neither in ${MINGW}/bin nor in Windows."; exit 1
+      fi
+    done < <(objdump -p "${binary}" | sed -n 's/^\s*DLL Name: //p' | tr -d '\r')
+  done
+}
+
 # --- The solver module, for each Python --------------------------------------------------------------------------------
 export PKG_CONFIG_PATH="${PETSC_PREFIX}/lib/pkgconfig:${MINGW}/lib/pkgconfig"
 IFS=';' read -r -a pythons <<< "${PYTHONS}"
@@ -115,21 +143,12 @@ for python in "${pythons[@]}"; do
   rm -rf "${STAGE_DIR}/py${tag}"
   cmake --install "${build}" --prefix "${STAGE_DIR}/py${tag}" --component python
 
-  # The DLLs of MSYS2 the module needs (transitively) go next to it; then everything must resolve to that directory,
-  # Windows, MS-MPI (msmpi.dll) or Python.
+  # The DLLs of MSYS2 the module needs (transitively, read from the import tables with objdump: ldd would load the
+  # module, which needs a Python) go next to it. Everything must resolve to that directory, Windows, MS-MPI (msmpi.dll,
+  # the conda package msmpi) or Python.
   module="$(ls "${STAGE_DIR}/py${tag}"/pytec3d_solver/pytec3d_solver*.pyd)"
   package_dir="$(dirname "${module}")"
-  ldd "${module}" | awk '{print $3}' | grep -i "^${MINGW}/bin/.*\.dll$" | sort -u | while read -r dll; do
-    cp -v "${dll}" "${package_dir}/"
-  done
-  for binary in "${module}" "${package_dir}"/*.dll; do
-    [ -f "${binary}" ] || continue
-    foreign="$(PATH="${package_dir}:/c/Windows/System32" ldd "${binary}" \
-      | grep -v -i -E '/c/windows/|msmpi\.dll|python3[0-9]*\.dll' | grep -v -F "${package_dir}" | grep -v '^\s*$' || true)"
-    if [ -n "${foreign}" ]; then
-      echo "ERROR: $(basename "${binary}") needs DLLs that are not shipped:"; echo "${foreign}"; exit 1
-    fi
-  done
+  bundle_dlls "${module}" "${package_dir}"
   ls -l "${package_dir}"
   echo "Staged ${module}"
 done
