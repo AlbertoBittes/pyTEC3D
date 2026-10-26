@@ -1,0 +1,41 @@
+# pytec3d-solver: the C++ solver of pyTEC3D and its Python module pytec3d_solver.pytec3d_solver.
+#
+# Built with CMake through scikit-build-core, against an installed libMesh (solver/libmesh/build_libmesh.sh), PETSc
+# (with MUMPS) and MPI:
+#
+#   pip install ./solver --no-build-isolation -Ccmake.define.LIBMESH_DIR=<libMesh prefix>
+#
+# The conda packages are built this way by conda/recipe.yaml (conda/build_solver.sh) on Linux; Windows uses CMake directly
+# (conda/build_windows.sh). The solver does not depend on the pytec3d package: it only reads, at build time, the JSON
+# element library (element_library/, the package pytec3d-element-library), which it compiles into the module.
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pytec3d-solver"
+version = "0.1.0"
+description = "pyTEC3D C++ solver (libMesh / PETSc / MUMPS / MPI), the module driven by the pytec3d package"
+readme = "README.md"
+# The Python of ParaView (3.12), which runs the API in its plugin and console.
+requires-python = ">=3.12,<3.13"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Alberto Bittesnich" }]
+# NumPy: the module receives NumPy arrays (pybind11 imports its C API at run time).
+dependencies = ["numpy"]
+
+[project.urls]
+Repository = "https://github.com/AlbertoBittes/pyTEC3D"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.21"
+cmake.build-type = "Release"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["python/pytec3d_solver"]
+# The module is linked against the libMesh / PETSc / MPI of the build environment (its RPATH points there): the wheel is
+# for that environment, not for PyPI.
+wheel.py-api = ""
+
+[tool.scikit-build.cmake.define]
+PYTEC3D_BUILD_PYTHON_MODULE = "ON"

@@ -3,7 +3,9 @@ Solver Settings
 
 ``solver.solver_settings`` has three groups. Keys left out keep their default
 (:data:`pytec3d.solver.DEFAULT_SOLVER_SETTINGS`); unknown keys are errors, so a misspelled setting is never ignored
-silently. The settings are copied when the model is loaded: change them before ``load_model_into_solver()``.
+silently. The settings are read at every ``solve()``, so they can change between two steps: a change of the
+``linear`` group or of the PETSc options rebuilds and refactorizes the system matrix at the next solve, and a PETSc
+option removed (set to ``None``) is cleared.
 
 The linear systems are solved with `PETSc <https://petsc.org/>`_ [PETScManual]_: the ``linear`` group configures a
 KSP (Krylov solver) and its PC (preconditioner), described in the `KSP chapter

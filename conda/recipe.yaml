@@ -1,0 +1,232 @@
+# rattler-build recipe of the pyTEC3D conda packages (https://rattler.build):
+#
+#   pytec3d-element-library  noarch: python  the JSON element library (element_library/), shared by the two below
+#   pytec3d-base     noarch: python   the Python API (python/), the pip distribution pytec3d
+#   pytec3d-libmesh  linux-64         the patched libMesh the solver links (solver/libmesh/build_libmesh.sh): libMesh
+#                                     master, or LIBMESH_REF of the environment (the CI resolves it to one commit)
+#   pytec3d-solver   linux-64, win-64 the C++ solver and its module (solver/), for Python 3.12 (conda/variants.yaml)
+#   pytec3d          noarch: generic  both: conda install pytec3d
+#
+# conda install pytec3d installs the API, the solver, MPI (Open MPI on Linux, MS-MPI on Windows) and the mpi4py of that
+# MPI: the solver depends on the MPI it is linked with, and mpi4py (a dependency of pytec3d-base) has a build per MPI.
+# conda install pytec3d-base installs the API alone (mpi4py with any MPI); conda install pytec3d-solver the solver alone.
+#
+# Linux: rattler-build build -r conda/recipe.yaml -c conda-forge   (variants: conda/variants.yaml)
+# Windows: the solver is compiled in MSYS2 (conda/build_windows.sh, PETSc and libMesh as static libraries) and staged in
+# PYTEC3D_WINDOWS_STAGE/py<XY>/pytec3d_solver; this recipe packages it (the noarch packages are built on Linux).
+schema_version: 1
+
+context:
+  version: "0.1.0"
+  # Python 3.12 only for every package: the Python of ParaView, which runs the API in its plugin and console.
+  python_min: "3.12"
+  petsc_version: "3.26"
+
+recipe:
+  name: pytec3d-packages
+  version: ${{ version }}
+
+source:
+  path: ..
+  use_gitignore: true
+
+build:
+  number: 0
+
+outputs:
+  # --- The element library: data only, read by the API, compiled into the solver ------------------------------------
+  - package:
+      name: pytec3d-element-library
+    build:
+      noarch: python
+      skip: win
+      script: ${{ PYTHON }} -m pip install ./element_library --no-deps --no-build-isolation -vv
+    requirements:
+      host:
+        - python ${{ python_min }}.*
+        - pip
+        - setuptools >=77
+      run:
+        - python >=${{ python_min }},<3.13
+    tests:
+      - python:
+          imports:
+            - pytec3d_element_library
+          python_version: ${{ python_min }}.*
+      - script:
+          - python -c "import pytec3d_element_library as e; assert all((e.data_dir() / f).is_file() for f in e.FILES)"
+    about:
+      summary: pyTEC3D element library (domains, fields, element types, nonlinear laws), shared by the API and the solver
+      license: GPL-3.0-or-later
+      license_file: LICENSE
+      homepage: https://github.com/AlbertoBittes/pyTEC3D
+
+  # --- The Python API ---------------------------------------------------------------------------------------------
+  - package:
+      name: pytec3d-base
+    build:
+      noarch: python
+      skip: win
+      script: ${{ PYTHON }} -m pip install ./python --no-deps --no-build-isolation -vv
+      python:
+        entry_points:
+          - pytec3d-convert-cdb = pytec3d.mesh_converter:main
+    requirements:
+      host:
+        - python ${{ python_min }}.*
+        - pip
+        - setuptools >=77
+        - wheel
+      run:
+        - python >=${{ python_min }},<3.13
+        - ${{ pin_subpackage('pytec3d-element-library', exact=True) }}
+        - numpy
+        - vtk-base >=9.1
+        - pyvista
+        # The MPI rank on the Python side; conda chooses the build of the MPI of the environment (the solver's one).
+        - mpi4py >=4
+    tests:
+      - python:
+          imports:
+            - pytec3d
+            - pytec3d.solver_input
+          python_version: ${{ python_min }}.*
+      - script:
+          - pytec3d-convert-cdb --help
+    about:
+      summary: pyTEC3D Python API (model preparation, analysis driver, plasma algorithm)
+      license: GPL-3.0-or-later
+      license_file: LICENSE
+      homepage: https://github.com/AlbertoBittes/pyTEC3D
+
+  # --- libMesh, patched ---------------------------------------------------------------------------------------------
+  - package:
+      name: pytec3d-libmesh
+    build:
+      skip: win
+      # The libMesh commit in the build string: packages built from different libMesh commits are distinct.
+      string: h${{ hash }}_lm${{ env.get("LIBMESH_REF", default="master")[:8] }}_${{ build_number }}
+      script:
+        file: build_libmesh.sh
+        env:
+          LIBMESH_REF: ${{ env.get("LIBMESH_REF", default="master") }}
+    requirements:
+      build:
+        - ${{ compiler('c') }}
+        - ${{ compiler('cxx') }}
+        - ${{ compiler('fortran') }}
+        - ${{ stdlib('c') }}
+        - make
+        - pkg-config
+        - git
+        # Runs the patch scripts only: a fixed version, so that libMesh is built once, not per Python variant.
+        - python ${{ python_min }}.*
+      host:
+        - openmpi
+        - petsc ${{ petsc_version }}.* real_*
+        - metis
+        - parmetis
+        - zlib
+        # Link against the BLAS / LAPACK interfaces (libblas.so.3, liblapack.so.3), not OpenBLAS itself: the
+        # implementation is chosen at install time, as for the conda-forge PETSc.
+        - libblas * *netlib
+        - liblapack * *netlib
+      run_exports:
+        - ${{ pin_subpackage('pytec3d-libmesh', exact=True) }}
+    tests:
+      - script:
+          - test -f $PREFIX/lib/libmesh_opt.so
+          - test -f $PREFIX/lib/libtimpi_opt.so
+          - cat $PREFIX/share/pytec3d/libmesh-commit
+    about:
+      summary: libMesh (development branch, Nedelec prism / pyramid and quadratic pyramid patches) for the pyTEC3D solver
+      description: The libMesh commit is in share/pytec3d/libmesh-commit.
+      license: LGPL-2.1-or-later
+      homepage: https://libmesh.github.io
+
+  # --- The solver -----------------------------------------------------------------------------------------------------
+  - package:
+      name: pytec3d-solver
+    build:
+      script:
+        # Windows: the stage of conda/build_windows.sh, passed on from the environment of rattler-build.
+        env:
+          PYTEC3D_WINDOWS_STAGE: ${{ env.get("PYTEC3D_WINDOWS_STAGE", default="") }}
+        content:
+          - if: unix
+            then: bash conda/build_solver.sh
+            else: conda\install_solver_windows.bat
+    requirements:
+      build:
+        - if: unix
+          then:
+            - ${{ compiler('c') }}
+            - ${{ compiler('cxx') }}
+            - ${{ stdlib('c') }}
+            - cmake >=3.21
+            - ninja
+            - pkg-config
+      host:
+        - python
+        - if: unix
+          then:
+            - pip
+            - scikit-build-core >=0.11
+            - pybind11
+            - openmpi
+            - petsc ${{ petsc_version }}.* real_*
+            - ${{ pin_subpackage('pytec3d-libmesh', exact=True) }}
+            - spdlog
+            - fmt
+            - nlohmann_json
+            # The element library compiled into the module (read from the source tree, declared for the record).
+            - ${{ pin_subpackage('pytec3d-element-library', exact=True) }}
+      run:
+        - python
+        - numpy
+        - if: win
+          then:
+            # MS-MPI runtime (msmpi.dll, mpiexec). PETSc, libMesh and the GCC runtime are linked statically, the DLLs of
+            # MSYS2 the module needs (MUMPS, ScaLAPACK, OpenBLAS, Fortran runtime...) are shipped next to it.
+            - msmpi
+      run_constraints:
+        # An API of another element library would not agree with the registries compiled into the module.
+        - pytec3d-element-library ==${{ version }}
+    tests:
+      - python:
+          imports:
+            - pytec3d_solver.pytec3d_solver
+          pip_check: false
+      - script:
+          - python -c "import pytec3d_solver.pytec3d_solver as m; assert m.INTERFACE_VERSION == 3, m.INTERFACE_VERSION; print(sorted(m.registries()['element_types']))"
+    about:
+      summary: pyTEC3D C++ solver (libMesh, PETSc / MUMPS, MPI) and its Python module pytec3d_solver
+      license: GPL-3.0-or-later
+      license_file: LICENSE
+      homepage: https://github.com/AlbertoBittes/pyTEC3D
+
+  # --- Everything -------------------------------------------------------------------------------------------------------
+  - package:
+      name: pytec3d
+    build:
+      noarch: generic
+      skip: win
+    requirements:
+      run:
+        - ${{ pin_subpackage('pytec3d-base', exact=True) }}
+        # Not exact: the build string of the solver differs by platform and Python version.
+        - pytec3d-solver ==${{ version }}
+    tests:
+      - files:
+          recipe:
+            - tests/
+        requirements:
+          run:
+            - python ${{ python_min }}.*
+        script:
+          - python tests/test_square_conductor.py
+    about:
+      summary: pyTEC3D, low-frequency electromagnetic finite elements for tokamaks (Python API and C++ solver)
+      license: GPL-3.0-or-later
+      license_file: LICENSE
+      homepage: https://github.com/AlbertoBittes/pyTEC3D

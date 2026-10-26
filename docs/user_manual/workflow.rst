@@ -70,10 +70,12 @@ Preparing the model
 
 Loading the model
    ``Solver.load_model_into_solver()`` checks the solver settings and the model (:doc:`validation`), prints the
-   provenance table (input files and their SHA-256), and creates the C++ session: the mesh is read from the VTK grid,
-   distributed over the MPI ranks, the element types, materials and real constants are resolved per cell, the DOFs
-   are numbered. The session **copies the model data and the solver settings**: later changes of ``model.data`` or
-   ``solver_settings`` only take effect at the next load. While loaded, the model is **locked**: the mesh and the
+   provenance table (input files and their SHA-256), and creates the C++ session. The session works on the mesh
+   itself: it receives NumPy views of the points, of the cells and of every array of the mesh (no copy, see
+   :doc:`../solver_interface`), with the rotations of the coordinate systems computed in Python; it builds the
+   finite-element mesh from them, distributes it over the MPI ranks, resolves the element types, materials and real
+   constants per cell and numbers the DOFs. The session **copies the model data**: later changes of ``model.data``
+   only take effect at the next load. While loaded, the model is **locked**: the mesh and the
    model data cannot change (``model.data`` becomes a read-only copy: any edit raises
    :class:`~pytec3d.errors.ModelLockedError`); the values of the mesh arrays can, except those that define the model in
    the session (table below).
@@ -81,8 +83,10 @@ Loading the model
 Solving
    ``Solver.solve()`` solves the step that ends at ``time_step["time"]`` (:doc:`analysis`). Before each solve the time
    step and the arrays are checked, and warnings are logged when every load array is zero or every Dirichlet array
-   is NaN. The C++ solver reads the current values of the loads and of the Dirichlet arrays, solves, and writes the
-   solution back into the mesh arrays (``A``, ``V``, ``VOLT``, ``EMF``, ``B``, ``H``, ``Jt``...).
+   is NaN. The session is handed views of the current arrays of the mesh (an array replaced since the load, e.g. by
+   ``mesh.add_array(..., replace=True)``, is the one used) and the current ``solver_settings``; the C++ solver reads
+   the loads and the Dirichlet arrays, solves, and writes the solution in place into the mesh arrays (``A``, ``V``,
+   ``VOLT``, ``EMF``, ``B``, ``H``, ``Jt``...): a NumPy view of them taken before the solve sees the new values.
 
 Writing the output
    ``Solver.write_output()`` saves the whole model (mesh, arrays, model data) as ``output/<name>_out_<n>.vtu``
@@ -122,9 +126,10 @@ What can change between steps
    * - ``model.data``
      - no
      - Read-only while loaded: an edit raises at once. Close the session, change, load again.
-   * - solver settings
-     - no
-     - Read at the load: close the session, change, load again.
+   * - ``solver_settings``
+     - yes
+     - Read at every solve. A change of the ``linear`` group or of the PETSc options rebuilds and refactorizes the
+       system matrix.
 
 Files of a run
 --------------

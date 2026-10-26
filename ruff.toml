@@ -1,0 +1,21 @@
+# Ruff (lint) for the Python of the repository: ruff check .
+line-length = 120
+target-version = "py312"
+src = ["python/src", "element_library"]
+extend-exclude = ["libmesh", "solver/libmesh", ".deps", "build", "output", "docs", "pyTEC3D_APDL_benchmarks"]
+
+[lint]
+# pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+# B905 zip(strict=): would change behaviour on unequal lengths; SIM108: ternaries are not always clearer;
+# SIM112: pyTEC3D_LOG_LEVEL is the documented variable name.
+ignore = ["B905", "SIM108", "SIM112"]
+
+[lint.per-file-ignores]
+# The example and test macros are user scripts, run as they are.
+"tests/**/macro.py" = ["E402", "F401", "F841", "E501", "I001"]
+"examples/**/macro.py" = ["E402", "F401", "F841", "E501", "I001", "W191"]
+# Generated C++ is written as long string templates.
+"solver/tools/generate_registries.py" = ["E501", "E731"]
+# Sets up sys.path for the ParaView console before importing the package.
+"python/src/pytec3d/pytec3d_paraview_plugin.py" = ["E402"]

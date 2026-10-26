@@ -5,7 +5,7 @@ Nonlinear laws
 --------------
 
 A nonlinear law replaces coefficients of the element types by values computed, at each quadrature point, from a field
-of the solution and from the data of the law. The laws are defined in ``src/pytec3d/resources/nonlinear_laws.json``
+of the solution and from the data of the law. The laws are defined in ``element_library/pytec3d_element_library/data/nonlinear_laws.json``
 and compiled into the solver. The library has one law:
 
 .. list-table::

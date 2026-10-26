@@ -32,7 +32,9 @@ The code has two modules:
   boundary conditions, couplings), drives the time stepping and the plasma algorithm, and post-processes the results;
 * a **C++ solver** (``pytec3d_solver``) that distributes the mesh and the degrees of freedom, builds the element
   matrices and the system in parallel with `libMesh <https://libmesh.github.io/>`_, and solves it with
-  `PETSc <https://petsc.org/>`_ and `MUMPS <https://mumps-solver.org/>`_ (or an iterative solver).
+  `PETSc <https://petsc.org/>`_ and `MUMPS <https://mumps-solver.org/>`_ (or an iterative solver). It depends neither
+  on VTK nor on the Python package: it works on views of the arrays of the mesh, without copying them
+  (:doc:`solver_interface`), and can be driven by any program.
 
 pyTEC3D models are `VTK <https://vtk.org/>`_ unstructured grids (``.vtu``): a mesh made with any meshing tool can be
 imported, and `ParaView <https://www.paraview.org/>`_ is used to inspect the model, prepare selections (with the

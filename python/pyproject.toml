@@ -1,0 +1,68 @@
+# pytec3d: the Python API of pyTEC3D (model preparation, analysis driver, plasma algorithm, post-processing).
+#
+# Pure Python. The solver is the separate distribution pytec3d-solver (../solver), imported when a model is loaded:
+# without it, everything works except loading a model into a solver. Installation:
+#   conda install -c <channel> -c conda-forge pytec3d        API + solver + MPI (conda/recipe.yaml)
+#   pip install ./element_library ./python                   the API alone (from the root of the repository)
+# Python 3.12 only, the Python of ParaView, which runs the API in its plugin and console.
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytec3d"
+version = "0.1.0"
+description = "pyTEC3D Python API: model preparation, analysis driver, plasma algorithm (the solver is pytec3d-solver)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Alberto Bittesnich" }]
+dependencies = [
+  # The JSON element library, shared with the solver (../element_library).
+  "pytec3d-element-library==0.1.0",
+  "numpy",
+  # Any VTK: the solver does not link it.
+  "vtk>=9.1",
+  # Needed by ansys-mapdl-reader (the .cdb converter, pytec3d-convert-cdb) and used by the tutorials.
+  "pyvista",
+]
+
+[project.urls]
+Repository = "https://github.com/AlbertoBittes/pyTEC3D"
+
+[project.optional-dependencies]
+# The MPI rank on the Python side (parallel runs). mpi4py must use the MPI of the solver: with conda (pytec3d-base
+# depends on it), conda installs the build of the MPI of the environment; with pip, mpi4py builds against the MPI found
+# (mpicc on PATH) unless an MPI wheel is chosen, e.g. pip install "./python[mpi]" openmpi (or mpich, impi-rt).
+mpi = ["mpi4py>=4"]
+# Testing (tests/test_benchmarks.py runs the benchmark repository) and code checks.
+dev = ["pytest", "ruff", "mypy"]
+# Documentation (sphinx-build docs docs/_build): the docs/requirements.txt of Read the Docs.
+docs = ["sphinx>=7.0", "sphinx-rtd-theme>=1.3", "myst-nb>=1.0"]
+# Tutorial notebooks of the documentation.
+notebooks = ["matplotlib", "ipykernel", "jupyterlab", "nbformat", "nbclient"]
+# The .cdb converter needs ansys-mapdl-reader, installed by hand after this package and without its dependencies (its
+# pins conflict with recent NumPy / VTK / pyvista, while it works with them):
+#   pip install --no-deps ansys-mapdl-reader appdirs tqdm
+
+[project.scripts]
+pytec3d-convert-cdb = "pytec3d.mesh_converter:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pytec3d"]
+
+[tool.setuptools.package-data]
+"pytec3d" = ["resources/*.json"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
+packages = ["pytec3d"]
+ignore_missing_imports = true
+warn_redundant_casts = true
+check_untyped_defs = true

@@ -8,8 +8,7 @@ their stored outputs; to run them yourself:
 
 .. code-block:: bash
 
-   conda activate pytec3d
-   python -m pip install -e ".[notebooks]"          # installed by build.sh by default (pyvista comes with conda)
+   conda activate pytec3d-dev                       # environment.yml: JupyterLab, matplotlib, pyvista
    cd docs/tutorials && jupyter lab
 
 Each notebook copies its case into a temporary folder, so the repository files are not modified.

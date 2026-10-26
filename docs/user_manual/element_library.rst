@@ -8,7 +8,7 @@ the parameters it reads from the model data and the mesh, the terms of its weak 
 each solve. A **domain** (``option1``) selects, inside an element type, the physical region a cell represents: the
 same element type gives air, a magnet, a coil or a massive conductor depending on the domain.
 
-The library is defined in ``src/pytec3d/resources/element_types.json`` (with ``fields.json``, ``domains.json`` and
+The library is defined in ``element_library/pytec3d_element_library/data/element_types.json`` (with ``fields.json``, ``domains.json`` and
 ``nonlinear_laws.json``) and compiled into the solver: this page describes its content. The equations are derived in
 :doc:`../theory/index`: :doc:`../theory/domains` for the domains, :ref:`theory-2d` and :ref:`theory-3d` for the
 formulations, :doc:`../theory/circuits` for coils and terminals; :ref:`theory-kernels` explains how the JSON terms map
@@ -450,6 +450,6 @@ Each element type of ``element_types.json`` lists:
 * ``inherits``: start from another type and replace sections key by key (how the ``_edge`` and ``_timint`` types are
   defined).
 
-The full grammar is in the docstring of ``src/tools/generate_registries.py``, which checks the definitions (names,
+The full grammar is in the docstring of ``solver/tools/generate_registries.py``, which checks the definitions (names,
 types of every product, operators against the finite elements) and compiles them into C++. A new element type, domain
 or law is added by editing the JSON files and rebuilding the solver module.
