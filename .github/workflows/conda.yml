@@ -11,8 +11,9 @@
 #   publish      on a tag v*: the packages to the anaconda.org channel vars.ANACONDA_OWNER (secret ANACONDA_API_KEY) and
 #                to the GitHub release of the tag
 #
-# The packages of every run are in the artifacts conda-linux-64 and conda-win-64 (a channel layout: noarch/, linux-64/,
-# win-64/); conda install -c ./channel -c conda-forge pytec3d after merging them and running rattler-index fs ./channel.
+# The packages of every run are in the artifacts conda-linux-64 (noarch/ and linux-64/) and conda-win-64 (the win-64
+# packages): put them in ./channel/{noarch,linux-64,win-64}, run rattler-index fs ./channel, then
+# conda install -c ./channel -c conda-forge pytec3d.
 name: conda packages
 
 on:
@@ -206,11 +207,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A channel layout: the Linux artifact holds noarch/ and linux-64/; the Windows one only win-64 packages, at its
+      # root (upload-artifact strips the common directory).
       - uses: actions/download-artifact@v4
         with:
-          pattern: conda-*
+          name: conda-linux-64
           path: channel
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-win-64
+          path: channel/win-64
 
       - uses: mamba-org/setup-micromamba@v2
         with:
@@ -242,7 +248,7 @@ jobs:
             "python=${{ matrix.python }}" pytec3d-base
           micromamba run -n api python -c "import pytec3d, pytec3d.solver_input; print(pytec3d.__version__)"
           micromamba create -y -n pip -c conda-forge "python=${{ matrix.python }}" pip
-          micromamba run -n pip python -m pip install ./element_library .
+          micromamba run -n pip python -m pip install ./element_library ./python
           micromamba run -n pip python -c "import pytec3d; print('pip:', pytec3d.__file__)"
 
   publish:
@@ -255,11 +261,16 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
+      # A channel layout: the Linux artifact holds noarch/ and linux-64/; the Windows one only win-64 packages, at its
+      # root (upload-artifact strips the common directory).
       - uses: actions/download-artifact@v4
         with:
-          pattern: conda-*
+          name: conda-linux-64
           path: channel
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-win-64
+          path: channel/win-64
 
       - uses: mamba-org/setup-micromamba@v2
         with:
