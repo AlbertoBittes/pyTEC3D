@@ -263,8 +263,9 @@ if(PYTEC3D_BUILD_PYTHON_MODULE)
     # scikit-build-core: into the wheel, next to python/pytec3d_solver/__init__.py.
     install(TARGETS pytec3d_solver LIBRARY DESTINATION pytec3d_solver COMPONENT python)
   else()
-    install(TARGETS pytec3d_solver LIBRARY DESTINATION pytec3d_solver RUNTIME DESTINATION pytec3d_solver
-            COMPONENT python)
+    # COMPONENT after each artifact kind (a module is a LIBRARY artifact).
+    install(TARGETS pytec3d_solver LIBRARY DESTINATION pytec3d_solver COMPONENT python
+                                   RUNTIME DESTINATION pytec3d_solver COMPONENT python)
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/python/pytec3d_solver/__init__.py" DESTINATION pytec3d_solver
             COMPONENT python)
   endif()
