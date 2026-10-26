@@ -8,7 +8,7 @@
  * reads the loads and the Dirichlet values from them and writes the solution into A, B, H and Jt. Doubling Js in
  * place and solving again doubles A: the solver reads the arrays at every solve.
  *
- * Build: cmake -DPYTEC3D_BUILD_CPP_EXAMPLES=ON (build.sh: PYTEC3D_CMAKE_ARGS=-DPYTEC3D_BUILD_CPP_EXAMPLES=ON).
+ * Build: cmake -S solver -B build/solver -DLIBMESH_DIR=<libMesh prefix> -DPYTEC3D_BUILD_CPP_EXAMPLES=ON (docs/solver_interface.rst).
  * Run:   ./square_conductor_2d [N]        or  mpirun -n 2 ./square_conductor_2d [N]
  * The element matrices are stored in ./emat, as for every pyTEC3D run.
  */

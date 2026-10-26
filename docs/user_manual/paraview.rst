@@ -3,7 +3,7 @@ ParaView Integration
 
 `ParaView <https://www.paraview.org/>`_ [Ahrens2005]_ (`documentation <https://docs.paraview.org/en/latest/>`_) is the
 graphical front end of pyTEC3D: the model is a VTK grid, so ParaView shows it directly, and with
-``src/pytec3d/pytec3d_paraview_plugin.py`` the mesh can also be **edited interactively** with the pyTEC3D tools, in
+``python/src/pytec3d/pytec3d_paraview_plugin.py`` the mesh can also be **edited interactively** with the pyTEC3D tools, in
 two complementary ways:
 
 * the **Python Shell** of ParaView (:paraview:`ParaView and Python
@@ -27,7 +27,7 @@ The plugin file solves this: when it is executed it adds the folder that contain
 ``sys.path`` of ParaView's Python, so ``import pytec3d`` works from then on (ParaView's Python provides VTK and NumPy).
 
 * **For the console**: open *View > Python Shell*, click **Run Script** and choose
-  ``src/pytec3d/pytec3d_paraview_plugin.py`` (from the repository, or from the installed package folder), once per
+  ``python/src/pytec3d/pytec3d_paraview_plugin.py`` (from the repository, or from the installed package folder), once per
   ParaView session. The shell then has pytec3d and its tools, **with nothing to import**: ``selection``, ``meshes``
   (:mod:`pytec3d.mesh`), ``model_edit``, ``element_library``, ``tree_gauge``, ``Model``, the coordinate systems
   (``CylindricalCoordinateSystem``...), ``np``, ``pytec3d`` itself and ``plot`` (the list is

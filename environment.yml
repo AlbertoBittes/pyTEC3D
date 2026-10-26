@@ -1,37 +1,38 @@
-# Conda environment to develop pyTEC3D from source (Linux): everything build.sh compiles the solver against and the
-# package runs with, from conda-forge (binary-compatible compilers, MPI, PETSc, VTK and Python). To only use pyTEC3D,
-# install the conda packages instead: conda install -c <channel> -c conda-forge pytec3d (conda/recipe.yaml).
+# Conda environment to develop pyTEC3D (conda-forge, Python 3.12): the dependencies of the Python API, the tools of
+# the repository (tests, lint, documentation, notebooks) and rattler-build, which builds the packages.
 #
-#   conda env create -f environment.yml && conda activate pytec3d && ./build.sh
-#   conda env update -f environment.yml          # after a change of this file
+#   conda env create -f environment.yml && conda activate pytec3d-dev
+#   pip install --no-deps -e ./element_library -e ./python        # the API from the sources
+#   rattler-build build -r conda/recipe.yaml -c conda-forge        # the packages, solver included, into output/
+#   conda install -c ./output -c conda-forge pytec3d-solver        # the solver just built, into this environment
 #
-# The pure-Python test, documentation and notebook tools are installed by build.sh (extras of pyproject.toml).
-# Do not install mpi4py with pip: it must use the MPI the solver is linked against. VTK is only used by the Python
-# package (the solver does not link it).
-name: pytec3d
+# The solver is never compiled into this environment directly: it is built as a package (conda/recipe.yaml), against
+# the conda-forge PETSc / Open MPI and the libMesh of the recipe.
+name: pytec3d-dev
 channels:
   - conda-forge
 dependencies:
   - python=3.12
-  # build tools: C, C++ and Fortran compilers with the MPI wrappers, CMake, Ninja
-  - compilers
-  - git
-  - cmake
-  - ninja
-  - pkg-config
-  # MPI and linear algebra: PETSc with MUMPS and METIS / ParMETIS (libMesh follows the PETSc API of a release)
-  - openmpi=5
-  - mpi4py
-  - petsc=3.26
-  # mesh format and mesh operations of the Python package (VTK); pyvista for plots in scripts and notebooks
-  - vtk=9
-  - pyvista
-  # C++ solver: build backend (pip install ./solver), Python binding, logging, JSON parsing (model data)
-  - scikit-build-core
-  - pybind11
-  - spdlog
-  - nlohmann_json
-  # numerical work on the mesh arrays
-  - numpy
-  - pandas
   - pip
+  # The Python API: mesh format and operations (VTK), plots (pyvista), MPI rank (mpi4py, the conda build of the MPI of
+  # the environment: the solver package brings the same MPI)
+  - numpy
+  - vtk-base>=9.1
+  - pyvista
+  - mpi4py>=4
+  - pandas
+  # Packages
+  - rattler-build
+  - rattler-index
+  # Tests, lint, documentation, notebooks (the extras dev, docs, notebooks of python/pyproject.toml)
+  - pytest
+  - ruff
+  - mypy
+  - sphinx>=7.0
+  - sphinx_rtd_theme>=1.3
+  - myst-nb>=1.0
+  - matplotlib
+  - ipykernel
+  - jupyterlab
+  - nbformat
+  - nbclient

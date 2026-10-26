@@ -8,7 +8,8 @@ version = release
 
 # Add project root and python package to path so autodoc can find modules
 sys.path.insert(0, os.path.abspath(".."))
-sys.path.insert(0, os.path.abspath("../src"))
+sys.path.insert(0, os.path.abspath("../python/src"))
+sys.path.insert(0, os.path.abspath("../element_library"))
 
 extensions = [
     "sphinx.ext.autodoc",

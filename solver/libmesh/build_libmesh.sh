@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build and install the libMesh the pyTEC3D solver links: the libMesh development branch (or LIBMESH_REF), patched
-# (patches/), configured with only what the solver uses. Shared by build.sh, the conda recipe (conda/recipe.yaml) and
-# the Windows CI (MSYS2). The commit built is written to <install prefix>/share/pytec3d/libmesh-commit.
+# (patches/), configured with only what the solver uses. Shared by the conda recipe (conda/recipe.yaml) and the Windows
+# CI (MSYS2, ci/windows/build.sh). The commit built is written to <install prefix>/share/pytec3d/libmesh-commit.
 #
 # Usage: build_libmesh.sh <source dir> <install prefix> [opt|dbg|devel]
 #   <source dir>      cloned (LIBMESH_REF, with submodules) and patched when it has no checkout yet; a checkout is

@@ -1,9 +1,10 @@
 Testing and Benchmarks
 ======================
 
-Every installation of pyTEC3D is **validated automatically**: at the end of ``build.sh`` (:doc:`installation`) the
-installed code runs the benchmark cases and is compared with stored ANSYS Mechanical APDL results, about 10 minutes,
-without ANSYS. The build fails when a case is out of tolerance, and prints one summary table per suite:
+An installation of pyTEC3D is **validated** against the benchmark references with
+``python pyTEC3D_APDL_benchmarks/bench.py validate`` (:doc:`installation`): the installed code runs the benchmark cases
+and is compared with stored ANSYS Mechanical APDL results, about 10 minutes, without ANSYS. The validation fails when a
+case is out of tolerance, and prints one summary table per suite:
 
 * the **field formulations** against MAPDL on 23 analyses: 2D and 3D, nodal and edge elements on hexahedra, prisms
   and pyramids, stranded coils, massive and circuit-coupled conductors, time-integrated formulations, iron with a B-H

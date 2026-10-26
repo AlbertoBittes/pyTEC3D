@@ -18,10 +18,13 @@ import sys
 import weakref
 from typing import Any
 
-# Loaded as a plugin file, the package directory is not on the path yet.
+# Loaded as a plugin file, the package directory is not on the path yet. Installed, the element library
+# (pytec3d_element_library) is next to pytec3d; in the repository (python/src/pytec3d), it is element_library/.
 _PACKAGE_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _PACKAGE_PARENT not in sys.path:
-    sys.path.insert(0, _PACKAGE_PARENT)
+_REPOSITORY_ELEMENT_LIBRARY = os.path.join(_PACKAGE_PARENT, "..", "..", "element_library")
+for _directory in (_PACKAGE_PARENT, os.path.normpath(_REPOSITORY_ELEMENT_LIBRARY)):
+    if os.path.isdir(_directory) and _directory not in sys.path:
+        sys.path.insert(0, _directory)
 
 import numpy as np
 from vtkmodules.util import numpy_support as vtknp

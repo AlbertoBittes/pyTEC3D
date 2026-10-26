@@ -1,3 +1,10 @@
+# pytec3d: the Python API of pyTEC3D (model preparation, analysis driver, plasma algorithm, post-processing).
+#
+# Pure Python. The solver is the separate distribution pytec3d-solver (../solver), imported when a model is loaded:
+# without it, everything works except loading a model into a solver. Installation:
+#   conda install -c <channel> -c conda-forge pytec3d        API + solver + MPI (conda/recipe.yaml)
+#   pip install ./element_library ./python                   the API alone (from the root of the repository)
+# Python 3.12 only, the Python of ParaView, which runs the API in its plugin and console.
 [build-system]
 requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -7,19 +14,16 @@ name = "pytec3d"
 version = "0.1.0"
 description = "pyTEC3D Python API: model preparation, analysis driver, plasma algorithm (the solver is pytec3d-solver)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = "GPL-3.0-or-later"
 authors = [{ name = "Alberto Bittesnich" }]
-# Pure Python: pip installs it anywhere, with any VTK (the solver does not link VTK). The solver is the separate
-# distribution pytec3d-solver (solver/, built by build.sh or the conda recipe, imported when a model is loaded); without
-# it, the model preparation, selection, meshes and post-processing work, only loading a model into a solver needs it.
-# Conda: conda install pytec3d (API + solver + MPI), or pytec3d-base (this package alone); see conda/recipe.yaml.
-# pyvista: needed by ansys-mapdl-reader (the .cdb converter, pytec3d-convert-cdb) and used by the tutorials.
 dependencies = [
-  # The JSON element library, shared with the solver (element_library/ of the repository).
+  # The JSON element library, shared with the solver (../element_library).
   "pytec3d-element-library==0.1.0",
   "numpy",
+  # Any VTK: the solver does not link it.
   "vtk>=9.1",
+  # Needed by ansys-mapdl-reader (the .cdb converter, pytec3d-convert-cdb) and used by the tutorials.
   "pyvista",
 ]
 
@@ -29,23 +33,24 @@ Repository = "https://github.com/AlbertoBittes/pyTEC3D"
 [project.optional-dependencies]
 # The MPI rank on the Python side (parallel runs). mpi4py must use the MPI of the solver: with conda (pytec3d-base
 # depends on it), conda installs the build of the MPI of the environment; with pip, mpi4py builds against the MPI found
-# (mpicc on PATH) unless an MPI wheel is chosen, e.g. pip install "pytec3d[mpi]" openmpi (or mpich, impi-rt, msmpi).
+# (mpicc on PATH) unless an MPI wheel is chosen, e.g. pip install "./python[mpi]" openmpi (or mpich, impi-rt).
 mpi = ["mpi4py>=4"]
 # Testing (tests/test_benchmarks.py runs the benchmark repository) and code checks.
 dev = ["pytest", "ruff", "mypy"]
 # Documentation (sphinx-build docs docs/_build): the docs/requirements.txt of Read the Docs.
 docs = ["sphinx>=7.0", "sphinx-rtd-theme>=1.3", "myst-nb>=1.0"]
-# ansys-mapdl-reader (pytec3d-convert-cdb) is installed by build.sh with --no-deps, after this package: its requirements conflict with
-# the conda packages of the solver. Manually: pip install --no-deps ansys-mapdl-reader appdirs tqdm
-# Tutorial notebooks of the documentation (they also use pyvista, installed with conda: see the installation docs).
+# Tutorial notebooks of the documentation.
 notebooks = ["matplotlib", "ipykernel", "jupyterlab", "nbformat", "nbclient"]
+# The .cdb converter needs ansys-mapdl-reader, installed by hand after this package and without its dependencies (its
+# pins conflict with recent NumPy / VTK / pyvista, while it works with them):
+#   pip install --no-deps ansys-mapdl-reader appdirs tqdm
+
+[project.scripts]
+pytec3d-convert-cdb = "pytec3d.mesh_converter:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 include-package-data = true
-
-[project.scripts]
-pytec3d-convert-cdb = "pytec3d.mesh_converter:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -54,34 +59,10 @@ include = ["pytec3d"]
 [tool.setuptools.package-data]
 "pytec3d" = ["resources/*.json"]
 
-[tool.ruff]
-line-length = 120
-target-version = "py312"
-src = ["src"]
-extend-exclude = ["libmesh", "solver/libmesh", ".deps", "build", "docs"]
-
-[tool.ruff.lint]
-# pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify
-select = ["E", "W", "F", "I", "UP", "B", "SIM"]
-# B905 zip(strict=): would change behaviour on unequal lengths; SIM108: ternaries are not always clearer;
-# SIM112: pyTEC3D_LOG_LEVEL is the documented variable name.
-ignore = ["B905", "SIM108", "SIM112"]
-
-[tool.ruff.lint.per-file-ignores]
-# The test macros are user scripts, run as they are.
-"tests/**/macro.py" = ["E402", "F401", "F841", "E501", "I001"]
-# Generated C++ is written as long string templates.
-"solver/tools/generate_registries.py" = ["E501", "E731"]
-# Sets up sys.path for the ParaView console before importing the package.
-"src/pytec3d/pytec3d_paraview_plugin.py" = ["E402"]
-
 [tool.mypy]
 python_version = "3.12"
-mypy_path = "src"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 packages = ["pytec3d"]
 ignore_missing_imports = true
 warn_redundant_casts = true
 check_untyped_defs = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

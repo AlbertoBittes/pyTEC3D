@@ -330,7 +330,7 @@ def solver_registries() -> dict[str, Any]:
     except ImportError as exc:
         raise ImportError(
             "The model data is checked against the registries of the C++ solver module "
-            "'pytec3d_solver.pytec3d_solver', which could not be imported: build it first (build.sh)."
+            "'pytec3d_solver.pytec3d_solver', which could not be imported: install the package pytec3d-solver first."
         ) from exc
     registries: dict[str, Any] = module.registries()
     return registries

@@ -18,7 +18,7 @@ The two parts are separate distributions:
      - Pure Python (``pip install .``, needs ``numpy`` and ``vtk`` only): the model, the selections, the meshes, the
        analysis driver, the plasma algorithm. It imports the solver only when a model is loaded.
    * - ``pytec3d-solver``
-     - The compiled module ``pytec3d_solver.pytec3d_solver``, built by ``build.sh`` against libMesh, PETSc and MPI
+     - The compiled module ``pytec3d_solver.pytec3d_solver``, built by the conda recipe against libMesh, PETSc and MPI
        (:doc:`installation`). It holds the solver core, a C++ library (``libpytec3d_core.a``) that depends neither on
        Python nor on VTK, and the `pybind11 <https://pybind11.readthedocs.io/>`_ binding that turns NumPy arrays into
        views and dicts into the C++ settings.
@@ -153,5 +153,13 @@ Link the core (CMake target ``pytec3d_core``, include ``pytec3d_session.h``) and
    pyTEC3DSession::shutdown_runtime();
 
 ``solver/examples/square_conductor_2d.cpp`` is a complete program: a 2D magnetostatic model built in memory, solved
-twice (the load doubled in place in between). Build it with ``PYTEC3D_CMAKE_ARGS=-DPYTEC3D_BUILD_CPP_EXAMPLES=ON
-./build.sh``; the executable is ``build/pytec3d-<method>/square_conductor_2d`` and runs in serial or with ``mpirun``.
+twice (the load doubled in place in between). It is built with the solver when CMake is given
+``-DPYTEC3D_BUILD_CPP_EXAMPLES=ON``, e.g. in an environment with the build dependencies of the solver (those of
+``pytec3d-solver`` in ``conda/recipe.yaml``, ``pytec3d-libmesh`` included):
+
+.. code-block:: bash
+
+   cmake -S solver -B build/solver -G Ninja -DLIBMESH_DIR=$CONDA_PREFIX -DPYTEC3D_BUILD_CPP_EXAMPLES=ON
+   cmake --build build/solver && build/solver/square_conductor_2d
+
+It runs in serial or with ``mpiexec``.

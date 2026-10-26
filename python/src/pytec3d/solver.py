@@ -101,13 +101,13 @@ def _backend() -> ModuleType:
     except ImportError as exc:
         raise ImportError(
             f"Could not import the C++ solver module '{BACKEND_MODULE}' (distribution pytec3d-solver): build and "
-            "install it first (build.sh)."
+            "install it first: conda install -c <channel> -c conda-forge pytec3d-solver."
         ) from exc
     found = getattr(module, "INTERFACE_VERSION", None)
     if found != SOLVER_INTERFACE_VERSION:
         raise ImportError(
             f"The C++ solver module '{BACKEND_MODULE}' ({module.__file__}) has interface version {found}, this pytec3d "
-            f"needs {SOLVER_INTERFACE_VERSION}: rebuild and reinstall the solver (build.sh)."
+            f"needs {SOLVER_INTERFACE_VERSION}: install the pytec3d-solver of the same release as pytec3d."
         )
     return module
 

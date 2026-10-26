@@ -10,7 +10,7 @@ name = "pytec3d-element-library"
 version = "0.1.0"
 description = "pyTEC3D element library: the JSON definitions of the domains, fields, element types and nonlinear laws"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = "GPL-3.0-or-later"
 authors = [{ name = "Alberto Bittesnich" }]
 

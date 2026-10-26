@@ -4,7 +4,7 @@ The element library of pyTEC3D: the JSON definitions of the domains, fields, ele
 (`pytec3d_element_library/data/`). It is the single source of the library, shared by:
 
 - the C++ solver (`../solver`, distribution `pytec3d-solver`), which compiles it into its module when it is built;
-- the Python API (`../src/pytec3d`, distribution `pytec3d`), which reads it at run time.
+- the Python API (`../python`, distribution `pytec3d`), which reads it at run time.
 
 ```python
 import pytec3d_element_library as library
