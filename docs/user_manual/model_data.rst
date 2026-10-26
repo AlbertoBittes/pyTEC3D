@@ -203,7 +203,7 @@ nonlinear_laws
 
    "nonlinear_laws": {"26": {"type": "bh_curve", "B": [0.0, 0.5, 1.2, 1.8], "H": [0.0, 100.0, 1000.0, 10000.0]}}
 
-Selects a law of the library (``src/pytec3d/resources/nonlinear_laws.json``) on the cells of an id, with its data.
+Selects a law of the library (``element_library/pytec3d_element_library/data/nonlinear_laws.json``) on the cells of an id, with its data.
 Whether the id is a ``MATERIAL``, ``CONSTANT`` or ``TYPE`` id is given by the *source* of the law (``bh_curve``:
 MATERIAL). An id can have a list of entries for several laws. See :doc:`nonlinear`. In Python:
 ``model.set_bh_curve(26, [[H0, B0], [H1, B1], ...])`` or ``model.set_nonlinear_law(26, "bh_curve", B=[...], H=[...])``.

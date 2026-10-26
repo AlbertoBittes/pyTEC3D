@@ -21,6 +21,7 @@ import numpy as np
 from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 
 from . import mesh as meshes
+from . import solver_input
 from ._logging import close_log_file, get_logger, message_counts, open_log_file, world_rank
 from ._report import Table, print_table, provenance_table
 from ._typing import Location, PathType
@@ -30,8 +31,10 @@ from .validation import check_before_solve, check_model, check_solver_settings, 
 
 LOGGER = get_logger("pytec3d.solver")
 
-#: Name of the compiled solver module (pybind11 extension).
+#: Name of the compiled solver module (pybind11 extension, distribution ``pytec3d-solver``).
 BACKEND_MODULE = "pytec3d_solver.pytec3d_solver"
+#: Version of the interface with the solver module (its ``INTERFACE_VERSION``): the model input, the Session methods.
+SOLVER_INTERFACE_VERSION = 3
 
 #: Default solver settings. ``linear``: the PETSc KSP (a direct LU factorisation with MUMPS by default), used alone
 #: or inside each Newton iteration. ``nonlinear``: the libMesh Newton solver of the models with nonlinear laws.
@@ -91,14 +94,22 @@ def _backend() -> ModuleType:
     """The compiled solver module.
 
     Raises:
-        ImportError: If the extension has not been built.
+        ImportError: If the solver module is not installed, or was built for another interface version.
     """
     try:
-        return importlib.import_module(BACKEND_MODULE)
+        module = importlib.import_module(BACKEND_MODULE)
     except ImportError as exc:
         raise ImportError(
-            f"Could not import the C++ solver module '{BACKEND_MODULE}': build it first (build.sh)."
+            f"Could not import the C++ solver module '{BACKEND_MODULE}' (distribution pytec3d-solver): build and "
+            "install it first (build.sh)."
         ) from exc
+    found = getattr(module, "INTERFACE_VERSION", None)
+    if found != SOLVER_INTERFACE_VERSION:
+        raise ImportError(
+            f"The C++ solver module '{BACKEND_MODULE}' ({module.__file__}) has interface version {found}, this pytec3d "
+            f"needs {SOLVER_INTERFACE_VERSION}: rebuild and reinstall the solver (build.sh)."
+        )
+    return module
 
 
 class Solver:
@@ -121,8 +132,8 @@ class Solver:
             ``gamma`` (Newmark, second-order formulations) and ``transient_effects`` (False for a static solve).
             Read at every :meth:`solve`.
         solver_settings: ``{"linear": {...}, "nonlinear": {...}, "petsc_options": {...}}``, see
-            :data:`DEFAULT_SOLVER_SETTINGS`; keys left out keep their default. Copied when the model is loaded:
-            changes take effect at the next :meth:`load_model_into_solver`.
+            :data:`DEFAULT_SOLVER_SETTINGS`; keys left out keep their default. Read at every :meth:`solve`: a change of
+            the linear solver settings refactorizes the system matrix at the next solve.
     """
 
     def __init__(self, num_threads: int = 1, root_only_output: bool = True, log_file: PathType | bool = True) -> None:
@@ -467,8 +478,10 @@ class Solver:
     def load_model_into_solver(self) -> None:
         """Validate the model and load it into a new solver session (closing the previous one).
 
-        The session copies the model data and the solver settings, and keeps the mesh: until the session is closed
-        the model is locked (only the values of its arrays may change).
+        The session works on the mesh itself: it receives NumPy views of the mesh and of its arrays (no copy,
+        :mod:`pytec3d.solver_input`), reads the loads and the Dirichlet values from them at every solve and writes the
+        solution into the field arrays. It copies the model data. Until the session is closed the model is locked
+        (only the values of its arrays may change).
 
         Raises:
             SolverStateError: If the solver is closed or the model has no mesh.
@@ -492,31 +505,34 @@ class Solver:
             _package_version(),
         ))
 
-        settings = self.effective_solver_settings()
-        changed = _changed_settings(settings, DEFAULT_SOLVER_SETTINGS)
-        LOGGER.info(
-            "Creating the solver session (%d thread(s) per rank); solver settings: %s.",
-            self._num_threads, "defaults" if not changed else ", ".join(changed),
-        )
+        LOGGER.info("Creating the solver session (%d thread(s) per rank).", self._num_threads)
         start = time.perf_counter()
+        model_input = solver_input.model_input(self.model)
         session = _backend().Session(self._num_threads)
         try:
-            session.load_model(self.model, settings)
+            session.load_model(model_input)
         except BaseException:
             session.close()
             raise
         self._session = session
+        # Only the session holds the named arrays now; the mesh views and the rotations, read by the load only, are
+        # freed with model_input.
+        del model_input
         self._load_time_arrays = load_time_arrays(self.model.mesh)
         self.model.lock()
         LOGGER.info("Model '%s' loaded into the solver session in %.2f s.", self.model.mesh_name,
                     time.perf_counter() - start)
 
     def solve(self) -> None:
-        """Solve the time step :attr:`time_step`; the solution is written into the mesh arrays.
+        """Solve the time step :attr:`time_step` with the :attr:`solver_settings`; the solution is written into the
+        mesh arrays.
+
+        The session is first handed views of the current arrays of the mesh (:func:`pytec3d.solver_input.model_arrays`),
+        so that an array replaced since the load is the one the solver reads and writes.
 
         Raises:
             SolverStateError: If the model is not loaded into a solver session.
-            ValidationError: If the time step is invalid or arrays are missing.
+            ValidationError: If the time step or the solver settings are invalid, or arrays are missing.
             ConvergenceError: If the Newton solver of a nonlinear model does not converge (the step is recorded and the
                 mesh holds the last iterate).
             RuntimeError: If the C++ solver fails (in a parallel run it aborts instead).
@@ -524,14 +540,19 @@ class Solver:
         if self._session is None:
             raise SolverStateError("No solver session: call load_model_into_solver() first.")
         check_before_solve(self.model, self.time_step, self._load_time_arrays)
+        settings = self.effective_solver_settings()
+        check_solver_settings(settings)
         step = self.time_step
+        changed = _changed_settings(settings, DEFAULT_SOLVER_SETTINGS)
         LOGGER.info(
-            "Solving t = %g (%s; theta %g, beta %g, gamma %g).", step["time"],
+            "Solving t = %g (%s; theta %g, beta %g, gamma %g); solver settings: %s.", step["time"],
             "transient" if step.get("transient_effects") else "static", step.get("theta", 1.0),
-            step.get("beta", 0.25), step.get("gamma", 0.5),
+            step.get("beta", 0.25), step.get("gamma", 0.5), "defaults" if not changed else ", ".join(changed),
         )
         start = time.perf_counter()
-        self._session.solve(step)
+        self._session.set_arrays(solver_input.model_arrays(self.model))
+        self._session.solve(step, settings)
+        self.model.mesh.Modified()
         seconds = time.perf_counter() - start
         LOGGER.info("t = %g solved in %.2f s.", step["time"], seconds)
         report = self._session.last_step_report()

@@ -11,7 +11,6 @@ kernel needs depends on the element type and domain; the solver checks those whe
 from __future__ import annotations
 
 import importlib
-import re
 from collections.abc import Mapping
 from functools import cache
 from typing import TYPE_CHECKING, Any, TypeGuard
@@ -49,7 +48,7 @@ _SHAPE_NAMES = {"scalar": "a number", "vector": "a number or 3 numbers", "tensor
 
 #: Keys of a row of the element_types section.
 _ELEMENT_TYPE_KEYS = {"element_type", "option1", "option2", "option3"}
-_CP_ARRAY = re.compile(r"^CP_(\d+)$")
+_CP_ARRAY = meshes.COUPLING_ARRAY
 
 
 def _is_real(value: Any) -> TypeGuard[float]:

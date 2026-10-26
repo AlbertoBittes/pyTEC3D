@@ -1,34 +1,38 @@
 #!/bin/bash
-# pyTEC3D build: libMesh -> solver module -> pip install of the package -> ansys-mapdl-reader -> validation.
+# pyTEC3D build: libMesh -> C++ solver (core library + Python module) -> pip install of the two Python distributions
+# (pytec3d, pure Python; pytec3d-solver, the compiled module) -> ansys-mapdl-reader -> validation.
 #
 # Usage: ./build.sh [--pip=regular|editable] [--validate=yes|long|no]
-#   --pip=regular    pip install .      (default, for users: the packages are copied into site-packages)
-#   --pip=editable   pip install -e .   (for developers: the environment imports src/ directly)
+#   --pip=regular    pip install .      (default, for users: the package is copied into site-packages)
+#   --pip=editable   pip install -e .   (for developers: the environment imports src/pytec3d directly)
 #   --validate=yes   validate the installation against the benchmark references (default; about 10 minutes,
 #                    no ANSYS needed: pyTEC3D_APDL_benchmarks/bench.py validate); long: also the 3D ITER cases; no
-# The package is installed with its test, documentation and notebook dependencies (extras dev,docs,notebooks) and
-# ansys-mapdl-reader, in the active conda environment, building with all the cores.
+# The package is installed with its MPI, test, documentation and notebook dependencies (extras mpi,dev,docs,notebooks)
+# and ansys-mapdl-reader, in the active conda environment, building with all the cores. The solver distribution is
+# always a regular install (copied from the build tree).
 #
 # Env vars:
 #   pyTEC3D_LIBMESH_METHOD=opt|dbg|devel   build type of libMesh and of the solver (default: opt)
 #   FORCE_LIBMESH=1                        wipe and rebuild libMesh (default: reuse if present; also rebuilt
 #                                          automatically when it links an MPI other than the one of PETSc)
 #   PYTEC3D_BENCHMARKS=DIR                 benchmark repository (default: pyTEC3D_APDL_benchmarks in the tree)
+#   PYTEC3D_CMAKE_ARGS="..."               more arguments of the CMake configure of the solver, e.g.
+#                                          -DPYTEC3D_BUILD_CPP_EXAMPLES=ON (the C++ examples, solver/examples)
 #
 # Layout (derived from the repo root):
-#   .deps/src/libmesh            libMesh checkout (patched once)
-#   .deps/libmesh-<method>/      libMesh install prefix (baked into the module's RPATH)
-#   build/pytec3d-<method>/      CMake build tree (wiped on every run)
-#   src/pytec3d_solver/*.so      compiled module, installed there by `cmake --install`
+#   .deps/src/libmesh                  libMesh checkout (pinned commit, patched once: solver/libmesh/build_libmesh.sh)
+#   .deps/libmesh-<method>/            libMesh install prefix (baked into the module's RPATH)
+#   build/pytec3d-<method>/            CMake build tree of the solver (pip install ./solver, wiped on every run):
+#                                      libpytec3d_core.a, the module, the C++ examples
 #
 # After a change of the C++ sources or of the element library, run ./build.sh again: libMesh is reused, only the
-# module is rebuilt.
+# solver is rebuilt.
 set -euo pipefail
 
 # --- Options --------------------------------------------------------------------
-usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 pyTEC3D_PIP_INSTALL=regular
-pyTEC3D_PIP_EXTRAS=dev,docs,notebooks
+pyTEC3D_PIP_EXTRAS=mpi,dev,docs,notebooks
 pyTEC3D_VALIDATE=yes
 for arg in "$@"; do
   case "${arg}" in
@@ -70,13 +74,11 @@ PYTHON="${PREFIX}/bin/python"
 [ -x "${PYTHON}" ] || { echo "ERROR: ${PYTHON} not found: install python in the conda environment."; exit 1; }
 
 DEPS_DIR="${SRC_DIR}/.deps"
-PATCH_DIR="${SRC_DIR}/libmesh_patches"
+LIBMESH_BUILD_SCRIPT="${SRC_DIR}/solver/libmesh/build_libmesh.sh"
 LIBMESH_SRC_DIR="${DEPS_DIR}/src/libmesh"
 LIBMESH_PREFIX="${DEPS_DIR}/libmesh-${pyTEC3D_LIBMESH_METHOD}"
 LIBMESH_LIB="${LIBMESH_PREFIX}/lib/libmesh_${pyTEC3D_LIBMESH_METHOD}.so"
 SOLVER_BUILD_DIR="${SRC_DIR}/build/pytec3d-${pyTEC3D_LIBMESH_METHOD}"
-PYTEC3D_PYTHON_PACKAGE_ROOT="${SRC_DIR}/src"
-SOLVER_PKG_DIR="${PYTEC3D_PYTHON_PACKAGE_ROOT}/pytec3d_solver"
 
 CPU_COUNT="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
 if ! [[ "${CPU_COUNT}" =~ ^[0-9]+$ ]] || [ "${CPU_COUNT}" -le 0 ]; then CPU_COUNT=1; fi
@@ -103,6 +105,9 @@ strip_foreign_mpi() {  # <colon list> <file to look for> -> list without the dir
   IFS=':' read -r -a dirs <<< "$1"
   for d in "${dirs[@]}"; do
     [ -z "${d}" ] && continue
+    # The system directories stay (they hold the shell tools; a system MPI there, e.g. /usr/bin/mpicc, comes after
+    # the wrappers of PETSc, which are first on PATH, and the compilers are set by absolute path below).
+    case "${d}" in /bin|/usr/bin|/sbin|/usr/sbin|/lib|/usr/lib|/lib64|/usr/lib64) out="${out:+${out}:}${d}"; continue ;; esac
     if [ "${d}" != "${MPI_PREFIX}/bin" ] && [ "${d}" != "${PETSC_MPI_DIR}" ] && compgen -G "${d}/$2" >/dev/null; then
       echo "    (ignoring ${d}: another MPI installation)" >&2
       continue
@@ -177,106 +182,73 @@ build_libmesh() {
     echo "==> The installed libMesh links another MPI than PETSc: rebuilding it (same patched checkout)."
   fi
   echo "==> Building libMesh (${pyTEC3D_LIBMESH_METHOD})"
-  [ -d "${PATCH_DIR}" ] || { echo "ERROR: patch directory not found: '${PATCH_DIR}'"; exit 1; }
-
   rm -rf "${LIBMESH_PREFIX}"
-  mkdir -p "${LIBMESH_PREFIX}" "$(dirname "${LIBMESH_SRC_DIR}")"
-
-  # Clone + patch only when the checkout is missing or a rebuild is forced.
-  if [ ! -d "${LIBMESH_SRC_DIR}/.git" ] || [ "${FORCE_LIBMESH}" = "1" ]; then
+  mkdir -p "$(dirname "${LIBMESH_SRC_DIR}")"
+  if [ "${FORCE_LIBMESH}" = "1" ]; then
     rm -rf "${LIBMESH_SRC_DIR}"
-    git clone --depth 1 --branch master https://github.com/libMesh/libmesh.git "${LIBMESH_SRC_DIR}"
-    git -C "${LIBMESH_SRC_DIR}" submodule update --init --recursive
-
-    apply_patch() {  # <script> <target>
-      [ -f "${PATCH_DIR}/$1" ] || { echo "ERROR: missing patch script '${PATCH_DIR}/$1'"; exit 1; }
-      "${PYTHON}" "${PATCH_DIR}/$1" "$2"
-    }
-    apply_patch patch_nedelec_prism_pyramid.py    "${LIBMESH_SRC_DIR}"
-    apply_patch cell_pyramid13_patch.py           "${LIBMESH_SRC_DIR}/src/geom/cell_pyramid13.C"
-    apply_patch lagrange3D_shape_pyramid_patch.py "${LIBMESH_SRC_DIR}/src/fe/fe_lagrange_shape_3D.C"
+  elif [ -d "${LIBMESH_SRC_DIR}/.git" ] && [ ! -f "${LIBMESH_SRC_DIR}/.pytec3d_patched" ]; then
+    touch "${LIBMESH_SRC_DIR}/.pytec3d_patched"   # a checkout patched by an older build.sh
   fi
-
-  # Out-of-tree build, one build dir per method.
-  local build_dir="${LIBMESH_SRC_DIR}/build-${pyTEC3D_LIBMESH_METHOD}"
-  rm -rf "${build_dir}"; mkdir -p "${build_dir}"
-  ( cd "${build_dir}"
-    ../configure \
-      --prefix="${LIBMESH_PREFIX}" \
-      --with-methods="${pyTEC3D_LIBMESH_METHOD}" \
-      --with-petsc="${PETSC_DIR}" \
-      --with-metis="${METIS_DIR}" \
-      --with-parmetis="${PARMETIS_DIR}" \
-      --with-mpi="${MPI_DIR}" \
-      --disable-vtk --disable-exodus --disable-libHilbert --disable-tetgen \
-      --disable-triangle --disable-netgen --disable-poly2tri --disable-nlopt \
-      --disable-gmv --disable-netcdf --enable-distmesh --disable-perflog \
-      --disable-eigen --disable-fparser --disable-metaphysicl --enable-periodic \
-      --disable-nanoflann --disable-qhull --disable-second --disable-capnproto \
-      --disable-amr
-    make -j"${CPU_COUNT}"
-    make install
-  )
+  PYTHON="${PYTHON}" CPU_COUNT="${CPU_COUNT}" \
+    "${LIBMESH_BUILD_SCRIPT}" "${LIBMESH_SRC_DIR}" "${LIBMESH_PREFIX}" "${pyTEC3D_LIBMESH_METHOD}"
   [ -f "${LIBMESH_LIB}" ] || { echo "ERROR: expected ${LIBMESH_LIB} after install."; exit 1; }
   check_mpi "${LIBMESH_LIB}" || exit 1
 }
 
 # =================================================================================
-# Stage 2: pytec3d_solver (pybind11 module)
+# Stage 2: the Python package pytec3d (pure Python)
+# =================================================================================
+pip_install() {
+  local target="${SRC_DIR}[${pyTEC3D_PIP_EXTRAS}]"
+  # setuptools stages the package in build/lib and never removes what is no longer in it (a pytec3d_solver/ of the
+  # builds before the solver became its own distribution would end up in the pytec3d wheel).
+  rm -rf "${SRC_DIR}/build/lib" "${SRC_DIR}"/build/bdist.*
+  # pytec3d first: up to version 0.1.0 its distribution also held pytec3d_solver/, which its upgrade removes.
+  # The element library first: the API depends on it (not on PyPI).
+  case "${pyTEC3D_PIP_INSTALL}" in
+    editable) echo "==> pip install -e ${SRC_DIR}/element_library ${target}"
+              "${PYTHON}" -m pip install -e "${SRC_DIR}/element_library" -e "${target}" ;;
+    regular)  echo "==> pip install ${SRC_DIR}/element_library ${target}"
+              "${PYTHON}" -m pip install "${SRC_DIR}/element_library" "${target}" ;;
+  esac
+}
+
+# =================================================================================
+# Stage 3: the solver (solver/): core library (no Python, no VTK) and pybind11 module, distribution pytec3d-solver
 # =================================================================================
 build_solver() {
-  echo "==> Building pytec3d_solver"
+  echo "==> Building and installing the solver (pip install ./solver)"
   [ -f "${LIBMESH_LIB}" ] || { echo "ERROR: ${LIBMESH_LIB} not found."; exit 1; }
-  mkdir -p "${SOLVER_PKG_DIR}"
-
-  # Always start clean: no stale module, no stale CMake cache.
-  rm -f "${SOLVER_PKG_DIR}"/pytec3d_solver*.{so,pyd,dylib}
   rm -rf "${SOLVER_BUILD_DIR}"
 
-  # LIBMESH_DIR is the only libMesh input; CMake locates libmesh/libtimpi itself
-  # and bakes their directories into the module's RPATH.
-  cmake -S "${SRC_DIR}/src" -B "${SOLVER_BUILD_DIR}" -G Ninja \
-    -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
-    -DCMAKE_C_FLAGS="${CFLAGS}" \
-    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
-    -DCMAKE_PREFIX_PATH="${PREFIX}" \
-    -DPython3_EXECUTABLE="$(command -v "${PYTHON}")" \
-    -DPYTEC3D_PYTHON_PACKAGE_ROOT="${PYTEC3D_PYTHON_PACKAGE_ROOT}" \
-    -DPYTEC3D_RUNTIME_PREFIX="${PREFIX}" \
-    -DLIBMESH_DIR="${LIBMESH_PREFIX}" \
-    -DLIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD}"
-  cmake --build "${SOLVER_BUILD_DIR}" -j"${CPU_COUNT}"
-  cmake --install "${SOLVER_BUILD_DIR}"
+  # scikit-build-core runs CMake (solver/CMakeLists.txt) in SOLVER_BUILD_DIR; LIBMESH_DIR is the only libMesh input,
+  # CMake locates libmesh/libtimpi itself and bakes their directories into the module's RPATH. CXXFLAGS (above) are
+  # read by CMake; CMAKE_ARGS passes PYTEC3D_CMAKE_ARGS.
+  CMAKE_ARGS="${PYTEC3D_CMAKE_ARGS:-}" "${PYTHON}" -m pip install --no-build-isolation --no-deps --force-reinstall \
+    "${SRC_DIR}/solver" \
+    -Cbuild-dir="${SOLVER_BUILD_DIR}" \
+    -Ccmake.build-type="${CMAKE_BUILD_TYPE}" \
+    -Ccmake.define.LIBMESH_DIR="${LIBMESH_PREFIX}" \
+    -Ccmake.define.LIBMESH_METHOD="${pyTEC3D_LIBMESH_METHOD}" \
+    -Ccmake.define.PYTEC3D_RUNTIME_PREFIX="${PREFIX}"
 
-  shopt -s nullglob
-  local modules=("${SOLVER_PKG_DIR}"/pytec3d_solver*.{so,pyd,dylib})
-  shopt -u nullglob
-  [ "${#modules[@]}" -gt 0 ] || { echo "ERROR: build did not produce pytec3d_solver in ${SOLVER_PKG_DIR}."; exit 1; }
+  # Imported from outside the repository, so that the installed copies are checked, not ./src.
+  local module
+  module="$(cd / && "${PYTHON}" -c "import pytec3d_solver.pytec3d_solver as m; print(m.__file__)")" \
+    || { echo "ERROR: the solver module does not import after pip install."; exit 1; }
 
   # The module must resolve its libraries without LD_LIBRARY_PATH.
   if command -v ldd >/dev/null 2>&1; then
     local missing
-    missing="$(env -u LD_LIBRARY_PATH ldd "${modules[0]}" | grep 'not found' || true)"
+    missing="$(env -u LD_LIBRARY_PATH ldd "${module}" | grep 'not found' || true)"
     if [ -n "${missing}" ]; then
       echo "ERROR: unresolved shared libraries (RPATH problem):"; echo "${missing}"; exit 1
     fi
   fi
-  check_mpi "${modules[0]}" || exit 1
-  echo "Built ${modules[0]} (MPI: ${PETSC_MPI_DIR})"
-}
-
-# =================================================================================
-# Stage 3: the Python packages (pytec3d + the module just built)
-# =================================================================================
-pip_install() {
-  local target="${SRC_DIR}[${pyTEC3D_PIP_EXTRAS}]"
-  case "${pyTEC3D_PIP_INSTALL}" in
-    editable) echo "==> pip install -e ${target}"; "${PYTHON}" -m pip install -e "${target}" ;;
-    regular)  echo "==> pip install ${target}";    "${PYTHON}" -m pip install "${target}" ;;
-  esac
-  # Imported from outside the repository, so that the installed copy is checked, not ./src.
-  ( cd / && "${PYTHON}" -c "import pytec3d, pytec3d_solver.pytec3d_solver; print('    pytec3d imported from', pytec3d.__file__)" ) \
-    || { echo "ERROR: pytec3d does not import after pip install."; exit 1; }
+  check_mpi "${module}" || exit 1
+  ( cd / && "${PYTHON}" -c "import pytec3d, pytec3d.solver as s; m = s._backend(); print('    pytec3d imported from', pytec3d.__file__); print('    solver module', m.__file__, 'interface', m.INTERFACE_VERSION)" ) \
+    || { echo "ERROR: pytec3d does not accept the installed solver module."; exit 1; }
+  echo "Built ${module} (MPI: ${PETSC_MPI_DIR})"
 }
 
 # =================================================================================
@@ -318,8 +290,8 @@ validate_install() {
 
 echo "pyTEC3D build: method=${pyTEC3D_LIBMESH_METHOD} prefix=${PREFIX} pip=${pyTEC3D_PIP_INSTALL} extras=${pyTEC3D_PIP_EXTRAS} jobs=${CPU_COUNT}"
 build_libmesh
-build_solver
 pip_install
+build_solver
 install_cdb_reader
 validate_install
 echo "==> Done."

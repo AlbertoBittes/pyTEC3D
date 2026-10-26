@@ -1,8 +1,9 @@
-"""The element library: domains, fields and element types, read from the JSON resources of the solver.
+"""The element library: domains, fields and element types, read from the package ``pytec3d-element-library``.
 
-``pytec3d/resources`` holds ``domains.json``, ``fields.json``, ``element_types.json`` and ``laws.json``. The C++ solver
-compiles them (``src/tools/generate_registries.py``); this module reads the same files so that the Python side knows the
-element types, their fields and the grid arrays a model needs. Set ``PYTEC3D_RESOURCES`` to read another directory.
+The package :mod:`pytec3d_element_library` holds ``domains.json``, ``fields.json``, ``element_types.json`` and
+``nonlinear_laws.json``. The C++ solver compiles them (``solver/tools/generate_registries.py``); this module reads the
+same files so that the Python side knows the element types, their fields and the grid arrays a model needs, with or
+without a solver installed. Set ``PYTEC3D_RESOURCES`` to read another directory.
 
 Grid arrays of an element type (:func:`grid_arrays`):
 
@@ -22,6 +23,8 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
+
+import pytec3d_element_library
 
 from ._typing import Location
 
@@ -47,9 +50,9 @@ class GridArray:
 
 
 def resources_dir() -> Path:
-    """Directory of the JSON resources: ``$PYTEC3D_RESOURCES``, or ``resources`` inside the package."""
+    """Directory of the JSON element library: ``$PYTEC3D_RESOURCES``, or the one of ``pytec3d-element-library``."""
     override = os.environ.get("PYTEC3D_RESOURCES")
-    return Path(override) if override else Path(__file__).resolve().parent / "resources"
+    return Path(override) if override else pytec3d_element_library.data_dir()
 
 
 def _load(name: str) -> dict[str, Any]:

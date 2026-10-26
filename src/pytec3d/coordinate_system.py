@@ -209,7 +209,8 @@ class CoordinateSystem(ABC):
     def build_local_to_global_coefficients(angles_deg: Any) -> np.ndarray:
         """Flattened local-to-global matrices of an (N, 3) array of angles in degrees.
 
-        See :func:`rotation_coefficients_from_angles`; called by the C++ solver for the ``node_angles`` point array.
+        See :func:`rotation_coefficients_from_angles`; the frames of the ``node_angles`` point array
+        (:func:`pytec3d.solver_input.node_rotations`).
         """
         return rotation_coefficients_from_angles(angles_deg)
 
@@ -303,7 +304,7 @@ class CoordinateSystem(ABC):
         """Rotation from the local basis of the type to the global one at each position.
 
         Column ``k`` of each matrix is the k-th local unit vector (e.g. e_r, e_theta, e_z) in global coordinates.
-        Called by the C++ solver for the elements of a COORDINATE_SYSTEM.
+        The rotations of the elements of a COORDINATE_SYSTEM (:func:`pytec3d.solver_input.element_rotations`).
 
         Args:
             global_positions: Shape (N, 3) or (3,).

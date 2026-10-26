@@ -145,7 +145,7 @@ class Model:
     arrays TYPE, MATERIAL, CONSTANT and COORDINATE_SYSTEM.
 
     The model data is stored in the mesh (VTK field data, as JSON text) when the model is saved, and handed to the
-    solver as JSON text when it is loaded.
+    solver with the views of the mesh arrays when it is loaded (:mod:`pytec3d.solver_input`).
 
     While the model is loaded into a solver session it is :attr:`locked`: the mesh and the model data cannot change,
     only the values of the mesh arrays (loads, boundary conditions). Close the session
@@ -406,7 +406,7 @@ class Model:
     def coordinate_system(self, cs_id: int) -> CoordinateSystem:
         """The coordinate system ``cs_id`` of ``data["coordinate_systems"]``, as an object.
 
-        Called by the C++ solver for the elements of a COORDINATE_SYSTEM.
+        Used for the rotations of the elements of a COORDINATE_SYSTEM (:mod:`pytec3d.solver_input`).
 
         Raises:
             KeyError: If the model data does not define it.

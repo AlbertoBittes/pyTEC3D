@@ -18,6 +18,7 @@ Modules:
 
 * :mod:`pytec3d.model` - :class:`Model`, the mesh and the model data;
 * :mod:`pytec3d.solver` - :class:`Solver`, the solution of a model;
+* :mod:`pytec3d.solver_input` - the views of the mesh arrays handed to the C++ solver;
 * :mod:`pytec3d.selection` - selecting points and cells, setting values on them;
 * :mod:`pytec3d.mesh` - reading, writing and editing the arrays of a mesh;
 * :mod:`pytec3d.model_edit` - coordinate mappings, periodic couplings, derived fields;

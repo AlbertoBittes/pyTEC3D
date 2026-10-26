@@ -8,12 +8,13 @@ VTK array afterwards (the functions of the package do).
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
 from vtkmodules.util import numpy_support as vtknp
-from vtkmodules.vtkCommonCore import VTK_DOUBLE, VTK_INT, vtkDataArray
+from vtkmodules.vtkCommonCore import VTK_DOUBLE, VTK_INT, vtkDataArray, vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellTypes, vtkDataSetAttributes, vtkUnstructuredGrid
 from vtkmodules.vtkFiltersCore import vtkCellCenters
 from vtkmodules.vtkFiltersVerdict import vtkCellSizeFilter
@@ -34,6 +35,8 @@ LOGGER = get_logger("pytec3d.mesh")
 MODEL_CELL_ARRAYS: dict[str, int] = {"TYPE": 1, "MATERIAL": 1, "CONSTANT": 1, "COORDINATE_SYSTEM": 0}
 #: Point arrays every model has, with their default value: the first DOF coupling ids.
 MODEL_POINT_ARRAYS: dict[str, int] = {"CP_0": 0}
+#: Names of the DOF coupling point arrays CP_0, CP_1, ...
+COUPLING_ARRAY = re.compile(r"^CP_(\d+)$")
 #: Point array of the orientation angles (thxy, thyz, thzx, degrees) of each node: the local frame of its DOFs.
 NODE_ANGLES_ARRAY = "node_angles"
 #: Cell arrays of the cell centroids and of the cell sizes (area of 2D cells, volume of 3D cells).
@@ -268,6 +271,7 @@ def update_grid(
     * the integer cell arrays TYPE, MATERIAL, CONSTANT (default 1) and COORDINATE_SYSTEM (default 0), the integer
       point array CP_0 (default 0) and the point array ``node_angles`` (3 components, default 0), when missing;
     * the cell centroids and sizes, when not computed yet;
+    * the types the solver views (:func:`normalize_types`): float64 points, 64-bit cells, int32 ids and couplings;
     * the field arrays of the element types (:func:`pytec3d.element_library.grid_arrays`): DOF fields and their
       Dirichlet arrays ``_F`` (NaN), nodal and element fields, nodal and element loads (0). Missing ones are added, and
       an existing one with another number of components or another type is replaced. With ``element_types`` given,
@@ -326,6 +330,57 @@ def update_grid(
         LOGGER.info("Added the field arrays: %s.", ", ".join(added))
     if reset:
         LOGGER.info("Field arrays reset to their defaults.")
+    normalize_types(mesh)
+
+
+def _to_int32(mesh: vtkUnstructuredGrid, name: str, location: Location) -> None:
+    """Store the id array ``name`` as a one-component int32 array (``VTK_INT``), keeping its values."""
+    array = attributes(mesh, location).GetArray(name)
+    if array is None:
+        return
+    values = vtknp.vtk_to_numpy(array)
+    if values.dtype == np.int32 and values.ndim == 1:
+        return
+    if values.ndim != 1:
+        raise ValueError(f"The id array '{name}' must have one component, got {array.GetNumberOfComponents()}.")
+    if not np.all(np.isfinite(values)) or not np.array_equal(values, np.round(values)):
+        raise ValueError(f"The id array '{name}' must hold integers.")
+    add_array(mesh, name, location, dtype=VTK_INT, values=values.astype(np.int32), replace=True)
+    LOGGER.info("The %s array '%s' converted from %s to int32.", "point" if location == "node" else "cell", name,
+                values.dtype)
+
+
+def normalize_types(mesh: vtkUnstructuredGrid) -> None:
+    """Store the mesh with the types the solver views without copying (:mod:`pytec3d.solver_input`).
+
+    Points as float64, cells with 64-bit offsets and connectivity, the ids TYPE, MATERIAL, CONSTANT, COORDINATE_SYSTEM
+    and the CP_k couplings as int32, ``node_angles`` as float64. Arrays that already have their type are untouched;
+    the others are converted once (values kept). Called by :func:`update_grid`.
+
+    Raises:
+        ValueError: If an id array has several components or non-integer values.
+    """
+    points = mesh.GetPoints()
+    if points is not None and points.GetDataType() != VTK_DOUBLE:
+        converted = vtkPoints()
+        converted.SetData(vtknp.numpy_to_vtk(np.asarray(vtknp.vtk_to_numpy(points.GetData()), dtype=np.float64),
+                                             deep=True, array_type=VTK_DOUBLE))
+        mesh.SetPoints(converted)
+        LOGGER.info("Points converted to float64.")
+    cells = mesh.GetCells()
+    if cells is not None and not cells.IsStorage64Bit():
+        cells.ConvertTo64BitStorage()
+        LOGGER.info("Cell connectivity converted to 64-bit storage.")
+    for name in MODEL_CELL_ARRAYS:
+        _to_int32(mesh, name, "elem")
+    point_data = mesh.GetPointData()
+    for name in [point_data.GetArrayName(i) for i in range(point_data.GetNumberOfArrays())]:
+        if name and COUPLING_ARRAY.match(name):
+            _to_int32(mesh, name, "node")
+    angles = point_data.GetArray(NODE_ANGLES_ARRAY)
+    if angles is not None and angles.GetDataType() != VTK_DOUBLE:
+        add_array(mesh, NODE_ANGLES_ARRAY, "node", components=3, dtype=VTK_DOUBLE,
+                  values=np.asarray(vtknp.vtk_to_numpy(angles), dtype=np.float64).reshape(-1, 3), replace=True)
 
 
 # ---------------------------------------------------------------------------------------------------- files

@@ -1,0 +1,17 @@
+# Build variants of conda/recipe.yaml (read by rattler-build next to the recipe).
+# pytec3d-solver is built per Python version: 3.12 only for now, the Python of ParaView (the pyTEC3D plugin and console
+# run the API inside ParaView). The other packages are built once.
+python:
+  - "3.12"
+
+# Linux toolchain (conda-forge): glibc 2.28 sysroot, as the conda-forge PETSc packages.
+c_stdlib:
+  - if: linux
+    then: sysroot
+  - if: win
+    then: vs
+c_stdlib_version:
+  - if: linux
+    then: "2.28"
+  - if: win
+    then: "2022"
