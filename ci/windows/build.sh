@@ -108,6 +108,7 @@ for python in "${pythons[@]}"; do
     -DMPI_CXX_LIB_NAMES=msmpi -DMPI_msmpi_LIBRARY="${MSMPI_LIBRARY}" \
     -DCMAKE_PREFIX_PATH="${MINGW}" \
     -DLIBMESH_DIR="$(cygpath -m "${LIBMESH_PREFIX}")" -DLIBMESH_METHOD=opt \
+    -DPYTEC3D_EXTRA_LIBS=z \
     -DPython3_EXECUTABLE="$(cygpath -m "${python}")" \
     -Dpybind11_DIR="$(cygpath -m "${pybind11_dir}")"
   cmake --build "${build}" -j"${CPU_COUNT}"

@@ -119,6 +119,7 @@ jobs:
             mingw-w64-ucrt-x86_64-scalapack
             mingw-w64-ucrt-x86_64-metis
             mingw-w64-ucrt-x86_64-parmetis
+            mingw-w64-ucrt-x86_64-zlib
             mingw-w64-ucrt-x86_64-spdlog
             mingw-w64-ucrt-x86_64-nlohmann-json
 
