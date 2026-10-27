@@ -28,6 +28,10 @@ case "${METHOD}" in opt|dbg|devel) ;; *) echo "ERROR: invalid method '${METHOD}'
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_PREFIX="${CONDA_PREFIX:-${PREFIX:-}}"
+# libMesh's configure finds PETSc through the environment (PETSC_DIR), not only through --with-petsc: without it the
+# library is built without PETSc.
+export PETSC_DIR="${PETSC_DIR:-${DEPS_PREFIX}}"
+export MPI_DIR="${MPI_DIR:-${DEPS_PREFIX}}" METIS_DIR="${METIS_DIR:-${DEPS_PREFIX}}" PARMETIS_DIR="${PARMETIS_DIR:-${DEPS_PREFIX}}"
 PYTHON="${PYTHON:-python3}"
 CPU_COUNT="${CPU_COUNT:-$(nproc 2>/dev/null || echo 2)}"
 
@@ -76,10 +80,10 @@ cd "${BUILD_DIR}"
 ../configure \
   --prefix="${INSTALL_PREFIX}" \
   --with-methods="${METHOD}" \
-  --with-petsc="${PETSC_DIR:-${DEPS_PREFIX}}" \
-  --with-metis="${METIS_DIR:-${DEPS_PREFIX}}" \
-  --with-parmetis="${PARMETIS_DIR:-${DEPS_PREFIX}}" \
-  --with-mpi="${MPI_DIR:-${DEPS_PREFIX}}" \
+  --with-petsc="${PETSC_DIR}" \
+  --with-metis="${METIS_DIR}" \
+  --with-parmetis="${PARMETIS_DIR}" \
+  --with-mpi="${MPI_DIR}" \
   --disable-vtk --disable-exodus --disable-libHilbert --disable-tetgen \
   --disable-triangle --disable-netgen --disable-poly2tri --disable-nlopt \
   --disable-gmv --disable-netcdf --enable-distmesh --disable-perflog \
@@ -88,6 +92,9 @@ cd "${BUILD_DIR}"
   --disable-amr --disable-examples --disable-boost \
   ${LIBMESH_CONFIGURE_EXTRA:-} \
   || { echo "==> libMesh config.log (end):"; tail -n 120 config.log; exit 1; }
+# The solver needs libMesh with PETSc (LIBMESH_HAVE_PETSC in the configured header).
+grep -q '^#define LIBMESH_HAVE_PETSC 1' include/libmesh_config.h \
+  || { echo "ERROR: libMesh was configured without PETSc (PETSC_DIR=${PETSC_DIR})."; exit 1; }
 make -j"${CPU_COUNT}"
 make install
 COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)"
