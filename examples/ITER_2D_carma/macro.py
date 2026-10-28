@@ -4,7 +4,7 @@
 #
 # What this example shows
 # -----------------------
-# The computation of a free-boundary plasma equilibrium with the Algorithm class (APEC-M). The magnetostatic field of
+# The computation of a free-boundary plasma equilibrium with the Algorithm class. The magnetostatic field of
 # the coils and of the plasma current is solved with the finite elements; around it, Algorithm.equilibrium_solve()
 # iterates (Picard) on the plasma current density until the poloidal flux PSI stops changing. Each iteration:
 #   1. finds the magnetic axis (PSI maximum), the X point and the limiter point, hence the last closed flux surface;
