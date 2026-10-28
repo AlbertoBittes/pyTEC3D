@@ -512,6 +512,7 @@ void pyTEC3DDOFSystem<ImplicitSys>::post_init()
 pyTEC3DLinearSystem::pyTEC3DLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
     : pyTEC3DDOFSystem<libMesh::LinearImplicitSystem>(es, name, number)
 {
+    this->linear_solver = std::make_unique<ReducedPetscLinearSolver>(es.comm());
 }
 
 pyTEC3DLinearSystem::~pyTEC3DLinearSystem() noexcept = default;
@@ -522,48 +523,26 @@ void pyTEC3DLinearSystem::add_matrices()
     this->get_system_matrix().use_hash_table(true);
 }
 
-void pyTEC3DLinearSystem::release_subset_solve()
+ReducedPetscLinearSolver &pyTEC3DLinearSystem::reduced_linear_solver()
 {
-    if (this->_subset != nullptr)
-    {
-        subset_solve_holder_.reset();
-        this->_subset = nullptr;
-    }
-
-    clear_reduced_solve_cache();
-}
-
-void pyTEC3DLinearSystem::clear_reduced_solve_cache()
-{
-    reduced_subset_dofs_cache_.clear();
-    reduced_subset_is_.reset_to_zero();
-    reduced_scatter_.reset_to_zero();
-    reduced_submat_.reset_to_zero();
-    reduced_subprecond_.reset_to_zero();
-    reduced_subrhs_.reset_to_zero();
-    reduced_subsolution_.reset_to_zero();
-    reduced_parent_mat_cache_ = nullptr;
-    reduced_parent_precond_mat_cache_ = nullptr;
-    reduced_parent_rhs_vec_cache_ = nullptr;
-    reduced_cache_ready_ = false;
+    auto *solver = dynamic_cast<ReducedPetscLinearSolver *>(this->linear_solver.get());
+    if (!solver)
+        pytec3d::logging::error_and_abort("pyTEC3DLinearSystem: the linear solver is not a ReducedPetscLinearSolver.");
+    return *solver;
 }
 
 void pyTEC3DLinearSystem::delete_rows_cols_constrained_dofs()
 {
     pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
-    this->release_subset_solve();
     subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
-    this->restrict_solve_to(subset_solve_holder_.get(), libMesh::SUBSET_ZERO);
+    this->reduced_linear_solver().restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
 }
 
 void pyTEC3DNonLinearSystem::delete_rows_cols_constrained_dofs()
 {
     pytec3d::logging::info("Removing constrained DOFs from system matrix and RHS");
     subset_solve_holder_ = std::make_unique<SystemMatrixReduction>(*this);
-    auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
-    auto *newton_petsc_solver =
-        dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(&newton_solver->get_linear_solver());
-    newton_petsc_solver->restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
+    this->reduced_linear_solver().restrict_solve_to(&subset_solve_holder_->dof_ids(), libMesh::SUBSET_ZERO);
 }
 
 void pyTEC3DLinearSystem::solve()
@@ -577,113 +556,19 @@ void pyTEC3DLinearSystem::solve()
     // Get the user-specified linear solver tolerance
     const auto [maxits, tol] = this->get_linear_solve_parameters();
 
-    // Solve the linear system.  Several cases:
-    std::pair<unsigned int, libMesh::Real> rval = std::make_pair(0, 0.0);
-
-    auto *matrix = static_cast<libMesh::PetscMatrixBase<libMesh::Number> *>(this->matrix);
-    auto *precond = static_cast<libMesh::PetscMatrixBase<libMesh::Number> *>(this->request_matrix("Preconditioner"));
-    auto *solution = static_cast<libMesh::PetscVector<libMesh::Number> *>(this->solution.get());
-    auto *rhs = static_cast<libMesh::PetscVector<libMesh::Number> *>(this->rhs);
-
-    if (!precond)
-        precond = matrix;
-
-    matrix->close();
-
-    if (precond != matrix)
-        precond->close();
-    solution->close();
-    rhs->close();
-
-    const auto &subset_dofs = subset_solve_holder_->dof_ids();
-    if (subset_dofs.empty())
+    if (subset_solve_holder_ && subset_solve_holder_->dof_ids().empty())
         pytec3d::logging::error_and_abort("pyTEC3DLinearSystem::solve: subset solve requested with empty subset dof list.");
 
-    const Mat parent_mat = matrix->mat();
-    const Mat parent_precond_mat = precond->mat();
-    const bool allow_reuse = linear_solver->get_same_preconditioner();
-
-    if (!allow_reuse)
-    {
-        clear_reduced_solve_cache();
-
-        linear_solver->clear();
-        if (this->prefix_with_name())
-            linear_solver->init(this->prefix().c_str());
-        else
-            linear_solver->init();
-        linear_solver->init_systems(*this);
-
-        PetscInt *petsc_dofs = nullptr;
-        LibmeshPetscCall(PetscMalloc(subset_dofs.size() * sizeof(PetscInt), &petsc_dofs));
-        for (std::size_t i = 0; i < subset_dofs.size(); ++i)
-            petsc_dofs[i] = static_cast<PetscInt>(subset_dofs[i]);
-
-        LibmeshPetscCall(ISCreateGeneral(this->comm().get(),
-                                         static_cast<PetscInt>(subset_dofs.size()),
-                                         petsc_dofs,
-                                         PETSC_OWN_POINTER,
-                                         reduced_subset_is_.get()));
-
-        PetscInt subset_local_size = 0;
-        LibmeshPetscCall(ISGetLocalSize(reduced_subset_is_, &subset_local_size));
-
-        LibmeshPetscCall(VecCreate(this->comm().get(), reduced_subrhs_.get()));
-        LibmeshPetscCall(VecSetSizes(reduced_subrhs_, subset_local_size, PETSC_DECIDE));
-        LibmeshPetscCall(VecSetFromOptions(reduced_subrhs_));
-
-        LibmeshPetscCall(VecCreate(this->comm().get(), reduced_subsolution_.get()));
-        LibmeshPetscCall(VecSetSizes(reduced_subsolution_, subset_local_size, PETSC_DECIDE));
-        LibmeshPetscCall(VecSetFromOptions(reduced_subsolution_));
-
-        LibmeshPetscCall(VecScatterCreate(rhs->vec(),
-                                          reduced_subset_is_,
-                                          reduced_subrhs_,
-                                          nullptr,
-                                          reduced_scatter_.get()));
-
-        LibmeshPetscCall(LibMeshCreateSubMatrix(parent_mat,
-                                                reduced_subset_is_,
-                                                reduced_subset_is_,
-                                                MAT_INITIAL_MATRIX,
-                                                reduced_submat_.get()));
-
-        LibmeshPetscCall(LibMeshCreateSubMatrix(parent_mat,
-                                                reduced_subset_is_,
-                                                reduced_subset_is_,
-                                                MAT_INITIAL_MATRIX,
-                                                reduced_subprecond_.get()));
-        // reduced_subprecond_ = reduced_submat_;
-
-        reduced_subset_dofs_cache_ = subset_dofs;
-        reduced_parent_mat_cache_ = parent_mat;
-        reduced_parent_precond_mat_cache_ = parent_precond_mat;
-        reduced_parent_rhs_vec_cache_ = rhs->vec();
-        reduced_cache_ready_ = true;
-    }
-
-    VecScatterBeginEnd(this->comm(), reduced_scatter_, rhs->vec(), reduced_subrhs_, INSERT_VALUES, SCATTER_FORWARD);
-    VecScatterBeginEnd(this->comm(), reduced_scatter_, solution->vec(), reduced_subsolution_, INSERT_VALUES, SCATTER_FORWARD);
-
-    libMesh::PetscMatrix<libMesh::Number> submat_wrapper(reduced_submat_, this->comm());
-    libMesh::PetscVector<libMesh::Number> subrhs_wrapper(reduced_subrhs_, this->comm());
-    libMesh::PetscVector<libMesh::Number> subsolution_wrapper(reduced_subsolution_, this->comm());
-
-    libMesh::PetscMatrix<libMesh::Number> subprecond_wrapper(reduced_subprecond_, this->comm());
-    rval = linear_solver->solve(submat_wrapper,
-                                subprecond_wrapper,
-                                subsolution_wrapper,
-                                subrhs_wrapper,
-                                tol,
-                                maxits);
-    report.true_residual = pytec3d::diagnostics::relative_true_residual(reduced_submat_, reduced_subsolution_,
-                                                                        reduced_subrhs_);
-    if (auto *petsc_solver = dynamic_cast<libMesh::PetscLinearSolver<libMesh::Number> *>(linear_solver.get()))
-        report.factorization = pytec3d::diagnostics::factorization_report(petsc_solver->ksp());
-
-    LibmeshPetscCall(VecZeroEntries(solution->vec()));
-    VecScatterBeginEnd(this->comm(), reduced_scatter_, reduced_subsolution_, solution->vec(), INSERT_VALUES, SCATTER_REVERSE);
-    solution->close();
+    // On the unconstrained DOFs; the factorization reused, or only its numeric part, when possible.
+    ReducedPetscLinearSolver &solver = this->reduced_linear_solver();
+    const ReducedPetscLinearSolver::Counts before = solver.counts();
+    const std::pair<unsigned int, libMesh::Real> rval = solver.solve(*this->matrix, *this->solution, *this->rhs, tol, maxits);
+    report.full_factorizations += solver.counts().full - before.full;
+    report.numeric_factorizations += solver.counts().numeric - before.numeric;
+    report.true_residual = pytec3d::diagnostics::relative_true_residual(solver.reduced_matrix(), solver.reduced_solution(),
+                                                                        solver.reduced_rhs());
+    report.factorization = pytec3d::diagnostics::factorization_report(solver.ksp());
+    this->solution->close();
 
     // Store the number of linear iterations required to
     // solve and the final residual.
@@ -696,8 +581,10 @@ void pyTEC3DLinearSystem::solve()
     this->get_dof_map().enforce_constraints_exactly(*this);
     this->update();
     this->update_time_derivatives();
-    const auto reason = linear_solver->get_converged_reason();
-    std::size_t unconstrained = subset_dofs.size();
+    const auto reason = solver.get_converged_reason();
+    PetscInt local_unconstrained = 0;
+    LibmeshPetscCall(VecGetLocalSize(solver.reduced_rhs(), &local_unconstrained));
+    std::size_t unconstrained = static_cast<std::size_t>(local_unconstrained);
     this->comm().sum(unconstrained);
     report.linear_iterations = rval.first;
     report.linear_residual = rval.second;
@@ -706,7 +593,7 @@ void pyTEC3DLinearSystem::solve()
     pytec3d::logging::info("Linear solve: {} iteration(s), residual {:.3e}, true residual {:.3e}, {} ({} unconstrained "
                            "DOFs on this rank).",
                            rval.first, rval.second, report.true_residual, libMesh::Utility::enum_to_string(reason),
-                           subset_dofs.size());
+                           local_unconstrained);
     pytec3d::diagnostics::check_linear_solve(report.factorization, report.true_residual);
     if (reason < 0)
         pytec3d::logging::warn("The linear solver did not converge: {}.", libMesh::Utility::enum_to_string(reason));
@@ -719,6 +606,11 @@ void pyTEC3DLinearSystem::post_init()
     auto *linear_solver = this->get_linear_solver();
     if (!linear_solver)
         pytec3d::logging::error_and_abort("pyTEC3DLinearSystem::post_init: PETSc linear solver not available.");
+    if (this->prefix_with_name())
+        linear_solver->init(this->prefix().c_str());
+    else
+        linear_solver->init();
+    linear_solver->init_systems(*this);
     this->solver_config_ = std::make_unique<PetscSolverConfiguration>(
         this->get_pytec3d_equation_systems().get_solver_settings(), linear_solver);
     this->solver_config_->configure_solver();
@@ -803,10 +695,24 @@ void pyTEC3DLinearSystem::assemble_system()
 
 // ---- pyTEC3DNonLinearSystem -------------------------------------------------------------------------------
 
+namespace
+{
+    /** @brief The Newton solver of libMesh with the linear solver of pyTEC3D (ReducedPetscLinearSolver). */
+    class pyTEC3DNewtonSolver : public libMesh::NewtonSolver
+    {
+    public:
+        explicit pyTEC3DNewtonSolver(sys_type &system)
+            : libMesh::NewtonSolver(system)
+        {
+            _linear_solver = std::make_unique<ReducedPetscLinearSolver>(system.comm());
+        }
+    };
+} // namespace
+
 pyTEC3DNonLinearSystem::pyTEC3DNonLinearSystem(libMesh::EquationSystems &es, const std::string &name, unsigned int number)
     : pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>(es, name, number)
 {
-    auto newton_solver = std::make_unique<libMesh::NewtonSolver>(*this);
+    auto newton_solver = std::make_unique<pyTEC3DNewtonSolver>(*this);
     newton_solver->verbose = true;
     newton_solver->require_residual_reduction = true;
     diff_solver = std::move(newton_solver);
@@ -815,6 +721,15 @@ pyTEC3DNonLinearSystem::pyTEC3DNonLinearSystem(libMesh::EquationSystems &es, con
 }
 
 pyTEC3DNonLinearSystem::~pyTEC3DNonLinearSystem() noexcept = default;
+
+ReducedPetscLinearSolver &pyTEC3DNonLinearSystem::reduced_linear_solver()
+{
+    auto *newton_solver = dynamic_cast<libMesh::NewtonSolver *>(this->diff_solver.get());
+    auto *solver = newton_solver ? dynamic_cast<ReducedPetscLinearSolver *>(&newton_solver->get_linear_solver()) : nullptr;
+    if (!solver)
+        pytec3d::logging::error_and_abort("pyTEC3DNonLinearSystem: the Newton linear solver is not a ReducedPetscLinearSolver.");
+    return *solver;
+}
 
 void pyTEC3DNonLinearSystem::add_matrices()
 {
@@ -1072,7 +987,10 @@ void pyTEC3DNonLinearSystem::solve()
     pytec3d::logging::ScopedTimer timer("Nonlinear system solved", &report.seconds_solve);
     previous_iterate_.reset();
     full_newton_step_ = -1.0;
+    const ReducedPetscLinearSolver::Counts before = this->reduced_linear_solver().counts();
     libMesh::NonlinearImplicitSystem::solve();
+    report.full_factorizations += this->reduced_linear_solver().counts().full - before.full;
+    report.numeric_factorizations += this->reduced_linear_solver().counts().numeric - before.numeric;
     // The last iterate: libMesh stops after the residual of the last step, without assembling the Jacobian again.
     if (previous_iterate_)
     {

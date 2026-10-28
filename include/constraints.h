@@ -28,6 +28,7 @@
 class DofCouplingsObject;
 template <typename ImplicitSys>
 class pyTEC3DDOFSystem;
+
 /**
  * @brief Applies all boundary and coupling constraints to the DOF system.
  *
@@ -51,7 +52,9 @@ public:
   /**
    * @brief Returns true if the constraint set has changed since the last time step.
    *
-   * When true the system matrix must be refactored; when false it can be reused.
+   * When true the system matrix must be refactored; when false it can be reused. Compared: the constrained DOFs
+   * and their rows (masters and coefficients), not the prescribed values. Other DOFs restrict the solve to the new
+   * unconstrained DOFs; other rows with the same DOFs force a full factorization (the pattern may change).
    */
   bool check_update_boundary_conditions();
 

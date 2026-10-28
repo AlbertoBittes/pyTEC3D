@@ -1,4 +1,4 @@
-"""Plasma equilibrium and evolution (APEC-M): Picard iterations of the free-boundary Grad-Shafranov problem.
+"""Plasma equilibrium and evolution: Picard iterations of the free-boundary Grad-Shafranov problem.
 
 The plasma lives on the *plasma-region mesh*: a 2D (R, Z) mesh of the PLASMA_REGION cells. The solver mesh is
 that same 2D mesh or a 3D torus built by revolving it about the y axis; toroidal maps then carry the plasma current
@@ -626,66 +626,49 @@ class Algorithm:
             array.Modified()
 
     @staticmethod
-    def _main_plasma_cells(
-        chamber: vtkUnstructuredGrid, axis_node: int, psi: np.ndarray, psi_x: float
-    ) -> np.ndarray:
-        """The cells inside the flux surface ``psi_x`` connected to the magnetic axis.
+    def _grow_from_axis(chamber: vtkUnstructuredGrid, axis_node: int, candidate: np.ndarray) -> np.ndarray:
+        """The ``candidate`` cells connected to the magnetic axis through shared points (as APEC).
 
-        A candidate cell has all its points on the axis side of ``psi_x``. The connected region grows from the
-        candidates touching the axis point through cells sharing at least two points, so it does not cross an X point
-        (where two regions only share one point).
+        From the cells around the axis point, repeat NSLE, ESLN (any point) and the restriction to the candidates until
+        the selection stops growing.
 
         Returns:
-            The cell ids, increasing.
+            Mask of the connected cells (none when no candidate touches the axis point).
         """
-        n_cells, n_points = chamber.GetNumberOfCells(), chamber.GetNumberOfPoints()
-        if not 0 <= axis_node < n_points or not np.isfinite(psi[axis_node]):
-            return np.zeros(0, dtype=np.int64)
-        offsets, connectivity = meshes.cell_connectivity(chamber)
-        lengths = np.diff(offsets)
-        cell_of_entry = np.repeat(np.arange(n_cells), lengths)
-        entry_psi = psi[connectivity]
-        inside = entry_psi >= psi_x if psi[axis_node] >= psi_x else entry_psi <= psi_x
-        outside_points = np.bincount(cell_of_entry, weights=~(np.isfinite(entry_psi) & inside), minlength=n_cells)
-        candidate = outside_points == 0
-
-        # Point -> candidate cells, as a CSR table.
-        entries = candidate[cell_of_entry]
-        entry_points, entry_cells = connectivity[entries], cell_of_entry[entries]
-        order = np.lexsort((entry_cells, entry_points))
-        cells_by_point = entry_cells[order].tolist()
-        point_start = np.searchsorted(entry_points[order], np.arange(n_points + 1)).tolist()
-
-        def candidates_at(point: int) -> list[int]:
-            return cells_by_point[point_start[point]:point_start[point + 1]]
-
-        seeds = candidates_at(axis_node)
-        if not seeds:
-            return np.zeros(0, dtype=np.int64)
-        visited = np.zeros(n_cells, dtype=bool)
-        visited[seeds] = True
-        queue = deque(seeds)
-        while queue:
-            cell = queue.popleft()
-            points = set(connectivity[offsets[cell]:offsets[cell + 1]].tolist())
-            neighbours = {other for point in points for other in candidates_at(point)}
-            for other in neighbours:
-                if visited[other]:
-                    continue
-                shared = sum(1 for p in connectivity[offsets[other]:offsets[other + 1]].tolist() if p in points)
-                if shared >= 2:
-                    visited[other] = True
-                    queue.append(other)
-        return np.flatnonzero(visited).astype(np.int64)
+        axis_point = np.zeros(chamber.GetNumberOfPoints(), dtype=bool)
+        axis_point[axis_node] = True
+        selection.apply_mask(chamber, axis_point, "node", "s")
+        selection.esln(chamber, all_nodes=False, mode="s")
+        selection.apply_mask(chamber, candidate, "elem", "r")
+        count = int(np.count_nonzero(selection.selection_mask(chamber, "elem")))
+        while count:
+            selection.nsle(chamber, "s")
+            selection.esln(chamber, all_nodes=False, mode="s")
+            selection.apply_mask(chamber, candidate, "elem", "r")
+            grown = int(np.count_nonzero(selection.selection_mask(chamber, "elem")))
+            if grown == count:
+                break
+            count = grown
+        return selection.selection_mask(chamber, "elem").astype(bool) if count else np.zeros(candidate.size, bool)
 
     def _identify_plasma_region(self) -> None:
         """PLASMA = 1 on the cells that carry plasma current, 0 elsewhere; with a halo, find the halo wall paths.
 
-        One search for the core and the halo: the cells with all their points inside the boundary of the current,
-        connected to the magnetic axis (:meth:`_main_plasma_cells`). The boundary is ``psi_2_min`` (the limiter or
-        X-point flux, or the halo boundary), but never beyond the X-point flux surface, which keeps the private flux
-        region and the scrape-off layer beyond the separatrix out. The halo wall paths are the wall points of these
-        cells: the interface between the plasma region and the wall.
+        One search for the core and the halo, bounded by ``psi_2_min`` (the limiter or X-point flux, or the halo
+        boundary), the same as APEC:
+
+        1. candidates: the cells whose cell flux PSIe is inside ``psi_2_min`` (a cell crossing the boundary, e.g. at the
+           limiter or along the separatrix, carries current as its PSIe says);
+        2. the private flux region is excluded by the field rotation: a cell where PSI does not fall away from the
+           magnetic axis, ``(r_c - r_axis) . grad(PSI)`` with the sign of the core reversed (cell gradient of
+           :meth:`_cell_psi_gradient`), is beyond the X point, on field lines not connected to the plasma. A test of
+           the cell alone: it does not depend on the X-point flux being above or below the saddle flux of the mesh.
+           The cells around the axis point are never dropped (the O point is inside them, where the field is too
+           small to have a direction);
+        3. the candidates connected to the magnetic axis through shared points (:meth:`_grow_from_axis`): islands
+           elsewhere in the chamber are dropped.
+
+        The halo wall paths are the wall points of these cells: the interface between the plasma region and the wall.
 
         Raises:
             ValueError: If a halo is requested but psi_2_min >= psi_min.
@@ -700,16 +683,19 @@ class Algorithm:
         axis = int(self.status.get("magnetic_axis_node_id", -1))
         if axis < 0:
             return
-        psi = meshes.array_values(chamber, "PSI", "node")
-        psi_axis = float(psi[axis])
+        psi_axis = float(meshes.array_values(chamber, "PSI", "node")[axis])
         boundary = psi_2_min
-        psi_x = self.status.get("last_psi_x_point")
-        if psi_x is not None:
-            # The one of psi_2_min and the X-point flux nearer to the axis.
-            inward = 1.0 if psi_axis >= float(psi_x) else -1.0
-            boundary = inward * max(inward * psi_2_min, inward * float(psi_x))
-        plasma = np.zeros(chamber.GetNumberOfCells(), dtype=bool)
-        plasma[self._main_plasma_cells(chamber, axis, psi, boundary)] = True
+        inward = 1.0 if psi_axis >= boundary else -1.0
+        candidate = inward * (meshes.array_values(chamber, "PSIe", "elem") - boundary) >= 0.0
+        # PSI rising away from the axis (falling for a core of PSI minimum): the private flux region. The cells around the
+        # axis point are kept: the O point is inside them, where the field is too small to have a direction.
+        gradient = self._cell_psi_gradient(chamber)
+        radial = meshes.array_values(chamber, meshes.CENTROIDS_ARRAY, "elem")[:, :2] - meshes.points(chamber)[axis, :2]
+        offsets, connectivity = meshes.cell_connectivity(chamber)
+        cell_of_entry = np.repeat(np.arange(chamber.GetNumberOfCells()), np.diff(offsets))
+        around_axis = np.bincount(cell_of_entry, weights=connectivity == axis, minlength=chamber.GetNumberOfCells()) > 0
+        candidate &= (inward * (radial[:, 0] * gradient[:, 0] + radial[:, 1] * gradient[:, 1]) <= 0.0) | around_axis
+        plasma = self._grow_from_axis(chamber, axis, candidate)
         if not np.all(plasma):
             selection.apply_mask(chamber, ~plasma, "elem", "s")
             selection.set_value_on_selection(chamber, "PLASMA", 0, location="elem")
@@ -821,6 +807,17 @@ class Algorithm:
 
     # ------------------------------------------------------------------------------------------- plasma current
 
+    @staticmethod
+    def _cell_psi_gradient(chamber: vtkUnstructuredGrid) -> np.ndarray:
+        """The PSI gradient of the cells: the point gradient (:meth:`_compute_psi_derivatives`) averaged on each cell."""
+        meshes.get_array(chamber, PSI_GRADIENT, "node")
+        averaging = vtkPointDataToCellData()
+        averaging.SetInputData(chamber)
+        averaging.SetProcessAllArrays(False)
+        averaging.AddPointDataArray(PSI_GRADIENT)
+        averaging.Update()
+        return vtknp.vtk_to_numpy(averaging.GetOutput().GetCellData().GetArray(PSI_GRADIENT))
+
     def compute_jplasma_gradshafranov(self) -> None:
         """Compute the plasma current density Js of the PLASMA cells, and the halo currents AMPS on the wall.
 
@@ -833,14 +830,7 @@ class Algorithm:
         js = vtknp.vtk_to_numpy(js_array)
         psi_point = meshes.array_values(chamber, "PSI", "node")
         psi_cell = meshes.array_values(chamber, "PSIe", "elem")
-        meshes.get_array(chamber, PSI_GRADIENT, "node")
-
-        averaging = vtkPointDataToCellData()
-        averaging.SetInputData(chamber)
-        averaging.SetProcessAllArrays(False)
-        averaging.AddPointDataArray(PSI_GRADIENT)
-        averaging.Update()
-        cell_gradient = vtknp.vtk_to_numpy(averaging.GetOutput().GetCellData().GetArray(PSI_GRADIENT))
+        cell_gradient = self._cell_psi_gradient(chamber)
         radius = meshes.array_values(chamber, meshes.CENTROIDS_ARRAY, "elem")[:, 0]
         # Poloidal field: B_R = -dPSI/dZ / R, B_Z = dPSI/dR / R.
         b_r = -cell_gradient[:, 1] / radius

@@ -1,7 +1,7 @@
 Plasma Equilibrium and Evolution
 ================================
 
-:class:`pytec3d.algorithm.Algorithm` (APEC-M) computes free-boundary plasma equilibria and follows their evolution in time,
+:class:`pytec3d.algorithm.Algorithm` computes free-boundary plasma equilibria and follows their evolution in time,
 coupled with the finite-element field solution of the coils and of the conducting structures. It only uses the public
 API of the solver: it writes the plasma current density into ``Js``, calls ``solver.solve()`` and reads the result.
 The notebooks :doc:`../tutorials/tutorial_iter_equilibrium` and :doc:`../tutorials/tutorial_iter_evolution` use it
@@ -59,9 +59,9 @@ mesh is the same 2D axisymmetric mesh, or the 3D toroidal sector revolved from i
   equilibrium (``_1``: the equilibrium writes one output, after its Picard loop).
 * The current densities of the equilibrium (coils and plasma) are in its ``Js`` and ``Jt`` (equal on the stranded
   conductors): either can be copied into the ``Js`` of the evolution model.
-* The ``PLASMA`` cell array marks the cells that carry plasma current: the cells connected to the axis with all their
-  nodes inside the boundary of the current (the limiter or X-point flux surface, the halo boundary when a halo is
-  active, never beyond the X-point flux surface).
+* The ``PLASMA`` cell array marks the cells that carry plasma current: the cells whose cell flux ``PSIe`` is inside
+  the boundary of the current (the limiter or X-point flux surface, or the halo boundary when a halo is active),
+  outside the private-flux region (the cells where PSI rises away from the axis), connected to the axis.
 * The position control is proportional: the correction currents are recomputed at every iteration from the residual
   field at the target and replace the previous correction. The axis converges near the target, not on it
   (:ref:`theory-plasma` *Position control*).

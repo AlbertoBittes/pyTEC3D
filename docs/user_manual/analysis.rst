@@ -112,9 +112,16 @@ Matrix reuse
 ------------
 
 The element matrices are computed at the first solve of a session; the system matrix and its factorization are
-reused at the following steps as long as **dt, theta (beta, gamma), transient_effects and the set of constrained DOFs**
-do not change. The step report says whether the matrix was "assembled and factorized" or "reused". For long
-transients keep a constant dt where possible; a change of dt costs one factorization.
+reused at the following steps as long as **dt, theta (beta, gamma), transient_effects and the constraint rows** (the
+constrained DOFs, their masters and coefficients; not the prescribed values) do not change. The step report says
+whether the matrix was "assembled and factorized" or "reused". For long transients keep a constant dt where possible;
+a change of dt costs one factorization.
+
+A factorization has a symbolic part (ordering and analysis of the sparsity pattern) and a numeric one. The solve
+keeps the reduced system of the unconstrained DOFs between steps, so when only the values change (a new dt, theta or
+transient_effects, each Newton iteration) only the numeric factorization is redone; a full one only when the
+constraint rows change. The "Factorizations" row of the step report (``full_factorizations``,
+``numeric_factorizations`` of ``report``) counts them.
 
 Steps and their records
 -----------------------

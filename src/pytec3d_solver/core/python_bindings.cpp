@@ -212,6 +212,8 @@ namespace
         out["unconstrained_dofs"] = r.unconstrained_dofs;
         out["element_matrices_computed"] = r.element_matrices_computed;
         out["system_matrix_updated"] = r.system_matrix_updated;
+        out["full_factorizations"] = r.full_factorizations;
+        out["numeric_factorizations"] = r.numeric_factorizations;
         out["nonlinear"] = r.nonlinear;
         out["linear_iterations"] = r.linear_iterations;
         out["linear_residual"] = r.linear_residual;

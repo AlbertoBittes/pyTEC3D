@@ -238,7 +238,7 @@ namespace pytec3d::report
 
     std::string format_solver_banner(const BannerInfo &info)
     {
-        return Table("A P E C - M   S O L V E R  -  low-frequency electromagnetic finite elements (pyTEC3D)")
+        return Table("p y T E C 3 D   S O L V E R  -  low-frequency electromagnetic finite elements")
             .row({"Version", std::string(info.version)})
             .row({"Build mode", std::string(info.build_mode)})
             .row({"Build stamp", std::string(info.build_stamp)})
@@ -554,7 +554,11 @@ namespace pytec3d::report
                   std::to_string(report.total_dofs) +
                       (report.nonlinear ? "" : " (" + std::to_string(report.unconstrained_dofs) + ")")})
             .row({"Element matrices", report.element_matrices_computed ? "computed" : "reused"})
-            .row({"System matrix", report.system_matrix_updated ? "assembled and factorized" : "reused"});
+            .row({"System matrix", report.system_matrix_updated ? "assembled and factorized" : "reused"})
+            .row({"Factorizations", report.full_factorizations + report.numeric_factorizations == 0
+                                        ? std::string("reused")
+                                        : fmt::format("{} full, {} numeric only (analysis reused)",
+                                                      report.full_factorizations, report.numeric_factorizations)});
         if (report.nonlinear)
             table.row({"Newton iterations", std::to_string(report.newton_iterations)})
                 .row({"Newton result", report.newton_result})

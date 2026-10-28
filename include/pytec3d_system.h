@@ -26,6 +26,7 @@
 
 #include "constraints.h"
 #include "pytec3d_system_base.h"
+#include "reduced_linear_solver.h"
 #include "solver_configuration.h"
 #include "time_step.h"
 
@@ -99,6 +100,8 @@ public:
     libMesh::LinearSolver<libMesh::Number> *get_linear_solver() const override;
 
     virtual void delete_rows_cols_constrained_dofs() = 0;
+    /** @brief The solver of the linear systems: of the system, or of the Newton iterations. */
+    virtual ReducedPetscLinearSolver &reduced_linear_solver() = 0;
 
     const NodalLoadInjectorElemByVarMap *ensure_nodal_load_injector_map() override;
 
@@ -121,24 +124,7 @@ public:
     void solve() override;
     void post_init() override;
     void delete_rows_cols_constrained_dofs() override;
-
-    void release_subset_solve();
-
-private:
-    void clear_reduced_solve_cache();
-
-    std::vector<unsigned int> reduced_subset_dofs_cache_;
-    libMesh::WrappedPetsc<IS> reduced_subset_is_;
-    libMesh::WrappedPetsc<VecScatter> reduced_scatter_;
-    libMesh::WrappedPetsc<Mat> reduced_submat_;
-    libMesh::WrappedPetsc<Mat> reduced_subprecond_;
-    libMesh::WrappedPetsc<Vec> reduced_subrhs_;
-    libMesh::WrappedPetsc<Vec> reduced_subsolution_;
-
-    Mat reduced_parent_mat_cache_ = nullptr;
-    Mat reduced_parent_precond_mat_cache_ = nullptr;
-    Vec reduced_parent_rhs_vec_cache_ = nullptr;
-    bool reduced_cache_ready_ = false;
+    ReducedPetscLinearSolver &reduced_linear_solver() override;
 };
 
 class pyTEC3DNonLinearSystem : public pyTEC3DDOFSystem<libMesh::NonlinearImplicitSystem>
@@ -156,6 +142,7 @@ public:
     void solve() override;
     void post_init() override;
     void delete_rows_cols_constrained_dofs() override;
+    ReducedPetscLinearSolver &reduced_linear_solver() override;
 
 private:
     /** @brief Newton callbacks of libMesh: assemble the Jacobian and / or the residual at the current solution. */

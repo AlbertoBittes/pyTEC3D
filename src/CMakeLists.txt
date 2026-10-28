@@ -93,6 +93,7 @@ set(SOURCES
   "${SOURCE_DIR}/pytec3d_model.cpp"
   "${SOURCE_DIR}/pytec3d_session.cpp"
   "${SOURCE_DIR}/pytec3d_system.cpp"
+  "${SOURCE_DIR}/reduced_linear_solver.cpp"
   "${SOURCE_DIR}/report_tables.cpp"
   "${SOURCE_DIR}/solver_configuration.cpp"
   "${SOURCE_DIR}/solver_diagnostics.cpp"

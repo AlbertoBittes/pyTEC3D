@@ -10,7 +10,7 @@ and its iterative solution, and explains how the plasma is coupled, at every tim
 solution of :doc:`formulation_2d` and :doc:`formulation_3d`. The approach follows the APEC code developed at Fusion
 for Energy [APEC2018]_ [APEC2019]_ [APEC2020]_, validated against the CarMa0NL code [Villone2013]_; the implementation in
 pyTEC3D is the class
-:class:`pytec3d.algorithm.Algorithm` (APEC-M), described for the user in :doc:`../user_manual/plasma_algorithm`.
+:class:`pytec3d.algorithm.Algorithm`, described for the user in :doc:`../user_manual/plasma_algorithm`.
 
 .. contents:: On this page
    :local:
@@ -207,11 +207,30 @@ the gradient and the Hessian of :math:`\psi` computed on its nodes:
 
 The boundary flux is the one reached first when moving out from the axis: :math:`\psi_b = \psi_\text{limiter}` if it
 is larger than :math:`\psi_X` (a **limiter** configuration, the plasma touches the wall), :math:`\psi_b = \psi_X`
-otherwise (a **diverted**, X-point configuration). The plasma region, core and halo alike, is found in one search:
-the cells with all their nodes inside the boundary of the current, :math:`\psi_2` (:math:`\psi_b`, or the halo
-boundary when a halo is active, but never beyond the X-point flux surface), grown from the axis through cells sharing
-an edge (so that the region does not leak through the X point into the private-flux region). The same rule holds in
-both configurations, so the region does not jump when the configuration switches. These cells, marked in the cell
+otherwise (a **diverted**, X-point configuration). The plasma region, core and halo alike, is bounded by the boundary
+of the current, :math:`\psi_2` (:math:`\psi_b`, or the halo boundary when a halo is active), and found in one search:
+
+#. the **candidates**: the cells whose cell flux :math:`\psi_e` (``PSIe``) is inside :math:`\psi_2`. A cell crossing the
+   boundary carries the current of its :math:`\psi_e`, as the profile is evaluated at the cell flux, so the plasma
+   area is not biased by half a cell and a limited plasma touches the wall;
+#. the **private-flux region** is excluded by the field rotation: a cell where :math:`\psi` does not fall away from
+   the axis, :math:`(\mathbf{r}_c - \mathbf{r}_\text{axis}) \cdot \nabla\psi` with the sign opposite to the core's
+   (the cell gradient: the nodal gradient of :math:`\psi` averaged on the cell, as for the poloidal current), is beyond
+   the X point. Its field lines join the divertor targets below the X point without touching the plasma, so no plasma
+   or halo current flows there, although its flux is inside the separatrix flux (and inside a halo band that reaches
+   beyond :math:`\psi_X`). The test is local to the cell: it does not depend on :math:`\psi_X`, a nodal value that
+   can fall on either side of the saddle flux of the mesh (below it the private region is connected to the core by
+   the flux alone, and a test by connectivity would let the core leak into it). The cells around the axis point are
+   never dropped: the O point is inside them, where the field is too small to have a direction (one of them would
+   otherwise switch in and out between iterations, with the axis);
+#. the candidates **connected to the axis**: grown from the cells around the axis point through shared points
+   (``NSLE``, ``ESLN``), so islands elsewhere in the chamber are dropped. Through the X point the growth can only
+   reach scrape-off-layer cells of a halo band, the private side being removed by the rotation test. This is the rule
+   of APEC, with :math:`\nabla\psi` instead of :math:`B` in the rotation test.
+
+A halo band reaching beyond :math:`\psi_X` extends past the X-point flux surface on the side of the scrape-off layer
+(open field lines along the plasma edge, ending on the wall), never into the private-flux region. The same rule holds
+in both configurations, so the region does not jump when the configuration switches. These cells, marked in the cell
 array ``PLASMA``, are exactly the cells where the profile, hence the plasma current, is not zero.
 
 Picard iteration

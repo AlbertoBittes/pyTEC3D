@@ -1133,7 +1133,6 @@ void GlobalConstraintsObject<ImplSystem>::constrain()
 template <typename ImplSystem>
 bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
 {
-    bool update_boundary_conditions = false;
     DofMap &dof_map = system_.get_dof_map();
     const auto &comm = dof_map.comm();
 
@@ -1145,7 +1144,7 @@ bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
     dof_map.swap_dof_constraints();
     const auto &constraints_map_new = dof_map.get_dof_constraints();
 
-    const auto keys_differ = [constraints_map_new, constraints_map_old]() -> bool
+    const auto keys_differ = [&constraints_map_new, &constraints_map_old]() -> bool
     {
         const bool has_old = !constraints_map_old.empty();
         const bool has_new = !constraints_map_new.empty();
@@ -1167,18 +1166,32 @@ bool GlobalConstraintsObject<ImplSystem>::check_update_boundary_conditions()
         return false;
     };
 
-    if (keys_differ())
+    // The same constrained DOFs: the rows (masters and coefficients) must be the same too.
+    const auto rows_differ = [&constraints_map_new, &constraints_map_old]() -> bool
     {
-        update_boundary_conditions = true;
+        for (const auto &[dof, row] : constraints_map_new)
+            if (constraints_map_old.at(dof) != row)
+                return true;
+        return false;
+    };
+
+    bool dofs_changed = keys_differ();
+    bool rows_changed = !dofs_changed && rows_differ();
+    if (dofs_changed)
         pytec3d::logging::info("Boundary conditions update required: constrained DOF set changed");
-    }
+    else if (rows_changed)
+        pytec3d::logging::info("Boundary conditions update required: constraint rows changed");
 
-    comm.max(update_boundary_conditions);
+    comm.max(dofs_changed);
+    comm.max(rows_changed);
 
-    if (update_boundary_conditions)
+    if (dofs_changed)
         system_.delete_rows_cols_constrained_dofs();
+    else if (rows_changed)
+        // Other masters may give another sparsity pattern: a full factorization.
+        system_.reduced_linear_solver().invalidate_pattern();
 
-    return update_boundary_conditions;
+    return dofs_changed || rows_changed;
 }
 
 template class GlobalConstraintsObject<libMesh::LinearImplicitSystem>;

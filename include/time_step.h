@@ -94,6 +94,8 @@ struct StepReport
     bool element_matrices_computed = false; ///< Else reused from the previous steps.
     std::size_t elements = 0;               ///< Active elements (all ranks).
     bool system_matrix_updated = false;     ///< Else the factorization of the previous step was reused.
+    unsigned int full_factorizations = 0;   ///< Symbolic (ordering, analysis) and numeric, of the step's solves.
+    unsigned int numeric_factorizations = 0; ///< Numeric only, on the analysis of a previous factorization.
     bool nonlinear = false;
     unsigned int linear_iterations = 0;     ///< Of the linear solve, or of all the Newton iterations.
     libMesh::Real linear_residual = 0.0;
