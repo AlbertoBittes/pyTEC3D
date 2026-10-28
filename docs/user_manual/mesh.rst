@@ -13,7 +13,8 @@ Making a mesh
 Any mesher can be used, as long as the result is converted to a ``.vtu`` file with coordinates in metres:
 
 * **ANSYS** ``.cdb`` files: ``pytec3d-convert-cdb mesh.cdb`` writes ``mesh.vtu`` next to it (with
-  `ansys-mapdl-reader <https://reader.docs.pyansys.com/>`_, installed by ``build.sh``). The ANSYS element type,
+  `ansys-mapdl-reader <https://reader.docs.pyansys.com/>`_, installed by hand: ``pip install --no-deps
+  ansys-mapdl-reader appdirs tqdm``). The ANSYS element type,
   material and real constant numbers become the cell arrays ``TYPE``, ``MATERIAL`` and ``CONSTANT``, and the arrays of
   a model are added. Node and element numbers of ANSYS are kept as ``ansys_node_num`` / ``ansys_elem_num``.
 * **Gmsh** (https://gmsh.info/), **Salome**, **Cubit**...: export to VTK, or convert with `meshio

@@ -100,3 +100,6 @@ docs/generated/
 
 # APEC (separate repository, a submodule of the benchmark repository) when checked out inside this tree
 /APEC/
+
+# scripts that draw the figures of docs/_static (not part of the documentation)
+docs/figure_scripts/

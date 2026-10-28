@@ -6,7 +6,7 @@ Domains
 Every cell of a model belongs to one **domain**, given by the ``option1`` of the row of its ``TYPE`` in the model data
 (:doc:`../user_manual/model_data`). The domain says which physics the cell carries: whether a current can flow in it
 and how it is determined, and whether it can be magnetized. The element type then gives the unknowns and the terms of
-that physics. pyTEC3D has seven domains (``src/pytec3d/resources/domains.json``):
+that physics. pyTEC3D has seven domains (``element_library/pytec3d_element_library/data/domains.json``):
 
 .. figure:: ../_static/field_domains.svg
    :alt: Domains of an eddy-current model: air, magnetic materials, conductors with imposed or computed current.

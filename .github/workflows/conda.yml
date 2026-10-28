@@ -1,0 +1,301 @@
+# Conda packages of pyTEC3D (conda/recipe.yaml), for Linux and Windows.
+#
+#   libmesh      the libMesh commit of the run: master (or the input libmesh_ref) resolved once, so that both systems
+#                build the same libMesh
+#   linux        rattler-build of every package: pytec3d-base and pytec3d (noarch), pytec3d-libmesh and pytec3d-solver
+#                (linux-64), with libMesh compiled in the recipe
+#   windows      PETSc, libMesh and the solver compiled in MSYS2 UCRT64 (conda/build_windows.sh), then rattler-build of
+#                pytec3d-solver (win-64); PETSc is cached by version, libMesh by commit
+#   integration  conda install pytec3d from the packages just built (+ conda-forge) on both systems; runs
+#                conda/tests/test_square_conductor.py in serial and on 2 MPI ranks; pip install of the pure API
+#   publish      on a tag v*: the packages to the anaconda.org channel vars.ANACONDA_OWNER (secret ANACONDA_API_KEY) and
+#                to the GitHub release of the tag
+#
+# The packages of every run are in the artifacts conda-linux-64 (noarch/ and linux-64/) and conda-win-64 (the win-64
+# packages): put them in ./channel/{noarch,linux-64,win-64}, run rattler-index fs ./channel, then
+# conda install -c ./channel -c conda-forge pytec3d.
+name: conda packages
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      libmesh_ref:
+        description: libMesh branch, tag or commit to build
+        default: master
+
+concurrency:
+  group: conda-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Python of ParaView, which runs the API in its plugin and console.
+  PYTHON_VERSIONS: "3.12"
+  # Windows: the PETSc built in MSYS2, and the revisions of the PETSc / libMesh builds (bump one when its configuration
+  # in conda/build_windows.sh or solver/libmesh/build_libmesh.sh changes, to rebuild it instead of restoring it from the
+  # cache; the libMesh commit and patches are part of the key already).
+  PETSC_VERSION: "3.26.0"
+  WINDOWS_PETSC_REVISION: "1"
+  WINDOWS_LIBMESH_REVISION: "1"
+
+jobs:
+  libmesh:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.resolve.outputs.commit }}
+    steps:
+      - id: resolve
+        env:
+          REF: ${{ inputs.libmesh_ref || 'master' }}
+        run: |
+          commit="$(git ls-remote https://github.com/libMesh/libmesh.git "refs/heads/${REF}" "refs/tags/${REF}" | head -n1 | cut -f1)"
+          if [ -z "${commit}" ]; then commit="${REF}"; fi   # already a commit
+          echo "libMesh ${REF} -> ${commit}"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+
+  linux:
+    needs: libmesh
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: build
+          create-args: rattler-build rattler-index
+          condarc: |
+            channels: [conda-forge]
+
+      - name: Build the packages
+        env:
+          LIBMESH_REF: ${{ needs.libmesh.outputs.commit }}
+        run: |
+          rattler-build build --recipe conda/recipe.yaml -c conda-forge --output-dir output \
+            --variant "python=${PYTHON_VERSIONS}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conda-linux-64
+          path: |
+            output/noarch/*.conda
+            output/linux-64/*.conda
+          if-no-files-found: error
+
+  windows:
+    needs: libmesh
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      DEPS_DIR: C:/pytec3d-deps
+      STAGE_DIR: C:/pytec3d-stage
+      LIBMESH_REF: ${{ needs.libmesh.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # MS-MPI runtime (mpiexec, msmpi.dll), used by the PETSc configure and the tests.
+      - uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make patch diffutils tar curl python
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-msmpi
+            mingw-w64-ucrt-x86_64-openblas
+            mingw-w64-ucrt-x86_64-mumps
+            mingw-w64-ucrt-x86_64-scalapack
+            mingw-w64-ucrt-x86_64-metis
+            mingw-w64-ucrt-x86_64-parmetis
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-spdlog
+            mingw-w64-ucrt-x86_64-nlohmann-json
+
+      # The Pythons the module is built for (conda-forge, the ones the package runs with), and rattler-build.
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: build
+          create-args: rattler-build
+          condarc: |
+            channels: [conda-forge]
+      - name: Python environments
+        shell: pwsh
+        run: |
+          $pythons = @()
+          foreach ($v in $env:PYTHON_VERSIONS.Split(",")) {
+            $name = "py" + $v.Replace(".", "")
+            micromamba create -y -n $name -c conda-forge "python=$v" pybind11
+            $pythons += (micromamba run -n $name python -c "import sys; print(sys.executable)").Trim()
+          }
+          "PYTHONS=$($pythons -join ';')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # PETSc by version and build script, libMesh by commit and patches (a new libMesh commit rebuilds libMesh only);
+      # each is saved as soon as it is built, so that a later failure does not lose it.
+      - id: petsc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:/pytec3d-deps/petsc
+          key: windows-petsc-${{ env.PETSC_VERSION }}-r${{ env.WINDOWS_PETSC_REVISION }}
+      - name: Build PETSc (MSYS2)
+        if: steps.petsc-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash conda/build_windows.sh petsc
+      - if: steps.petsc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:/pytec3d-deps/petsc
+          key: ${{ steps.petsc-cache.outputs.cache-primary-key }}
+
+      - id: libmesh-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:/pytec3d-deps/libmesh
+          key: windows-libmesh-${{ needs.libmesh.outputs.commit }}-${{ hashFiles('solver/libmesh/patches/**') }}-r${{ env.WINDOWS_LIBMESH_REVISION }}
+      - name: Build libMesh (MSYS2)
+        if: steps.libmesh-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash conda/build_windows.sh libmesh
+      - if: steps.libmesh-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:/pytec3d-deps/libmesh
+          key: ${{ steps.libmesh-cache.outputs.cache-primary-key }}
+
+      - name: Build the solver (MSYS2)
+        shell: msys2 {0}
+        run: bash conda/build_windows.sh solver
+
+      - name: Package the solver
+        shell: pwsh
+        env:
+          PYTEC3D_WINDOWS_STAGE: C:/pytec3d-stage
+        run: |
+          micromamba run -n build rattler-build build --recipe conda/recipe.yaml -c conda-forge --output-dir output `
+            --variant "python=$env:PYTHON_VERSIONS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conda-win-64
+          path: output/win-64/*.conda
+          if-no-files-found: error
+
+  integration:
+    needs: [linux, windows]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      # Open MPI (Linux) without UCX: on the GitHub runners UCX can fail on the Azure network adapter (mana); shared
+      # memory and TCP are enough for the ranks of one machine. Ignored by MS-MPI (Windows).
+      OMPI_MCA_pml: ob1
+      OMPI_MCA_btl: self,sm,tcp
+      OMPI_MCA_osc: ^ucx
+      OMPI_MCA_rmaps_base_oversubscribe: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # A channel layout: the Linux artifact holds noarch/ and linux-64/; the Windows one only win-64 packages, at its
+      # root (upload-artifact strips the common directory).
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-linux-64
+          path: channel
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-win-64
+          path: channel/win-64
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: index
+          create-args: rattler-index
+          condarc: |
+            channels: [conda-forge]
+
+      - name: Index the local channel
+        run: rattler-index fs channel
+
+      - name: conda install pytec3d
+        run: |
+          micromamba create -y -n test -c "file://${GITHUB_WORKSPACE}/channel" -c conda-forge \
+            "python=${{ matrix.python }}" pytec3d
+          micromamba list -n test | grep -E 'pytec3d|petsc|mpi'
+
+      - name: Solve a model (serial)
+        working-directory: conda/tests
+        run: micromamba run -n test python test_square_conductor.py
+
+      - name: Solve a model (2 MPI ranks)
+        timeout-minutes: 15
+        working-directory: conda/tests
+        run: micromamba run -n test mpiexec -n 2 python test_square_conductor.py
+
+      - name: conda install pytec3d-base alone, and pip install of the API
+        run: |
+          micromamba create -y -n api -c "file://${GITHUB_WORKSPACE}/channel" -c conda-forge \
+            "python=${{ matrix.python }}" pytec3d-base
+          micromamba run -n api python -c "import pytec3d, pytec3d.solver_input; print(pytec3d.__version__)"
+          micromamba create -y -n pip -c conda-forge "python=${{ matrix.python }}" pip
+          micromamba run -n pip python -m pip install ./element_library ./python
+          micromamba run -n pip python -c "import pytec3d; print('pip:', pytec3d.__file__)"
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: integration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      # A channel layout: the Linux artifact holds noarch/ and linux-64/; the Windows one only win-64 packages, at its
+      # root (upload-artifact strips the common directory).
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-linux-64
+          path: channel
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-win-64
+          path: channel/win-64
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: upload
+          create-args: rattler-build
+          condarc: |
+            channels: [conda-forge]
+
+      - name: Upload to anaconda.org
+        if: vars.ANACONDA_OWNER != ''
+        env:
+          ANACONDA_API_KEY: ${{ secrets.ANACONDA_API_KEY }}
+        run: |
+          rattler-build upload anaconda --owner "${{ vars.ANACONDA_OWNER }}" --force channel/*/*.conda
+
+      - name: Attach to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: channel/*/*.conda

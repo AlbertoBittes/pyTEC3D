@@ -364,6 +364,17 @@ solved on a 3D mesh obtained by revolving the 2D mesh about the axis over a sect
 * **toroidal average**: the flux used by the plasma is :math:`\psi = R\,\langle A_\varphi\rangle`, the toroidal component
   of the 3D vector potential averaged over the stations, on the nodes (``PSI``) and the cells (``PSIe``).
 
+.. figure:: ../_static/toroidal_maps.svg
+   :alt: Projection of a 2D plasma cell onto its cells along the torus, and toroidal average of the flux back onto it.
+   :align: center
+   :width: 100%
+
+   The two maps between the 2D plasma-region mesh and the 3D sector (here 4 cells along the torus, 5 node stations
+   of a linear mesh; a quadratic mesh adds the midside stations to the average). The current density of a 2D cell
+   is copied to its cells along the torus, its toroidal component following :math:`\mathbf{e}_\varphi` of each
+   station; the halo current of a 2D node is shared among its node stations, so that the sector carries it once.
+   After the solve, :math:`\psi = r A_\varphi` is averaged over the stations back onto the 2D node and cell.
+
 The plasma thus sees the axisymmetric part of the field of the 3D currents, while the structures carry fully 3D eddy
 currents (with the periodicity of the sector). The vessel and the passive structures are ``SOLID_CONDUCTOR`` cells
 with the electric potential :math:`V` (time-integrated in the ``_timint`` types, the nodal formulation used by APEC,

@@ -4,7 +4,7 @@ Theory
 This part derives the equations that pyTEC3D solves, from Maxwell's equations to the discrete system, and explains
 how the axisymmetric plasma equilibrium is coupled with the eddy currents of the structures. It follows the element
 library: every term of an element type in :doc:`../user_manual/element_library` (and in
-``src/pytec3d/resources/element_types.json``) is derived here, and every section points to the element type and the
+``element_library/pytec3d_element_library/data/element_types.json``) is derived here, and every section points to the element type and the
 domain that implement it.
 
 **Foundations.**

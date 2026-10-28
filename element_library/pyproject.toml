@@ -1,0 +1,24 @@
+# pytec3d-element-library: the JSON element library of pyTEC3D (domains, fields, element types, nonlinear laws), shared by
+# the C++ solver (pytec3d-solver, which compiles it into its module) and the Python API (pytec3d, which reads it).
+# Data only: pip install ./element_library
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytec3d-element-library"
+version = "0.1.0"
+description = "pyTEC3D element library: the JSON definitions of the domains, fields, element types and nonlinear laws"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Alberto Bittesnich" }]
+
+[project.urls]
+Repository = "https://github.com/AlbertoBittes/pyTEC3D"
+
+[tool.setuptools]
+packages = ["pytec3d_element_library"]
+
+[tool.setuptools.package-data]
+"pytec3d_element_library" = ["data/*.json"]

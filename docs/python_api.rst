@@ -74,6 +74,7 @@ The objects re-exported by :mod:`pytec3d` (``from pytec3d import Solver``...) ar
 
    pytec3d.model
    pytec3d.solver
+   pytec3d.solver_input
    pytec3d.selection
    pytec3d.mesh
    pytec3d.model_edit
