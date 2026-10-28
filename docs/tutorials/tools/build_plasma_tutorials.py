@@ -86,7 +86,7 @@ about 10 s. Theory: *Theory - Plasma equilibrium and evolution*; options: *User 
 ## The machine
 
 `ITER_2D_fine2.vtu` is the poloidal cross-section (x = R, y = Z) of the whole machine in a 100 m x 200 m half-plane of
-air: the six central-solenoid modules CS3U ... CS3L, the six poloidal-field coils PF1 ... PF6, the vacuum chamber
+air: the six central-solenoid modules CS3U ... CS3L, the six poloidal-field coils PF1 ... PF6, the plasma region
 (where the plasma can be) and the **passive structures**: the double-wall vacuum vessel and the in-vessel supports,
 massive steel conductors. Every component is a cell array with value 1 on its cells. The model data gives two TYPE
 ids: 21 air (`NON_CONDUCTING`) and 23 for all the rest (`STRANDED_CONDUCTOR`, a region where the current density `Js`
@@ -129,7 +129,7 @@ for name in components[:12]:
 ax.plot(6.52136102486433, 0.536537145137914, "k+", ms=10, label="target magnetic axis")
 frame(ax, r=(0, 13.5)); ax.legend(loc="lower right", fontsize=8)
 ax.plot([], [], color="#2c6e9e", lw=4, label="passive structures (solid conductors)")
-ax.set_title("CS modules, PF coils, vacuum chamber (light blue), passive structures (dark blue)", fontsize=9)
+ax.set_title("CS modules, PF coils, plasma region (light blue), passive structures (dark blue)", fontsize=9)
 plt.show()
 ''')
     nb.md("""
@@ -217,7 +217,7 @@ field, and a small offset of the axis from the target, remain at convergence. We
 
 The coil currents of the scenario point (ampere-turns of each coil) become current densities `Js_z = I / a` on
 the cells of each coil. The plasma current is not known yet: the first solve uses 15 MA spread uniformly over the
-whole vacuum chamber, a rough guess that only has to give a flux with an axis and an X point inside the chamber.
+whole plasma region, a rough guess that only has to give a flux with an axis and an X point inside the chamber.
 """)
     nb.code('''
 coil_current = {"CS3U": -4.8204e06, "CS2U": -4.0480e06, "CS1U": -2.0804e07, "CS1L": -2.0804e07,
@@ -274,7 +274,7 @@ algorithm.input_parameters.update(
 To watch the iterations we call it with `max_picard_iterations = 1`: each call does one iteration and raises
 `ConvergenceError` until the last one; the state of the algorithm (previous flux, control-coil currents) is kept
 between calls, so the sequence is the same as one call with 70 iterations. After each iteration we keep the flux of
-the vacuum chamber (`algorithm.plasma_region_mesh`, the mesh on which the algorithm works) and the status.
+the plasma region (`algorithm.plasma_region_mesh`, the mesh on which the algorithm works) and the status.
 """)
     nb.code('''
 algorithm.input_parameters["max_picard_iterations"] = 1
@@ -374,7 +374,7 @@ plt.show()
 ### Flux surfaces, separatrix and plasma region
 
 The flux of the whole model is in the point array `PSI` of the solver mesh ($\\psi = R A_z$, Wb/rad). The plasma
-(`PLASMA = 1` cells of the vacuum chamber) is bounded by the separatrix $\\psi = \\psi_b = \\psi_X$ since the
+(`PLASMA = 1` cells of the plasma region) is bounded by the separatrix $\\psi = \\psi_b = \\psi_X$ since the
 configuration is diverted (`X-point`): the X point is below the plasma, and its two legs reach the divertor. The
 limiter point, the wall point of largest flux, has $\\psi_{lim} < \\psi_X$: the plasma does not touch the wall.
 """)
@@ -595,7 +595,7 @@ equilibrium = Model.read_model(str(eq_file), reset_arrays=False)
 `SOLID_CONDUCTOR`, on the **passive structures**: the vacuum vessel and its supports are **solid conductors**,
 massive steel (rho = 8e-7 Ohm m) in which the eddy currents are computed. In 2D a solid conductor has no electric
 unknown: its current density is $-\\sigma\\,\\partial_t A$, the current of a toroidally closed shell. The coils and the
-vacuum chamber stay `STRANDED_CONDUCTOR` (imposed `Js`).
+plasma region stay `STRANDED_CONDUCTOR` (imposed `Js`).
 """)
     nb.code('''
 solver = Solver(log_file="ITER_2D_evol_fine2.log")
@@ -689,7 +689,7 @@ print(len(times), "steps, dt =", np.unique(np.round(np.diff(times), 6)), "s")
 
 After every step we record the status (axis, X point, configuration, Picard iterations), the current induced in
 the structures ($\\sum J_t\\,a$ over TYPE 24: their `Jt` is all eddy current, they have no `Js`), the current
-centroid of the plasma, and the flux of the vacuum chamber for the pictures.
+centroid of the plasma, and the flux of the plasma region for the pictures.
 """)
     nb.code('''
 solver.time_step["theta"] = 1.0
@@ -876,7 +876,7 @@ field solved on a **3D** model of the machine and three new physical effects:
   equation $V = R\,i + d\Phi/dt$, fed by constant voltages: their currents react to the plasma motion, instead of
   being frozen as in the 2D tutorial.
 
-**How the 3D model is coupled with the plasma.** The plasma stays axisymmetric and lives on the 2D vacuum-chamber
+**How the 3D model is coupled with the plasma.** The plasma stays axisymmetric and lives on the 2D plasma-region
 mesh of the equilibrium. The field is solved on a thin toroidal **sector** of 2 degrees (four cells along the torus,
 cyclic symmetry between its faces) obtained by revolving the 2D mesh. At every Picard iteration the 2D plasma current
 density (toroidal and poloidal) and the halo currents are *projected* onto every toroidal station of the sector; after
@@ -947,7 +947,7 @@ for tid, color in colors.items():
     part = machine.threshold(value=(tid, tid), scalars="TYPE")
     if part.n_cells:
         pl.add_mesh(part, color=color, show_edges=True, edge_color="gray", line_width=0.3,
-                    label={33: "vacuum chamber (plasma region)", 34: "vessel and structures",
+                    label={33: "plasma region", 34: "vessel and structures",
                            35: "coils (stranded coils)"}[tid])
 pl.add_legend(bcolor="white", size=(0.32, 0.15))
 pl.camera_position = [(16, 4, -14), (6, 0, -0.1), (0, 1, 0)]
@@ -970,7 +970,7 @@ $$\\text{VOLT} = R\\,i + \\text{EMF}.$$
 Points to note for a 3D sector (real constants of each coil):
 
 * `T = (0, 1, 0)` is the **toroidal** direction in the cylindrical element coordinate system 1 (y axis), which the
-  coil cells must use (`COORDINATE_SYSTEM = 1`); the vacuum chamber keeps the global system (the algorithm writes
+  coil cells must use (`COORDINATE_SYSTEM = 1`); the plasma region keeps the global system (the algorithm writes
   global components in its `Js`);
 * `volume` is the volume of the **whole** coil and `symmetry = 180` (360 / 2 degrees): the model holds 1/180 of each
   coil, and the circuit equation is that of the whole coil (R and N of the whole coil, the EMF of the sector times

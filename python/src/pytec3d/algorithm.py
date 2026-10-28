@@ -10,7 +10,7 @@ Each Picard iteration:
    flux surface; the cells inside it, connected to the axis, are the plasma (``PLASMA`` cell array);
 2. computes the plasma current density ``Js`` from the Grad-Shafranov profile (``alpha_mp``, ``alpha_np``,
    ``beta_p``), scaled to the target ``plasma_current``, and, in a limiter configuration with a halo, the halo
-   currents ``AMPS`` along the vacuum-chamber wall;
+   currents ``AMPS`` along the plasma-region wall;
 3. for an equilibrium, corrects the control-coil currents so that the field at the target axis is zero;
 4. projects ``Js`` and ``AMPS`` to the solver mesh, solves, and averages the new flux ``PSI`` back;
 5. stops when the largest change of PSI is below ``tolerance_value``; otherwise relaxes PSI and PSIe towards the
@@ -207,11 +207,11 @@ class Algorithm:
         self._halo_node_groups: tuple[np.ndarray, ...] = ()
         self._halo_boundary: tuple[np.ndarray, dict[int, np.ndarray]] | None = None
 
-    # ------------------------------------------------------------------------------------------- vacuum chamber
+    # ------------------------------------------------------------------------------------------- plasma region
 
     @property
     def plasma_region_mesh(self) -> vtkUnstructuredGrid:
-        """The 2D mesh of the vacuum chamber, where the plasma is computed.
+        """The 2D mesh of the plasma region, where the plasma is computed.
 
         Set it from a 2D mesh with a ``PLASMA_REGION`` cell array: a copy of its PLASMA_REGION cells is kept.
         :meth:`equilibrium_solve` sets it from the solver mesh when it is not set.
@@ -550,7 +550,7 @@ class Algorithm:
         selection.nsel_ext(chamber)
         candidates = selection.selected_ids(chamber, "node")
         if candidates.size == 0:
-            raise ValueError("The vacuum chamber has no boundary point to be a limiter.")
+            raise ValueError("The plasma region has no boundary point to be a limiter.")
 
         # Drop the divertor / private-flux points, where (r - r_axis) . grad(PSI) has the sign opposite to the core's.
         gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
@@ -718,7 +718,7 @@ class Algorithm:
         )
 
     def _halo_boundary_graph(self) -> tuple[np.ndarray, dict[int, np.ndarray]]:
-        """The wall of the vacuum chamber as a graph of points (computed once)."""
+        """The wall of the plasma region as a graph of points (computed once)."""
         if self._halo_boundary is None:
             chamber = self.plasma_region_mesh
             selection.select_all(chamber)
@@ -931,7 +931,7 @@ class Algorithm:
         """The poloidal field (B_R, B_Z) at the target axis, from the PSI gradient interpolated in its cell.
 
         Raises:
-            ValueError: If the target point is outside the vacuum chamber or at R <= 0.
+            ValueError: If the target point is outside the plasma region or at R <= 0.
         """
         chamber = self.plasma_region_mesh
         gradient = meshes.array_values(chamber, PSI_GRADIENT, "node")
@@ -947,7 +947,7 @@ class Algorithm:
             locator.BuildLocator()
             cell_id = int(locator.FindCell(list(target)))
             if cell_id < 0:
-                raise ValueError(f"The target axis {target} is outside the vacuum chamber.")
+                raise ValueError(f"The target axis {target} is outside the plasma region.")
             cell = chamber.GetCell(cell_id)
             n = int(cell.GetNumberOfPoints())
             weights = [0.0] * n

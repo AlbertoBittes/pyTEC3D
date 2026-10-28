@@ -24,7 +24,7 @@
 #   * V = 0 on one node of the vacuum vessel (node 9664): grounds the floating
 #     potential of the conductors.
 # Loads:  Js of the coils from the 2D equilibrium (toroidal component, in the cylindrical element coordinate system 1
-#   of the COILS cells); the plasma current density is projected by the algorithm onto the vacuum chamber.
+#   of the COILS cells); the plasma current density is projected by the algorithm onto the plasma region.
 # Time history (examples/files): time_steps.txt (0 to 0.636 s), plasma_current.txt (about 15 MA), beta_p.txt;
 #   the first point and one point every 5 (dt = 1e-3 s). Step 0 static at t = 1e-10 s, then transient backward-Euler
 #   steps (theta = 1), one evolution solve (Picard iterations on the plasma) and one output file per step.

@@ -16,7 +16,7 @@
 #      control_coils) so that the poloidal field at the target magnetic axis vanishes;
 #   4. solves the field with the new Js and recomputes PSI;
 #   5. stops when the largest change of PSI is below tolerance_value.
-# The first solve uses the initial guess set by the macro: a uniform current density over the whole vacuum chamber.
+# The first solve uses the initial guess set by the macro: a uniform current density over the whole plasma region.
 # The result is the starting point of the evolution cases (ITER_2D_evol*, ITER_3D_evol*), which read it from
 # ./output.
 #
@@ -35,7 +35,7 @@
 #
 # Boundary conditions:  A_z = 0 on the external boundary (axis R = 0 and the far boundary).
 # Loads:  Js_z = I / a in each CS module and PF coil (the coil current I in ampere-turns over its cross-section a);
-#   initial plasma guess: Js_z = 15 MA / a_plasma over the vacuum chamber. One static solve per Picard iteration.
+#   initial plasma guess: Js_z = 15 MA / a_plasma over the plasma region. One static solve per Picard iteration.
 # Algorithm parameters:  target axis (6.52 m, 0.54 m), R0 = 6.2 m, plasma_current = 15 MA, beta_p = 0.682,
 #   alpha_mp = 1.0001, alpha_np = 0.83197, control coils PFC_2 ... PFC_5 with gains +-0.8, field of a unit
 #   correction current at the target axis (bradx/brady/bverx/bvery_value), tolerance 1e-6, up to 70 iterations.
@@ -110,7 +110,7 @@ i_PF4 = -4.7762e06
 i_PF5 = -7.8133e06
 i_PF6 = 1.6941e07
 
-# Cross-section areas [m^2] of the PF coils, of a CS module and of the vacuum chamber region.
+# Cross-section areas [m^2] of the PF coils, of a CS module and of the plasma region.
 a_PF1 = 0.94375190
 a_PF2 = 0.41453946
 a_PF3 = 0.66413094
@@ -162,7 +162,7 @@ selection.set_value_on_selection(pytec3d.model.mesh, "Js", i_PF5 / a_PF5, 2, loc
 selection.select(pytec3d.model.mesh, "PFC_6", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "Js", i_PF6 / a_PF6, 2, location="elem")
 
-# 9. Initial guess of the plasma current: 15 MA spread uniformly over the vacuum chamber.
+# 9. Initial guess of the plasma current: 15 MA spread uniformly over the plasma region.
 selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "Js", 15e6 / a_plasma, 2, location="elem")
 

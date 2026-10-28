@@ -88,7 +88,7 @@ pytec3d.model.read_json("model_data.json")
 pytec3d.model.add_dof_couplings({cp: ["VOLT", "EMF"] for cp in (1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16)})
 
 # 5. The coil cells become stranded coils (TYPE 35) and use the cylindrical element system 1 (T toroidal); the
-#    vacuum chamber keeps the global system (the algorithm writes its Js in global components).
+#    plasma region keeps the global system (the algorithm writes its Js in global components).
 selection.select(pytec3d.model.mesh, "COILS", 1, location="elem", mode="s")
 selection.set_value_on_selection(pytec3d.model.mesh, "TYPE", 35, location="elem")
 selection.set_value_on_selection(pytec3d.model.mesh, "COORDINATE_SYSTEM", 1, location="elem")

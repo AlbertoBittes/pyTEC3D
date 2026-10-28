@@ -52,7 +52,7 @@ Workflow
 #. **Equilibrium** (``ITER_2D_carma``, ``ITER_2D_fine2``). The macro sets:
 
    * coil current densities ``Js = I / a`` in the CS modules and PF coils;
-   * a uniform 15 MA in the vacuum chamber as initial guess;
+   * a uniform 15 MA in the plasma region as initial guess;
    * A = 0 on the boundary, and a static solve.
 
    ``Algorithm.equilibrium_solve()`` iterates until the flux converges. Each iteration finds the plasma boundary from
@@ -68,7 +68,7 @@ Workflow
    * the 2D mesh is revolved over a small sector with cyclic symmetry;
    * the coil current densities of the equilibrium are written as the toroidal component of ``Js``, in a cylindrical
      element coordinate system;
-   * the algorithm maps the 2D vacuum chamber to the toroidal stations (``extrusion_angle``, ``n_toroidal_divisions``)
+   * the algorithm maps the 2D plasma region to the toroidal stations (``extrusion_angle``, ``n_toroidal_divisions``)
      and averages the flux over them;
    * from ``t0_halo``, it injects halo currents into the wall (``AMPS``).
 

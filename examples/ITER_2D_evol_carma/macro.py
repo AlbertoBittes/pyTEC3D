@@ -14,7 +14,7 @@
 #     to the algorithm as its plasma-region mesh; its total current density Jt becomes the source Js of the
 #     evolution (the two meshes must have the same cells, in the same order);
 #   * boundary conditions and loads written AFTER load_model_into_solver(): array values can change at any time;
-#   * the selection of the vacuum-chamber cells and nodes on the solver mesh, which the algorithm maps to the
+#   * the selection of the plasma-region cells and nodes on the solver mesh, which the algorithm maps to the
 #     plasma-region mesh;
 #   * a long time loop driven by waveforms read from text files.
 #
@@ -75,7 +75,7 @@ static_mesh_filepath = max(glob.glob(static_mesh_filepath), key=os.path.getmtime
 
 
 # 3. Read the evolution model, read the equilibrium as a separate Model (not solved: only its arrays are used),
-#    and give its vacuum-chamber cells (with PSI, Js and PLASMA) to the algorithm.
+#    and give its plasma-region cells (with PSI, Js and PLASMA) to the algorithm.
 pytec3d.read_model(evol_filepath)
 output_pytec3d_equilibrium = Model.read_model(static_mesh_filepath)
 algorithm.plasma_region_mesh = output_pytec3d_equilibrium.mesh
@@ -102,7 +102,7 @@ js_array = vtknp.vtk_to_numpy(pytec3d.model.mesh.GetCellData().GetArray("Js"))
 js_array[:] = jt_z_array
 pytec3d.model.mesh.GetCellData().GetArray("Js").Modified()
 
-# 8. Select the vacuum-chamber cells and their nodes: the region of the solver mesh mapped to the vacuum-chamber
+# 8. Select the plasma-region cells and their nodes: the region of the solver mesh mapped to the plasma-region
 #    mesh of the algorithm. Then the parameters of the evolution.
 selection.select(pytec3d.model.mesh, "PLASMA_REGION", 1, location="elem", mode="s")
 selection.nsle(pytec3d.model.mesh)

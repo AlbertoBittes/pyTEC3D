@@ -20,7 +20,7 @@ of the component):
    * - Component
      - Content
    * - ``PLASMA_REGION``
-     - The region where the plasma can be: the vacuum chamber inside the first wall. The plasma, the magnetic axis, the
+     - The region where the plasma can be: the region inside the first wall. The plasma, the magnetic axis, the
        X point and the limiter are searched only there; its outer boundary is the wall (limiter points, halo
        contact). In 3D, the cells of the whole toroidal sector of this region.
    * - one per coil (e.g. ``CS1U``, ``PFC_2``)
