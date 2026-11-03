@@ -10,7 +10,7 @@
 #   1. finds the magnetic axis (PSI maximum), the X point and the limiter point, hence the last closed flux surface;
 #      the cells inside it form the plasma (PLASMA cell array);
 #   2. computes the plasma current density Js from the Grad-Shafranov profile
-#        J_phi = lambda (1 - psi_n^alpha_mp)^alpha_np (beta_p R / R0 + (1 - beta_p) R0 / R),
+#        J_phi = lambda (beta_p R / R0 (1 - psi_n^alpha_mp)^alpha_np + (1 - beta_p) R0 / R (1 - psi_n^alpha_mf)^alpha_nf),
 #      lambda scaling the total to plasma_current;
 #   3. corrects the currents of the control coils (radial and vertical correction currents, with the gains of
 #      control_coils) so that the poloidal field at the target magnetic axis vanishes;
@@ -90,6 +90,8 @@ algorithm.input_parameters["bverx_value"] = 1.822467692e-10
 algorithm.input_parameters["bvery_value"] = 1.133287835e-07
 algorithm.input_parameters["alpha_mp"] = 1.0001
 algorithm.input_parameters["alpha_np"] = 0.83197
+algorithm.input_parameters["alpha_mf"] = 1.0001
+algorithm.input_parameters["alpha_nf"] = 0.83197
 algorithm.input_parameters["plasma_current"] = 15e6
 algorithm.input_parameters["beta_p"] = 6.8216e-001
 

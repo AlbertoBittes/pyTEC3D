@@ -78,12 +78,12 @@ Each iteration (``equilibrium_solve()`` and ``evolution_solve()``):
 #. finds the magnetic axis (maximum of PSI), the X point (saddle of PSI) and the limiter point, hence the last closed
    flux surface and the separatrix configuration; the cells inside it, connected to the axis, form the plasma
    (``PLASMA`` cell array);
-#. computes the plasma current density from the Grad-Shafranov profile
+#. computes the plasma current density from the Grad-Shafranov profiles of the pressure and of :math:`FF'`
 
    .. math::
 
-      J_\varphi = \lambda\,\big(1-\psi_n^{\alpha_m}\big)^{\alpha_n}
-                  \Big(\beta_p\frac{R}{R_0}+(1-\beta_p)\frac{R_0}{R}\Big),
+      J_\varphi = \lambda\Big(\beta_p\frac{R}{R_0}\big(1-\psi_n^{\alpha_{m,p}}\big)^{\alpha_{n,p}}
+                  +(1-\beta_p)\frac{R_0}{R}\big(1-\psi_n^{\alpha_{m,F}}\big)^{\alpha_{n,F}}\Big),
       \qquad \psi_n=\frac{\psi-\psi_\text{axis}}{\psi_\text{boundary}-\psi_\text{axis}},
 
    with :math:`\lambda` scaling the total current to ``plasma_current``, and the poloidal current density
@@ -115,7 +115,12 @@ Input parameters
    * - ``R0``
      - Major radius [m] of the profile.
    * - ``alpha_mp``, ``alpha_np``
-     - Exponents :math:`\alpha_m, \alpha_n` of the profile.
+     - Exponents :math:`\alpha_{m,p}, \alpha_{n,p}` of the pressure profile
+       :math:`g_p = (1-\bar\psi^{\alpha_{m,p}})^{\alpha_{n,p}}` (the term :math:`\beta R/R_0`).
+   * - ``alpha_mf``, ``alpha_nf``
+     - Exponents :math:`\alpha_{m,F}, \alpha_{n,F}` of the :math:`FF'` profile
+       :math:`g_F = (1-\bar\psi^{\alpha_{m,F}})^{\alpha_{n,F}}` (the term :math:`(1-\beta) R_0/R`, the poloidal and
+       halo currents); ``None`` (default): ``alpha_mp``, ``alpha_np``.
    * - ``beta_p``
      - Poloidal beta.
    * - ``AF0``

@@ -8,8 +8,8 @@ Each Picard iteration:
 
 1. finds the magnetic axis (PSI maximum), the X point (PSI saddle) and the limiter point, and from them the last closed
    flux surface; the cells inside it, connected to the axis, are the plasma (``PLASMA`` cell array);
-2. computes the plasma current density ``Js`` from the Grad-Shafranov profile (``alpha_mp``, ``alpha_np``,
-   ``beta_p``), scaled to the target ``plasma_current``, and, in a limiter configuration with a halo, the halo
+2. computes the plasma current density ``Js`` from the Grad-Shafranov profiles of p and F (``alpha_mp``,
+   ``alpha_np``, ``alpha_mf``, ``alpha_nf``, ``beta_p``), scaled to the target ``plasma_current``, and, in a limiter configuration with a halo, the halo
    currents ``AMPS`` along the plasma-region wall;
 3. for an equilibrium, corrects the control-coil currents so that the field at the target axis is zero;
 4. projects ``Js`` and ``AMPS`` to the solver mesh, solves, and averages the new flux ``PSI`` back;
@@ -76,10 +76,14 @@ DEFAULT_INPUT_PARAMETERS: dict[str, Any] = {
     "target_central_axis_x": 0.0,
     "target_central_axis_y": 0.0,
     "target_central_axis_z": 0.0,
-    # Major radius and Grad-Shafranov profile.
+    # Major radius and Grad-Shafranov profiles: (1 - psi_n^alpha_mp)^alpha_np of the pressure term (beta_p R / R0),
+    # (1 - psi_n^alpha_mf)^alpha_nf of the F F' term ((1 - beta_p) R0 / R); alpha_mf / alpha_nf None: the same as
+    # alpha_mp / alpha_np.
     "R0": 0.0,
     "alpha_mp": 1.0001,
     "alpha_np": 0.83197,
+    "alpha_mf": None,
+    "alpha_nf": None,
     "beta_p": 0.0,
     "AF0": 5.3 * 6.2,
     "plasma_current": 0.0,
@@ -821,9 +825,10 @@ class Algorithm:
     def compute_jplasma_gradshafranov(self) -> None:
         """Compute the plasma current density Js of the PLASMA cells, and the halo currents AMPS on the wall.
 
-        Toroidal: ``J_phi = lambda * (1 - psi_n^alpha_mp)^alpha_np * (beta_p R / R0 + (1 - beta_p) R0 / R)``, with
+        Toroidal: ``J_phi = lambda * (beta_p R / R0 g_p + (1 - beta_p) R0 / R g_F)``, with the profiles of the
+        pressure ``g_p = (1 - psi_n^alpha_mp)^alpha_np`` and of F F' ``g_F = (1 - psi_n^alpha_mf)^alpha_nf``,
         ``psi_n`` the normalized flux of the cell and ``lambda`` scaling the total to ``plasma_current``. Poloidal:
-        ``J_p = F'(psi) B_p`` from the same profile.
+        ``J_p = F'(psi) B_p`` from ``g_F``, as the halo currents.
         """
         chamber = self.plasma_region_mesh
         js_array = meshes.get_array(chamber, "Js", "elem")
@@ -848,7 +853,9 @@ class Algorithm:
             return
 
         beta = float(p["beta_p"])
-        alpha_m, alpha_n = float(p["alpha_mp"]), float(p["alpha_np"])
+        alpha_mp, alpha_np = float(p["alpha_mp"]), float(p["alpha_np"])
+        alpha_mf = alpha_mp if p.get("alpha_mf") is None else float(p["alpha_mf"])
+        alpha_nf = alpha_np if p.get("alpha_nf") is None else float(p["alpha_nf"])
         r0, af0 = float(p["R0"]), float(p["AF0"])
         target_current = float(p["plasma_current"])
 
@@ -858,15 +865,16 @@ class Algorithm:
 
         psi_n = np.nan_to_num((psi_cell[plasma] - psi_axis) / psi_span, nan=0.0, posinf=1.0, neginf=0.0)
         psi_n = np.clip(psi_n, 0.0, 1.0)
-        one_minus = np.maximum(1.0 - np.power(psi_n, alpha_m), 0.0)
-        profile = np.power(one_minus, alpha_n)
-        density = profile * (beta * radius[plasma] / r0 + (1.0 - beta) * (r0 / radius[plasma]))
+        profile_p = np.power(np.maximum(1.0 - np.power(psi_n, alpha_mp), 0.0), alpha_np)
+        one_minus_f = np.maximum(1.0 - np.power(psi_n, alpha_mf), 0.0)
+        profile_f = np.power(one_minus_f, alpha_nf)
+        density = beta * radius[plasma] / r0 * profile_p + (1.0 - beta) * (r0 / radius[plasma]) * profile_f
         total = float(np.sum(density * volume[plasma]))
         scale = target_current / total if abs(total) > np.finfo(float).eps else 0.0
 
-        c_const = 2.0 * MU_0 * r0 * (1.0 - beta) * (psi_axis - psi_min) * scale / (alpha_n + 1.0)
-        f_value = np.sqrt(np.maximum(c_const * np.power(one_minus, alpha_n + 1.0) + af0 * af0, 0.0))
-        f_prime = (profile * (1.0 - beta) * r0 * scale) / f_value
+        c_const = 2.0 * MU_0 * r0 * (1.0 - beta) * (psi_axis - psi_min) * scale / (alpha_nf + 1.0)
+        f_value = np.sqrt(np.maximum(c_const * np.power(one_minus_f, alpha_nf + 1.0) + af0 * af0, 0.0))
+        f_prime = (profile_f * (1.0 - beta) * r0 * scale) / f_value
         js[plasma, 0] = f_prime * b_r[plasma]
         js[plasma, 1] = f_prime * b_z[plasma]
         js[plasma, 2] = density * scale
@@ -886,7 +894,7 @@ class Algorithm:
                     continue
                 # Current between two wall points: the change of the poloidal current function F along the wall.
                 psi_seg = np.clip((psi_point[path] - psi_axis) / psi_span, 0.0, 1.0)
-                integrand = np.power(np.maximum(1.0 - np.power(psi_seg, alpha_m), 0.0), alpha_n)
+                integrand = np.power(np.maximum(1.0 - np.power(psi_seg, alpha_mf), 0.0), alpha_nf)
                 integral = np.concatenate(([0.0], np.cumsum(0.5 * (integrand[:-1] + integrand[1:]) * np.diff(psi_seg))))
                 f_const = 2.0 * MU_0 * r0 * (1.0 - beta) * psi_span * scale
                 f_profile = np.sqrt(np.maximum(f_const * integral + af0 * af0, 0.0))

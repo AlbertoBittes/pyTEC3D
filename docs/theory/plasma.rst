@@ -113,37 +113,44 @@ Profiles of the plasma current
 
 The functions :math:`p(\psi)` and :math:`F(\psi)` are not known: they are described by a few parameters chosen to
 reproduce global quantities of the plasma. pyTEC3D uses the parametrization of APEC [APEC2018]_ [APEC2020]_,
-generalized to two exponents:
+generalized to two exponents for each of the two flux functions:
 
 .. math::
 
-   J_\varphi = \lambda\Big[\beta\,\frac{R}{R_0} + (1-\beta)\,\frac{R_0}{R}\Big]\,g(\bar\psi),
-   \qquad g(\bar\psi) = \big(1-\bar\psi^{\,\alpha_m}\big)^{\alpha_n},
-   \qquad \bar\psi = \frac{\psi-\psi_\text{axis}}{\psi_b-\psi_\text{axis}} \in [0,1],
+   J_\varphi = \lambda\Big[\beta\,\frac{R}{R_0}\,g_p(\bar\psi) + (1-\beta)\,\frac{R_0}{R}\,g_F(\bar\psi)\Big],
+   \qquad g_p = \big(1-\bar\psi^{\,\alpha_{m,p}}\big)^{\alpha_{n,p}},
+   \qquad g_F = \big(1-\bar\psi^{\,\alpha_{m,F}}\big)^{\alpha_{n,F}},
+
+.. math::
+
+   \bar\psi = \frac{\psi-\psi_\text{axis}}{\psi_b-\psi_\text{axis}} \in [0,1],
 
 with :math:`\psi_\text{axis}` the flux at the magnetic axis, :math:`\psi_b` the flux at the plasma boundary (or at the
 halo boundary, see :ref:`theory-plasma-halo`), :math:`R_0` the major radius (``R0``), and the parameters
-``beta_p`` (:math:`\beta`), ``alpha_mp`` (:math:`\alpha_m`), ``alpha_np`` (:math:`\alpha_n`). Comparing with the
-Grad-Shafranov current density identifies the two flux functions:
+``beta_p`` (:math:`\beta`), ``alpha_mp`` (:math:`\alpha_{m,p}`), ``alpha_np`` (:math:`\alpha_{n,p}`), ``alpha_mf``
+(:math:`\alpha_{m,F}`) and ``alpha_nf`` (:math:`\alpha_{n,F}`); ``alpha_mf`` and ``alpha_nf`` default to ``alpha_mp``
+and ``alpha_np`` (one profile :math:`g_p = g_F` for both terms). Comparing with the Grad-Shafranov current density
+identifies the two flux functions:
 
 .. math::
 
-   p'(\psi) = \frac{\lambda\beta}{R_0}\,g(\bar\psi), \qquad
-   F F'(\psi) = \mu_0\lambda(1-\beta)R_0\,g(\bar\psi).
+   p'(\psi) = \frac{\lambda\beta}{R_0}\,g_p(\bar\psi), \qquad
+   F F'(\psi) = \mu_0\lambda(1-\beta)R_0\,g_F(\bar\psi).
 
 * :math:`\beta` weights the pressure-driven part of the current (the term in :math:`R/R_0`, larger on the outboard
   side) against the force-free part (:math:`R_0/R`); it is close to the **poloidal beta**
   :math:`\beta_p = \int p\,dV\big/\int \frac{B_p^2}{2\mu_0}dV` of the plasma [Wesson2011]_.
-* the exponents shape the radial profile: a peaked profile (low :math:`\alpha`) concentrates the current on the axis
-  and increases the **internal inductance** :math:`l_i = 2L_i/(\mu_0R_0)`, with
+* the exponents shape the radial profiles of the two terms: a peaked profile (low :math:`\alpha`) concentrates the
+  current on the axis and increases the **internal inductance** :math:`l_i = 2L_i/(\mu_0R_0)`, with
   :math:`\tfrac12 L_i I_p^2 = \int_\text{plasma} \frac{B_p^2}{2\mu_0}dV`. The original APEC parametrization uses a single
-  exponent, :math:`g = 1-\bar\psi^{\alpha}`, i.e. :math:`\alpha_m=\alpha`, :math:`\alpha_n = 1`, with :math:`\alpha`
-  initialized to :math:`1/l_i` [APEC2018]_.
+  exponent, :math:`g = 1-\bar\psi^{\alpha}`, i.e. :math:`\alpha_m=\alpha`, :math:`\alpha_n = 1` for both terms, with
+  :math:`\alpha` initialized to :math:`1/l_i` [APEC2018]_.
 * :math:`\lambda` scales the total toroidal current to the prescribed plasma current (``plasma_current``):
 
   .. math::
 
-     \lambda = I_p \Big/ \int_{\Omega_p}\Big[\beta\frac{R}{R_0} + (1-\beta)\frac{R_0}{R}\Big]g(\bar\psi)\,dS ,
+     \lambda = I_p \Big/ \int_{\Omega_p}\Big[\beta\frac{R}{R_0}\,g_p(\bar\psi) + (1-\beta)\frac{R_0}{R}\,g_F(\bar\psi)\Big]
+     dS ,
 
   the integral running over the plasma cross-section (the cells of the plasma region, with their areas).
 
@@ -152,19 +159,21 @@ The pressure and the poloidal current function follow by integration from the bo
 
 .. math::
 
-   p(\bar\psi) = \frac{\lambda\beta}{R_0}(\psi_\text{axis}-\psi_b)\int_{\bar\psi}^1 g(s)\,ds,
+   p(\bar\psi) = \frac{\lambda\beta}{R_0}(\psi_\text{axis}-\psi_b)\int_{\bar\psi}^1 g_p(s)\,ds,
    \qquad
-   F^2(\bar\psi) = F_0^2 + 2\mu_0\lambda(1-\beta)R_0(\psi_\text{axis}-\psi_b)\int_{\bar\psi}^1 g(s)\,ds .
+   F^2(\bar\psi) = F_0^2 + 2\mu_0\lambda(1-\beta)R_0(\psi_\text{axis}-\psi_b)\int_{\bar\psi}^1 g_F(s)\,ds .
 
-For :math:`\alpha_m=1` the integral is :math:`(1-\bar\psi)^{\alpha_n+1}/(\alpha_n+1)`, and pyTEC3D evaluates
+For :math:`\alpha_{m,F}=1` the integral of :math:`g_F` is :math:`(1-\bar\psi)^{\alpha_{n,F}+1}/(\alpha_{n,F}+1)`, and
+pyTEC3D evaluates
 
 .. math::
 
-   F(\bar\psi) = \sqrt{F_0^2 + \frac{2\mu_0R_0(1-\beta)(\psi_\text{axis}-\psi_b)\lambda}{\alpha_n+1}
-   \big(1-\bar\psi^{\,\alpha_m}\big)^{\alpha_n+1}},
+   F(\bar\psi) = \sqrt{F_0^2 + \frac{2\mu_0R_0(1-\beta)(\psi_\text{axis}-\psi_b)\lambda}{\alpha_{n,F}+1}
+   \big(1-\bar\psi^{\,\alpha_{m,F}}\big)^{\alpha_{n,F}+1}},
 
-exact for :math:`\alpha_m = 1` and a close approximation for :math:`\alpha_m\approx1` (the default ``alpha_mp`` is
-1.0001). For the single-exponent profile the closed form is
+exact for :math:`\alpha_{m,F} = 1` and a close approximation for :math:`\alpha_{m,F}\approx1` (the default
+``alpha_mp`` is 1.0001). Only :math:`F` enters the solution (through the poloidal current and the halo currents);
+:math:`p` follows from :math:`g_p` for post-processing. For the single-exponent profile the closed form is
 
 .. math::
 
@@ -175,7 +184,7 @@ as in [APEC2020]_. The poloidal current density is then
 
 .. math::
 
-   \mathbf{J}_p = \frac{F'}{\mu_0}\mathbf{B}_p = \frac{\lambda(1-\beta)R_0\,g(\bar\psi)}{F(\bar\psi)}\,\mathbf{B}_p ,
+   \mathbf{J}_p = \frac{F'}{\mu_0}\mathbf{B}_p = \frac{\lambda(1-\beta)R_0\,g_F(\bar\psi)}{F(\bar\psi)}\,\mathbf{B}_p ,
    \qquad \mathbf{B}_p = \Big(-\frac{1}{R}\frac{\partial\psi}{\partial Z},\ \frac{1}{R}\frac{\partial\psi}{\partial R}\Big),
 
 with the gradient of :math:`\psi` averaged on each cell. pyTEC3D writes :math:`(J_R, J_Z, J_\varphi)` of each plasma
@@ -190,7 +199,7 @@ depends on the plasma current, which depends on the boundary. The problem is:
    find :math:`\psi` and the plasma region :math:`\Omega_p(\psi)` such that :math:`\Delta^*\psi = -\mu_0 R J_\varphi`
    everywhere, with :math:`J_\varphi` given by the profile in :math:`\Omega_p`, by the coil currents in the coils, by
    the induced currents in the conductors, and :math:`0` elsewhere, for prescribed :math:`I_p`, :math:`\beta`,
-   :math:`\alpha_m`, :math:`\alpha_n` and coil currents.
+   the exponents and coil currents.
 
 Magnetic axis, X point, limiter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -399,7 +408,7 @@ current-carrying region beyond the LCFS to a halo boundary flux
 with ``halo_delta1`` (:math:`\Delta_1`, the width of the halo as a fraction of the core flux), ``halo_delta2``
 (:math:`\Delta_2`, its growth rate) and ``t0_halo`` (:math:`t_0`, typically the limiter / X-point transition). The
 normalized flux is redefined with :math:`\psi_2`, :math:`\bar\psi = (\psi-\psi_\text{axis})/(\psi_2-\psi_\text{axis})`, so
-that the same profile, toroidal and poloidal, applies in the core and in the halo, and :math:`\lambda` scales the total
+that the same profiles, toroidal and poloidal, apply in the core and in the halo, and :math:`\lambda` scales the total
 (core + halo) current to :math:`I_p`.
 
 The poloidal halo current that reaches the wall is **injected into the conductors**. Along the wall nodes wetted by the

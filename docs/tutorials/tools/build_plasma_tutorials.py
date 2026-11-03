@@ -69,8 +69,9 @@ element library ($\nabla\times\nu\nabla\times A = J$, which in axisymmetry is th
 1. from $\psi$, find the magnetic axis (maximum of $\psi$), the X point (saddle) and the limiter point (the wall
    point of largest $\psi$); the larger of $\psi_X$, $\psi_{lim}$ is the boundary flux $\psi_b$, and the cells
    inside it connected to the axis are the plasma;
-2. set $J_\varphi = \lambda\,(1-\bar\psi^{\alpha_m})^{\alpha_n}\big(\beta\,R/R_0 + (1-\beta)\,R_0/R\big)$ in the
-   plasma, with $\bar\psi = (\psi-\psi_{axis})/(\psi_b-\psi_{axis})$ and $\lambda$ scaling the total to $I_p$;
+2. set $J_\varphi = \lambda\big(\beta\,g_p\,R/R_0 + (1-\beta)\,g_F\,R_0/R\big)$ in the plasma, with the profiles
+   $g = (1-\bar\psi^{\alpha_m})^{\alpha_n}$ of the pressure (`alpha_mp`, `alpha_np`) and of $FF'$ (`alpha_mf`,
+   `alpha_nf`), $\bar\psi = (\psi-\psi_{axis})/(\psi_b-\psi_{axis})$ and $\lambda$ scaling the total to $I_p$;
 3. correct the currents of the control coils so that the poloidal field at the target axis vanishes (position
    control);
 4. solve the field with the new currents; stop when $\psi$ no longer changes.
@@ -249,7 +250,8 @@ for name in ("COILS", "PLASMA_REGION"):
 | `R0` | 6.2 m | major radius of the current profile |
 | `plasma_current` | 15 MA | $I_p$, imposed through $\lambda$ |
 | `beta_p` | 0.682 | $\beta$ of the profile: the share of the pressure term $\beta R/R_0$ |
-| `alpha_mp`, `alpha_np` | 1.0001, 0.83197 | shape of the profile $(1-\bar\psi^{\alpha_m})^{\alpha_n}$ |
+| `alpha_mp`, `alpha_np` | 1.0001, 0.83197 | shape of the pressure profile $g_p = (1-\bar\psi^{\alpha_{m,p}})^{\alpha_{n,p}}$ |
+| `alpha_mf`, `alpha_nf` | as `alpha_mp`, `alpha_np` (default) | shape of the $FF'$ profile $g_F = (1-\bar\psi^{\alpha_{m,F}})^{\alpha_{n,F}}$ |
 | `AF0` | $5.3\times6.2$ T m | vacuum $F = R B_\varphi$: 5.3 T at 6.2 m (used for $F$ and the poloidal currents) |
 | `control_coils`, `b*_value` | gains +-0.5, coefficients computed above | position control |
 | `tolerance_value` | 1e-4 Wb/rad | convergence: $\max\lvert\psi_k-\psi_{k-1}\rvert$ |
@@ -258,7 +260,8 @@ for name in ("COILS", "PLASMA_REGION"):
     nb.code('''
 algorithm.input_parameters.update(
     target_central_axis_x=target[0], target_central_axis_y=target[1], target_central_axis_z=0.0,
-    R0=6.2, plasma_current=plasma_current, beta_p=0.68216, alpha_mp=1.0001, alpha_np=0.83197, AF0=5.3 * 6.2,
+    R0=6.2, plasma_current=plasma_current, beta_p=0.68216, AF0=5.3 * 6.2,
+    alpha_mp=1.0001, alpha_np=0.83197, alpha_mf=1.0001, alpha_nf=0.83197,
     control_coils=[{"component": "PFC_2", "radial_gain": 0.5, "vertical_gain": 0.0},
                    {"component": "PFC_3", "radial_gain": 0.0, "vertical_gain": 0.5},
                    {"component": "PFC_4", "radial_gain": 0.0, "vertical_gain": 0.5},
@@ -406,9 +409,9 @@ print(f"psi_axis = {psi_axis:.4f}, psi_b = psi_X = {psi_b:.5f}, psi_limiter = {s
     nb.md(r"""
 ### Current density across the plasma
 
-On the midplane through the axis, $J_\varphi$ is the product of the flux profile $(1-\bar\psi^{\alpha_m})^{\alpha_n}$,
-which vanishes at the boundary, and of $\beta R/R_0 + (1-\beta)R_0/R$, which shifts the peak outwards for large
-$\beta$ (the pressure term grows with R). The same profile also gives the poloidal current density
+On the midplane through the axis, $J_\varphi$ combines the flux profiles $g_p$ and $g_F$, which vanish at the
+boundary, with $\beta R/R_0$ and $(1-\beta)R_0/R$: the pressure term shifts the peak outwards for large $\beta$ (it
+grows with R). The $FF'$ profile $g_F$ also gives the poloidal current density
 $\mathbf J_p = F'(\psi)\,\mathbf B_p$, in `Js_x`, `Js_y` (the current that flows along the flux surfaces in the
 poloidal plane, linked to the toroidal field change $F(\psi)$ inside the plasma).
 """)
@@ -433,15 +436,15 @@ print(f"I_p = sum J_phi a = {(js_chamber[plasma, 2] * cs[plasma]).sum() / 1e6:.3
 Comparing the profile with $J_\varphi = R\,p' + FF'/(\mu_0 R)$ gives the two flux functions of the equilibrium:
 
 $$
-p'(\psi) = \frac{\lambda\beta}{R_0}\,g(\bar\psi), \qquad FF'(\psi) = \mu_0\lambda(1-\beta)R_0\,g(\bar\psi), \qquad
-g = (1-\bar\psi^{\alpha_m})^{\alpha_n}.
+p'(\psi) = \frac{\lambda\beta}{R_0}\,g_p(\bar\psi), \qquad FF'(\psi) = \mu_0\lambda(1-\beta)R_0\,g_F(\bar\psi), \qquad
+g_p = (1-\bar\psi^{\alpha_{m,p}})^{\alpha_{n,p}}, \quad g_F = (1-\bar\psi^{\alpha_{m,F}})^{\alpha_{n,F}}.
 $$
 
 Integrating from the boundary ($p = 0$, $F = F_0$ = `AF0`), with $d\psi = (\psi_b - \psi_{axis})\,d\bar\psi$:
 
 $$
-p(\bar\psi) = \frac{\lambda\beta}{R_0}(\psi_{axis}-\psi_b)\int_{\bar\psi}^1 g\,ds, \qquad
-F^2(\bar\psi) = F_0^2 + 2\mu_0\lambda(1-\beta)R_0(\psi_{axis}-\psi_b)\int_{\bar\psi}^1 g\,ds .
+p(\bar\psi) = \frac{\lambda\beta}{R_0}(\psi_{axis}-\psi_b)\int_{\bar\psi}^1 g_p\,ds, \qquad
+F^2(\bar\psi) = F_0^2 + 2\mu_0\lambda(1-\beta)R_0(\psi_{axis}-\psi_b)\int_{\bar\psi}^1 g_F\,ds .
 $$
 
 The algorithm uses the same $F$ for the poloidal currents. From $p$ we get the stored thermal energy and the
@@ -450,15 +453,23 @@ of the separatrix.
 """)
     nb.code('''
 p = algorithm.input_parameters
-lam, beta, r0, am, an, f0 = (status["plasma_current_scaling_lambda"], p["beta_p"], p["R0"], p["alpha_mp"],
-                             p["alpha_np"], p["AF0"])
+lam, beta, r0, f0 = status["plasma_current_scaling_lambda"], p["beta_p"], p["R0"], p["AF0"]
+amp, anp = p["alpha_mp"], p["alpha_np"]
+amf = amp if p.get("alpha_mf") is None else p["alpha_mf"]          # the F F' exponents default to the pressure ones
+anf = anp if p.get("alpha_nf") is None else p["alpha_nf"]
 mu0 = 4e-7 * np.pi
 s = np.linspace(0.0, 1.0, 2001)
-g = np.maximum(1.0 - s**am, 0.0) ** an
-tail = np.concatenate(([0.0], np.cumsum(0.5 * (g[1:] + g[:-1]) * np.diff(s))))
-tail = tail[-1] - tail                                                       # int_s^1 g
-pressure = lam * beta / r0 * (psi_axis - psi_b) * tail
-F = np.sqrt(f0**2 + 2 * mu0 * lam * (1 - beta) * r0 * (psi_axis - psi_b) * tail)
+
+
+def tail(am, an):
+    """int_s^1 (1 - x^am)^an dx on the grid s."""
+    g = np.maximum(1.0 - s**am, 0.0) ** an
+    cumulative = np.concatenate(([0.0], np.cumsum(0.5 * (g[1:] + g[:-1]) * np.diff(s))))
+    return cumulative[-1] - cumulative
+
+
+pressure = lam * beta / r0 * (psi_axis - psi_b) * tail(amp, anp)
+F = np.sqrt(f0**2 + 2 * mu0 * lam * (1 - beta) * r0 * (psi_axis - psi_b) * tail(amf, anf))
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 3.4))
 axes[0].plot(s, pressure / 1e6); axes[0].set_ylabel("p [MPa]")
@@ -649,8 +660,8 @@ js = meshes.array_values(mesh, "Js", "elem")[:, 2]
 print(f"plasma current {(js * area)[grid.cell_data['PLASMA_REGION'] == 1].sum() / 1e6:.2f} MA, "
       f"coils {(js * area)[grid.cell_data['COILS'] == 1].sum() / 1e6:.2f} MA-turns")
 
-algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, AF0=5.3 * 6.2,
-                                  tolerance_value=1e-4, max_picard_iterations=70)
+algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, alpha_mf=1.0001, alpha_nf=0.83197,
+                                  AF0=5.3 * 6.2, tolerance_value=1e-4, max_picard_iterations=70)
 ''')
     nb.md("""
 ## The scenario
@@ -1065,8 +1076,8 @@ Besides the profile parameters of the 2D evolution:
   between them, and is injected as `AMPS` (nodal current of the potential $V$ of the vessel).
 """)
     nb.code('''
-algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, AF0=5.3 * 6.2,
-                                  tolerance_value=1e-4, max_picard_iterations=70,
+algorithm.input_parameters.update(R0=6.2, alpha_mp=1.0001, alpha_np=0.83197, alpha_mf=1.0001, alpha_nf=0.83197,
+                                  AF0=5.3 * 6.2, tolerance_value=1e-4, max_picard_iterations=70,
                                   extrusion_angle=sector, n_toroidal_divisions=divisions,
                                   halo_delta1=0.04, halo_delta2=0.0, t0_halo=0.41)
 files = CASE.parent / "files"
@@ -1235,8 +1246,8 @@ How to read it (and how it compares with the 2D tutorial):
   the fast drop of $\\beta_p$ at $t = 0$, and decay with the time constant of the vessel. A 2D model, with only
   toroidal currents, cannot have them.
 * **Halo.** From 0.42 s the halo is active and its poloidal current is injected into the wall: some 13 - 28 kA for
-  the whole torus, a small fraction of $I_p$. With `halo_delta1 = 0.04` the halo is thin, and the profile
-  $(1 - \\bar\\psi^{\\alpha_m})^{\\alpha_n}$ normalized on $\\psi_2$ is close to zero there, so little current flows in
+  the whole torus, a small fraction of $I_p$. With `halo_delta1 = 0.04` the halo is thin, and the profiles
+  $(1 - \\bar\\psi^{\\alpha_m})^{\\alpha_n}$ normalized on $\\psi_2$ are close to zero there, so little current flows in
   it. The halo force ($J_{pol}\\times B_\\varphi$ with the 5.3 T vacuum field) is negligible here.
   Wider halos (larger `halo_delta1`, growth with `halo_delta2`) or broader edge profiles give the halo fractions of
   tens of per cent seen in VDEs, and forces comparable with the eddy ones.

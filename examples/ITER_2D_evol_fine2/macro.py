@@ -112,6 +112,8 @@ algorithm.input_parameters["max_picard_iterations"] = 70
 algorithm.input_parameters["tolerance_value"] = 1e-4
 algorithm.input_parameters["alpha_mp"] = 1.0001
 algorithm.input_parameters["alpha_np"] = 0.83197
+algorithm.input_parameters["alpha_mf"] = 1.0001
+algorithm.input_parameters["alpha_nf"] = 0.83197
 algorithm.input_parameters["AF0"] = 5.3 * 6.2
 
 # Read the numpy arrays of time, current and beta from file
