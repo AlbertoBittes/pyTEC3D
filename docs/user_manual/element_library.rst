@@ -60,9 +60,35 @@ Overview
      - 3
      - as 2, V, VOLT and EMF time-integrated
      - Symmetric coupling, edge.
+   * - 6
+     - ``PHI3D_nodal``
+     - 3
+     - PHI (Lagrange)
+     - Magnetostatics with the total or reduced magnetic scalar potential.
+   * - 7
+     - ``PHI2D_nodal``
+     - 2
+     - PHI (Lagrange, in plane)
+     - As 6 in 2D, planar or axisymmetric (fields in the plane).
+   * - 8
+     - ``A3D_edge``
+     - 3
+     - A (Nedelec); VOLT, EMF (Lagrange)
+     - 3D eddy currents with A alone in the conductors (A*, no V); source currents as Js or T0.
+   * - 9
+     - ``TA3D_edge``
+     - 3
+     - A, T (Nedelec); VOLT, EMF (Lagrange)
+     - 3D eddy currents with the current vector potential T in the conductors (T-A).
+   * - 10
+     - ``HPHI3D_edge``
+     - 3
+     - PHI (Lagrange, first order), Hc (Nedelec)
+     - 3D eddy currents with H in the conductors and the scalar potential outside (H-phi).
 
-All the element types are first order in time (``time_order = 1``: the theta method, see
-:ref:`theory-time-integration`). A model uses one element type for all its cells, with any of its domains.
+The A-V types and 8-10 are first order in time (``time_order = 1``: the theta method, see
+:ref:`theory-time-integration`); 6 and 7 are static (``time_order = 0``). A model uses one element type for all its
+cells, with any of its domains. Theory of 6-10: :doc:`../theory/formulations_potentials`.
 
 .. _el-domains:
 
@@ -375,7 +401,10 @@ Differences from ``AV3D_nodal``
      it with a tree-cotree decomposition, :func:`pytec3d.tree_gauge.tree_gauge` (:ref:`theory-gauge`).
    * Dirichlet values of A: component 2 of ``_A`` on the midside nodes, the tangential circulation along the edge
      (``_A = 0`` on the midside nodes of a face fixes :math:`\mathbf{n}\times\mathbf{A}=0` there). No nodal frame
-     rotation is needed (the values are scalars).
+     rotation is needed (the values are scalars). A non-zero value is :math:`\int\mathbf{A}\cdot d\mathbf{l}` from the
+     lexicographically smaller end point of the edge to the larger one (compare x, then y, then z: libMesh's edge
+     orientation), e.g. a uniform field :math:`\mathbf{B}_0` through :math:`\mathbf{A}=\tfrac12\mathbf{B}_0\times
+     \mathbf{x}` (the ``formulations`` benchmarks do this; the same holds for every Nedelec field).
    * Cyclic couplings pair the midside nodes as well; the edge orientation is matched automatically.
 
 Examples: ``examples/coil_3D_avoltemf_edge*``,
@@ -418,6 +447,176 @@ All the coupling terms then multiply a time derivative and move to **C**, which 
 Examples: ``examples/coil_2D_avolt_timint``, ``examples/coil_3D_avoltemf_timint``,
 ``examples/ITER_3D_evol_fine2``.
 
+.. _el-phi:
+
+``PHI3D_nodal``, ``PHI2D_nodal`` (indices 6, 7)
+-----------------------------------------------
+
+Magnetostatics with the magnetic scalar potential: :math:`\mathbf{H}=\mathbf{H}_s-\nabla\phi`, with the source field
+:math:`\mathbf{H}_s` (``Hs``, cell array, default 0: the total potential; given, e.g. the Biot-Savart field of the
+coils: the reduced potential). Static (``time_order`` 0), linear. Domains: NON_CONDUCTING, SOFT_MAGNETIC,
+HARD_MAGNETIC (``M``), STRANDED_CONDUCTOR (a region where ``Hs`` is given, no other effect). ``PHI2D_nodal`` is planar
+or axisymmetric about y (``option3``), with the out-of-plane length ``thickness`` of ``AV2D_nodal``. Theory:
+:ref:`theory-potentials`.
+
+Weak form
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 10 60
+
+      * - Domain
+        - Matrix
+        - Term
+      * - all
+        - K
+        - :math:`\int\nabla q\cdot\mu\nabla\phi`, :math:`\mu=\mu_0\,\mathrm{mur}`
+      * - all
+        - F
+        - :math:`\int\nabla q\cdot\mu\mathbf{H}_s`
+      * - HARD_MAGNETIC
+        - F
+        - :math:`\int\nabla q\cdot\mu\mathbf{M}`
+
+Outputs
+   ``H`` :math:`=\mathbf{H}_s-\nabla\phi` and ``B`` :math:`=\mu(\mathbf{H}+\mathbf{M})`, nodes and elements.
+
+Boundary conditions and setup
+   * ``_PHI`` fixes the tangential field: :math:`\phi=-\mathbf{H}_0\cdot\mathbf{x}` on the outer boundary applies the
+     uniform field :math:`\mathbf{H}_0`; a constant :math:`\phi` is a flux-normal plane (or an ideal iron pole). A free
+     boundary is a flux wall (:math:`\mathbf{n}\cdot\mathbf{B}=0`). Fix :math:`\phi` on at least one node.
+   * The total potential is multivalued around a current that threads the domain: use the reduced potential there.
+     The reduced potential loses accuracy in iron (cancellation); the B-H law does not apply (it replaces
+     :math:`\nu`, the scalar potential uses :math:`\mu`).
+   * Benchmarks: ``phi3d_sphere``, ``phi3d_magnet``, ``phi2d_cylinder``, ``phi2d_axisym`` of the ``formulations``
+     suite.
+
+.. _el-a3d:
+
+``A3D_edge`` (index 8)
+----------------------
+
+``AV3D_edge`` without the electric potential: in the conductors :math:`\mathbf{E}=-\partial_t\mathbf{A}` (the A*
+formulation), :math:`\mathbf{J}=-\sigma\partial_t\mathbf{A}`; the stranded coils keep VOLT and EMF. Domains: those
+of ``AV3D_edge``; no ``AMPS``, no ``V``. Theory: :ref:`theory-potentials`.
+
+Weak form
+   ``AV3D_edge`` without the V terms, plus the source term of the current vector potential ``T0`` (every domain):
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 10 60
+
+      * - Domain
+        - Matrix
+        - Term
+      * - all
+        - K
+        - :math:`\int\nabla\times\mathbf{w}\cdot\nu\nabla\times\mathbf{A}`
+      * - SOLID_CONDUCTOR
+        - C
+        - :math:`\int\mathbf{w}\cdot\sigma\partial_t\mathbf{A}`
+      * - all
+        - F
+        - :math:`\int\nabla\times\mathbf{w}\cdot\mathbf{T}_0` (``T0``, cell array, default 0)
+      * - STRANDED_CONDUCTOR; magnetized domains; STRANDED_COIL
+        - F; F; K, C
+        - as ``AV3D_edge``
+
+Gauge and setup
+   * Tree-cotree gauge of the **non-conducting** edges only, rooted on the Dirichlet boundary **and on the conductor
+     surfaces**: ``tree_gauge(mesh, non_conducting_point_ids=<points of the non-conducting cells>,
+     start_surface_point_ids=<boundary points> + <conductor surface points>)``. A tree through a conductor
+     over-constrains it.
+   * ``T0`` is the source current as a current vector potential, :math:`\nabla\times\mathbf{T}_0=\mathbf{J}_s`: unlike
+     ``Js`` it needs not be divergence free on the mesh to be compatible with the gauge (the term vanishes for every
+     gradient). Any :math:`\mathbf{T}_0` with that curl will do, piecewise constant, e.g. the Biot-Savart field
+     :math:`\mathbf{H}_s` of the coil. Give a source as ``Js`` or ``T0``, not both. Where the natural condition holds,
+     :math:`\mathbf{T}_0` should vanish or be normal to the boundary.
+   * Benchmarks: ``eddy_sphere`` and ``t0_sphere`` of the ``formulations`` suite.
+
+.. _el-ta3d:
+
+``TA3D_edge`` (index 9)
+-----------------------
+
+``A3D_edge`` with the current of the solid conductors given by a current vector potential T (Nedelec, SOLID_CONDUCTOR):
+:math:`\mathbf{J}=\nabla\times\mathbf{T}`, Faraday's law in the conductors with :math:`\mathbf{E}=\rho\mathbf{J}`.
+Parameters, coils and sources (``Js``, ``T0``, ``M``) as ``A3D_edge``. Theory: :ref:`theory-potentials`.
+
+Weak form
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 10 60
+
+      * - Domain
+        - Matrix
+        - Term
+      * - all
+        - K
+        - :math:`\int\nabla\times\mathbf{w}\cdot\nu\nabla\times\mathbf{A}`
+      * - SOLID_CONDUCTOR
+        - K
+        - A row: :math:`-\int\mathbf{w}\cdot\nabla\times\mathbf{T}`; T row:
+          :math:`\int\nabla\times\mathbf{t}\cdot\rho\nabla\times\mathbf{T}`
+      * - SOLID_CONDUCTOR
+        - C
+        - T row: :math:`\int\nabla\times\mathbf{t}\cdot\partial_t\mathbf{A}`
+
+Outputs
+   ``Jt`` in the solid conductors: :math:`\nabla\times\mathbf{T}`; otherwise as ``A3D_edge``.
+
+Gauge and setup
+   * ``_T`` = 0 (component 2) on the midside nodes of the conductor surfaces: :math:`\mathbf{n}\times\mathbf{T}=0`, no
+     current leaves a conductor.
+   * A: tree over **all** the edges (conductors included), rooted on the Dirichlet boundary. T: tree of the conductor
+     edges rooted on its surface: ``tree_gauge(mesh, <conductor points>, <conductor surface points>,
+     array_name="_T", tree_name="TREE_T", cotree_name="COTREE_T")``.
+   * Induced currents in simply connected conductors: with :math:`\mathbf{n}\times\mathbf{T}=0` on the whole surface the
+     net current through any section is zero (no transport current, no ring current).
+   * Benchmarks: ``eddy_sphere``, ``t0_sphere``.
+
+.. _el-hphi3d:
+
+``HPHI3D_edge`` (index 10)
+--------------------------
+
+The H-phi formulation: :math:`\mathbf{H}=\mathbf{H}_c-\nabla\phi`, with :math:`\phi` (``PHI``) a **first-order** Lagrange
+field on the whole mesh (whatever ``option2``) and :math:`\mathbf{H}_c` (``Hc``) a Nedelec field of the conductors.
+Domains: NON_CONDUCTING, SOFT_MAGNETIC (linear), SOLID_CONDUCTOR. Transient only. Theory: :ref:`theory-potentials`.
+
+Weak form (symmetric)
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 10 60
+
+      * - Domain
+        - Matrix
+        - Term
+      * - SOLID_CONDUCTOR
+        - K
+        - :math:`\int\nabla\times\mathbf{h}_c\cdot\rho\nabla\times\mathbf{H}_c`
+      * - SOLID_CONDUCTOR
+        - C
+        - :math:`\int\mathbf{h}_c\cdot\mu\partial_t\mathbf{H}_c`, :math:`-\int\mathbf{h}_c\cdot\mu\nabla\partial_t\phi`,
+          :math:`-\int\nabla q\cdot\mu\partial_t\mathbf{H}_c`
+      * - all
+        - C
+        - :math:`\int\nabla q\cdot\mu\nabla\partial_t\phi`
+
+Outputs
+   ``H`` :math:`=\mathbf{H}_c-\nabla\phi`, ``B`` :math:`=\mu\mathbf{H}` (nodes and elements); ``Jt``
+   :math:`=\nabla\times\mathbf{H}_c` (elements).
+
+Setup
+   * ``_Hc`` = 0 (component 2) on the midside nodes of the conductor surfaces, and ``_PHI`` = 0 on the conductor nodes
+     that are not on a surface: :math:`\phi` only extends the outer potential into the conductors.
+   * The source is the applied field through ``_PHI`` on the outer boundary (:math:`\phi=-\mathbf{H}_0(t)\cdot
+     \mathbf{x}`); a free boundary is a flux wall. No ``Hs``, no magnets, no stranded coils.
+   * Every step must be transient (a static step pins :math:`\phi` to zero, :math:`\mathbf{H}_c` is then singular);
+     start from the zero field.
+   * A conductor with a net current (or a ring) makes :math:`\phi` multivalued: not supported (needs cuts).
+   * Benchmark: ``eddy_sphere``.
+
 .. _el-laws:
 
 Nonlinear laws in the element types
@@ -446,9 +645,11 @@ Each element type of ``element_types.json`` lists:
 * ``expressions``: derived coefficients, C++ expressions on the libMesh types, optionally per domain;
 * ``dof_fields``, ``nodal_fields``, ``element_fields``: the fields, their finite elements and domains; a Lagrange
   DOF field may name an ``mn.`` parameter of its own type as its ``nodal_loads`` (a scalar for a scalar field, a
-  vector, in the nodal frames, for a vector field: :doc:`loads`);
+  vector, in the nodal frames, for a vector field: :doc:`loads`), and may be first order whatever ``option2``
+  (``"order": "first"``, as ``PHI`` of ``HPHI3D_edge``);
 * ``dof_kernels`` (``K`` and ``F`` lists), ``nodal_kernels``, ``element_kernels``: the terms, each
   ``{"trial": "grad(dt(V))", "coeff": "-sigma", "test": "A", "domain": [...]}``. A trial with ``dt()`` goes to C;
+  a coefficient is a parameter or expression with an optional sign, or a sign alone (``"-"``: minus one);
 * ``inherits``: start from another type and replace sections key by key (how the ``_edge`` and ``_timint`` types are
   defined).
 

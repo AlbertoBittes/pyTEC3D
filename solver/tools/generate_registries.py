@@ -41,12 +41,14 @@ element_types.json, "element_types": { "<name>": {
       expression is compiled into evaluate_expression(). Everywhere else a parameter is written by name.
 
   "dof_fields":     { "A": {"finite_elements": "NEDELEC_ONE", "active_components": ["z"],
-                            "nodal_loads": "AMPS", "domain": [...]} }
+                            "nodal_loads": "AMPS", "domain": [...], "order": "first"} }
   "nodal_fields":   { "B": {"active_components": [...], "domain": [...]} }
   "element_fields": { "Jt": {"active_components": ["z"], "domain": [...]} }
       Fields of fields.json. A vector field has one active component or all those of the dimension (default).
       DOF fields are LAGRANGE (LAGRANGE_VEC for a vector) unless finite_elements says NEDELEC_ONE; nodal fields
-      L2_LAGRANGE(_VEC); element fields MONOMIAL CONSTANT. Lagrange families take the order of the options.
+      L2_LAGRANGE(_VEC); element fields MONOMIAL CONSTANT. Lagrange families take the order of the options
+      (option2), or first order with "order": "first" on a DOF field (e.g. a scalar potential whose gradients must
+      lie in the NEDELEC_ONE space of another field: the Whitney pair).
       Variables: every field is one libMesh variable. A vector with all the components of the element dimension
       (2D or 3D) is a vector variable named like the field (LAGRANGE_VEC, L2_LAGRANGE_VEC, NEDELEC_ONE,
       MONOMIAL_VEC); a single component is a scalar variable <field>_<c> (e.g. A_z of a 2D element). A nodal and an
@@ -74,7 +76,7 @@ element_types.json, "element_types": { "<name>": {
       A kernel: {"trial": "grad(dt(V))", "coeff": "-sigma", "test": "A", "domain": [...]}. An operand is a DOF
       field with at most one of grad, curl, div and, for the trial, up to time_order dt(): in nodal and element
       kernels dt() and dt(dt()) mean the first and second time derivatives of the solution instead of the solution. A coefficient is an optional sign
-      and a parameter, expression or law output; none means 1. A kernel without trial in a field is the
+      and a parameter, expression or law output; none means 1 and a sign alone ("-") means -1. A kernel without trial in a field is the
       coefficient itself (e.g. Jt = Js).
 
 } }
@@ -444,7 +446,7 @@ class ElementType:
 
     def read_fields(self, kind, fields):
         check_keys(fields, set(fields), f"{self.context}, {kind}_fields")
-        allowed = {"dof": {"active_components", "finite_elements", "nodal_loads", "domain"},
+        allowed = {"dof": {"active_components", "finite_elements", "nodal_loads", "domain", "order"},
                    "nodal": {"active_components", "domain"},
                    "element": {"active_components", "domain"}}[kind]
         for name, options in fields.items():
@@ -497,8 +499,13 @@ class ElementType:
                 if kind == "nodal":
                     family = "L2_" + family
                 field["family"] = family
-                field["order"] = "First" if family == "NEDELEC_ONE" else "Option"
-                field["fe"] = self.fe_index(FE_OF_FAMILY[family])
+                order = options.get("order", "option")
+                if order not in ("option", "first"):
+                    fail(f"{context}: order is \"option\" (option2, the default) or \"first\".")
+                if order == "first" and family not in ("LAGRANGE", "LAGRANGE_VEC"):
+                    fail(f"{context}: order \"first\" is for Lagrange DOF fields (NEDELEC_ONE is always first order).")
+                field["order"] = "First" if family == "NEDELEC_ONE" or order == "first" else "Option"
+                field["fe"] = self.fe_index(FE_OF_FAMILY[family], field["order"])
             else:
                 field["family"] = "MONOMIAL_VEC" if multi else "MONOMIAL"
                 field["order"] = "Constant"
@@ -522,12 +529,11 @@ class ElementType:
             self.fields.append(field)
         unique([f["name"] for f in self.fields if f["kind"] == kind], f"{self.context}, {kind}_fields")
 
-    def fe_index(self, family):
+    def fe_index(self, family, order):
         for index, fe in enumerate(self.fes):
-            if fe["family"] == family:
+            if fe["family"] == family and fe["order"] == order:
                 return index
-        self.fes.append({"family": family, "vector": family != "LAGRANGE",
-                         "order": "First" if family == "NEDELEC_ONE" else "Option"})
+        self.fes.append({"family": family, "vector": family != "LAGRANGE", "order": order})
         return len(self.fes) - 1
 
     def field(self, name, context, kind):
@@ -682,6 +688,8 @@ class ElementType:
         if text[0] in "+-":
             sign = -1.0 if text[0] == "-" else 1.0
             text = text[1:]
+        if not text:
+            return {"kind": "One", "name": None, "type": S, "sign": sign}
         if text in self.parameters:
             parameter = self.parameters[text]
             if parameter["source"] == "Point":

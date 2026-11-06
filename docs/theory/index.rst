@@ -26,6 +26,9 @@ domain that implement it.
 * :doc:`circuits`: the domains driven through terminals: stranded coils and their circuit equation, conductors with
   a terminal in 2D, injected currents in 3D, and the time-integrated variants (``_timint``).
 * :doc:`nonlinear`: saturating materials: residual, Jacobian and Newton-Raphson iteration in block form.
+* :doc:`formulations_potentials`: the scalar potential (``PHI3D_nodal``, ``PHI2D_nodal``), the vector potential alone
+  in the conductors (``A3D_edge``), T-A (``TA3D_edge``) and H-phi (``HPHI3D_edge``), and source currents as a current
+  vector potential (``T0``).
 
 **The code.** :doc:`implementation`: how the kernels of the element types become the element matrices, the time
 scheme, the constraints (Dirichlet values, nodal frames, couplings) and the output fields.
@@ -44,6 +47,7 @@ position control, the plasma evolution coupled with the eddy currents of 2D and 
    formulation_3d
    circuits
    nonlinear
+   formulations_potentials
    implementation
    plasma
    references
