@@ -38,6 +38,9 @@ And around them:
   displacements in 2D and 3D), each with its mesh, model data and `macro.py`.
 - `docs/`: the documentation (Sphinx), with the tutorial notebooks in `docs/tutorials`.
 - `tests/test_benchmarks.py`: the validation of an installation, which runs the benchmark repository.
+- `VERSION`: the version of pyTEC3D, its single source. `python tools/set_version.py X.Y.Z` writes it and copies it into
+  the build files (the three `pyproject.toml`, `conda/recipe.yaml`); `tests/test_version.py` and the CI check that they
+  agree, and that a release tag `vX.Y.Z` matches it.
 - `pyTEC3D_APDL_benchmarks/` (git submodule): the benchmarks against ANSYS MAPDL and APEC, with the stored reference
   results (no ANSYS needed to validate pyTEC3D) and the tools for parametric studies.
 - `environment.yml`: the conda environment to develop pyTEC3D (`docs/installation.rst`, "Development").

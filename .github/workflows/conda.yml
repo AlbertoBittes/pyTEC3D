@@ -66,6 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # VERSION is the single source: the build files agree with it, and a tag v<X> is VERSION X.
+      - name: Version
+        run: python3 tools/set_version.py --check
+
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: build

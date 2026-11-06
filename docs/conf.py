@@ -3,7 +3,8 @@ import sys
 
 project = "pyTEC3D"
 author = "pyTEC3D Team"
-release = "0.1.0"
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VERSION")) as _f:
+    release = _f.read().strip()  # the single source of the version (tools/set_version.py)
 version = release
 
 # Add project root and python package to path so autodoc can find modules
