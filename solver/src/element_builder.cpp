@@ -54,10 +54,10 @@ ElementBuilder::ElementBuilder(pyTEC3DEquationSystems *equation_systems)
 
     model_data_ = &equation_systems_->get_model_data();
     element_local_to_global_rotations_ = &equation_systems_->get_element_local_to_global_rotations();
+    node_local_to_global_rotations_ = &equation_systems_->get_node_local_to_global_rotations();
 }
 
-bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variable_name,
-                                                  dof_id_type dof_id) const
+bool ElementBuilder::should_inject_nodal_load(const std::string &dof_variable_name, dof_id_type node_id) const
 {
     if (!nodal_load_map_ || !elem_data.elem)
         return false;
@@ -66,10 +66,84 @@ bool ElementBuilder::should_inject_nodal_load_dof(const std::string &dof_variabl
     if (var_it == nodal_load_map_->end())
         return false;
 
-    const auto &injector_elem_by_dof = var_it->second;
-    const auto dof_it = injector_elem_by_dof.find(dof_id);
-    return (dof_it != injector_elem_by_dof.end()) &&
-           (dof_it->second == static_cast<dof_id_type>(elem_data.elem->id()));
+    const auto &injector_elem_by_node = var_it->second;
+    const auto node_it = injector_elem_by_node.find(node_id);
+    return (node_it != injector_elem_by_node.end()) &&
+           (node_it->second == static_cast<dof_id_type>(elem_data.elem->id()));
+}
+
+void ElementBuilder::add_nodal_loads(const pytec3d::ElementType::FieldIndices &dofs, DenseVector<Number> &rhs) const
+{
+    // Nodal loads are point values on the nodes, not integrals; each node is loaded by one element only
+    // (nodal_load_map_). A scalar load goes to the DOF of the node. A vector load of a vector variable is given in the
+    // node frame (node_angles, like the Dirichlet values _F): f = R f_node in global, and each global component the
+    // field has goes to its DOF; a component the field does not have does no work on it and is dropped. A field with
+    // a single component (A_z of a 2D element, a scalar variable) ignores the node frames, as its Dirichlet values and
+    // couplings do: its component of the load goes to its DOF as given.
+    const pytec3d::ElementType &type = *elem_data.entry->type;
+    const pytec3d::registry::Domain domain = elem_data.entry->domain;
+    const unsigned int sys = dof_solution_system_->number();
+    for (std::size_t index = 0; index < type.spec().fields.size(); ++index)
+    {
+        const pytec3d::FieldSpec &field = type.field(index);
+        if (field.kind != pytec3d::FieldKind::Dof || field.nodal_load == pytec3d::registry::FieldId::COUNT ||
+            !pytec3d::ElementType::active(field, domain))
+            continue;
+        if (field.family != libMesh::LAGRANGE && field.family != libMesh::LAGRANGE_VEC)
+            fail("the nodal load of '" + std::string(pytec3d::registry::name(field.id)) + "' needs a Lagrange field.");
+        const std::string load_array(pytec3d::registry::name(field.nodal_load));
+        const pytec3d::RealArray *array = arrays_->point_field(load_array);
+        const std::string label(pytec3d::registry::info(field.variable).label);
+        if (!array || !dof_solution_system_->has_variable(label))
+            continue;
+        const bool vector = field.value == pytec3d::formulation::ValueType::Vector;
+        const bool single_component = vector && field.n_components == 1;
+        if (array->n_components() != (vector ? 3u : 1u))
+            fail("the nodal load '" + load_array + "' has " + std::to_string(array->n_components()) + " components, expected " +
+                 (vector ? "3" : "1") + ".");
+
+        const unsigned int var_num = dof_solution_system_->variable_number(label);
+        const auto &range = dofs.field[index];
+        // Position of a DOF in the element vector: searched in the block of the field (DofMap::dof_indices order),
+        // so that no layout of the components of a vector variable is assumed.
+        const auto position = [&](dof_id_type dof) -> unsigned int
+        {
+            const auto first = dof_indices_.begin() + range.start;
+            const auto it = std::find(first, first + range.count, dof);
+            if (it == first + range.count)
+                fail("a nodal load DOF of '" + label + "' is not among the DOFs of element " +
+                     std::to_string(elem_data.elem->id()) + ".");
+            return static_cast<unsigned int>(it - dof_indices_.begin());
+        };
+
+        for (unsigned int i = 0; i < elem_data.elem->n_nodes(); ++i)
+        {
+            const libMesh::Node &node = elem_data.elem->node_ref(i);
+            if (node.n_dofs(sys, var_num) == 0 || !should_inject_nodal_load(label, node.id()))
+                continue;
+            const auto point = static_cast<std::size_t>(node.id());
+            if (!vector)
+            {
+                rhs(position(node.dof_number(sys, var_num, 0))) += (*array)(point);
+                continue;
+            }
+            if (single_component)
+            {
+                rhs(position(node.dof_number(sys, var_num, 0))) += (*array)(point, field.components[0]);
+                continue;
+            }
+
+            const auto rotation = node_local_to_global_rotations_->find(node.id());
+            if (rotation == node_local_to_global_rotations_->end())
+                fail("no node rotation for node " + std::to_string(node.id()) + ".");
+            const libMesh::RealVectorValue global =
+                rotation->second * libMesh::RealVectorValue((*array)(point, 0), (*array)(point, 1), (*array)(point, 2));
+            // The values of the field on a node: its n_components physical components, DOF component j of the
+            // variable (a single component is a scalar variable: DOF component 0).
+            for (unsigned int j = 0; j < field.n_components; ++j)
+                rhs(position(node.dof_number(sys, var_num, j))) += global(field.components[j]);
+        }
+    }
 }
 
 void ElementBuilder::set_element_data(const libMesh::Elem *elem)
@@ -204,29 +278,7 @@ void ElementBuilder::build_element_rhs()
     pytec3d::ElementEvaluator evaluator(evaluator_inputs(pytec3d::Operation::Rhs, values, dofs));
     evaluator.add_rhs(rhs);
 
-    // Nodal loads are point values on the nodes, not integrals.
-    for (std::size_t index = 0; index < type.spec().fields.size(); ++index)
-    {
-        const pytec3d::FieldSpec &field = type.field(index);
-        if (field.kind != pytec3d::FieldKind::Dof || field.nodal_load == pytec3d::registry::FieldId::COUNT ||
-            !pytec3d::ElementType::active(field, domain))
-            continue;
-        const std::string load_array(pytec3d::registry::name(field.nodal_load));
-        const pytec3d::RealArray *array = arrays_->point_field(load_array);
-        const std::string label(pytec3d::registry::info(field.variable).label);
-        if (!array || !dof_solution_system_->has_variable(label))
-            continue;
-
-        const unsigned int var_num = dof_solution_system_->variable_number(label);
-        const auto &ids = dofs.field[index];
-        for (unsigned int i = 0; i < ids.size(); ++i)
-        {
-            const libMesh::Node &node = elem_data.elem->node_ref(i);
-            const dof_id_type dof_id = node.dof_number(dof_solution_system_->number(), var_num, 0);
-            if (should_inject_nodal_load_dof(label, dof_id))
-                rhs(ids[i]) += (*array)(static_cast<std::size_t>(node.id()));
-        }
-    }
+    add_nodal_loads(dofs, rhs);
 
     vectors[VectorsSet::RHS_VECTORS] = {std::move(rhs)};
 }

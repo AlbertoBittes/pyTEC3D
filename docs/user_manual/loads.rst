@@ -30,6 +30,21 @@ A load is an array value, read at every solve. Loads can change freely between s
      - all but ``NON_CONDUCTING``, ``SOFT_MAGNETIC``
      - Magnetization [A/m] (a material property, constant in time): permanent magnets, magnetized conductors.
 
+Nodal loads
+-----------
+
+A nodal load (``CURR``, ``AMPS``) is a point value added to the right-hand side of the equation of its DOF on the
+node, not an integral: the whole value goes to the node, once, whatever the number of elements around it. Zero
+everywhere means no load.
+
+An element type may also give a **vector** DOF field a vector nodal load (a 3-component point array, e.g. a force on
+a displacement). Its components refer to the **nodal frame** of the node (``node_angles``), as the Dirichlet values
+``_F`` do (:doc:`boundary_conditions`): the solver rotates it to the global axes and adds each global component to
+the DOF of that component. A component the field does not have (z of an in-plane 2D field) does no work on it and
+is dropped. A field with a single active component (z) ignores the nodal frames, as its Dirichlet values do: only its
+component of the load acts, as given. No element type of the library has a vector
+nodal load yet; see :doc:`element_library` for how one is declared.
+
 Imposed current density (stranded conductors)
 ---------------------------------------------
 

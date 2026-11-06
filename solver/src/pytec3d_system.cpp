@@ -97,8 +97,10 @@ namespace
             const unsigned int dof_var_num = dof_system.variable_number(dof_variable_name);
             const unsigned int sys_num = dof_system.number();
             const auto &dof_var = dof_system.variable(dof_var_num);
+            const unsigned int n_components = load_array->n_components();
 
-            std::map<libMesh::dof_id_type, libMesh::dof_id_type> local_injector_elem_by_dof;
+            // One element per loaded node (a node with a non-zero component), which adds all its components.
+            std::map<libMesh::dof_id_type, libMesh::dof_id_type> local_injector_elem_by_node;
             for (const auto &elem : mesh.active_local_element_ptr_range())
             {
                 if (!dof_var.active_on_subdomain(elem->subdomain_id()))
@@ -107,20 +109,22 @@ namespace
                 for (unsigned int i = 0; i < elem->n_nodes(); ++i)
                 {
                     const auto &node = elem->node_ref(i);
-                    const libMesh::Real load_value = (*load_array)(static_cast<std::size_t>(node.id()));
-                    if (load_value == 0.0)
+                    if (node.n_dofs(sys_num, dof_var_num) == 0)
                         continue;
-
-                    const libMesh::dof_id_type dof_id = node.dof_number(sys_num, dof_var_num, 0);
-                    local_injector_elem_by_dof.emplace(dof_id, static_cast<libMesh::dof_id_type>(elem->id()));
+                    const auto point = static_cast<std::size_t>(node.id());
+                    bool loaded = false;
+                    for (unsigned int c = 0; c < n_components && !loaded; ++c)
+                        loaded = (*load_array)(point, c) != 0.0;
+                    if (loaded)
+                        local_injector_elem_by_node.emplace(node.id(), static_cast<libMesh::dof_id_type>(elem->id()));
                 }
             }
 
-            auto global_injector_elem_by_dof = local_injector_elem_by_dof;
-            mesh.comm().set_union(global_injector_elem_by_dof);
-            auto &injector_elem_by_dof = nodal_load_map[dof_variable_name];
-            for (const auto &injector_entry : global_injector_elem_by_dof)
-                injector_elem_by_dof[injector_entry.first] = injector_entry.second;
+            auto global_injector_elem_by_node = local_injector_elem_by_node;
+            mesh.comm().set_union(global_injector_elem_by_node);
+            auto &injector_elem_by_node = nodal_load_map[dof_variable_name];
+            for (const auto &injector_entry : global_injector_elem_by_node)
+                injector_elem_by_node[injector_entry.first] = injector_entry.second;
         }
 
         return nodal_load_map;

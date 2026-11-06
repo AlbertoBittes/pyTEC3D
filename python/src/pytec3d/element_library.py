@@ -9,7 +9,8 @@ Grid arrays of an element type (:func:`grid_arrays`):
 
 * DOF fields: point array ``F`` (solution) and ``_F`` (Dirichlet values, NaN where free);
 * nodal fields: point array ``F``; element fields: cell array ``F``;
-* nodal loads (``mn.`` parameters): point array; element loads (``me.`` parameters): cell array.
+* nodal loads (``mn.`` parameters): point array (a vector one in the nodal frames, ``node_angles``); element loads
+  (``me.`` parameters): cell array.
 
 A vector field has 3 components, a scalar one 1, whatever the active components of the element type.
 """

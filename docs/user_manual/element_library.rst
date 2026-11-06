@@ -444,7 +444,9 @@ Each element type of ``element_types.json`` lists:
   nodal loads (point arrays), each with the domains where it exists and an optional default; the suffix ``[]`` or
   ``[][]`` makes it a vector or a tensor;
 * ``expressions``: derived coefficients, C++ expressions on the libMesh types, optionally per domain;
-* ``dof_fields``, ``nodal_fields``, ``element_fields``: the fields, their finite elements and domains;
+* ``dof_fields``, ``nodal_fields``, ``element_fields``: the fields, their finite elements and domains; a Lagrange
+  DOF field may name an ``mn.`` parameter of its own type as its ``nodal_loads`` (a scalar for a scalar field, a
+  vector, in the nodal frames, for a vector field: :doc:`loads`);
 * ``dof_kernels`` (``K`` and ``F`` lists), ``nodal_kernels``, ``element_kernels``: the terms, each
   ``{"trial": "grad(dt(V))", "coeff": "-sigma", "test": "A", "domain": [...]}``. A trial with ``dt()`` goes to C;
 * ``inherits``: start from another type and replace sections key by key (how the ``_edge`` and ``_timint`` types are
@@ -453,3 +455,220 @@ Each element type of ``element_types.json`` lists:
 The full grammar is in the docstring of ``solver/tools/generate_registries.py``, which checks the definitions (names,
 types of every product, operators against the finite elements) and compiles them into C++. A new element type, domain
 or law is added by editing the JSON files and rebuilding the solver module.
+
+Writing expressions
+-------------------
+
+The ``constants``, the ``expressions`` and the C++ ``default`` values of an element type are C++ expressions. The
+generator copies them into the solver, so they are written with the C++ operators and the libMesh vector and tensor
+classes. Each name of a parameter or expression in the text is replaced by its value on the element. The key gives
+the type of the result: ``nu`` a ``Real``, ``coil_j[]`` a ``RealVectorValue``, ``nu[][]`` a ``RealTensorValue``. An
+expression that gives another type does not compile.
+
+The types and their API
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``Real`` is ``double``. ``RealVectorValue`` and ``RealTensorValue`` are libMesh's 3-component vector and 3 x 3 tensor
+(``VectorValue<Real>`` and ``TensorValue<Real>``). Most of their operations come from the base classes ``TypeVector``
+and ``TypeTensor``, documented in the libMesh Doxygen:
+
+* `TypeVector <https://libmesh.github.io/doxygen/classlibMesh_1_1TypeVector.html>`_ and
+  `VectorValue <https://libmesh.github.io/doxygen/classlibMesh_1_1VectorValue.html>`_;
+* `TypeTensor <https://libmesh.github.io/doxygen/classlibMesh_1_1TypeTensor.html>`_ and
+  `TensorValue <https://libmesh.github.io/doxygen/classlibMesh_1_1TensorValue.html>`_;
+* the free functions (``outer_product``) are in the
+  `libMesh namespace <https://libmesh.github.io/doxygen/namespacelibMesh.html>`_.
+
+The operations most useful in a coefficient:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 14 52
+
+   * - Expression
+     - Result
+     - Meaning
+   * - ``RealVectorValue(x, y, z)``
+     - vector
+     - a vector from its components
+   * - ``RealTensorValue(xx, xy, xz, yx, yy, yz, zx, zy, zz)``
+     - tensor
+     - a tensor from its components, row by row
+   * - ``v(i)``, ``T(i, j)``
+     - Real
+     - a component (0 = x, 1 = y, 2 = z)
+   * - ``a * v``, ``a * T``, ``v + w``, ``T - S``, ``-v``
+     - vector / tensor
+     - scaling and sums
+   * - ``v * w``
+     - Real
+     - dot product :math:`\mathbf{v}\cdot\mathbf{w}` (not component by component)
+   * - ``v.cross(w)``
+     - vector
+     - cross product :math:`\mathbf{v}\times\mathbf{w}`
+   * - ``v.norm()``, ``v.norm_sq()``, ``v.unit()``
+     - Real / vector
+     - length, squared length, unit vector
+   * - ``outer_product(v, w)``
+     - tensor
+     - :math:`\mathbf{v}\otimes\mathbf{w}`, components :math:`v_i w_j`
+   * - ``T * v``, ``v * T``
+     - vector
+     - :math:`\mathbf{T}\mathbf{v}` and :math:`\mathbf{v}^T\mathbf{T}`
+   * - ``T * S``
+     - tensor
+     - matrix product
+   * - ``T.transpose()``, ``T.inverse()``
+     - tensor
+     - transpose, inverse
+   * - ``T.det()``, ``T.tr()``, ``T.norm()``
+     - Real
+     - determinant, trace, Frobenius norm
+   * - ``T.contract(S)``
+     - Real
+     - double contraction :math:`\mathbf{T}:\mathbf{S} = \sum_{ij} T_{ij} S_{ij}`
+   * - ``T.row(i)``
+     - vector
+     - row ``i``
+
+Names available besides the parameters and the expressions:
+
+* ``I``: the identity tensor; ``pi``; the constants of the element type (``mu0``);
+* ``axisymmetric``: a ``bool``, true in an axisymmetric 2D model;
+* ``abs``, ``sqrt``, ``cbrt``, ``pow``, ``exp``, ``log``, ``sin``, ``cos``, ``tan``, ``atan2``, ``hypot``, ``min``,
+  ``max``: the ``std::`` functions of the same name, usable without the prefix;
+* any other function of the C++ standard math library (``<cmath>``), written with its ``std::`` prefix (next
+  section);
+* the conditional ``c ? a : b``, with both branches of the same type.
+
+Standard library functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The whole of ``<cmath>`` is available with the ``std::`` prefix, e.g. ``std::tanh``, ``std::sinh``, ``std::cosh``,
+``std::asin``, ``std::acos``, ``std::atan``, ``std::erf``, ``std::erfc``, ``std::exp2``, ``std::expm1``,
+``std::log10``, ``std::log2``, ``std::log1p``, ``std::floor``, ``std::ceil``, ``std::round``, ``std::trunc``,
+``std::fmod``, ``std::copysign``, ``std::fmin``, ``std::fmax``, ``std::isfinite`` (see the
+`cppreference list <https://en.cppreference.com/cpp/numeric/math>`_). The short names of the previous list may be
+written with the prefix too (``std::sqrt`` is ``sqrt``). They take and give ``Real`` values; apply them to a
+component or a norm of a vector or a tensor, not to the vector itself.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Key
+     - Expression
+   * - ``rho_T``
+     - ``rho0 * (1 + alpha * (T - T0))``: a resistivity linear in a temperature (scalar real constants)
+   * - ``b_sat``
+     - ``Bs * std::tanh(b / Bs)``: a smooth saturation at ``Bs``
+   * - ``b_reg``
+     - ``std::sqrt(B0.norm_sq() + h * h)``: a length that does not vanish
+   * - ``angle``
+     - ``std::atan2(T(1), T(0))``: the angle of a direction in the xy plane
+   * - ``bounded``
+     - ``std::fmin(std::fmax(x, lo), hi)``: ``x`` limited to ``[lo, hi]``
+   * - ``finite``
+     - ``std::isfinite(x) ? x : 0.0``
+
+Only ``<cmath>`` and the libMesh types are included, and the solver is C++17. So ``std::clamp`` (``<algorithm>``)
+does not compile; use ``std::fmin(std::fmax(x, lo), hi)``. ``std::numbers::pi`` (C++20) does not compile either;
+use ``pi``. The name after ``std::`` is replaced like any other name: do not give a parameter or an expression the
+name of a function you call (a parameter ``tanh`` breaks ``std::tanh``).
+
+Rules
+~~~~~
+
+* **Order and domains**: an expression may only use the parameters and the expressions declared before it, and only
+  those that exist in all of its domains (a ``domain`` list limits where it exists). The generator checks both.
+* **Global axes**: vectors and tensors from the model (``mat.``, ``rc.``, ``me.``) are given in the element coordinate
+  system of the cell (:doc:`coordinate_systems`). They are rotated to the global axes before any expression sees
+  them, and the result of an expression is a global value. ``mur(0, 0)`` is therefore the global xx component.
+  Write expressions so that they do not depend on the axes (``det``, ``tr``, ``norm``, products of the parameters),
+  or take a direction from a parameter (``T`` below) instead of a fixed component.
+* **Once per element**: an expression is evaluated once per element and kept. It is constant over the element, not
+  evaluated at each quadrature point. A coefficient that varies in space varies through a cell array (``me.``).
+  Coefficients that depend on the solution are written as nonlinear laws (:doc:`nonlinear`).
+* **Point data** (``mn.``) cannot appear in an expression: it is only a nodal load.
+
+Examples
+~~~~~~~~
+
+From the library (``element_types.json``):
+
+.. code-block:: json
+
+   {
+       "constants": {"mu0": "4 * pi * 1e-7"},
+       "expressions": {
+           "nu[][]": "(mu0 * mur).inverse()",
+           "nu_gauge": "cbrt(abs(nu.det()))",
+           "sigma[][]": {"value": "rho.inverse()", "domain": ["SOLID_CONDUCTOR", "CIRCUIT_COUPLED_CONDUCTOR"]},
+           "turns_density": {"value": "turns / (cross_section * resistance)", "domain": ["STRANDED_COIL"]},
+           "coil_volume": {"value": "(axisymmetric ? 2 * pi * radius : 1.0) * cross_section * thickness",
+                           "domain": ["STRANDED_COIL"]},
+           "coil_j[]": {"value": "turns_density * T", "domain": ["STRANDED_COIL"]}
+       }
+   }
+
+* ``nu`` is a tensor from a scalar constant and a tensor property: the reluctivity :math:`(\mu_0\mu_r)^{-1}`.
+* ``nu_gauge`` makes a scalar out of a tensor, the cube root of its determinant (the geometric mean of the
+  principal values). It does not depend on the axes.
+* ``coil_volume`` uses ``axisymmetric``: the volume of the coil per unit length, or per radian times
+  :math:`2\pi r`.
+* ``coil_j`` scales a vector property, the winding direction ``T`` of the coil.
+
+Combining parameters: a resistivity :math:`\rho_\parallel` along a direction ``T`` and :math:`\rho_\perp` across it,
+from two scalar real constants and a vector one:
+
+.. code-block:: json
+
+   {
+       "parameters": {"rc.rho_par": {}, "rc.rho_perp": {}, "rc.T[]": {}},
+       "expressions": {
+           "t[]": "T.unit()",
+           "Pt[][]": "outer_product(t, t)",
+           "rho[][]": "rho_par * Pt + rho_perp * (I - Pt)",
+           "sigma[][]": "rho.inverse()"
+       }
+   }
+
+``Pt`` projects a vector onto ``t`` and ``I - Pt`` onto the plane normal to it, so ``rho`` has the principal value
+:math:`\rho_\parallel` along ``t`` and :math:`\rho_\perp` across it, in any orientation of ``T``.
+
+More one-liners:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Key
+     - Expression
+   * - ``Jm[]``
+     - ``nu * M``: a tensor applied to a vector
+   * - ``w``
+     - ``M * B0`` (``B0`` a vector parameter): a dot product, a scalar
+   * - ``n[]``
+     - ``T.cross(B0).unit()``: the unit normal to two directions
+   * - ``energy``
+     - ``B0.norm_sq() / (2 * mu0)``
+   * - ``mur_t[][]``
+     - ``RealTensorValue(mur(0, 0), 0, 0, 0, mur(0, 0), 0, 0, 0, mur(2, 2))``: a tensor from chosen global
+       components
+   * - ``Q[][]``
+     - ``RealTensorValue(cos(alpha), -sin(alpha), 0, sin(alpha), cos(alpha), 0, 0, 0, 1)``: the rotation by
+       ``alpha`` about z (``alpha`` a scalar parameter); ``Q * mur * Q.transpose()`` turns a tensor by it
+   * - ``eps``
+     - ``max(T.norm(), 1e-12)``: a guard before dividing by a length
+
+C++ pitfalls
+~~~~~~~~~~~~
+
+* ``1 / 2`` is an integer division and gives 0. Write ``1.0 / 2`` or ``0.5``.
+* ``^`` is not a power (it is a bitwise XOR and does not compile on ``Real``). Use ``pow(x, 2)`` or ``x * x``.
+* ``v * w`` of two vectors is their dot product. There is no component-by-component product: build it with
+  ``RealVectorValue(v(0) * w(0), v(1) * w(1), v(2) * w(2))``.
+* A name that is neither a parameter nor one of the names above is passed to C++ unchanged, so a typo is reported by
+  the C++ compiler, in the generated ``registries.h``, when the solver module is rebuilt.
+* A default value of a ``mat.`` or ``rc.`` parameter may be a C++ expression of the constants, e.g.
+  ``"default": "RealVectorValue(0, 0, 1)"``. It cannot use other parameters.

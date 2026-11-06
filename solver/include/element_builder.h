@@ -133,7 +133,11 @@ private:
     /** @brief Values of @p solution on the DOFs of the active element, in element DOF order (zeros when null). */
     libMesh::DenseVector<libMesh::Number> local_dof_vector(const libMesh::NumericVector<libMesh::Number> *solution) const;
 
-    bool should_inject_nodal_load_dof(const std::string &dof_variable_name, libMesh::dof_id_type dof_id) const;
+    /** @brief True when the active element is the one that adds the nodal load of @p node to @p dof_variable_name. */
+    bool should_inject_nodal_load(const std::string &dof_variable_name, libMesh::dof_id_type node_id) const;
+
+    /** @brief Adds the nodal loads of the DOF fields of the active element to @p rhs (see build_element_rhs()). */
+    void add_nodal_loads(const pytec3d::ElementType::FieldIndices &dofs, libMesh::DenseVector<libMesh::Number> &rhs) const;
 
     /** @brief Evaluates the nodal or element fields on the DOF solution and writes the result into @p system. */
     void build_fields(pytec3d::FieldKind kind, libMesh::System &system);
@@ -162,4 +166,6 @@ private:
     const pytec3d::ModelData *model_data_ = nullptr;
     const pytec3d::ModelArrays *arrays_ = nullptr;
     const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *element_local_to_global_rotations_ = nullptr;
+    /// Node frame (node_angles) to global, by node id: the frame of the vector nodal loads.
+    const std::unordered_map<libMesh::dof_id_type, libMesh::TensorValue<libMesh::Real>> *node_local_to_global_rotations_ = nullptr;
 };

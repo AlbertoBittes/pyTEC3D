@@ -33,7 +33,8 @@ element_types.json, "element_types": { "<name>": {
   "expressions": { "nu[][]": "(mu0 * mur).inverse()", "sigma[][]": {"value": "rho.inverse()", "domain": [...]} }
       The suffix of a key gives the type: none Real, [] RealVectorValue, [][] RealTensorValue; me./mn.
       parameters take the type of their field. mat. material property, rc. real constant (keys of the model
-      data), me. cell-data array, mn. point-data array (only usable as nodal loads). A "domain" list limits the
+      data), me. cell-data array (in the element coordinate system of the cell), mn. point-data array (only usable as
+      nodal loads). A "domain" list limits the
       domains where a parameter exists; a "default" (mat. and rc.) is the value used when the model data leaves
       it undefined: a number, its components, or C++ of the constants. Constants and expressions are C++ on the
       libMesh types (the std math functions, outer_product, I the identity tensor, axisymmetric); each
@@ -48,8 +49,14 @@ element_types.json, "element_types": { "<name>": {
       L2_LAGRANGE(_VEC); element fields MONOMIAL CONSTANT. Lagrange families take the order of the options.
       Variables: every field is one libMesh variable. A vector with all the components of the element dimension
       (2D or 3D) is a vector variable named like the field (LAGRANGE_VEC, L2_LAGRANGE_VEC, NEDELEC_ONE,
-      MONOMIAL_VEC); a single component is a scalar variable <field>_<c> (e.g. A_z of a 2D element). nodal_loads (scalar DOF fields) is an
-      mn. parameter added to the right-hand side on the nodes. A nodal and an element field can share a name.
+      MONOMIAL_VEC); a single component is a scalar variable <field>_<c> (e.g. A_z of a 2D element). A nodal and an
+      element field can share a name.
+      nodal_loads (Lagrange DOF fields) is an mn. parameter of the same type as the field, added to the right-hand
+      side on the nodes: a point value, not an integral. A scalar load goes to the DOF of the node. A vector load has
+      3 components in the node coordinate system (the node_angles frame, like the Dirichlet values _F): it is
+      rotated to global, f = R f_node, and each global component the field has goes to the DOF of that component;
+      the others do no work on the field and are dropped. A field with a single active component ignores the node
+      frames (as its Dirichlet values and couplings do): its component of the load goes to its DOF as given.
       The active components of a scalar field are the directions it varies along: by default those of the
       element (its grad is the in-plane gradient on a 2D element); ["z"] on a 2D element makes it the out-of-plane
       component of a 3D field, e.g. a potential over the out-of-plane length L: its grad is -phi / L e_z.
@@ -231,8 +238,6 @@ def read_declaration(declaration, fields, context):
         if rest not in fields:
             fail(f"{context}: '{rest}' is not a field of fields.json.")
         vector = fields[rest] == "vector"
-        if prefix == "mn" and vector:
-            fail(f"{context}: point data is a scalar array per node.")
         return {"name": rest, "type": V if vector else S, "source": "Cell" if prefix == "me" else "Point", "array": rest}
     fail(f"{context}: unknown source '{prefix}' (expected mat, rc, me or mn).")
 
@@ -503,11 +508,14 @@ class ElementType:
 
             loads = options.get("nodal_loads")
             if loads is not None:
-                if physical_vector:
-                    fail(f"{context}: nodal_loads only apply to scalar dof fields.")
+                if field["family"] == "NEDELEC_ONE":
+                    fail(f"{context}: nodal_loads need nodal (Lagrange) DOFs; NEDELEC_ONE DOFs are on the edges.")
                 parameter = self.parameters.get(loads)
                 if not parameter or parameter["source"] != "Point":
                     fail(f"{context}: nodal_loads '{loads}' is not a point-data (mn.) parameter of the element type.")
+                if parameter["type"] != field["value"]:
+                    fail(f"{context}: nodal_loads '{loads}' is a {parameter['type'].lower()}, the field a "
+                         f"{field['value'].lower()}: a scalar field takes a scalar load, a vector field a vector one.")
                 field["nodal_load"] = parameter["array"]
 
             field["index"] = len(self.fields)

@@ -8,8 +8,8 @@ Coordinate systems (:mod:`pytec3d.coordinate_system`) are used in three places:
 * **element coordinate systems**: the cell array ``COORDINATE_SYSTEM`` refers a cell to an entry of
   ``data["coordinate_systems"]``; the vector and tensor parameters of the cell (``mur``, ``rho``, ``M``, ``T``, ``Js``)
   are then given in that system;
-* **nodal frames** (``node_angles``), a separate mechanism for the Dirichlet values and the couplings of each node
-  (:doc:`boundary_conditions`).
+* **nodal frames** (``node_angles``), a separate mechanism for the Dirichlet values, the couplings and the vector
+  nodal loads of each node (:doc:`boundary_conditions`, :doc:`loads`).
 
 Types
 -----

@@ -15,7 +15,7 @@
 class pyTEC3DEquationSystems;
 struct TimeStep;
 
-/// DOF variable label -> (DOF id -> the local element that injects its nodal load).
+/// DOF variable label -> (node id -> the element that injects the nodal load of the node, all its components).
 using NodalLoadInjectorElemByVarMap =
     std::unordered_map<std::string,
                        std::unordered_map<libMesh::dof_id_type, libMesh::dof_id_type>>;

@@ -74,8 +74,11 @@ tangential components:
 
 The rotation of a set of angles can be checked in Python:
 ``CoordinateSystem.build_local_to_global_matrix(thxy, thyz, thzx)`` returns the matrix whose columns are the local
-axes in global coordinates. The nodal frames also apply to the DOF couplings (cyclic symmetry, :doc:`couplings`).
-The solution arrays are always written in global components.
+axes in global coordinates. The nodal frames also apply to the DOF couplings (cyclic symmetry, :doc:`couplings`) and
+to the vector nodal loads (:doc:`loads`). The solution arrays are always written in global components.
+
+A field with a single DOF component (A_z of a 2D element) ignores the nodal frames: its Dirichlet value is component 2
+of ``_A`` (the component of the field) as given, and its couplings and nodal loads are not rotated either.
 
 Edge elements
 ~~~~~~~~~~~~~
