@@ -17,7 +17,7 @@
 schema_version: 1
 
 context:
-  version: "0.4.0"
+  version: "0.4.1"
   # Python 3.12 only for every package: the Python of ParaView, which runs the API in its plugin and console.
   python_min: "3.12"
   petsc_version: "3.26"

@@ -11,7 +11,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytec3d"
-version = "0.4.0"
+version = "0.4.1"
 description = "pyTEC3D Python API: model preparation, analysis driver, plasma algorithm (the solver is pytec3d-solver)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -19,7 +19,7 @@ license = "GPL-3.0-or-later"
 authors = [{ name = "Alberto Bittesnich" }]
 dependencies = [
   # The JSON element library, shared with the solver (../element_library).
-  "pytec3d-element-library==0.4.0",
+  "pytec3d-element-library==0.4.1",
   "numpy",
   # Any VTK: the solver does not link it.
   "vtk>=9.1",
