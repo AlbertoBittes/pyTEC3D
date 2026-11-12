@@ -14,7 +14,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "pytec3d-solver"
-version = "0.3.0"
+version = "0.4.0"
 description = "pyTEC3D C++ solver (libMesh / PETSc / MUMPS / MPI), the module driven by the pytec3d package"
 readme = "README.md"
 # The Python of ParaView (3.12), which runs the API in its plugin and console.
