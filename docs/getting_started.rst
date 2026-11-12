@@ -20,11 +20,14 @@ independent, free, scalable and customizable code that reproduces the algorithm 
 What is pyTEC3D?
 ----------------
 
-pyTEC3D (python Tokamak Eddy-currents Code 3D) solves time-domain, low-frequency (magneto-quasi-static) electromagnetic problems with the A, V-A formulation:
+pyTEC3D (python Tokamak Eddy-currents Code 3D) solves time-domain, low-frequency (magneto-quasi-static) electromagnetic problems. Its main formulation is A, V-A:
 the magnetic vector potential **A** everywhere, an electric scalar potential **V** in the massive conductors (in 2D,
 the terminal voltage of a conductor with a terminal), and the circuit unknowns of the coils (terminal voltage
 **VOLT**, induced voltage **EMF**). It covers 2D planar, 2D axisymmetric and 3D models, nodal and edge (Nedelec) elements, linear and
-saturating (B-H curve) materials, and static and transient analyses (see :doc:`theory/index`).
+saturating (B-H curve) materials, and static and transient analyses (see :doc:`theory/index`). Scalar-potential
+formulations complete it: magnetostatics with the reduced potential and its source field (``PHI3D_nodal``), and the
+T-phi (H) formulation in 3D and 2D for conductors in applied fields and superconductors with power laws
+(``TPHI3D_edge``, ``TPHI2D_edge``). What it does not do: :doc:`user_manual/limitations`.
 
 The code has two modules:
 

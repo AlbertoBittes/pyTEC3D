@@ -29,3 +29,4 @@ All quantities are in SI units (m, kg, s, A, V, T, Ohm m). The mesh coordinates 
    plasma_algorithm
    paraview
    validation
+   limitations
