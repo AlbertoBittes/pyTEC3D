@@ -57,7 +57,7 @@ Overview
      - all
      - Plasma equilibria and vertical displacement of ITER with the plasma algorithm: linear and quadratic meshes, 3D
        sectors with nodal and edge elements, halo currents, voltage-driven coils.
-   * - :doc:`formulations`: ``core_3D_phi``, ``ring_3D_tphi``, ``coil_core_3D_tphi``, ``wire_2D_tphi``,
+   * - :doc:`formulations`: ``core_3D_phi``, ``ring_3D_tphi``, ``rings_3D_tphi``, ``coil_core_3D_tphi``, ``wire_2D_tphi``,
        ``bulk_2D_tphi_axisym``
      - ``PHI3D_nodal``, ``TPHI3D_edge``, ``TPHI2D_edge``
      - The scalar potentials: magnetostatics with the source field in the system (iron loop, B-H curve), T-phi eddy

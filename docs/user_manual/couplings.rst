@@ -76,8 +76,9 @@ nodes of the two faces of the layer get two more ids, which only give that orien
    The cut of ``examples/ring_3D_tphi``: the CUT_LAYER cells spanning the hole, ``_T`` = 0 on the planar edges, the crossing edges coupled on one DOF (CP_0 = 1, the ring current), the corners of the two faces labelled 2 and 3.
 
 Its value is the current from the face 2 side to the face 3 side; ``VLTG`` on one coupled midside node is the voltage
-around the conductor. Each conductor takes its own three ids; conductors in series share them. Example
-``examples/ring_3D_tphi``.
+around the conductor. Each conductor takes its own three ids; conductors in series share them (one current, and
+``VLTG`` is the voltage of the whole series loop); conductors in parallel keep their own ids and get the same ``VLTG``.
+Examples ``examples/ring_3D_tphi`` (one ring), ``examples/rings_3D_tphi`` (two rings in series and in parallel).
 
 Periodic (cyclic) boundaries
 ----------------------------

@@ -1,4 +1,4 @@
-"""Build the meshes of the scalar-potential examples (core_3D_phi, ring_3D_tphi, coil_core_3D_tphi, wire_2D_tphi,
+"""Build the meshes of the scalar-potential examples (core_3D_phi, ring_3D_tphi, rings_3D_tphi, coil_core_3D_tphi, wire_2D_tphi,
 bulk_2D_tphi_axisym): structured quadratic grids (HEX20, QUAD8) with their TYPE and MATERIAL cell arrays, written as
 <case>/<case>.vtu next to this folder. Only numpy and vtk.
 
@@ -170,6 +170,20 @@ def ring_3D_tphi() -> None:
     write("ring_3D_tphi", msh, np.where(ring, 2, np.where(layer, 3, 1)))
 
 
+def rings_3D_tphi() -> None:
+    """Two square rings stacked along z, 0.5 < max(|x|, |y|) < 1, |z -+ 0.5| < 0.25: the lower ring TYPE 2, the upper
+    TYPE 3; their cut layers, max(|x|, |y|) < 0.5 and zc < z < zc + 0.25 (zc = -0.5, +0.5): TYPE 4 (lower), 5 (upper);
+    air TYPE 1."""
+    msh = box_grid(LX, LZ, D)
+    x, y, z = msh["centroids"].T
+    r = np.maximum(np.abs(x), np.abs(y))
+    types = np.ones(len(r), dtype=int)
+    for k, zc in ((0, -0.5), (1, 0.5)):
+        types[(0.5 < r) & (r < 1.0) & (np.abs(z - zc) < 0.25)] = 2 + k
+        types[(r < 0.5) & (zc < z) & (z < zc + D)] = 4 + k
+    write("rings_3D_tphi", msh, types)
+
+
 def coil_core_3D_tphi() -> None:
     """A square solenoid (winding TYPE 2), 0.5 < max(|x|, |y|) < 1, |z| < 0.5, around a conducting core (TYPE 3),
     max(|x|, |y|) < 0.25, |z| < 0.25; the rest of the hole, max(|x|, |y|) < 0.5, |z| < 0.5, TYPE 4; air TYPE 1."""
@@ -204,7 +218,7 @@ def bulk_2D_tphi_axisym() -> None:
     write("bulk_2D_tphi_axisym", msh, np.where((c[:, 0] < 10e-3) & (np.abs(c[:, 1]) < 5e-3), 2, 1))
 
 
-CASES = {f.__name__: f for f in (core_3D_phi, ring_3D_tphi, coil_core_3D_tphi, wire_2D_tphi, bulk_2D_tphi_axisym)}
+CASES = {f.__name__: f for f in (core_3D_phi, ring_3D_tphi, rings_3D_tphi, coil_core_3D_tphi, wire_2D_tphi, bulk_2D_tphi_axisym)}
 
 if __name__ == "__main__":
     for name in sys.argv[1:] or CASES:

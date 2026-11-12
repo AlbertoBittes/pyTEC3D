@@ -680,7 +680,8 @@ an extra cut whose crossing edges are all given (0, or a current) is harmless. C
 Without a cut a ring can have its hole filled with a weak conductor (below). A coil given as T fixed on its edges is
 a cut of the same kind, thick, with its current spread over the winding (:ref:`el-tphi3d`).
 
-Examples: ``examples/ring_3D_tphi`` (3D, induced), ``examples/wire_2D_tphi`` (2D, imposed current, the jump of
+Examples: ``examples/ring_3D_tphi`` (3D, induced), ``examples/rings_3D_tphi`` (two rings in series and in
+parallel, voltage-driven), ``examples/wire_2D_tphi`` (2D, imposed current, the jump of
 :math:`\phi` on the box); :doc:`../tutorials/tutorial_tphi_cuts` runs the induced, current and voltage drives and a
 ring without cut.
 

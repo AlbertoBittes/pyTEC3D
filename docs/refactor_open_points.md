@@ -88,6 +88,17 @@ Measured on the `formulations` suite of pyTEC3D_APDL_benchmarks; user decisions 
 - **Edge values by the user.** Cuts, fixed-T coils and given Hs need the edge values in the solver's orientation:
   `tree_gauge.edges()` / `edge_circulations()` give them, and `set_value_on_selection` takes one value per selected
   id. No helper builds a cut layer or classifies its edges (the examples do it by position).
+- **No restart from a saved state**: a new session starts from zero fields (and the stored rates of the law outputs,
+  RateResidual, start at zero).
+- **Integrals from cell means** (Joule power, AC loss as sum E . J V) are slightly low where the fields vary inside a
+  cell (2 % on the ring of tutorial_tphi_cuts, 4 cells across); no quadrature-point integration of products is offered.
+- **A, V-A with power_law_e** does not converge or oscillates at real superconductor parameters (slab benchmark):
+  superconductors are a T-phi model.
+- **PHI3D_nodal**: Hs carries the solenoidal part of Js, a non-divergence-free Js is used without a warning.
+- **Setup errors not detected**: a missing or broken cut (the conductor is modelled cut open), wrong static-step
+  gauges, two free cuts on one hole (singular).
+- **Validation coverage**: no comparison with an independent H-formulation code on the published HTS benchmarks
+  (HTS modelling workgroup); MAPDL references only for the reduced potential and A-V eddy currents.
 - **Accuracy.** First order (no second-order Nedelec): the error decreases linearly with h (normal finite-element
   behaviour; refine). Power-law AC loss tends to the critical state as n grows (1.22 at n = 30, 1.09-1.11 at n = 100
   times Bean / Norris).

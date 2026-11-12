@@ -1,7 +1,7 @@
 Scalar Potentials and Superconductors
 =====================================
 
-Five analyses with the scalar-potential element types (:ref:`el-phi3d`, :ref:`el-tphi3d`, :ref:`el-tphi2d`):
+Six analyses with the scalar-potential element types (:ref:`el-phi3d`, :ref:`el-tphi3d`, :ref:`el-tphi2d`):
 magnetostatics with the reduced potential and its source field in one system, the T-phi (H) formulation of eddy
 currents with cuts and fixed-T coils, and superconductors with power laws, in 3D, 2D and axisymmetric.
 
@@ -20,6 +20,11 @@ currents with cuts and fixed-T coils, and superconductors with power laws, in 3D
      - ``TPHI3D_edge``
      - A conducting ring in a field switched on: the gauges of T-phi, the applied field as a boundary potential, a cut
        layer spanning the hole with its crossing edges coupled on one DOF (the ring current).
+   * - ``rings_3D_tphi``
+     - ``TPHI3D_edge``
+     - Several conductors with their own cuts: two rings in series (one coupled DOF for both cuts: one current) and in
+       parallel (one DOF each, the same ``VLTG``), voltage-driven; the mutual inductance in the transient, the DC
+       check I = V / (R1 + R2).
    * - ``coil_core_3D_tphi``
      - ``TPHI3D_edge``
      - A current-driven coil as T fixed on its edges (T0 over the winding and "the disk filling the hole"), a
@@ -51,6 +56,12 @@ ring_3D_tphi
 ------------
 
 .. literalinclude:: ../../examples/ring_3D_tphi/macro.py
+   :language: python
+
+rings_3D_tphi
+-------------
+
+.. literalinclude:: ../../examples/rings_3D_tphi/macro.py
    :language: python
 
 coil_core_3D_tphi

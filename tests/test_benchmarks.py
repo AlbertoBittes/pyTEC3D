@@ -9,7 +9,7 @@ Benchmark repository: ``$PYTEC3D_BENCHMARKS`` (a path), else ``pyTEC3D_APDL_benc
 git submodule). Options, passed on to the validation:
 
 * ``PYTEC3D_BENCHMARKS_LONG=1``: also the long cases (3D ITER cases, about an hour more);
-* ``PYTEC3D_BENCHMARKS_REPORT=<folder>``: write the reports (simple.json/.md, iter.json/.md) there;
+* ``PYTEC3D_BENCHMARKS_REPORT=<folder>``: write the reports (simple, iter, formulations .json/.md) there;
 * ``PYTEC3D_BENCHMARKS_ARGS``: more arguments of ``bench.py validate`` (e.g. ``"--suite simple -k coil_2D"``).
 
 Run: ``pytest tests/test_benchmarks.py -s`` (``-s`` shows the summary tables of the validation as they are printed).

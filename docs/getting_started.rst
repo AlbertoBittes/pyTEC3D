@@ -27,7 +27,7 @@ the terminal voltage of a conductor with a terminal), and the circuit unknowns o
 saturating (B-H curve) materials, and static and transient analyses (see :doc:`theory/index`). Scalar-potential
 formulations complete it: magnetostatics with the reduced potential and its source field (``PHI3D_nodal``), and the
 T-phi (H) formulation in 3D and 2D for conductors in applied fields and superconductors with power laws
-(``TPHI3D_edge``, ``TPHI2D_edge``). What it does not do: :doc:`user_manual/limitations`.
+(``TPHI3D_edge``, ``TPHI2D_edge``).
 
 The code has two modules:
 
